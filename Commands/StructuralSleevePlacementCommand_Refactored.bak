@@ -1,0 +1,5 @@
+// Copy of StructuralSleevePlacementCommand.cs for refactor and new intersection logic integration
+// Original logic preserved in original file
+// TODO: Refactor to use IntersectionDetectionService and filter linked files by active view visibility
+
+// ...existing code from StructuralSleevePlacementCommand.cs will be inserted here...

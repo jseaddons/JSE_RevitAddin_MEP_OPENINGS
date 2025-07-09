@@ -1,0 +1,43 @@
+﻿<Window
+    x:Class="JSE_RevitAddin_MEP_OPENINGS.Views.JSE_RevitAddin_MEP_OPENINGSView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:viewModel="clr-namespace:JSE_RevitAddin_MEP_OPENINGS.ViewModels"
+    mc:Ignorable="d"
+    d:DataContext="{d:DesignInstance viewModel:JSE_RevitAddin_MEP_OPENINGSViewModel}"
+    ResizeMode="NoResize"
+    WindowStartupLocation="CenterScreen"
+    Title="JSE_RevitAddin_MEP_OPENINGS"
+    Height="450"
+    Width="800">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        
+        <TextBlock
+            Grid.Row="0"
+            Text="JSE MEP Openings Tools"
+            FontSize="30"
+            Margin="20,20,20,40"
+            VerticalAlignment="Top"
+            HorizontalAlignment="Center" />
+            
+        <StackPanel Grid.Row="1" 
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Top"
+                  Width="300">
+            <Button Content="Place Openings" 
+                    Height="50" 
+                    Margin="0,10,0,0"
+                    Command="{Binding PlaceOpeningsCommand}"/>
+            <Button Content="Add Mark Parameters" 
+                    Height="50" 
+                    Margin="0,20,0,0"
+                    Command="{Binding AddMarkParameterCommand}"/>
+        </StackPanel>
+    </Grid>
+</Window>

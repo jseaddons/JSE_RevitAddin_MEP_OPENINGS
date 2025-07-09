@@ -1,0 +1,112 @@
+<!-- IMPORTANT: THERE IS NO HOST WALL, ONLY LINKED WALLS. ALL CODE AND LOGIC MUST ASSUME WALLS ARE LINKED. -->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <ImplicitUsings>true</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <TargetFramework>net48</TargetFramework>
+    <Configurations>Debug R21;Debug R22;Debug R23;Debug R24;Debug R25;Debug R26;Release R21;Release R22;Release R23;Release R24;Release R25;Release R26</Configurations>    <!-- Fixed version numbers -->
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Deterministic>false</Deterministic>
+  </PropertyGroup>
+
+  <!-- Revit configuration -->
+  <PropertyGroup Condition="$(Configuration.Contains('R21'))">
+    <RevitVersion>2021</RevitVersion>
+    <TargetFramework>net48</TargetFramework>
+  </PropertyGroup>
+  <PropertyGroup Condition="$(Configuration.Contains('R22'))">
+    <RevitVersion>2022</RevitVersion>
+    <TargetFramework>net48</TargetFramework>
+  </PropertyGroup>
+  <PropertyGroup Condition="$(Configuration.Contains('R23'))">
+    <RevitVersion>2023</RevitVersion>
+    <TargetFramework>net48</TargetFramework>
+  </PropertyGroup>
+  <PropertyGroup Condition="$(Configuration.Contains('R24'))">
+    <RevitVersion>2024</RevitVersion>
+    <TargetFramework>net48</TargetFramework>
+  </PropertyGroup>
+  <PropertyGroup Condition="$(Configuration.Contains('R25'))">
+    <RevitVersion>2025</RevitVersion>
+    <TargetFramework>net8.0-windows</TargetFramework>
+  </PropertyGroup>
+  <PropertyGroup Condition="$(Configuration.Contains('R26'))">
+    <RevitVersion>2026</RevitVersion>
+    <TargetFramework>net8.0-windows</TargetFramework>
+  </PropertyGroup>
+
+  <!-- Launch configuration -->
+  <PropertyGroup>
+    <StartAction>Program</StartAction>
+    <StartProgram>C:\Program Files\Autodesk\Revit $(RevitVersion)\Revit.exe</StartProgram>
+    <StartArguments>/language ENG</StartArguments>
+  </PropertyGroup>
+
+  <!-- Build configuration -->
+  <PropertyGroup>
+    <IsRepackable>true</IsRepackable>
+    <DeployRevitAddin>false</DeployRevitAddin>
+    <BaseOutputPath>bin\$(Configuration)</BaseOutputPath>
+    <Company>JSE</Company>
+    <Description>OPENING PLACEMENT</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Nice3point.Revit.Build.Tasks" Version="3.0.1" />
+    <PackageReference Include="Nice3point.Revit.Toolkit" Version="2024.0.5" />
+    <PackageReference Include="Nice3point.Revit.Extensions" Version="2024.0.8" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2024.0.2" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2024.0.2" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="Serilog" Version="4.2.0" />
+    <PackageReference Include="Serilog.Sinks.Debug" Version="3.0.0" />
+    <PackageReference Include="ILRepack" Version="2.0.41" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="JSE_RevitAddin_MEP_OPENINGS.addin">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <Target Name="PostBuild" AfterTargets="Build">
+    <PropertyGroup>
+      <RevitAddinFolder>C:\ProgramData\Autodesk\Revit\Addins\$(RevitVersion)\</RevitAddinFolder>
+    </PropertyGroup>
+    <MakeDir Directories="$(RevitAddinFolder)" />
+    <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(RevitAddinFolder)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\$(AssemblyName).addin" DestinationFolder="$(RevitAddinFolder)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- Exclude backup files -->
+  <!-- IMPORTANT: THERE IS NO HOST WALL, ONLY LINKED WALLS. DO NOT FILTER OR HANDLE HOST WALLS. -->
+  <ItemGroup>
+    <Compile Remove="Services\*BKP*.cs" />
+    <Compile Remove="Commands\*BKP*.cs" />
+    <Compile Remove="Services\Backup\*BKP*.cs" />
+    <Compile Remove="Commands\Backup\*BKP*.cs" />
+    <Compile Remove="*BKP*.cs" />
+    <Compile Remove="*Backup*.cs" />
+    <Compile Remove="Commands\*BACKUP_BEFORE_CLUSTER_SIMPLIFY.cs" />
+    <Compile Remove="Commands\RectangularSleeveClusterCommand.BACKUP_BEFORE_CLUSTER_FIX.cs" />
+    <None Remove="BACKUP_WORKING_2025-06-26_16-30-47_CableTrayFixed\**" />
+    <Content Remove="BACKUP_WORKING_2025-06-26_16-30-47_CableTrayFixed\**" />
+    <EmbeddedResource Remove="BACKUP_WORKING_2025-06-26_16-30-47_CableTrayFixed\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="RevitAPI">
+      <HintPath>$(ProgramFiles)\Autodesk\Revit 2024\RevitAPI.dll</HintPath>
+    </Reference>
+    <Reference Include="RevitAPIUI">
+      <HintPath>$(ProgramFiles)\Autodesk\Revit 2024\RevitAPIUI.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>

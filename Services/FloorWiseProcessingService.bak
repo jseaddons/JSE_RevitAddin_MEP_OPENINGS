@@ -1,0 +1,119 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Autodesk.Revit.DB;
+using Autodesk.Revit.UI;
+
+namespace JSE_RevitAddin_MEP_OPENINGS.Services
+{
+    /// <summary>
+    /// Provides a reusable UI dialog for selecting a Level from the model.
+    /// </summary>
+    public static class LevelSelectionDialog
+    {
+        /// <summary>
+        /// Shows a dialog to the user to select a level from the provided list.
+        /// Returns the selected Level, or null if cancelled.
+        /// </summary>
+        public static Level ShowAndSelectLevel(UIApplication uiApp, IList<Level> levels)
+        {
+            if (levels == null || levels.Count == 0)
+            {
+                TaskDialog.Show("No Levels", "No levels found in the model.");
+                return null;
+            }
+
+            // Build a list of level names for display
+            string[] levelNames = levels.Select(lvl => lvl.Name).ToArray();
+            TaskDialog td = new TaskDialog("Select Level to Process");
+            td.MainInstruction = "Select the level you want to process:";
+            td.CommonButtons = TaskDialogCommonButtons.Cancel;
+            td.AllowCancellation = true;
+            td.DefaultButton = TaskDialogResult.Cancel;
+
+            // Add a command link for each level
+            Dictionary<TaskDialogResult, Level> resultMap = new Dictionary<TaskDialogResult, Level>();
+            int i = 1;
+            foreach (var lvl in levels)
+            {
+                var result = (TaskDialogResult)Enum.Parse(typeof(TaskDialogResult), "CommandLink" + i);
+                td.AddCommandLink(result, lvl.Name);
+                resultMap[result] = lvl;
+                i++;
+                if (i > 4) break; // TaskDialog supports up to 4 command links
+            }
+
+            TaskDialogResult res = td.Show();
+            if (resultMap.ContainsKey(res))
+                return resultMap[res];
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Service for floor-wise (level-wise) processing of elements.
+    /// </summary>
+    public class FloorWiseProcessingService
+    {
+        private readonly UIApplication _uiApp;
+        private readonly Document _doc;
+
+        public FloorWiseProcessingService(UIApplication uiApp)
+        {
+            _uiApp = uiApp;
+            _doc = uiApp.ActiveUIDocument.Document;
+        }
+
+        /// <summary>
+        /// Lists all available levels in the model, ordered by elevation.
+        /// </summary>
+        public IList<Level> GetAllLevels()
+        {
+            return new FilteredElementCollector(_doc)
+                .OfClass(typeof(Level))
+                .Cast<Level>()
+                .OrderBy(lvl => lvl.Elevation)
+                .ToList();
+        }
+
+        /// <summary>
+        /// Prompts the user to select a level to process, then processes only that level.
+        /// </summary>
+        public void ProcessByLevel(Action<Level> processLevelAction)
+        {
+            var levels = GetAllLevels();
+            var selectedLevel = LevelSelectionDialog.ShowAndSelectLevel(_uiApp, levels);
+            if (selectedLevel == null)
+            {
+                TaskDialog.Show("Operation Cancelled", "No level selected. Operation aborted.");
+                return;
+            }
+            processLevelAction(selectedLevel);
+        }
+
+        /// <summary>
+        /// Example: Collects elements at the specified level and processes them.
+        /// </summary>
+        public void ProcessElementsAtLevel(Level level, Func<Element, bool> elementFilter, Action<Element> processElement)
+        {
+            var collector = new FilteredElementCollector(_doc)
+                .WhereElementIsNotElementType()
+                .WherePasses(new ElementLevelFilter(level.Id));
+            foreach (var elem in collector)
+            {
+                if (elementFilter == null || elementFilter(elem))
+                    processElement(elem);
+            }
+        }
+
+        /// <summary>
+        /// Example: Finds reference intersections at the specified level only.
+        /// </summary>
+        public IList<Reference> FindIntersectionsAtLevel(Level level, Element mepElement)
+        {
+            // This is a stub. Actual intersection logic should be implemented as needed.
+            // For example, use ReferenceIntersector with a filter for elements at the given level.
+            return new List<Reference>();
+        }
+    }
+}
