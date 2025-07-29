@@ -1,0 +1,77 @@
+{
+  "version": 2,
+  "dgSpecHash": "V7KE8lSzoU0=",
+  "success": true,
+  "projectFilePath": "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\jse2084\\.nuget\\packages\\communitytoolkit.mvvm\\8.4.0\\communitytoolkit.mvvm.8.4.0.nupkg.sha512",
+    "C:\\Users\\jse2084\\.nuget\\packages\\ilrepack\\2.0.41\\ilrepack.2.0.41.nupkg.sha512",
+    "C:\\Users\\jse2084\\.nuget\\packages\\jetbrains.annotations\\2023.3.0\\jetbrains.annotations.2023.3.0.nupkg.sha512",
+    "C:\\Users\\jse2084\\.nuget\\packages\\microsoft.bcl.asyncinterfaces\\8.0.0\\microsoft.bcl.asyncinterfaces.8.0.0.nupkg.sha512",
+    "C:\\Users\\jse2084\\.nuget\\packages\\nice3point.revit.api.revitapi\\2024.2.0\\nice3point.revit.api.revitapi.2024.2.0.nupkg.sha512",
+    "C:\\Users\\jse2084\\.nuget\\packages\\nice3point.revit.api.revitapiui\\2024.2.0\\nice3point.revit.api.revitapiui.2024.2.0.nupkg.sha512",
+    "C:\\Users\\jse2084\\.nuget\\packages\\nice3point.revit.build.tasks\\3.0.1\\nice3point.revit.build.tasks.3.0.1.nupkg.sha512",
+    "C:\\Users\\jse2084\\.nuget\\packages\\nice3point.revit.extensions\\2024.1.0\\nice3point.revit.extensions.2024.1.0.nupkg.sha512",
+    "C:\\Users\\jse2084\\.nuget\\packages\\nice3point.revit.toolkit\\2024.1.0\\nice3point.revit.toolkit.2024.1.0.nupkg.sha512",
+    "C:\\Users\\jse2084\\.nuget\\packages\\serilog\\4.2.0\\serilog.4.2.0.nupkg.sha512",
+    "C:\\Users\\jse2084\\.nuget\\packages\\serilog.sinks.debug\\3.0.0\\serilog.sinks.debug.3.0.0.nupkg.sha512",
+    "C:\\Users\\jse2084\\.nuget\\packages\\system.buffers\\4.6.0\\system.buffers.4.6.0.nupkg.sha512",
+    "C:\\Users\\jse2084\\.nuget\\packages\\system.componentmodel.annotations\\5.0.0\\system.componentmodel.annotations.5.0.0.nupkg.sha512",
+    "C:\\Users\\jse2084\\.nuget\\packages\\system.diagnostics.diagnosticsource\\8.0.1\\system.diagnostics.diagnosticsource.8.0.1.nupkg.sha512",
+    "C:\\Users\\jse2084\\.nuget\\packages\\system.memory\\4.6.0\\system.memory.4.6.0.nupkg.sha512",
+    "C:\\Users\\jse2084\\.nuget\\packages\\system.numerics.vectors\\4.6.0\\system.numerics.vectors.4.6.0.nupkg.sha512",
+    "C:\\Users\\jse2084\\.nuget\\packages\\system.runtime.compilerservices.unsafe\\6.1.0\\system.runtime.compilerservices.unsafe.6.1.0.nupkg.sha512",
+    "C:\\Users\\jse2084\\.nuget\\packages\\system.threading.channels\\8.0.0\\system.threading.channels.8.0.0.nupkg.sha512",
+    "C:\\Users\\jse2084\\.nuget\\packages\\system.threading.tasks.extensions\\4.5.4\\system.threading.tasks.extensions.4.5.4.nupkg.sha512"
+  ],
+  "logs": [
+    {
+      "code": "NU1603",
+      "level": "Warning",
+      "message": "JSE_RevitAddin_MEP_OPENINGS depends on Nice3point.Revit.Api.RevitAPI (>= 2024.0.2) but Nice3point.Revit.Api.RevitAPI 2024.0.2 was not found. Nice3point.Revit.Api.RevitAPI 2024.2.0 was resolved instead.",
+      "projectPath": "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS.csproj",
+      "warningLevel": 1,
+      "filePath": "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS.csproj",
+      "libraryId": "Nice3point.Revit.Api.RevitAPI",
+      "targetGraphs": [
+        ".NETFramework,Version=v4.8"
+      ]
+    },
+    {
+      "code": "NU1603",
+      "level": "Warning",
+      "message": "JSE_RevitAddin_MEP_OPENINGS depends on Nice3point.Revit.Api.RevitAPIUI (>= 2024.0.2) but Nice3point.Revit.Api.RevitAPIUI 2024.0.2 was not found. Nice3point.Revit.Api.RevitAPIUI 2024.2.0 was resolved instead.",
+      "projectPath": "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS.csproj",
+      "warningLevel": 1,
+      "filePath": "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS.csproj",
+      "libraryId": "Nice3point.Revit.Api.RevitAPIUI",
+      "targetGraphs": [
+        ".NETFramework,Version=v4.8"
+      ]
+    },
+    {
+      "code": "NU1603",
+      "level": "Warning",
+      "message": "JSE_RevitAddin_MEP_OPENINGS depends on Nice3point.Revit.Extensions (>= 2024.0.8) but Nice3point.Revit.Extensions 2024.0.8 was not found. Nice3point.Revit.Extensions 2024.1.0 was resolved instead.",
+      "projectPath": "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS.csproj",
+      "warningLevel": 1,
+      "filePath": "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS.csproj",
+      "libraryId": "Nice3point.Revit.Extensions",
+      "targetGraphs": [
+        ".NETFramework,Version=v4.8"
+      ]
+    },
+    {
+      "code": "NU1603",
+      "level": "Warning",
+      "message": "JSE_RevitAddin_MEP_OPENINGS depends on Nice3point.Revit.Toolkit (>= 2024.0.5) but Nice3point.Revit.Toolkit 2024.0.5 was not found. Nice3point.Revit.Toolkit 2024.1.0 was resolved instead.",
+      "projectPath": "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS.csproj",
+      "warningLevel": 1,
+      "filePath": "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS.csproj",
+      "libraryId": "Nice3point.Revit.Toolkit",
+      "targetGraphs": [
+        ".NETFramework,Version=v4.8"
+      ]
+    }
+  ]
+}
