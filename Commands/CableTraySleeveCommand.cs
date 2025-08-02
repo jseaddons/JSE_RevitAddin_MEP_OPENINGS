@@ -286,11 +286,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         DebugLogger.Log($"CableTray ID={tray.Id.Value}: detected structural element: {elementTypeName}, ID={structuralElement.Id.Value}");
                         StructuralElementLogger.LogStructuralElement(elementTypeName, (int)structuralElement.Id.Value, "STRUCTURAL DETECTED", $"Hit by cable tray {tray.Id.Value}");
                         StructuralElementLogger.LogStructuralElement("CableTray-STRUCTURAL INTERSECTION", 0, "INTERSECTION_DETAILS", $"CableTray ID={tray.Id.Value}, Structural ID={structuralElement.Id.Value}, Position=({intersectionPoint.X:F9}, {intersectionPoint.Y:F9}, {intersectionPoint.Z:F9})");
-                        // For structural elements, always align sleeve to the cable tray direction
+                        // For wall intersections, always use wall family
                         XYZ sleeveDirection = rayDir;
                         FamilySymbol? familySymbolToUse = null;
                         string linkedReferenceType = "UNKNOWN";
-                        if (structuralElement is Floor floor)
+                        if (structuralElement is Wall)
+                        {
+                            familySymbolToUse = ctWallSymbols.FirstOrDefault();
+                            linkedReferenceType = "WALL";
+                        }
+                        else if (structuralElement is Floor floor)
                         {
                             familySymbolToUse = ctSlabSymbols.FirstOrDefault();
                             linkedReferenceType = "FLOOR";
@@ -323,7 +328,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                                 DebugLogger.Log($"[CableTraySleeveCommand] {noSymbolMsg}");
                             }
                         }
-                        else if (structuralElement is FamilyInstance famInst && famInst.Category != null && famInst.Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming)
+                        else if (structuralElement is FamilyInstance famInst2 && famInst2.Category != null && famInst2.Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming)
                         {
                             familySymbolToUse = ctWallSymbols.FirstOrDefault();
                             linkedReferenceType = "STRUCTURAL FRAMING (CABLETRAY FAMILY)";
@@ -343,11 +348,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             continue;
                         }
                         DebugLogger.Log($"CableTray ID={tray.Id.Value}: Using family: {familySymbolToUse.Family.Name}, Symbol: {familySymbolToUse.Name} for linked reference type {linkedReferenceType}");
-                        
-                        // Apply the same width-based orientation logic as ducts for floor hosts
-                        if (structuralElement is Floor)
+
+                        // For wall: always use wall family, no orientation logic
+                        if (structuralElement is Wall || (structuralElement is FamilyInstance && ((FamilyInstance)structuralElement).Category != null && ((FamilyInstance)structuralElement).Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming))
                         {
-                            // Only for floors: apply orientation logic and width/height swap if needed
+                            if (PlaceCableTraySleeveAtLocation_Structural(doc, ctWallSymbols.FirstOrDefault(), structuralElement, intersectionPoint, sleeveDirection, width, height, tray))
+                            {
+                                structuralSleevesPlacer++;
+                                placedCount++;
+                                processedCableTrays.Add(tray.Id);
+                                structuralSleeveePlaced = true;
+                                DebugLogger.Log($"CableTray ID={(int)tray.Id.Value}: Structural sleeve successfully placed at {intersectionPoint}");
+                                break; // Only place one sleeve per cable tray
+                            }
+                        }
+                        // For floor: use slab family and orientation logic
+                        else if (structuralElement is Floor)
+                        {
                             if (PlaceCableTraySleeveAtLocation_StructuralWithOrientation(doc, familySymbolToUse, structuralElement, intersectionPoint, sleeveDirection, width, height, tray))
                             {
                                 structuralSleevesPlacer++;
@@ -355,19 +372,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                                 processedCableTrays.Add(tray.Id);
                                 structuralSleeveePlaced = true;
                                 DebugLogger.Log($"CableTray ID={(int)tray.Id.Value}: Structural sleeve successfully placed at {intersectionPoint} with width-based orientation");
-                                break; // Only place one sleeve per cable tray
-                            }
-                        }
-                        else if (structuralElement is Wall || (structuralElement is FamilyInstance famInst && famInst.Category != null && famInst.Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming))
-                        {
-                            // For wall/framing: do NOT apply floor orientation logic, use original width/height
-                            if (PlaceCableTraySleeveAtLocation_Structural(doc, familySymbolToUse, structuralElement, intersectionPoint, sleeveDirection, width, height, tray))
-                            {
-                                structuralSleevesPlacer++;
-                                placedCount++;
-                                processedCableTrays.Add(tray.Id);
-                                structuralSleeveePlaced = true;
-                                DebugLogger.Log($"CableTray ID={(int)tray.Id.Value}: Structural sleeve successfully placed at {intersectionPoint}");
                                 break; // Only place one sleeve per cable tray
                             }
                         }
@@ -505,7 +509,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     double maxY = placementPoint.Y + height / 2.0;
                     DebugLogger.Log($"CableTray ID={(int)trayId.Value}: [BBOX-DEBUG] Placement at ({placementPoint.X:F3}, {placementPoint.Y:F3}, {placementPoint.Z:F3}), BBox X=({UnitUtils.ConvertFromInternalUnits(minX, UnitTypeId.Millimeters):F1}, {UnitUtils.ConvertFromInternalUnits(maxX, UnitTypeId.Millimeters):F1}), Y=({UnitUtils.ConvertFromInternalUnits(minY, UnitTypeId.Millimeters):F1}, {UnitUtils.ConvertFromInternalUnits(maxY, UnitTypeId.Millimeters):F1}), Width={UnitUtils.ConvertFromInternalUnits(width, UnitTypeId.Millimeters):F1}mm, Height={UnitUtils.ConvertFromInternalUnits(height, UnitTypeId.Millimeters):F1}mm");
 
-                    FamilyInstance? sleeveInstance = placer.PlaceCableTraySleeve((CableTray)null!, placementPoint, width, height, direction, ctWallSymbol, wall);
+                    // ALWAYS use XYZ.BasisX for wall/framing, never pass cable tray direction
+                    FamilyInstance? sleeveInstance = placer.PlaceCableTraySleeve((CableTray)null!, placementPoint, width, height, XYZ.BasisX, ctWallSymbol, wall);
                     if (sleeveInstance != null)
                     {
                         // --- Set Depth parameter as before ---
@@ -533,12 +538,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         /// <summary>
         /// Places a cable tray structural sleeve at the specified location with duplication checking
         /// </summary>
-          private bool PlaceCableTraySleeveAtLocation_Structural(
+        private bool PlaceCableTraySleeveAtLocation_Structural(
             Document doc,
             FamilySymbol ctSlabSymbol,
             Element hostElement,
             XYZ placementPoint,
-            XYZ direction,
+            XYZ _direction, // unused, always use default
             double width,
             double height,
             CableTray tray)
@@ -559,12 +564,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 }
 
                 var placer = new CableTraySleevePlacer(doc);
+                // For wall/framing, always use XYZ.BasisX (default orientation), never pass cable tray direction
                 var sleeveInstance = placer.PlaceCableTraySleeve(
                     tray, // pass the actual tray object!
                     placementPoint,
                     width,
                     height,
-                    direction,
+                    XYZ.BasisX, // always use default orientation for wall/framing
                     ctSlabSymbol,
                     hostElement);
                 if (sleeveInstance != null)

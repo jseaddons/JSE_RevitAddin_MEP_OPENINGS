@@ -298,30 +298,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DebugLogger.Log($"[CableTraySleevePlacer] Warning during regenerate: {ex.Message}");
                 }
 
-                // Align sleeve to cable tray direction for ALL host types
+                // Only apply rotation for floors (when preCalculatedOrientation is set)
                 try
                 {
-                    if (tray == null)
+                    if (hostElement is Floor && preCalculatedOrientation != null)
                     {
-                        DebugLogger.Log("[CableTraySleevePlacer] ERROR: tray is null - cannot align to cable tray direction.");
-                        return instance;
-                    }
-                    if (direction == null)
-                    {
-                        DebugLogger.Log("[CableTraySleevePlacer] ERROR: direction is null - cannot align to cable tray direction.");
-                        return instance;
-                    }
-                    
-                    LocationPoint loc = instance.Location as LocationPoint;
-                    if (loc == null)
-                    {
-                        DebugLogger.Log("[CableTraySleevePlacer] ERROR: instance.Location is not a LocationPoint - cannot rotate.");
-                        return instance;
-                    }
-
-                    // Use pre-calculated orientation from command for ALL host types (single source of truth)
-                    if (preCalculatedOrientation != null)
-                    {
+                        LocationPoint loc = instance.Location as LocationPoint;
+                        if (loc == null)
+                        {
+                            DebugLogger.Log("[CableTraySleevePlacer] ERROR: instance.Location is not a LocationPoint - cannot rotate.");
+                            return instance;
+                        }
                         DebugLogger.Log($"[CableTraySleevePlacer] ROTATING: Using pre-calculated orientation from command: ({preCalculatedOrientation.X:F6},{preCalculatedOrientation.Y:F6},{preCalculatedOrientation.Z:F6})");
                         double sleeveAngle = Math.Atan2(preCalculatedOrientation.Y, preCalculatedOrientation.X);
                         double sleeveAngleDegrees = sleeveAngle * 180 / Math.PI;
@@ -332,7 +319,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     else
                     {
-                        DebugLogger.Log($"[CableTraySleevePlacer] NO ROTATION: Command determined X-oriented cable tray for host type: {hostElement?.GetType().Name ?? "Unknown"}");
+                        DebugLogger.Log($"[CableTraySleevePlacer] NO ROTATION: Wall/framing host or no preCalculatedOrientation. Sleeve placed as-is.");
                     }
                 }
                 catch (Exception ex)
