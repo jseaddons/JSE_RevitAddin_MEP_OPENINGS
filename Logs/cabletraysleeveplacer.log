@@ -1,0 +1,640 @@
+[2025-08-02 18:49:41.056] [v1.0.0.0] [INFO] [StructuralElementLogger:86] [STRUCTURAL-LOG] Initialized structural elements log: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\StructuralElements_SleeveLog_20250802_184941.log
+[2025-08-02 18:49:41.057] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=0: CT_FAMILY_SEARCH Found 110 family symbols in project
+[2025-08-02 18:49:41.059] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=1049: CT_FAMILY_FOUND Family: Section Head - Filled, Symbol: Section Head - Filled
+[2025-08-02 18:49:41.062] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=16216: CT_FAMILY_FOUND Family: Rectangular Handrail, Symbol: 50 x 50mm
+[2025-08-02 18:49:41.063] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=28045: CT_FAMILY_FOUND Family: Section Tail - Filled, Symbol: Section Tail - Filled
+[2025-08-02 18:49:41.063] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=112441: CT_FAMILY_FOUND Family: Rectangular Union, Symbol: Standard
+[2025-08-02 18:49:41.064] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=498585: CT_FAMILY_FOUND Family: Rectangular Medium Radius Bend - Flanged, Symbol: Standard
+[2025-08-02 18:49:41.065] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=498587: CT_FAMILY_FOUND Family: Rectangular Square Tee - Flanged, Symbol: Standard
+[2025-08-02 18:49:41.066] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=498589: CT_FAMILY_FOUND Family: Rectangular Shoe Branch - Flanged, Symbol: Standard
+[2025-08-02 18:49:41.067] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=498591: CT_FAMILY_FOUND Family: Rectangular Concentric Taper - Flanged, Symbol: Standard
+[2025-08-02 18:49:41.067] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=498593: CT_FAMILY_FOUND Family: Rectangular - Round Transformation - Flanged, Symbol: Standard
+[2025-08-02 18:49:41.068] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=499382: CT_FAMILY_FOUND Family: Rectangular Blank End, Symbol: Standard
+[2025-08-02 18:49:41.070] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] SUCCESS ID=2124183: CT_FAMILY_FOUND Using cable tray wall sleeve family: CableTrayOpeningOnWall, Symbol: CT#
+[2025-08-02 18:49:41.071] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] SUCCESS ID=2126788: CT_FAMILY_FOUND Using cable tray slab sleeve family: CabletrayOpeningOnSlab, Symbol: CT#
+[2025-08-02 18:49:41.128] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DEBUG_WALLS ID=0: WALL_SOLID_TEST Testing wall detection using direct solid approach like structural elements
+[2025-08-02 18:49:41.144] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DEBUG_WALLS ID=2069893: LINKED_WALLS_FOUND Found 0 walls in ME-1722-2024-21-06-2025.rvt : 19 : location <Not Shared>
+[2025-08-02 18:49:41.158] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DEBUG_WALLS ID=2140496: LINKED_WALLS_FOUND Found 64 walls in Architecture_detached.rvt : 22 : location <Not Shared>
+[2025-08-02 18:49:41.163] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DEBUG_WALLS ID=2140829: LINKED_WALLS_FOUND Found 0 walls in Structure.rvt : 23 : location <Not Shared>
+[2025-08-02 18:49:41.167] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=1874033: STARTING_INTERSECTION Testing cable tray against 64 structural elements
+[2025-08-02 18:49:41.168] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=2082287: TESTING_ELEMENT Testing element 1/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.169] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=2082287: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.170] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=2082287: STRUCT_BBOX Min=(-0.33,-4.29,-5.31), Max=(0.33,4.29,5.31)
+[2025-08-02 18:49:41.172] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=2082287: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.174] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=2082305: TESTING_ELEMENT Testing element 2/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.176] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=2082305: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.176] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=2082305: STRUCT_BBOX Min=(-0.25,-2.58,-5.31), Max=(0.25,2.58,5.31)
+[2025-08-02 18:49:41.178] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=2082305: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.179] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=2082306: TESTING_ELEMENT Testing element 3/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.180] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=2082306: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.181] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=2082306: STRUCT_BBOX Min=(-0.25,-2.26,-5.31), Max=(0.25,2.26,5.31)
+[2025-08-02 18:49:41.182] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=2082306: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.183] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=2082307: TESTING_ELEMENT Testing element 4/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.184] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=2082307: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.185] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=2082307: STRUCT_BBOX Min=(-1.65,-0.25,-5.31), Max=(1.65,0.25,5.31)
+[2025-08-02 18:49:41.186] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=2082307: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.187] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=2082316: TESTING_ELEMENT Testing element 5/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.188] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=2082316: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.188] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=2082316: STRUCT_BBOX Min=(-2.12,-0.33,-5.31), Max=(2.12,0.33,5.31)
+[2025-08-02 18:49:41.189] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=2082316: INTERSECTION_POINT Entry=(105.261750351, 43.963254681, 60.744750656), Exit=(105.261750351, 44.619422660, 60.744750656), Midpoint=(105.261750351, 44.291338671, 60.744750656)
+[2025-08-02 18:49:41.190] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=2700957: TESTING_ELEMENT Testing element 6/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.191] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=2700957: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.192] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=2700957: STRUCT_BBOX Min=(-0.33,-7.07,-5.31), Max=(0.33,7.07,5.31)
+[2025-08-02 18:49:41.193] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=2700957: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.194] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=3979480: TESTING_ELEMENT Testing element 7/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.195] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=3979480: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.196] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=3979480: STRUCT_BBOX Min=(-1.90,-0.33,-5.31), Max=(1.90,0.33,5.31)
+[2025-08-02 18:49:41.197] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=3979480: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.198] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=3979488: TESTING_ELEMENT Testing element 8/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.200] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=3979488: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.201] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=3979488: STRUCT_BBOX Min=(-2.41,-0.33,-5.31), Max=(2.41,0.33,5.31)
+[2025-08-02 18:49:41.203] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=3979488: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.205] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=6150398: TESTING_ELEMENT Testing element 9/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.206] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=6150398: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.207] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=6150398: STRUCT_BBOX Min=(-0.33,-0.33,-5.31), Max=(0.33,0.33,5.31)
+[2025-08-02 18:49:41.208] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=6150398: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.209] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932962: TESTING_ELEMENT Testing element 10/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.210] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932962: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.211] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932962: STRUCT_BBOX Min=(-2.36,-0.16,-5.25), Max=(2.36,0.16,5.25)
+[2025-08-02 18:49:41.212] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932962: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.213] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932963: TESTING_ELEMENT Testing element 11/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.215] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932963: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.216] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932963: STRUCT_BBOX Min=(-1.75,-0.25,-5.13), Max=(1.75,0.25,5.13)
+[2025-08-02 18:49:41.217] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932963: INTERSECTION_POINT Entry=(105.261750351, 44.619422661, 60.744750656), Exit=(105.261750351, 44.127296677, 60.744750656), Midpoint=(105.261750351, 44.373359669, 60.744750656)
+[2025-08-02 18:49:41.218] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932964: TESTING_ELEMENT Testing element 12/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.219] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932964: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.220] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932964: STRUCT_BBOX Min=(-0.35,-0.33,-5.13), Max=(0.35,0.33,5.13)
+[2025-08-02 18:49:41.221] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932964: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.221] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932974: TESTING_ELEMENT Testing element 13/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.223] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932974: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.223] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932974: STRUCT_BBOX Min=(-0.01,-1.74,-5.13), Max=(0.01,1.74,5.13)
+[2025-08-02 18:49:41.224] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932974: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.225] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932975: TESTING_ELEMENT Testing element 14/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.226] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932975: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.228] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932975: STRUCT_BBOX Min=(-0.02,-0.84,-4.43), Max=(0.02,0.84,4.43)
+[2025-08-02 18:49:41.229] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932975: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.230] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932976: TESTING_ELEMENT Testing element 15/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.231] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932976: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.232] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932976: STRUCT_BBOX Min=(-1.93,-0.02,-4.43), Max=(1.93,0.02,4.43)
+[2025-08-02 18:49:41.233] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932976: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.234] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932977: TESTING_ELEMENT Testing element 16/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.235] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932977: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.236] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932977: STRUCT_BBOX Min=(-0.02,-0.84,-4.43), Max=(0.02,0.84,4.43)
+[2025-08-02 18:49:41.238] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932977: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.243] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932979: TESTING_ELEMENT Testing element 17/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.244] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932979: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.245] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932979: STRUCT_BBOX Min=(-0.02,-2.08,-1.94), Max=(0.02,2.08,1.94)
+[2025-08-02 18:49:41.246] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932979: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.247] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932980: TESTING_ELEMENT Testing element 18/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.248] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932980: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.249] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932980: STRUCT_BBOX Min=(-2.12,-0.02,-4.02), Max=(2.12,0.02,4.02)
+[2025-08-02 18:49:41.249] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932980: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.250] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932981: TESTING_ELEMENT Testing element 19/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.251] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932981: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.252] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932981: STRUCT_BBOX Min=(-0.02,-2.06,-2.46), Max=(0.02,2.06,2.46)
+[2025-08-02 18:49:41.253] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932981: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.254] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932982: TESTING_ELEMENT Testing element 20/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.255] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932982: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.255] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932982: STRUCT_BBOX Min=(-0.25,-0.02,-1.97), Max=(0.25,0.02,1.97)
+[2025-08-02 18:49:41.256] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932982: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.257] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932983: TESTING_ELEMENT Testing element 21/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.258] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932983: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.259] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932983: STRUCT_BBOX Min=(-0.02,-2.06,-3.94), Max=(0.02,2.06,3.94)
+[2025-08-02 18:49:41.260] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932983: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.261] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932984: TESTING_ELEMENT Testing element 22/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.261] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932984: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.262] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932984: STRUCT_BBOX Min=(-2.12,-0.02,-4.02), Max=(2.12,0.02,4.02)
+[2025-08-02 18:49:41.263] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932984: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.264] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932996: TESTING_ELEMENT Testing element 23/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.265] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932996: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.266] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932996: STRUCT_BBOX Min=(-0.69,-0.69,-4.45), Max=(0.69,0.69,4.45)
+[2025-08-02 18:49:41.267] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932996: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.268] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932997: TESTING_ELEMENT Testing element 24/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.269] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932997: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.269] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932997: STRUCT_BBOX Min=(-0.69,-0.69,-4.43), Max=(0.69,0.69,4.43)
+[2025-08-02 18:49:41.270] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932997: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.271] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932998: TESTING_ELEMENT Testing element 25/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.273] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932998: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.274] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932998: STRUCT_BBOX Min=(-0.69,-0.69,-5.13), Max=(0.69,0.69,5.13)
+[2025-08-02 18:49:41.275] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10932998: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.275] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933003: TESTING_ELEMENT Testing element 26/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.277] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933003: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.278] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933003: STRUCT_BBOX Min=(-0.08,-0.02,-3.94), Max=(0.08,0.02,3.94)
+[2025-08-02 18:49:41.279] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933003: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.279] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933015: TESTING_ELEMENT Testing element 27/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.280] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933015: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.281] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933015: STRUCT_BBOX Min=(-0.25,-2.10,-1.94), Max=(0.25,2.10,1.94)
+[2025-08-02 18:49:41.282] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933015: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.283] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933016: TESTING_ELEMENT Testing element 28/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.284] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933016: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.285] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933016: STRUCT_BBOX Min=(-0.25,-0.02,-1.97), Max=(0.25,0.02,1.97)
+[2025-08-02 18:49:41.286] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933016: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.287] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933017: TESTING_ELEMENT Testing element 29/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.288] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933017: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.289] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933017: STRUCT_BBOX Min=(-0.33,-0.16,-5.13), Max=(0.33,0.16,5.13)
+[2025-08-02 18:49:41.290] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933017: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.291] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933024: TESTING_ELEMENT Testing element 30/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.292] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933024: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.293] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933024: STRUCT_BBOX Min=(-0.02,-0.11,-3.94), Max=(0.02,0.11,3.94)
+[2025-08-02 18:49:41.294] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933024: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.295] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933025: TESTING_ELEMENT Testing element 31/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.296] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933025: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.297] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933025: STRUCT_BBOX Min=(-0.70,-0.76,-5.13), Max=(0.70,0.76,5.13)
+[2025-08-02 18:49:41.298] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933025: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.298] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933057: TESTING_ELEMENT Testing element 32/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.300] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933057: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.301] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933057: STRUCT_BBOX Min=(-0.01,-6.22,-4.10), Max=(0.01,6.22,4.10)
+[2025-08-02 18:49:41.302] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933057: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.303] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933073: TESTING_ELEMENT Testing element 33/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.304] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933073: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.305] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933073: STRUCT_BBOX Min=(-0.02,-7.07,-0.02), Max=(0.02,7.07,0.02)
+[2025-08-02 18:49:41.306] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933073: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.306] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933083: TESTING_ELEMENT Testing element 34/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.308] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933083: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.308] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933083: STRUCT_BBOX Min=(-0.16,-0.02,-3.94), Max=(0.16,0.02,3.94)
+[2025-08-02 18:49:41.309] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933083: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.310] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933084: TESTING_ELEMENT Testing element 35/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.311] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933084: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.312] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933084: STRUCT_BBOX Min=(-0.16,-5.03,-5.25), Max=(0.16,5.03,5.25)
+[2025-08-02 18:49:41.313] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933084: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.314] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933085: TESTING_ELEMENT Testing element 36/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.315] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933085: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.316] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933085: STRUCT_BBOX Min=(-0.16,-1.02,-5.30), Max=(0.16,1.02,5.30)
+[2025-08-02 18:49:41.317] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933085: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.318] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933095: TESTING_ELEMENT Testing element 37/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.319] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933095: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.320] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933095: STRUCT_BBOX Min=(-0.15,-0.08,-5.13), Max=(0.15,0.08,5.13)
+[2025-08-02 18:49:41.320] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933095: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.321] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933096: TESTING_ELEMENT Testing element 38/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.322] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933096: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.323] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933096: STRUCT_BBOX Min=(-0.15,-0.01,-0.02), Max=(0.15,0.01,0.02)
+[2025-08-02 18:49:41.324] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933096: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.325] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933101: TESTING_ELEMENT Testing element 39/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.326] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933101: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.327] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933101: STRUCT_BBOX Min=(-0.01,-0.34,-0.02), Max=(0.01,0.34,0.02)
+[2025-08-02 18:49:41.328] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933101: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.329] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933104: TESTING_ELEMENT Testing element 40/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.330] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933104: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.331] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933104: STRUCT_BBOX Min=(-0.16,-0.08,-5.13), Max=(0.16,0.08,5.13)
+[2025-08-02 18:49:41.332] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933104: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.333] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933105: TESTING_ELEMENT Testing element 41/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.334] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933105: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.335] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933105: STRUCT_BBOX Min=(-0.08,-1.27,-3.63), Max=(0.08,1.27,3.63)
+[2025-08-02 18:49:41.336] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933105: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.337] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933126: TESTING_ELEMENT Testing element 42/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.338] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933126: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.339] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933126: STRUCT_BBOX Min=(-0.02,-0.85,-4.43), Max=(0.02,0.85,4.43)
+[2025-08-02 18:49:41.340] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933126: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.341] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933127: TESTING_ELEMENT Testing element 43/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.344] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933127: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.345] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933127: STRUCT_BBOX Min=(-0.02,-0.26,-4.43), Max=(0.02,0.26,4.43)
+[2025-08-02 18:49:41.345] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933127: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.346] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933139: TESTING_ELEMENT Testing element 44/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.354] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933139: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.356] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933139: STRUCT_BBOX Min=(-3.46,-0.16,-5.25), Max=(3.46,0.16,5.25)
+[2025-08-02 18:49:41.357] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933139: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.357] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933146: TESTING_ELEMENT Testing element 45/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.359] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933146: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.359] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933146: STRUCT_BBOX Min=(-3.28,-0.02,-4.35), Max=(3.28,0.02,4.35)
+[2025-08-02 18:49:41.360] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933146: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.361] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933148: TESTING_ELEMENT Testing element 46/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.362] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933148: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.363] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933148: STRUCT_BBOX Min=(-3.44,-0.01,-0.02), Max=(3.44,0.01,0.02)
+[2025-08-02 18:49:41.364] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933148: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.365] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933151: TESTING_ELEMENT Testing element 47/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.366] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933151: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.367] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933151: STRUCT_BBOX Min=(-0.29,-0.08,-5.13), Max=(0.29,0.08,5.13)
+[2025-08-02 18:49:41.368] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933151: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.368] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933155: TESTING_ELEMENT Testing element 48/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.369] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933155: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.370] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933155: STRUCT_BBOX Min=(-0.35,-0.25,-5.13), Max=(0.35,0.25,5.13)
+[2025-08-02 18:49:41.371] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933155: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.372] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933156: TESTING_ELEMENT Testing element 49/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.373] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933156: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.374] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933156: STRUCT_BBOX Min=(-0.35,-0.25,-5.13), Max=(0.35,0.25,5.13)
+[2025-08-02 18:49:41.375] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933156: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.375] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933159: TESTING_ELEMENT Testing element 50/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.376] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933159: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.377] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933159: STRUCT_BBOX Min=(-0.37,-0.08,-5.13), Max=(0.37,0.08,5.13)
+[2025-08-02 18:49:41.378] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933159: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.379] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933164: TESTING_ELEMENT Testing element 51/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.380] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933164: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.381] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933164: STRUCT_BBOX Min=(-0.08,-0.82,-5.13), Max=(0.08,0.82,5.13)
+[2025-08-02 18:49:41.382] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933164: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.383] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933171: TESTING_ELEMENT Testing element 52/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.384] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933171: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.385] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933171: STRUCT_BBOX Min=(-0.37,-0.08,-5.13), Max=(0.37,0.08,5.13)
+[2025-08-02 18:49:41.386] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933171: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.386] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933172: TESTING_ELEMENT Testing element 53/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.388] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933172: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.389] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933172: STRUCT_BBOX Min=(-0.38,-0.01,-0.02), Max=(0.38,0.01,0.02)
+[2025-08-02 18:49:41.390] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933172: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.391] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933176: TESTING_ELEMENT Testing element 54/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.392] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933176: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.393] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933176: STRUCT_BBOX Min=(-0.25,-1.11,-5.13), Max=(0.25,1.11,5.13)
+[2025-08-02 18:49:41.395] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933176: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.395] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933177: TESTING_ELEMENT Testing element 55/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.396] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933177: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.397] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933177: STRUCT_BBOX Min=(-0.08,-2.22,-5.13), Max=(0.08,2.22,5.13)
+[2025-08-02 18:49:41.398] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933177: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.399] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933178: TESTING_ELEMENT Testing element 56/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.401] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933178: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.401] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933178: STRUCT_BBOX Min=(-0.01,-1.71,-0.02), Max=(0.01,1.71,0.02)
+[2025-08-02 18:49:41.402] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933178: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.403] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933182: TESTING_ELEMENT Testing element 57/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.405] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933182: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.405] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933182: STRUCT_BBOX Min=(-0.01,-2.56,-3.94), Max=(0.01,2.56,3.94)
+[2025-08-02 18:49:41.406] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933182: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.407] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933186: TESTING_ELEMENT Testing element 58/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.408] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933186: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.410] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933186: STRUCT_BBOX Min=(-0.08,-1.53,-5.13), Max=(0.08,1.53,5.13)
+[2025-08-02 18:49:41.410] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933186: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.411] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933187: TESTING_ELEMENT Testing element 59/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.412] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933187: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.414] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933187: STRUCT_BBOX Min=(-0.01,-2.42,-0.02), Max=(0.01,2.42,0.02)
+[2025-08-02 18:49:41.415] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933187: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.416] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933190: TESTING_ELEMENT Testing element 60/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.417] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933190: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.418] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933190: STRUCT_BBOX Min=(-0.38,-0.01,-0.02), Max=(0.38,0.01,0.02)
+[2025-08-02 18:49:41.419] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933190: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.420] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933200: TESTING_ELEMENT Testing element 61/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.421] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933200: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.422] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933200: STRUCT_BBOX Min=(-0.02,-0.08,-3.94), Max=(0.02,0.08,3.94)
+[2025-08-02 18:49:41.423] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933200: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.424] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933202: TESTING_ELEMENT Testing element 62/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.424] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933202: NO_SOLID No solid geometry found in structural element
+[2025-08-02 18:49:41.425] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933207: TESTING_ELEMENT Testing element 63/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.427] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933207: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.428] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933207: STRUCT_BBOX Min=(-0.01,-0.80,-4.10), Max=(0.01,0.80,4.10)
+[2025-08-02 18:49:41.429] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933207: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.430] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933210: TESTING_ELEMENT Testing element 64/64: Wall, IsLinked: True
+[2025-08-02 18:49:41.431] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933210: APPLIED_TRANSFORM Applied linkTransform: Autodesk.Revit.DB.Transform
+[2025-08-02 18:49:41.432] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933210: STRUCT_BBOX Min=(-0.08,-1.07,-1.49), Max=(0.08,1.07,1.49)
+[2025-08-02 18:49:41.433] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=10933210: NO_INTERSECTION No intersection found with cable tray centerline
+[2025-08-02 18:49:41.434] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIRECT_INTERSECTION ID=1874033: INTERSECTION_COMPLETE Tested 64 elements, found 2 intersections
+[2025-08-02 18:49:41.434] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DEBUG_WALLS ID=1874033: WALL_SOLID_RESULT Direct solid method found 2 wall intersections
+[2025-08-02 18:49:41.493] [v1.0.0.0] [INFO] [CableTraySleeveCommand:145] Found 7 existing cable tray sleeves in the model
+[2025-08-02 18:49:41.506] [v1.0.0.0] [INFO] [CableTraySleeveCommand:151] --- Details of Existing Cable Tray Sleeves ---
+[2025-08-02 18:49:41.507] [v1.0.0.0] [INFO] [CableTraySleeveCommand:159]   Sleeve ID: 2143268, Location: (107.143694544, 44.291338671, 61.030839239), Width: 200.0mm, Height: 160.3mm, Depth: 399.9mm
+[2025-08-02 18:49:41.507] [v1.0.0.0] [INFO] [CableTraySleeveCommand:159]   Sleeve ID: 2143269, Location: (104.237790398, 37.962657475, 61.030839239), Width: 308.3mm, Height: 160.3mm, Depth: 100.0mm
+[2025-08-02 18:49:41.508] [v1.0.0.0] [INFO] [CableTraySleeveCommand:159]   Sleeve ID: 2143270, Location: (97.112860892, 29.861269371, 60.695661089), Width: 775.2mm, Height: 133.4mm, Depth: 200.0mm
+[2025-08-02 18:49:41.509] [v1.0.0.0] [INFO] [CableTraySleeveCommand:159]   Sleeve ID: 2143271, Location: (97.112860892, 25.811855708, 60.695661089), Width: 332.0mm, Height: 133.4mm, Depth: 200.0mm
+[2025-08-02 18:49:41.510] [v1.0.0.0] [INFO] [CableTraySleeveCommand:159]   Sleeve ID: 2143272, Location: (109.904855940, 28.139748615, 60.252624672), Width: 220.0mm, Height: 250.0mm, Depth: 50.0mm
+[2025-08-02 18:49:41.511] [v1.0.0.0] [INFO] [CableTraySleeveCommand:159]   Sleeve ID: 2143273, Location: (103.108812175, 44.947479738, 60.252624672), Width: 200.0mm, Height: 300.0mm, Depth: 495.0mm
+[2025-08-02 18:49:41.513] [v1.0.0.0] [INFO] [CableTraySleeveCommand:159]   Sleeve ID: 2143274, Location: (97.112860892, 20.548913421, 60.252624672), Width: 640.0mm, Height: 250.0mm, Depth: 200.0mm
+[2025-08-02 18:49:41.514] [v1.0.0.0] [INFO] [CableTraySleeveCommand:161] ------------------------------------------
+[2025-08-02 18:49:41.515] [v1.0.0.0] [INFO] [CableTraySleeveCommand:179] Found 13 cable trays to process
+[2025-08-02 18:49:41.516] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] SYSTEM ID=0: PROCESSING STARTED Total cable trays to process: 13
+[2025-08-02 18:49:41.516] [v1.0.0.0] [INFO] [CableTraySleeveCommand:187] Transaction started for cable tray sleeve placement
+[2025-08-02 18:49:41.517] [v1.0.0.0] [INFO] [CableTraySleeveCommand:189] Starting wall intersection tests for cable trays
+[2025-08-02 18:49:41.518] [v1.0.0.0] [INFO] [CableTraySleeveCommand:201] Processing CableTray ID=1874033
+[2025-08-02 18:49:41.563] [v1.0.0.0] [INFO] [CableTraySleeveIntersectionService:58] [CableTraySleeveIntersectionService] No solid geometry found for structural element ID=10933202
+[2025-08-02 18:49:41.565] [v1.0.0.0] [INFO] [CableTraySleeveCommand:268] CableTray ID=1874033: Wall hits: 46, Structural hits: 2
+[2025-08-02 18:49:41.566] [v1.0.0.0] [INFO] [CableTraySleeveCommand:286] CableTray ID=1874033: detected structural element: Walls, ID=2082316
+[2025-08-02 18:49:41.567] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=2082316: STRUCTURAL DETECTED Hit by cable tray 1874033
+[2025-08-02 18:49:41.570] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1874033, Structural ID=2082316, Position=(105.261750351, 44.291338671, 60.744750656)
+[2025-08-02 18:49:41.571] [v1.0.0.0] [INFO] [CableTraySleeveCommand:336] CableTray ID=1874033: Linked reference type detected: Walls
+[2025-08-02 18:49:41.572] [v1.0.0.0] [INFO] [CableTraySleeveCommand:345] CableTray ID=1874033: Using family: CabletrayOpeningOnSlab, Symbol: CT# for linked reference type Walls
+[2025-08-02 18:49:41.614] [v1.0.0.0] [INFO] [CableTraySleeveCommand:551] [CableTraySleeveCommand] DUPLICATION CHECK at (105.261750351, 44.291338671, 60.744750656):
+No sleeves found at location
+[2025-08-02 18:49:41.651] [v1.0.0.0] [INFO] [CableTraySleevePlacer:59] [CableTraySleevePlacer] ENTRY: PlaceCableTraySleeve called with trayId=1874033
+[2025-08-02 18:49:41.652] [v1.0.0.0] [INFO] [CableTraySleevePlacer:64] [CableTraySleevePlacer] === LOG FILE START: PlaceCableTraySleeve called for cable tray 1874033 at intersection (105.261750351, 44.291338671, 60.744750656) ===
+[2025-08-02 18:49:41.653] [v1.0.0.0] [INFO] [CableTraySleevePlacer:65] [CableTraySleevePlacer] PlaceCableTraySleeve called for cable tray 1874033 at intersection (105.261750351, 44.291338671, 60.744750656)
+[2025-08-02 18:49:41.678] [v1.0.0.0] [INFO] [CableTraySleevePlacer:186] [CableTraySleevePlacer] DEBUG: intersection=(105.262,44.291,60.745), placePoint=(105.262,44.291,60.745), mmDistance=0.0, allowedOffset=105.0
+[2025-08-02 18:49:41.679] [v1.0.0.0] [INFO] [CableTraySleevePlacer:193] [CableTraySleevePlacer] Intended centerline placement: placePoint=[105.262,44.291,60.745]
+[2025-08-02 18:49:41.680] [v1.0.0.0] [INFO] [CableTraySleevePlacer:194] [CableTraySleevePlacer] Placing sleeve: width=0.328083989501312, height=0.656167979002625, intersection=(105.261750351488,44.2913386706845,60.7447506561679)
+[2025-08-02 18:49:41.680] [v1.0.0.0] [INFO] [CableTraySleevePlacer:195] [CableTraySleevePlacer] Cable tray direction: (-5.89048124437671E-15, 1, -3.33793937181347E-14)
+[2025-08-02 18:49:41.683] [v1.0.0.0] [INFO] [CableTraySleevePlacer:262] [CableTraySleevePlacer] HostOrientation parameter not found or read-only for sleeveId=2143522
+[2025-08-02 18:49:41.684] [v1.0.0.0] [INFO] [CableTraySleevePlacer:265] [CableTraySleevePlacer] HostOrientation after set: '<null>' for sleeveId=2143522
+[2025-08-02 18:49:41.684] [v1.0.0.0] [INFO] [CableTraySleevePlacer:280] [CableTraySleevePlacer] hostElement type: Autodesk.Revit.DB.Wall, category: Walls, id: 2082316, family: 
+[2025-08-02 18:49:41.690] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Setting Width to 200.0mm (internal: 0.656168) for cable tray 1874033
+[2025-08-02 18:49:41.690] [v1.0.0.0] [INFO] [CableTraySleevePlacer:419] [CableTraySleevePlacer] Verified Width set to 300.0mm for cable tray 1874033
+[2025-08-02 18:49:41.691] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Setting Height to 300.0mm (internal: 0.984252) for cable tray 1874033
+[2025-08-02 18:49:41.692] [v1.0.0.0] [INFO] [CableTraySleevePlacer:419] [CableTraySleevePlacer] Verified Height set to 200.0mm for cable tray 1874033
+[2025-08-02 18:49:41.692] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Setting Depth to 200.0mm (internal: 0.656168) for cable tray 1874033
+[2025-08-02 18:49:41.693] [v1.0.0.0] [INFO] [CableTraySleevePlacer:419] [CableTraySleevePlacer] Verified Depth set to 200.0mm for cable tray 1874033
+[2025-08-02 18:49:41.743] [v1.0.0.0] [INFO] [CableTraySleevePlacer:335] [CableTraySleevePlacer] NO ROTATION: Command determined X-oriented cable tray for host type: Wall
+[2025-08-02 18:49:41.744] [v1.0.0.0] [INFO] [CableTraySleevePlacer:355] [CableTraySleevePlacer] Placement validation:
+[2025-08-02 18:49:41.744] [v1.0.0.0] [INFO] [CableTraySleevePlacer:356]   - Intended centerline: [105.262, 44.291, 60.745]
+[2025-08-02 18:49:41.745] [v1.0.0.0] [INFO] [CableTraySleevePlacer:357]   - Actual placement: [105.262, 44.291, 60.745]
+[2025-08-02 18:49:41.745] [v1.0.0.0] [INFO] [CableTraySleevePlacer:358]   - Offset: X=0.000, Y=0.000, Z=0.000, Total=0.000
+[2025-08-02 18:49:41.746] [v1.0.0.0] [INFO] [CableTraySleevePlacer:365] [CableTraySleevePlacer] SUCCESS: Sleeve placement is at the centerline.
+[2025-08-02 18:49:41.747] [v1.0.0.0] [INFO] [CableTraySleevePlacer:371] CableTray 1874033 - Intersection vs Sleeve position distance: 0.0mm
+[2025-08-02 18:49:41.747] [v1.0.0.0] [INFO] [CableTraySleevePlacer:372]   - Intersection: [105.262, 44.291, 60.745]
+[2025-08-02 18:49:41.748] [v1.0.0.0] [INFO] [CableTraySleevePlacer:373]   - Sleeve pos: [105.262, 44.291, 60.745]
+[2025-08-02 18:49:41.749] [v1.0.0.0] [INFO] [CableTraySleevePlacer:383] [CableTraySleevePlacer] Set Schedule Level to T01 for cable tray 1874033
+[2025-08-02 18:49:41.750] [v1.0.0.0] [INFO] [CableTraySleeveCommand:370] CableTray ID=1874033: Structural sleeve successfully placed at (105.261750351, 44.291338671, 60.744750656)
+[2025-08-02 18:49:41.750] [v1.0.0.0] [INFO] [CableTraySleeveCommand:201] Processing CableTray ID=1874043
+[2025-08-02 18:49:41.795] [v1.0.0.0] [INFO] [CableTraySleeveIntersectionService:58] [CableTraySleeveIntersectionService] No solid geometry found for structural element ID=10933202
+[2025-08-02 18:49:41.796] [v1.0.0.0] [INFO] [CableTraySleeveCommand:268] CableTray ID=1874043: Wall hits: 90, Structural hits: 1
+[2025-08-02 18:49:41.797] [v1.0.0.0] [INFO] [CableTraySleeveCommand:286] CableTray ID=1874043: detected structural element: Walls, ID=10933084
+[2025-08-02 18:49:41.798] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=10933084: STRUCTURAL DETECTED Hit by cable tray 1874043
+[2025-08-02 18:49:41.799] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1874043, Structural ID=10933084, Position=(104.237790398, 36.472706423, 60.744750656)
+[2025-08-02 18:49:41.799] [v1.0.0.0] [INFO] [CableTraySleeveCommand:336] CableTray ID=1874043: Linked reference type detected: Walls
+[2025-08-02 18:49:41.800] [v1.0.0.0] [INFO] [CableTraySleeveCommand:345] CableTray ID=1874043: Using family: CabletrayOpeningOnSlab, Symbol: CT# for linked reference type Walls
+[2025-08-02 18:49:41.827] [v1.0.0.0] [INFO] [CableTraySleeveCommand:551] [CableTraySleeveCommand] DUPLICATION CHECK at (104.237790398, 36.472706423, 60.744750656):
+No sleeves found at location
+[2025-08-02 18:49:41.853] [v1.0.0.0] [INFO] [CableTraySleevePlacer:59] [CableTraySleevePlacer] ENTRY: PlaceCableTraySleeve called with trayId=1874043
+[2025-08-02 18:49:41.854] [v1.0.0.0] [INFO] [CableTraySleevePlacer:64] [CableTraySleevePlacer] === LOG FILE START: PlaceCableTraySleeve called for cable tray 1874043 at intersection (104.237790398, 36.472706423, 60.744750656) ===
+[2025-08-02 18:49:41.855] [v1.0.0.0] [INFO] [CableTraySleevePlacer:65] [CableTraySleevePlacer] PlaceCableTraySleeve called for cable tray 1874043 at intersection (104.237790398, 36.472706423, 60.744750656)
+[2025-08-02 18:49:41.882] [v1.0.0.0] [INFO] [CableTraySleevePlacer:186] [CableTraySleevePlacer] DEBUG: intersection=(104.238,36.473,60.745), placePoint=(104.238,36.473,60.745), mmDistance=0.0, allowedOffset=55.0
+[2025-08-02 18:49:41.883] [v1.0.0.0] [INFO] [CableTraySleevePlacer:193] [CableTraySleevePlacer] Intended centerline placement: placePoint=[104.238,36.473,60.745]
+[2025-08-02 18:49:41.883] [v1.0.0.0] [INFO] [CableTraySleevePlacer:194] [CableTraySleevePlacer] Placing sleeve: width=0.328083989501312, height=0.328083989501312, intersection=(104.237790398293,36.4727064233184,60.7447506561678)
+[2025-08-02 18:49:41.884] [v1.0.0.0] [INFO] [CableTraySleevePlacer:195] [CableTraySleevePlacer] Cable tray direction: (-1, 2.70716782324592E-14, 0)
+[2025-08-02 18:49:41.886] [v1.0.0.0] [INFO] [CableTraySleevePlacer:262] [CableTraySleevePlacer] HostOrientation parameter not found or read-only for sleeveId=2143523
+[2025-08-02 18:49:41.887] [v1.0.0.0] [INFO] [CableTraySleevePlacer:265] [CableTraySleevePlacer] HostOrientation after set: '<null>' for sleeveId=2143523
+[2025-08-02 18:49:41.887] [v1.0.0.0] [INFO] [CableTraySleevePlacer:280] [CableTraySleevePlacer] hostElement type: Autodesk.Revit.DB.Wall, category: Walls, id: 10933084, family: 
+[2025-08-02 18:49:41.888] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Setting Width to 200.0mm (internal: 0.656168) for cable tray 1874043
+[2025-08-02 18:49:41.888] [v1.0.0.0] [INFO] [CableTraySleevePlacer:419] [CableTraySleevePlacer] Verified Width set to 300.0mm for cable tray 1874043
+[2025-08-02 18:49:41.889] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Setting Height to 200.0mm (internal: 0.656168) for cable tray 1874043
+[2025-08-02 18:49:41.890] [v1.0.0.0] [INFO] [CableTraySleevePlacer:419] [CableTraySleevePlacer] Verified Height set to 200.0mm for cable tray 1874043
+[2025-08-02 18:49:41.891] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Setting Depth to 100.0mm (internal: 0.328084) for cable tray 1874043
+[2025-08-02 18:49:41.892] [v1.0.0.0] [INFO] [CableTraySleevePlacer:419] [CableTraySleevePlacer] Verified Depth set to 200.0mm for cable tray 1874043
+[2025-08-02 18:49:41.942] [v1.0.0.0] [INFO] [CableTraySleevePlacer:335] [CableTraySleevePlacer] NO ROTATION: Command determined X-oriented cable tray for host type: Wall
+[2025-08-02 18:49:41.942] [v1.0.0.0] [INFO] [CableTraySleevePlacer:355] [CableTraySleevePlacer] Placement validation:
+[2025-08-02 18:49:41.943] [v1.0.0.0] [INFO] [CableTraySleevePlacer:356]   - Intended centerline: [104.238, 36.473, 60.745]
+[2025-08-02 18:49:41.944] [v1.0.0.0] [INFO] [CableTraySleevePlacer:357]   - Actual placement: [104.238, 36.473, 60.745]
+[2025-08-02 18:49:41.945] [v1.0.0.0] [INFO] [CableTraySleevePlacer:358]   - Offset: X=0.000, Y=0.000, Z=0.000, Total=0.000
+[2025-08-02 18:49:41.946] [v1.0.0.0] [INFO] [CableTraySleevePlacer:365] [CableTraySleevePlacer] SUCCESS: Sleeve placement is at the centerline.
+[2025-08-02 18:49:41.947] [v1.0.0.0] [INFO] [CableTraySleevePlacer:371] CableTray 1874043 - Intersection vs Sleeve position distance: 0.0mm
+[2025-08-02 18:49:41.948] [v1.0.0.0] [INFO] [CableTraySleevePlacer:372]   - Intersection: [104.238, 36.473, 60.745]
+[2025-08-02 18:49:41.949] [v1.0.0.0] [INFO] [CableTraySleevePlacer:373]   - Sleeve pos: [104.238, 36.473, 60.745]
+[2025-08-02 18:49:41.951] [v1.0.0.0] [INFO] [CableTraySleevePlacer:383] [CableTraySleevePlacer] Set Schedule Level to T01 for cable tray 1874043
+[2025-08-02 18:49:41.952] [v1.0.0.0] [INFO] [CableTraySleeveCommand:370] CableTray ID=1874043: Structural sleeve successfully placed at (104.237790398, 36.472706423, 60.744750656)
+[2025-08-02 18:49:41.953] [v1.0.0.0] [INFO] [CableTraySleeveCommand:201] Processing CableTray ID=1874995
+[2025-08-02 18:49:41.998] [v1.0.0.0] [INFO] [CableTraySleeveIntersectionService:58] [CableTraySleeveIntersectionService] No solid geometry found for structural element ID=10933202
+[2025-08-02 18:49:42.000] [v1.0.0.0] [INFO] [CableTraySleeveCommand:268] CableTray ID=1874995: Wall hits: 48, Structural hits: 2
+[2025-08-02 18:49:42.000] [v1.0.0.0] [INFO] [CableTraySleeveCommand:286] CableTray ID=1874995: detected structural element: Walls, ID=2082316
+[2025-08-02 18:49:42.001] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=2082316: STRUCTURAL DETECTED Hit by cable tray 1874995
+[2025-08-02 18:49:42.003] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1874995, Structural ID=2082316, Position=(105.684448127, 44.291338671, 60.744750656)
+[2025-08-02 18:49:42.003] [v1.0.0.0] [INFO] [CableTraySleeveCommand:336] CableTray ID=1874995: Linked reference type detected: Walls
+[2025-08-02 18:49:42.004] [v1.0.0.0] [INFO] [CableTraySleeveCommand:345] CableTray ID=1874995: Using family: CabletrayOpeningOnSlab, Symbol: CT# for linked reference type Walls
+[2025-08-02 18:49:42.036] [v1.0.0.0] [INFO] [CableTraySleeveCommand:551] [CableTraySleeveCommand] DUPLICATION CHECK at (105.684448127, 44.291338671, 60.744750656):
+No sleeves found at location
+[2025-08-02 18:49:42.062] [v1.0.0.0] [INFO] [CableTraySleevePlacer:59] [CableTraySleevePlacer] ENTRY: PlaceCableTraySleeve called with trayId=1874995
+[2025-08-02 18:49:42.063] [v1.0.0.0] [INFO] [CableTraySleevePlacer:64] [CableTraySleevePlacer] === LOG FILE START: PlaceCableTraySleeve called for cable tray 1874995 at intersection (105.684448127, 44.291338671, 60.744750656) ===
+[2025-08-02 18:49:42.064] [v1.0.0.0] [INFO] [CableTraySleevePlacer:65] [CableTraySleevePlacer] PlaceCableTraySleeve called for cable tray 1874995 at intersection (105.684448127, 44.291338671, 60.744750656)
+[2025-08-02 18:49:42.087] [v1.0.0.0] [INFO] [CableTraySleevePlacer:186] [CableTraySleevePlacer] DEBUG: intersection=(105.684,44.291,60.745), placePoint=(105.684,44.291,60.745), mmDistance=0.0, allowedOffset=105.0
+[2025-08-02 18:49:42.088] [v1.0.0.0] [INFO] [CableTraySleevePlacer:193] [CableTraySleevePlacer] Intended centerline placement: placePoint=[105.684,44.291,60.745]
+[2025-08-02 18:49:42.088] [v1.0.0.0] [INFO] [CableTraySleevePlacer:194] [CableTraySleevePlacer] Placing sleeve: width=0.328083989501312, height=0.328083989501312, intersection=(105.684448126706,44.2913386706845,60.7447506561678)
+[2025-08-02 18:49:42.089] [v1.0.0.0] [INFO] [CableTraySleevePlacer:195] [CableTraySleevePlacer] Cable tray direction: (-1.61021134468162E-15, 1, 0)
+[2025-08-02 18:49:42.092] [v1.0.0.0] [INFO] [CableTraySleevePlacer:262] [CableTraySleevePlacer] HostOrientation parameter not found or read-only for sleeveId=2143524
+[2025-08-02 18:49:42.092] [v1.0.0.0] [INFO] [CableTraySleevePlacer:265] [CableTraySleevePlacer] HostOrientation after set: '<null>' for sleeveId=2143524
+[2025-08-02 18:49:42.093] [v1.0.0.0] [INFO] [CableTraySleevePlacer:280] [CableTraySleevePlacer] hostElement type: Autodesk.Revit.DB.Wall, category: Walls, id: 2082316, family: 
+[2025-08-02 18:49:42.094] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Setting Width to 200.0mm (internal: 0.656168) for cable tray 1874995
+[2025-08-02 18:49:42.095] [v1.0.0.0] [INFO] [CableTraySleevePlacer:419] [CableTraySleevePlacer] Verified Width set to 300.0mm for cable tray 1874995
+[2025-08-02 18:49:42.096] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Setting Height to 200.0mm (internal: 0.656168) for cable tray 1874995
+[2025-08-02 18:49:42.097] [v1.0.0.0] [INFO] [CableTraySleevePlacer:419] [CableTraySleevePlacer] Verified Height set to 200.0mm for cable tray 1874995
+[2025-08-02 18:49:42.098] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Setting Depth to 200.0mm (internal: 0.656168) for cable tray 1874995
+[2025-08-02 18:49:42.098] [v1.0.0.0] [INFO] [CableTraySleevePlacer:419] [CableTraySleevePlacer] Verified Depth set to 200.0mm for cable tray 1874995
+[2025-08-02 18:49:42.146] [v1.0.0.0] [INFO] [CableTraySleevePlacer:335] [CableTraySleevePlacer] NO ROTATION: Command determined X-oriented cable tray for host type: Wall
+[2025-08-02 18:49:42.147] [v1.0.0.0] [INFO] [CableTraySleevePlacer:355] [CableTraySleevePlacer] Placement validation:
+[2025-08-02 18:49:42.148] [v1.0.0.0] [INFO] [CableTraySleevePlacer:356]   - Intended centerline: [105.684, 44.291, 60.745]
+[2025-08-02 18:49:42.149] [v1.0.0.0] [INFO] [CableTraySleevePlacer:357]   - Actual placement: [105.684, 44.291, 60.745]
+[2025-08-02 18:49:42.149] [v1.0.0.0] [INFO] [CableTraySleevePlacer:358]   - Offset: X=0.000, Y=0.000, Z=0.000, Total=0.000
+[2025-08-02 18:49:42.150] [v1.0.0.0] [INFO] [CableTraySleevePlacer:365] [CableTraySleevePlacer] SUCCESS: Sleeve placement is at the centerline.
+[2025-08-02 18:49:42.152] [v1.0.0.0] [INFO] [CableTraySleevePlacer:371] CableTray 1874995 - Intersection vs Sleeve position distance: 0.0mm
+[2025-08-02 18:49:42.153] [v1.0.0.0] [INFO] [CableTraySleevePlacer:372]   - Intersection: [105.684, 44.291, 60.745]
+[2025-08-02 18:49:42.154] [v1.0.0.0] [INFO] [CableTraySleevePlacer:373]   - Sleeve pos: [105.684, 44.291, 60.745]
+[2025-08-02 18:49:42.156] [v1.0.0.0] [INFO] [CableTraySleevePlacer:383] [CableTraySleevePlacer] Set Schedule Level to T01 for cable tray 1874995
+[2025-08-02 18:49:42.157] [v1.0.0.0] [INFO] [CableTraySleeveCommand:370] CableTray ID=1874995: Structural sleeve successfully placed at (105.684448127, 44.291338671, 60.744750656)
+[2025-08-02 18:49:42.157] [v1.0.0.0] [INFO] [CableTraySleeveCommand:201] Processing CableTray ID=1875003
+[2025-08-02 18:49:42.197] [v1.0.0.0] [INFO] [CableTraySleeveIntersectionService:58] [CableTraySleeveIntersectionService] No solid geometry found for structural element ID=10933202
+[2025-08-02 18:49:42.199] [v1.0.0.0] [INFO] [CableTraySleeveCommand:268] CableTray ID=1875003: Wall hits: 82, Structural hits: 1
+[2025-08-02 18:49:42.199] [v1.0.0.0] [INFO] [CableTraySleeveCommand:286] CableTray ID=1875003: detected structural element: Walls, ID=10933084
+[2025-08-02 18:49:42.200] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=10933084: STRUCTURAL DETECTED Hit by cable tray 1875003
+[2025-08-02 18:49:42.201] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1875003, Structural ID=10933084, Position=(104.237790398, 35.852629870, 60.744750656)
+[2025-08-02 18:49:42.202] [v1.0.0.0] [INFO] [CableTraySleeveCommand:336] CableTray ID=1875003: Linked reference type detected: Walls
+[2025-08-02 18:49:42.202] [v1.0.0.0] [INFO] [CableTraySleeveCommand:345] CableTray ID=1875003: Using family: CabletrayOpeningOnSlab, Symbol: CT# for linked reference type Walls
+[2025-08-02 18:49:42.226] [v1.0.0.0] [INFO] [CableTraySleeveCommand:551] [CableTraySleeveCommand] DUPLICATION CHECK at (104.237790398, 35.852629870, 60.744750656):
+No sleeves found at location
+[2025-08-02 18:49:42.250] [v1.0.0.0] [INFO] [CableTraySleevePlacer:59] [CableTraySleevePlacer] ENTRY: PlaceCableTraySleeve called with trayId=1875003
+[2025-08-02 18:49:42.250] [v1.0.0.0] [INFO] [CableTraySleevePlacer:64] [CableTraySleevePlacer] === LOG FILE START: PlaceCableTraySleeve called for cable tray 1875003 at intersection (104.237790398, 35.852629870, 60.744750656) ===
+[2025-08-02 18:49:42.251] [v1.0.0.0] [INFO] [CableTraySleevePlacer:65] [CableTraySleevePlacer] PlaceCableTraySleeve called for cable tray 1875003 at intersection (104.237790398, 35.852629870, 60.744750656)
+[2025-08-02 18:49:42.272] [v1.0.0.0] [INFO] [CableTraySleevePlacer:186] [CableTraySleevePlacer] DEBUG: intersection=(104.238,35.853,60.745), placePoint=(104.238,35.853,60.745), mmDistance=0.0, allowedOffset=55.0
+[2025-08-02 18:49:42.273] [v1.0.0.0] [INFO] [CableTraySleevePlacer:193] [CableTraySleevePlacer] Intended centerline placement: placePoint=[104.238,35.853,60.745]
+[2025-08-02 18:49:42.273] [v1.0.0.0] [INFO] [CableTraySleevePlacer:194] [CableTraySleevePlacer] Placing sleeve: width=0.328083989501312, height=0.328083989501312, intersection=(104.237790398293,35.852629870108,60.7447506561678)
+[2025-08-02 18:49:42.273] [v1.0.0.0] [INFO] [CableTraySleevePlacer:195] [CableTraySleevePlacer] Cable tray direction: (-1, 6.69814719153654E-14, 0)
+[2025-08-02 18:49:42.276] [v1.0.0.0] [INFO] [CableTraySleevePlacer:262] [CableTraySleevePlacer] HostOrientation parameter not found or read-only for sleeveId=2143525
+[2025-08-02 18:49:42.276] [v1.0.0.0] [INFO] [CableTraySleevePlacer:265] [CableTraySleevePlacer] HostOrientation after set: '<null>' for sleeveId=2143525
+[2025-08-02 18:49:42.277] [v1.0.0.0] [INFO] [CableTraySleevePlacer:280] [CableTraySleevePlacer] hostElement type: Autodesk.Revit.DB.Wall, category: Walls, id: 10933084, family: 
+[2025-08-02 18:49:42.278] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Setting Width to 200.0mm (internal: 0.656168) for cable tray 1875003
+[2025-08-02 18:49:42.279] [v1.0.0.0] [INFO] [CableTraySleevePlacer:419] [CableTraySleevePlacer] Verified Width set to 300.0mm for cable tray 1875003
+[2025-08-02 18:49:42.280] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Setting Height to 200.0mm (internal: 0.656168) for cable tray 1875003
+[2025-08-02 18:49:42.281] [v1.0.0.0] [INFO] [CableTraySleevePlacer:419] [CableTraySleevePlacer] Verified Height set to 200.0mm for cable tray 1875003
+[2025-08-02 18:49:42.293] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Setting Depth to 100.0mm (internal: 0.328084) for cable tray 1875003
+[2025-08-02 18:49:42.293] [v1.0.0.0] [INFO] [CableTraySleevePlacer:419] [CableTraySleevePlacer] Verified Depth set to 200.0mm for cable tray 1875003
+[2025-08-02 18:49:42.352] [v1.0.0.0] [INFO] [CableTraySleevePlacer:335] [CableTraySleevePlacer] NO ROTATION: Command determined X-oriented cable tray for host type: Wall
+[2025-08-02 18:49:42.352] [v1.0.0.0] [INFO] [CableTraySleevePlacer:355] [CableTraySleevePlacer] Placement validation:
+[2025-08-02 18:49:42.353] [v1.0.0.0] [INFO] [CableTraySleevePlacer:356]   - Intended centerline: [104.238, 35.853, 60.745]
+[2025-08-02 18:49:42.353] [v1.0.0.0] [INFO] [CableTraySleevePlacer:357]   - Actual placement: [104.238, 35.853, 60.745]
+[2025-08-02 18:49:42.354] [v1.0.0.0] [INFO] [CableTraySleevePlacer:358]   - Offset: X=0.000, Y=0.000, Z=0.000, Total=0.000
+[2025-08-02 18:49:42.354] [v1.0.0.0] [INFO] [CableTraySleevePlacer:365] [CableTraySleevePlacer] SUCCESS: Sleeve placement is at the centerline.
+[2025-08-02 18:49:42.355] [v1.0.0.0] [INFO] [CableTraySleevePlacer:371] CableTray 1875003 - Intersection vs Sleeve position distance: 0.0mm
+[2025-08-02 18:49:42.355] [v1.0.0.0] [INFO] [CableTraySleevePlacer:372]   - Intersection: [104.238, 35.853, 60.745]
+[2025-08-02 18:49:42.356] [v1.0.0.0] [INFO] [CableTraySleevePlacer:373]   - Sleeve pos: [104.238, 35.853, 60.745]
+[2025-08-02 18:49:42.357] [v1.0.0.0] [INFO] [CableTraySleevePlacer:383] [CableTraySleevePlacer] Set Schedule Level to T01 for cable tray 1875003
+[2025-08-02 18:49:42.358] [v1.0.0.0] [INFO] [CableTraySleeveCommand:370] CableTray ID=1875003: Structural sleeve successfully placed at (104.237790398, 35.852629870, 60.744750656)
+[2025-08-02 18:49:42.359] [v1.0.0.0] [INFO] [CableTraySleeveCommand:201] Processing CableTray ID=1935283
+[2025-08-02 18:49:42.399] [v1.0.0.0] [INFO] [CableTraySleeveIntersectionService:58] [CableTraySleeveIntersectionService] No solid geometry found for structural element ID=10933202
+[2025-08-02 18:49:42.401] [v1.0.0.0] [INFO] [CableTraySleeveCommand:268] CableTray ID=1935283: Wall hits: 56, Structural hits: 0
+[2025-08-02 18:49:42.402] [v1.0.0.0] [INFO] [CableTraySleeveCommand:400] CableTray ID=1935283: detected wall element: Walls, ID=10933172
+[2025-08-02 18:49:42.403] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=10933172: ELEMENT DETECTED Hit by cable tray 1935283
+[2025-08-02 18:49:42.404] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-WALL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1935283, Wall ID=10933172, Position=(110.012439698, 21.499344008, 58.448162730)
+[2025-08-02 18:49:42.404] [v1.0.0.0] [INFO] [CableTraySleeveCommand:417] CableTray ID=1935283: Using wall family: CableTrayOpeningOnWall, Symbol: CT#
+[2025-08-02 18:49:42.431] [v1.0.0.0] [INFO] [CableTraySleeveCommand:469] [CableTraySleeveCommand] DUPLICATION CHECK at (110.012439698, 21.499344008, 58.448162730):
+No sleeves found at location
+[2025-08-02 18:49:42.455] [v1.0.0.0] [INFO] [CableTraySleeveCommand:499] CableTray ID=1935283: Wall thickness calculated: 5.0mm
+[2025-08-02 18:49:42.455] [v1.0.0.0] [INFO] [CableTraySleeveCommand:506] CableTray ID=1935283: [BBOX-DEBUG] Placement at (110.012, 21.499, 58.448), BBox X=(33481.8, 33581.8), Y=(6453.0, 6653.0), Width=100.0mm, Height=200.0mm
+[2025-08-02 18:49:42.456] [v1.0.0.0] [INFO] [CableTraySleevePlacer:59] [CableTraySleevePlacer] ENTRY: PlaceCableTraySleeve called with trayId=null
+[2025-08-02 18:49:42.456] [v1.0.0.0] [INFO] [CableTraySleevePlacer:64] [CableTraySleevePlacer] === LOG FILE START: PlaceCableTraySleeve called for cable tray 0 at intersection (110.012439698, 21.499344008, 58.448162730) ===
+[2025-08-02 18:49:42.457] [v1.0.0.0] [INFO] [CableTraySleevePlacer:65] [CableTraySleevePlacer] PlaceCableTraySleeve called for cable tray 0 at intersection (110.012439698, 21.499344008, 58.448162730)
+[2025-08-02 18:49:42.478] [v1.0.0.0] [INFO] [CableTraySleevePlacer:186] [CableTraySleevePlacer] DEBUG: intersection=(110.012,21.499,58.448), placePoint=(110.012,21.491,58.448), mmDistance=2.5, allowedOffset=7.5
+[2025-08-02 18:49:42.478] [v1.0.0.0] [INFO] [CableTraySleevePlacer:193] [CableTraySleevePlacer] Intended centerline placement: placePoint=[110.012,21.491,58.448]
+[2025-08-02 18:49:42.479] [v1.0.0.0] [INFO] [CableTraySleevePlacer:194] [CableTraySleevePlacer] Placing sleeve: width=0.328083989501312, height=0.656167979002625, intersection=(110.012439698375,21.4993440075716,58.4481627296587)
+[2025-08-02 18:49:42.480] [v1.0.0.0] [INFO] [CableTraySleevePlacer:195] [CableTraySleevePlacer] Cable tray direction: (-6.69814719153654E-14, -1, 0)
+[2025-08-02 18:49:42.485] [v1.0.0.0] [INFO] [CableTraySleevePlacer:262] [CableTraySleevePlacer] HostOrientation parameter not found or read-only for sleeveId=2143526
+[2025-08-02 18:49:42.486] [v1.0.0.0] [INFO] [CableTraySleevePlacer:265] [CableTraySleevePlacer] HostOrientation after set: '<null>' for sleeveId=2143526
+[2025-08-02 18:49:42.487] [v1.0.0.0] [INFO] [CableTraySleevePlacer:280] [CableTraySleevePlacer] hostElement type: Autodesk.Revit.DB.Wall, category: Walls, id: 10933172, family: 
+[2025-08-02 18:49:42.488] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Setting Width to 200.0mm (internal: 0.656168) for cable tray 0
+[2025-08-02 18:49:42.490] [v1.0.0.0] [INFO] [CableTraySleevePlacer:419] [CableTraySleevePlacer] Verified Width set to 300.0mm for cable tray 0
+[2025-08-02 18:49:42.491] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Setting Height to 300.0mm (internal: 0.984252) for cable tray 0
+[2025-08-02 18:49:42.492] [v1.0.0.0] [INFO] [CableTraySleevePlacer:419] [CableTraySleevePlacer] Verified Height set to 100.0mm for cable tray 0
+[2025-08-02 18:49:42.493] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Setting Depth to 5.0mm (internal: 0.016404) for cable tray 0
+[2025-08-02 18:49:42.494] [v1.0.0.0] [INFO] [CableTraySleevePlacer:419] [CableTraySleevePlacer] Verified Depth set to 500.0mm for cable tray 0
+[2025-08-02 18:49:42.544] [v1.0.0.0] [INFO] [CableTraySleevePlacer:306] [CableTraySleevePlacer] ERROR: tray is null - cannot align to cable tray direction.
+[2025-08-02 18:49:42.544] [v1.0.0.0] [INFO] [CableTraySleeveCommand:516] CableTray ID=1935283: Set sleeve depth to wall thickness: 5mm
+[2025-08-02 18:49:42.545] [v1.0.0.0] [INFO] [CableTraySleeveCommand:422] CableTray ID=1935283: Wall sleeve successfully placed at (110.012439698, 21.499344008, 58.448162730)
+[2025-08-02 18:49:42.546] [v1.0.0.0] [INFO] [CableTraySleeveCommand:201] Processing CableTray ID=1935473
+[2025-08-02 18:49:42.575] [v1.0.0.0] [INFO] [CableTraySleeveIntersectionService:58] [CableTraySleeveIntersectionService] No solid geometry found for structural element ID=10933202
+[2025-08-02 18:49:42.576] [v1.0.0.0] [INFO] [CableTraySleeveCommand:268] CableTray ID=1935473: Wall hits: 56, Structural hits: 0
+[2025-08-02 18:49:42.577] [v1.0.0.0] [INFO] [CableTraySleeveCommand:400] CableTray ID=1935473: detected wall element: Walls, ID=10933172
+[2025-08-02 18:49:42.578] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=10933172: ELEMENT DETECTED Hit by cable tray 1935473
+[2025-08-02 18:49:42.579] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-WALL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1935473, Wall ID=10933172, Position=(109.988665861, 21.499344008, 58.448162730)
+[2025-08-02 18:49:42.579] [v1.0.0.0] [INFO] [CableTraySleeveCommand:417] CableTray ID=1935473: Using wall family: CableTrayOpeningOnWall, Symbol: CT#
+[2025-08-02 18:49:42.607] [v1.0.0.0] [INFO] [CableTraySleeveCommand:469] [CableTraySleeveCommand] DUPLICATION CHECK at (109.988665861, 21.499344008, 58.448162730):
+Individual sleeves: CT# (ID:2143526)
+[2025-08-02 18:49:42.635] [v1.0.0.0] [INFO] [CableTraySleeveCommand:475] [CableTraySleeveCommand] SKIP: CableTray 1935473 duplicate sleeve (individual or cluster) exists near (109.988665861, 21.499344008, 58.448162730)
+[2025-08-02 18:49:42.636] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=10933172: SLEEVE_FAILED Reason: Existing sleeve found at location
+[2025-08-02 18:49:42.637] [v1.0.0.0] [INFO] [CableTraySleeveCommand:201] Processing CableTray ID=1951625
+[2025-08-02 18:49:42.665] [v1.0.0.0] [INFO] [CableTraySleeveIntersectionService:58] [CableTraySleeveIntersectionService] No solid geometry found for structural element ID=10933202
+[2025-08-02 18:49:42.667] [v1.0.0.0] [INFO] [CableTraySleeveCommand:268] CableTray ID=1951625: Wall hits: 50, Structural hits: 1
+[2025-08-02 18:49:42.668] [v1.0.0.0] [INFO] [CableTraySleeveCommand:286] CableTray ID=1951625: detected structural element: Walls, ID=2700957
+[2025-08-02 18:49:42.669] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=2700957: STRUCTURAL DETECTED Hit by cable tray 1951625
+[2025-08-02 18:49:42.670] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1951625, Structural ID=2700957, Position=(97.112860892, 22.060818482, 60.810730318)
+[2025-08-02 18:49:42.670] [v1.0.0.0] [INFO] [CableTraySleeveCommand:336] CableTray ID=1951625: Linked reference type detected: Walls
+[2025-08-02 18:49:42.671] [v1.0.0.0] [INFO] [CableTraySleeveCommand:345] CableTray ID=1951625: Using family: CabletrayOpeningOnSlab, Symbol: CT# for linked reference type Walls
+[2025-08-02 18:49:42.697] [v1.0.0.0] [INFO] [CableTraySleeveCommand:551] [CableTraySleeveCommand] DUPLICATION CHECK at (97.112860892, 22.060818482, 60.810730318):
+No sleeves found at location
+[2025-08-02 18:49:42.728] [v1.0.0.0] [INFO] [CableTraySleevePlacer:59] [CableTraySleevePlacer] ENTRY: PlaceCableTraySleeve called with trayId=1951625
+[2025-08-02 18:49:42.729] [v1.0.0.0] [INFO] [CableTraySleevePlacer:64] [CableTraySleevePlacer] === LOG FILE START: PlaceCableTraySleeve called for cable tray 1951625 at intersection (97.112860892, 22.060818482, 60.810730318) ===
+[2025-08-02 18:49:42.730] [v1.0.0.0] [INFO] [CableTraySleevePlacer:65] [CableTraySleevePlacer] PlaceCableTraySleeve called for cable tray 1951625 at intersection (97.112860892, 22.060818482, 60.810730318)
+[2025-08-02 18:49:42.756] [v1.0.0.0] [INFO] [CableTraySleevePlacer:186] [CableTraySleevePlacer] DEBUG: intersection=(97.113,22.061,60.811), placePoint=(97.113,22.061,60.811), mmDistance=0.0, allowedOffset=105.0
+[2025-08-02 18:49:42.757] [v1.0.0.0] [INFO] [CableTraySleevePlacer:193] [CableTraySleevePlacer] Intended centerline placement: placePoint=[97.113,22.061,60.811]
+[2025-08-02 18:49:42.758] [v1.0.0.0] [INFO] [CableTraySleevePlacer:194] [CableTraySleevePlacer] Placing sleeve: width=0.328083989501312, height=0.328083989501312, intersection=(97.1128608920704,22.0608184824682,60.810730317651)
+[2025-08-02 18:49:42.758] [v1.0.0.0] [INFO] [CableTraySleevePlacer:195] [CableTraySleevePlacer] Cable tray direction: (-1, 6.69814719153654E-14, 0)
+[2025-08-02 18:49:42.763] [v1.0.0.0] [INFO] [CableTraySleevePlacer:262] [CableTraySleevePlacer] HostOrientation parameter not found or read-only for sleeveId=2143527
+[2025-08-02 18:49:42.764] [v1.0.0.0] [INFO] [CableTraySleevePlacer:265] [CableTraySleevePlacer] HostOrientation after set: '<null>' for sleeveId=2143527
+[2025-08-02 18:49:42.765] [v1.0.0.0] [INFO] [CableTraySleevePlacer:280] [CableTraySleevePlacer] hostElement type: Autodesk.Revit.DB.Wall, category: Walls, id: 2700957, family: 
+[2025-08-02 18:49:42.766] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Setting Width to 200.0mm (internal: 0.656168) for cable tray 1951625
+[2025-08-02 18:49:42.767] [v1.0.0.0] [INFO] [CableTraySleevePlacer:419] [CableTraySleevePlacer] Verified Width set to 300.0mm for cable tray 1951625
+[2025-08-02 18:49:42.768] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Setting Height to 200.0mm (internal: 0.656168) for cable tray 1951625
+[2025-08-02 18:49:42.768] [v1.0.0.0] [INFO] [CableTraySleevePlacer:419] [CableTraySleevePlacer] Verified Height set to 200.0mm for cable tray 1951625
+[2025-08-02 18:49:42.769] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Setting Depth to 200.0mm (internal: 0.656168) for cable tray 1951625
+[2025-08-02 18:49:42.769] [v1.0.0.0] [INFO] [CableTraySleevePlacer:419] [CableTraySleevePlacer] Verified Depth set to 200.0mm for cable tray 1951625
+[2025-08-02 18:49:42.828] [v1.0.0.0] [INFO] [CableTraySleevePlacer:335] [CableTraySleevePlacer] NO ROTATION: Command determined X-oriented cable tray for host type: Wall
+[2025-08-02 18:49:42.829] [v1.0.0.0] [INFO] [CableTraySleevePlacer:355] [CableTraySleevePlacer] Placement validation:
+[2025-08-02 18:49:42.830] [v1.0.0.0] [INFO] [CableTraySleevePlacer:356]   - Intended centerline: [97.113, 22.061, 60.811]
+[2025-08-02 18:49:42.830] [v1.0.0.0] [INFO] [CableTraySleevePlacer:357]   - Actual placement: [97.113, 22.061, 60.811]
+[2025-08-02 18:49:42.831] [v1.0.0.0] [INFO] [CableTraySleevePlacer:358]   - Offset: X=0.000, Y=0.000, Z=0.000, Total=0.000
+[2025-08-02 18:49:42.831] [v1.0.0.0] [INFO] [CableTraySleevePlacer:365] [CableTraySleevePlacer] SUCCESS: Sleeve placement is at the centerline.
+[2025-08-02 18:49:42.832] [v1.0.0.0] [INFO] [CableTraySleevePlacer:371] CableTray 1951625 - Intersection vs Sleeve position distance: 0.0mm
+[2025-08-02 18:49:42.832] [v1.0.0.0] [INFO] [CableTraySleevePlacer:372]   - Intersection: [97.113, 22.061, 60.811]
+[2025-08-02 18:49:42.833] [v1.0.0.0] [INFO] [CableTraySleevePlacer:373]   - Sleeve pos: [97.113, 22.061, 60.811]
+[2025-08-02 18:49:42.834] [v1.0.0.0] [INFO] [CableTraySleevePlacer:383] [CableTraySleevePlacer] Set Schedule Level to T01 for cable tray 1951625
+[2025-08-02 18:49:42.834] [v1.0.0.0] [INFO] [CableTraySleeveCommand:370] CableTray ID=1951625: Structural sleeve successfully placed at (97.112860892, 22.060818482, 60.810730318)
+[2025-08-02 18:49:42.835] [v1.0.0.0] [INFO] [CableTraySleeveCommand:201] Processing CableTray ID=1951626
+[2025-08-02 18:49:42.873] [v1.0.0.0] [INFO] [CableTraySleeveIntersectionService:58] [CableTraySleeveIntersectionService] No solid geometry found for structural element ID=10933202
+[2025-08-02 18:49:42.874] [v1.0.0.0] [INFO] [CableTraySleeveCommand:268] CableTray ID=1951626: Wall hits: 44, Structural hits: 1
+[2025-08-02 18:49:42.875] [v1.0.0.0] [INFO] [CableTraySleeveCommand:286] CableTray ID=1951626: detected structural element: Walls, ID=2700957
+[2025-08-02 18:49:42.876] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=2700957: STRUCTURAL DETECTED Hit by cable tray 1951626
+[2025-08-02 18:49:42.877] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1951626, Structural ID=2700957, Position=(97.112860892, 22.724139449, 60.810730318)
+[2025-08-02 18:49:42.878] [v1.0.0.0] [INFO] [CableTraySleeveCommand:336] CableTray ID=1951626: Linked reference type detected: Walls
+[2025-08-02 18:49:42.878] [v1.0.0.0] [INFO] [CableTraySleeveCommand:345] CableTray ID=1951626: Using family: CabletrayOpeningOnSlab, Symbol: CT# for linked reference type Walls
+[2025-08-02 18:49:42.905] [v1.0.0.0] [INFO] [CableTraySleeveCommand:551] [CableTraySleeveCommand] DUPLICATION CHECK at (97.112860892, 22.724139449, 60.810730318):
+No sleeves found at location
+[2025-08-02 18:49:42.932] [v1.0.0.0] [INFO] [CableTraySleevePlacer:59] [CableTraySleevePlacer] ENTRY: PlaceCableTraySleeve called with trayId=1951626
+[2025-08-02 18:49:42.932] [v1.0.0.0] [INFO] [CableTraySleevePlacer:64] [CableTraySleevePlacer] === LOG FILE START: PlaceCableTraySleeve called for cable tray 1951626 at intersection (97.112860892, 22.724139449, 60.810730318) ===
+[2025-08-02 18:49:42.933] [v1.0.0.0] [INFO] [CableTraySleevePlacer:65] [CableTraySleevePlacer] PlaceCableTraySleeve called for cable tray 1951626 at intersection (97.112860892, 22.724139449, 60.810730318)
+[2025-08-02 18:49:42.956] [v1.0.0.0] [INFO] [CableTraySleevePlacer:186] [CableTraySleevePlacer] DEBUG: intersection=(97.113,22.724,60.811), placePoint=(97.113,22.724,60.811), mmDistance=0.0, allowedOffset=105.0
+[2025-08-02 18:49:42.957] [v1.0.0.0] [INFO] [CableTraySleevePlacer:193] [CableTraySleevePlacer] Intended centerline placement: placePoint=[97.113,22.724,60.811]
+[2025-08-02 18:49:42.957] [v1.0.0.0] [INFO] [CableTraySleevePlacer:194] [CableTraySleevePlacer] Placing sleeve: width=0.328083989501312, height=0.328083989501312, intersection=(97.1128608920704,22.7241394490708,60.810730317651)
+[2025-08-02 18:49:42.958] [v1.0.0.0] [INFO] [CableTraySleevePlacer:195] [CableTraySleevePlacer] Cable tray direction: (-1, 2.70716782324592E-14, 0)
+[2025-08-02 18:49:42.961] [v1.0.0.0] [INFO] [CableTraySleevePlacer:262] [CableTraySleevePlacer] HostOrientation parameter not found or read-only for sleeveId=2143528
+[2025-08-02 18:49:42.961] [v1.0.0.0] [INFO] [CableTraySleevePlacer:265] [CableTraySleevePlacer] HostOrientation after set: '<null>' for sleeveId=2143528
+[2025-08-02 18:49:42.962] [v1.0.0.0] [INFO] [CableTraySleevePlacer:280] [CableTraySleevePlacer] hostElement type: Autodesk.Revit.DB.Wall, category: Walls, id: 2700957, family: 
+[2025-08-02 18:49:42.963] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Setting Width to 200.0mm (internal: 0.656168) for cable tray 1951626
+[2025-08-02 18:49:42.964] [v1.0.0.0] [INFO] [CableTraySleevePlacer:419] [CableTraySleevePlacer] Verified Width set to 300.0mm for cable tray 1951626
+[2025-08-02 18:49:42.965] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Setting Height to 200.0mm (internal: 0.656168) for cable tray 1951626
+[2025-08-02 18:49:42.966] [v1.0.0.0] [INFO] [CableTraySleevePlacer:419] [CableTraySleevePlacer] Verified Height set to 200.0mm for cable tray 1951626
+[2025-08-02 18:49:42.967] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Setting Depth to 200.0mm (internal: 0.656168) for cable tray 1951626
+[2025-08-02 18:49:42.968] [v1.0.0.0] [INFO] [CableTraySleevePlacer:419] [CableTraySleevePlacer] Verified Depth set to 200.0mm for cable tray 1951626
+[2025-08-02 18:49:43.015] [v1.0.0.0] [INFO] [CableTraySleevePlacer:335] [CableTraySleevePlacer] NO ROTATION: Command determined X-oriented cable tray for host type: Wall
+[2025-08-02 18:49:43.015] [v1.0.0.0] [INFO] [CableTraySleevePlacer:355] [CableTraySleevePlacer] Placement validation:
+[2025-08-02 18:49:43.017] [v1.0.0.0] [INFO] [CableTraySleevePlacer:356]   - Intended centerline: [97.113, 22.724, 60.811]
+[2025-08-02 18:49:43.017] [v1.0.0.0] [INFO] [CableTraySleevePlacer:357]   - Actual placement: [97.113, 22.724, 60.811]
+[2025-08-02 18:49:43.017] [v1.0.0.0] [INFO] [CableTraySleevePlacer:358]   - Offset: X=0.000, Y=0.000, Z=0.000, Total=0.000
+[2025-08-02 18:49:43.018] [v1.0.0.0] [INFO] [CableTraySleevePlacer:365] [CableTraySleevePlacer] SUCCESS: Sleeve placement is at the centerline.
+[2025-08-02 18:49:43.018] [v1.0.0.0] [INFO] [CableTraySleevePlacer:371] CableTray 1951626 - Intersection vs Sleeve position distance: 0.0mm
+[2025-08-02 18:49:43.019] [v1.0.0.0] [INFO] [CableTraySleevePlacer:372]   - Intersection: [97.113, 22.724, 60.811]
+[2025-08-02 18:49:43.019] [v1.0.0.0] [INFO] [CableTraySleevePlacer:373]   - Sleeve pos: [97.113, 22.724, 60.811]
+[2025-08-02 18:49:43.020] [v1.0.0.0] [INFO] [CableTraySleevePlacer:383] [CableTraySleevePlacer] Set Schedule Level to T01 for cable tray 1951626
+[2025-08-02 18:49:43.021] [v1.0.0.0] [INFO] [CableTraySleeveCommand:370] CableTray ID=1951626: Structural sleeve successfully placed at (97.112860892, 22.724139449, 60.810730318)
+[2025-08-02 18:49:43.021] [v1.0.0.0] [INFO] [CableTraySleeveCommand:201] Processing CableTray ID=1953336
+[2025-08-02 18:49:43.047] [v1.0.0.0] [INFO] [CableTraySleeveIntersectionService:58] [CableTraySleeveIntersectionService] No solid geometry found for structural element ID=10933202
+[2025-08-02 18:49:43.049] [v1.0.0.0] [INFO] [CableTraySleeveCommand:268] CableTray ID=1953336: Wall hits: 44, Structural hits: 1
+[2025-08-02 18:49:43.049] [v1.0.0.0] [INFO] [CableTraySleeveCommand:286] CableTray ID=1953336: detected structural element: Walls, ID=2700957
+[2025-08-02 18:49:43.050] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=2700957: STRUCTURAL DETECTED Hit by cable tray 1953336
+[2025-08-02 18:49:43.051] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1953336, Structural ID=2700957, Position=(97.112860892, 24.052223439, 60.810730318)
+[2025-08-02 18:49:43.051] [v1.0.0.0] [INFO] [CableTraySleeveCommand:336] CableTray ID=1953336: Linked reference type detected: Walls
+[2025-08-02 18:49:43.052] [v1.0.0.0] [INFO] [CableTraySleeveCommand:345] CableTray ID=1953336: Using family: CabletrayOpeningOnSlab, Symbol: CT# for linked reference type Walls
+[2025-08-02 18:49:43.075] [v1.0.0.0] [INFO] [CableTraySleeveCommand:551] [CableTraySleeveCommand] DUPLICATION CHECK at (97.112860892, 24.052223439, 60.810730318):
+No sleeves found at location
+[2025-08-02 18:49:43.098] [v1.0.0.0] [INFO] [CableTraySleevePlacer:59] [CableTraySleevePlacer] ENTRY: PlaceCableTraySleeve called with trayId=1953336
+[2025-08-02 18:49:43.098] [v1.0.0.0] [INFO] [CableTraySleevePlacer:64] [CableTraySleevePlacer] === LOG FILE START: PlaceCableTraySleeve called for cable tray 1953336 at intersection (97.112860892, 24.052223439, 60.810730318) ===
+[2025-08-02 18:49:43.099] [v1.0.0.0] [INFO] [CableTraySleevePlacer:65] [CableTraySleevePlacer] PlaceCableTraySleeve called for cable tray 1953336 at intersection (97.112860892, 24.052223439, 60.810730318)
+[2025-08-02 18:49:43.119] [v1.0.0.0] [INFO] [CableTraySleevePlacer:186] [CableTraySleevePlacer] DEBUG: intersection=(97.113,24.052,60.811), placePoint=(97.113,24.052,60.811), mmDistance=0.0, allowedOffset=105.0
+[2025-08-02 18:49:43.119] [v1.0.0.0] [INFO] [CableTraySleevePlacer:193] [CableTraySleevePlacer] Intended centerline placement: placePoint=[97.113,24.052,60.811]
+[2025-08-02 18:49:43.120] [v1.0.0.0] [INFO] [CableTraySleevePlacer:194] [CableTraySleevePlacer] Placing sleeve: width=0.328083989501312, height=0.328083989501312, intersection=(97.1128608920704,24.0522234385721,60.810730317651)
+[2025-08-02 18:49:43.120] [v1.0.0.0] [INFO] [CableTraySleevePlacer:195] [CableTraySleevePlacer] Cable tray direction: (-1, 2.70716782324592E-14, 0)
+[2025-08-02 18:49:43.123] [v1.0.0.0] [INFO] [CableTraySleevePlacer:262] [CableTraySleevePlacer] HostOrientation parameter not found or read-only for sleeveId=2143529
+[2025-08-02 18:49:43.123] [v1.0.0.0] [INFO] [CableTraySleevePlacer:265] [CableTraySleevePlacer] HostOrientation after set: '<null>' for sleeveId=2143529
+[2025-08-02 18:49:43.124] [v1.0.0.0] [INFO] [CableTraySleevePlacer:280] [CableTraySleevePlacer] hostElement type: Autodesk.Revit.DB.Wall, category: Walls, id: 2700957, family: 
+[2025-08-02 18:49:43.124] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Setting Width to 200.0mm (internal: 0.656168) for cable tray 1953336
+[2025-08-02 18:49:43.125] [v1.0.0.0] [INFO] [CableTraySleevePlacer:419] [CableTraySleevePlacer] Verified Width set to 300.0mm for cable tray 1953336
+[2025-08-02 18:49:43.125] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Setting Height to 200.0mm (internal: 0.656168) for cable tray 1953336
+[2025-08-02 18:49:43.126] [v1.0.0.0] [INFO] [CableTraySleevePlacer:419] [CableTraySleevePlacer] Verified Height set to 200.0mm for cable tray 1953336
+[2025-08-02 18:49:43.126] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Setting Depth to 200.0mm (internal: 0.656168) for cable tray 1953336
+[2025-08-02 18:49:43.127] [v1.0.0.0] [INFO] [CableTraySleevePlacer:419] [CableTraySleevePlacer] Verified Depth set to 200.0mm for cable tray 1953336
+[2025-08-02 18:49:43.169] [v1.0.0.0] [INFO] [CableTraySleevePlacer:335] [CableTraySleevePlacer] NO ROTATION: Command determined X-oriented cable tray for host type: Wall
+[2025-08-02 18:49:43.170] [v1.0.0.0] [INFO] [CableTraySleevePlacer:355] [CableTraySleevePlacer] Placement validation:
+[2025-08-02 18:49:43.170] [v1.0.0.0] [INFO] [CableTraySleevePlacer:356]   - Intended centerline: [97.113, 24.052, 60.811]
+[2025-08-02 18:49:43.171] [v1.0.0.0] [INFO] [CableTraySleevePlacer:357]   - Actual placement: [97.113, 24.052, 60.811]
+[2025-08-02 18:49:43.171] [v1.0.0.0] [INFO] [CableTraySleevePlacer:358]   - Offset: X=0.000, Y=0.000, Z=0.000, Total=0.000
+[2025-08-02 18:49:43.172] [v1.0.0.0] [INFO] [CableTraySleevePlacer:365] [CableTraySleevePlacer] SUCCESS: Sleeve placement is at the centerline.
+[2025-08-02 18:49:43.172] [v1.0.0.0] [INFO] [CableTraySleevePlacer:371] CableTray 1953336 - Intersection vs Sleeve position distance: 0.0mm
+[2025-08-02 18:49:43.173] [v1.0.0.0] [INFO] [CableTraySleevePlacer:372]   - Intersection: [97.113, 24.052, 60.811]
+[2025-08-02 18:49:43.173] [v1.0.0.0] [INFO] [CableTraySleevePlacer:373]   - Sleeve pos: [97.113, 24.052, 60.811]
+[2025-08-02 18:49:43.175] [v1.0.0.0] [INFO] [CableTraySleevePlacer:383] [CableTraySleevePlacer] Set Schedule Level to T01 for cable tray 1953336
+[2025-08-02 18:49:43.176] [v1.0.0.0] [INFO] [CableTraySleeveCommand:370] CableTray ID=1953336: Structural sleeve successfully placed at (97.112860892, 24.052223439, 60.810730318)
+[2025-08-02 18:49:43.177] [v1.0.0.0] [INFO] [CableTraySleeveCommand:201] Processing CableTray ID=1953384
+[2025-08-02 18:49:43.211] [v1.0.0.0] [INFO] [CableTraySleeveIntersectionService:58] [CableTraySleeveIntersectionService] No solid geometry found for structural element ID=10933202
+[2025-08-02 18:49:43.212] [v1.0.0.0] [INFO] [CableTraySleeveCommand:268] CableTray ID=1953384: Wall hits: 0, Structural hits: 2
+[2025-08-02 18:49:43.213] [v1.0.0.0] [INFO] [CableTraySleeveCommand:286] CableTray ID=1953384: detected structural element: Floors, ID=1713828
+[2025-08-02 18:49:43.214] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Floors ID=1713828: STRUCTURAL DETECTED Hit by cable tray 1953384
+[2025-08-02 18:49:43.215] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1953384, Structural ID=1713828, Position=(106.969486514, 25.145670788, 62.212926509)
+[2025-08-02 18:49:43.216] [v1.0.0.0] [INFO] [CableTraySleeveCommand:303] [CableTraySleeveCommand] CABLETRAY FLOOR DEBUG: CableTray 1953384 intersects Floor 1713828 - Status: NON-STRUCTURAL
+[2025-08-02 18:49:43.217] [v1.0.0.0] [INFO] [CableTraySleeveCommand:308] [CableTraySleeveCommand] SKIP: CableTray 1953384 host Floor 1713828 is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-02 18:49:43.218] [v1.0.0.0] [INFO] [CableTraySleeveCommand:201] Processing CableTray ID=1953421
+[2025-08-02 18:49:43.245] [v1.0.0.0] [INFO] [CableTraySleeveIntersectionService:58] [CableTraySleeveIntersectionService] No solid geometry found for structural element ID=10933202
+[2025-08-02 18:49:43.247] [v1.0.0.0] [INFO] [CableTraySleeveCommand:268] CableTray ID=1953421: Wall hits: 0, Structural hits: 2
+[2025-08-02 18:49:43.248] [v1.0.0.0] [INFO] [CableTraySleeveCommand:286] CableTray ID=1953421: detected structural element: Floors, ID=1713828
+[2025-08-02 18:49:43.248] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Floors ID=1713828: STRUCTURAL DETECTED Hit by cable tray 1953421
+[2025-08-02 18:49:43.249] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1953421, Structural ID=1713828, Position=(107.533334452, 25.131574589, 62.212926509)
+[2025-08-02 18:49:43.250] [v1.0.0.0] [INFO] [CableTraySleeveCommand:303] [CableTraySleeveCommand] CABLETRAY FLOOR DEBUG: CableTray 1953421 intersects Floor 1713828 - Status: NON-STRUCTURAL
+[2025-08-02 18:49:43.250] [v1.0.0.0] [INFO] [CableTraySleeveCommand:308] [CableTraySleeveCommand] SKIP: CableTray 1953421 host Floor 1713828 is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-02 18:49:43.251] [v1.0.0.0] [INFO] [CableTraySleeveCommand:201] Processing CableTray ID=1953426
+[2025-08-02 18:49:43.280] [v1.0.0.0] [INFO] [CableTraySleeveIntersectionService:58] [CableTraySleeveIntersectionService] No solid geometry found for structural element ID=10933202
+[2025-08-02 18:49:43.281] [v1.0.0.0] [INFO] [CableTraySleeveCommand:268] CableTray ID=1953426: Wall hits: 40, Structural hits: 2
+[2025-08-02 18:49:43.282] [v1.0.0.0] [INFO] [CableTraySleeveCommand:286] CableTray ID=1953426: detected structural element: Floors, ID=1713828
+[2025-08-02 18:49:43.283] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Floors ID=1713828: STRUCTURAL DETECTED Hit by cable tray 1953426
+[2025-08-02 18:49:43.284] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1953426, Structural ID=1713828, Position=(107.223218086, 28.105872462, 62.212926509)
+[2025-08-02 18:49:43.284] [v1.0.0.0] [INFO] [CableTraySleeveCommand:303] [CableTraySleeveCommand] CABLETRAY FLOOR DEBUG: CableTray 1953426 intersects Floor 1713828 - Status: NON-STRUCTURAL
+[2025-08-02 18:49:43.284] [v1.0.0.0] [INFO] [CableTraySleeveCommand:308] [CableTraySleeveCommand] SKIP: CableTray 1953426 host Floor 1713828 is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-02 18:49:43.285] [v1.0.0.0] [INFO] [CableTraySleeveCommand:400] CableTray ID=1953426: detected wall element: Walls, ID=10933073
+[2025-08-02 18:49:43.286] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=10933073: ELEMENT DETECTED Hit by cable tray 1953426
+[2025-08-02 18:49:43.287] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-WALL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1953426, Wall ID=10933073, Position=(107.223218086, 28.105872462, 63.784618355)
+[2025-08-02 18:49:43.288] [v1.0.0.0] [INFO] [CableTraySleeveCommand:417] CableTray ID=1953426: Using wall family: CableTrayOpeningOnWall, Symbol: CT#
+[2025-08-02 18:49:43.311] [v1.0.0.0] [INFO] [CableTraySleeveCommand:469] [CableTraySleeveCommand] DUPLICATION CHECK at (107.223218086, 28.105872462, 63.784618355):
+No sleeves found at location
+[2025-08-02 18:49:43.336] [v1.0.0.0] [INFO] [CableTraySleeveCommand:499] CableTray ID=1953426: Wall thickness calculated: 15.0mm
+[2025-08-02 18:49:43.337] [v1.0.0.0] [INFO] [CableTraySleeveCommand:506] CableTray ID=1953426: [BBOX-DEBUG] Placement at (107.223, 28.106, 63.785), BBox X=(32531.6, 32831.6), Y=(8516.7, 8616.7), Width=300.0mm, Height=100.0mm
+[2025-08-02 18:49:43.338] [v1.0.0.0] [INFO] [CableTraySleevePlacer:59] [CableTraySleevePlacer] ENTRY: PlaceCableTraySleeve called with trayId=null
+[2025-08-02 18:49:43.338] [v1.0.0.0] [INFO] [CableTraySleevePlacer:64] [CableTraySleevePlacer] === LOG FILE START: PlaceCableTraySleeve called for cable tray 0 at intersection (107.223218086, 28.105872462, 63.784618355) ===
+[2025-08-02 18:49:43.339] [v1.0.0.0] [INFO] [CableTraySleevePlacer:65] [CableTraySleevePlacer] PlaceCableTraySleeve called for cable tray 0 at intersection (107.223218086, 28.105872462, 63.784618355)
+[2025-08-02 18:49:43.372] [v1.0.0.0] [INFO] [CableTraySleevePlacer:186] [CableTraySleevePlacer] DEBUG: intersection=(107.223,28.106,63.785), placePoint=(97.515,28.106,63.785), mmDistance=2959.1, allowedOffset=12.5
+[2025-08-02 18:49:43.372] [v1.0.0.0] [INFO] [CableTraySleevePlacer:189] [CableTraySleevePlacer] ERROR: placePoint invalid for cable tray 0: isAtOrigin=False, isTooFar=True, mmDistance=2959.1, allowedOffset=12.5. Skipping placement.
+[2025-08-02 18:49:43.373] [v1.0.0.0] [INFO] [CableTraySleeveCommand:422] CableTray ID=1953426: Wall sleeve successfully placed at (107.223218086, 28.105872462, 63.784618355)
+[2025-08-02 18:49:43.373] [v1.0.0.0] [INFO] [CableTraySleeveCommand:201] Processing CableTray ID=2142742
+[2025-08-02 18:49:43.412] [v1.0.0.0] [INFO] [CableTraySleeveIntersectionService:58] [CableTraySleeveIntersectionService] No solid geometry found for structural element ID=10933202
+[2025-08-02 18:49:43.413] [v1.0.0.0] [INFO] [CableTraySleeveCommand:268] CableTray ID=2142742: Wall hits: 0, Structural hits: 2
+[2025-08-02 18:49:43.414] [v1.0.0.0] [INFO] [CableTraySleeveCommand:286] CableTray ID=2142742: detected structural element: Floors, ID=1713828
+[2025-08-02 18:49:43.415] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Floors ID=1713828: STRUCTURAL DETECTED Hit by cable tray 2142742
+[2025-08-02 18:49:43.416] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=2142742, Structural ID=1713828, Position=(106.848044906, 26.601182763, 62.212926509)
+[2025-08-02 18:49:43.416] [v1.0.0.0] [INFO] [CableTraySleeveCommand:303] [CableTraySleeveCommand] CABLETRAY FLOOR DEBUG: CableTray 2142742 intersects Floor 1713828 - Status: NON-STRUCTURAL
+[2025-08-02 18:49:43.417] [v1.0.0.0] [INFO] [CableTraySleeveCommand:308] [CableTraySleeveCommand] SKIP: CableTray 2142742 host Floor 1713828 is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-02 18:49:43.442] [v1.0.0.0] [INFO] [CableTraySleeveCommand:443] Transaction committed for cable tray sleeve placement
+[2025-08-02 18:49:43.442] [v1.0.0.0] [INFO] [CableTraySleeveCommand:446] CableTraySleeveCommand summary: Total=13, Intersections=0, Placed=9, Missing=0, SkippedExisting=5, StructuralDetected=11, StructuralSleeves=7
+[2025-08-02 18:49:43.444] [v1.0.0.0] [INFO] [StructuralElementLogger:194] [STRUCTURAL] CableTraySleeveCommand summary - Processed: 13, Detected: 11, Placed: 7, Failed: 4
+[2025-08-02 18:49:43.445] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] SYSTEM ID=0: COMMAND COMPLETED Structural sleeve placement finished. Log file: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\StructuralElements_SleeveLog_20250802_184941.log
+[2025-08-02 18:49:43.446] [v1.0.0.0] [INFO] [CableTraySleeveCommand:453] Cable tray sleeves placement completed.

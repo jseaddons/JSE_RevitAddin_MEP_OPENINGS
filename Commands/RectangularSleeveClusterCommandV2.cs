@@ -125,15 +125,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     }
                     clustersByGroup[group.Key] = groupClusters;
                 }
-                
+
                 // Process each cluster within each group
                 foreach (var groupEntry in clustersByGroup)
                 {
                     var groupKey = groupEntry.Key;
                     var clusters = groupEntry.Value;
-                    
+
                     foreach (var cluster in clusters)
                     {
+                        // Skip pipe clusters on Wall or Structural Framing only (let PipeOpeningsRectCommand handle them)
+                        if (groupKey.systemType == "Pipe" && (groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing"))
+                            continue;
+                    
+                    
                         if (cluster.Count <= 1) continue; // Skip individual sleeves and empty clusters
                         
                         string familyName = "";
@@ -176,28 +181,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         // Use reference level from first sleeve in cluster
                         Level refLevel = HostLevelHelper.GetHostReferenceLevel(doc, cluster[0]);
 
-                        // Duplicate suppression logic temporarily commented for testing
-                        // bool duplicateExists = false;
-                        // var existingClusterOpenings = new FilteredElementCollector(doc)
-                        //     .OfClass(typeof(FamilyInstance))
-                        //     .Cast<FamilyInstance>()
-                        //     .Where(fi => fi.Symbol.Family.Name.Equals(familyName, StringComparison.OrdinalIgnoreCase))
-                        //     .ToList();
-                        // foreach (var existing in existingClusterOpenings)
-                        // {
-                        //     var loc = (existing.Location as LocationPoint)?.Point ?? existing.GetTransform().Origin;
-                        //     double dist3d = mid.DistanceTo(loc);
-                        //     if (dist3d <= toleranceDist)
-                        //     {
-                        //         duplicateExists = true;
-                        //         break;
-                        //     }
-                        // }
-                        // if (duplicateExists)
-                        // {
-                        //     DebugLogger.Log($"Suppression: Existing cluster opening of same family found within {toleranceMm:F0}mm (3D) at {mid}, skipping placement.");
-                        //     continue;
-                        // }
+                        
 
 
                         // --- Cluster sleeve duplicate suppression ---
@@ -239,42 +223,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         var heightParam = inst.LookupParameter("Height");
                         var depthParam = inst.LookupParameter("Depth");
 
-                        // Note: bounding box returns (width = X), (height = Y), (depth = Z)
-                        if (isPipeCluster && (groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing"))
+                        if (groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing")
                         {
-                            // Robust, axis-aligned assignment for pipe clusters in wall/framing only
-                            if (widthParam != null && !widthParam.IsReadOnly)  widthParam.Set(width);
-                            if (heightParam != null && !heightParam.IsReadOnly) heightParam.Set(height);
-                            if (depthParam != null && !depthParam.IsReadOnly)   depthParam.Set(depth);
+                            // Map to match family created in Left view:
+                            // Width parameter = height (Y), Height parameter = depth (Z), Depth parameter = width (X)
+                            if (widthParam != null && !widthParam.IsReadOnly) widthParam.Set(height);   // Y
+                            if (heightParam != null && !heightParam.IsReadOnly) heightParam.Set(depth); // Z
+
+                            // For Depth, use host thickness if available (mimic CableTraySleevePlacer), but mapped to X
+                            double hostThickness = width;
+                            if (groupKey.hostType == "Wall")
+                            {
+                                var wall = cluster[0].Host as Wall;
+                                if (wall != null)
+                                {
+                                    hostThickness = wall.get_Parameter(BuiltInParameter.WALL_ATTR_WIDTH_PARAM)?.AsDouble() ?? wall.Width;
+                                    DebugLogger.Log($"[CLUSTER] Wall thickness used for Depth: {UnitUtils.ConvertFromInternalUnits(hostThickness, UnitTypeId.Millimeters):F1}mm");
+                                }
+                            }
+                            else if (groupKey.hostType == "Structural Framing")
+                            {
+                                var framing = cluster[0].Host as FamilyInstance;
+                                if (framing != null)
+                                {
+                                    var framingType = framing.Symbol;
+                                    var bParam = framingType.LookupParameter("b");
+                                    if (bParam != null && bParam.StorageType == StorageType.Double)
+                                    {
+                                        hostThickness = bParam.AsDouble();
+                                        DebugLogger.Log($"[CLUSTER] Framing 'b' parameter used for Depth: {UnitUtils.ConvertFromInternalUnits(hostThickness, UnitTypeId.Millimeters):F1}mm");
+                                    }
+                                }
+                            }
+                            if (depthParam != null && !depthParam.IsReadOnly) depthParam.Set(hostThickness); // X
                         }
                         else
                         {
-                            // Existing logic for duct/cable tray clusters and all floor clusters
-                            if (groupKey.hostType == "Wall" && groupKey.orientation == "X")
-                            {
-                                // For X wall: Width = X, Height = Z (vertical), Depth = Y (thickness)
-                                if (widthParam != null && !widthParam.IsReadOnly)  widthParam.Set(width);
-                                if (heightParam != null && !heightParam.IsReadOnly) heightParam.Set(depth);
-                                if (depthParam != null && !depthParam.IsReadOnly)   depthParam.Set(height);
-                            }
-                            else if (groupKey.hostType == "Wall" && groupKey.orientation == "Y")
-                            {
-                                // For Y wall: Width = Y, Height = Z (vertical), Depth = X (thickness)
-                                if (widthParam != null && !widthParam.IsReadOnly)  widthParam.Set(height);   // Y
-                                if (heightParam != null && !heightParam.IsReadOnly) heightParam.Set(depth);  // Z
-                                if (depthParam != null && !depthParam.IsReadOnly)   depthParam.Set(width);   // X
-                                // No rotation for Y-axis if family is truly Y-oriented
-                            }
-                            else
-                            {
-                                // For floor or unknown types: use axis-aligned bounding box as is
-                                if (widthParam != null && !widthParam.IsReadOnly) widthParam.Set(width);
-                                if (heightParam != null && !heightParam.IsReadOnly) heightParam.Set(height);
-                                if (depthParam != null && !depthParam.IsReadOnly) depthParam.Set(depth);
-                            }
+                            // For other hosts (e.g., Floor), use bounding box values as before
+                            if (widthParam != null && !widthParam.IsReadOnly) widthParam.Set(width);
+                            if (heightParam != null && !heightParam.IsReadOnly) heightParam.Set(height);
+                            if (depthParam != null && !depthParam.IsReadOnly) depthParam.Set(depth);
                         }
                         placedCount++;
-
                         // Debug logging for cluster placement
                         var placementPoints = cluster.Select(s => (s.Location as LocationPoint)?.Point ?? s.GetTransform().Origin).ToList();
                         DebugLogger.Log($"[CLUSTER-DEBUG] Cluster placement points:");

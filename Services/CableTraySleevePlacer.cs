@@ -18,6 +18,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
         }
 
+        /// <summary>
+        /// Places a cable tray sleeve with pre-calculated orientation to avoid timing bugs
+        /// </summary>
+        public FamilyInstance PlaceCableTraySleeveWithOrientation(CableTray tray, XYZ intersection, double width, double height, 
+            XYZ direction, XYZ? preCalculatedOrientation, FamilySymbol sleeveSymbol, Element hostElement)
+        {
+            int cableTrayId = (int)(tray?.Id?.Value ?? 0);
+            try
+            {
+                DebugLogger.Log($"[CableTraySleevePlacer] USING PRE-CALCULATED ORIENTATION: {(preCalculatedOrientation != null ? $"({preCalculatedOrientation.X:F6},{preCalculatedOrientation.Y:F6},{preCalculatedOrientation.Z:F6})" : "null")}");
+                
+                if (tray == null)
+                {
+                    DebugLogger.Log($"[CableTraySleevePlacer] ERROR: CableTray is null, cannot place sleeve");
+                    return null;
+                }
+                
+                // Call the standard placement method but with the pre-calculated orientation
+                return PlaceCableTraySleeve(tray, intersection, width, height, direction, sleeveSymbol, hostElement, preCalculatedOrientation);
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[CableTraySleevePlacer] Exception in PlaceCableTraySleeveWithOrientation for cable tray {cableTrayId}: {ex.Message}");
+                DebugLogger.Log($"[CableTraySleevePlacer] Stack trace: {ex.StackTrace}");
+                throw; // Re-throw to ensure error is not silently ignored
+            }
+        }
+
         public FamilyInstance PlaceCableTraySleeve(
             CableTray tray,
             XYZ intersection,
@@ -25,20 +53,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             double height,
             XYZ direction,
             FamilySymbol sleeveSymbol,
-            Element hostElement)
+            Element hostElement,
+            XYZ? preCalculatedOrientation = null)
         {
             DebugLogger.Log($"[CableTraySleevePlacer] ENTRY: PlaceCableTraySleeve called with trayId={(tray != null ? tray.Id.IntegerValue.ToString() : "null")}");
             int cableTrayId = (tray != null) ? (int)tray.Id.Value : 0;
             try
             {
-                DebugLogger.Log($"[CableTraySleevePlacer] === LOG FILE START: PlaceCableTraySleeve called for cable tray {cableTrayId} at intersection {intersection} ===");
-                DebugLogger.Log($"[CableTraySleevePlacer] PlaceCableTraySleeve called for cable tray {cableTrayId} at intersection {intersection}");
 
-                if (intersection == null || sleeveSymbol == null || hostElement == null)
+            DebugLogger.Log($"[CableTraySleevePlacer] === LOG FILE START: PlaceCableTraySleeve called for cable tray {cableTrayId} at intersection {intersection} ===");
+            DebugLogger.Log($"[CableTraySleevePlacer] PlaceCableTraySleeve called for cable tray {cableTrayId} at intersection {intersection}");
+
+            if (intersection == null || sleeveSymbol == null || hostElement == null)
+            {
+                DebugLogger.Log($"[CableTraySleevePlacer] Null parameter check failed");
+                return null;
+            }
+
+            // --- NEW: Prevent placement in invisible/hidden linked files ---
+            // If hostElement is from a linked file, check if the link is visible in the active view
+            Document hostDoc = hostElement.Document;
+            if (hostDoc.IsLinked)
+            {
+                // Find the RevitLinkInstance in the main doc that corresponds to this linked doc
+                var linkInstance = new FilteredElementCollector(_doc)
+                    .OfClass(typeof(RevitLinkInstance))
+                    .Cast<RevitLinkInstance>()
+                    .FirstOrDefault(link => link.GetLinkDocument() == hostDoc);
+                if (linkInstance != null)
                 {
-                    DebugLogger.Log($"[CableTraySleevePlacer] Null parameter check failed");
-                    return null;
+                    var activeView = _doc.ActiveView;
+                    bool isHidden = activeView.GetCategoryHidden(linkInstance.Category.Id) || linkInstance.IsHidden(activeView);
+                    if (isHidden)
+                    {
+                        DebugLogger.Log($"[CableTraySleevePlacer] SKIP: Host element is from a hidden/invisible linked file. No sleeve will be placed.");
+                        return null;
+                    }
                 }
+            }
 
                 // Host-specific logic for depth, normal, and placement point
                 double sleeveDepth = 0.0;
@@ -48,8 +100,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     double wallThickness = wall.get_Parameter(BuiltInParameter.WALL_ATTR_WIDTH_PARAM)?.AsDouble() ?? wall.Width;
                     n = GetWallNormal(wall, intersection).Normalize();
-                    XYZ wallVector = n.Multiply(-wallThickness);
-                    placePoint = intersection + wallVector.Multiply(0.5); // wall centerline
+                    // Use robust centerline projection for XY, keep Z from intersection
+                    XYZ centerlinePoint = GetWallCenterlinePoint(wall, intersection);
+                    placePoint = new XYZ(centerlinePoint.X, centerlinePoint.Y, intersection.Z);
                     sleeveDepth = wallThickness;
                 }
                 else if (hostElement is Floor floor)
@@ -141,8 +194,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Log($"[CableTraySleevePlacer] Placing sleeve: width={width}, height={height}, intersection=({intersection.X},{intersection.Y},{intersection.Z})");
                 DebugLogger.Log($"[CableTraySleevePlacer] Cable tray direction: ({direction.X}, {direction.Y}, {direction.Z})");
                 string compareLogPath = "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\Log\\MEP_Sleeve_Placement_Compare.log";
-                System.IO.File.AppendAllText(compareLogPath, $"[CableTraySleevePlacer] Cable tray direction: ({direction.X}, {direction.Y}, {direction.Z})\n");
-                System.IO.File.AppendAllText(compareLogPath, $"[CableTraySleevePlacer] Placing sleeve: width={width}, height={height}, intersection=({intersection.X},{intersection.Y},{intersection.Z})\n");
+                if (DebugLogger.IsEnabled)
+                {
+                    System.IO.File.AppendAllText(compareLogPath, $"[CableTraySleevePlacer] Cable tray direction: ({direction.X}, {direction.Y}, {direction.Z})\n");
+                    System.IO.File.AppendAllText(compareLogPath, $"[CableTraySleevePlacer] Placing sleeve: width={width}, height={height}, intersection=({intersection.X},{intersection.Y},{intersection.Z})\n");
+                }
 
                 FamilyInstance instance = _doc.Create.NewFamilyInstance(
                     placePoint,
@@ -242,99 +298,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DebugLogger.Log($"[CableTraySleevePlacer] Warning during regenerate: {ex.Message}");
                 }
 
-                // Only rotate for Y-axis trays/framing
-                if (isFloorHost)
+                // Align sleeve to cable tray direction for ALL host types
+                try
                 {
-                    try
+                    if (tray == null)
                     {
-                        if (tray == null)
-                        {
-                            DebugLogger.Log("[CableTraySleevePlacer] ERROR: tray is null in riser/floor logic.");
-                            return instance;
-                        }
-                        if (hostElement == null)
-                        {
-                            DebugLogger.Log("[CableTraySleevePlacer] ERROR: hostElement is null in riser/floor logic.");
-                            return instance;
-                        }
-                        LocationPoint loc = instance.Location as LocationPoint;
-                        if (loc == null)
-                        {
-                            DebugLogger.Log("[CableTraySleevePlacer] ERROR: instance.Location is not a LocationPoint in riser/floor logic.");
-                            return instance;
-                        }
-                        if (direction == null)
-                        {
-                            DebugLogger.Log("[CableTraySleevePlacer] ERROR: direction is null in riser/floor logic.");
-                            return instance;
-                        }
-                        BoundingBoxXYZ bbox = tray.get_BoundingBox(null);
-                        if (bbox == null)
-                        {
-                            DebugLogger.Log($"[CableTraySleevePlacer] ERROR: tray.get_BoundingBox(null) is null for trayId={cableTrayId} in riser/floor logic.");
-                            return instance;
-                        }
+                        DebugLogger.Log("[CableTraySleevePlacer] ERROR: tray is null - cannot align to cable tray direction.");
+                        return instance;
+                    }
+                    if (direction == null)
+                    {
+                        DebugLogger.Log("[CableTraySleevePlacer] ERROR: direction is null - cannot align to cable tray direction.");
+                        return instance;
+                    }
+                    
+                    LocationPoint loc = instance.Location as LocationPoint;
+                    if (loc == null)
+                    {
+                        DebugLogger.Log("[CableTraySleevePlacer] ERROR: instance.Location is not a LocationPoint - cannot rotate.");
+                        return instance;
+                    }
 
-                        bool isVertical = Math.Abs(direction.Z) > 0.99;
-                        DebugLogger.Log($"[CableTraySleevePlacer] [RISER-DEBUG] Floor intersection: trayId={cableTrayId}, direction=({direction.X:F3},{direction.Y:F3},{direction.Z:F3}), isVertical={isVertical}");
-                        bool shouldRotate = false;
-                        if (isVertical)
-                        {
-                            shouldRotate = JSE_RevitAddin_MEP_OPENINGS.Helpers.SleeveRiserOrientationHelper.ShouldRotateRiserSleeve(tray, loc.Point, width, height);
-                        }
-                        JSE_RevitAddin_MEP_OPENINGS.Helpers.SleeveRiserOrientationHelper.LogRiserDebugInfo(
-                            "CableTray", tray.Id.IntegerValue, bbox, width, height, loc.Point, hostElement, direction, shouldRotate);
-                        if (isVertical && shouldRotate)
-                        {
-                            Line axis = Line.CreateBound(loc.Point, loc.Point + XYZ.BasisZ);
-                            double angle = Math.PI / 2.0;
-                            ElementTransformUtils.RotateElement(_doc, instance.Id, axis, angle);
-                            DebugLogger.Log("[CableTraySleevePlacer] Rotated vertical cable tray sleeve 90 degrees (riser logic).");
-                        }
-                        else if (isVertical)
-                        {
-                            DebugLogger.Log("[CableTraySleevePlacer] No rotation for vertical cable tray sleeve (riser logic).");
-                        }
-                    }
-                    catch (Exception ex)
+                    // Use pre-calculated orientation from command for ALL host types (single source of truth)
+                    if (preCalculatedOrientation != null)
                     {
-                        DebugLogger.Log($"[CableTraySleevePlacer] Error in riser/floor logic: {ex.Message}");
-                    }
-                }
-                else
-                {
-                    bool isYAxisTray = Math.Abs(direction.Y) > Math.Abs(direction.X);
-                    if (isYAxisTray)
-                    {
-                        DebugLogger.Log("[CableTraySleevePlacer] Y-axis tray detected, attempting rotation");
-                        try
-                        {
-                            LocationPoint loc = instance.Location as LocationPoint;
-                            if (loc != null)
-                            {
-                                XYZ rotationPoint = loc.Point;
-                                DebugLogger.Log($"[CableTraySleevePlacer] Pre-rotation location: [{rotationPoint.X:F3}, {rotationPoint.Y:F3}, {rotationPoint.Z:F3}]");
-                                Line rotationAxis = Line.CreateBound(rotationPoint, rotationPoint.Add(XYZ.BasisZ));
-                                double rotationAngle = Math.PI / 2; // 90 degrees
-                                ElementTransformUtils.RotateElement(_doc, instance.Id, rotationAxis, rotationAngle);
-                                DebugLogger.Log("[CableTraySleevePlacer] Simplified rotation: 90 degrees around Z-axis applied successfully");
-                                LocationPoint newLoc = instance.Location as LocationPoint;
-                                if (newLoc != null)
-                                {
-                                    XYZ newPoint = newLoc.Point;
-                                    DebugLogger.Log($"[CableTraySleevePlacer] Post-rotation location: [{newPoint.X:F3}, {newPoint.Y:F3}, {newPoint.Z:F3}]");
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            DebugLogger.Log($"[CableTraySleevePlacer] Error during rotation: {ex.Message}");
-                        }
+                        DebugLogger.Log($"[CableTraySleevePlacer] ROTATING: Using pre-calculated orientation from command: ({preCalculatedOrientation.X:F6},{preCalculatedOrientation.Y:F6},{preCalculatedOrientation.Z:F6})");
+                        double sleeveAngle = Math.Atan2(preCalculatedOrientation.Y, preCalculatedOrientation.X);
+                        double sleeveAngleDegrees = sleeveAngle * 180 / Math.PI;
+                        DebugLogger.Log($"[CableTraySleevePlacer] Rotation angle: {sleeveAngleDegrees:F1} degrees for host type: {hostElement?.GetType().Name ?? "Unknown"}");
+                        Line rotationAxis = Line.CreateBound(loc.Point, loc.Point + XYZ.BasisZ);
+                        ElementTransformUtils.RotateElement(_doc, instance.Id, rotationAxis, sleeveAngle);
+                        DebugLogger.Log($"[CableTraySleevePlacer] Applied rotation of {sleeveAngleDegrees:F1} degrees (command determined Y-oriented)");
                     }
                     else
                     {
-                        DebugLogger.Log($"[CableTraySleevePlacer] X-axis tray - no rotation needed");
+                        DebugLogger.Log($"[CableTraySleevePlacer] NO ROTATION: Command determined X-oriented cable tray for host type: {hostElement?.GetType().Name ?? "Unknown"}");
                     }
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Log($"[CableTraySleevePlacer] Error during sleeve alignment: {ex.Message}");
                 }
 
                 // Validate final position and log offset from centerline

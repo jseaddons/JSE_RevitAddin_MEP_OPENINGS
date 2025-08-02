@@ -54,21 +54,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             double height = maxY - minY;
             result.Width = width;
             result.Height = height;
-            result.Midpoint = new XYZ((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2);
             result.ZSum = zSum;
             result.IsDuctFloorCluster = false;
             result.IsXAxisMEP = false;
 
-            // Cluster summary logging for cable tray wall clusters
+            // Special midpoint logic for CableTrayOpeningOnWall: center in wall (Z from wall, X/Y from cluster)
             if (cluster.Count > 0) {
                 string famName = cluster[0].Symbol?.Family?.Name ?? "";
                 if (famName.Equals("CableTrayOpeningOnWall", StringComparison.OrdinalIgnoreCase)) {
-                    string clusterLogPath = @"C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\Logs\\CableTrayWallBBoxStepLog.txt";
-                    System.IO.File.AppendAllText(clusterLogPath, $"\n=== CLUSTER SUMMARY ===\n");
-                    System.IO.File.AppendAllText(clusterLogPath, $"Cluster Width (Y): {result.Width}\n");
-                    System.IO.File.AppendAllText(clusterLogPath, $"Cluster Height (X): {result.Height}\n");
-                    System.IO.File.AppendAllText(clusterLogPath, $"Cluster Midpoint: ({result.Midpoint.X}, {result.Midpoint.Y}, {result.Midpoint.Z})\n");
+                    // Try to get wall host and use its center Z for midpoint
+                    var wallHost = cluster[0].Host as Wall;
+                    if (wallHost != null) {
+                        BoundingBoxXYZ wallBbox = wallHost.get_BoundingBox(null);
+                        if (wallBbox != null) {
+                            double wallCenterZ = (wallBbox.Min.Z + wallBbox.Max.Z) / 2;
+                            result.Midpoint = new XYZ((minX + maxX) / 2, (minY + maxY) / 2, wallCenterZ);
+                        } else {
+                            result.Midpoint = new XYZ((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2);
+                        }
+                    } else {
+                        result.Midpoint = new XYZ((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2);
+                    }
+                    if (DebugLogger.IsEnabled)
+                    {
+                        string clusterLogPath = @"C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\Logs\\CableTrayWallBBoxStepLog.txt";
+                        System.IO.File.AppendAllText(clusterLogPath, $"\n=== CLUSTER SUMMARY ===\n");
+                        System.IO.File.AppendAllText(clusterLogPath, $"Cluster Width (Y): {result.Width}\n");
+                        System.IO.File.AppendAllText(clusterLogPath, $"Cluster Height (X): {result.Height}\n");
+                        System.IO.File.AppendAllText(clusterLogPath, $"Cluster Midpoint: ({result.Midpoint.X}, {result.Midpoint.Y}, {result.Midpoint.Z})\n");
+                    }
+                } else {
+                    result.Midpoint = new XYZ((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2);
                 }
+            } else {
+                result.Midpoint = new XYZ((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2);
             }
             return result;
         }

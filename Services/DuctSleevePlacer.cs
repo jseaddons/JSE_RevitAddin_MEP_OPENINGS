@@ -30,13 +30,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
+        /// Places a duct sleeve with pre-calculated orientation to avoid timing bugs
+        /// </summary>
+        public void PlaceDuctSleeveWithOrientation(Duct duct, XYZ intersection, double width, double height, 
+            XYZ ductDirection, XYZ preCalculatedOrientation, FamilySymbol sleeveSymbol, Element hostElement, XYZ? faceNormal = null)
+        {
+            JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.SetDuctLogFile();
+            int ductElementId = (int)(duct?.Id?.Value ?? 0);
+            try
+            {
+                DebugLogger.Log($"[DuctSleevePlacer] USING PRE-CALCULATED ORIENTATION: ({preCalculatedOrientation.X:F6},{preCalculatedOrientation.Y:F6},{preCalculatedOrientation.Z:F6})");
+                
+                if (duct == null)
+                {
+                    DebugLogger.Log($"[DuctSleevePlacer] ERROR: Duct is null, cannot place sleeve");
+                    return;
+                }
+                
+                // Call the standard placement method but with the pre-calculated orientation
+                PlaceDuctSleeve(duct, intersection, width, height, ductDirection, sleeveSymbol, hostElement, faceNormal, preCalculatedOrientation);
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[DuctSleevePlacer] Exception in PlaceDuctSleeveWithOrientation for duct {ductElementId}: {ex.Message}");
+                DebugLogger.Log($"[DuctSleevePlacer] Stack trace: {ex.StackTrace}");
+                SleeveLogManager.LogDuctSleeveFailure(ductElementId, $"Exception during placement: {ex.Message}");
+                throw; // Re-throw to ensure error is not silently ignored
+            }
+        }
+
+        /// <summary>
         /// Places a duct sleeve at the intersection point with robust positioning
         /// </summary>
         public void PlaceDuctSleeve(Duct duct, XYZ intersection, double width, double height, 
-            XYZ ductDirection, FamilySymbol sleeveSymbol, Element hostElement, XYZ faceNormal = null)
+            XYZ ductDirection, FamilySymbol sleeveSymbol, Element hostElement, XYZ? faceNormal = null, XYZ? preCalculatedOrientation = null)
         {
             JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.SetDuctLogFile();
-            int ductElementId = duct?.Id?.IntegerValue ?? 0;
+            int ductElementId = (int)(duct?.Id?.Value ?? 0);
             try
             {
                 DebugLogger.Log($"[DuctSleevePlacer] DIAGNOSTIC: Called for ductId={ductElementId}, hostType={hostElement?.GetType().Name}, direction=({ductDirection.X:F3},{ductDirection.Y:F3},{ductDirection.Z:F3})");
@@ -88,8 +118,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         return;
                     }
                 }
+                // === STRUCTURAL FLOOR LOGIC START ===
                 else if (hostElement is Floor floor)
                 {
+                    // STRUCTURAL FLOOR GUARD: Duct sleeves should ONLY be placed in structural floors
+                    Parameter structuralParam = floor.get_Parameter(BuiltInParameter.FLOOR_PARAM_IS_STRUCTURAL);
+                    bool isStructural = structuralParam?.AsInteger() == 1;
+                    
+                    DebugLogger.Log($"[DuctSleevePlacer] STRUCTURAL CHECK: FloorId={floor.Id.IntegerValue}, IsStructural={isStructural}");
+                    
+                    if (!isStructural)
+                    {
+                        DebugLogger.Log($"[DuctSleevePlacer] ERROR: Non-structural floor {floor.Id.IntegerValue} passed to duct placer! This should have been filtered in the command. Skipping placement for duct {ductElementId}.");
+                        SleeveLogManager.LogDuctSleeveFailure(ductElementId, $"Non-structural floor {floor.Id.IntegerValue} - should be filtered in command");
+                        return;
+                    }
+                    
                     // Try to get the floor type from the linked document if available
                     ElementId typeId = floor.GetTypeId();
                     Element floorType = null;
@@ -191,8 +235,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Log($"[DuctSleevePlacer] Placing sleeve: width={width}, height={height}, intersection=({intersection.X},{intersection.Y},{intersection.Z})");
                 DebugLogger.Log($"[DuctSleevePlacer] Duct direction: ({ductDirection.X}, {ductDirection.Y}, {ductDirection.Z})");
                 string compareLogPath = "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\Log\\MEP_Sleeve_Placement_Compare.log";
-                System.IO.File.AppendAllText(compareLogPath, $"[DuctSleevePlacer] Duct direction: ({ductDirection.X}, {ductDirection.Y}, {ductDirection.Z})\n");
-                System.IO.File.AppendAllText(compareLogPath, $"[DuctSleevePlacer] Placing sleeve: width={width}, height={height}, intersection=({intersection.X},{intersection.Y},{intersection.Z})\n");
+                if (DebugLogger.IsEnabled)
+                {
+                    System.IO.File.AppendAllText(compareLogPath, $"[DuctSleevePlacer] Duct direction: ({ductDirection.X}, {ductDirection.Y}, {ductDirection.Z})\n");
+                    System.IO.File.AppendAllText(compareLogPath, $"[DuctSleevePlacer] Placing sleeve: width={width}, height={height}, intersection=({intersection.X},{intersection.Y},{intersection.Z})\n");
+                }
                 FamilyInstance instance = _doc.Create.NewFamilyInstance(
                     intersection,
                     sleeveSymbol,
@@ -274,18 +321,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 
                 // Use helper for clearance
-                double clearance = JSE_RevitAddin_MEP_OPENINGS.Helpers.SleeveClearanceHelper.GetClearance(duct);
-                double widthWithClearance = width + 2 * clearance;
-                double heightWithClearance = height + 2 * clearance;
-
-                // Log the values before setting parameters
-                double widthWithClearanceMM = UnitUtils.ConvertFromInternalUnits(widthWithClearance, UnitTypeId.Millimeters);
-                double heightWithClearanceMM = UnitUtils.ConvertFromInternalUnits(heightWithClearance, UnitTypeId.Millimeters);
-                DebugLogger.Log($"[DuctSleevePlacer] About to set Width: {widthWithClearance} (internal), {widthWithClearanceMM}mm; Height: {heightWithClearance} (internal), {heightWithClearanceMM}mm for duct {ductElementId}");
+                // Use width and height as passed in (already includes clearance from command)
+                double widthMM = UnitUtils.ConvertFromInternalUnits(width, UnitTypeId.Millimeters);
+                double heightMM = UnitUtils.ConvertFromInternalUnits(height, UnitTypeId.Millimeters);
+                DebugLogger.Log($"[DuctSleevePlacer] About to set Width: {width} (internal), {widthMM}mm; Height: {height} (internal), {heightMM}mm for duct {ductElementId}");
 
                 // Set parameters with validation before any rotation
-                SetParameterSafely(instance, "Width", widthWithClearance, ductElementId);
-                SetParameterSafely(instance, "Height", heightWithClearance, ductElementId);
+                SetParameterSafely(instance, "Width", width, ductElementId);
+                SetParameterSafely(instance, "Height", height, ductElementId);
                 SetParameterSafely(instance, "Depth", sleeveDepth, ductElementId); // from type param
                 
                 // Single regenerate after all parameters are set
@@ -301,81 +344,59 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Log($"[DuctSleevePlacer] PLACED: ductId={ductElementId}, sleeveId={instance.Id.IntegerValue}, at {intersection}");
 
                 // Only rotate for Y-axis ducts
-                // For floor sleeves, always align sleeve width to duct direction in XY plane
+                // Align sleeve to duct direction for ALL host types
                 DebugLogger.Log($"[DuctSleevePlacer] hostElement type: {hostElement?.GetType().FullName}, category: {hostElement?.Category?.Name}, id: {hostElement?.Id}, family: {(hostElement as FamilyInstance)?.Symbol?.FamilyName}");
                 bool isFloorHost = hostElement is Floor
                     || (hostElement is FamilyInstance fi && fi.Category != null && fi.Category.Id.IntegerValue == (int)BuiltInCategory.OST_Floors);
-                if (isFloorHost)
+                
+                try
                 {
-                    try
+                    LocationPoint loc = instance.Location as LocationPoint;
+                    if (loc == null)
                     {
-                        LocationPoint loc = instance.Location as LocationPoint;
-                        if (loc != null)
-                        {
-                            bool isVertical = Math.Abs(ductDirection.Z) > 0.99;
-                            DebugLogger.Log($"[DuctSleevePlacer] [RISER-DEBUG] Floor intersection: ductId={ductElementId}, direction=({ductDirection.X:F3},{ductDirection.Y:F3},{ductDirection.Z:F3}), isVertical={isVertical}");
-                            BoundingBoxXYZ bbox = duct.get_BoundingBox(null);
-                            bool shouldRotate = false;
-                            if (isVertical)
-                            {
-                                shouldRotate = JSE_RevitAddin_MEP_OPENINGS.Helpers.SleeveRiserOrientationHelper.ShouldRotateRiserSleeve(duct, loc.Point, width, height);
-                            }
-                            JSE_RevitAddin_MEP_OPENINGS.Helpers.SleeveRiserOrientationHelper.LogRiserDebugInfo(
-                                "Duct", duct.Id.IntegerValue, bbox, width, height, loc.Point, hostElement, ductDirection, shouldRotate);
-                            if (isVertical && shouldRotate)
-                            {
-                                Line axis = Line.CreateBound(loc.Point, loc.Point + XYZ.BasisZ);
-                                double angle = Math.PI / 2.0;
-                                ElementTransformUtils.RotateElement(_doc, instance.Id, axis, angle);
-                                DebugLogger.Log("[DuctSleevePlacer] Rotated vertical duct sleeve 90 degrees (riser logic).");
-                            }
-                            else if (isVertical)
-                            {
-                                DebugLogger.Log("[DuctSleevePlacer] No rotation for vertical duct sleeve (riser logic).");
-                            }
-                        }
+                        DebugLogger.Log("[DuctSleevePlacer] ERROR: instance.Location is not a LocationPoint - cannot rotate.");
+                        return;
                     }
-                    catch (Exception ex)
+
+                    // For floor-hosted sleeves: always rotate using preCalculatedOrientation (command already filtered)
+                    if (isFloorHost && preCalculatedOrientation != null)
                     {
-                        DebugLogger.Log($"[DuctSleevePlacer] Error in riser/floor logic: {ex.Message}");
+                        DebugLogger.Log($"[DuctSleevePlacer] FLOOR: Rotating using pre-calculated orientation: ({preCalculatedOrientation.X:F6},{preCalculatedOrientation.Y:F6},{preCalculatedOrientation.Z:F6})");
+                        double sleeveAngle = Math.Atan2(preCalculatedOrientation.Y, preCalculatedOrientation.X);
+                        double sleeveAngleDegrees = sleeveAngle * 180 / Math.PI;
+                        DebugLogger.Log($"[DuctSleevePlacer] FLOOR: Rotation angle: {sleeveAngleDegrees:F1} degrees");
+                        Line rotationAxis = Line.CreateBound(loc.Point, loc.Point + XYZ.BasisZ);
+                        ElementTransformUtils.RotateElement(_doc, instance.Id, rotationAxis, sleeveAngle);
+                        DebugLogger.Log($"[DuctSleevePlacer] FLOOR: Applied rotation of {sleeveAngleDegrees:F1} degrees");
                     }
-                }
-                else
-                {
-                    // ...existing code for wall/framing rotation...
-                    bool isYAxisDuct = Math.Abs(ductDirection.Y) > Math.Abs(ductDirection.X);
-                    if (isYAxisDuct)
+                    // For floor hosts with no preCalculatedOrientation: no rotation (command determined X-oriented)
+                    else if (isFloorHost)
                     {
-                        DebugLogger.Log("[DuctSleevePlacer] Y-axis duct detected, attempting rotation");
-                        try
-                        {
-                            LocationPoint loc = instance.Location as LocationPoint;
-                            if (loc != null)
-                            {
-                                XYZ rotationPoint = loc.Point;
-                                DebugLogger.Log($"[DuctSleevePlacer] Pre-rotation location: [{rotationPoint.X:F3}, {rotationPoint.Y:F3}, {rotationPoint.Z:F3}]");
-                                Line rotationAxis = Line.CreateBound(rotationPoint, rotationPoint.Add(XYZ.BasisZ));
-                                double rotationAngle = Math.PI / 2; // 90 degrees in radians
-                                ElementTransformUtils.RotateElement(_doc, instance.Id, rotationAxis, rotationAngle);
-                                DebugLogger.Log("[DuctSleevePlacer] Simplified rotation: 90 degrees around Z-axis applied successfully");
-                                LocationPoint newLoc = instance.Location as LocationPoint;
-                                if (newLoc != null)
-                                {
-                                    XYZ newPoint = newLoc.Point;
-                                    DebugLogger.Log($"[DuctSleevePlacer] Post-rotation location: [{newPoint.X:F3}, {newPoint.Y:F3}, {newPoint.Z:F3}]");
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            DebugLogger.Log($"[DuctSleevePlacer] Error during rotation: {ex.Message}");
-                            DebugLogger.Log($"[DuctSleevePlacer] Stack trace: {ex.StackTrace}");
-                        }
+                        DebugLogger.Log("[DuctSleevePlacer] FLOOR: No rotation - command determined X-oriented duct");
                     }
+                    // For walls/structural framing: check if Y-axis orientation
                     else
                     {
-                        DebugLogger.Log($"[DuctSleevePlacer] X-axis duct - no rotation needed");
+                        bool isYAxisDuct = Math.Abs(ductDirection.Y) > Math.Abs(ductDirection.X);
+                        DebugLogger.Log($"[DuctSleevePlacer] WALL/FRAMING: isYAxisDuct={isYAxisDuct}, direction=({ductDirection.X:F3},{ductDirection.Y:F3},{ductDirection.Z:F3})");
+                        
+                        if (isYAxisDuct)
+                        {
+                            double rotationAngle = Math.PI / 2; // 90 degrees
+                            Line rotationAxis = Line.CreateBound(loc.Point, loc.Point + XYZ.BasisZ);
+                            ElementTransformUtils.RotateElement(_doc, instance.Id, rotationAxis, rotationAngle);
+                            DebugLogger.Log("[DuctSleevePlacer] WALL/FRAMING: Rotated Y-axis duct sleeve 90 degrees");
+                        }
+                        else
+                        {
+                            DebugLogger.Log("[DuctSleevePlacer] WALL/FRAMING: X-axis duct - no rotation needed");
+                        }
                     }
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Log($"[DuctSleevePlacer] Error during sleeve alignment: {ex.Message}");
+                    DebugLogger.Log($"[DuctSleevePlacer] Stack trace: {ex.StackTrace}");
                 }
 
                 // Validate final position and log offset from centerline

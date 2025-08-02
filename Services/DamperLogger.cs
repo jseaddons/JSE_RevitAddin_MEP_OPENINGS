@@ -13,6 +13,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         public static void InitLogFile()
         {
+            if (!DebugLogger.IsEnabled) return;
             try
             {
                 // Clear existing log file and write header
@@ -27,6 +28,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         public static void Log(string message)
         {
+            if (!DebugLogger.IsEnabled) return;
             try
             {
                 var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");

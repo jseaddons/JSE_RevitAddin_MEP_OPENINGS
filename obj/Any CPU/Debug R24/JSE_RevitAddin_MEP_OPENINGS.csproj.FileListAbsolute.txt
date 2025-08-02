@@ -33,3 +33,4 @@ C:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\o
 C:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\obj\Any CPU\Debug R24\JSE_Revi.99BEBF13.Up2Date
 C:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\obj\Any CPU\Debug R24\JSE_RevitAddin_MEP_OPENINGS.dll
 C:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\obj\Any CPU\Debug R24\JSE_RevitAddin_MEP_OPENINGS.pdb
+C:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\obj\Any CPU\Debug R24\JSE_RevitAddin_MEP_OPENINGS.sourcelink.json

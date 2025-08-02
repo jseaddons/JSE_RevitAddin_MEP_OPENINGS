@@ -17,6 +17,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void InitializeLogger()
         {
+            if (!DebugLogger.IsEnabled) return;
+            // ...existing code...
             try
             {
                 // Try to find the project directory more reliably
@@ -94,6 +96,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void LogStructuralElement(string elementType, int elementId, string action, string details = "")
         {
+            if (!DebugLogger.IsEnabled) return;
             if (!IsInitialized)
                 InitializeLogger();
 
@@ -121,6 +124,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void LogSleevePlace(string elementType, int elementId, int sleeveId, string position, string size)
         {
+            if (!DebugLogger.IsEnabled) return;
             LogStructuralElement(elementType, elementId, "SLEEVE PLACED", $"Sleeve ID={sleeveId}, Position={position}, Size={size}");
         }
 
@@ -129,6 +133,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void LogSleeveFailure(string elementType, int elementId, string reason)
         {
+            if (!DebugLogger.IsEnabled) return;
             LogStructuralElement(elementType, elementId, "SLEEVE FAILED", $"Reason: {reason}");
         }
 
@@ -137,6 +142,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void LogIntersection(string mepElementType, int mepElementId, string structuralElementType, int structuralElementId, string position)
         {
+            if (!DebugLogger.IsEnabled) return;
             string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
             string logEntry = $"[{timestamp}] {mepElementType}-{structuralElementType.ToUpper()} INTERSECTION - {mepElementType} ID={mepElementId}, {structuralElementType} ID={structuralElementId}, Position={position}\n";
             
@@ -158,6 +164,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void LogStructuralTypeCheck(string elementType, int elementId, bool isStructural, string structuralType = "")
         {
+            if (!DebugLogger.IsEnabled) return;
             string action = isStructural ? "STRUCTURAL TYPE CONFIRMED" : "NON-STRUCTURAL TYPE SKIPPED";
             string details = !string.IsNullOrEmpty(structuralType) ? $"Type: {structuralType}" : "";
             LogStructuralElement(elementType, elementId, action, details);
@@ -168,6 +175,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void LogSummary(string commandName, int totalProcessed, int structuralDetected, int sleevesPlaced, int failures)
         {
+            if (!DebugLogger.IsEnabled) return;
             string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
             string summary = 
                 $"\n[{timestamp}] ===== {commandName.ToUpper()} STRUCTURAL ELEMENTS SUMMARY =====\n" +

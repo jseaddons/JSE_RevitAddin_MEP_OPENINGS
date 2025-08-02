@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using System.IO;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 {
@@ -41,14 +42,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 txActivate.Commit();
             }
 
+
             // Collect pipes from both host and visible linked models
             var mepElements = JSE_RevitAddin_MEP_OPENINGS.Helpers.MepElementCollectorHelper.CollectMepElementsVisibleOnly(doc);
-            var pipes = mepElements
+            var pipeTuples = mepElements
                 .Where(tuple => tuple.Item1 is Pipe)
-                .Select(tuple => tuple.Item1 as Pipe)
-                .Where(p => p != null)
+                .Select(tuple => ((Pipe)tuple.Item1, tuple.Item2))
                 .ToList();
-            if (pipes.Count == 0)
+            if (pipeTuples.Count == 0)
             {
                 TaskDialog.Show("Info", "No pipes found in host or linked models.");
                 return Result.Succeeded;
@@ -59,103 +60,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 .Cast<FamilyInstance>()
                 .Where(fi =>
                     fi.Symbol.Family.Name.Equals("PipeOpeningOnWall", StringComparison.OrdinalIgnoreCase) ||
-                    fi.Symbol.Family.Name.Equals("PipeOpeningOnSlab", StringComparison.OrdinalIgnoreCase))
+                    fi.Symbol.Family.Name.Equals("PipeOpeningOnSlab", StringComparison.OrdinalIgnoreCase) ||
+                    fi.Symbol.Family.Name.Equals("ClusterOpeningOnWallX", StringComparison.OrdinalIgnoreCase) ||
+                    fi.Symbol.Family.Name.Equals("ClusterOpeningOnSlab", StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
             int placedCount = 0, skippedCount = 0, errorCount = 0;
+              
+            
+            // --- Insert here ---
+            string logPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                "JSE_RevitAddin_Logs",
+                $"PipeSleeve_{DateTime.Now:yyyyMMdd_HHmmss}.log"
+            );
+            Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+            
+            void Log(string msg)
+            {
+                File.AppendAllText(logPath, $"{DateTime.Now:HH:mm:ss} {msg}\n");
+            }
+            // --- End insert ---
+            
+            
             var structuralElements = PipeSleeveIntersectionService.CollectStructuralElementsForDirectIntersectionVisibleOnly(doc);
-            var placer = new PipeSleevePlacer(doc);
+            // Ensure structuralElements is List<(Element, Transform?)>
+            // If the method returns List<Element>, convert it:
+            // var structuralElements = PipeSleeveIntersectionService.CollectStructuralElementsForDirectIntersectionVisibleOnly(doc)
+            //     .Select(e => (e, (Transform?)null)).ToList();
+
 
             using (var tx = new Transaction(doc, "Place Pipe Sleeves"))
             {
                 tx.Start();
-                foreach (var pipe in pipes)
-                {
-                    if (pipe == null) { skippedCount++; continue; }
-                    var locCurve = pipe.Location as LocationCurve;
-                    var pipeLine = locCurve?.Curve as Line;
-                    if (pipeLine == null)
-                    {
-                        skippedCount++;
-                        continue;
-                    }
-
-                    var intersections = PipeSleeveIntersectionService.FindDirectStructuralIntersectionBoundingBoxesVisibleOnly(pipe, structuralElements);
-                    if (intersections != null && intersections.Count > 0)
-                    {
-                        foreach (var tuple in intersections)
-                        {
-                            Element hostElem = tuple.Item1;
-                            XYZ intersectionPoint = tuple.Item3; // Always use intersection point for placement
-
-                            double indivTol = UnitUtils.ConvertToInternalUnits(5.0, UnitTypeId.Millimeters); // 5mm for individual sleeves
-                            double clusterTol = UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters); // 100mm for clusters (unchanged)
-                            // --- Robust duplicate suppression and logging (like Duct/CableTray) ---
-                            string hostId = hostElem?.Id.Value.ToString() ?? "null";
-                            string hostType = hostElem?.GetType().Name ?? "null";
-                            string hostMsg = $"HOST: Pipe {pipe.Id} intersects {hostType} {hostId}";
-                            DebugLogger.Log($"[PipeSleeveCommand] {hostMsg}");
-                            string sleeveSummary = OpeningDuplicationChecker.GetSleevesSummaryAtLocation(doc, intersectionPoint, clusterTol);
-                            DebugLogger.Log($"[PipeSleeveCommand] DUPLICATION CHECK at {intersectionPoint}:\n{sleeveSummary}");
-                            var indivDup = OpeningDuplicationChecker.FindIndividualSleevesAtLocation(doc, intersectionPoint, indivTol);
-                            var clusterDup = OpeningDuplicationChecker.FindAllClusterSleevesAtLocation(doc, intersectionPoint, clusterTol);
-                            if (clusterDup.Any())
-                            {
-                                string msg = $"SKIP: Pipe {pipe.Id} host {hostType} {hostId} duplicate cluster sleeve exists near {intersectionPoint}";
-                                DebugLogger.Log($"[PipeSleeveCommand] {msg}");
-                                skippedCount++;
-                                continue;
-                            }
-
-                            try
-                            {
-                                FamilySymbol? symbolToUse = null;
-                                // Robust framing detection: match duct/cable tray logic
-                                if (hostElem is Floor)
-                                {
-                                    symbolToUse = pipeSlabSymbol;
-                                    DebugLogger.Log($"[PipeSleeveCommand] Host is Floor. Using pipeSlabSymbol.");
-                                }
-                                else if (hostElem is Wall)
-                                {
-                                    symbolToUse = pipeWallSymbol;
-                                    DebugLogger.Log($"[PipeSleeveCommand] Host is Wall. Using pipeWallSymbol.");
-                                }
-                                else if (hostElem is FamilyInstance fi && fi.Category != null && fi.Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming)
-                                {
-                                    symbolToUse = pipeWallSymbol;
-                                    DebugLogger.Log($"[PipeSleeveCommand] Host is Structural Framing. Using pipeWallSymbol.");
-                                }
-                                else
-                                {
-                                    symbolToUse = pipeWallSymbol; // fallback
-                                    DebugLogger.Log($"[PipeSleeveCommand] Host is other type ({hostType}). Using pipeWallSymbol as fallback.");
-                                }
-
-                                if (symbolToUse == null)
-                                {
-                                    DebugLogger.Log($"[PipeSleeveCommand] ERROR: symbolToUse is null for host {hostType} {hostId}.");
-                                    errorCount++;
-                                    continue;
-                                }
-
-                                placer.PlaceSleeve(pipe, intersectionPoint, pipeLine.Direction, symbolToUse, hostElem);
-                                placedCount++;
-                                DebugLogger.Log($"[PipeSleeveCommand] Placed sleeve for pipe {pipe.Id} in host {hostType} {hostId}.");
-                            }
-                            catch (Exception ex)
-                            {
-                                DebugLogger.Log($"[PipeSleeveCommand] ERROR placing sleeve for pipe {pipe.Id} in host {hostType} {hostId}: {ex.Message}");
-                                errorCount++;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        skippedCount++;
-                    }
-                }
+                var placerService = new PipeSleevePlacerService(
+                    doc,
+                    pipeTuples,
+                    structuralElements,
+                    pipeWallSymbol!,
+                    pipeSlabSymbol!,
+                    existingSleeves,
+                    Log
+                );
+                placerService.PlaceAllPipeSleeves();
+                placedCount = placerService.PlacedCount;
+                skippedCount = placerService.SkippedCount;
+                errorCount = placerService.ErrorCount;
                 tx.Commit();
+                Log($"Placement complete. Placed: {placedCount}, Skipped: {skippedCount}, Errors: {errorCount}");
+
             }
             return Result.Succeeded;
         }

@@ -59,6 +59,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <returns>List of FamilyInstance individual sleeves within tolerance</returns>
         public static List<FamilyInstance> FindIndividualSleevesAtLocation(Document doc, XYZ location, double tolerance, string sleeveType = null)
         {
+            // If tolerance is not explicitly set to a small value, default to 10mm for individual-to-individual suppression
+            double minTolerance = UnitUtils.ConvertToInternalUnits(10.0, UnitTypeId.Millimeters);
+            if (tolerance > minTolerance * 1.1) // allow a little float for explicit overrides
+                tolerance = minTolerance;
 
             var collector = new FilteredElementCollector(doc)
                 .OfClass(typeof(FamilyInstance))
@@ -93,7 +97,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var collector = new FilteredElementCollector(doc)
                 .OfClass(typeof(FamilyInstance))
                 .Cast<FamilyInstance>()
-                .Where(fi => fi.Symbol.Family.Name.StartsWith("Cluster", StringComparison.OrdinalIgnoreCase)); // Cluster sleeves: family name starts with 'Cluster'
+                .Where(fi =>
+                    fi.Symbol.Family.Name.StartsWith("Cluster", StringComparison.OrdinalIgnoreCase)
+                    || fi.Symbol.Family.Name.EndsWith("Rect", StringComparison.OrdinalIgnoreCase)
+                ); // Cluster sleeves: family name starts with 'Cluster' OR ends with 'Rect'
 
             var found = new List<FamilyInstance>();
             foreach (var fi in collector)
@@ -115,14 +122,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             location.Z >= expandedBounds.Min.Z && location.Z <= expandedBounds.Max.Z)
                         {
                             found.Add(fi);
-                            DebugLogger.Log($"[OpeningDuplicationChecker] Cluster {fi.Symbol.Family.Name} (ID:{fi.Id.IntegerValue}) detected via bounding box at location {location}");
+                            DebugLogger.Log($"[OpeningDuplicationChecker] Cluster {fi.Symbol.Family.Name} (ID:{fi.Id.Value}) detected via bounding box at location {location}");
                             continue;
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    DebugLogger.Log($"[OpeningDuplicationChecker] Warning: Could not get bounding box for cluster {fi.Id.IntegerValue}: {ex.Message}");
+                    DebugLogger.Log($"[OpeningDuplicationChecker] Warning: Could not get bounding box for cluster {fi.Id.Value}: {ex.Message}");
                 }
                 
                 // Fallback to center point distance if bounding box fails
@@ -130,7 +137,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (fiLocation != null && location.DistanceTo(fiLocation) <= tolerance)
                 {
                     found.Add(fi);
-                    DebugLogger.Log($"[OpeningDuplicationChecker] Cluster {fi.Symbol.Family.Name} (ID:{fi.Id.IntegerValue}) detected via center point distance at location {location}");
+                    DebugLogger.Log($"[OpeningDuplicationChecker] Cluster {fi.Symbol.Family.Name} (ID:{fi.Id.Value}) detected via center point distance at location {location}");
                 }
             }
             return found;
@@ -167,14 +174,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             location.Y >= expandedMin.Y && location.Y <= expandedMax.Y &&
                             location.Z >= expandedMin.Z && location.Z <= expandedMax.Z)
                         {
-                            DebugLogger.Log($"[OpeningDuplicationChecker] Location {location} is within cluster {cluster.Symbol.Family.Name} (ID:{cluster.Id.IntegerValue}) bounding box");
+                            DebugLogger.Log($"[OpeningDuplicationChecker] Location {location} is within cluster {cluster.Symbol.Family.Name} (ID:{cluster.Id.Value}) bounding box");
                             return true;
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    DebugLogger.Log($"[OpeningDuplicationChecker] Warning: Could not check bounding box for cluster {cluster.Id.IntegerValue}: {ex.Message}");
+                    DebugLogger.Log($"[OpeningDuplicationChecker] Warning: Could not check bounding box for cluster {cluster.Id.Value}: {ex.Message}");
                 }
             }
             return false;
@@ -189,7 +196,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <param name="tolerance">Distance tolerance (internal units)</param>
         /// <param name="ignoreIds">ElementIds to ignore in the check</param>
         /// <returns>True if any sleeve (individual or cluster) exists at the location</returns>
-        public static bool IsAnySleeveAtLocation(Document doc, XYZ location, double tolerance, IEnumerable<ElementId> ignoreIds = null)
+        public static bool IsAnySleeveAtLocation(Document doc, XYZ location, double tolerance, IEnumerable<ElementId>? ignoreIds = null)
         {
             // Check for individual sleeves
             var individualSleeves = FindIndividualSleevesAtLocation(doc, location, tolerance);
@@ -212,7 +219,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Log($"[OpeningDuplicationChecker] Found {clusterSleeves.Count} cluster sleeves within {UnitUtils.ConvertFromInternalUnits(tolerance, UnitTypeId.Millimeters):F0}mm of location {location}");
                 foreach (var cluster in clusterSleeves)
                 {
-                    DebugLogger.Log($"  - Cluster: {cluster.Symbol.Family.Name} - {cluster.Symbol.Name} (ID:{cluster.Id.IntegerValue})");
+                    DebugLogger.Log($"  - Cluster: {cluster.Symbol.Family.Name} - {cluster.Symbol.Name} (ID:{cluster.Id.Value})");
                 }
                 return true;
             }
@@ -231,7 +238,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <param name="clusterExpansion">Additional expansion for cluster bounding boxes (internal units)</param>
         /// <param name="ignoreIds">ElementIds to ignore in the check</param>
         /// <returns>True if any sleeve (individual or cluster) exists at the location</returns>
-        public static bool IsAnySleeveAtLocationEnhanced(Document doc, XYZ location, double tolerance, double clusterExpansion = 0.0, IEnumerable<ElementId> ignoreIds = null)
+        public static bool IsAnySleeveAtLocationEnhanced(Document doc, XYZ location, double tolerance, double clusterExpansion = 0.0, IEnumerable<ElementId>? ignoreIds = null)
         {
             // Check for individual sleeves using distance
             var individualSleeves = FindIndividualSleevesAtLocation(doc, location, tolerance);
@@ -268,17 +275,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var summary = new StringBuilder();
             if (individual.Any())
             {
-                summary.AppendLine($"Individual sleeves: {string.Join(", ", individual.Select(s => $"{s.Symbol.Name} (ID:{s.Id.IntegerValue})"))}");
+                summary.AppendLine($"Individual sleeves: {string.Join(", ", individual.Select(s => $"{s.Symbol.Name} (ID:{s.Id.Value})"))}");
             }
             if (clusters.Any())
             {
-                summary.AppendLine($"Cluster sleeves: {string.Join(", ", clusters.Select(s => $"{s.Symbol.Name} (ID:{s.Id.IntegerValue})"))}");
+                summary.AppendLine($"Cluster sleeves: {string.Join(", ", clusters.Select(s => $"{s.Symbol.Name} (ID:{s.Id.Value})"))}");
             }
             if (!individual.Any() && !clusters.Any())
             {
                 summary.AppendLine("No sleeves found at location");
             }
             return summary.ToString().TrimEnd();
+        }
+
+        /// <summary>
+        /// Finds all cable tray sleeves in the document.
+        /// </summary>
+        /// <param name="doc">The Revit document.</param>
+        /// <returns>A list of FamilyInstance objects representing cable tray sleeves.</returns>
+        public static List<FamilyInstance> FindCableTraySleeves(Document doc)
+        {
+            return new FilteredElementCollector(doc)
+                .OfClass(typeof(FamilyInstance))
+                .Cast<FamilyInstance>()
+                .Where(fi => 
+                    (fi.Symbol.Family.Name.Contains("OpeningOnWall") || fi.Symbol.Family.Name.Contains("OpeningOnSlab"))
+                    && fi.Symbol.Name.StartsWith("CT#", StringComparison.OrdinalIgnoreCase)
+                )
+                .ToList();
         }
     }
 }

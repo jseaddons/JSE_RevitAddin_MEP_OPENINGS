@@ -13,6 +13,8 @@ using JSE_RevitAddin_MEP_OPENINGS.Commands;
 using Autodesk.Revit.DB.Electrical;  // for CableTray
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 
+using JSE_RevitAddin_MEP_OPENINGS.Utils;
+
 namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 {
     [Transaction(TransactionMode.Manual)]
@@ -65,15 +67,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                                    $"- Logs Directory Check: {System.IO.Directory.Exists(@"c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs")}";
             
             DebugLogger.Log(diagnosticInfo);
-            TaskDialog.Show("Structural Logger Diagnostic", diagnosticInfo);
+            DebugLogger.Log($"Structural Logger Diagnostic: {diagnosticInfo}");
             
             // Initialization code
             UIDocument uiDoc = commandData.Application.ActiveUIDocument;
             Document doc = uiDoc.Document;
 
-            // Call each sleeve placement in sequence
+            // Cleanup: Delete all zero-size sleeves before placement
+            int deletedSleeves = SleeveCleanupHelper.DeleteZeroSizeSleeves(doc);
+            if (deletedSleeves > 0)
+            {
+                DebugLogger.Log($"Deleted {deletedSleeves} zero-size sleeves before placement.");
+            }
+
+            // OOP: Collect and filter ducts by section box, then pass to PlaceDuctSleeves
             DebugLogger.Log("Starting duct sleeve placement...");
-            PlaceDuctSleeves(commandData, doc);
+            var allMepElements = JSE_RevitAddin_MEP_OPENINGS.Helpers.MepElementCollectorHelper.CollectMepElementsVisibleOnly(doc);
+            var allDucts = allMepElements
+                .Where(tuple => tuple.Item1 is Autodesk.Revit.DB.Mechanical.Duct)
+                .Select(tuple => ((Autodesk.Revit.DB.Mechanical.Duct)tuple.Item1, tuple.Item2))
+                .ToList();
+            var filteredDucts = JSE_RevitAddin_MEP_OPENINGS.Helpers.SectionBoxHelper.FilterElementsBySectionBox(
+                commandData.Application.ActiveUIDocument,
+                allDucts.Select(d => (d.Item1 as Element, d.Item2)).ToList()
+            )
+            .Select(t => ((Autodesk.Revit.DB.Mechanical.Duct)t.element, t.transform)).ToList();
+            PlaceDuctSleeves(commandData, doc, filteredDucts);
             
             DebugLogger.Log("Starting damper sleeve placement...");
             PlaceDamperSleeves(commandData, doc);
@@ -85,7 +104,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             PlacePipeSleeves(commandData, doc);
             
             DebugLogger.Log("Starting rectangular pipe clustering...");
-            PlaceRectangularPipeOpenings(commandData, doc);
+            PlaceRectangularPipeOpenings(commandData, doc); // Enabled to allow PipeOpeningsRectCommand to run
             
             DebugLogger.Log("Starting rectangular sleeve clustering...");
             PlaceRectangularSleeveClusterV2(commandData, doc);
@@ -116,14 +135,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             return Result.Succeeded;
         }
 
-        private void PlaceDuctSleeves(ExternalCommandData commandData, Document doc)
+        private void PlaceDuctSleeves(ExternalCommandData commandData, Document doc, List<(Autodesk.Revit.DB.Mechanical.Duct, Autodesk.Revit.DB.Transform?)>? filteredDucts = null)
         {
             try
             {
                 var ductCommand = new DuctSleeveCommand();
                 string message = "";
                 ElementSet elements = new ElementSet();
-                var result = ductCommand.Execute(commandData, ref message, elements);
+                var result = ductCommand.Execute(commandData, ref message, elements, filteredDucts);
                 if (result != Result.Succeeded)
                 {
                     DebugLogger.Log($"Duct sleeve placement failed: {message}");
@@ -192,7 +211,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             try
             {
                 DebugLogger.Log("Executing PipeSleeveCommand...");
-                TaskDialog.Show("DEBUG", "PipeSleeveCommand is being triggered from OpeningsPLaceCommand.");
                 var pipeCommand = new PipeSleeveCommand();
                 string message = "";
                 ElementSet elements = new ElementSet();
@@ -200,18 +218,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 if (result != Result.Succeeded)
                 {
                     DebugLogger.Log($"Pipe sleeve placement failed: {message}");
-                    TaskDialog.Show("Pipe Sleeve Placement Failed", $"Pipe sleeve placement failed: {message}");
                 }
                 else
                 {
                     DebugLogger.Log("Pipe sleeve placement completed successfully");
-                    TaskDialog.Show("Pipe Sleeve Placement Success", "Pipe sleeve placement completed successfully");
                 }
             }
             catch (Exception ex)
             {
                 DebugLogger.Log($"Error placing pipe sleeves: {ex.Message}");
-                TaskDialog.Show("Pipe Sleeve Placement Exception", $"Error placing pipe sleeves: {ex.Message}");
             }
         }
 

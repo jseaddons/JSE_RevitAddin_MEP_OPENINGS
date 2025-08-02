@@ -9,6 +9,68 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
     public static class PipeSleeveIntersectionService
     {
+        // Overload: Accepts a Line (hostLine) for intersection, for linked pipe support
+        public static List<(Element, BoundingBoxXYZ, XYZ)> FindDirectStructuralIntersectionBoundingBoxesVisibleOnly(
+            Pipe pipe, List<(Element, Transform?)> structuralElements, Line hostLine)
+        {
+            var results = new List<(Element, BoundingBoxXYZ, XYZ)>();
+            if (hostLine == null) return results;
+            foreach (var tuple in structuralElements)
+            {
+                Element structuralElement = tuple.Item1;
+                Transform? linkTransform = tuple.Item2;
+                try
+                {
+                    var options = new Options();
+                    var geometry = structuralElement.get_Geometry(options);
+                    Solid? solid = null;
+                    foreach (GeometryObject geomObj in geometry)
+                    {
+                        if (geomObj is Solid s && s.Volume > 0) { solid = s; break; }
+                        else if (geomObj is GeometryInstance gi)
+                        {
+                            foreach (GeometryObject instObj in gi.GetInstanceGeometry())
+                                if (instObj is Solid s2 && s2.Volume > 0) { solid = s2; break; }
+                            if (solid != null) break;
+                        }
+                    }
+                    if (solid == null) continue;
+                    if (linkTransform != null) solid = SolidUtils.CreateTransformed(solid, linkTransform);
+                    // Intersect solid with hostLine, collect intersection points
+                    var intersectionPoints = new List<XYZ>();
+                    foreach (Face face in solid.Faces)
+                    {
+                        IntersectionResultArray ira;
+                        if (face.Intersect(hostLine, out ira) == SetComparisonResult.Overlap && ira != null)
+                            foreach (IntersectionResult ir in ira) intersectionPoints.Add(ir.XYZPoint);
+                    }
+                    if (intersectionPoints.Count > 0)
+                    {
+                        // Compute bounding box of intersection points
+                        double minX = double.MaxValue, minY = double.MaxValue, minZ = double.MaxValue;
+                        double maxX = double.MinValue, maxY = double.MinValue, maxZ = double.MinValue;
+                        foreach (var pt in intersectionPoints)
+                        {
+                            if (pt.X < minX) minX = pt.X;
+                            if (pt.Y < minY) minY = pt.Y;
+                            if (pt.Z < minZ) minZ = pt.Z;
+                            if (pt.X > maxX) maxX = pt.X;
+                            if (pt.Y > maxY) maxY = pt.Y;
+                            if (pt.Z > maxZ) maxZ = pt.Z;
+                        }
+                        var bbox = new BoundingBoxXYZ
+                        {
+                            Min = new XYZ(minX, minY, minZ),
+                            Max = new XYZ(maxX, maxY, maxZ)
+                        };
+                        var center = new XYZ((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2);
+                        results.Add((structuralElement, bbox, center));
+                    }
+                }
+                catch { }
+            }
+            return results;
+        }
         // Collect all structural elements (walls, floors, framing) from host and visible linked models only
         public static List<(Element, Transform?)> CollectStructuralElementsForDirectIntersectionVisibleOnly(Document doc)
         {

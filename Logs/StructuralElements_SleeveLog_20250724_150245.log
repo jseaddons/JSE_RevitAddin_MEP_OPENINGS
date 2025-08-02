@@ -1,8 +1,0 @@
-===== STRUCTURAL ELEMENTS SLEEVE PLACEMENT LOG =====
-Session Started: 2025-07-24 15:02:45
-Log File: StructuralElements_SleeveLog_20250724_150245.log
-JSE RevitAddin MEP Openings - Structural Elements Support
-====================================================
-
-[2025-07-24 15:02:45.285] SYSTEM ID=0: OPENINGS PLACE COMMAND STARTED - Master command executing all sleeve placement commands with structural support
-[2025-07-24 15:02:45.286] DIAGNOSTIC ID=999: LOGGER_TEST - This is a test entry to verify logging is working

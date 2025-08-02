@@ -3,7 +3,9 @@ using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Electrical;
 using Autodesk.Revit.UI;
+using Autodesk.Revit.UI.Selection;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
+using Autodesk.Revit.ApplicationServices;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Commands
@@ -87,12 +89,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             
             // Collect cable trays from both host and visible linked models
             var mepElements = JSE_RevitAddin_MEP_OPENINGS.Helpers.MepElementCollectorHelper.CollectMepElementsVisibleOnly(doc);
-            var trays = mepElements
+            var trayTuples = mepElements
                 .Where(tuple => tuple.Item1 is CableTray)
-                .Select(tuple => tuple.Item1 as CableTray)
-                .Where(t => t != null)
+                .Select(tuple => (tuple.Item1 as CableTray, tuple.Item2))
+                .Where(t => t.Item1 != null)
                 .ToList();
-            if (trays.Count == 0)
+            if (trayTuples.Count == 0)
             {
                 TaskDialog.Show("Info", "No cable trays found in host or linked models.");
                 return Result.Succeeded;
@@ -119,15 +121,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             }
             
             // Test first cable tray against walls using our direct solid method
-            var firstTray = trays.FirstOrDefault();
+            var firstTrayTuple = trayTuples.FirstOrDefault();
+            var firstTray = firstTrayTuple.Item1;
             if (firstTray != null && linkedWalls.Any())
             {
                 var wallIntersections = FindDirectStructuralIntersections(firstTray, linkedWalls);
-            StructuralElementLogger.LogStructuralElement("DEBUG_WALLS", (int)firstTray.Id.Value, "WALL_SOLID_RESULT", $"Direct solid method found {wallIntersections.Count} wall intersections");
+                StructuralElementLogger.LogStructuralElement("DEBUG_WALLS", (int)firstTray.Id.Value, "WALL_SOLID_RESULT", $"Direct solid method found {wallIntersections.Count} wall intersections");
             }
 
-            // Collect structural elements for direct solid intersection (replace ReferenceIntersector approach)
-            var directStructuralElements = CollectStructuralElementsForDirectIntersection(doc);
+            // Collect structural elements for direct solid intersection using global helper (only visible links)
+            var directStructuralElements = StructuralElementCollectorHelper.CollectStructuralElementsVisibleOnly(doc);
 
             // Place sleeves for each cable tray
             var placer = new CableTraySleevePlacer(doc);
@@ -141,6 +144,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 
             DebugLogger.Log($"Found {existingSleeves.Count} existing cable tray sleeves in the model");
 
+            // Log details of existing cable tray sleeves
+            var allExistingCTSleeves = OpeningDuplicationChecker.FindCableTraySleeves(doc);
+            if (allExistingCTSleeves.Any())
+            {
+                DebugLogger.Log($"--- Details of Existing Cable Tray Sleeves ---");
+                foreach (var sleeve in allExistingCTSleeves)
+                {
+                    XYZ? sleeveLocation = (sleeve.Location as LocationPoint)?.Point;
+                    double width = sleeve.LookupParameter("Width")?.AsDouble() ?? 0.0;
+                    double height = sleeve.LookupParameter("Height")?.AsDouble() ?? 0.0;
+                    double depth = sleeve.LookupParameter("Depth")?.AsDouble() ?? 0.0;
+
+                    DebugLogger.Log($"  Sleeve ID: {sleeve.Id.Value}, Location: {sleeveLocation?.ToString() ?? "N/A"}, Width: {UnitUtils.ConvertFromInternalUnits(width, UnitTypeId.Millimeters):F1}mm, Height: {UnitUtils.ConvertFromInternalUnits(height, UnitTypeId.Millimeters):F1}mm, Depth: {UnitUtils.ConvertFromInternalUnits(depth, UnitTypeId.Millimeters):F1}mm");
+                }
+                DebugLogger.Log($"------------------------------------------");
+            }
+
             // Create a map of existing sleeve locations for quick lookup
             var existingSleeveLocations = existingSleeves.ToDictionary(
                 sleeve => sleeve,
@@ -148,15 +168,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             );
 
             // Initialize counters for detailed logging
-            int totalTrays = trays.Count();
+            int totalTrays = trayTuples.Count();
             int intersectionCount = 0;
             int placedCount = 0;
             int missingCount = 0;
             int skippedExistingCount = 0; // Counter for trays with existing sleeves
             int structuralElementsDetected = 0; // Counter for structural elements
             int structuralSleevesPlacer = 0; // Counter for successful structural sleeve placements
-            DebugLogger.Log($"Found {totalTrays} cable trays to process");
-            StructuralElementLogger.LogStructuralElement("SYSTEM", 0, "PROCESSING STARTED", $"Total cable trays to process: {totalTrays}");
+            int totalTrayTuples = trayTuples.Count();
+            DebugLogger.Log($"Found {totalTrayTuples} cable trays to process");
+            StructuralElementLogger.LogStructuralElement("SYSTEM", 0, "PROCESSING STARTED", $"Total cable trays to process: {totalTrayTuples}");
 
             // HashSet for duplicate suppression (robust, like pipes/ducts)
             HashSet<ElementId> processedCableTrays = new HashSet<ElementId>();
@@ -166,8 +187,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 DebugLogger.Log("Transaction started for cable tray sleeve placement");
                 tx.Start();
                 DebugLogger.Log("Starting wall intersection tests for cable trays");
-                foreach (var tray in trays)
+                foreach (var tuple in trayTuples)
                 {
+                    var tray = tuple.Item1;
+                    var transform = tuple.Item2;
                     if (tray == null)
                         continue;
                     if (processedCableTrays.Contains(tray.Id))
@@ -181,48 +204,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         DebugLogger.Log($"CableTray ID={tray.Id.Value}: no valid location curve, skipping");
                         continue;
                     }
-
+                    // Transform geometry if from a linked model
+                    Line hostLine = curve;
+                    if (transform != null)
+                    {
+                        hostLine = Line.CreateBound(
+                            transform.OfPoint(curve.GetEndPoint(0)),
+                            transform.OfPoint(curve.GetEndPoint(1))
+                        );
+                    }
                     // Get tray dimensions for sleeve placement
                     double width = tray.LookupParameter("Width")?.AsDouble() ?? 0.0;
                     double height = tray.LookupParameter("Height")?.AsDouble() ?? 0.0;
-
                     // Enhanced multi-direction raycasting for WALLS ONLY (keep existing wall detection working)
-                    XYZ rayDir = curve.Direction;
-
+                    XYZ rayDir = hostLine.Direction;
                     // Cast rays from multiple points along the cable tray (start, 25%, 50%, 75%, end)
                     var testPoints = new List<XYZ>
                      {
-                         curve.GetEndPoint(0),           // Start point
-                         curve.Evaluate(0.25, true),    // 25% along
-                         curve.Evaluate(0.5, true),     // Midpoint  
-                         curve.Evaluate(0.75, true),    // 75% along
-                         curve.GetEndPoint(1)           // End point
+                         hostLine.GetEndPoint(0),           // Start point
+                         hostLine.Evaluate(0.25, true),    // 25% along
+                         hostLine.Evaluate(0.5, true),     // Midpoint  
+                         hostLine.Evaluate(0.75, true),    // 75% along
+                         hostLine.GetEndPoint(1)           // End point
                      };
-
                     var allWallHits = new List<(ReferenceWithContext hit, XYZ direction, XYZ rayOrigin)>();
-
                     // Test wall intersections using existing ReferenceIntersector (keep this working)
                     foreach (var testPoint in testPoints)
                     {
                         // Cast in primary direction (forward/backward)
                         var hitsFwd = refIntersector.Find(testPoint, rayDir)?.Where(h => h != null).OrderBy(h => h.Proximity).ToList();
                         var hitsBack = refIntersector.Find(testPoint, rayDir.Negate())?.Where(h => h != null).OrderBy(h => h.Proximity).ToList();
-
                         // Also cast in perpendicular directions to catch walls parallel to cable tray
                         var perpDir1 = new XYZ(-rayDir.Y, rayDir.X, 0).Normalize();
                         var perpDir2 = perpDir1.Negate();
                         var hitsPerp1 = refIntersector.Find(testPoint, perpDir1)?.Where(h => h != null).OrderBy(h => h.Proximity).ToList();
                         var hitsPerp2 = refIntersector.Find(testPoint, perpDir2)?.Where(h => h != null).OrderBy(h => h.Proximity).ToList();
-
                         // Add all hits with their ray origin point
                         if (hitsFwd?.Any() == true) allWallHits.AddRange(hitsFwd.Select(h => (h, rayDir, testPoint)));
                         if (hitsBack?.Any() == true) allWallHits.AddRange(hitsBack.Select(h => (h, rayDir.Negate(), testPoint)));
                         if (hitsPerp1?.Any() == true) allWallHits.AddRange(hitsPerp1.Select(h => (h, perpDir1, testPoint)));
                         if (hitsPerp2?.Any() == true) allWallHits.AddRange(hitsPerp2.Select(h => (h, perpDir2, testPoint)));
                     }
-
                     // Also check for structural element intersections using direct solid approach
-                    var structuralIntersections = FindDirectStructuralIntersections(tray, directStructuralElements);
+                    // Use the MEPCurve overload, which works for Duct, CableTray, and Pipe
+                    var structuralIntersections = JSE_RevitAddin_MEP_OPENINGS.Services.CableTraySleeveIntersectionService.FindDirectStructuralIntersectionBoundingBoxesVisibleOnly(tray, directStructuralElements, hostLine);
 
                     // Process wall intersections (existing logic, keep working)
                     ReferenceWithContext? bestWallHit = null;
@@ -242,86 +267,69 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     int structuralHitCount = structuralIntersections.Count;
                     DebugLogger.Log($"CableTray ID={tray.Id.Value}: Wall hits: {wallHitCount}, Structural hits: {structuralHitCount}");
 
-                    // Process wall intersections first (preserve existing wall functionality)
-                    if (bestWallHit != null)
-                    {
-                        var r = bestWallHit.GetReference();
-                        var linkInst = doc.GetElement(r.ElementId) as RevitLinkInstance;
-                        var targetDoc = linkInst != null ? linkInst.GetLinkDocument() : doc;
-                        ElementId elemId = linkInst != null ? r.LinkedElementId : r.ElementId;
-                        Element? linkedReferenceElement = targetDoc?.GetElement(elemId);
-
-                        if (linkedReferenceElement != null)
-                        {
-                            string elementTypeName = linkedReferenceElement.Category?.Name ?? "NO_CATEGORY";
-                            DebugLogger.Log($"CableTray ID={tray.Id.Value}: detected wall element: {elementTypeName}, ID={linkedReferenceElement.Id.Value}");
-                            StructuralElementLogger.LogStructuralElement(elementTypeName, (int)linkedReferenceElement.Id.Value, "ELEMENT DETECTED", $"Hit by cable tray {tray.Id.Value}");
-
-                            // Calculate intersection point for wall
-                            XYZ intersectionPoint = bestWallRayOrigin + bestWallDir * bestWallHit.Proximity;
-                            StructuralElementLogger.LogStructuralElement("CableTray-WALL INTERSECTION", 0, "INTERSECTION_DETAILS", $"CableTray ID={tray.Id.Value}, Wall ID={linkedReferenceElement.Id.Value}, Position=({intersectionPoint.X:F9}, {intersectionPoint.Y:F9}, {intersectionPoint.Z:F9})");
-
-                            // Always use CableTrayOpeningOnWall family for wall/framing
-                            var wallFamilySymbol = ctWallSymbols.FirstOrDefault();
-                            if (wallFamilySymbol == null)
-                            {
-                                TaskDialog.Show("Error", "Cable tray wall sleeve family (CableTrayOpeningOnWall) is missing. Please load it and rerun the command.");
-                                StructuralElementLogger.LogStructuralElement(elementTypeName, (int)linkedReferenceElement.Id.Value, "SLEEVE_FAILED", "Reason: Wall family symbol not found");
-                                skippedExistingCount++;
-                                processedCableTrays.Add(tray.Id);
-                                continue;
-                            }
-                            DebugLogger.Log($"CableTray ID={tray.Id.Value}: Using wall family: {wallFamilySymbol.Family.Name}, Symbol: {wallFamilySymbol.Name}");
-                            if (PlaceCableTraySleeveAtLocation_Wall(doc, wallFamilySymbol, linkedReferenceElement, intersectionPoint, bestWallDir ?? XYZ.BasisX, width, height, tray.Id))
-                            {
-                                placedCount++;
-                                processedCableTrays.Add(tray.Id);
-                                DebugLogger.Log($"CableTray ID={tray.Id.Value}: Wall sleeve successfully placed at {intersectionPoint}");
-                            }
-                            else
-                            {
-                                skippedExistingCount++;
-                                processedCableTrays.Add(tray.Id); // Still mark as processed to avoid duplicates
-                                StructuralElementLogger.LogStructuralElement(elementTypeName, (int)linkedReferenceElement.Id.Value, "SLEEVE_FAILED", "Reason: Existing sleeve found at location");
-                            }
-                        }
-                    }
-
+                    // PRIORITIZE STRUCTURAL INTERSECTIONS FIRST (floors and beams)
                     // Process structural intersections using new direct approach
-                    foreach (var (structuralElement, intersectionPoint) in structuralIntersections)
+                    bool structuralSleeveePlaced = false;
+                    foreach (var intersectionTuple in structuralIntersections)
                     {
                         if (processedCableTrays.Contains(tray.Id))
                         {
-                            // Skip if already placed wall sleeve for this tray
+                            // Skip if already placed sleeve for this tray
                             continue;
                         }
-
+                        // Fix tuple deconstruction for 3-tuple
+                        var structuralElement = intersectionTuple.Item1;
+                        var bbox = intersectionTuple.Item2;
+                        var intersectionPoint = intersectionTuple.Item3;
                         structuralElementsDetected++;
                         string elementTypeName = structuralElement.Category?.Name ?? "STRUCTURAL";
                         DebugLogger.Log($"CableTray ID={tray.Id.Value}: detected structural element: {elementTypeName}, ID={structuralElement.Id.Value}");
                         StructuralElementLogger.LogStructuralElement(elementTypeName, (int)structuralElement.Id.Value, "STRUCTURAL DETECTED", $"Hit by cable tray {tray.Id.Value}");
                         StructuralElementLogger.LogStructuralElement("CableTray-STRUCTURAL INTERSECTION", 0, "INTERSECTION_DETAILS", $"CableTray ID={tray.Id.Value}, Structural ID={structuralElement.Id.Value}, Position=({intersectionPoint.X:F9}, {intersectionPoint.Y:F9}, {intersectionPoint.Z:F9})");
-
-                        // For structural elements, calculate direction based on cable tray direction
+                        // For structural elements, always align sleeve to the cable tray direction
                         XYZ sleeveDirection = rayDir;
-
-                        // Decide which family to use based on host type: OnWall for structural framing, OnSlab for floors
                         FamilySymbol? familySymbolToUse = null;
                         string linkedReferenceType = "UNKNOWN";
-                        if (structuralElement is Floor)
+                        if (structuralElement is Floor floor)
                         {
                             familySymbolToUse = ctSlabSymbols.FirstOrDefault();
                             linkedReferenceType = "FLOOR";
+
+                            // FLOOR-SPECIFIC DEBUG: Add detailed floor detection logging for cable tray
+                            var isStructuralParam = floor.get_Parameter(BuiltInParameter.FLOOR_PARAM_IS_STRUCTURAL);
+                            bool isStructural = isStructuralParam != null && isStructuralParam.AsInteger() == 1;
+                            string floorStructuralStatus = isStructural ? "STRUCTURAL" : "NON-STRUCTURAL";
+                            string floorDebugMsg = $"CABLETRAY FLOOR DEBUG: CableTray {tray.Id.Value} intersects Floor {floor.Id.Value} - Status: {floorStructuralStatus}";
+                            DebugLogger.Log($"[CableTraySleeveCommand] {floorDebugMsg}");
+
+                            if (!isStructural)
+                            {
+                                string skipMsg = $"SKIP: CableTray {tray.Id.Value} host Floor {floor.Id.Value} is NON-STRUCTURAL. Sleeve will NOT be placed.";
+                                DebugLogger.Log($"[CableTraySleeveCommand] {skipMsg}");
+                                skippedExistingCount++;
+                                processedCableTrays.Add(tray.Id);
+                                continue;
+                            }
+
+                            // Check floor family symbol availability  
+                            if (familySymbolToUse != null)
+                            {
+                                string symbolMsg = $"CABLETRAY FLOOR SYMBOL: Found floor symbol: {familySymbolToUse.Family.Name} - {familySymbolToUse.Name}";
+                                DebugLogger.Log($"[CableTraySleeveCommand] {symbolMsg}");
+                            }
+                            else
+                            {
+                                string noSymbolMsg = $"CABLETRAY FLOOR SYMBOL ERROR: No floor sleeve symbol available for CableTray {tray.Id.Value}";
+                                DebugLogger.Log($"[CableTraySleeveCommand] {noSymbolMsg}");
+                            }
                         }
                         else if (structuralElement is FamilyInstance famInst && famInst.Category != null && famInst.Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming)
                         {
-                            // Always use CableTrayOpeningOnWall family for structural framing
                             familySymbolToUse = ctWallSymbols.FirstOrDefault();
                             linkedReferenceType = "STRUCTURAL FRAMING (CABLETRAY FAMILY)";
                         }
                         else
                         {
-                            // Fallback: use slab symbol if nothing else
                             familySymbolToUse = ctSlabSymbols.FirstOrDefault();
                             linkedReferenceType = structuralElement.Category?.Name ?? "UNKNOWN";
                         }
@@ -335,19 +343,90 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             continue;
                         }
                         DebugLogger.Log($"CableTray ID={tray.Id.Value}: Using family: {familySymbolToUse.Family.Name}, Symbol: {familySymbolToUse.Name} for linked reference type {linkedReferenceType}");
-                        if (PlaceCableTraySleeveAtLocation_Structural(doc, familySymbolToUse, structuralElement, intersectionPoint, sleeveDirection, width, height, tray))
+                        
+                        // Apply the same width-based orientation logic as ducts for floor hosts
+                        if (structuralElement is Floor)
                         {
-                            structuralSleevesPlacer++;
-                            placedCount++;
-                            processedCableTrays.Add(tray.Id);
-                            DebugLogger.Log($"CableTray ID={(int)tray.Id.Value}: Structural sleeve successfully placed at {intersectionPoint}");
-                            break; // Only place one sleeve per cable tray
+                            // Only for floors: apply orientation logic and width/height swap if needed
+                            if (PlaceCableTraySleeveAtLocation_StructuralWithOrientation(doc, familySymbolToUse, structuralElement, intersectionPoint, sleeveDirection, width, height, tray))
+                            {
+                                structuralSleevesPlacer++;
+                                placedCount++;
+                                processedCableTrays.Add(tray.Id);
+                                structuralSleeveePlaced = true;
+                                DebugLogger.Log($"CableTray ID={(int)tray.Id.Value}: Structural sleeve successfully placed at {intersectionPoint} with width-based orientation");
+                                break; // Only place one sleeve per cable tray
+                            }
+                        }
+                        else if (structuralElement is Wall || (structuralElement is FamilyInstance famInst && famInst.Category != null && famInst.Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming))
+                        {
+                            // For wall/framing: do NOT apply floor orientation logic, use original width/height
+                            if (PlaceCableTraySleeveAtLocation_Structural(doc, familySymbolToUse, structuralElement, intersectionPoint, sleeveDirection, width, height, tray))
+                            {
+                                structuralSleevesPlacer++;
+                                placedCount++;
+                                processedCableTrays.Add(tray.Id);
+                                structuralSleeveePlaced = true;
+                                DebugLogger.Log($"CableTray ID={(int)tray.Id.Value}: Structural sleeve successfully placed at {intersectionPoint}");
+                                break; // Only place one sleeve per cable tray
+                            }
                         }
                         else
                         {
                             skippedExistingCount++;
                             processedCableTrays.Add(tray.Id); // Still mark as processed to avoid duplicates
                             StructuralElementLogger.LogStructuralElement(elementTypeName, (int)structuralElement.Id.Value, "SLEEVE_FAILED", "Reason: Existing sleeve found at location or placement failed");
+                        }
+                    }
+
+                    // ONLY check walls if NO structural sleeve was placed
+                    if (!structuralSleeveePlaced && allWallHits.Any())
+                    {
+                        // Find the hit closest to the cable tray path (prioritize hits from cable tray endpoints)
+                        var closestHit = allWallHits.OrderBy(x => x.hit.Proximity).First();
+                        var fallbackWallHit = closestHit.hit;
+                        var fallbackWallDir = closestHit.direction;
+                        var fallbackWallRayOrigin = closestHit.rayOrigin;
+
+                        var r = fallbackWallHit.GetReference();
+                        var linkInst = doc.GetElement(r.ElementId) as RevitLinkInstance;
+                        var targetDoc = linkInst != null ? linkInst.GetLinkDocument() : doc;
+                        ElementId elemId = linkInst != null ? r.LinkedElementId : r.ElementId;
+                        Element? linkedReferenceElement = targetDoc?.GetElement(elemId);
+
+                        if (linkedReferenceElement != null)
+                        {
+                            string elementTypeName = linkedReferenceElement.Category?.Name ?? "NO_CATEGORY";
+                            DebugLogger.Log($"CableTray ID={tray.Id.Value}: detected wall element: {elementTypeName}, ID={linkedReferenceElement.Id.Value}");
+                            StructuralElementLogger.LogStructuralElement(elementTypeName, (int)linkedReferenceElement.Id.Value, "ELEMENT DETECTED", $"Hit by cable tray {tray.Id.Value}");
+
+                            // Calculate intersection point for wall
+                            XYZ intersectionPoint = fallbackWallRayOrigin + fallbackWallDir * fallbackWallHit.Proximity;
+                            StructuralElementLogger.LogStructuralElement("CableTray-WALL INTERSECTION", 0, "INTERSECTION_DETAILS", $"CableTray ID={tray.Id.Value}, Wall ID={linkedReferenceElement.Id.Value}, Position=({intersectionPoint.X:F9}, {intersectionPoint.Y:F9}, {intersectionPoint.Z:F9})");
+
+                            // Always use CableTrayOpeningOnWall family for wall/framing
+                            var wallFamilySymbol = ctWallSymbols.FirstOrDefault();
+                            if (wallFamilySymbol == null)
+                            {
+                                TaskDialog.Show("Error", "Cable tray wall sleeve family (CableTrayOpeningOnWall) is missing. Please load it and rerun the command.");
+                                StructuralElementLogger.LogStructuralElement(elementTypeName, (int)linkedReferenceElement.Id.Value, "SLEEVE_FAILED", "Reason: Wall family symbol not found");
+                                skippedExistingCount++;
+                                processedCableTrays.Add(tray.Id);
+                                continue;
+                            }
+                            DebugLogger.Log($"CableTray ID={tray.Id.Value}: Using wall family: {wallFamilySymbol.Family.Name}, Symbol: {wallFamilySymbol.Name}");
+                            if (PlaceCableTraySleeveAtLocation_Wall(doc, wallFamilySymbol, linkedReferenceElement, intersectionPoint, fallbackWallDir ?? XYZ.BasisX, width, height, tray.Id))
+                            {
+                                placedCount++;
+                                processedCableTrays.Add(tray.Id);
+                                DebugLogger.Log($"CableTray ID={tray.Id.Value}: Wall sleeve successfully placed at {intersectionPoint}");
+                            }
+                            else
+                            {
+                                skippedExistingCount++;
+                                processedCableTrays.Add(tray.Id); // Still mark as processed to avoid duplicates
+                                StructuralElementLogger.LogStructuralElement(elementTypeName, (int)linkedReferenceElement.Id.Value, "SLEEVE_FAILED", "Reason: Existing sleeve found at location");
+                            }
                         }
                     }
 
@@ -400,17 +479,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 var placer = new CableTraySleevePlacer(doc);
                 if (hostElement is Wall wall)
                 {
-                    double wallDepth = 0.0;
-                    var wallType = wall.WallType;
-                    var bParam = wallType.LookupParameter("b");
-                    if (bParam != null && bParam.StorageType == StorageType.Double)
+                    // Calculate wall depth using proper wall thickness parameter (not "b" which is for structural framing)
+                    double wallDepth = wall.get_Parameter(BuiltInParameter.WALL_ATTR_WIDTH_PARAM)?.AsDouble() ?? wall.Width;
+                    if (wallDepth <= 0.0)
                     {
-                        wallDepth = bParam.AsDouble();
+                        // Fallback: try to get thickness from wall type
+                        var wallType = wall.WallType;
+                        var widthParam = wallType.get_Parameter(BuiltInParameter.WALL_ATTR_WIDTH_PARAM);
+                        if (widthParam != null && widthParam.StorageType == StorageType.Double)
+                        {
+                            wallDepth = widthParam.AsDouble();
+                        }
+                        else
+                        {
+                            wallDepth = UnitUtils.ConvertToInternalUnits(200.0, UnitTypeId.Millimeters); // 200mm fallback
+                            DebugLogger.Log($"CableTray ID={(int)trayId.Value}: Wall thickness parameter not found, using 200mm fallback");
+                        }
                     }
-                    else
-                    {
-                        DebugLogger.Log($"CableTray ID={(int)trayId.Value}: Wall type parameter 'b' not found or not double, using default depth");
-                    }
+                    DebugLogger.Log($"CableTray ID={(int)trayId.Value}: Wall thickness calculated: {UnitUtils.ConvertFromInternalUnits(wallDepth, UnitTypeId.Millimeters):F1}mm");
 
                     // Bounding box extent log for cable tray sleeve (wall)
                     double minX = placementPoint.X - width / 2.0;
@@ -483,12 +569,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     hostElement);
                 if (sleeveInstance != null)
                 {
-                    DebugLogger.Log($"CableTray ID={(int)tray.Id.Value}: Structural sleeve successfully placed at {placementPoint}");
+                    // --- Set clearance/depth for floors and beams (structural framing) ---
+                    double clearance = 0.0;
+                    if (hostElement is Floor floor)
+                    {
+                        var thicknessParam = floor.LookupParameter("Default Thickness");
+                        if (thicknessParam != null && thicknessParam.StorageType == StorageType.Double)
+                        {
+                            clearance = thicknessParam.AsDouble();
+                        }
+                    }
+                    else if (hostElement is FamilyInstance famInst && famInst.Category != null && famInst.Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming)
+                    {
+                        var bParam = famInst.Symbol.LookupParameter("b");
+                        if (bParam != null && bParam.StorageType == StorageType.Double)
+                        {
+                            clearance = bParam.AsDouble();
+                        }
+                    }
+                    // Set the clearance/depth parameter if found
+                    if (clearance > 0.0)
+                    {
+                        var depthParam = sleeveInstance.LookupParameter("Depth") ?? sleeveInstance.LookupParameter("d");
+                        if (depthParam != null && depthParam.StorageType == StorageType.Double && !depthParam.IsReadOnly)
+                        {
+                            depthParam.Set(clearance);
+                        }
+                    }
                     return true;
                 }
                 else
                 {
-                    DebugLogger.Log($"CableTray ID={(int)tray.Id.Value}: Failed to place structural sleeve at {placementPoint}");
                     return false;
                 }
             }
@@ -500,76 +611,117 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         }
 
         /// <summary>
-        /// Collects structural elements from both active and linked documents for direct solid intersection
-        /// Returns tuples of (element, linkTransform) where linkTransform is null for active document elements
+        /// Places a cable tray structural sleeve with width-based orientation for floors (similar to duct logic)
         /// </summary>
-        private List<(Element element, Transform linkTransform)> CollectStructuralElementsForDirectIntersection(Document doc)
+        private bool PlaceCableTraySleeveAtLocation_StructuralWithOrientation(
+            Document doc,
+            FamilySymbol ctSlabSymbol,
+            Element hostElement,
+            XYZ placementPoint,
+            XYZ direction,
+            double width,
+            double height,
+            CableTray tray)
         {
-            var structuralElements = new List<(Element, Transform)>();
-            
-            StructuralElementLogger.LogStructuralElement("DIRECT_COLLECTION", 0, "STARTING_COLLECTION", "Collecting structural elements for direct solid intersection");
-            
-            // Collect from linked documents (where structural elements actually exist)
-            var revitLinks = new FilteredElementCollector(doc)
-                .OfClass(typeof(RevitLinkInstance))
-                .Cast<RevitLinkInstance>()
-                .Where(link => link.GetLinkDocument() != null)
-                .ToList();
-                
-            foreach (var linkInstance in revitLinks)
+            try
             {
-                var linkDoc = linkInstance.GetLinkDocument();
-                var linkName = linkInstance.Name;
-                var linkTransform = linkInstance.GetTotalTransform(); // Critical: get the transformation matrix
+                int cableTrayId = (int)tray.Id.Value;
+                DebugLogger.Log($"[CableTraySleeveCommand] ORIENTATION ANALYSIS for CableTray {cableTrayId}");
                 
-                // Collect structural floors from linked document
-                var linkedFloors = new FilteredElementCollector(linkDoc)
-                    .OfCategory(BuiltInCategory.OST_Floors)
-                    .WhereElementIsNotElementType()
-                    .Cast<Floor>()
-                    .Where(floor => floor.get_Parameter(BuiltInParameter.FLOOR_PARAM_IS_STRUCTURAL)?.AsInteger() == 1)
-                    .ToList();
-                    
-                // Collect structural framing from linked document
-                var linkedFraming = new FilteredElementCollector(linkDoc)
-                    .OfCategory(BuiltInCategory.OST_StructuralFraming)
-                    .WhereElementIsNotElementType()
-                    .Cast<FamilyInstance>()
-                    .Where(frame => frame.StructuralType != Autodesk.Revit.DB.Structure.StructuralType.NonStructural)
-                    .ToList();
-                    
-                // Add with transform information
-                structuralElements.AddRange(linkedFloors.Select(floor => (floor as Element, linkTransform)));
-                structuralElements.AddRange(linkedFraming.Select(frame => (frame as Element, linkTransform)));
+                // Use the new bounding box based orientation helper
+                var orientationResult = JSE_RevitAddin_MEP_OPENINGS.Helpers.MepElementOrientationHelper.GetCableTrayWidthOrientation(tray);
+                string orientationStatus = orientationResult.orientation;
+                XYZ widthDirection = orientationResult.widthDirection;
                 
-                StructuralElementLogger.LogStructuralElement("DIRECT_COLLECTION", (int)linkInstance.Id.Value, "LINKED_COLLECTED", 
-                    $"From {linkName}: {linkedFloors.Count} structural floors, {linkedFraming.Count} structural framing, Transform: {linkTransform != null}");
+                DebugLogger.Log($"[CableTraySleeveCommand] Flow Direction: ({direction.X:F6},{direction.Y:F6},{direction.Z:F6})");
+                DebugLogger.Log($"[CableTraySleeveCommand] Width Direction: ({widthDirection.X:F6},{widthDirection.Y:F6},{widthDirection.Z:F6})");
+                DebugLogger.Log($"[CableTraySleeveCommand] CableTray {cableTrayId}: {orientationStatus}");
+                
+                // For floor hosts, only pass orientation if rotation is needed (Y-oriented)
+                XYZ? preCalculatedOrientation = null;
+                double widthToUse = width;
+                double heightToUse = height;
+                if (orientationStatus == "Y-ORIENTED") // Only for Y-oriented cable trays
+                {
+                    preCalculatedOrientation = widthDirection;
+                    DebugLogger.Log($"[CableTraySleeveCommand] Passing orientation to placer: ({preCalculatedOrientation.X:F6},{preCalculatedOrientation.Y:F6},{preCalculatedOrientation.Z:F6})");
+                    // Swap width and height for Y-oriented trays
+                    widthToUse = height;
+                    heightToUse = width;
+                    DebugLogger.Log($"[CableTraySleeveCommand] Swapping width/height for Y-ORIENTED: width={widthToUse}, height={heightToUse}");
+                }
+                else
+                {
+                    DebugLogger.Log($"[CableTraySleeveCommand] No orientation passed - X-oriented cable tray should not be rotated");
+                }
+                
+                double sleeveCheckRadius = UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters);
+                // --- Robust duplicate suppression and logging (like DuctSleeveCommand) ---
+                string sleeveSummary = OpeningDuplicationChecker.GetSleevesSummaryAtLocation(doc, placementPoint, sleeveCheckRadius);
+                DebugLogger.Log($"[CableTraySleeveCommand] DUPLICATION CHECK at {placementPoint}:\n{sleeveSummary}");
+                var indivDup = OpeningDuplicationChecker.FindIndividualSleevesAtLocation(doc, placementPoint, sleeveCheckRadius);
+                var clusterDup = OpeningDuplicationChecker.FindAllClusterSleevesAtLocation(doc, placementPoint, sleeveCheckRadius);
+                if (indivDup.Any() || clusterDup.Any())
+                {
+                    string msg = $"SKIP: CableTray {cableTrayId} duplicate sleeve (individual or cluster) exists near {placementPoint}";
+                    DebugLogger.Log($"[CableTraySleeveCommand] {msg}");
+                    return false;
+                }
+
+                var placer = new CableTraySleevePlacer(doc);
+                var sleeveInstance = placer.PlaceCableTraySleeveWithOrientation(
+                    tray,
+                    placementPoint,
+                    widthToUse,
+                    heightToUse,
+                    direction,
+                    preCalculatedOrientation,
+                    ctSlabSymbol,
+                    hostElement);
+                    
+                if (sleeveInstance != null)
+                {
+                    // --- Set clearance/depth for floors and beams (structural framing) ---
+                    double clearance = 0.0;
+                    if (hostElement is Floor floor)
+                    {
+                        var thicknessParam = floor.LookupParameter("Default Thickness");
+                        if (thicknessParam != null && thicknessParam.StorageType == StorageType.Double)
+                        {
+                            clearance = thicknessParam.AsDouble();
+                        }
+                    }
+                    else if (hostElement is FamilyInstance famInst && famInst.Category != null && famInst.Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming)
+                    {
+                        var bParam = famInst.Symbol.LookupParameter("b");
+                        if (bParam != null && bParam.StorageType == StorageType.Double)
+                        {
+                            clearance = bParam.AsDouble();
+                        }
+                    }
+                    // Set the clearance/depth parameter if found
+                    if (clearance > 0.0)
+                    {
+                        var depthParam = sleeveInstance.LookupParameter("Depth") ?? sleeveInstance.LookupParameter("d");
+                        if (depthParam != null && depthParam.StorageType == StorageType.Double && !depthParam.IsReadOnly)
+                        {
+                            depthParam.Set(clearance);
+                        }
+                    }
+                    return true;
+                }
+                else
+                {
+                    return false;
+                }
             }
-            
-            // Also collect from active document (though we know there are none in this case)
-            var activeFloors = new FilteredElementCollector(doc)
-                .OfCategory(BuiltInCategory.OST_Floors)
-                .WhereElementIsNotElementType()
-                .Cast<Floor>()
-                .Where(floor => floor.get_Parameter(BuiltInParameter.FLOOR_PARAM_IS_STRUCTURAL)?.AsInteger() == 1)
-                .ToList();
-                
-            var activeFraming = new FilteredElementCollector(doc)
-                .OfCategory(BuiltInCategory.OST_StructuralFraming)
-                .WhereElementIsNotElementType()
-                .Cast<FamilyInstance>()
-                .Where(frame => frame.StructuralType != Autodesk.Revit.DB.Structure.StructuralType.NonStructural)
-                .ToList();
-                
-            // Add active document elements with null transform (no transformation needed)
-            structuralElements.AddRange(activeFloors.Select(floor => (floor as Element, (Transform)null!)));
-            structuralElements.AddRange(activeFraming.Select(frame => (frame as Element, (Transform)null!)));
-            
-            StructuralElementLogger.LogStructuralElement("DIRECT_COLLECTION", 0, "COLLECTION_COMPLETE", 
-                $"Total collected: {structuralElements.Count} structural elements ({activeFloors.Count + activeFraming.Count} from active doc)");
-                
-            return structuralElements;
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"CableTray ID={(int)tray.Id.Value}: error placing structural sleeve with orientation: {ex.Message}");
+                return false;
+            }
         }
+
 
         /// <summary>
         /// Performs direct solid intersection check between cable tray and structural elements

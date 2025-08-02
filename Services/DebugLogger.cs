@@ -8,11 +8,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// <summary>
     /// Static logger class for debug messages with support for log levels and source tracking
     /// </summary>
+    /// <summary>
+    /// Static logger class for debug messages with support for log levels and source tracking
+    /// </summary>
     public static class DebugLogger
     {
+        /// <summary>
+        /// Set to false to disable all logging globally.
+        /// </summary>
+        public static bool IsEnabled = true;
         // Always log to the Log directory in the project source root
-        private static string DuctLogFilePath = Path.Combine("c:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\Log", "ductsleeveplacer.log");
-        private static string CableTrayLogFilePath = Path.Combine("c:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\Log", "cabletraysleeveplacer.log");
+        private static string DuctLogFilePath = Path.Combine("c:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\Logs", "ductsleeveplacer.log");
+        private static string CableTrayLogFilePath = Path.Combine("c:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\Logs", "cabletraysleeveplacer.log");
         private static string LogFilePath = CableTrayLogFilePath; // Default
 
         public enum LogLevel
@@ -28,6 +35,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void InitLogFile()
         {
+            if (!IsEnabled) return;
             InitLogFile(Path.Combine("Log", "cabletraysleeveplacer"));
         }
 
@@ -36,27 +44,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void InitLogFile(string logFileName)
         {
+            if (!IsEnabled) return;
             try
             {
                 // Set log file path in project source root Log directory
-                string logDir = "c:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\Log";
+                string logDir = "c:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\Logs";
                 if (!Directory.Exists(logDir))
                     Directory.CreateDirectory(logDir);
-                LogFilePath = Path.Combine(logDir, "cabletraysleeveplacer.log");
+                // If logFileName has an extension, use as is; otherwise, add .log
+                string fileName = logFileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase) ? logFileName : logFileName + ".log";
+                LogFilePath = Path.Combine(logDir, fileName);
                 // Include build/version information
                 var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "n/a";
                 var buildTimestamp = File.GetLastWriteTime(Assembly.GetExecutingAssembly().Location).ToString("o");
                 string header =
                     $"===== NEW LOG SESSION STARTED {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n" +
-                    $"JSE_RevitAddin_MEP_OPENINGS Debug Log: cabletraysleeveplacer\n" +
+                    $"JSE_RevitAddin_MEP_OPENINGS Debug Log: {fileName}\n" +
                     $"Build Version: {version}\n" +
                     $"Build Timestamp: {buildTimestamp}\n" +
                     $"====================================================\n";
                 File.WriteAllText(LogFilePath, header);
             }
-            catch
+            catch (Exception ex)
             {
-                // Silently fail - we don't want logging to break the application
+                // Log to default log if custom log creation fails
+                string fallbackLog = Path.Combine("c:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\Logs", "cabletraysleeveplacer.log");
+                string msg = $"[LOGGER ERROR] Could not create custom log file '{logFileName}': {ex.Message}\n{ex.StackTrace}\n";
+                try { File.AppendAllText(fallbackLog, msg); } catch { /* ignore */ }
             }
         }
 
@@ -65,6 +79,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void InitCustomLogFile(string logFileName)
         {
+            if (!IsEnabled) return;
             try
             {
                 // Set log file path with build timestamp
@@ -93,6 +108,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void InitCustomLogFileOverwrite(string logFileName)
         {
+            if (!IsEnabled) return;
             try
             {
                 // Set log file path
@@ -131,6 +147,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             [CallerFilePath] string sourceFile = "",
             [CallerLineNumber] int lineNumber = 0)
         {
+            if (!IsEnabled) return;
             Log(LogLevel.Info, message, sourceFile, lineNumber);
         }
 
@@ -143,6 +160,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             [CallerFilePath] string sourceFile = "",
             [CallerLineNumber] int lineNumber = 0)
         {
+            if (!IsEnabled) return;
             try
             {
                 // Get the class name from the source file path
@@ -167,6 +185,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             [CallerFilePath] string sourceFile = "",
             [CallerLineNumber] int lineNumber = 0)
         {
+            if (!IsEnabled) return;
             Log(LogLevel.Warning, message, sourceFile, lineNumber);
         }
 
@@ -177,6 +196,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             [CallerFilePath] string sourceFile = "",
             [CallerLineNumber] int lineNumber = 0)
         {
+            if (!IsEnabled) return;
             Log(LogLevel.Error, message, sourceFile, lineNumber);
         }
 

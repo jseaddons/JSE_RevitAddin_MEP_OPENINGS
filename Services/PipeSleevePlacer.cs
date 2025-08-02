@@ -44,67 +44,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     double wallThickness = wall.get_Parameter(BuiltInParameter.WALL_ATTR_WIDTH_PARAM)?.AsDouble() ?? wall.Width;
                     sleeveDepth = wallThickness;
                     LocationCurve? locationCurve = wall.Location as LocationCurve;
-                    XYZ wallNormal = XYZ.BasisX;
-                    XYZ intersectionForPlacement = intersection;
-                    bool isFittingAtEnd = false;
-                    bool forceCenter = false;
-                    // Detect if pipe has a fitting at one end (special case)
-                    if (pipe != null && pipe.Location is LocationCurve pipeCurve)
-                    {
-                        double distToStart = pipeCurve.Curve.GetEndPoint(0).DistanceTo(intersection);
-                        double distToEnd = pipeCurve.Curve.GetEndPoint(1).DistanceTo(intersection);
-                        double fittingThreshold = UnitUtils.ConvertToInternalUnits(25.0, UnitTypeId.Millimeters); // 25mm
-                        if (distToStart < fittingThreshold || distToEnd < fittingThreshold)
-                        {
-                            isFittingAtEnd = true;
-                        }
-                        // --- Robust ≥90% inside host rule ---
-                        BoundingBoxXYZ hostBox = hostElement.get_BoundingBox(null);
-                        if (hostBox != null)
-                        {
-                            XYZ hostMin = hostBox.Min;
-                            XYZ hostMax = hostBox.Max;
-                            Curve pipeCrv = pipeCurve.Curve;
-                            XYZ pStart = pipeCrv.GetEndPoint(0);
-                            XYZ pEnd = pipeCrv.GetEndPoint(1);
-                            XYZ dir = (pEnd - pStart).Normalize();
-                            double t0 = (hostMin - pStart).DotProduct(dir);
-                            double t1 = (hostMax - pStart).DotProduct(dir);
-                            double overlap = Math.Max(0, Math.Min(t1, pipeCrv.Length) - Math.Max(t0, 0));
-                            double ratio = overlap / pipeCrv.Length;
-                            forceCenter = ratio >= 0.90;
-                            isFittingAtEnd &= !forceCenter;
-                            JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[PipeSleevePlacer] Wall host: overlap={overlap:F3}, ratio={ratio:F3}, forceCenter={forceCenter}");
-                        }
-                    }
                     if (locationCurve?.Curve is Line wallLine)
                     {
-                        XYZ direction = wallLine.Direction.Normalize();
-                        wallNormal = new XYZ(-direction.Y, direction.X, 0).Normalize();
-                        if (forceCenter || !isFittingAtEnd)
-                        {
-                            placePoint = intersection + wallNormal.Multiply(-wallThickness * 0.5);
-                            JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[PipeSleevePlacer] Wall host: Centered (forceCenter or not fitting-at-end). placePoint=({placePoint.X:F3},{placePoint.Y:F3},{placePoint.Z:F3})");
-                        }
-                        else
-                        {
-                            double param = wallLine.Project(intersection).Parameter;
-                            intersectionForPlacement = wallLine.Evaluate(param, false);
-                            placePoint = intersectionForPlacement + wallNormal.Multiply(-wallThickness * 0.5);
-                            JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[PipeSleevePlacer] Wall host: Fitting at end, projecting to wall axis and shifting fully inside. placePoint=({placePoint.X:F3},{placePoint.Y:F3},{placePoint.Z:F3})");
-                        }
+                        // Project intersection onto wall centerline (XY), but use intersection's Z (duct logic mimic)
+                        double param = wallLine.Project(intersection).Parameter;
+                        XYZ centerlinePoint = wallLine.Evaluate(param, false);
+                        placePoint = new XYZ(centerlinePoint.X, centerlinePoint.Y, intersection.Z);
+                        JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[PipeSleevePlacer] Wall host: Projected to centerline (duct logic mimic). placePoint=({placePoint.X:F3},{placePoint.Y:F3},{placePoint.Z:F3}), wallThickness={wallThickness:F3}");
                     }
                 }
                 else if (hostElement is Floor floor)
                 {
-                    // Only place sleeves in structural floors
-                    var isStructuralParam = floor.get_Parameter(BuiltInParameter.FLOOR_PARAM_IS_STRUCTURAL);
-                    bool isStructural = isStructuralParam != null && isStructuralParam.AsInteger() == 1;
-                    if (!isStructural)
-                    {
-                        // Not a structural floor, skip placement
-                        return;
-                    }
+                    // Place sleeves in both architectural and structural floors (filter removed per user request)
                     // Get the floor type from the correct document (linked or host)
                     ElementId typeId = floor.GetTypeId();
                     Element? floorType = null;
@@ -248,7 +199,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     StructuralType.NonStructural);
 
 
-                double pipeDiameter = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_DIAMETER_PARAM)?.AsDouble() ?? 0;
+                double pipeDiameter = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_OUTER_DIAMETER)?.AsDouble() ?? 0;
                 double insulationThickness = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_INSULATION_THICKNESS)?.AsDouble() ?? 0;
                 double clearance;
                 if (insulationThickness > 0.0)

@@ -41,14 +41,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void InitializeLogs()
         {
+            if (!DebugLogger.IsEnabled) return;
             try
             {
                 // Create header for each log
                 string header = $"===== JSE MEP SLEEVE PLACEMENT LOG {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\r\n";
-
-                // Reset statistics
-                _totalPipesWithWalls = 0;
-                _totalPipeSleevesPLaced = 0;
+        {
+            if (!DebugLogger.IsEnabled) return;
+            // ...existing code...
+        }
                 _totalDuctsWithWalls = 0;
                 _totalDuctSleevesPLaced = 0;
                 _totalCableTraysWithWalls = 0;
@@ -80,6 +81,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void RegisterModelElements(IEnumerable<int> pipeIds, IEnumerable<int> ductIds, IEnumerable<int> cableTrayIds)
         {
+            if (!DebugLogger.IsEnabled) return;
             foreach (var id in pipeIds) _allModelPipes.Add(id);
             foreach (var id in ductIds) _allModelDucts.Add(id);
             foreach (var id in cableTrayIds) _allModelCableTrays.Add(id);
@@ -99,6 +101,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void LogPipeWallIntersection(int elementId, XYZ location, double diameter, int wallId = 0, XYZ? wallOrientation = null)
         {
+            if (!DebugLogger.IsEnabled) return;
             _totalPipesWithWalls++;
             _processedElements.Add(elementId);
 
@@ -121,6 +124,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void LogPipeSleeveSuccess(int elementId, int sleeveId, double sleeveDiameter, XYZ sleevePosition)
         {
+            if (!DebugLogger.IsEnabled) return;
             _totalPipeSleevesPLaced++;
 
             string message = $"SUCCESS: Placed sleeve {sleeveId} for pipe {elementId}, sleeve diameter: {FormatMM(sleeveDiameter)}mm";
@@ -137,6 +141,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void LogPipeSleeveFailure(int elementId, string reason)
         {
+            if (!DebugLogger.IsEnabled) return;
             _processedElements.Add(elementId);
             string message = $"FAILED: Could not place sleeve for pipe {elementId}. Reason: {reason}";
             AppendToLog(PipeLogPath, message);
@@ -152,6 +157,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void LogDuctWallIntersection(int elementId, XYZ location, double width, double height, int wallId = 0, XYZ? wallOrientation = null)
         {
+            if (!DebugLogger.IsEnabled) return;
             _totalDuctsWithWalls++;
             _processedElements.Add(elementId);
             string wallInfo = wallId > 0 ? $"wall {wallId}" : "wall";
@@ -173,6 +179,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void LogDuctSleeveSuccess(int elementId, int sleeveId, double sleeveWidth, double sleeveHeight, XYZ sleevePosition)
         {
+            if (!DebugLogger.IsEnabled) return;
             _totalDuctSleevesPLaced++;
 
             string message = $"SUCCESS: Placed sleeve {sleeveId} for duct {elementId}, sleeve size: {FormatMM(sleeveWidth)}mm × {FormatMM(sleeveHeight)}mm";
@@ -189,6 +196,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void LogDuctSleeveFailure(int elementId, string reason)
         {
+            if (!DebugLogger.IsEnabled) return;
             _processedElements.Add(elementId);
             string message = $"FAILED: Could not place sleeve for duct {elementId}. Reason: {reason}";
             AppendToLog(DuctLogPath, message);
@@ -204,6 +212,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void LogCableTrayWallIntersection(int elementId, XYZ location, double width, double height, int wallId = 0, XYZ? wallOrientation = null)
         {
+            if (!DebugLogger.IsEnabled) return;
             _totalCableTraysWithWalls++;
             _processedElements.Add(elementId);
 
@@ -226,6 +235,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void LogCableTraySleeveSuccess(int elementId, int sleeveId, double sleeveWidth, double sleeveHeight, XYZ sleevePosition)
         {
+            if (!DebugLogger.IsEnabled) return;
             _totalCableTraySleevesPLaced++;
 
             string message = $"SUCCESS: Placed sleeve {sleeveId} for cable tray {elementId}, sleeve size: {FormatMM(sleeveWidth)}mm × {FormatMM(sleeveHeight)}mm";
@@ -242,6 +252,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void LogCableTraySleeveFailure(int elementId, string reason)
         {
+            if (!DebugLogger.IsEnabled) return;
             _processedElements.Add(elementId);
             string message = $"FAILED: Could not place sleeve for cable tray {elementId}. Reason: {reason}";
             AppendToLog(CableTrayLogPath, message);
@@ -257,6 +268,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void LogCableTraySleeveInfo(int elementId, string info)
         {
+            if (!DebugLogger.IsEnabled) return;
             string message = $"INFO: Cable tray {elementId}: {info}";
             AppendToLog(CableTrayLogPath, message);
             // Also log to debug for traceability
@@ -269,6 +281,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void LogWarning(string message)
         {
+            if (!DebugLogger.IsEnabled) return;
             _warnings.Add(message);
             string formattedMessage = $"WARNING: {message}";
             AppendToLog(SummaryLogPath, formattedMessage);
@@ -283,6 +296,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void LogPipeInspection(int elementId, string message)
         {
+            if (!DebugLogger.IsEnabled) return;
             _processedElements.Add(elementId);
             string logMessage = $"INSPECT: Pipe {elementId} - {message}";
             AppendToLog(PipeLogPath, logMessage);
@@ -297,6 +311,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void LogDuctInspection(int elementId, string message)
         {
+            if (!DebugLogger.IsEnabled) return;
             _processedElements.Add(elementId);
             string logMessage = $"INSPECT: Duct {elementId} - {message}";
             AppendToLog(DuctLogPath, logMessage);
@@ -311,6 +326,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void LogGeometryAnalysis(string elementType, int elementId, int wallId, double distance, XYZ elementPoint, XYZ wallPoint)
         {
+            if (!DebugLogger.IsEnabled) return;
             string message = $"GEOMETRY: {elementType} {elementId} is {FormatMM(distance)}mm from wall {wallId}";
 
             // Log to both element-specific and debug logs
@@ -339,6 +355,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void LogDebug(string message)
         {
+            if (!DebugLogger.IsEnabled) return;
             AppendToLog(DebugLogPath, $"DEBUG: {message}");
         }
 
@@ -347,6 +364,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void FinalizeLogs()
         {
+            if (!DebugLogger.IsEnabled) return;
             try
             {
                 // Identify elements that were in the model but never processed
