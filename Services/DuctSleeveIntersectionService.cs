@@ -1,3 +1,5 @@
+
+#nullable enable
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Mechanical;
 using Autodesk.Revit.DB.Structure;
@@ -11,10 +13,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     {
         // Overload: Accepts a Line (hostLine) for intersection, for linked duct support
         public static List<(Element, BoundingBoxXYZ, XYZ)> FindDirectStructuralIntersectionBoundingBoxesVisibleOnly(
-            Duct duct, List<(Element, Transform?)> structuralElements, Line hostLine)
+            Duct duct, List<(Element, Transform?)> structuralElements, Line? hostLine)
         {
             var results = new List<(Element, BoundingBoxXYZ, XYZ)>();
             if (hostLine == null) return results;
+            if (structuralElements == null || structuralElements.Count == 0) return results;
             foreach (var tuple in structuralElements)
             {
                 Element structuralElement = tuple.Item1;
@@ -23,6 +26,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     var options = new Options();
                     var geometry = structuralElement.get_Geometry(options);
+                    if (geometry == null) continue;
                     Solid? solid = null;
                     foreach (GeometryObject geomObj in geometry)
                     {
@@ -40,7 +44,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var intersectionPoints = new List<XYZ>();
                     foreach (Face face in solid.Faces)
                     {
-                        IntersectionResultArray ira;
+                        if (face == null) continue;
+                        IntersectionResultArray? ira;
                         if (face.Intersect(hostLine, out ira) == SetComparisonResult.Overlap && ira != null)
                             foreach (IntersectionResult ir in ira) intersectionPoints.Add(ir.XYZPoint);
                     }
@@ -84,13 +89,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }))
                 .WhereElementIsNotElementType()
                 .ToElements();
-            foreach (Element e in hostElements) elements.Add((e, null));
+            foreach (Element e in hostElements)
+            {
+                if (e == null) continue;
+                elements.Add((e, null));
+            }
             // Linked models (only visible links)
             var linkInstances = new FilteredElementCollector(doc).OfClass(typeof(RevitLinkInstance)).Cast<RevitLinkInstance>();
             foreach (var linkInstance in linkInstances)
             {
                 var linkDoc = linkInstance.GetLinkDocument();
-                if (linkDoc == null || doc.ActiveView.GetCategoryHidden(linkInstance.Category.Id) || linkInstance.IsHidden(doc.ActiveView)) continue;
+                if (linkDoc == null || linkInstance.Category == null || doc.ActiveView.GetCategoryHidden(linkInstance.Category.Id) || linkInstance.IsHidden(doc.ActiveView)) continue;
                 var linkTransform = linkInstance.GetTotalTransform();
                 var linkedElements = new FilteredElementCollector(linkDoc)
                     .WherePasses(new ElementMulticategoryFilter(new[] {
@@ -100,7 +109,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }))
                     .WhereElementIsNotElementType()
                     .ToElements();
-                foreach (Element e in linkedElements) elements.Add((e, linkTransform));
+                foreach (Element e in linkedElements)
+                {
+                    if (e == null) continue;
+                    elements.Add((e, linkTransform));
+                }
             }
             return elements;
         }
@@ -110,6 +123,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             Duct duct, List<(Element, Transform?)> structuralElements)
         {
             var results = new List<(Element, BoundingBoxXYZ, XYZ)>();
+            if (duct == null) return results;
+            if (structuralElements == null || structuralElements.Count == 0) return results;
             var locCurve = duct.Location as LocationCurve;
             var curve = locCurve?.Curve as Line;
             if (curve == null) return results;
@@ -121,6 +136,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     var options = new Options();
                     var geometry = structuralElement.get_Geometry(options);
+                    if (geometry == null) continue;
                     Solid? solid = null;
                     foreach (GeometryObject geomObj in geometry)
                     {
@@ -138,7 +154,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var intersectionPoints = new List<XYZ>();
                     foreach (Face face in solid.Faces)
                     {
-                        IntersectionResultArray ira;
+                        if (face == null) continue;
+                        IntersectionResultArray? ira;
                         if (face.Intersect(curve, out ira) == SetComparisonResult.Overlap && ira != null)
                             foreach (IntersectionResult ir in ira) intersectionPoints.Add(ir.XYZPoint);
                     }

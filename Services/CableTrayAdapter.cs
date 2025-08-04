@@ -18,9 +18,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             Element = cableTray;
         }
 
-        public Curve GetCurve()
+        public Curve? GetCurve()
         {
             // Straight segments return as LocationCurve; use that for intersection rays
+            if (tray == null || tray.Location == null)
+                return null;
             return (tray.Location as LocationCurve)?.Curve;
         }
 
@@ -39,10 +41,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return tray.Height; // CableTray exposes Height directly
         }
 
-        public XYZ GetDirection()
+        public XYZ? GetDirection()
         {
             var line = GetCurve() as Line;
-            return line != null ? line.Direction : XYZ.BasisX;
+            if (line == null)
+                return null;
+            return line.Direction;
         }
 
         public string ElementTypeName => "CableTray";

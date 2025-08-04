@@ -40,7 +40,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Returns true if any cluster (of the given type) exists at the location, excluding those in the ignore list.
         /// </summary>
-        public static bool IsClusterAtLocation(Document doc, XYZ location, double tolerance, FamilySymbol clusterSymbol, IEnumerable<ElementId> ignoreIds = null)
+public static bool IsClusterAtLocation(Document doc, XYZ location, double tolerance, FamilySymbol clusterSymbol, IEnumerable<ElementId>? ignoreIds = null)
         {
             var clusters = FindClustersAtLocation(doc, location, tolerance, clusterSymbol);
             if (ignoreIds != null)
@@ -50,14 +50,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         /// <summary>
         /// Returns all individual sleeves (non-cluster) within tolerance of the given location.
-        /// Individual sleeves are families ending with "OpeningOnWall" but NOT ending with "Rect".
+        /// Individual sleeves are families containing "OpeningOnWall" or "OpeningOnSlab" but NOT containing "cluster" (case-insensitive).
         /// </summary>
         /// <param name="doc">Revit document</param>
         /// <param name="location">Location to check</param>
         /// <param name="tolerance">Distance tolerance (internal units)</param>
         /// <param name="sleeveType">Type of sleeve to check for (e.g., "DS#", "PS#", "CTS#")</param>
         /// <returns>List of FamilyInstance individual sleeves within tolerance</returns>
-        public static List<FamilyInstance> FindIndividualSleevesAtLocation(Document doc, XYZ location, double tolerance, string sleeveType = null)
+public static List<FamilyInstance> FindIndividualSleevesAtLocation(Document doc, XYZ location, double tolerance, string? sleeveType = null)
         {
             // If tolerance is not explicitly set to a small value, default to 10mm for individual-to-individual suppression
             double minTolerance = UnitUtils.ConvertToInternalUnits(10.0, UnitTypeId.Millimeters);
@@ -67,10 +67,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var collector = new FilteredElementCollector(doc)
                 .OfClass(typeof(FamilyInstance))
                 .Cast<FamilyInstance>()
-                .Where(fi => 
-                    (fi.Symbol.Family.Name.Contains("OpeningOnWall") || fi.Symbol.Family.Name.Contains("OpeningOnSlab"))
-                    && !fi.Symbol.Family.Name.ToLower().Contains("cluster")
-                ); // Individual sleeves: family name contains OpeningOnWall or OpeningOnSlab, and does NOT contain 'cluster'
+                .Where(fi =>
+                    (fi.Symbol.Family.Name.Contains("OpeningOnWall", StringComparison.OrdinalIgnoreCase) ||
+                     fi.Symbol.Family.Name.Contains("OpeningOnSlab", StringComparison.OrdinalIgnoreCase))
+                    && !fi.Symbol.Family.Name.Contains("cluster", StringComparison.OrdinalIgnoreCase)
+                ); // Individual sleeves: family name contains OpeningOnWall or OpeningOnSlab, and does NOT contain 'cluster' (case-insensitive)
 
             var found = new List<FamilyInstance>();
             foreach (var fi in collector)

@@ -27,7 +27,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 .Where(sym => sym.Family != null)
                 .ToList();
             
-            StructuralElementLogger.LogStructuralElement("DIAGNOSTIC", 0, "CT_FAMILY_SEARCH", $"Found {allFamilySymbols.Count} family symbols in project");
+            StructuralElementLogger.LogStructuralElement("DIAGNOSTIC", new Autodesk.Revit.DB.ElementId(0L), "CT_FAMILY_SEARCH", $"Found {allFamilySymbols.Count} family symbols in project");
             
             var cableTrayFamilies = allFamilySymbols
                 .Where(sym => sym.Family.Name.IndexOf("CableTray", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
@@ -36,7 +36,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             
             foreach (var fam in cableTrayFamilies.Take(10)) // Log first 10 cable tray families
             {
-                StructuralElementLogger.LogStructuralElement("DIAGNOSTIC", (int)fam.Id.Value, "CT_FAMILY_FOUND", $"Family: {fam.Family.Name}, Symbol: {fam.Name}");
+                StructuralElementLogger.LogStructuralElement("DIAGNOSTIC", fam.Id, "CT_FAMILY_FOUND", $"Family: {fam.Family.Name}, Symbol: {fam.Name}");
             }
 
 
@@ -49,14 +49,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 .ToList();
             if (!ctWallSymbols.Any() && !ctSlabSymbols.Any())
             {
-                StructuralElementLogger.LogStructuralElement("ERROR", 0, "MISSING_CT_FAMILY", "Could not find cable tray sleeve family (CableTrayOpeningOnWall or CableTrayOpeningOnSlab)");
+                StructuralElementLogger.LogStructuralElement("ERROR", new Autodesk.Revit.DB.ElementId(0L), "MISSING_CT_FAMILY", "Could not find cable tray sleeve family (CableTrayOpeningOnWall or CableTrayOpeningOnSlab)");
                 TaskDialog.Show("Error", "Please load cable tray sleeve opening families (wall and slab).");
                 return Result.Failed;
             }
             foreach (var sym in ctWallSymbols)
-                StructuralElementLogger.LogStructuralElement("SUCCESS", (int)sym.Id.Value, "CT_FAMILY_FOUND", $"Using cable tray wall sleeve family: {sym.Family.Name}, Symbol: {sym.Name}");
+                StructuralElementLogger.LogStructuralElement("SUCCESS", sym.Id, "CT_FAMILY_FOUND", $"Using cable tray wall sleeve family: {sym.Family.Name}, Symbol: {sym.Name}");
             foreach (var sym in ctSlabSymbols)
-                StructuralElementLogger.LogStructuralElement("SUCCESS", (int)sym.Id.Value, "CT_FAMILY_FOUND", $"Using cable tray slab sleeve family: {sym.Family.Name}, Symbol: {sym.Name}");
+                StructuralElementLogger.LogStructuralElement("SUCCESS", sym.Id, "CT_FAMILY_FOUND", $"Using cable tray slab sleeve family: {sym.Family.Name}, Symbol: {sym.Name}");
 
             // Activate all symbols if needed
             using (var txActivate = new Transaction(doc, "Activate CT Symbols"))
@@ -138,7 +138,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             int structuralSleevesPlacer = 0; // Counter for successful structural sleeve placements
             int totalTrayTuples = trayTuples.Count();
             DebugLogger.Log($"Found {totalTrayTuples} cable trays to process");
-            StructuralElementLogger.LogStructuralElement("SYSTEM", 0, "PROCESSING STARTED", $"Total cable trays to process: {totalTrayTuples}");
+            StructuralElementLogger.LogStructuralElement("SYSTEM", new Autodesk.Revit.DB.ElementId(0L), "PROCESSING STARTED", $"Total cable trays to process: {totalTrayTuples}");
 
             // HashSet for duplicate suppression (robust, like pipes/ducts)
             HashSet<ElementId> processedCableTrays = new HashSet<ElementId>();
@@ -245,8 +245,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         structuralElementsDetected++;
                         string elementTypeName = structuralElement.Category?.Name ?? "STRUCTURAL";
                         DebugLogger.Log($"CableTray ID={tray.Id.Value}: detected structural element: {elementTypeName}, ID={structuralElement.Id.Value}");
-                        StructuralElementLogger.LogStructuralElement(elementTypeName, (int)structuralElement.Id.Value, "STRUCTURAL DETECTED", $"Hit by cable tray {tray.Id.Value}");
-                        StructuralElementLogger.LogStructuralElement("CableTray-STRUCTURAL INTERSECTION", 0, "INTERSECTION_DETAILS", $"CableTray ID={tray.Id.Value}, Structural ID={structuralElement.Id.Value}, Position=({intersectionPoint.X:F9}, {intersectionPoint.Y:F9}, {intersectionPoint.Z:F9})");
+                        StructuralElementLogger.LogStructuralElement(elementTypeName, structuralElement.Id, "STRUCTURAL DETECTED", $"Hit by cable tray {tray.Id.Value}");
+                        StructuralElementLogger.LogStructuralElement("CableTray-STRUCTURAL INTERSECTION", new Autodesk.Revit.DB.ElementId(0L), "INTERSECTION_DETAILS", $"CableTray ID={tray.Id.Value}, Structural ID={structuralElement.Id.Value}, Position=({intersectionPoint.X:F9}, {intersectionPoint.Y:F9}, {intersectionPoint.Z:F9})");
                         // For wall intersections, always use wall family
                         XYZ sleeveDirection = rayDir;
                         FamilySymbol? familySymbolToUse = null;
@@ -254,6 +254,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         if (structuralElement is Wall)
                         {
                             familySymbolToUse = ctWallSymbols.FirstOrDefault();
+                            if (familySymbolToUse == null)
+                            {
+                                TaskDialog.Show("Error", "Cable tray wall sleeve family (CableTrayOpeningOnWall) is missing. Please load it and rerun the command.");
+                                return Result.Failed;
+                            }
                             linkedReferenceType = "WALL";
                         }
                         else if (structuralElement is Floor floor)
@@ -312,7 +317,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         if (familySymbolToUse == null)
                         {
                             TaskDialog.Show("Error", $"Cable tray sleeve family for {linkedReferenceType} is missing. Please load it and rerun the command.");
-                            StructuralElementLogger.LogStructuralElement(elementTypeName, (int)structuralElement.Id.Value, "SLEEVE_FAILED", $"Reason: {linkedReferenceType} family symbol not found");
+                            StructuralElementLogger.LogStructuralElement(elementTypeName, structuralElement.Id, "SLEEVE_FAILED", $"Reason: {linkedReferenceType} family symbol not found");
                             skippedExistingCount++;
                             processedCableTrays.Add(tray.Id);
                             continue;
@@ -350,7 +355,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         {
                             skippedExistingCount++;
                             processedCableTrays.Add(tray.Id); // Still mark as processed to avoid duplicates
-                            StructuralElementLogger.LogStructuralElement(elementTypeName, (int)structuralElement.Id.Value, "SLEEVE_FAILED", "Reason: Existing sleeve found at location or placement failed");
+                            StructuralElementLogger.LogStructuralElement(elementTypeName, structuralElement.Id, "SLEEVE_FAILED", "Reason: Existing sleeve found at location or placement failed");
                         }
                     }
 
@@ -373,18 +378,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         {
                             string elementTypeName = linkedReferenceElement.Category?.Name ?? "NO_CATEGORY";
                             DebugLogger.Log($"CableTray ID={tray.Id.Value}: detected wall element: {elementTypeName}, ID={linkedReferenceElement.Id.Value}");
-                            StructuralElementLogger.LogStructuralElement(elementTypeName, (int)linkedReferenceElement.Id.Value, "ELEMENT DETECTED", $"Hit by cable tray {tray.Id.Value}");
+                            StructuralElementLogger.LogStructuralElement(elementTypeName, linkedReferenceElement.Id, "ELEMENT DETECTED", $"Hit by cable tray {tray.Id.Value}");
 
                             // Calculate intersection point for wall
                             XYZ intersectionPoint = fallbackWallRayOrigin + fallbackWallDir * fallbackWallHit.Proximity;
-                            StructuralElementLogger.LogStructuralElement("CableTray-WALL INTERSECTION", 0, "INTERSECTION_DETAILS", $"CableTray ID={tray.Id.Value}, Wall ID={linkedReferenceElement.Id.Value}, Position=({intersectionPoint.X:F9}, {intersectionPoint.Y:F9}, {intersectionPoint.Z:F9})");
+                            StructuralElementLogger.LogStructuralElement("CableTray-WALL INTERSECTION", new Autodesk.Revit.DB.ElementId(0L), "INTERSECTION_DETAILS", $"CableTray ID={tray.Id.Value}, Wall ID={linkedReferenceElement.Id.Value}, Position=({intersectionPoint.X:F9}, {intersectionPoint.Y:F9}, {intersectionPoint.Z:F9})");
 
                             // Always use CableTrayOpeningOnWall family for wall/framing
                             var wallFamilySymbol = ctWallSymbols.FirstOrDefault();
                             if (wallFamilySymbol == null)
                             {
                                 TaskDialog.Show("Error", "Cable tray wall sleeve family (CableTrayOpeningOnWall) is missing. Please load it and rerun the command.");
-                                StructuralElementLogger.LogStructuralElement(elementTypeName, (int)linkedReferenceElement.Id.Value, "SLEEVE_FAILED", "Reason: Wall family symbol not found");
+                                StructuralElementLogger.LogStructuralElement(elementTypeName, linkedReferenceElement.Id, "SLEEVE_FAILED", "Reason: Wall family symbol not found");
                                 skippedExistingCount++;
                                 processedCableTrays.Add(tray.Id);
                                 continue;
@@ -400,7 +405,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             {
                                 skippedExistingCount++;
                                 processedCableTrays.Add(tray.Id); // Still mark as processed to avoid duplicates
-                                StructuralElementLogger.LogStructuralElement(elementTypeName, (int)linkedReferenceElement.Id.Value, "SLEEVE_FAILED", "Reason: Existing sleeve found at location");
+                                StructuralElementLogger.LogStructuralElement(elementTypeName, linkedReferenceElement.Id, "SLEEVE_FAILED", "Reason: Existing sleeve found at location");
                             }
                         }
                     }
@@ -422,7 +427,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 
                 // Log structural summary to dedicated logger
                 StructuralElementLogger.LogSummary("CableTraySleeveCommand", totalTrays, structuralElementsDetected, structuralSleevesPlacer, (structuralElementsDetected - structuralSleevesPlacer));
-                StructuralElementLogger.LogStructuralElement("SYSTEM", 0, "COMMAND COMPLETED", $"Structural sleeve placement finished. Log file: {StructuralElementLogger.GetLogFilePath()}");
+                StructuralElementLogger.LogStructuralElement("SYSTEM", new Autodesk.Revit.DB.ElementId(0L), "COMMAND COMPLETED", $"Structural sleeve placement finished. Log file: {StructuralElementLogger.GetLogFilePath()}");
             }
 
             DebugLogger.Log("Cable tray sleeves placement completed.");

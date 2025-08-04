@@ -17,9 +17,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             DebugLogger.Log("JSE_RevitAddin_MEP_OPENINGS starting up...");
 
             var viewModel = new JSE_RevitAddin_MEP_OPENINGSViewModel(ExternalCommandData);
-            var view = new JSE_RevitAddin_MEP_OPENINGSView(viewModel);
+            var dialog = new JSE_RevitAddin_MEP_OPENINGS.Views.JSE_RevitAddin_MEP_OPENINGSDialog(viewModel);
             DebugLogger.Log("Opening main dialog window");
-            view.ShowDialog();
+            dialog.ShowDialog();
             DebugLogger.Log("Dialog closed, command completed");
         }
     }

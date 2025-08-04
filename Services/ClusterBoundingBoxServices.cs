@@ -1,3 +1,5 @@
+
+#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,23 +10,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     public static class ClusterBoundingBoxServices
     {
         // Returns bounding box dimensions and midpoint for a cluster of sleeves
-        public static (double width, double height, double depth, XYZ mid) GetClusterBoundingBox(List<FamilyInstance> cluster)
+        public static (double width, double height, double depth, XYZ mid) GetClusterBoundingBox(List<FamilyInstance>? cluster)
         {
-            if (cluster == null || !cluster.Any())
+            if (cluster == null || cluster.Count == 0)
                 return (0, 0, 0, XYZ.Zero);
 
-            BoundingBoxXYZ combinedBbox = null;
+            BoundingBoxXYZ? combinedBbox = null;
 
             foreach (var s in cluster)
             {
                 // Use get_BoundingBox(null) which returns an axis-aligned bounding box in the model's coordinate system.
                 // This correctly accounts for the element's geometry, size, and orientation.
-                var bbox = s.get_BoundingBox(null);
+                BoundingBoxXYZ? bbox = s.get_BoundingBox(null);
                 if (bbox == null || !bbox.Enabled) continue;
 
                 if (combinedBbox == null)
                 {
-                    combinedBbox = bbox;
+                    // Defensive copy to avoid mutating original bbox
+                    combinedBbox = new BoundingBoxXYZ
+                    {
+                        Min = bbox.Min,
+                        Max = bbox.Max,
+                        Enabled = bbox.Enabled
+                    };
                 }
                 else
                 {

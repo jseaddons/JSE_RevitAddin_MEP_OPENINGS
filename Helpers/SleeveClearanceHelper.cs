@@ -17,7 +17,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
             if (mepElement is Duct duct)
             {
                 double insulationThickness = 0.0;
-                int ductId = (int)duct.Id.Value;
+                int ductId = (int)(duct.Id?.Value ?? 0);
                 string logDir = @"C:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Log";
                 if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                 string logFile = Path.Combine(logDir, $"SleeveClearanceHelperLog_{DateTime.Now:yyyyMMdd}.log");
@@ -30,7 +30,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                     .FirstOrDefault(ins => ins.HostElementId == duct.Id);
                 if (insulation != null)
                 {
-                    Log($"Duct {ductId}: Found insulation in host doc, insulationId={insulation.Id.Value}");
+                    Log($"Duct {ductId}: Found insulation in host doc, insulationId={(insulation.Id != null ? insulation.Id.Value.ToString() : "null")}");
                 }
                 // If not found, search in all visible linked documents
                 if (insulation == null)
@@ -46,7 +46,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                                 .FirstOrDefault(ins => ins.HostElementId == duct.Id);
                             if (linkIns != null)
                             {
-                                Log($"Duct {ductId}: Found insulation in linked doc, insulationId={linkIns.Id.Value}");
+                                Log($"Duct {ductId}: Found insulation in linked doc, insulationId={(linkIns.Id != null ? linkIns.Id.Value.ToString() : "null")}");
                             }
                             if (linkIns != null)
                             {
@@ -81,7 +81,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                     // Geometric fallback: try to get 'Overall Size' and calculate thickness
                     if (insulationThickness == 0.0)
                     {
-                        string overallSize = null;
+                        string? overallSize = null;
                         foreach (Parameter param in insulation.Parameters)
                         {
                             if (param.Definition != null && param.Definition.Name.ToLower().Contains("overall size"))
@@ -90,28 +90,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                                 break;
                             }
                         }
-                        if (!string.IsNullOrEmpty(overallSize) && overallSize.Contains("mm"))
+                        if (!string.IsNullOrEmpty(overallSize) && overallSize != null && overallSize.Contains("mm"))
                         {
                             // Expecting format like "250 mm x 300 mm" or "250mmx300mm"
                             string[] dims = overallSize.Replace("mm", "").Replace("x", " ").Replace("X", " ").Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
                             if (dims.Length == 2 && double.TryParse(dims[0].Replace(",", "."), out double overallW) && double.TryParse(dims[1].Replace(",", "."), out double overallH))
                             {
                                 double ductW = 0.0, ductH = 0.0;
-                                Parameter widthParam = insulation.Document.GetElement(insulation.HostElementId)?.get_Parameter(BuiltInParameter.RBS_CURVE_WIDTH_PARAM);
-                                Parameter heightParam = insulation.Document.GetElement(insulation.HostElementId)?.get_Parameter(BuiltInParameter.RBS_CURVE_HEIGHT_PARAM);
-                                if (widthParam != null) ductW = UnitUtils.ConvertFromInternalUnits(widthParam.AsDouble(), UnitTypeId.Millimeters);
-                                if (heightParam != null) ductH = UnitUtils.ConvertFromInternalUnits(heightParam.AsDouble(), UnitTypeId.Millimeters);
-                                if (ductW > 0.0 && overallW > ductW)
+                                if (insulation.Document != null)
                                 {
-                                    double thickW = (overallW - ductW) / 2.0;
-                                    insulationThickness = UnitUtils.ConvertToInternalUnits(thickW, UnitTypeId.Millimeters);
-                                    Log($"Duct {ductId}: Calculated insulation thickness from Overall Size (width): {overallW} - {ductW} / 2 = {thickW} mm");
-                                }
-                                if (insulationThickness == 0.0 && ductH > 0.0 && overallH > ductH)
-                                {
-                                    double thickH = (overallH - ductH) / 2.0;
-                                    insulationThickness = UnitUtils.ConvertToInternalUnits(thickH, UnitTypeId.Millimeters);
-                                    Log($"Duct {ductId}: Calculated insulation thickness from Overall Size (height): {overallH} - {ductH} / 2 = {thickH} mm");
+                                    var hostElem = insulation.Document.GetElement(insulation.HostElementId);
+                                    Parameter? widthParam = hostElem?.get_Parameter(BuiltInParameter.RBS_CURVE_WIDTH_PARAM);
+                                    Parameter? heightParam = hostElem?.get_Parameter(BuiltInParameter.RBS_CURVE_HEIGHT_PARAM);
+                                    if (widthParam != null) ductW = UnitUtils.ConvertFromInternalUnits(widthParam.AsDouble(), UnitTypeId.Millimeters);
+                                    if (heightParam != null) ductH = UnitUtils.ConvertFromInternalUnits(heightParam.AsDouble(), UnitTypeId.Millimeters);
+                                    if (ductW > 0.0 && overallW > ductW)
+                                    {
+                                        double thickW = (overallW - ductW) / 2.0;
+                                        insulationThickness = UnitUtils.ConvertToInternalUnits(thickW, UnitTypeId.Millimeters);
+                                        Log($"Duct {ductId}: Calculated insulation thickness from Overall Size (width): {overallW} - {ductW} / 2 = {thickW} mm");
+                                    }
+                                    if (insulationThickness == 0.0 && ductH > 0.0 && overallH > ductH)
+                                    {
+                                        double thickH = (overallH - ductH) / 2.0;
+                                        insulationThickness = UnitUtils.ConvertToInternalUnits(thickH, UnitTypeId.Millimeters);
+                                        Log($"Duct {ductId}: Calculated insulation thickness from Overall Size (height): {overallH} - {ductH} / 2 = {thickH} mm");
+                                    }
                                 }
                             }
                         }

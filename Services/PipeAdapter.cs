@@ -12,8 +12,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             Element = element;
         }
 
-        public Curve GetCurve()
+        public Curve? GetCurve()
         {
+            if (Element == null || Element.Location == null)
+                return null;
             return (Element.Location as LocationCurve)?.Curve;
         }
 
@@ -34,10 +36,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Not applicable for pipes
             return 0.0;
         }
-        public XYZ GetDirection()
+        public XYZ? GetDirection()
         {
             var curve = GetCurve() as Line;
-            return curve?.Direction;
+            if (curve == null)
+                return null;
+            return curve.Direction;
         }
     }
 }

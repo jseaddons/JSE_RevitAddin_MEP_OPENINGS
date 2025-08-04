@@ -1,3 +1,5 @@
+
+#nullable enable
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Mechanical;
 using Autodesk.Revit.DB.Electrical;
@@ -37,7 +39,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var mepBBox = GetMepElementBoundingBox(mepElement, mepLine);
             
             // Pre-filter walls by section box and bounding box intersection
-            var filteredWalls = GetFilteredWallsInSectionBox(mepElement.Document, view3D, sectionBox, mepBBox);
+            var filteredWalls = GetFilteredWallsInSectionBox(mepElement.Document, view3D, sectionBox ?? new BoundingBoxXYZ(), mepBBox);
             
             DebugLogger.Log($"[EfficientIntersectionService] Filtered walls: {filteredWalls.Count} (from section box and bbox pre-check)");
             
@@ -170,17 +172,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Get element bounding box with optional transform
         /// </summary>
-        private static BoundingBoxXYZ GetElementBoundingBox(Element element, Transform linkTransform)
+        private static BoundingBoxXYZ? GetElementBoundingBox(Element element, Transform? linkTransform)
         {
             var bbox = element.get_BoundingBox(null);
             if (bbox == null) return null;
-            
-            if (linkTransform != null)
+
+            var transform = linkTransform ?? Transform.Identity;
+            if (!transform.IsIdentity)
             {
                 // Transform bounding box for linked elements
-                var transformedMin = linkTransform.OfPoint(bbox.Min);
-                var transformedMax = linkTransform.OfPoint(bbox.Max);
-                
+                var transformedMin = transform.OfPoint(bbox.Min);
+                var transformedMax = transform.OfPoint(bbox.Max);
+
                 return new BoundingBoxXYZ
                 {
                     Min = new XYZ(
@@ -193,7 +196,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         Math.Max(transformedMin.Z, transformedMax.Z))
                 };
             }
-            
+
             return bbox;
         }
         
@@ -221,23 +224,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Get filtered walls within section box and intersecting MEP bounding box
         /// </summary>
         private static List<(Element, Transform)> GetFilteredWallsInSectionBox(
-            Document doc, 
-            View3D view3D, 
-            BoundingBoxXYZ sectionBox, 
+            Document doc,
+            View3D view3D,
+            BoundingBoxXYZ sectionBox,
             BoundingBoxXYZ mepBBox)
         {
             var filteredWalls = new List<(Element, Transform)>();
-            
+
             // Get walls from host document
             var hostWalls = new FilteredElementCollector(doc, view3D.Id)
                 .OfCategory(BuiltInCategory.OST_Walls)
                 .WhereElementIsNotElementType()
-                .Where(w => IsElementInSectionBoxAndIntersectsMep(w, null, sectionBox, mepBBox))
-                .Select(w => (w, (Transform)null))
+                .Where(w => IsElementInSectionBoxAndIntersectsMep(w, Transform.Identity, sectionBox, mepBBox))
+                .Select(w => (w, Transform.Identity))
                 .ToList();
-            
+
             filteredWalls.AddRange(hostWalls);
-            
+
             // Get walls from visible linked documents
             foreach (var linkInstance in new FilteredElementCollector(doc)
                 .OfClass(typeof(RevitLinkInstance))
@@ -246,17 +249,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 var linkDoc = linkInstance.GetLinkDocument();
                 var linkTransform = linkInstance.GetTotalTransform();
-                
+
                 var linkedWalls = new FilteredElementCollector(linkDoc)
                     .OfCategory(BuiltInCategory.OST_Walls)
                     .WhereElementIsNotElementType()
                     .Where(w => IsElementInSectionBoxAndIntersectsMep(w, linkTransform, sectionBox, mepBBox))
-                    .Select(w => (w as Element, linkTransform))
+                    .Select(w => (w as Element, linkTransform ?? Transform.Identity))
                     .ToList();
-                
+
                 filteredWalls.AddRange(linkedWalls);
             }
-            
+
             return filteredWalls;
         }
         
@@ -266,14 +269,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private static List<(Element, Transform)> GetFilteredStructuralElementsInSectionBox(
             Document doc,
             View3D view3D,
-            BoundingBoxXYZ sectionBox,
+            BoundingBoxXYZ? sectionBox,
             BoundingBoxXYZ mepBBox)
         {
             var filteredElements = new List<(Element, Transform)>();
+            if (doc == null || mepBBox == null)
+                return filteredElements;
             // Use the document directly (like duct logic) to collect from both host and visible links
             var structuralElements = StructuralElementCollectorHelper.CollectStructuralElementsVisibleOnly(doc);
             var hostFiltered = structuralElements
-                .Where(tuple => IsElementInSectionBoxAndIntersectsMep(tuple.Item1, tuple.Item2 ?? Transform.Identity, sectionBox, mepBBox))
+                .Where(tuple => tuple.Item1 != null && IsElementInSectionBoxAndIntersectsMep(tuple.Item1, tuple.Item2 ?? Transform.Identity, sectionBox, mepBBox))
                 .Select(tuple => (tuple.Item1, tuple.Item2 ?? Transform.Identity))
                 .ToList();
             filteredElements.AddRange(hostFiltered);
@@ -285,20 +290,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Check if element is in section box and intersects MEP bounding box
         /// </summary>
         private static bool IsElementInSectionBoxAndIntersectsMep(
-            Element element, 
-            Transform linkTransform, 
-            BoundingBoxXYZ sectionBox, 
+            Element element,
+            Transform? linkTransform,
+            BoundingBoxXYZ? sectionBox,
             BoundingBoxXYZ mepBBox)
         {
-            var elementBBox = GetElementBoundingBox(element, linkTransform);
+            if (element == null || mepBBox == null)
+                return false;
+            var elementBBox = GetElementBoundingBox(element, linkTransform ?? Transform.Identity);
             if (elementBBox == null) return false;
-            
+
             // Check section box intersection (if section box exists)
             if (sectionBox != null && !BoundingBoxesIntersect(elementBBox, sectionBox))
             {
                 return false;
             }
-            
+
             // Check MEP bounding box intersection
             return BoundingBoxesIntersect(elementBBox, mepBBox);
         }
@@ -306,16 +313,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Perform solid intersection between line and element
         /// </summary>
-        private static List<XYZ> PerformSolidIntersection(Line mepLine, Element structuralElement, Transform linkTransform)
+        private static List<XYZ> PerformSolidIntersection(Line mepLine, Element structuralElement, Transform? linkTransform)
         {
             var intersectionPoints = new List<XYZ>();
-            
+
             try
             {
                 var structuralOptions = new Options();
                 var structuralGeometry = structuralElement.get_Geometry(structuralOptions);
-                Solid structuralSolid = null;
-                
+                Solid? structuralSolid = null;
+
                 foreach (var geomObj in structuralGeometry)
                 {
                     if (geomObj is Solid solid && solid.Volume > 0)
@@ -336,19 +343,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (structuralSolid != null) break;
                     }
                 }
-                
+
                 if (structuralSolid == null) return intersectionPoints;
-                
+
                 // Apply transform if linked element
-                if (linkTransform != null)
+                if (linkTransform != null && !linkTransform.IsIdentity)
                 {
                     structuralSolid = SolidUtils.CreateTransformed(structuralSolid, linkTransform);
                 }
-                
+
                 // Check intersection using face.Intersect(line)
                 foreach (Face face in structuralSolid.Faces)
                 {
-                    IntersectionResultArray ira = null;
+                    IntersectionResultArray? ira = null;
                     SetComparisonResult res = face.Intersect(mepLine, out ira);
                     if (res == SetComparisonResult.Overlap && ira != null)
                     {
@@ -363,7 +370,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 DebugLogger.Log($"[EfficientIntersectionService] Solid intersection error for element {structuralElement.Id.Value}: {ex.Message}");
             }
-            
+
             return intersectionPoints;
         }
         
@@ -376,13 +383,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 return intersectionPoints[0];
             }
-            
+
             if (intersectionPoints.Count >= 2)
             {
                 // Find the two points with maximum distance
                 double maxDist = double.MinValue;
-                XYZ ptA = null, ptB = null;
-                
+                XYZ? ptA = null, ptB = null;
+
                 for (int i = 0; i < intersectionPoints.Count - 1; i++)
                 {
                     for (int j = i + 1; j < intersectionPoints.Count; j++)
@@ -396,13 +403,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                     }
                 }
-                
+
                 if (ptA != null && ptB != null)
                 {
                     return new XYZ((ptA.X + ptB.X) / 2, (ptA.Y + ptB.Y) / 2, (ptA.Z + ptB.Z) / 2);
                 }
             }
-            
+
             return intersectionPoints.FirstOrDefault() ?? XYZ.Zero;
         }
     }

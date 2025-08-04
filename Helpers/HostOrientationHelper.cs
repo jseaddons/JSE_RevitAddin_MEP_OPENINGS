@@ -43,7 +43,7 @@ public static class HostOrientationHelper
                 orientationToSet = "FloorHosted";
                 DebugLogger.Log($"SetHostOrientationParameter: Floor host detected, orientation=FloorHosted");
             }
-            else if (sleeve.Host != null && sleeve.Host.Category != null && sleeve.Host.Category.Id.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+            else if (sleeve.Host != null && sleeve.Host.Category != null && sleeve.Host.Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming)
             {
                 // Use framing direction to determine orientation (X or Y), just like wall
                 var framing = sleeve.Host as FamilyInstance;
@@ -377,7 +377,7 @@ public static class HostOrientationHelper
         {
             if (host is Wall wall)
                 return ("Wall", GetWallOrientation(wall));
-            if (host is FamilyInstance fi && host.Category != null && host.Category.Id.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+            if (host is FamilyInstance fi && host.Category != null && host.Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming)
                 return ("Framing", GetFramingOrientation(fi));
             if (host is Floor floor)
             {

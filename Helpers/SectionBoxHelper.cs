@@ -23,7 +23,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                 return elementsWithTransforms;
             }
 
-            Solid sectionBoxSolid = GetSectionBoxAsSolid(view3D);
+            Solid? sectionBoxSolid = GetSectionBoxAsSolid(view3D);
             if (sectionBoxSolid == null || sectionBoxSolid.Volume <= 0)
             {
                 return elementsWithTransforms; // Return original list if solid is invalid
@@ -79,7 +79,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
         /// </summary>
         /// <param name="view3D">The 3D view</param>
         /// <returns>BoundingBoxXYZ in world coordinates, or null if no section box</returns>
-        public static BoundingBoxXYZ GetSectionBoxBounds(View3D view3D)
+        public static BoundingBoxXYZ? GetSectionBoxBounds(View3D view3D)
         {
             if (view3D == null || !view3D.IsSectionBoxActive)
             {
@@ -115,7 +115,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
             }
         }
 
-        private static Solid GetSectionBoxAsSolid(View3D view3D)
+        private static Solid? GetSectionBoxAsSolid(View3D view3D)
         {
             BoundingBoxXYZ sectionBox = view3D.GetSectionBox();
             Transform transform = sectionBox.Transform;

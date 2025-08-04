@@ -21,9 +21,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS
                 Console.WriteLine($"Log file path: {StructuralElementLogger.GetLogFilePath()}");
                 
                 // Test logging some entries
-                StructuralElementLogger.LogStructuralElement("TEST_ELEMENT", 12345, "TEST_DETECTED", "This is a test entry");
-                StructuralElementLogger.LogIntersection("TestDuct", 111, "TestWall", 222, "Test intersection point");
-                StructuralElementLogger.LogSleevePlace("TestWall", 222, 333, "Test placement point", "100x200");
+                StructuralElementLogger.LogStructuralElement("TEST_ELEMENT", new Autodesk.Revit.DB.ElementId(12345L), "TEST_DETECTED", "This is a test entry");
+                StructuralElementLogger.LogIntersection("TestDuct", new Autodesk.Revit.DB.ElementId(111L), "TestWall", new Autodesk.Revit.DB.ElementId(222L), "Test intersection point");
+                StructuralElementLogger.LogSleevePlace("TestWall", new Autodesk.Revit.DB.ElementId(222L), new Autodesk.Revit.DB.ElementId(333L), "Test placement point", "100x200");
                 StructuralElementLogger.LogSummary("TestCommand", 10, 5, 3, 2);
                 
                 Console.WriteLine("Test logging completed.");

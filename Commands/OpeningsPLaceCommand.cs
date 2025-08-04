@@ -55,8 +55,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             DebugLogger.Log($"StructuralElementLogger status: {(StructuralElementLogger.IsLoggerInitialized() ? "READY" : "FAILED")}");
             
             // TEST: Create a test log entry to verify the logger is working
-            StructuralElementLogger.LogStructuralElement("SYSTEM", 0, "OPENINGS PLACE COMMAND STARTED", "Master command executing all sleeve placement commands with structural support");
-            StructuralElementLogger.LogStructuralElement("DIAGNOSTIC", 999, "LOGGER_TEST", "This is a test entry to verify logging is working");
+            StructuralElementLogger.LogStructuralElement("SYSTEM", new Autodesk.Revit.DB.ElementId(0L), "OPENINGS PLACE COMMAND STARTED", "Master command executing all sleeve placement commands with structural support");
+            StructuralElementLogger.LogStructuralElement("DIAGNOSTIC", new Autodesk.Revit.DB.ElementId(999L), "LOGGER_TEST", "This is a test entry to verify logging is working");
             
             // Show detailed diagnostic information
             string diagnosticInfo = $"DIAGNOSTIC INFO:\n" +
@@ -112,7 +112,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             DebugLogger.Log("OpeningsPLaceCommand: All sleeve commands completed");
             
             // Log completion of structural elements processing
-            StructuralElementLogger.LogStructuralElement("SYSTEM", 0, "OPENINGS PLACE COMMAND COMPLETED", $"All sleeve placement commands finished. Structural log file: {StructuralElementLogger.GetLogFilePath()}");
+            StructuralElementLogger.LogStructuralElement("SYSTEM", new Autodesk.Revit.DB.ElementId(0L), "OPENINGS PLACE COMMAND COMPLETED", $"All sleeve placement commands finished. Structural log file: {StructuralElementLogger.GetLogFilePath()}");
             DebugLogger.Log($"OpeningsPLaceCommand: All sleeve placement commands completed. Structural elements log available at: {StructuralElementLogger.GetLogFilePath()}");
             
             TaskDialog.Show("All Sleeve Commands Completed", 

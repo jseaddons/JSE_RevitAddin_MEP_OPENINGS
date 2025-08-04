@@ -30,6 +30,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     bool isLinkedElement = linkTransform != null;
                     var structuralOptions = new Options();
                     var structuralGeometry = structuralElement.get_Geometry(structuralOptions);
+                    if (structuralGeometry == null)
+                    {
+                        DebugLogger.Log($"[CableTraySleeveIntersectionService] Geometry is null for structural element ID={structuralElement.Id.Value}");
+                        continue;
+                    }
                     Solid? structuralSolid = null;
 
                     foreach (var geomObj in structuralGeometry)
@@ -102,6 +107,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     }
                                 }
                             }
+                            // Fallback: if ptA or ptB is null, use the first two points
+                            if (ptA == null || ptB == null)
+                            {
+                                ptA = intersectionPoints[0];
+                                ptB = intersectionPoints[1];
+                            }
                             intersectionPoint = new XYZ((ptA.X + ptB.X) / 2, (ptA.Y + ptB.Y) / 2, (ptA.Z + ptB.Z) / 2);
                         }
                         else
@@ -110,7 +121,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             intersectionPoint = intersectionPoints[0];
                         }
 
-                        intersections.Add((structuralElement, structuralSolid.GetBoundingBox(), intersectionPoint));
+                        // Try to get bounding box from solid, fallback to element's bounding box if null
+                        BoundingBoxXYZ? bbox = structuralSolid.GetBoundingBox();
+                        if (bbox == null)
+                        {
+                            bbox = structuralElement.get_BoundingBox(null);
+                            DebugLogger.Log($"[CableTraySleeveIntersectionService] Solid bounding box was null for element ID={structuralElement.Id.Value}, used element bounding box instead.");
+                        }
+                        if (bbox != null)
+                        {
+                            intersections.Add((structuralElement, bbox, intersectionPoint));
+                        }
+                        else
+                        {
+                            DebugLogger.Log($"[CableTraySleeveIntersectionService] Both solid and element bounding boxes are null for element ID={structuralElement.Id.Value}");
+                        }
                     }
                 }
                 catch (Exception ex)

@@ -199,8 +199,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     StructuralType.NonStructural);
 
 
-                double pipeDiameter = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_OUTER_DIAMETER)?.AsDouble() ?? 0;
-                double insulationThickness = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_INSULATION_THICKNESS)?.AsDouble() ?? 0;
+                double pipeDiameter = 0;
+                double insulationThickness = 0;
+                if (pipe != null)
+                {
+                    pipeDiameter = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_OUTER_DIAMETER)?.AsDouble() ?? 0;
+                    insulationThickness = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_INSULATION_THICKNESS)?.AsDouble() ?? 0;
+                }
                 double clearance;
                 if (insulationThickness > 0.0)
                 {
@@ -287,13 +292,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
 
-                Level refLevel = HostLevelHelper.GetHostReferenceLevel(_doc, pipe);
-                if (refLevel != null)
+                if (pipe != null)
                 {
-                    Parameter schedLevelParam = instance.LookupParameter("Schedule Level");
-                    if (schedLevelParam != null && !schedLevelParam.IsReadOnly)
+                    Level refLevel = HostLevelHelper.GetHostReferenceLevel(_doc, pipe);
+                    if (refLevel != null)
                     {
-                        schedLevelParam.Set(refLevel.Id);
+                        Parameter schedLevelParam = instance.LookupParameter("Schedule Level");
+                        if (schedLevelParam != null && !schedLevelParam.IsReadOnly)
+                        {
+                            schedLevelParam.Set(refLevel.Id);
+                        }
                     }
                 }
             }

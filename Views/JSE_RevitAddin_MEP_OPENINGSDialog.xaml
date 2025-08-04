@@ -1,0 +1,6 @@
+<Window x:Class="JSE_RevitAddin_MEP_OPENINGS.Views.JSE_RevitAddin_MEP_OPENINGSDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="JSE Revit Addin MEP OPENINGS" Height="600" Width="900" WindowStartupLocation="CenterScreen">
+    <!-- The content will be set in code-behind to the user control -->
+</Window>

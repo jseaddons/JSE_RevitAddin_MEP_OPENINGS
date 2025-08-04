@@ -9,7 +9,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// </summary>
     public static class StructuralElementLogger
     {
-        private static string LogFilePath;
+        private static string? LogFilePath;
         private static bool IsInitialized = false;
 
         /// <summary>
@@ -22,7 +22,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 // Try to find the project directory more reliably
-                string projectDir = null;
+            string? projectDir = null;
                 
                 // Method 1: Look for the known project directory structure
                 string[] potentialPaths = {
@@ -61,7 +61,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 // Create Logs folder in project directory
-                string logsDir = Path.Combine(projectDir, "Logs");
+                string logsDir = Path.Combine(projectDir!, "Logs");
                 if (!Directory.Exists(logsDir))
                 {
                     Directory.CreateDirectory(logsDir);
@@ -94,7 +94,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Log structural element detection and processing
         /// </summary>
-        public static void LogStructuralElement(string elementType, int elementId, string action, string details = "")
+        public static void LogStructuralElement(string elementType, Autodesk.Revit.DB.ElementId elementId, string action, string details = "")
         {
             if (!DebugLogger.IsEnabled) return;
             if (!IsInitialized)
@@ -103,7 +103,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-                string logEntry = $"[{timestamp}] {elementType.ToUpper()} ID={elementId}: {action}";
+                string logEntry = $"[{timestamp}] {elementType.ToUpper()} ID={elementId.Value}: {action}";
                 if (!string.IsNullOrEmpty(details))
                     logEntry += $" - {details}";
                 logEntry += "\n";
@@ -111,7 +111,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 File.AppendAllText(LogFilePath, logEntry);
 
                 // Also log to main debug logger with special prefix
-                DebugLogger.Log($"[STRUCTURAL] {elementType} ID={elementId}: {action} {details}");
+                DebugLogger.Log($"[STRUCTURAL] {elementType} ID={elementId.Value}: {action} {details}");
             }
             catch (Exception ex)
             {
@@ -122,16 +122,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Log structural element sleeve placement success
         /// </summary>
-        public static void LogSleevePlace(string elementType, int elementId, int sleeveId, string position, string size)
+        public static void LogSleevePlace(string elementType, Autodesk.Revit.DB.ElementId elementId, Autodesk.Revit.DB.ElementId sleeveId, string position, string size)
         {
             if (!DebugLogger.IsEnabled) return;
-            LogStructuralElement(elementType, elementId, "SLEEVE PLACED", $"Sleeve ID={sleeveId}, Position={position}, Size={size}");
+            LogStructuralElement(elementType, elementId, "SLEEVE PLACED", $"Sleeve ID={sleeveId.Value}, Position={position}, Size={size}");
         }
 
         /// <summary>
         /// Log structural element sleeve placement failure
         /// </summary>
-        public static void LogSleeveFailure(string elementType, int elementId, string reason)
+        public static void LogSleeveFailure(string elementType, Autodesk.Revit.DB.ElementId elementId, string reason)
         {
             if (!DebugLogger.IsEnabled) return;
             LogStructuralElement(elementType, elementId, "SLEEVE FAILED", $"Reason: {reason}");
@@ -140,17 +140,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Log structural element intersection detection
         /// </summary>
-        public static void LogIntersection(string mepElementType, int mepElementId, string structuralElementType, int structuralElementId, string position)
+        public static void LogIntersection(string mepElementType, Autodesk.Revit.DB.ElementId mepElementId, string structuralElementType, Autodesk.Revit.DB.ElementId structuralElementId, string position)
         {
             if (!DebugLogger.IsEnabled) return;
             string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-            string logEntry = $"[{timestamp}] {mepElementType}-{structuralElementType.ToUpper()} INTERSECTION - {mepElementType} ID={mepElementId}, {structuralElementType} ID={structuralElementId}, Position={position}\n";
+            string logEntry = $"[{timestamp}] {mepElementType}-{structuralElementType.ToUpper()} INTERSECTION - {mepElementType} ID={mepElementId.Value}, {structuralElementType} ID={structuralElementId.Value}, Position={position}\n";
             
             try
             {
                 if (!IsInitialized)
                     InitializeLogger();
-                File.AppendAllText(LogFilePath, logEntry);
+                DebugLogger.Log($"[STRUCTURAL] {mepElementType}-{structuralElementType} intersection detected - MEP ID={mepElementId.Value}, Structural ID={structuralElementId.Value}");
                 DebugLogger.Log($"[STRUCTURAL] {mepElementType}-{structuralElementType} intersection detected - MEP ID={mepElementId}, Structural ID={structuralElementId}");
             }
             catch (Exception ex)
@@ -162,7 +162,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Log structural type filtering results
         /// </summary>
-        public static void LogStructuralTypeCheck(string elementType, int elementId, bool isStructural, string structuralType = "")
+        public static void LogStructuralTypeCheck(string elementType, Autodesk.Revit.DB.ElementId elementId, bool isStructural, string structuralType = "")
         {
             if (!DebugLogger.IsEnabled) return;
             string action = isStructural ? "STRUCTURAL TYPE CONFIRMED" : "NON-STRUCTURAL TYPE SKIPPED";

@@ -55,29 +55,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 var pipe = tuple.Item1;
                 var transform = tuple.Item2;
-                _log($"Processing pipe {pipe?.Id.Value ?? -1}");
+                int pipeIdValue = (int)(pipe?.Id?.Value ?? -1);
+                _log($"Processing pipe {pipeIdValue}");
                 if (pipe == null) { SkippedCount++; _log("Skipped: pipe is null"); continue; }
                 var locCurve = pipe.Location as LocationCurve;
                 var pipeLine = locCurve?.Curve as Line;
                 if (pipeLine == null)
                 {
                     SkippedCount++;
-                    _log($"Skipped: pipe {pipe.Id.Value} has no valid Line geometry");
+                    _log($"Skipped: pipe {pipeIdValue} has no valid Line geometry");
                     continue;
                 }
                 // --- CLUSTERING DATA PREP FOR SOIL/WASTE SYSTEMS ---
                 var system = pipe.MEPSystem;
-                _log($"Pipe {pipe.Id.Value}: MEP System = {system?.Name ?? "NULL"}");
+                string systemName = system?.Name ?? "NULL";
+                _log($"Pipe {pipeIdValue}: MEP System = {systemName}");
                 string sysName = system?.Name?.ToLowerInvariant() ?? "";
                 bool isSoilWasteSanitary = !string.IsNullOrEmpty(sysName) && (sysName.Contains("soil") || sysName.Contains("waste") || sysName.Contains("sp ") || sysName.Contains("sanitary"));
-                List<FamilyInstance> allFittings = null;
+                List<FamilyInstance>? allFittings = null;
                 double clusterRadius = 0;
                 if (isSoilWasteSanitary)
                 {
-                    _log($"Pipe {pipe.Id.Value}: SOIL/WASTE system detected - clustering data will be checked per intersection host");
+                    _log($"Pipe {pipeIdValue}: SOIL/WASTE system detected - clustering data will be checked per intersection host");
                     clusterRadius = UnitUtils.ConvertToInternalUnits(300.0, UnitTypeId.Millimeters);
                     var pipeCurve = pipeLine;
-                    if (pipeCurve != null)
+                    if (pipeCurve != null && system != null)
                     {
                         var hostFittings = new FilteredElementCollector(_doc)
                             .OfClass(typeof(FamilyInstance))
@@ -90,7 +92,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 fi.MEPModel.ConnectorManager.Connectors.Cast<Connector>().Any(c => c.MEPSystem != null && c.MEPSystem.Id == system.Id)
                             )
                             .ToList();
-                        _log($"Pipe {pipe.Id.Value}: Found {hostFittings.Count} host fittings in system {system.Name}");
+                        _log($"Pipe {pipeIdValue}: Found {hostFittings.Count} host fittings in system {systemName}");
                         allFittings = new List<FamilyInstance>(hostFittings);
                         var linkInstances = new FilteredElementCollector(_doc)
                             .OfClass(typeof(RevitLinkInstance))
@@ -109,13 +111,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     fi.MEPModel != null &&
                                     fi.MEPModel.ConnectorManager != null &&
                                     fi.MEPModel.ConnectorManager.Connectors != null &&
-                                    fi.MEPModel.ConnectorManager.Connectors.Cast<Connector>().Any(c => c.MEPSystem != null && c.MEPSystem.Name == system.Name)
+                                    fi.MEPModel.ConnectorManager.Connectors.Cast<Connector>().Any(c => c.MEPSystem != null && c.MEPSystem.Name == systemName)
                                 )
                                 .ToList();
                             allFittings.AddRange(linkedFittings);
-                            _log($"Pipe {pipe.Id.Value}: Found {linkedFittings.Count} linked fittings in {linkInstance.Name}");
+                            _log($"Pipe {pipeIdValue}: Found {linkedFittings.Count} linked fittings in {linkInstance.Name}");
                         }
-                        _log($"Pipe {pipe.Id.Value}: Total fittings in system = {allFittings.Count}");
+                        _log($"Pipe {pipeIdValue}: Total fittings in system = {allFittings.Count}");
                     }
                 }
                 // --- END CLUSTERING DATA PREP ---

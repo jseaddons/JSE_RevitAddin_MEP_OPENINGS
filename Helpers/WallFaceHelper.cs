@@ -21,7 +21,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                 
                 Options options = new Options { ComputeReferences = true, IncludeNonVisibleObjects = false };
                 GeometryElement geomElem = wall.get_Geometry(options);
-                Face bestFace = null;
+                Face? bestFace = null;
                 double bestDot = double.MinValue;
                 
                 foreach (GeometryObject obj in geomElem)
@@ -31,8 +31,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                         foreach (Face face in solid.Faces)
                         {
                             // Only consider planar faces
-                            PlanarFace pf = face as PlanarFace;
-                            if (pf == null) continue;
+                            if (face is not PlanarFace pf) continue;
                             // Compare face normal to wall orientation
                             double dot = pf.FaceNormal.Normalize().DotProduct(wallOrientation);
                             if (dot > bestDot)
@@ -43,9 +42,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                         }
                     }
                 }
-                if (bestFace != null)
+                if (bestFace is PlanarFace pfBest)
                 {
-                    XYZ normal = ((PlanarFace)bestFace).FaceNormal.Normalize();
+                    XYZ normal = pfBest.FaceNormal.Normalize();
                     DebugLogger.Log($"[WALL-NORMAL-DEBUG] Best planar face normal: {normal}");
                     // If normal is nearly vertical, fallback to wall orientation
                     if (Math.Abs(normal.Z) > 0.7) // nearly vertical
