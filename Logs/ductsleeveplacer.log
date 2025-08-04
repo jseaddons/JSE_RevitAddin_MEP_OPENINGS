@@ -1,0 +1,554 @@
+[2025-08-04 13:04:53.115] [v1.0.0.0] [INFO] [DuctSleevePlacer:42] [DuctSleevePlacer] USING PRE-CALCULATED ORIENTATION: (0.000000,1.000000,0.000000)
+[2025-08-04 13:04:53.142] [v1.0.0.0] [INFO] [DuctSleevePlacer:72] [DuctSleevePlacer] DIAGNOSTIC: Called for ductId=1933792, hostType=Floor, direction=(0.000,0.000,-1.000)
+[2025-08-04 13:04:53.143] [v1.0.0.0] [INFO] [DuctSleevePlacer:73] [DuctSleevePlacer] === LOG FILE START: PlaceDuctSleeve called for duct 1933792 at intersection (99.753919125, 30.347622614, 61.663385827) ===
+[2025-08-04 13:04:53.144] [v1.0.0.0] [INFO] [DuctSleevePlacer:76] [DuctSleevePlacer] DebugLogger log file path: 
+[2025-08-04 13:04:53.145] [v1.0.0.0] [INFO] [DuctSleevePlacer:80] [DuctSleevePlacer] PlaceDuctSleeve called for duct 1933792 at intersection (99.753919125, 30.347622614, 61.663385827)
+[2025-08-04 13:04:53.145] [v1.0.0.0] [INFO] [DuctSleevePlacer:128] [DuctSleevePlacer] STRUCTURAL CHECK: FloorId=10934404, IsStructural=True
+[2025-08-04 13:04:53.146] [v1.0.0.0] [INFO] [DuctSleevePlacer:145] [DuctSleevePlacer] Host floor is from linked document: Architecture_detached
+[2025-08-04 13:04:53.147] [v1.0.0.0] [INFO] [DuctSleevePlacer:162] [DuctSleevePlacer] Floor thickness detected (param: Default Thickness): 260.0mm
+[2025-08-04 13:04:53.147] [v1.0.0.0] [INFO] [DuctSleevePlacer:181] [DuctSleevePlacer] Duct direction for floor sleeve: (0.000, 0.000, -1.000)
+[2025-08-04 13:04:53.169] [v1.0.0.0] [INFO] [DuctSleevePlacer:225] [DuctSleevePlacer] DEBUG: intersection=(99.754,30.348,61.663), placePoint=(99.754,30.348,61.663), mmDistance=0.0, allowedOffset=135.0
+[2025-08-04 13:04:53.170] [v1.0.0.0] [INFO] [DuctSleevePlacer:233] [DuctSleevePlacer] Intended centerline placement: placePoint=[99.754,30.348,61.663]
+[2025-08-04 13:04:53.171] [v1.0.0.0] [INFO] [DuctSleevePlacer:235] [DuctSleevePlacer] Placing sleeve: width=0.820209973753281, height=1.96850393700787, intersection=(99.7539191246407,30.3476226135496,61.6633858267716)
+[2025-08-04 13:04:53.172] [v1.0.0.0] [INFO] [DuctSleevePlacer:236] [DuctSleevePlacer] Duct direction: (-1.20318569922028E-14, -3.0079642480507E-15, -1)
+[2025-08-04 13:04:53.175] [v1.0.0.0] [INFO] [DuctSleevePlacer:305] [DuctSleevePlacer] HostOrientation parameter not found or read-only for sleeveId=2145867
+[2025-08-04 13:04:53.175] [v1.0.0.0] [INFO] [DuctSleevePlacer:309] [DuctSleevePlacer] HostOrientation after set: '<null>' for sleeveId=2145867
+[2025-08-04 13:04:53.176] [v1.0.0.0] [INFO] [DuctSleevePlacer:327] [DuctSleevePlacer] About to set Width: 0.820209973753281 (internal), 250mm; Height: 1.96850393700787 (internal), 600mm for duct 1933792
+[2025-08-04 13:04:53.177] [v1.0.0.0] [INFO] [DuctSleevePlacer:492] [DuctSleevePlacer] Setting Width to 250.0mm (internal: 0.820210) for duct 1933792
+[2025-08-04 13:04:53.178] [v1.0.0.0] [INFO] [DuctSleevePlacer:500] [DuctSleevePlacer] Verified Width set to 300.0mm for duct 1933792
+[2025-08-04 13:04:53.179] [v1.0.0.0] [INFO] [DuctSleevePlacer:492] [DuctSleevePlacer] Setting Height to 600.0mm (internal: 1.968504) for duct 1933792
+[2025-08-04 13:04:53.179] [v1.0.0.0] [INFO] [DuctSleevePlacer:500] [DuctSleevePlacer] Verified Height set to 200.0mm for duct 1933792
+[2025-08-04 13:04:53.180] [v1.0.0.0] [INFO] [DuctSleevePlacer:492] [DuctSleevePlacer] Setting Depth to 260.0mm (internal: 0.853018) for duct 1933792
+[2025-08-04 13:04:53.181] [v1.0.0.0] [INFO] [DuctSleevePlacer:500] [DuctSleevePlacer] Verified Depth set to 200.0mm for duct 1933792
+[2025-08-04 13:04:53.234] [v1.0.0.0] [INFO] [DuctSleevePlacer:344] [DuctSleevePlacer] PLACED: ductId=1933792, sleeveId=2145867, at (99.753919125, 30.347622614, 61.663385827)
+[2025-08-04 13:04:53.235] [v1.0.0.0] [INFO] [DuctSleevePlacer:348] [DuctSleevePlacer] hostElement type: Autodesk.Revit.DB.Floor, category: Floors, id: 10934404, family: 
+[2025-08-04 13:04:53.235] [v1.0.0.0] [INFO] [DuctSleevePlacer:364] [DuctSleevePlacer] FLOOR: Rotating using pre-calculated orientation: (0.000000,1.000000,0.000000)
+[2025-08-04 13:04:53.236] [v1.0.0.0] [INFO] [DuctSleevePlacer:367] [DuctSleevePlacer] FLOOR: Rotation angle: 90.0 degrees
+[2025-08-04 13:04:53.239] [v1.0.0.0] [INFO] [DuctSleevePlacer:370] [DuctSleevePlacer] FLOOR: Applied rotation of 90.0 degrees
+[2025-08-04 13:04:53.240] [v1.0.0.0] [INFO] [DuctSleevePlacer:418] [DuctSleevePlacer] Placement validation:
+[2025-08-04 13:04:53.240] [v1.0.0.0] [INFO] [DuctSleevePlacer:419]   - Intended centerline: [99.754, 30.348, 61.663]
+[2025-08-04 13:04:53.241] [v1.0.0.0] [INFO] [DuctSleevePlacer:420]   - Actual placement: [99.754, 30.348, 61.663]
+[2025-08-04 13:04:53.241] [v1.0.0.0] [INFO] [DuctSleevePlacer:421]   - Offset: X=0.000, Y=0.000, Z=0.000, Total=0.000
+[2025-08-04 13:04:53.242] [v1.0.0.0] [INFO] [DuctSleevePlacer:429] [DuctSleevePlacer] SUCCESS: Sleeve placement is at the centerline.
+[2025-08-04 13:04:53.243] [v1.0.0.0] [INFO] [DuctSleevePlacer:435] Duct 1933792 - Intersection vs Sleeve position distance: 0.0mm
+[2025-08-04 13:04:53.244] [v1.0.0.0] [INFO] [DuctSleevePlacer:436]   - Intersection: [99.754, 30.348, 61.663]
+[2025-08-04 13:04:53.245] [v1.0.0.0] [INFO] [DuctSleevePlacer:437]   - Sleeve pos: [99.754, 30.348, 61.663]
+[2025-08-04 13:04:53.253] [v1.0.0.0] [INFO] [DuctSleevePlacer:448] [DuctSleevePlacer] Set Schedule Level to T01 for duct 1933792
+[2025-08-04 13:04:53.253] [v1.0.0.0] [INFO] [DuctSleeveCommand:420] [DuctSleeveCommand] PLACED: Duct 1933792 host Floor 10934404 at (99.753919125, 30.347622614, 61.663385827) size=(0.820209973753281,1.96850393700787)
+[2025-08-04 13:04:53.254] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1935079 Line Start=(109.030454629, 28.024919218, 60.252624672), End=(112.311294524, 28.024919218, 60.252624672)
+[2025-08-04 13:04:53.258] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1935079 no intersection with any structural element
+[2025-08-04 13:04:53.259] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1936185 Line Start=(109.030454629, 28.254578011, 60.252624672), End=(112.311294524, 28.254578011, 60.252624672)
+[2025-08-04 13:04:53.263] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1936185 no intersection with any structural element
+[2025-08-04 13:04:53.264] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1950980 Line Start=(100.946031966, 26.377346247, 62.697660362), End=(100.946031966, 26.377346247, 54.628801967)
+[2025-08-04 13:04:53.268] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 1950980 intersects Floor 1713828 BBox=((100.946031966, 26.377346247, 62.089895013),(100.946031966, 26.377346247, 62.335958005))
+[2025-08-04 13:04:53.269] [v1.0.0.0] [INFO] [DuctSleeveCommand:262] [DuctSleeveCommand] FLOOR DEBUG: Duct 1950980 intersects Floor 1713828 - Status: NON-STRUCTURAL
+[2025-08-04 13:04:53.270] [v1.0.0.0] [INFO] [DuctSleeveCommand:269] [DuctSleeveCommand] SKIP: Duct 1950980 host Floor 1713828 is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-04 13:04:53.271] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 1950980 intersects Floor 10934404 BBox=((100.946031966, 26.377346247, 61.236876640),(100.946031966, 26.377346247, 62.089895013))
+[2025-08-04 13:04:53.271] [v1.0.0.0] [INFO] [DuctSleeveCommand:262] [DuctSleeveCommand] FLOOR DEBUG: Duct 1950980 intersects Floor 10934404 - Status: STRUCTURAL
+[2025-08-04 13:04:53.272] [v1.0.0.0] [INFO] [DuctSleeveCommand:280] [DuctSleeveCommand] FLOOR SYMBOL: Found floor symbol: DuctOpeningOnSlab - DS#
+[2025-08-04 13:04:53.298] [v1.0.0.0] [INFO] [DuctSleeveCommand:296] [DuctSleeveCommand] DUPLICATION CHECK at (100.946031966, 26.377346247, 61.663385827):
+No sleeves found at location
+[2025-08-04 13:04:53.358] [v1.0.0.0] [INFO] [DuctSleevePlacer:29] [DuctSleevePlacer] Constructor called
+[2025-08-04 13:04:53.358] [v1.0.0.0] [INFO] [DuctSleeveCommand:342] [DuctSleeveCommand] DEBUG BEFORE PLACER: DuctId=1950980, HostType=Floor, HostId=10934404
+[2025-08-04 13:04:53.358] [v1.0.0.0] [INFO] [DuctSleeveCommand:343] [DuctSleeveCommand] DEBUG INTERSECTION: (100.946032, 26.377346, 61.663386)
+[2025-08-04 13:04:53.359] [v1.0.0.0] [INFO] [DuctSleeveCommand:344] [DuctSleeveCommand] DEBUG DIRECTION: (0.000000, 0.000000, -1.000000)
+[2025-08-04 13:04:53.359] [v1.0.0.0] [INFO] [DuctSleeveCommand:345] [DuctSleeveCommand] DEBUG SIZE: Width=1.312336, Height=0.820210
+[2025-08-04 13:04:53.360] [v1.0.0.0] [INFO] [DuctSleeveCommand:346] [DuctSleeveCommand] DEBUG FAMILY: DuctOpeningOnSlab - DS#
+[2025-08-04 13:04:53.361] [v1.0.0.0] [INFO] [DuctSleeveCommand:349] [DuctSleeveCommand] === DUCT ORIENTATION ANALYSIS ===
+[2025-08-04 13:04:53.361] [v1.0.0.0] [INFO] [DuctSleeveCommand:350] [DuctSleeveCommand] Duct Width Parameter: 300.0mm
+[2025-08-04 13:04:53.362] [v1.0.0.0] [INFO] [DuctSleeveCommand:351] [DuctSleeveCommand] Duct Height Parameter: 150.0mm
+[2025-08-04 13:04:53.363] [v1.0.0.0] [INFO] [DuctSleeveCommand:352] [DuctSleeveCommand] Original ductLine.Direction: (0.000000, 0.000000, -1.000000)
+[2025-08-04 13:04:53.364] [v1.0.0.0] [INFO] [DuctSleeveCommand:353] [DuctSleeveCommand] Transformed hostLine.Direction: (0.000000, 0.000000, -1.000000)
+[2025-08-04 13:04:53.364] [v1.0.0.0] [INFO] [DuctSleeveCommand:375] [DuctSleeveCommand] Got width direction from connector: (0.000, 1.000, 0.000)
+[2025-08-04 13:04:53.365] [v1.0.0.0] [INFO] [DuctSleeveCommand:405] [DuctSleeveCommand] Duct width direction (world): (0.000, 1.000, 0.000)
+[2025-08-04 13:04:53.365] [v1.0.0.0] [INFO] [DuctSleeveCommand:406] [DuctSleeveCommand] ORIENTATION STATUS: Y-ORIENTED
+[2025-08-04 13:04:53.366] [v1.0.0.0] [INFO] [DuctSleeveCommand:411] [DuctSleeveCommand] Passing Y-oriented duct to placer for rotation.
+[2025-08-04 13:04:53.366] [v1.0.0.0] [INFO] [DuctSleevePlacer:42] [DuctSleevePlacer] USING PRE-CALCULATED ORIENTATION: (0.000000,1.000000,0.000000)
+[2025-08-04 13:04:53.367] [v1.0.0.0] [INFO] [DuctSleevePlacer:72] [DuctSleevePlacer] DIAGNOSTIC: Called for ductId=1950980, hostType=Floor, direction=(0.000,0.000,-1.000)
+[2025-08-04 13:04:53.367] [v1.0.0.0] [INFO] [DuctSleevePlacer:73] [DuctSleevePlacer] === LOG FILE START: PlaceDuctSleeve called for duct 1950980 at intersection (100.946031966, 26.377346247, 61.663385827) ===
+[2025-08-04 13:04:53.368] [v1.0.0.0] [INFO] [DuctSleevePlacer:76] [DuctSleevePlacer] DebugLogger log file path: 
+[2025-08-04 13:04:53.368] [v1.0.0.0] [INFO] [DuctSleevePlacer:80] [DuctSleevePlacer] PlaceDuctSleeve called for duct 1950980 at intersection (100.946031966, 26.377346247, 61.663385827)
+[2025-08-04 13:04:53.369] [v1.0.0.0] [INFO] [DuctSleevePlacer:128] [DuctSleevePlacer] STRUCTURAL CHECK: FloorId=10934404, IsStructural=True
+[2025-08-04 13:04:53.370] [v1.0.0.0] [INFO] [DuctSleevePlacer:145] [DuctSleevePlacer] Host floor is from linked document: Architecture_detached
+[2025-08-04 13:04:53.371] [v1.0.0.0] [INFO] [DuctSleevePlacer:162] [DuctSleevePlacer] Floor thickness detected (param: Default Thickness): 260.0mm
+[2025-08-04 13:04:53.371] [v1.0.0.0] [INFO] [DuctSleevePlacer:181] [DuctSleevePlacer] Duct direction for floor sleeve: (0.000, 0.000, -1.000)
+[2025-08-04 13:04:53.383] [v1.0.0.0] [INFO] [DuctSleevePlacer:225] [DuctSleevePlacer] DEBUG: intersection=(100.946,26.377,61.663), placePoint=(100.946,26.377,61.663), mmDistance=0.0, allowedOffset=135.0
+[2025-08-04 13:04:53.384] [v1.0.0.0] [INFO] [DuctSleevePlacer:233] [DuctSleevePlacer] Intended centerline placement: placePoint=[100.946,26.377,61.663]
+[2025-08-04 13:04:53.384] [v1.0.0.0] [INFO] [DuctSleevePlacer:235] [DuctSleevePlacer] Placing sleeve: width=1.31233595800525, height=0.820209973753281, intersection=(100.946031966153,26.3773462470136,61.6633858267716)
+[2025-08-04 13:04:53.385] [v1.0.0.0] [INFO] [DuctSleevePlacer:236] [DuctSleevePlacer] Duct direction: (-1.20318569922028E-14, -3.0079642480507E-15, -1)
+[2025-08-04 13:04:53.388] [v1.0.0.0] [INFO] [DuctSleevePlacer:305] [DuctSleevePlacer] HostOrientation parameter not found or read-only for sleeveId=2145868
+[2025-08-04 13:04:53.388] [v1.0.0.0] [INFO] [DuctSleevePlacer:309] [DuctSleevePlacer] HostOrientation after set: '<null>' for sleeveId=2145868
+[2025-08-04 13:04:53.389] [v1.0.0.0] [INFO] [DuctSleevePlacer:327] [DuctSleevePlacer] About to set Width: 1.31233595800525 (internal), 400mm; Height: 0.820209973753281 (internal), 250mm for duct 1950980
+[2025-08-04 13:04:53.390] [v1.0.0.0] [INFO] [DuctSleevePlacer:492] [DuctSleevePlacer] Setting Width to 400.0mm (internal: 1.312336) for duct 1950980
+[2025-08-04 13:04:53.391] [v1.0.0.0] [INFO] [DuctSleevePlacer:500] [DuctSleevePlacer] Verified Width set to 300.0mm for duct 1950980
+[2025-08-04 13:04:53.391] [v1.0.0.0] [INFO] [DuctSleevePlacer:492] [DuctSleevePlacer] Setting Height to 250.0mm (internal: 0.820210) for duct 1950980
+[2025-08-04 13:04:53.392] [v1.0.0.0] [INFO] [DuctSleevePlacer:500] [DuctSleevePlacer] Verified Height set to 200.0mm for duct 1950980
+[2025-08-04 13:04:53.393] [v1.0.0.0] [INFO] [DuctSleevePlacer:492] [DuctSleevePlacer] Setting Depth to 260.0mm (internal: 0.853018) for duct 1950980
+[2025-08-04 13:04:53.393] [v1.0.0.0] [INFO] [DuctSleevePlacer:500] [DuctSleevePlacer] Verified Depth set to 200.0mm for duct 1950980
+[2025-08-04 13:04:53.447] [v1.0.0.0] [INFO] [DuctSleevePlacer:344] [DuctSleevePlacer] PLACED: ductId=1950980, sleeveId=2145868, at (100.946031966, 26.377346247, 61.663385827)
+[2025-08-04 13:04:53.448] [v1.0.0.0] [INFO] [DuctSleevePlacer:348] [DuctSleevePlacer] hostElement type: Autodesk.Revit.DB.Floor, category: Floors, id: 10934404, family: 
+[2025-08-04 13:04:53.448] [v1.0.0.0] [INFO] [DuctSleevePlacer:364] [DuctSleevePlacer] FLOOR: Rotating using pre-calculated orientation: (0.000000,1.000000,0.000000)
+[2025-08-04 13:04:53.449] [v1.0.0.0] [INFO] [DuctSleevePlacer:367] [DuctSleevePlacer] FLOOR: Rotation angle: 90.0 degrees
+[2025-08-04 13:04:53.452] [v1.0.0.0] [INFO] [DuctSleevePlacer:370] [DuctSleevePlacer] FLOOR: Applied rotation of 90.0 degrees
+[2025-08-04 13:04:53.453] [v1.0.0.0] [INFO] [DuctSleevePlacer:418] [DuctSleevePlacer] Placement validation:
+[2025-08-04 13:04:53.453] [v1.0.0.0] [INFO] [DuctSleevePlacer:419]   - Intended centerline: [100.946, 26.377, 61.663]
+[2025-08-04 13:04:53.454] [v1.0.0.0] [INFO] [DuctSleevePlacer:420]   - Actual placement: [100.946, 26.377, 61.663]
+[2025-08-04 13:04:53.454] [v1.0.0.0] [INFO] [DuctSleevePlacer:421]   - Offset: X=0.000, Y=0.000, Z=0.000, Total=0.000
+[2025-08-04 13:04:53.455] [v1.0.0.0] [INFO] [DuctSleevePlacer:429] [DuctSleevePlacer] SUCCESS: Sleeve placement is at the centerline.
+[2025-08-04 13:04:53.455] [v1.0.0.0] [INFO] [DuctSleevePlacer:435] Duct 1950980 - Intersection vs Sleeve position distance: 0.0mm
+[2025-08-04 13:04:53.456] [v1.0.0.0] [INFO] [DuctSleevePlacer:436]   - Intersection: [100.946, 26.377, 61.663]
+[2025-08-04 13:04:53.456] [v1.0.0.0] [INFO] [DuctSleevePlacer:437]   - Sleeve pos: [100.946, 26.377, 61.663]
+[2025-08-04 13:04:53.459] [v1.0.0.0] [INFO] [DuctSleevePlacer:448] [DuctSleevePlacer] Set Schedule Level to T01 for duct 1950980
+[2025-08-04 13:04:53.459] [v1.0.0.0] [INFO] [DuctSleeveCommand:420] [DuctSleeveCommand] PLACED: Duct 1950980 host Floor 10934404 at (100.946031966, 26.377346247, 61.663385827) size=(1.31233595800525,0.820209973753281)
+[2025-08-04 13:04:53.460] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1950997 Line Start=(100.081193146, 26.356028745, 62.697660362), End=(100.081193146, 26.356028745, 55.151728604)
+[2025-08-04 13:04:53.464] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 1950997 intersects Floor 1713828 BBox=((100.081193146, 26.356028745, 62.089895013),(100.081193146, 26.356028745, 62.335958005))
+[2025-08-04 13:04:53.465] [v1.0.0.0] [INFO] [DuctSleeveCommand:262] [DuctSleeveCommand] FLOOR DEBUG: Duct 1950997 intersects Floor 1713828 - Status: NON-STRUCTURAL
+[2025-08-04 13:04:53.466] [v1.0.0.0] [INFO] [DuctSleeveCommand:269] [DuctSleeveCommand] SKIP: Duct 1950997 host Floor 1713828 is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-04 13:04:53.467] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 1950997 intersects Floor 10934404 BBox=((100.081193146, 26.356028745, 61.236876640),(100.081193146, 26.356028745, 62.089895013))
+[2025-08-04 13:04:53.469] [v1.0.0.0] [INFO] [DuctSleeveCommand:262] [DuctSleeveCommand] FLOOR DEBUG: Duct 1950997 intersects Floor 10934404 - Status: STRUCTURAL
+[2025-08-04 13:04:53.471] [v1.0.0.0] [INFO] [DuctSleeveCommand:280] [DuctSleeveCommand] FLOOR SYMBOL: Found floor symbol: DuctOpeningOnSlab - DS#
+[2025-08-04 13:04:53.500] [v1.0.0.0] [INFO] [DuctSleeveCommand:296] [DuctSleeveCommand] DUPLICATION CHECK at (100.081193146, 26.356028745, 61.663385827):
+No sleeves found at location
+[2025-08-04 13:04:53.569] [v1.0.0.0] [INFO] [DuctSleevePlacer:29] [DuctSleevePlacer] Constructor called
+[2025-08-04 13:04:53.569] [v1.0.0.0] [INFO] [DuctSleeveCommand:342] [DuctSleeveCommand] DEBUG BEFORE PLACER: DuctId=1950997, HostType=Floor, HostId=10934404
+[2025-08-04 13:04:53.570] [v1.0.0.0] [INFO] [DuctSleeveCommand:343] [DuctSleeveCommand] DEBUG INTERSECTION: (100.081193, 26.356029, 61.663386)
+[2025-08-04 13:04:53.570] [v1.0.0.0] [INFO] [DuctSleeveCommand:344] [DuctSleeveCommand] DEBUG DIRECTION: (0.000000, 0.000000, -1.000000)
+[2025-08-04 13:04:53.571] [v1.0.0.0] [INFO] [DuctSleeveCommand:345] [DuctSleeveCommand] DEBUG SIZE: Width=1.312336, Height=0.820210
+[2025-08-04 13:04:53.572] [v1.0.0.0] [INFO] [DuctSleeveCommand:346] [DuctSleeveCommand] DEBUG FAMILY: DuctOpeningOnSlab - DS#
+[2025-08-04 13:04:53.572] [v1.0.0.0] [INFO] [DuctSleeveCommand:349] [DuctSleeveCommand] === DUCT ORIENTATION ANALYSIS ===
+[2025-08-04 13:04:53.573] [v1.0.0.0] [INFO] [DuctSleeveCommand:350] [DuctSleeveCommand] Duct Width Parameter: 300.0mm
+[2025-08-04 13:04:53.573] [v1.0.0.0] [INFO] [DuctSleeveCommand:351] [DuctSleeveCommand] Duct Height Parameter: 150.0mm
+[2025-08-04 13:04:53.574] [v1.0.0.0] [INFO] [DuctSleeveCommand:352] [DuctSleeveCommand] Original ductLine.Direction: (0.000000, 0.000000, -1.000000)
+[2025-08-04 13:04:53.574] [v1.0.0.0] [INFO] [DuctSleeveCommand:353] [DuctSleeveCommand] Transformed hostLine.Direction: (0.000000, 0.000000, -1.000000)
+[2025-08-04 13:04:53.575] [v1.0.0.0] [INFO] [DuctSleeveCommand:375] [DuctSleeveCommand] Got width direction from connector: (0.000, -1.000, 0.000)
+[2025-08-04 13:04:53.575] [v1.0.0.0] [INFO] [DuctSleeveCommand:405] [DuctSleeveCommand] Duct width direction (world): (0.000, -1.000, 0.000)
+[2025-08-04 13:04:53.576] [v1.0.0.0] [INFO] [DuctSleeveCommand:406] [DuctSleeveCommand] ORIENTATION STATUS: Y-ORIENTED
+[2025-08-04 13:04:53.576] [v1.0.0.0] [INFO] [DuctSleeveCommand:411] [DuctSleeveCommand] Passing Y-oriented duct to placer for rotation.
+[2025-08-04 13:04:53.577] [v1.0.0.0] [INFO] [DuctSleevePlacer:42] [DuctSleevePlacer] USING PRE-CALCULATED ORIENTATION: (0.000000,-1.000000,0.000000)
+[2025-08-04 13:04:53.578] [v1.0.0.0] [INFO] [DuctSleevePlacer:72] [DuctSleevePlacer] DIAGNOSTIC: Called for ductId=1950997, hostType=Floor, direction=(0.000,0.000,-1.000)
+[2025-08-04 13:04:53.578] [v1.0.0.0] [INFO] [DuctSleevePlacer:73] [DuctSleevePlacer] === LOG FILE START: PlaceDuctSleeve called for duct 1950997 at intersection (100.081193146, 26.356028745, 61.663385827) ===
+[2025-08-04 13:04:53.579] [v1.0.0.0] [INFO] [DuctSleevePlacer:76] [DuctSleevePlacer] DebugLogger log file path: 
+[2025-08-04 13:04:53.580] [v1.0.0.0] [INFO] [DuctSleevePlacer:80] [DuctSleevePlacer] PlaceDuctSleeve called for duct 1950997 at intersection (100.081193146, 26.356028745, 61.663385827)
+[2025-08-04 13:04:53.580] [v1.0.0.0] [INFO] [DuctSleevePlacer:128] [DuctSleevePlacer] STRUCTURAL CHECK: FloorId=10934404, IsStructural=True
+[2025-08-04 13:04:53.581] [v1.0.0.0] [INFO] [DuctSleevePlacer:145] [DuctSleevePlacer] Host floor is from linked document: Architecture_detached
+[2025-08-04 13:04:53.581] [v1.0.0.0] [INFO] [DuctSleevePlacer:162] [DuctSleevePlacer] Floor thickness detected (param: Default Thickness): 260.0mm
+[2025-08-04 13:04:53.582] [v1.0.0.0] [INFO] [DuctSleevePlacer:181] [DuctSleevePlacer] Duct direction for floor sleeve: (0.000, 0.000, -1.000)
+[2025-08-04 13:04:53.599] [v1.0.0.0] [INFO] [DuctSleevePlacer:225] [DuctSleevePlacer] DEBUG: intersection=(100.081,26.356,61.663), placePoint=(100.081,26.356,61.663), mmDistance=0.0, allowedOffset=135.0
+[2025-08-04 13:04:53.600] [v1.0.0.0] [INFO] [DuctSleevePlacer:233] [DuctSleevePlacer] Intended centerline placement: placePoint=[100.081,26.356,61.663]
+[2025-08-04 13:04:53.600] [v1.0.0.0] [INFO] [DuctSleevePlacer:235] [DuctSleevePlacer] Placing sleeve: width=1.31233595800525, height=0.820209973753281, intersection=(100.081193145754,26.3560287446343,61.6633858267716)
+[2025-08-04 13:04:53.601] [v1.0.0.0] [INFO] [DuctSleevePlacer:236] [DuctSleevePlacer] Duct direction: (-1.20318569922028E-14, -3.0079642480507E-15, -1)
+[2025-08-04 13:04:53.606] [v1.0.0.0] [INFO] [DuctSleevePlacer:305] [DuctSleevePlacer] HostOrientation parameter not found or read-only for sleeveId=2145869
+[2025-08-04 13:04:53.607] [v1.0.0.0] [INFO] [DuctSleevePlacer:309] [DuctSleevePlacer] HostOrientation after set: '<null>' for sleeveId=2145869
+[2025-08-04 13:04:53.608] [v1.0.0.0] [INFO] [DuctSleevePlacer:327] [DuctSleevePlacer] About to set Width: 1.31233595800525 (internal), 400mm; Height: 0.820209973753281 (internal), 250mm for duct 1950997
+[2025-08-04 13:04:53.609] [v1.0.0.0] [INFO] [DuctSleevePlacer:492] [DuctSleevePlacer] Setting Width to 400.0mm (internal: 1.312336) for duct 1950997
+[2025-08-04 13:04:53.610] [v1.0.0.0] [INFO] [DuctSleevePlacer:500] [DuctSleevePlacer] Verified Width set to 300.0mm for duct 1950997
+[2025-08-04 13:04:53.611] [v1.0.0.0] [INFO] [DuctSleevePlacer:492] [DuctSleevePlacer] Setting Height to 250.0mm (internal: 0.820210) for duct 1950997
+[2025-08-04 13:04:53.613] [v1.0.0.0] [INFO] [DuctSleevePlacer:500] [DuctSleevePlacer] Verified Height set to 200.0mm for duct 1950997
+[2025-08-04 13:04:53.614] [v1.0.0.0] [INFO] [DuctSleevePlacer:492] [DuctSleevePlacer] Setting Depth to 260.0mm (internal: 0.853018) for duct 1950997
+[2025-08-04 13:04:53.615] [v1.0.0.0] [INFO] [DuctSleevePlacer:500] [DuctSleevePlacer] Verified Depth set to 200.0mm for duct 1950997
+[2025-08-04 13:04:53.659] [v1.0.0.0] [INFO] [DuctSleevePlacer:344] [DuctSleevePlacer] PLACED: ductId=1950997, sleeveId=2145869, at (100.081193146, 26.356028745, 61.663385827)
+[2025-08-04 13:04:53.660] [v1.0.0.0] [INFO] [DuctSleevePlacer:348] [DuctSleevePlacer] hostElement type: Autodesk.Revit.DB.Floor, category: Floors, id: 10934404, family: 
+[2025-08-04 13:04:53.660] [v1.0.0.0] [INFO] [DuctSleevePlacer:364] [DuctSleevePlacer] FLOOR: Rotating using pre-calculated orientation: (0.000000,-1.000000,0.000000)
+[2025-08-04 13:04:53.661] [v1.0.0.0] [INFO] [DuctSleevePlacer:367] [DuctSleevePlacer] FLOOR: Rotation angle: -90.0 degrees
+[2025-08-04 13:04:53.666] [v1.0.0.0] [INFO] [DuctSleevePlacer:370] [DuctSleevePlacer] FLOOR: Applied rotation of -90.0 degrees
+[2025-08-04 13:04:53.667] [v1.0.0.0] [INFO] [DuctSleevePlacer:418] [DuctSleevePlacer] Placement validation:
+[2025-08-04 13:04:53.668] [v1.0.0.0] [INFO] [DuctSleevePlacer:419]   - Intended centerline: [100.081, 26.356, 61.663]
+[2025-08-04 13:04:53.669] [v1.0.0.0] [INFO] [DuctSleevePlacer:420]   - Actual placement: [100.081, 26.356, 61.663]
+[2025-08-04 13:04:53.670] [v1.0.0.0] [INFO] [DuctSleevePlacer:421]   - Offset: X=0.000, Y=0.000, Z=0.000, Total=0.000
+[2025-08-04 13:04:53.671] [v1.0.0.0] [INFO] [DuctSleevePlacer:429] [DuctSleevePlacer] SUCCESS: Sleeve placement is at the centerline.
+[2025-08-04 13:04:53.673] [v1.0.0.0] [INFO] [DuctSleevePlacer:435] Duct 1950997 - Intersection vs Sleeve position distance: 0.0mm
+[2025-08-04 13:04:53.674] [v1.0.0.0] [INFO] [DuctSleevePlacer:436]   - Intersection: [100.081, 26.356, 61.663]
+[2025-08-04 13:04:53.675] [v1.0.0.0] [INFO] [DuctSleevePlacer:437]   - Sleeve pos: [100.081, 26.356, 61.663]
+[2025-08-04 13:04:53.678] [v1.0.0.0] [INFO] [DuctSleevePlacer:448] [DuctSleevePlacer] Set Schedule Level to T01 for duct 1950997
+[2025-08-04 13:04:53.679] [v1.0.0.0] [INFO] [DuctSleeveCommand:420] [DuctSleeveCommand] PLACED: Duct 1950997 host Floor 10934404 at (100.081193146, 26.356028745, 61.663385827) size=(1.31233595800525,0.820209973753281)
+[2025-08-04 13:04:53.680] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 2047679 Line Start=(102.535816902, 25.812588226, 62.697660362), End=(102.535816902, 25.812588226, 54.628801967)
+[2025-08-04 13:04:53.683] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 2047679 intersects Floor 1713828 BBox=((102.535816902, 25.812588226, 62.089895013),(102.535816902, 25.812588226, 62.335958005))
+[2025-08-04 13:04:53.684] [v1.0.0.0] [INFO] [DuctSleeveCommand:262] [DuctSleeveCommand] FLOOR DEBUG: Duct 2047679 intersects Floor 1713828 - Status: NON-STRUCTURAL
+[2025-08-04 13:04:53.685] [v1.0.0.0] [INFO] [DuctSleeveCommand:269] [DuctSleeveCommand] SKIP: Duct 2047679 host Floor 1713828 is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-04 13:04:53.686] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 2047679 intersects Floor 10934404 BBox=((102.535816902, 25.812588226, 61.236876640),(102.535816902, 25.812588226, 62.089895013))
+[2025-08-04 13:04:53.687] [v1.0.0.0] [INFO] [DuctSleeveCommand:262] [DuctSleeveCommand] FLOOR DEBUG: Duct 2047679 intersects Floor 10934404 - Status: STRUCTURAL
+[2025-08-04 13:04:53.688] [v1.0.0.0] [INFO] [DuctSleeveCommand:280] [DuctSleeveCommand] FLOOR SYMBOL: Found floor symbol: DuctOpeningOnSlab - DS#
+[2025-08-04 13:04:53.726] [v1.0.0.0] [INFO] [DuctSleeveCommand:296] [DuctSleeveCommand] DUPLICATION CHECK at (102.535816902, 25.812588226, 61.663385827):
+No sleeves found at location
+[2025-08-04 13:04:53.792] [v1.0.0.0] [INFO] [DuctSleevePlacer:29] [DuctSleevePlacer] Constructor called
+[2025-08-04 13:04:53.793] [v1.0.0.0] [INFO] [DuctSleeveCommand:342] [DuctSleeveCommand] DEBUG BEFORE PLACER: DuctId=2047679, HostType=Floor, HostId=10934404
+[2025-08-04 13:04:53.793] [v1.0.0.0] [INFO] [DuctSleeveCommand:343] [DuctSleeveCommand] DEBUG INTERSECTION: (102.535817, 25.812588, 61.663386)
+[2025-08-04 13:04:53.794] [v1.0.0.0] [INFO] [DuctSleeveCommand:344] [DuctSleeveCommand] DEBUG DIRECTION: (0.000000, 0.000000, -1.000000)
+[2025-08-04 13:04:53.795] [v1.0.0.0] [INFO] [DuctSleeveCommand:345] [DuctSleeveCommand] DEBUG SIZE: Width=1.312336, Height=0.820210
+[2025-08-04 13:04:53.796] [v1.0.0.0] [INFO] [DuctSleeveCommand:346] [DuctSleeveCommand] DEBUG FAMILY: DuctOpeningOnSlab - DS#
+[2025-08-04 13:04:53.797] [v1.0.0.0] [INFO] [DuctSleeveCommand:349] [DuctSleeveCommand] === DUCT ORIENTATION ANALYSIS ===
+[2025-08-04 13:04:53.797] [v1.0.0.0] [INFO] [DuctSleeveCommand:350] [DuctSleeveCommand] Duct Width Parameter: 300.0mm
+[2025-08-04 13:04:53.798] [v1.0.0.0] [INFO] [DuctSleeveCommand:351] [DuctSleeveCommand] Duct Height Parameter: 150.0mm
+[2025-08-04 13:04:53.798] [v1.0.0.0] [INFO] [DuctSleeveCommand:352] [DuctSleeveCommand] Original ductLine.Direction: (0.000000, 0.000000, -1.000000)
+[2025-08-04 13:04:53.799] [v1.0.0.0] [INFO] [DuctSleeveCommand:353] [DuctSleeveCommand] Transformed hostLine.Direction: (0.000000, 0.000000, -1.000000)
+[2025-08-04 13:04:53.799] [v1.0.0.0] [INFO] [DuctSleeveCommand:375] [DuctSleeveCommand] Got width direction from connector: (-1.000, 0.000, 0.000)
+[2025-08-04 13:04:53.800] [v1.0.0.0] [INFO] [DuctSleeveCommand:405] [DuctSleeveCommand] Duct width direction (world): (-1.000, 0.000, 0.000)
+[2025-08-04 13:04:53.800] [v1.0.0.0] [INFO] [DuctSleeveCommand:406] [DuctSleeveCommand] ORIENTATION STATUS: X-ORIENTED
+[2025-08-04 13:04:53.801] [v1.0.0.0] [INFO] [DuctSleeveCommand:416] [DuctSleeveCommand] Passing X-oriented duct to placer (no rotation).
+[2025-08-04 13:04:53.801] [v1.0.0.0] [INFO] [DuctSleevePlacer:72] [DuctSleevePlacer] DIAGNOSTIC: Called for ductId=2047679, hostType=Floor, direction=(0.000,0.000,-1.000)
+[2025-08-04 13:04:53.802] [v1.0.0.0] [INFO] [DuctSleevePlacer:73] [DuctSleevePlacer] === LOG FILE START: PlaceDuctSleeve called for duct 2047679 at intersection (102.535816902, 25.812588226, 61.663385827) ===
+[2025-08-04 13:04:53.802] [v1.0.0.0] [INFO] [DuctSleevePlacer:76] [DuctSleevePlacer] DebugLogger log file path: 
+[2025-08-04 13:04:53.803] [v1.0.0.0] [INFO] [DuctSleevePlacer:80] [DuctSleevePlacer] PlaceDuctSleeve called for duct 2047679 at intersection (102.535816902, 25.812588226, 61.663385827)
+[2025-08-04 13:04:53.804] [v1.0.0.0] [INFO] [DuctSleevePlacer:128] [DuctSleevePlacer] STRUCTURAL CHECK: FloorId=10934404, IsStructural=True
+[2025-08-04 13:04:53.805] [v1.0.0.0] [INFO] [DuctSleevePlacer:145] [DuctSleevePlacer] Host floor is from linked document: Architecture_detached
+[2025-08-04 13:04:53.806] [v1.0.0.0] [INFO] [DuctSleevePlacer:162] [DuctSleevePlacer] Floor thickness detected (param: Default Thickness): 260.0mm
+[2025-08-04 13:04:53.806] [v1.0.0.0] [INFO] [DuctSleevePlacer:181] [DuctSleevePlacer] Duct direction for floor sleeve: (0.000, 0.000, -1.000)
+[2025-08-04 13:04:53.818] [v1.0.0.0] [INFO] [DuctSleevePlacer:225] [DuctSleevePlacer] DEBUG: intersection=(102.536,25.813,61.663), placePoint=(102.536,25.813,61.663), mmDistance=0.0, allowedOffset=135.0
+[2025-08-04 13:04:53.819] [v1.0.0.0] [INFO] [DuctSleevePlacer:233] [DuctSleevePlacer] Intended centerline placement: placePoint=[102.536,25.813,61.663]
+[2025-08-04 13:04:53.820] [v1.0.0.0] [INFO] [DuctSleevePlacer:235] [DuctSleevePlacer] Placing sleeve: width=1.31233595800525, height=0.820209973753281, intersection=(102.535816901802,25.8125882258804,61.6633858267716)
+[2025-08-04 13:04:53.821] [v1.0.0.0] [INFO] [DuctSleevePlacer:236] [DuctSleevePlacer] Duct direction: (3.00796424805075E-15, -1.20318569922028E-14, -1)
+[2025-08-04 13:04:53.825] [v1.0.0.0] [INFO] [DuctSleevePlacer:305] [DuctSleevePlacer] HostOrientation parameter not found or read-only for sleeveId=2145870
+[2025-08-04 13:04:53.826] [v1.0.0.0] [INFO] [DuctSleevePlacer:309] [DuctSleevePlacer] HostOrientation after set: '<null>' for sleeveId=2145870
+[2025-08-04 13:04:53.827] [v1.0.0.0] [INFO] [DuctSleevePlacer:327] [DuctSleevePlacer] About to set Width: 1.31233595800525 (internal), 400mm; Height: 0.820209973753281 (internal), 250mm for duct 2047679
+[2025-08-04 13:04:53.829] [v1.0.0.0] [INFO] [DuctSleevePlacer:492] [DuctSleevePlacer] Setting Width to 400.0mm (internal: 1.312336) for duct 2047679
+[2025-08-04 13:04:53.829] [v1.0.0.0] [INFO] [DuctSleevePlacer:500] [DuctSleevePlacer] Verified Width set to 300.0mm for duct 2047679
+[2025-08-04 13:04:53.830] [v1.0.0.0] [INFO] [DuctSleevePlacer:492] [DuctSleevePlacer] Setting Height to 250.0mm (internal: 0.820210) for duct 2047679
+[2025-08-04 13:04:53.841] [v1.0.0.0] [INFO] [DuctSleevePlacer:500] [DuctSleevePlacer] Verified Height set to 200.0mm for duct 2047679
+[2025-08-04 13:04:53.842] [v1.0.0.0] [INFO] [DuctSleevePlacer:492] [DuctSleevePlacer] Setting Depth to 260.0mm (internal: 0.853018) for duct 2047679
+[2025-08-04 13:04:53.842] [v1.0.0.0] [INFO] [DuctSleevePlacer:500] [DuctSleevePlacer] Verified Depth set to 200.0mm for duct 2047679
+[2025-08-04 13:04:53.886] [v1.0.0.0] [INFO] [DuctSleevePlacer:344] [DuctSleevePlacer] PLACED: ductId=2047679, sleeveId=2145870, at (102.535816902, 25.812588226, 61.663385827)
+[2025-08-04 13:04:53.886] [v1.0.0.0] [INFO] [DuctSleevePlacer:348] [DuctSleevePlacer] hostElement type: Autodesk.Revit.DB.Floor, category: Floors, id: 10934404, family: 
+[2025-08-04 13:04:53.887] [v1.0.0.0] [INFO] [DuctSleevePlacer:375] [DuctSleevePlacer] FLOOR: No rotation - command determined X-oriented duct
+[2025-08-04 13:04:53.887] [v1.0.0.0] [INFO] [DuctSleevePlacer:418] [DuctSleevePlacer] Placement validation:
+[2025-08-04 13:04:53.888] [v1.0.0.0] [INFO] [DuctSleevePlacer:419]   - Intended centerline: [102.536, 25.813, 61.663]
+[2025-08-04 13:04:53.888] [v1.0.0.0] [INFO] [DuctSleevePlacer:420]   - Actual placement: [102.536, 25.813, 61.663]
+[2025-08-04 13:04:53.889] [v1.0.0.0] [INFO] [DuctSleevePlacer:421]   - Offset: X=0.000, Y=0.000, Z=0.000, Total=0.000
+[2025-08-04 13:04:53.889] [v1.0.0.0] [INFO] [DuctSleevePlacer:429] [DuctSleevePlacer] SUCCESS: Sleeve placement is at the centerline.
+[2025-08-04 13:04:53.890] [v1.0.0.0] [INFO] [DuctSleevePlacer:435] Duct 2047679 - Intersection vs Sleeve position distance: 0.0mm
+[2025-08-04 13:04:53.890] [v1.0.0.0] [INFO] [DuctSleevePlacer:436]   - Intersection: [102.536, 25.813, 61.663]
+[2025-08-04 13:04:53.891] [v1.0.0.0] [INFO] [DuctSleevePlacer:437]   - Sleeve pos: [102.536, 25.813, 61.663]
+[2025-08-04 13:04:53.893] [v1.0.0.0] [INFO] [DuctSleevePlacer:448] [DuctSleevePlacer] Set Schedule Level to T01 for duct 2047679
+[2025-08-04 13:04:53.894] [v1.0.0.0] [INFO] [DuctSleeveCommand:420] [DuctSleeveCommand] PLACED: Duct 2047679 host Floor 10934404 at (102.535816902, 25.812588226, 61.663385827) size=(1.31233595800525,0.820209973753281)
+[2025-08-04 13:04:53.895] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 2047862 Line Start=(102.535816902, 26.403139407, 62.697660362), End=(102.535816902, 26.403139407, 54.628801967)
+[2025-08-04 13:04:53.899] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 2047862 intersects Floor 1713828 BBox=((102.535816902, 26.403139407, 62.089895013),(102.535816902, 26.403139407, 62.335958005))
+[2025-08-04 13:04:53.900] [v1.0.0.0] [INFO] [DuctSleeveCommand:262] [DuctSleeveCommand] FLOOR DEBUG: Duct 2047862 intersects Floor 1713828 - Status: NON-STRUCTURAL
+[2025-08-04 13:04:53.901] [v1.0.0.0] [INFO] [DuctSleeveCommand:269] [DuctSleeveCommand] SKIP: Duct 2047862 host Floor 1713828 is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-04 13:04:53.902] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 2047862 intersects Floor 10934404 BBox=((102.535816902, 26.403139407, 61.236876640),(102.535816902, 26.403139407, 62.089895013))
+[2025-08-04 13:04:53.903] [v1.0.0.0] [INFO] [DuctSleeveCommand:262] [DuctSleeveCommand] FLOOR DEBUG: Duct 2047862 intersects Floor 10934404 - Status: STRUCTURAL
+[2025-08-04 13:04:53.904] [v1.0.0.0] [INFO] [DuctSleeveCommand:280] [DuctSleeveCommand] FLOOR SYMBOL: Found floor symbol: DuctOpeningOnSlab - DS#
+[2025-08-04 13:04:53.930] [v1.0.0.0] [INFO] [DuctSleeveCommand:296] [DuctSleeveCommand] DUPLICATION CHECK at (102.535816902, 26.403139407, 61.663385827):
+No sleeves found at location
+[2025-08-04 13:04:53.987] [v1.0.0.0] [INFO] [DuctSleevePlacer:29] [DuctSleevePlacer] Constructor called
+[2025-08-04 13:04:53.988] [v1.0.0.0] [INFO] [DuctSleeveCommand:342] [DuctSleeveCommand] DEBUG BEFORE PLACER: DuctId=2047862, HostType=Floor, HostId=10934404
+[2025-08-04 13:04:53.988] [v1.0.0.0] [INFO] [DuctSleeveCommand:343] [DuctSleeveCommand] DEBUG INTERSECTION: (102.535817, 26.403139, 61.663386)
+[2025-08-04 13:04:53.988] [v1.0.0.0] [INFO] [DuctSleeveCommand:344] [DuctSleeveCommand] DEBUG DIRECTION: (0.000000, 0.000000, -1.000000)
+[2025-08-04 13:04:53.989] [v1.0.0.0] [INFO] [DuctSleeveCommand:345] [DuctSleeveCommand] DEBUG SIZE: Width=1.312336, Height=0.820210
+[2025-08-04 13:04:53.989] [v1.0.0.0] [INFO] [DuctSleeveCommand:346] [DuctSleeveCommand] DEBUG FAMILY: DuctOpeningOnSlab - DS#
+[2025-08-04 13:04:53.990] [v1.0.0.0] [INFO] [DuctSleeveCommand:349] [DuctSleeveCommand] === DUCT ORIENTATION ANALYSIS ===
+[2025-08-04 13:04:53.990] [v1.0.0.0] [INFO] [DuctSleeveCommand:350] [DuctSleeveCommand] Duct Width Parameter: 300.0mm
+[2025-08-04 13:04:53.991] [v1.0.0.0] [INFO] [DuctSleeveCommand:351] [DuctSleeveCommand] Duct Height Parameter: 150.0mm
+[2025-08-04 13:04:53.991] [v1.0.0.0] [INFO] [DuctSleeveCommand:352] [DuctSleeveCommand] Original ductLine.Direction: (0.000000, 0.000000, -1.000000)
+[2025-08-04 13:04:53.992] [v1.0.0.0] [INFO] [DuctSleeveCommand:353] [DuctSleeveCommand] Transformed hostLine.Direction: (0.000000, 0.000000, -1.000000)
+[2025-08-04 13:04:53.993] [v1.0.0.0] [INFO] [DuctSleeveCommand:375] [DuctSleeveCommand] Got width direction from connector: (1.000, 0.000, 0.000)
+[2025-08-04 13:04:53.994] [v1.0.0.0] [INFO] [DuctSleeveCommand:405] [DuctSleeveCommand] Duct width direction (world): (1.000, 0.000, 0.000)
+[2025-08-04 13:04:53.995] [v1.0.0.0] [INFO] [DuctSleeveCommand:406] [DuctSleeveCommand] ORIENTATION STATUS: X-ORIENTED
+[2025-08-04 13:04:53.996] [v1.0.0.0] [INFO] [DuctSleeveCommand:416] [DuctSleeveCommand] Passing X-oriented duct to placer (no rotation).
+[2025-08-04 13:04:53.997] [v1.0.0.0] [INFO] [DuctSleevePlacer:72] [DuctSleevePlacer] DIAGNOSTIC: Called for ductId=2047862, hostType=Floor, direction=(0.000,0.000,-1.000)
+[2025-08-04 13:04:53.998] [v1.0.0.0] [INFO] [DuctSleevePlacer:73] [DuctSleevePlacer] === LOG FILE START: PlaceDuctSleeve called for duct 2047862 at intersection (102.535816902, 26.403139407, 61.663385827) ===
+[2025-08-04 13:04:53.999] [v1.0.0.0] [INFO] [DuctSleevePlacer:76] [DuctSleevePlacer] DebugLogger log file path: 
+[2025-08-04 13:04:54.000] [v1.0.0.0] [INFO] [DuctSleevePlacer:80] [DuctSleevePlacer] PlaceDuctSleeve called for duct 2047862 at intersection (102.535816902, 26.403139407, 61.663385827)
+[2025-08-04 13:04:54.001] [v1.0.0.0] [INFO] [DuctSleevePlacer:128] [DuctSleevePlacer] STRUCTURAL CHECK: FloorId=10934404, IsStructural=True
+[2025-08-04 13:04:54.002] [v1.0.0.0] [INFO] [DuctSleevePlacer:145] [DuctSleevePlacer] Host floor is from linked document: Architecture_detached
+[2025-08-04 13:04:54.003] [v1.0.0.0] [INFO] [DuctSleevePlacer:162] [DuctSleevePlacer] Floor thickness detected (param: Default Thickness): 260.0mm
+[2025-08-04 13:04:54.004] [v1.0.0.0] [INFO] [DuctSleevePlacer:181] [DuctSleevePlacer] Duct direction for floor sleeve: (0.000, 0.000, -1.000)
+[2025-08-04 13:04:54.021] [v1.0.0.0] [INFO] [DuctSleevePlacer:225] [DuctSleevePlacer] DEBUG: intersection=(102.536,26.403,61.663), placePoint=(102.536,26.403,61.663), mmDistance=0.0, allowedOffset=135.0
+[2025-08-04 13:04:54.021] [v1.0.0.0] [INFO] [DuctSleevePlacer:233] [DuctSleevePlacer] Intended centerline placement: placePoint=[102.536,26.403,61.663]
+[2025-08-04 13:04:54.022] [v1.0.0.0] [INFO] [DuctSleevePlacer:235] [DuctSleevePlacer] Placing sleeve: width=1.31233595800525, height=0.820209973753281, intersection=(102.535816901802,26.4031394069827,61.6633858267716)
+[2025-08-04 13:04:54.022] [v1.0.0.0] [INFO] [DuctSleevePlacer:236] [DuctSleevePlacer] Duct direction: (3.00796424805075E-15, -1.20318569922028E-14, -1)
+[2025-08-04 13:04:54.025] [v1.0.0.0] [INFO] [DuctSleevePlacer:305] [DuctSleevePlacer] HostOrientation parameter not found or read-only for sleeveId=2145871
+[2025-08-04 13:04:54.026] [v1.0.0.0] [INFO] [DuctSleevePlacer:309] [DuctSleevePlacer] HostOrientation after set: '<null>' for sleeveId=2145871
+[2025-08-04 13:04:54.027] [v1.0.0.0] [INFO] [DuctSleevePlacer:327] [DuctSleevePlacer] About to set Width: 1.31233595800525 (internal), 400mm; Height: 0.820209973753281 (internal), 250mm for duct 2047862
+[2025-08-04 13:04:54.027] [v1.0.0.0] [INFO] [DuctSleevePlacer:492] [DuctSleevePlacer] Setting Width to 400.0mm (internal: 1.312336) for duct 2047862
+[2025-08-04 13:04:54.028] [v1.0.0.0] [INFO] [DuctSleevePlacer:500] [DuctSleevePlacer] Verified Width set to 300.0mm for duct 2047862
+[2025-08-04 13:04:54.028] [v1.0.0.0] [INFO] [DuctSleevePlacer:492] [DuctSleevePlacer] Setting Height to 250.0mm (internal: 0.820210) for duct 2047862
+[2025-08-04 13:04:54.029] [v1.0.0.0] [INFO] [DuctSleevePlacer:500] [DuctSleevePlacer] Verified Height set to 200.0mm for duct 2047862
+[2025-08-04 13:04:54.030] [v1.0.0.0] [INFO] [DuctSleevePlacer:492] [DuctSleevePlacer] Setting Depth to 260.0mm (internal: 0.853018) for duct 2047862
+[2025-08-04 13:04:54.031] [v1.0.0.0] [INFO] [DuctSleevePlacer:500] [DuctSleevePlacer] Verified Depth set to 200.0mm for duct 2047862
+[2025-08-04 13:04:54.079] [v1.0.0.0] [INFO] [DuctSleevePlacer:344] [DuctSleevePlacer] PLACED: ductId=2047862, sleeveId=2145871, at (102.535816902, 26.403139407, 61.663385827)
+[2025-08-04 13:04:54.079] [v1.0.0.0] [INFO] [DuctSleevePlacer:348] [DuctSleevePlacer] hostElement type: Autodesk.Revit.DB.Floor, category: Floors, id: 10934404, family: 
+[2025-08-04 13:04:54.080] [v1.0.0.0] [INFO] [DuctSleevePlacer:375] [DuctSleevePlacer] FLOOR: No rotation - command determined X-oriented duct
+[2025-08-04 13:04:54.081] [v1.0.0.0] [INFO] [DuctSleevePlacer:418] [DuctSleevePlacer] Placement validation:
+[2025-08-04 13:04:54.082] [v1.0.0.0] [INFO] [DuctSleevePlacer:419]   - Intended centerline: [102.536, 26.403, 61.663]
+[2025-08-04 13:04:54.083] [v1.0.0.0] [INFO] [DuctSleevePlacer:420]   - Actual placement: [102.536, 26.403, 61.663]
+[2025-08-04 13:04:54.084] [v1.0.0.0] [INFO] [DuctSleevePlacer:421]   - Offset: X=0.000, Y=0.000, Z=0.000, Total=0.000
+[2025-08-04 13:04:54.084] [v1.0.0.0] [INFO] [DuctSleevePlacer:429] [DuctSleevePlacer] SUCCESS: Sleeve placement is at the centerline.
+[2025-08-04 13:04:54.086] [v1.0.0.0] [INFO] [DuctSleevePlacer:435] Duct 2047862 - Intersection vs Sleeve position distance: 0.0mm
+[2025-08-04 13:04:54.087] [v1.0.0.0] [INFO] [DuctSleevePlacer:436]   - Intersection: [102.536, 26.403, 61.663]
+[2025-08-04 13:04:54.087] [v1.0.0.0] [INFO] [DuctSleevePlacer:437]   - Sleeve pos: [102.536, 26.403, 61.663]
+[2025-08-04 13:04:54.093] [v1.0.0.0] [INFO] [DuctSleevePlacer:448] [DuctSleevePlacer] Set Schedule Level to T01 for duct 2047862
+[2025-08-04 13:04:54.094] [v1.0.0.0] [INFO] [DuctSleeveCommand:420] [DuctSleeveCommand] PLACED: Duct 2047862 host Floor 10934404 at (102.535816902, 26.403139407, 61.663385827) size=(1.31233595800525,0.820209973753281)
+[2025-08-04 13:04:54.121] [v1.0.0.0] [INFO] [DuctSleeveCommand:460] [DuctSleeveCommand] Wrote duct summary log to: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\DuctSleeveLog_20250804_130452.log
+[2025-08-04 13:04:54.122] [v1.0.0.0] [INFO] [DuctSleeveCommand:461] DUCT SLEEVE SUMMARY: Placed=5, Skipped=9, Errors=0
+[2025-08-04 13:04:54.122] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:152] Duct sleeve placement completed successfully
+[2025-08-04 13:04:54.123] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:97] Starting damper sleeve placement...
+[2025-08-04 13:04:54.124] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:165] Executing FireDamperPlaceCommand...
+[2025-08-04 13:04:54.129] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:19] === [FireDamperPlaceCommand] DEBUG START ===
+[2025-08-04 13:04:54.130] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:22] [FireDamperPlaceCommand] After InitLogFile
+[2025-08-04 13:04:54.130] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:26] [FireDamperPlaceCommand] Got UIDocument and Document
+[2025-08-04 13:04:54.143] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:40] [FireDamperPlaceCommand] Found openingSymbol: DamperOpeningOnWall - DMS#
+[2025-08-04 13:04:54.145] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:60] [FireDamperPlaceCommand] Opening symbol activated
+[2025-08-04 13:04:54.193] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:65] [FireDamperPlaceCommand] damperTuples total count: 15
+[2025-08-04 13:04:54.239] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:69] [FireDamperPlaceCommand] wallTuples total count: 64
+[2025-08-04 13:04:54.254] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:78] [FireDamperPlaceCommand] existingSleeves count: 3
+[2025-08-04 13:04:54.254] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:84] [FireDamperPlaceCommand] Existing sleeve: Family=DamperOpeningOnWall, Symbol=DMS#, Location=(98.959482712, 43.834707205, 60.941601050)
+[2025-08-04 13:04:54.255] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:84] [FireDamperPlaceCommand] Existing sleeve: Family=DamperOpeningOnWall, Symbol=DMS#, Location=(98.959482712, 41.597365470, 59.875328084)
+[2025-08-04 13:04:54.256] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:84] [FireDamperPlaceCommand] Existing sleeve: Family=DamperOpeningOnWall, Symbol=DMS#, Location=(102.549857544, 40.246142736, 60.613517060)
+[2025-08-04 13:04:54.256] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:97] [FireDamperPlaceCommand] Entered Execute. damperTuples count: 15
+[2025-08-04 13:04:54.257] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1871829, Family=LPJV_MHV - Motorized fire and smoke Damper - Rectangular, Symbol=MSFD
+[2025-08-04 13:04:54.259] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1871829 - Detected connector side: Right
+[2025-08-04 13:04:54.260] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1871829 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (99.034791772, 43.752686207, 60.941601050)
+[2025-08-04 13:04:54.322] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:250] [OpeningDuplicationChecker] Found 1 individual sleeves within 100mm of location (98.959482712, 43.834707205, 60.941601050)
+[2025-08-04 13:04:54.323] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:189] [FireDamperPlaceCommand] Failed to place sleeve for damper id=1871829 in wall id=2082305
+[2025-08-04 13:04:54.323] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1872154, Family=LPJV_MHV - Motorized fire and smoke Damper - Rectangular, Symbol=MSFD
+[2025-08-04 13:04:54.324] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1872154 - Detected connector side: Top
+[2025-08-04 13:04:54.325] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1872154 - Offset vector: (0.000000000, 0.000000000, 1.000000000), Sleeve position: (98.952770774, 41.597365470, 59.875328084)
+[2025-08-04 13:04:54.347] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:250] [OpeningDuplicationChecker] Found 1 individual sleeves within 100mm of location (98.952770774, 41.597365470, 59.875328084)
+[2025-08-04 13:04:54.348] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:131] [FireDamperPlaceCommand] Skipping damper id=1872154 due to existing sleeve at location.
+[2025-08-04 13:04:54.348] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1875983, Family=M_Duct Accessary-Fire Damper-Rectangular-Simple, Symbol=Standard
+[2025-08-04 13:04:54.349] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1875983 - Detected connector side: Right
+[2025-08-04 13:04:54.350] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1875983 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (104.730006624, 41.597365470, 59.793307087)
+[2025-08-04 13:04:54.377] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1876234, Family=LPJV_MHV - Motorized fire and smoke Damper - Rectangular, Symbol=MSFD
+[2025-08-04 13:04:54.378] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1876234 - Detected connector side: Right
+[2025-08-04 13:04:54.379] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1876234 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (102.549857544, 40.246892188, 60.613517060)
+[2025-08-04 13:04:54.393] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:250] [OpeningDuplicationChecker] Found 1 individual sleeves within 100mm of location (102.549857544, 40.246892188, 60.613517060)
+[2025-08-04 13:04:54.394] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:131] [FireDamperPlaceCommand] Skipping damper id=1876234 due to existing sleeve at location.
+[2025-08-04 13:04:54.394] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=2145527, Family=DamperOpeningOnWall, Symbol=DMS#
+[2025-08-04 13:04:54.395] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=2145527 - Detected connector side: Right
+[2025-08-04 13:04:54.396] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=2145527 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (99.041503709, 43.834707205, 60.941601050)
+[2025-08-04 13:04:54.423] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:189] [FireDamperPlaceCommand] Failed to place sleeve for damper id=2145527 in wall id=2082305
+[2025-08-04 13:04:54.424] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=2145528, Family=DamperOpeningOnWall, Symbol=DMS#
+[2025-08-04 13:04:54.425] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=2145528 - Detected connector side: Right
+[2025-08-04 13:04:54.425] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=2145528 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (99.041503709, 41.597365470, 59.875328084)
+[2025-08-04 13:04:54.455] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:189] [FireDamperPlaceCommand] Failed to place sleeve for damper id=2145528 in wall id=2082305
+[2025-08-04 13:04:54.456] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=2145734, Family=DamperOpeningOnWall, Symbol=DMS#
+[2025-08-04 13:04:54.457] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=2145734 - Detected connector side: Right
+[2025-08-04 13:04:54.458] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=2145734 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (102.631878542, 40.246142736, 60.613517060)
+[2025-08-04 13:04:54.490] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:189] [FireDamperPlaceCommand] Failed to place sleeve for damper id=2145734 in wall id=10932962
+[2025-08-04 13:04:54.490] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747233, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 13:04:54.491] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747233 - Detected connector side: Right
+[2025-08-04 13:04:54.492] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747233 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (26.770415514, 18.878331000, 59.547244094)
+[2025-08-04 13:04:54.516] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747506, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 13:04:54.517] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747506 - Detected connector side: Right
+[2025-08-04 13:04:54.518] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747506 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (27.338805260, 35.341653634, 59.547244094)
+[2025-08-04 13:04:54.543] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747537, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 13:04:54.543] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747537 - Detected connector side: Right
+[2025-08-04 13:04:54.544] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747537 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (23.410905310, 31.723548334, 59.383202100)
+[2025-08-04 13:04:54.569] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747561, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 13:04:54.569] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747561 - Detected connector side: Right
+[2025-08-04 13:04:54.570] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747561 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (23.347659850, 41.221579830, 59.383202100)
+[2025-08-04 13:04:54.595] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747599, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 13:04:54.595] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747599 - Detected connector side: Left
+[2025-08-04 13:04:54.596] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747599 - Offset vector: (-1.000000000, 0.000000000, 0.000000000), Sleeve position: (23.248943126, 24.320593879, 59.875328084)
+[2025-08-04 13:04:54.632] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747619, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 13:04:54.633] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747619 - Detected connector side: Right
+[2025-08-04 13:04:54.634] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747619 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (23.475440457, 21.571477275, 59.875328084)
+[2025-08-04 13:04:54.659] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747673, Family=M_Duct Accessary-Fire Damper-Rectangular-Simple, Symbol=Standard
+[2025-08-04 13:04:54.659] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747673 - Detected connector side: Right
+[2025-08-04 13:04:54.659] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747673 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (27.590773821, 30.870529961, 61.023622047)
+[2025-08-04 13:04:54.684] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747688, Family=M_Duct Accessary-Fire Damper-Rectangular-Simple, Symbol=Standard
+[2025-08-04 13:04:54.685] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747688 - Detected connector side: Right
+[2025-08-04 13:04:54.685] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747688 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (27.559055170, 28.648740248, 61.023622047)
+[2025-08-04 13:04:54.710] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:201] FireDamperPlaceCommand summary: Total=15, Placed=0, SkippedExisting=2
+[2025-08-04 13:04:54.711] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:176] Damper sleeve placement completed successfully
+[2025-08-04 13:04:54.712] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:100] Starting cable tray sleeve placement...
+[2025-08-04 13:04:54.712] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:189] Executing CableTraySleeveCommand...
+[2025-08-04 13:04:54.741] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=0: CT_FAMILY_SEARCH Found 110 family symbols in project
+[2025-08-04 13:04:54.743] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=1049: CT_FAMILY_FOUND Family: Section Head - Filled, Symbol: Section Head - Filled
+[2025-08-04 13:04:54.744] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=16216: CT_FAMILY_FOUND Family: Rectangular Handrail, Symbol: 50 x 50mm
+[2025-08-04 13:04:54.745] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=28045: CT_FAMILY_FOUND Family: Section Tail - Filled, Symbol: Section Tail - Filled
+[2025-08-04 13:04:54.746] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=112441: CT_FAMILY_FOUND Family: Rectangular Union, Symbol: Standard
+[2025-08-04 13:04:54.747] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=498585: CT_FAMILY_FOUND Family: Rectangular Medium Radius Bend - Flanged, Symbol: Standard
+[2025-08-04 13:04:54.748] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=498587: CT_FAMILY_FOUND Family: Rectangular Square Tee - Flanged, Symbol: Standard
+[2025-08-04 13:04:54.750] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=498589: CT_FAMILY_FOUND Family: Rectangular Shoe Branch - Flanged, Symbol: Standard
+[2025-08-04 13:04:54.751] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=498591: CT_FAMILY_FOUND Family: Rectangular Concentric Taper - Flanged, Symbol: Standard
+[2025-08-04 13:04:54.753] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=498593: CT_FAMILY_FOUND Family: Rectangular - Round Transformation - Flanged, Symbol: Standard
+[2025-08-04 13:04:54.754] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=499382: CT_FAMILY_FOUND Family: Rectangular Blank End, Symbol: Standard
+[2025-08-04 13:04:54.756] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] SUCCESS ID=2124183: CT_FAMILY_FOUND Using cable tray wall sleeve family: CableTrayOpeningOnWall, Symbol: CT#
+[2025-08-04 13:04:54.757] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] SUCCESS ID=2126788: CT_FAMILY_FOUND Using cable tray slab sleeve family: CabletrayOpeningOnSlab, Symbol: CT#
+[2025-08-04 13:04:54.843] [v1.0.0.0] [INFO] [CableTraySleeveCommand:106] Found 16 existing cable tray sleeves in the model
+[2025-08-04 13:04:54.855] [v1.0.0.0] [INFO] [CableTraySleeveCommand:112] --- Details of Existing Cable Tray Sleeves ---
+[2025-08-04 13:04:54.857] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145536, Location: (110.012439698, 21.491141908, 58.448162730), Width: 200.0mm, Height: 300.0mm, Depth: 5.0mm
+[2025-08-04 13:04:54.857] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145567, Location: (107.143694544, 44.291338671, 61.030839239), Width: 200.0mm, Height: 160.3mm, Depth: 399.9mm
+[2025-08-04 13:04:54.858] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145568, Location: (104.237790398, 37.962657475, 61.030839239), Width: 308.3mm, Height: 160.3mm, Depth: 100.0mm
+[2025-08-04 13:04:54.859] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145569, Location: (97.112860892, 29.861269371, 60.695661089), Width: 775.2mm, Height: 133.4mm, Depth: 200.0mm
+[2025-08-04 13:04:54.860] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145570, Location: (97.112860892, 25.811855708, 60.695661089), Width: 332.0mm, Height: 133.4mm, Depth: 200.0mm
+[2025-08-04 13:04:54.862] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145576, Location: (109.904855940, 28.139748615, 60.252624672), Width: 220.0mm, Height: 250.0mm, Depth: 50.0mm
+[2025-08-04 13:04:54.864] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145577, Location: (103.108812175, 44.947479738, 60.252624672), Width: 200.0mm, Height: 300.0mm, Depth: 495.0mm
+[2025-08-04 13:04:54.865] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145578, Location: (97.112860892, 20.548913421, 60.252624672), Width: 640.0mm, Height: 250.0mm, Depth: 200.0mm
+[2025-08-04 13:04:54.867] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145581, Location: (105.473099239, 44.291338671, 60.744750656), Width: 200.0mm, Height: 300.0mm, Depth: 328.8mm
+[2025-08-04 13:04:54.869] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145582, Location: (104.237790398, 36.162668147, 60.744750656), Width: 389.0mm, Height: 200.0mm, Depth: 100.0mm
+[2025-08-04 13:04:54.870] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145583, Location: (97.112860892, 22.392478966, 60.810730318), Width: 402.2mm, Height: 300.0mm, Depth: 200.0mm
+[2025-08-04 13:04:54.872] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145664, Location: (102.467836547, 40.246142736, 60.613517060), Width: 100.0mm, Height: 260.0mm, Depth: 360.0mm
+[2025-08-04 13:04:54.873] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145665, Location: (97.112860892, 24.052223439, 60.810730318), Width: 200.0mm, Height: 200.0mm, Depth: 200.0mm
+[2025-08-04 13:04:54.875] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145735, Location: (109.988665861, 26.747074331, 58.448162730), Width: 200.0mm, Height: 300.0mm, Depth: 5.0mm
+[2025-08-04 13:04:54.876] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145785, Location: (99.325936202, 31.531798041, 60.810730318), Width: 200.0mm, Height: 300.0mm, Depth: 5.0mm
+[2025-08-04 13:04:54.878] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145786, Location: (99.170878019, 31.531798041, 60.810730318), Width: 200.0mm, Height: 200.0mm, Depth: 5.0mm
+[2025-08-04 13:04:54.879] [v1.0.0.0] [INFO] [CableTraySleeveCommand:122] ------------------------------------------
+[2025-08-04 13:04:54.881] [v1.0.0.0] [INFO] [CableTraySleeveCommand:140] Found 5 cable trays to process
+[2025-08-04 13:04:54.883] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] SYSTEM ID=0: PROCESSING STARTED Total cable trays to process: 5
+[2025-08-04 13:04:54.884] [v1.0.0.0] [INFO] [CableTraySleeveCommand:148] Transaction started for cable tray sleeve placement
+[2025-08-04 13:04:54.885] [v1.0.0.0] [INFO] [CableTraySleeveCommand:150] Starting wall intersection tests for cable trays
+[2025-08-04 13:04:54.885] [v1.0.0.0] [INFO] [CableTraySleeveCommand:162] Processing CableTray ID=1953336
+[2025-08-04 13:04:54.922] [v1.0.0.0] [INFO] [EfficientIntersectionService:42] [EfficientIntersectionService] Filtered walls: 0 (from section box and bbox pre-check)
+[2025-08-04 13:04:54.973] [v1.0.0.0] [INFO] [EfficientIntersectionService:280] [EfficientIntersectionService] Pre-filtered structural elements: 2 (from 76 total)
+[2025-08-04 13:04:54.974] [v1.0.0.0] [INFO] [EfficientIntersectionService:99] [EfficientIntersectionService] Processing 2 pre-filtered structural elements
+[2025-08-04 13:04:54.976] [v1.0.0.0] [INFO] [CableTraySleeveCommand:214] CableTray ID=1953336: Wall hits: 4, Structural hits: 0
+[2025-08-04 13:04:54.977] [v1.0.0.0] [INFO] [CableTraySleeveCommand:375] CableTray ID=1953336: detected wall element: Walls, ID=10933148
+[2025-08-04 13:04:54.978] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=10933148: ELEMENT DETECTED Hit by cable tray 1953336
+[2025-08-04 13:04:54.979] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-WALL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1953336, Wall ID=10933148, Position=(99.170878019, 31.523595942, 60.810730318)
+[2025-08-04 13:04:54.980] [v1.0.0.0] [INFO] [CableTraySleeveCommand:392] CableTray ID=1953336: Using wall family: CableTrayOpeningOnWall, Symbol: CT#
+[2025-08-04 13:04:55.020] [v1.0.0.0] [INFO] [CableTraySleeveCommand:444] [CableTraySleeveCommand] DUPLICATION CHECK at (99.170878019, 31.523595942, 60.810730318):
+Individual sleeves: CT# (ID:2145786)
+[2025-08-04 13:04:55.047] [v1.0.0.0] [INFO] [CableTraySleeveCommand:450] [CableTraySleeveCommand] SKIP: CableTray 1953336 duplicate sleeve (individual or cluster) exists near (99.170878019, 31.523595942, 60.810730318)
+[2025-08-04 13:04:55.048] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=10933148: SLEEVE_FAILED Reason: Existing sleeve found at location
+[2025-08-04 13:04:55.049] [v1.0.0.0] [INFO] [CableTraySleeveCommand:162] Processing CableTray ID=1953384
+[2025-08-04 13:04:55.084] [v1.0.0.0] [INFO] [EfficientIntersectionService:42] [EfficientIntersectionService] Filtered walls: 0 (from section box and bbox pre-check)
+[2025-08-04 13:04:55.146] [v1.0.0.0] [INFO] [EfficientIntersectionService:280] [EfficientIntersectionService] Pre-filtered structural elements: 2 (from 76 total)
+[2025-08-04 13:04:55.147] [v1.0.0.0] [INFO] [EfficientIntersectionService:99] [EfficientIntersectionService] Processing 2 pre-filtered structural elements
+[2025-08-04 13:04:55.150] [v1.0.0.0] [INFO] [CableTraySleeveCommand:214] CableTray ID=1953384: Wall hits: 0, Structural hits: 2
+[2025-08-04 13:04:55.150] [v1.0.0.0] [INFO] [CableTraySleeveCommand:223] [CableTraySleeveCommand] CableTray 1953384: Detected 2 floor(s) at intersection:
+[2025-08-04 13:04:55.151] [v1.0.0.0] [INFO] [CableTraySleeveCommand:230] [CableTraySleeveCommand]   Floor ID=1713828, Doc=Architecture_detached, Location=<no location>
+[2025-08-04 13:04:55.152] [v1.0.0.0] [INFO] [CableTraySleeveCommand:230] [CableTraySleeveCommand]   Floor ID=10934404, Doc=Architecture_detached, Location=<no location>
+[2025-08-04 13:04:55.153] [v1.0.0.0] [INFO] [CableTraySleeveCommand:247] CableTray ID=1953384: detected structural element: Floors, ID=1713828
+[2025-08-04 13:04:55.155] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Floors ID=1713828: STRUCTURAL DETECTED Hit by cable tray 1953384
+[2025-08-04 13:04:55.156] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1953384, Structural ID=1713828, Position=(106.969486514, 25.145670788, 62.212926509)
+[2025-08-04 13:04:55.157] [v1.0.0.0] [INFO] [CableTraySleeveCommand:271] [CableTraySleeveCommand] CABLETRAY FLOOR DEBUG: CableTray 1953384 intersects Floor 1713828 [Architecture_detached] - Status: NON-STRUCTURAL, HOST
+[2025-08-04 13:04:55.158] [v1.0.0.0] [INFO] [CableTraySleeveCommand:273] [CableTraySleeveCommand] FLOOR_PARAM_IS_STRUCTURAL value: 0 (1=structural, 0=non-structural)
+[2025-08-04 13:04:55.159] [v1.0.0.0] [INFO] [CableTraySleeveCommand:283] [CableTraySleeveCommand] SKIP: CableTray 1953384 host Floor 1713828 [Architecture_detached] is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-04 13:04:55.160] [v1.0.0.0] [INFO] [CableTraySleeveCommand:162] Processing CableTray ID=1953421
+[2025-08-04 13:04:55.203] [v1.0.0.0] [INFO] [EfficientIntersectionService:42] [EfficientIntersectionService] Filtered walls: 0 (from section box and bbox pre-check)
+[2025-08-04 13:04:55.256] [v1.0.0.0] [INFO] [EfficientIntersectionService:280] [EfficientIntersectionService] Pre-filtered structural elements: 2 (from 76 total)
+[2025-08-04 13:04:55.257] [v1.0.0.0] [INFO] [EfficientIntersectionService:99] [EfficientIntersectionService] Processing 2 pre-filtered structural elements
+[2025-08-04 13:04:55.258] [v1.0.0.0] [INFO] [CableTraySleeveCommand:214] CableTray ID=1953421: Wall hits: 0, Structural hits: 2
+[2025-08-04 13:04:55.259] [v1.0.0.0] [INFO] [CableTraySleeveCommand:223] [CableTraySleeveCommand] CableTray 1953421: Detected 2 floor(s) at intersection:
+[2025-08-04 13:04:55.259] [v1.0.0.0] [INFO] [CableTraySleeveCommand:230] [CableTraySleeveCommand]   Floor ID=1713828, Doc=Architecture_detached, Location=<no location>
+[2025-08-04 13:04:55.260] [v1.0.0.0] [INFO] [CableTraySleeveCommand:230] [CableTraySleeveCommand]   Floor ID=10934404, Doc=Architecture_detached, Location=<no location>
+[2025-08-04 13:04:55.260] [v1.0.0.0] [INFO] [CableTraySleeveCommand:247] CableTray ID=1953421: detected structural element: Floors, ID=1713828
+[2025-08-04 13:04:55.261] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Floors ID=1713828: STRUCTURAL DETECTED Hit by cable tray 1953421
+[2025-08-04 13:04:55.262] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1953421, Structural ID=1713828, Position=(107.533334452, 25.131574589, 62.212926509)
+[2025-08-04 13:04:55.262] [v1.0.0.0] [INFO] [CableTraySleeveCommand:271] [CableTraySleeveCommand] CABLETRAY FLOOR DEBUG: CableTray 1953421 intersects Floor 1713828 [Architecture_detached] - Status: NON-STRUCTURAL, HOST
+[2025-08-04 13:04:55.263] [v1.0.0.0] [INFO] [CableTraySleeveCommand:273] [CableTraySleeveCommand] FLOOR_PARAM_IS_STRUCTURAL value: 0 (1=structural, 0=non-structural)
+[2025-08-04 13:04:55.264] [v1.0.0.0] [INFO] [CableTraySleeveCommand:283] [CableTraySleeveCommand] SKIP: CableTray 1953421 host Floor 1713828 [Architecture_detached] is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-04 13:04:55.264] [v1.0.0.0] [INFO] [CableTraySleeveCommand:162] Processing CableTray ID=1953426
+[2025-08-04 13:04:55.296] [v1.0.0.0] [INFO] [EfficientIntersectionService:42] [EfficientIntersectionService] Filtered walls: 0 (from section box and bbox pre-check)
+[2025-08-04 13:04:55.351] [v1.0.0.0] [INFO] [EfficientIntersectionService:280] [EfficientIntersectionService] Pre-filtered structural elements: 2 (from 76 total)
+[2025-08-04 13:04:55.351] [v1.0.0.0] [INFO] [EfficientIntersectionService:99] [EfficientIntersectionService] Processing 2 pre-filtered structural elements
+[2025-08-04 13:04:55.353] [v1.0.0.0] [INFO] [CableTraySleeveCommand:214] CableTray ID=1953426: Wall hits: 0, Structural hits: 2
+[2025-08-04 13:04:55.353] [v1.0.0.0] [INFO] [CableTraySleeveCommand:223] [CableTraySleeveCommand] CableTray 1953426: Detected 2 floor(s) at intersection:
+[2025-08-04 13:04:55.353] [v1.0.0.0] [INFO] [CableTraySleeveCommand:230] [CableTraySleeveCommand]   Floor ID=1713828, Doc=Architecture_detached, Location=<no location>
+[2025-08-04 13:04:55.354] [v1.0.0.0] [INFO] [CableTraySleeveCommand:230] [CableTraySleeveCommand]   Floor ID=10934404, Doc=Architecture_detached, Location=<no location>
+[2025-08-04 13:04:55.354] [v1.0.0.0] [INFO] [CableTraySleeveCommand:247] CableTray ID=1953426: detected structural element: Floors, ID=1713828
+[2025-08-04 13:04:55.355] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Floors ID=1713828: STRUCTURAL DETECTED Hit by cable tray 1953426
+[2025-08-04 13:04:55.356] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1953426, Structural ID=1713828, Position=(107.223218086, 28.105872462, 62.212926509)
+[2025-08-04 13:04:55.357] [v1.0.0.0] [INFO] [CableTraySleeveCommand:271] [CableTraySleeveCommand] CABLETRAY FLOOR DEBUG: CableTray 1953426 intersects Floor 1713828 [Architecture_detached] - Status: NON-STRUCTURAL, HOST
+[2025-08-04 13:04:55.357] [v1.0.0.0] [INFO] [CableTraySleeveCommand:273] [CableTraySleeveCommand] FLOOR_PARAM_IS_STRUCTURAL value: 0 (1=structural, 0=non-structural)
+[2025-08-04 13:04:55.357] [v1.0.0.0] [INFO] [CableTraySleeveCommand:283] [CableTraySleeveCommand] SKIP: CableTray 1953426 host Floor 1713828 [Architecture_detached] is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-04 13:04:55.358] [v1.0.0.0] [INFO] [CableTraySleeveCommand:162] Processing CableTray ID=2142742
+[2025-08-04 13:04:55.390] [v1.0.0.0] [INFO] [EfficientIntersectionService:42] [EfficientIntersectionService] Filtered walls: 0 (from section box and bbox pre-check)
+[2025-08-04 13:04:55.446] [v1.0.0.0] [INFO] [EfficientIntersectionService:280] [EfficientIntersectionService] Pre-filtered structural elements: 2 (from 76 total)
+[2025-08-04 13:04:55.447] [v1.0.0.0] [INFO] [EfficientIntersectionService:99] [EfficientIntersectionService] Processing 2 pre-filtered structural elements
+[2025-08-04 13:04:55.448] [v1.0.0.0] [INFO] [CableTraySleeveCommand:214] CableTray ID=2142742: Wall hits: 0, Structural hits: 2
+[2025-08-04 13:04:55.448] [v1.0.0.0] [INFO] [CableTraySleeveCommand:223] [CableTraySleeveCommand] CableTray 2142742: Detected 2 floor(s) at intersection:
+[2025-08-04 13:04:55.449] [v1.0.0.0] [INFO] [CableTraySleeveCommand:230] [CableTraySleeveCommand]   Floor ID=1713828, Doc=Architecture_detached, Location=<no location>
+[2025-08-04 13:04:55.449] [v1.0.0.0] [INFO] [CableTraySleeveCommand:230] [CableTraySleeveCommand]   Floor ID=10934404, Doc=Architecture_detached, Location=<no location>
+[2025-08-04 13:04:55.450] [v1.0.0.0] [INFO] [CableTraySleeveCommand:247] CableTray ID=2142742: detected structural element: Floors, ID=1713828
+[2025-08-04 13:04:55.451] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Floors ID=1713828: STRUCTURAL DETECTED Hit by cable tray 2142742
+[2025-08-04 13:04:55.451] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=2142742, Structural ID=1713828, Position=(106.848044906, 26.601182763, 62.212926509)
+[2025-08-04 13:04:55.452] [v1.0.0.0] [INFO] [CableTraySleeveCommand:271] [CableTraySleeveCommand] CABLETRAY FLOOR DEBUG: CableTray 2142742 intersects Floor 1713828 [Architecture_detached] - Status: NON-STRUCTURAL, HOST
+[2025-08-04 13:04:55.452] [v1.0.0.0] [INFO] [CableTraySleeveCommand:273] [CableTraySleeveCommand] FLOOR_PARAM_IS_STRUCTURAL value: 0 (1=structural, 0=non-structural)
+[2025-08-04 13:04:55.453] [v1.0.0.0] [INFO] [CableTraySleeveCommand:283] [CableTraySleeveCommand] SKIP: CableTray 2142742 host Floor 1713828 [Architecture_detached] is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-04 13:04:55.454] [v1.0.0.0] [INFO] [CableTraySleeveCommand:418] Transaction committed for cable tray sleeve placement
+[2025-08-04 13:04:55.455] [v1.0.0.0] [INFO] [CableTraySleeveCommand:421] CableTraySleeveCommand summary: Total=5, Intersections=0, Placed=0, Missing=0, SkippedExisting=5, StructuralDetected=4, StructuralSleeves=0
+[2025-08-04 13:04:55.457] [v1.0.0.0] [INFO] [StructuralElementLogger:194] [STRUCTURAL] CableTraySleeveCommand summary - Processed: 5, Detected: 4, Placed: 0, Failed: 4
+[2025-08-04 13:04:55.458] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] SYSTEM ID=0: COMMAND COMPLETED Structural sleeve placement finished. Log file: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\StructuralElements_SleeveLog_20250804_130452.log
+[2025-08-04 13:04:55.458] [v1.0.0.0] [INFO] [CableTraySleeveCommand:428] Cable tray sleeves placement completed.
+[2025-08-04 13:04:55.459] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:200] Cable tray sleeve placement completed successfully
+[2025-08-04 13:04:55.460] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:103] Starting pipe sleeve placement...
+[2025-08-04 13:04:55.460] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:213] Executing PipeSleeveCommand...
+[2025-08-04 13:04:55.776] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:125] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145569) detected via bounding box at location (97.112860892, 30.307652538, 60.695661089)
+[2025-08-04 13:04:55.777] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:219] [OpeningDuplicationChecker] Found 1 cluster sleeves within 10mm of location (97.112860892, 30.307652538, 60.695661089)
+[2025-08-04 13:04:55.778] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:222]   - Cluster: ClusterOpeningOnWallX - CT# (ID:2145569)
+[2025-08-04 13:04:55.819] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:125] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145569) detected via bounding box at location (97.112860892, 29.555886951, 60.695661089)
+[2025-08-04 13:04:55.821] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:219] [OpeningDuplicationChecker] Found 1 cluster sleeves within 10mm of location (97.112860892, 29.555886951, 60.695661089)
+[2025-08-04 13:04:55.821] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:222]   - Cluster: ClusterOpeningOnWallX - CT# (ID:2145569)
+[2025-08-04 13:04:55.866] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:125] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145569) detected via bounding box at location (97.112860892, 28.808482517, 60.695661089)
+[2025-08-04 13:04:55.867] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:219] [OpeningDuplicationChecker] Found 1 cluster sleeves within 10mm of location (97.112860892, 28.808482517, 60.695661089)
+[2025-08-04 13:04:55.868] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:222]   - Cluster: ClusterOpeningOnWallX - CT# (ID:2145569)
+[2025-08-04 13:04:55.901] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:208] [OpeningDuplicationChecker] Found 1 individual sleeves within 10mm of location (97.112860892, 27.974712229, 60.695661089)
+[2025-08-04 13:04:55.931] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:208] [OpeningDuplicationChecker] Found 1 individual sleeves within 10mm of location (97.112860892, 27.067564972, 60.695661089)
+[2025-08-04 13:04:55.973] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:125] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145570) detected via bounding box at location (97.112860892, 26.137697644, 60.695661089)
+[2025-08-04 13:04:55.974] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:219] [OpeningDuplicationChecker] Found 1 cluster sleeves within 10mm of location (97.112860892, 26.137697644, 60.695661089)
+[2025-08-04 13:04:55.974] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:222]   - Cluster: ClusterOpeningOnWallX - CT# (ID:2145570)
+[2025-08-04 13:04:56.017] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:125] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145570) detected via bounding box at location (97.112860892, 25.486013772, 60.695661089)
+[2025-08-04 13:04:56.018] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:219] [OpeningDuplicationChecker] Found 1 cluster sleeves within 10mm of location (97.112860892, 25.486013772, 60.695661089)
+[2025-08-04 13:04:56.019] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:222]   - Cluster: ClusterOpeningOnWallX - CT# (ID:2145570)
+[2025-08-04 13:04:56.061] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:208] [OpeningDuplicationChecker] Found 1 individual sleeves within 10mm of location (97.112860892, 24.620400682, 60.695661089)
+[2025-08-04 13:04:56.086] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:208] [OpeningDuplicationChecker] Found 1 individual sleeves within 10mm of location (109.904855940, 28.963920685, 60.695661089)
+[2025-08-04 13:04:56.141] [v1.0.0.0] [INFO] [PipeSleevePlacer:40] [PipeSleevePlacer] Pipe Id: 1892943, Intersection: (98.712, 30.914, 62.213)
+[2025-08-04 13:04:56.142] [v1.0.0.0] [INFO] [PipeSleevePlacer:98] [PipeSleevePlacer] Floor host: Using intersection. placePoint=(98.712,30.914,62.213)
+[2025-08-04 13:04:56.143] [v1.0.0.0] [INFO] [PipeSleevePlacer:175] [PipeSleevePlacer] DEBUG: intersection=(98.712,30.914,62.213), placePoint=(98.712,30.914,62.213), mmDistance=0.0, allowedOffset=42.5
+[2025-08-04 13:04:56.256] [v1.0.0.0] [INFO] [PipeSleevePlacer:40] [PipeSleevePlacer] Pipe Id: 1892943, Intersection: (98.712, 30.914, 61.663)
+[2025-08-04 13:04:56.257] [v1.0.0.0] [INFO] [PipeSleevePlacer:98] [PipeSleevePlacer] Floor host: Using intersection. placePoint=(98.712,30.914,61.663)
+[2025-08-04 13:04:56.257] [v1.0.0.0] [INFO] [PipeSleevePlacer:175] [PipeSleevePlacer] DEBUG: intersection=(98.712,30.914,61.663), placePoint=(98.712,30.914,61.663), mmDistance=0.0, allowedOffset=135.0
+[2025-08-04 13:04:56.348] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:208] [OpeningDuplicationChecker] Found 1 individual sleeves within 10mm of location (102.859868541, 31.704042136, 60.695661089)
+[2025-08-04 13:04:56.394] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:208] [OpeningDuplicationChecker] Found 1 individual sleeves within 10mm of location (109.904855940, 27.067564972, 58.780844929)
+[2025-08-04 13:04:56.452] [v1.0.0.0] [INFO] [PipeSleevePlacer:40] [PipeSleevePlacer] Pipe Id: 1951121, Intersection: (101.200, 28.630, 62.213)
+[2025-08-04 13:04:56.453] [v1.0.0.0] [INFO] [PipeSleevePlacer:98] [PipeSleevePlacer] Floor host: Using intersection. placePoint=(101.200,28.630,62.213)
+[2025-08-04 13:04:56.454] [v1.0.0.0] [INFO] [PipeSleevePlacer:175] [PipeSleevePlacer] DEBUG: intersection=(101.200,28.630,62.213), placePoint=(101.200,28.630,62.213), mmDistance=0.0, allowedOffset=42.5
+[2025-08-04 13:04:56.556] [v1.0.0.0] [INFO] [PipeSleevePlacer:40] [PipeSleevePlacer] Pipe Id: 1951121, Intersection: (101.200, 28.630, 61.663)
+[2025-08-04 13:04:56.557] [v1.0.0.0] [INFO] [PipeSleevePlacer:98] [PipeSleevePlacer] Floor host: Using intersection. placePoint=(101.200,28.630,61.663)
+[2025-08-04 13:04:56.558] [v1.0.0.0] [INFO] [PipeSleevePlacer:175] [PipeSleevePlacer] DEBUG: intersection=(101.200,28.630,61.663), placePoint=(101.200,28.630,61.663), mmDistance=0.0, allowedOffset=135.0
+[2025-08-04 13:04:56.678] [v1.0.0.0] [INFO] [PipeSleevePlacer:40] [PipeSleevePlacer] Pipe Id: 1951269, Intersection: (101.404, 28.630, 62.213)
+[2025-08-04 13:04:56.679] [v1.0.0.0] [INFO] [PipeSleevePlacer:98] [PipeSleevePlacer] Floor host: Using intersection. placePoint=(101.404,28.630,62.213)
+[2025-08-04 13:04:56.680] [v1.0.0.0] [INFO] [PipeSleevePlacer:175] [PipeSleevePlacer] DEBUG: intersection=(101.404,28.630,62.213), placePoint=(101.404,28.630,62.213), mmDistance=0.0, allowedOffset=42.5
+[2025-08-04 13:04:56.770] [v1.0.0.0] [INFO] [PipeSleevePlacer:40] [PipeSleevePlacer] Pipe Id: 1951269, Intersection: (101.404, 28.630, 61.663)
+[2025-08-04 13:04:56.771] [v1.0.0.0] [INFO] [PipeSleevePlacer:98] [PipeSleevePlacer] Floor host: Using intersection. placePoint=(101.404,28.630,61.663)
+[2025-08-04 13:04:56.771] [v1.0.0.0] [INFO] [PipeSleevePlacer:175] [PipeSleevePlacer] DEBUG: intersection=(101.404,28.630,61.663), placePoint=(101.404,28.630,61.663), mmDistance=0.0, allowedOffset=135.0
+[2025-08-04 13:04:56.845] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:224] Pipe sleeve placement completed successfully
+[2025-08-04 13:04:56.846] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:106] Starting rectangular pipe clustering...
+[2025-08-04 13:04:56.846] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:237] Executing PipeOpeningsRectCommand...
+[2025-08-04 13:04:56.876] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:53] Starting transaction: Place Rectangular Pipe Openings
+[2025-08-04 13:04:56.900] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:82] Processing sleeve 2145553 for level assignment
+[2025-08-04 13:04:56.901] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:93] Got reference level from helper for sleeve 2145553: T01
+[2025-08-04 13:04:56.902] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:109] Setting Schedule Level for sleeve 2145553, StorageType: ElementId
+[2025-08-04 13:04:56.902] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:113] Set sleeve 2145553 Schedule Level to ElementId: 1462542 (T01)
+[2025-08-04 13:04:56.903] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:82] Processing sleeve 2145554 for level assignment
+[2025-08-04 13:04:56.903] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:93] Got reference level from helper for sleeve 2145554: T01
+[2025-08-04 13:04:56.904] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:109] Setting Schedule Level for sleeve 2145554, StorageType: ElementId
+[2025-08-04 13:04:56.905] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:113] Set sleeve 2145554 Schedule Level to ElementId: 1462542 (T01)
+[2025-08-04 13:04:56.905] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:82] Processing sleeve 2145557 for level assignment
+[2025-08-04 13:04:56.906] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:93] Got reference level from helper for sleeve 2145557: T01
+[2025-08-04 13:04:56.906] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:109] Setting Schedule Level for sleeve 2145557, StorageType: ElementId
+[2025-08-04 13:04:56.907] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:113] Set sleeve 2145557 Schedule Level to ElementId: 1462542 (T01)
+[2025-08-04 13:04:56.907] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:82] Processing sleeve 2145558 for level assignment
+[2025-08-04 13:04:56.909] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:93] Got reference level from helper for sleeve 2145558: T01
+[2025-08-04 13:04:56.910] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:109] Setting Schedule Level for sleeve 2145558, StorageType: ElementId
+[2025-08-04 13:04:56.911] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:113] Set sleeve 2145558 Schedule Level to ElementId: 1462542 (T01)
+[2025-08-04 13:04:56.912] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:82] Processing sleeve 2145561 for level assignment
+[2025-08-04 13:04:56.914] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:93] Got reference level from helper for sleeve 2145561: T01
+[2025-08-04 13:04:56.914] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:109] Setting Schedule Level for sleeve 2145561, StorageType: ElementId
+[2025-08-04 13:04:56.915] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:113] Set sleeve 2145561 Schedule Level to ElementId: 1462542 (T01)
+[2025-08-04 13:04:56.916] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:82] Processing sleeve 2145562 for level assignment
+[2025-08-04 13:04:56.917] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:93] Got reference level from helper for sleeve 2145562: T01
+[2025-08-04 13:04:56.918] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:109] Setting Schedule Level for sleeve 2145562, StorageType: ElementId
+[2025-08-04 13:04:56.919] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:113] Set sleeve 2145562 Schedule Level to ElementId: 1462542 (T01)
+[2025-08-04 13:04:56.921] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:167] Edge gap between 2145553 and 2145554: 143.1 mm
+[2025-08-04 13:04:56.922] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:167] Edge gap between 2145553 and 2145557: 889.0 mm
+[2025-08-04 13:04:56.923] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:167] Edge gap between 2145553 and 2145558: 3763.8 mm
+[2025-08-04 13:04:56.924] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:167] Edge gap between 2145553 and 2145561: 1887.3 mm
+[2025-08-04 13:04:56.925] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:167] Edge gap between 2145554 and 2145557: 612.5 mm
+[2025-08-04 13:04:56.926] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:167] Edge gap between 2145554 and 2145558: 3794.7 mm
+[2025-08-04 13:04:56.927] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:167] Edge gap between 2145554 and 2145561: 2049.8 mm
+[2025-08-04 13:04:56.927] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:167] Edge gap between 2145557 and 2145558: 3970.8 mm
+[2025-08-04 13:04:56.928] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:167] Edge gap between 2145557 and 2145561: 2579.5 mm
+[2025-08-04 13:04:56.929] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:167] Edge gap between 2145558 and 2145561: 2089.7 mm
+[2025-08-04 13:04:56.930] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:179] Cluster formation complete. Total clusters: 6
+[2025-08-04 13:04:56.930] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:182] Cluster 0: 1 sleeves
+[2025-08-04 13:04:56.931] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:182] Cluster 1: 1 sleeves
+[2025-08-04 13:04:56.931] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:182] Cluster 2: 1 sleeves
+[2025-08-04 13:04:56.932] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:182] Cluster 3: 1 sleeves
+[2025-08-04 13:04:56.932] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:182] Cluster 4: 1 sleeves
+[2025-08-04 13:04:56.932] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:182] Cluster 5: 1 sleeves
+[2025-08-04 13:04:56.934] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:248] Rectangular pipe opening placement completed successfully
+[2025-08-04 13:04:56.935] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:109] Starting rectangular sleeve clustering...
+[2025-08-04 13:04:56.935] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:27] Executing RectangularSleeveClusterCommandV2...

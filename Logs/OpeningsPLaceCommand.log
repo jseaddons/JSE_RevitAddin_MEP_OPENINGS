@@ -1,0 +1,53 @@
+===== NEW LOG SESSION STARTED 2025-08-04 13:04:52 =====
+JSE_RevitAddin_MEP_OPENINGS Debug Log: OpeningsPLaceCommand.log
+Build Version: 1.0.0.0
+Build Timestamp: 2025-08-04T12:36:06.9367169+05:30
+====================================================
+[2025-08-04 13:04:52.741] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:50] OpeningsPLaceCommand: Execute started - running all sleeve placement commands
+[2025-08-04 13:04:52.744] [v1.0.0.0] [INFO] [StructuralElementLogger:86] [STRUCTURAL-LOG] Initialized structural elements log: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\StructuralElements_SleeveLog_20250804_130452.log
+[2025-08-04 13:04:52.745] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:54] StructuralElementLogger initialized. Log file: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\StructuralElements_SleeveLog_20250804_130452.log
+[2025-08-04 13:04:52.746] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:55] StructuralElementLogger status: READY
+[2025-08-04 13:04:52.747] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] SYSTEM ID=0: OPENINGS PLACE COMMAND STARTED Master command executing all sleeve placement commands with structural support
+[2025-08-04 13:04:52.748] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=999: LOGGER_TEST This is a test entry to verify logging is working
+[2025-08-04 13:04:52.749] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:69] DIAGNOSTIC INFO:
+- Logger Status: INITIALIZED
+- Log File Path: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\StructuralElements_SleeveLog_20250804_130452.log
+- Log File Exists: YES
+- Project Directory Check: True
+- Logs Directory Check: True
+[2025-08-04 13:04:52.749] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:70] Structural Logger Diagnostic: DIAGNOSTIC INFO:
+- Logger Status: INITIALIZED
+- Log File Path: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\StructuralElements_SleeveLog_20250804_130452.log
+- Log File Exists: YES
+- Project Directory Check: True
+- Logs Directory Check: True
+[2025-08-04 13:04:52.769] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:84] Starting duct sleeve placement...
+[2025-08-04 13:04:52.903] [v1.0.0.0] [INFO] [DuctSleeveCommand:192] Found 4 existing duct sleeves in the model (wall and floor)
+[2025-08-04 13:04:52.977] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1845367 Line Start=(106.250532160, 31.606679418, 60.269028871), End=(106.250532160, 31.737913013, 60.269028871)
+[2025-08-04 13:04:52.984] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1845367 no intersection with any structural element
+[2025-08-04 13:04:52.985] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1845413 Line Start=(104.610112212, 32.065997003, 60.301837270), End=(107.890952107, 32.065997003, 60.301837270)
+[2025-08-04 13:04:52.989] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1845413 no intersection with any structural element
+[2025-08-04 13:04:52.990] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1933792 Line Start=(99.753919125, 30.347622614, 63.057742782), End=(99.753919125, 30.347622614, 55.511811024)
+[2025-08-04 13:04:52.994] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 1933792 intersects Floor 1713828 BBox=((99.753919125, 30.347622614, 62.089895013),(99.753919125, 30.347622614, 62.335958005))
+[2025-08-04 13:04:52.995] [v1.0.0.0] [INFO] [DuctSleeveCommand:262] [DuctSleeveCommand] FLOOR DEBUG: Duct 1933792 intersects Floor 1713828 - Status: NON-STRUCTURAL
+[2025-08-04 13:04:52.996] [v1.0.0.0] [INFO] [DuctSleeveCommand:269] [DuctSleeveCommand] SKIP: Duct 1933792 host Floor 1713828 is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-04 13:04:52.997] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 1933792 intersects Floor 10934404 BBox=((99.753919125, 30.347622614, 61.236876640),(99.753919125, 30.347622614, 62.089895013))
+[2025-08-04 13:04:52.998] [v1.0.0.0] [INFO] [DuctSleeveCommand:262] [DuctSleeveCommand] FLOOR DEBUG: Duct 1933792 intersects Floor 10934404 - Status: STRUCTURAL
+[2025-08-04 13:04:52.999] [v1.0.0.0] [INFO] [DuctSleeveCommand:280] [DuctSleeveCommand] FLOOR SYMBOL: Found floor symbol: DuctOpeningOnSlab - DS#
+[2025-08-04 13:04:53.032] [v1.0.0.0] [INFO] [DuctSleeveCommand:296] [DuctSleeveCommand] DUPLICATION CHECK at (99.753919125, 30.347622614, 61.663385827):
+No sleeves found at location
+[2025-08-04 13:04:53.102] [v1.0.0.0] [INFO] [DuctSleevePlacer:29] [DuctSleevePlacer] Constructor called
+[2025-08-04 13:04:53.103] [v1.0.0.0] [INFO] [DuctSleeveCommand:342] [DuctSleeveCommand] DEBUG BEFORE PLACER: DuctId=1933792, HostType=Floor, HostId=10934404
+[2025-08-04 13:04:53.103] [v1.0.0.0] [INFO] [DuctSleeveCommand:343] [DuctSleeveCommand] DEBUG INTERSECTION: (99.753919, 30.347623, 61.663386)
+[2025-08-04 13:04:53.104] [v1.0.0.0] [INFO] [DuctSleeveCommand:344] [DuctSleeveCommand] DEBUG DIRECTION: (0.000000, 0.000000, -1.000000)
+[2025-08-04 13:04:53.104] [v1.0.0.0] [INFO] [DuctSleeveCommand:345] [DuctSleeveCommand] DEBUG SIZE: Width=0.820210, Height=1.968504
+[2025-08-04 13:04:53.105] [v1.0.0.0] [INFO] [DuctSleeveCommand:346] [DuctSleeveCommand] DEBUG FAMILY: DuctOpeningOnSlab - DS#
+[2025-08-04 13:04:53.106] [v1.0.0.0] [INFO] [DuctSleeveCommand:349] [DuctSleeveCommand] === DUCT ORIENTATION ANALYSIS ===
+[2025-08-04 13:04:53.107] [v1.0.0.0] [INFO] [DuctSleeveCommand:350] [DuctSleeveCommand] Duct Width Parameter: 150.0mm
+[2025-08-04 13:04:53.108] [v1.0.0.0] [INFO] [DuctSleeveCommand:351] [DuctSleeveCommand] Duct Height Parameter: 500.0mm
+[2025-08-04 13:04:53.109] [v1.0.0.0] [INFO] [DuctSleeveCommand:352] [DuctSleeveCommand] Original ductLine.Direction: (0.000000, 0.000000, -1.000000)
+[2025-08-04 13:04:53.110] [v1.0.0.0] [INFO] [DuctSleeveCommand:353] [DuctSleeveCommand] Transformed hostLine.Direction: (0.000000, 0.000000, -1.000000)
+[2025-08-04 13:04:53.111] [v1.0.0.0] [INFO] [DuctSleeveCommand:375] [DuctSleeveCommand] Got width direction from connector: (0.000, 1.000, 0.000)
+[2025-08-04 13:04:53.112] [v1.0.0.0] [INFO] [DuctSleeveCommand:405] [DuctSleeveCommand] Duct width direction (world): (0.000, 1.000, 0.000)
+[2025-08-04 13:04:53.113] [v1.0.0.0] [INFO] [DuctSleeveCommand:406] [DuctSleeveCommand] ORIENTATION STATUS: Y-ORIENTED
+[2025-08-04 13:04:53.113] [v1.0.0.0] [INFO] [DuctSleeveCommand:411] [DuctSleeveCommand] Passing Y-oriented duct to placer for rotation.

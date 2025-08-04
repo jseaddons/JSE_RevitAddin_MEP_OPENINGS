@@ -1,0 +1,340 @@
+[2025-08-04 13:10:08.766] [v1.0.0.0] [INFO] [StructuralElementLogger:86] [STRUCTURAL-LOG] Initialized structural elements log: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\StructuralElements_SleeveLog_20250804_131008.log
+[2025-08-04 13:10:08.768] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=0: CT_FAMILY_SEARCH Found 110 family symbols in project
+[2025-08-04 13:10:08.770] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=1049: CT_FAMILY_FOUND Family: Section Head - Filled, Symbol: Section Head - Filled
+[2025-08-04 13:10:08.774] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=16216: CT_FAMILY_FOUND Family: Rectangular Handrail, Symbol: 50 x 50mm
+[2025-08-04 13:10:08.776] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=28045: CT_FAMILY_FOUND Family: Section Tail - Filled, Symbol: Section Tail - Filled
+[2025-08-04 13:10:08.778] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=112441: CT_FAMILY_FOUND Family: Rectangular Union, Symbol: Standard
+[2025-08-04 13:10:08.779] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=498585: CT_FAMILY_FOUND Family: Rectangular Medium Radius Bend - Flanged, Symbol: Standard
+[2025-08-04 13:10:08.780] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=498587: CT_FAMILY_FOUND Family: Rectangular Square Tee - Flanged, Symbol: Standard
+[2025-08-04 13:10:08.781] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=498589: CT_FAMILY_FOUND Family: Rectangular Shoe Branch - Flanged, Symbol: Standard
+[2025-08-04 13:10:08.782] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=498591: CT_FAMILY_FOUND Family: Rectangular Concentric Taper - Flanged, Symbol: Standard
+[2025-08-04 13:10:08.783] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=498593: CT_FAMILY_FOUND Family: Rectangular - Round Transformation - Flanged, Symbol: Standard
+[2025-08-04 13:10:08.784] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=499382: CT_FAMILY_FOUND Family: Rectangular Blank End, Symbol: Standard
+[2025-08-04 13:10:08.787] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] SUCCESS ID=2124183: CT_FAMILY_FOUND Using cable tray wall sleeve family: CableTrayOpeningOnWall, Symbol: CT#
+[2025-08-04 13:10:08.788] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] SUCCESS ID=2126788: CT_FAMILY_FOUND Using cable tray slab sleeve family: CabletrayOpeningOnSlab, Symbol: CT#
+[2025-08-04 13:10:08.881] [v1.0.0.0] [INFO] [CableTraySleeveCommand:106] Found 15 existing cable tray sleeves in the model
+[2025-08-04 13:10:08.893] [v1.0.0.0] [INFO] [CableTraySleeveCommand:112] --- Details of Existing Cable Tray Sleeves ---
+[2025-08-04 13:10:08.894] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145536, Location: (110.012439698, 21.491141908, 58.448162730), Width: 200.0mm, Height: 300.0mm, Depth: 5.0mm
+[2025-08-04 13:10:08.895] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145567, Location: (107.143694544, 44.291338671, 61.030839239), Width: 200.0mm, Height: 160.3mm, Depth: 399.9mm
+[2025-08-04 13:10:08.896] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145568, Location: (104.237790398, 37.962657475, 61.030839239), Width: 308.3mm, Height: 160.3mm, Depth: 100.0mm
+[2025-08-04 13:10:08.897] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145569, Location: (97.112860892, 29.861269371, 60.695661089), Width: 775.2mm, Height: 133.4mm, Depth: 200.0mm
+[2025-08-04 13:10:08.898] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145570, Location: (97.112860892, 25.811855708, 60.695661089), Width: 332.0mm, Height: 133.4mm, Depth: 200.0mm
+[2025-08-04 13:10:08.899] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145576, Location: (109.904855940, 28.139748615, 60.252624672), Width: 220.0mm, Height: 250.0mm, Depth: 50.0mm
+[2025-08-04 13:10:08.900] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145577, Location: (103.108812175, 44.947479738, 60.252624672), Width: 200.0mm, Height: 300.0mm, Depth: 495.0mm
+[2025-08-04 13:10:08.901] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145578, Location: (97.112860892, 20.548913421, 60.252624672), Width: 640.0mm, Height: 250.0mm, Depth: 200.0mm
+[2025-08-04 13:10:08.902] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145581, Location: (105.473099239, 44.291338671, 60.744750656), Width: 200.0mm, Height: 300.0mm, Depth: 328.8mm
+[2025-08-04 13:10:08.903] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145582, Location: (104.237790398, 36.162668147, 60.744750656), Width: 389.0mm, Height: 200.0mm, Depth: 100.0mm
+[2025-08-04 13:10:08.904] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145583, Location: (97.112860892, 22.392478966, 60.810730318), Width: 402.2mm, Height: 300.0mm, Depth: 200.0mm
+[2025-08-04 13:10:08.905] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145664, Location: (102.467836547, 40.246142736, 60.613517060), Width: 100.0mm, Height: 260.0mm, Depth: 360.0mm
+[2025-08-04 13:10:08.906] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145665, Location: (97.112860892, 24.052223439, 60.810730318), Width: 200.0mm, Height: 200.0mm, Depth: 200.0mm
+[2025-08-04 13:10:08.924] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145735, Location: (109.988665861, 26.747074331, 58.448162730), Width: 200.0mm, Height: 300.0mm, Depth: 5.0mm
+[2025-08-04 13:10:08.925] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145880, Location: (99.248407111, 31.531798041, 60.810730318), Width: 200.0mm, Height: 300.0mm, Depth: 52.3mm
+[2025-08-04 13:10:08.926] [v1.0.0.0] [INFO] [CableTraySleeveCommand:122] ------------------------------------------
+[2025-08-04 13:10:08.927] [v1.0.0.0] [INFO] [CableTraySleeveCommand:140] Found 5 cable trays to process
+[2025-08-04 13:10:08.928] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] SYSTEM ID=0: PROCESSING STARTED Total cable trays to process: 5
+[2025-08-04 13:10:08.928] [v1.0.0.0] [INFO] [CableTraySleeveCommand:148] Transaction started for cable tray sleeve placement
+[2025-08-04 13:10:08.928] [v1.0.0.0] [INFO] [CableTraySleeveCommand:150] Starting wall intersection tests for cable trays
+[2025-08-04 13:10:08.929] [v1.0.0.0] [INFO] [CableTraySleeveCommand:162] Processing CableTray ID=1953336
+[2025-08-04 13:10:08.967] [v1.0.0.0] [INFO] [EfficientIntersectionService:42] [EfficientIntersectionService] Filtered walls: 0 (from section box and bbox pre-check)
+[2025-08-04 13:10:09.020] [v1.0.0.0] [INFO] [EfficientIntersectionService:280] [EfficientIntersectionService] Pre-filtered structural elements: 2 (from 76 total)
+[2025-08-04 13:10:09.021] [v1.0.0.0] [INFO] [EfficientIntersectionService:99] [EfficientIntersectionService] Processing 2 pre-filtered structural elements
+[2025-08-04 13:10:09.023] [v1.0.0.0] [INFO] [CableTraySleeveCommand:214] CableTray ID=1953336: Wall hits: 4, Structural hits: 0
+[2025-08-04 13:10:09.024] [v1.0.0.0] [INFO] [CableTraySleeveCommand:375] CableTray ID=1953336: detected wall element: Walls, ID=10933148
+[2025-08-04 13:10:09.024] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=10933148: ELEMENT DETECTED Hit by cable tray 1953336
+[2025-08-04 13:10:09.026] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-WALL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1953336, Wall ID=10933148, Position=(99.170878019, 31.523595942, 60.810730318)
+[2025-08-04 13:10:09.027] [v1.0.0.0] [INFO] [CableTraySleeveCommand:392] CableTray ID=1953336: Using wall family: CableTrayOpeningOnWall, Symbol: CT#
+[2025-08-04 13:10:09.068] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:125] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145880) detected via bounding box at location (99.170878019, 31.523595942, 60.810730318)
+[2025-08-04 13:10:09.069] [v1.0.0.0] [INFO] [CableTraySleeveCommand:444] [CableTraySleeveCommand] DUPLICATION CHECK at (99.170878019, 31.523595942, 60.810730318):
+Cluster sleeves: CT# (ID:2145880)
+[2025-08-04 13:10:09.099] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:125] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145880) detected via bounding box at location (99.170878019, 31.523595942, 60.810730318)
+[2025-08-04 13:10:09.100] [v1.0.0.0] [INFO] [CableTraySleeveCommand:450] [CableTraySleeveCommand] SKIP: CableTray 1953336 duplicate sleeve (individual or cluster) exists near (99.170878019, 31.523595942, 60.810730318)
+[2025-08-04 13:10:09.101] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=10933148: SLEEVE_FAILED Reason: Existing sleeve found at location
+[2025-08-04 13:10:09.102] [v1.0.0.0] [INFO] [CableTraySleeveCommand:162] Processing CableTray ID=1953384
+[2025-08-04 13:10:09.139] [v1.0.0.0] [INFO] [EfficientIntersectionService:42] [EfficientIntersectionService] Filtered walls: 0 (from section box and bbox pre-check)
+[2025-08-04 13:10:09.202] [v1.0.0.0] [INFO] [EfficientIntersectionService:280] [EfficientIntersectionService] Pre-filtered structural elements: 2 (from 76 total)
+[2025-08-04 13:10:09.203] [v1.0.0.0] [INFO] [EfficientIntersectionService:99] [EfficientIntersectionService] Processing 2 pre-filtered structural elements
+[2025-08-04 13:10:09.205] [v1.0.0.0] [INFO] [CableTraySleeveCommand:214] CableTray ID=1953384: Wall hits: 0, Structural hits: 2
+[2025-08-04 13:10:09.206] [v1.0.0.0] [INFO] [CableTraySleeveCommand:223] [CableTraySleeveCommand] CableTray 1953384: Detected 2 floor(s) at intersection:
+[2025-08-04 13:10:09.206] [v1.0.0.0] [INFO] [CableTraySleeveCommand:230] [CableTraySleeveCommand]   Floor ID=1713828, Doc=Architecture_detached, Location=<no location>
+[2025-08-04 13:10:09.207] [v1.0.0.0] [INFO] [CableTraySleeveCommand:230] [CableTraySleeveCommand]   Floor ID=10934404, Doc=Architecture_detached, Location=<no location>
+[2025-08-04 13:10:09.207] [v1.0.0.0] [INFO] [CableTraySleeveCommand:247] CableTray ID=1953384: detected structural element: Floors, ID=1713828
+[2025-08-04 13:10:09.208] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Floors ID=1713828: STRUCTURAL DETECTED Hit by cable tray 1953384
+[2025-08-04 13:10:09.209] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1953384, Structural ID=1713828, Position=(106.969486514, 25.145670788, 62.212926509)
+[2025-08-04 13:10:09.211] [v1.0.0.0] [INFO] [CableTraySleeveCommand:271] [CableTraySleeveCommand] CABLETRAY FLOOR DEBUG: CableTray 1953384 intersects Floor 1713828 [Architecture_detached] - Status: NON-STRUCTURAL, HOST
+[2025-08-04 13:10:09.212] [v1.0.0.0] [INFO] [CableTraySleeveCommand:273] [CableTraySleeveCommand] FLOOR_PARAM_IS_STRUCTURAL value: 0 (1=structural, 0=non-structural)
+[2025-08-04 13:10:09.213] [v1.0.0.0] [INFO] [CableTraySleeveCommand:283] [CableTraySleeveCommand] SKIP: CableTray 1953384 host Floor 1713828 [Architecture_detached] is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-04 13:10:09.214] [v1.0.0.0] [INFO] [CableTraySleeveCommand:247] CableTray ID=1953384: detected structural element: Floors, ID=10934404
+[2025-08-04 13:10:09.215] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Floors ID=10934404: STRUCTURAL DETECTED Hit by cable tray 1953384
+[2025-08-04 13:10:09.217] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1953384, Structural ID=10934404, Position=(106.969486514, 25.145670788, 61.663385827)
+[2025-08-04 13:10:09.218] [v1.0.0.0] [INFO] [CableTraySleeveCommand:271] [CableTraySleeveCommand] CABLETRAY FLOOR DEBUG: CableTray 1953384 intersects Floor 10934404 [Architecture_detached] - Status: STRUCTURAL, HOST
+[2025-08-04 13:10:09.219] [v1.0.0.0] [INFO] [CableTraySleeveCommand:273] [CableTraySleeveCommand] FLOOR_PARAM_IS_STRUCTURAL value: 1 (1=structural, 0=non-structural)
+[2025-08-04 13:10:09.220] [v1.0.0.0] [INFO] [CableTraySleeveCommand:293] [CableTraySleeveCommand] CABLETRAY FLOOR SYMBOL: Found floor symbol: CabletrayOpeningOnSlab - CT#
+[2025-08-04 13:10:09.221] [v1.0.0.0] [INFO] [CableTraySleeveCommand:311] CableTray ID=1953384: Linked reference type detected: FLOOR
+[2025-08-04 13:10:09.221] [v1.0.0.0] [INFO] [CableTraySleeveCommand:320] CableTray ID=1953384: Using family: CabletrayOpeningOnSlab, Symbol: CT# for linked reference type FLOOR
+[2025-08-04 13:10:09.227] [v1.0.0.0] [INFO] [CableTraySleeveCommand:606] [CableTraySleeveCommand] ORIENTATION ANALYSIS for CableTray 1953384
+[2025-08-04 13:10:09.229] [v1.0.0.0] [INFO] [MepElementOrientationHelper:21] [MepElementOrientationHelper] === CABLETRAY ORIENTATION ANALYSIS ===
+[2025-08-04 13:10:09.230] [v1.0.0.0] [INFO] [MepElementOrientationHelper:26] [MepElementOrientationHelper] CableTray Width Parameter: 300.0mm
+[2025-08-04 13:10:09.230] [v1.0.0.0] [INFO] [MepElementOrientationHelper:45] [MepElementOrientationHelper] BoundingBox Dimensions:
+[2025-08-04 13:10:09.231] [v1.0.0.0] [INFO] [MepElementOrientationHelper:46]   - X dimension: 100.0mm
+[2025-08-04 13:10:09.231] [v1.0.0.0] [INFO] [MepElementOrientationHelper:47]   - Y dimension: 300.0mm
+[2025-08-04 13:10:09.232] [v1.0.0.0] [INFO] [MepElementOrientationHelper:48]   - Z dimension: 1200.0mm
+[2025-08-04 13:10:09.232] [v1.0.0.0] [INFO] [MepElementOrientationHelper:57] [MepElementOrientationHelper] Width Parameter Match Analysis:
+[2025-08-04 13:10:09.233] [v1.0.0.0] [INFO] [MepElementOrientationHelper:58]   - Matches X dimension: False (diff: 200.0mm)
+[2025-08-04 13:10:09.233] [v1.0.0.0] [INFO] [MepElementOrientationHelper:59]   - Matches Y dimension: True (diff: 0.0mm)
+[2025-08-04 13:10:09.234] [v1.0.0.0] [INFO] [MepElementOrientationHelper:60]   - Matches Z dimension: False (diff: 900.0mm)
+[2025-08-04 13:10:09.234] [v1.0.0.0] [INFO] [MepElementOrientationHelper:70] [MepElementOrientationHelper] Width parameter matches Y dimension → Y-ORIENTED
+[2025-08-04 13:10:09.235] [v1.0.0.0] [INFO] [CableTraySleeveCommand:645] [CableTraySleeveCommand] Flow Direction: (0.000000,0.000000,-1.000000)
+[2025-08-04 13:10:09.235] [v1.0.0.0] [INFO] [CableTraySleeveCommand:646] [CableTraySleeveCommand] Width Direction: (0.000000,1.000000,0.000000)
+[2025-08-04 13:10:09.235] [v1.0.0.0] [INFO] [CableTraySleeveCommand:647] [CableTraySleeveCommand] CableTray 1953384: Y-ORIENTED
+[2025-08-04 13:10:09.236] [v1.0.0.0] [INFO] [CableTraySleeveCommand:655] [CableTraySleeveCommand] [FLOOR] Detected Y-oriented tray (bounding box). Passing Y orientation for rotation. No width/height swap.
+[2025-08-04 13:10:09.275] [v1.0.0.0] [INFO] [CableTraySleeveCommand:668] [CableTraySleeveCommand] DUPLICATION CHECK at (106.969486514, 25.145670788, 61.663385827):
+No sleeves found at location
+[2025-08-04 13:10:09.303] [v1.0.0.0] [INFO] [CableTraySleevePlacer:30] [CableTraySleevePlacer] USING PRE-CALCULATED ORIENTATION: (0.000000,1.000000,0.000000)
+[2025-08-04 13:10:09.313] [v1.0.0.0] [INFO] [CableTraySleevePlacer:59] [CableTraySleevePlacer] ENTRY: PlaceCableTraySleeve called with trayId=1953384
+[2025-08-04 13:10:09.313] [v1.0.0.0] [INFO] [CableTraySleevePlacer:64] [CableTraySleevePlacer] === LOG FILE START: PlaceCableTraySleeve called for cable tray 1953384 at intersection (106.969486514, 25.145670788, 61.663385827) ===
+[2025-08-04 13:10:09.314] [v1.0.0.0] [INFO] [CableTraySleevePlacer:65] [CableTraySleevePlacer] PlaceCableTraySleeve called for cable tray 1953384 at intersection (106.969486514, 25.145670788, 61.663385827)
+[2025-08-04 13:10:09.329] [v1.0.0.0] [INFO] [CableTraySleevePlacer:127] [CableTraySleevePlacer] Floor thickness detected (param: Default Thickness): 260.0mm
+[2025-08-04 13:10:09.344] [v1.0.0.0] [INFO] [CableTraySleevePlacer:186] [CableTraySleevePlacer] DEBUG: intersection=(106.969,25.146,61.663), placePoint=(106.969,25.146,61.663), mmDistance=0.0, allowedOffset=135.0
+[2025-08-04 13:10:09.344] [v1.0.0.0] [INFO] [CableTraySleevePlacer:193] [CableTraySleevePlacer] Intended centerline placement: placePoint=[106.969,25.146,61.663]
+[2025-08-04 13:10:09.345] [v1.0.0.0] [INFO] [CableTraySleevePlacer:194] [CableTraySleevePlacer] Placing sleeve: width=0.984251968503937, height=0.328083989501312, intersection=(106.969486513902,25.1456707877485,61.6633858267716)
+[2025-08-04 13:10:09.345] [v1.0.0.0] [INFO] [CableTraySleevePlacer:195] [CableTraySleevePlacer] Cable tray direction: (0, 0, -1)
+[2025-08-04 13:10:09.348] [v1.0.0.0] [INFO] [CableTraySleevePlacer:262] [CableTraySleevePlacer] HostOrientation parameter not found or read-only for sleeveId=2145884
+[2025-08-04 13:10:09.348] [v1.0.0.0] [INFO] [CableTraySleevePlacer:265] [CableTraySleevePlacer] HostOrientation after set: '<null>' for sleeveId=2145884
+[2025-08-04 13:10:09.349] [v1.0.0.0] [INFO] [CableTraySleevePlacer:280] [CableTraySleevePlacer] hostElement type: Autodesk.Revit.DB.Floor, category: Floors, id: 10934404, family: 
+[2025-08-04 13:10:09.355] [v1.0.0.0] [INFO] [CableTraySleevePlacer:406] [CableTraySleevePlacer] Setting Width to 400.0mm (internal: 1.312336) for cable tray 1953384
+[2025-08-04 13:10:09.355] [v1.0.0.0] [INFO] [CableTraySleevePlacer:410] [CableTraySleevePlacer] Verified Width set to 300.0mm for cable tray 1953384
+[2025-08-04 13:10:09.356] [v1.0.0.0] [INFO] [CableTraySleevePlacer:406] [CableTraySleevePlacer] Setting Height to 200.0mm (internal: 0.656168) for cable tray 1953384
+[2025-08-04 13:10:09.357] [v1.0.0.0] [INFO] [CableTraySleevePlacer:410] [CableTraySleevePlacer] Verified Height set to 200.0mm for cable tray 1953384
+[2025-08-04 13:10:09.357] [v1.0.0.0] [INFO] [CableTraySleevePlacer:406] [CableTraySleevePlacer] Setting Depth to 260.0mm (internal: 0.853018) for cable tray 1953384
+[2025-08-04 13:10:09.358] [v1.0.0.0] [INFO] [CableTraySleevePlacer:410] [CableTraySleevePlacer] Verified Depth set to 200.0mm for cable tray 1953384
+[2025-08-04 13:10:09.401] [v1.0.0.0] [INFO] [CableTraySleevePlacer:316] [CableTraySleevePlacer] [FLOOR] ROTATING: Using pre-calculated orientation from command: (0.000000,1.000000,0.000000)
+[2025-08-04 13:10:09.401] [v1.0.0.0] [INFO] [CableTraySleevePlacer:319] [CableTraySleevePlacer] [FLOOR] Rotation angle: 90.0 degrees for host type: Floor
+[2025-08-04 13:10:09.404] [v1.0.0.0] [INFO] [CableTraySleevePlacer:322] [CableTraySleevePlacer] [FLOOR] Applied rotation of 90.0 degrees (command determined Y-oriented)
+[2025-08-04 13:10:09.405] [v1.0.0.0] [INFO] [CableTraySleevePlacer:346] [CableTraySleevePlacer] Placement validation:
+[2025-08-04 13:10:09.406] [v1.0.0.0] [INFO] [CableTraySleevePlacer:347]   - Intended centerline: [106.969, 25.146, 61.663]
+[2025-08-04 13:10:09.406] [v1.0.0.0] [INFO] [CableTraySleevePlacer:348]   - Actual placement: [106.969, 25.146, 61.663]
+[2025-08-04 13:10:09.407] [v1.0.0.0] [INFO] [CableTraySleevePlacer:349]   - Offset: X=0.000, Y=0.000, Z=0.000, Total=0.000
+[2025-08-04 13:10:09.407] [v1.0.0.0] [INFO] [CableTraySleevePlacer:356] [CableTraySleevePlacer] SUCCESS: Sleeve placement is at the centerline.
+[2025-08-04 13:10:09.408] [v1.0.0.0] [INFO] [CableTraySleevePlacer:362] CableTray 1953384 - Intersection vs Sleeve position distance: 0.0mm
+[2025-08-04 13:10:09.409] [v1.0.0.0] [INFO] [CableTraySleevePlacer:363]   - Intersection: [106.969, 25.146, 61.663]
+[2025-08-04 13:10:09.409] [v1.0.0.0] [INFO] [CableTraySleevePlacer:364]   - Sleeve pos: [106.969, 25.146, 61.663]
+[2025-08-04 13:10:09.411] [v1.0.0.0] [INFO] [CableTraySleevePlacer:374] [CableTraySleevePlacer] Set Schedule Level to T01 for cable tray 1953384
+[2025-08-04 13:10:09.411] [v1.0.0.0] [INFO] [CableTraySleeveCommand:345] CableTray ID=1953384: Structural sleeve successfully placed at (106.969486514, 25.145670788, 61.663385827) with width-based orientation
+[2025-08-04 13:10:09.412] [v1.0.0.0] [INFO] [CableTraySleeveCommand:162] Processing CableTray ID=1953421
+[2025-08-04 13:10:09.448] [v1.0.0.0] [INFO] [EfficientIntersectionService:42] [EfficientIntersectionService] Filtered walls: 0 (from section box and bbox pre-check)
+[2025-08-04 13:10:09.511] [v1.0.0.0] [INFO] [EfficientIntersectionService:280] [EfficientIntersectionService] Pre-filtered structural elements: 2 (from 76 total)
+[2025-08-04 13:10:09.512] [v1.0.0.0] [INFO] [EfficientIntersectionService:99] [EfficientIntersectionService] Processing 2 pre-filtered structural elements
+[2025-08-04 13:10:09.514] [v1.0.0.0] [INFO] [CableTraySleeveCommand:214] CableTray ID=1953421: Wall hits: 0, Structural hits: 2
+[2025-08-04 13:10:09.515] [v1.0.0.0] [INFO] [CableTraySleeveCommand:223] [CableTraySleeveCommand] CableTray 1953421: Detected 2 floor(s) at intersection:
+[2025-08-04 13:10:09.516] [v1.0.0.0] [INFO] [CableTraySleeveCommand:230] [CableTraySleeveCommand]   Floor ID=1713828, Doc=Architecture_detached, Location=<no location>
+[2025-08-04 13:10:09.517] [v1.0.0.0] [INFO] [CableTraySleeveCommand:230] [CableTraySleeveCommand]   Floor ID=10934404, Doc=Architecture_detached, Location=<no location>
+[2025-08-04 13:10:09.517] [v1.0.0.0] [INFO] [CableTraySleeveCommand:247] CableTray ID=1953421: detected structural element: Floors, ID=1713828
+[2025-08-04 13:10:09.518] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Floors ID=1713828: STRUCTURAL DETECTED Hit by cable tray 1953421
+[2025-08-04 13:10:09.519] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1953421, Structural ID=1713828, Position=(107.533334452, 25.131574589, 62.212926509)
+[2025-08-04 13:10:09.519] [v1.0.0.0] [INFO] [CableTraySleeveCommand:271] [CableTraySleeveCommand] CABLETRAY FLOOR DEBUG: CableTray 1953421 intersects Floor 1713828 [Architecture_detached] - Status: NON-STRUCTURAL, HOST
+[2025-08-04 13:10:09.520] [v1.0.0.0] [INFO] [CableTraySleeveCommand:273] [CableTraySleeveCommand] FLOOR_PARAM_IS_STRUCTURAL value: 0 (1=structural, 0=non-structural)
+[2025-08-04 13:10:09.520] [v1.0.0.0] [INFO] [CableTraySleeveCommand:283] [CableTraySleeveCommand] SKIP: CableTray 1953421 host Floor 1713828 [Architecture_detached] is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-04 13:10:09.521] [v1.0.0.0] [INFO] [CableTraySleeveCommand:247] CableTray ID=1953421: detected structural element: Floors, ID=10934404
+[2025-08-04 13:10:09.521] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Floors ID=10934404: STRUCTURAL DETECTED Hit by cable tray 1953421
+[2025-08-04 13:10:09.522] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1953421, Structural ID=10934404, Position=(107.533334452, 25.131574589, 61.663385827)
+[2025-08-04 13:10:09.523] [v1.0.0.0] [INFO] [CableTraySleeveCommand:271] [CableTraySleeveCommand] CABLETRAY FLOOR DEBUG: CableTray 1953421 intersects Floor 10934404 [Architecture_detached] - Status: STRUCTURAL, HOST
+[2025-08-04 13:10:09.523] [v1.0.0.0] [INFO] [CableTraySleeveCommand:273] [CableTraySleeveCommand] FLOOR_PARAM_IS_STRUCTURAL value: 1 (1=structural, 0=non-structural)
+[2025-08-04 13:10:09.524] [v1.0.0.0] [INFO] [CableTraySleeveCommand:293] [CableTraySleeveCommand] CABLETRAY FLOOR SYMBOL: Found floor symbol: CabletrayOpeningOnSlab - CT#
+[2025-08-04 13:10:09.525] [v1.0.0.0] [INFO] [CableTraySleeveCommand:311] CableTray ID=1953421: Linked reference type detected: FLOOR
+[2025-08-04 13:10:09.526] [v1.0.0.0] [INFO] [CableTraySleeveCommand:320] CableTray ID=1953421: Using family: CabletrayOpeningOnSlab, Symbol: CT# for linked reference type FLOOR
+[2025-08-04 13:10:09.526] [v1.0.0.0] [INFO] [CableTraySleeveCommand:606] [CableTraySleeveCommand] ORIENTATION ANALYSIS for CableTray 1953421
+[2025-08-04 13:10:09.527] [v1.0.0.0] [INFO] [MepElementOrientationHelper:21] [MepElementOrientationHelper] === CABLETRAY ORIENTATION ANALYSIS ===
+[2025-08-04 13:10:09.527] [v1.0.0.0] [INFO] [MepElementOrientationHelper:26] [MepElementOrientationHelper] CableTray Width Parameter: 300.0mm
+[2025-08-04 13:10:09.528] [v1.0.0.0] [INFO] [MepElementOrientationHelper:45] [MepElementOrientationHelper] BoundingBox Dimensions:
+[2025-08-04 13:10:09.529] [v1.0.0.0] [INFO] [MepElementOrientationHelper:46]   - X dimension: 100.0mm
+[2025-08-04 13:10:09.529] [v1.0.0.0] [INFO] [MepElementOrientationHelper:47]   - Y dimension: 300.0mm
+[2025-08-04 13:10:09.531] [v1.0.0.0] [INFO] [MepElementOrientationHelper:48]   - Z dimension: 1200.0mm
+[2025-08-04 13:10:09.532] [v1.0.0.0] [INFO] [MepElementOrientationHelper:57] [MepElementOrientationHelper] Width Parameter Match Analysis:
+[2025-08-04 13:10:09.533] [v1.0.0.0] [INFO] [MepElementOrientationHelper:58]   - Matches X dimension: False (diff: 200.0mm)
+[2025-08-04 13:10:09.533] [v1.0.0.0] [INFO] [MepElementOrientationHelper:59]   - Matches Y dimension: True (diff: 0.0mm)
+[2025-08-04 13:10:09.534] [v1.0.0.0] [INFO] [MepElementOrientationHelper:60]   - Matches Z dimension: False (diff: 900.0mm)
+[2025-08-04 13:10:09.534] [v1.0.0.0] [INFO] [MepElementOrientationHelper:70] [MepElementOrientationHelper] Width parameter matches Y dimension → Y-ORIENTED
+[2025-08-04 13:10:09.535] [v1.0.0.0] [INFO] [CableTraySleeveCommand:645] [CableTraySleeveCommand] Flow Direction: (0.000000,0.000000,-1.000000)
+[2025-08-04 13:10:09.535] [v1.0.0.0] [INFO] [CableTraySleeveCommand:646] [CableTraySleeveCommand] Width Direction: (0.000000,1.000000,0.000000)
+[2025-08-04 13:10:09.536] [v1.0.0.0] [INFO] [CableTraySleeveCommand:647] [CableTraySleeveCommand] CableTray 1953421: Y-ORIENTED
+[2025-08-04 13:10:09.537] [v1.0.0.0] [INFO] [CableTraySleeveCommand:655] [CableTraySleeveCommand] [FLOOR] Detected Y-oriented tray (bounding box). Passing Y orientation for rotation. No width/height swap.
+[2025-08-04 13:10:09.568] [v1.0.0.0] [INFO] [CableTraySleeveCommand:668] [CableTraySleeveCommand] DUPLICATION CHECK at (107.533334452, 25.131574589, 61.663385827):
+No sleeves found at location
+[2025-08-04 13:10:09.595] [v1.0.0.0] [INFO] [CableTraySleevePlacer:30] [CableTraySleevePlacer] USING PRE-CALCULATED ORIENTATION: (0.000000,1.000000,0.000000)
+[2025-08-04 13:10:09.596] [v1.0.0.0] [INFO] [CableTraySleevePlacer:59] [CableTraySleevePlacer] ENTRY: PlaceCableTraySleeve called with trayId=1953421
+[2025-08-04 13:10:09.596] [v1.0.0.0] [INFO] [CableTraySleevePlacer:64] [CableTraySleevePlacer] === LOG FILE START: PlaceCableTraySleeve called for cable tray 1953421 at intersection (107.533334452, 25.131574589, 61.663385827) ===
+[2025-08-04 13:10:09.597] [v1.0.0.0] [INFO] [CableTraySleevePlacer:65] [CableTraySleevePlacer] PlaceCableTraySleeve called for cable tray 1953421 at intersection (107.533334452, 25.131574589, 61.663385827)
+[2025-08-04 13:10:09.609] [v1.0.0.0] [INFO] [CableTraySleevePlacer:127] [CableTraySleevePlacer] Floor thickness detected (param: Default Thickness): 260.0mm
+[2025-08-04 13:10:09.621] [v1.0.0.0] [INFO] [CableTraySleevePlacer:186] [CableTraySleevePlacer] DEBUG: intersection=(107.533,25.132,61.663), placePoint=(107.533,25.132,61.663), mmDistance=0.0, allowedOffset=135.0
+[2025-08-04 13:10:09.622] [v1.0.0.0] [INFO] [CableTraySleevePlacer:193] [CableTraySleevePlacer] Intended centerline placement: placePoint=[107.533,25.132,61.663]
+[2025-08-04 13:10:09.623] [v1.0.0.0] [INFO] [CableTraySleevePlacer:194] [CableTraySleevePlacer] Placing sleeve: width=0.984251968503937, height=0.328083989501312, intersection=(107.533334451835,25.1315745893002,61.6633858267716)
+[2025-08-04 13:10:09.624] [v1.0.0.0] [INFO] [CableTraySleevePlacer:195] [CableTraySleevePlacer] Cable tray direction: (0, 0, -1)
+[2025-08-04 13:10:09.627] [v1.0.0.0] [INFO] [CableTraySleevePlacer:262] [CableTraySleevePlacer] HostOrientation parameter not found or read-only for sleeveId=2145885
+[2025-08-04 13:10:09.627] [v1.0.0.0] [INFO] [CableTraySleevePlacer:265] [CableTraySleevePlacer] HostOrientation after set: '<null>' for sleeveId=2145885
+[2025-08-04 13:10:09.628] [v1.0.0.0] [INFO] [CableTraySleevePlacer:280] [CableTraySleevePlacer] hostElement type: Autodesk.Revit.DB.Floor, category: Floors, id: 10934404, family: 
+[2025-08-04 13:10:09.629] [v1.0.0.0] [INFO] [CableTraySleevePlacer:406] [CableTraySleevePlacer] Setting Width to 400.0mm (internal: 1.312336) for cable tray 1953421
+[2025-08-04 13:10:09.630] [v1.0.0.0] [INFO] [CableTraySleevePlacer:410] [CableTraySleevePlacer] Verified Width set to 300.0mm for cable tray 1953421
+[2025-08-04 13:10:09.630] [v1.0.0.0] [INFO] [CableTraySleevePlacer:406] [CableTraySleevePlacer] Setting Height to 200.0mm (internal: 0.656168) for cable tray 1953421
+[2025-08-04 13:10:09.631] [v1.0.0.0] [INFO] [CableTraySleevePlacer:410] [CableTraySleevePlacer] Verified Height set to 200.0mm for cable tray 1953421
+[2025-08-04 13:10:09.631] [v1.0.0.0] [INFO] [CableTraySleevePlacer:406] [CableTraySleevePlacer] Setting Depth to 260.0mm (internal: 0.853018) for cable tray 1953421
+[2025-08-04 13:10:09.632] [v1.0.0.0] [INFO] [CableTraySleevePlacer:410] [CableTraySleevePlacer] Verified Depth set to 200.0mm for cable tray 1953421
+[2025-08-04 13:10:09.673] [v1.0.0.0] [INFO] [CableTraySleevePlacer:316] [CableTraySleevePlacer] [FLOOR] ROTATING: Using pre-calculated orientation from command: (0.000000,1.000000,0.000000)
+[2025-08-04 13:10:09.674] [v1.0.0.0] [INFO] [CableTraySleevePlacer:319] [CableTraySleevePlacer] [FLOOR] Rotation angle: 90.0 degrees for host type: Floor
+[2025-08-04 13:10:09.677] [v1.0.0.0] [INFO] [CableTraySleevePlacer:322] [CableTraySleevePlacer] [FLOOR] Applied rotation of 90.0 degrees (command determined Y-oriented)
+[2025-08-04 13:10:09.678] [v1.0.0.0] [INFO] [CableTraySleevePlacer:346] [CableTraySleevePlacer] Placement validation:
+[2025-08-04 13:10:09.679] [v1.0.0.0] [INFO] [CableTraySleevePlacer:347]   - Intended centerline: [107.533, 25.132, 61.663]
+[2025-08-04 13:10:09.679] [v1.0.0.0] [INFO] [CableTraySleevePlacer:348]   - Actual placement: [107.533, 25.132, 61.663]
+[2025-08-04 13:10:09.680] [v1.0.0.0] [INFO] [CableTraySleevePlacer:349]   - Offset: X=0.000, Y=0.000, Z=0.000, Total=0.000
+[2025-08-04 13:10:09.680] [v1.0.0.0] [INFO] [CableTraySleevePlacer:356] [CableTraySleevePlacer] SUCCESS: Sleeve placement is at the centerline.
+[2025-08-04 13:10:09.681] [v1.0.0.0] [INFO] [CableTraySleevePlacer:362] CableTray 1953421 - Intersection vs Sleeve position distance: 0.0mm
+[2025-08-04 13:10:09.682] [v1.0.0.0] [INFO] [CableTraySleevePlacer:363]   - Intersection: [107.533, 25.132, 61.663]
+[2025-08-04 13:10:09.682] [v1.0.0.0] [INFO] [CableTraySleevePlacer:364]   - Sleeve pos: [107.533, 25.132, 61.663]
+[2025-08-04 13:10:09.684] [v1.0.0.0] [INFO] [CableTraySleevePlacer:374] [CableTraySleevePlacer] Set Schedule Level to T01 for cable tray 1953421
+[2025-08-04 13:10:09.685] [v1.0.0.0] [INFO] [CableTraySleeveCommand:345] CableTray ID=1953421: Structural sleeve successfully placed at (107.533334452, 25.131574589, 61.663385827) with width-based orientation
+[2025-08-04 13:10:09.685] [v1.0.0.0] [INFO] [CableTraySleeveCommand:162] Processing CableTray ID=1953426
+[2025-08-04 13:10:09.722] [v1.0.0.0] [INFO] [EfficientIntersectionService:42] [EfficientIntersectionService] Filtered walls: 0 (from section box and bbox pre-check)
+[2025-08-04 13:10:09.778] [v1.0.0.0] [INFO] [EfficientIntersectionService:280] [EfficientIntersectionService] Pre-filtered structural elements: 2 (from 76 total)
+[2025-08-04 13:10:09.779] [v1.0.0.0] [INFO] [EfficientIntersectionService:99] [EfficientIntersectionService] Processing 2 pre-filtered structural elements
+[2025-08-04 13:10:09.780] [v1.0.0.0] [INFO] [CableTraySleeveCommand:214] CableTray ID=1953426: Wall hits: 0, Structural hits: 2
+[2025-08-04 13:10:09.781] [v1.0.0.0] [INFO] [CableTraySleeveCommand:223] [CableTraySleeveCommand] CableTray 1953426: Detected 2 floor(s) at intersection:
+[2025-08-04 13:10:09.781] [v1.0.0.0] [INFO] [CableTraySleeveCommand:230] [CableTraySleeveCommand]   Floor ID=1713828, Doc=Architecture_detached, Location=<no location>
+[2025-08-04 13:10:09.782] [v1.0.0.0] [INFO] [CableTraySleeveCommand:230] [CableTraySleeveCommand]   Floor ID=10934404, Doc=Architecture_detached, Location=<no location>
+[2025-08-04 13:10:09.782] [v1.0.0.0] [INFO] [CableTraySleeveCommand:247] CableTray ID=1953426: detected structural element: Floors, ID=1713828
+[2025-08-04 13:10:09.783] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Floors ID=1713828: STRUCTURAL DETECTED Hit by cable tray 1953426
+[2025-08-04 13:10:09.784] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1953426, Structural ID=1713828, Position=(107.223218086, 28.105872462, 62.212926509)
+[2025-08-04 13:10:09.785] [v1.0.0.0] [INFO] [CableTraySleeveCommand:271] [CableTraySleeveCommand] CABLETRAY FLOOR DEBUG: CableTray 1953426 intersects Floor 1713828 [Architecture_detached] - Status: NON-STRUCTURAL, HOST
+[2025-08-04 13:10:09.785] [v1.0.0.0] [INFO] [CableTraySleeveCommand:273] [CableTraySleeveCommand] FLOOR_PARAM_IS_STRUCTURAL value: 0 (1=structural, 0=non-structural)
+[2025-08-04 13:10:09.786] [v1.0.0.0] [INFO] [CableTraySleeveCommand:283] [CableTraySleeveCommand] SKIP: CableTray 1953426 host Floor 1713828 [Architecture_detached] is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-04 13:10:09.786] [v1.0.0.0] [INFO] [CableTraySleeveCommand:247] CableTray ID=1953426: detected structural element: Floors, ID=10934404
+[2025-08-04 13:10:09.787] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Floors ID=10934404: STRUCTURAL DETECTED Hit by cable tray 1953426
+[2025-08-04 13:10:09.788] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1953426, Structural ID=10934404, Position=(107.223218086, 28.105872462, 61.663385827)
+[2025-08-04 13:10:09.789] [v1.0.0.0] [INFO] [CableTraySleeveCommand:271] [CableTraySleeveCommand] CABLETRAY FLOOR DEBUG: CableTray 1953426 intersects Floor 10934404 [Architecture_detached] - Status: STRUCTURAL, HOST
+[2025-08-04 13:10:09.789] [v1.0.0.0] [INFO] [CableTraySleeveCommand:273] [CableTraySleeveCommand] FLOOR_PARAM_IS_STRUCTURAL value: 1 (1=structural, 0=non-structural)
+[2025-08-04 13:10:09.790] [v1.0.0.0] [INFO] [CableTraySleeveCommand:293] [CableTraySleeveCommand] CABLETRAY FLOOR SYMBOL: Found floor symbol: CabletrayOpeningOnSlab - CT#
+[2025-08-04 13:10:09.790] [v1.0.0.0] [INFO] [CableTraySleeveCommand:311] CableTray ID=1953426: Linked reference type detected: FLOOR
+[2025-08-04 13:10:09.791] [v1.0.0.0] [INFO] [CableTraySleeveCommand:320] CableTray ID=1953426: Using family: CabletrayOpeningOnSlab, Symbol: CT# for linked reference type FLOOR
+[2025-08-04 13:10:09.791] [v1.0.0.0] [INFO] [CableTraySleeveCommand:606] [CableTraySleeveCommand] ORIENTATION ANALYSIS for CableTray 1953426
+[2025-08-04 13:10:09.792] [v1.0.0.0] [INFO] [MepElementOrientationHelper:21] [MepElementOrientationHelper] === CABLETRAY ORIENTATION ANALYSIS ===
+[2025-08-04 13:10:09.792] [v1.0.0.0] [INFO] [MepElementOrientationHelper:26] [MepElementOrientationHelper] CableTray Width Parameter: 300.0mm
+[2025-08-04 13:10:09.793] [v1.0.0.0] [INFO] [MepElementOrientationHelper:45] [MepElementOrientationHelper] BoundingBox Dimensions:
+[2025-08-04 13:10:09.794] [v1.0.0.0] [INFO] [MepElementOrientationHelper:46]   - X dimension: 100.0mm
+[2025-08-04 13:10:09.794] [v1.0.0.0] [INFO] [MepElementOrientationHelper:47]   - Y dimension: 300.0mm
+[2025-08-04 13:10:09.795] [v1.0.0.0] [INFO] [MepElementOrientationHelper:48]   - Z dimension: 1200.0mm
+[2025-08-04 13:10:09.795] [v1.0.0.0] [INFO] [MepElementOrientationHelper:57] [MepElementOrientationHelper] Width Parameter Match Analysis:
+[2025-08-04 13:10:09.796] [v1.0.0.0] [INFO] [MepElementOrientationHelper:58]   - Matches X dimension: False (diff: 200.0mm)
+[2025-08-04 13:10:09.796] [v1.0.0.0] [INFO] [MepElementOrientationHelper:59]   - Matches Y dimension: True (diff: 0.0mm)
+[2025-08-04 13:10:09.797] [v1.0.0.0] [INFO] [MepElementOrientationHelper:60]   - Matches Z dimension: False (diff: 900.0mm)
+[2025-08-04 13:10:09.797] [v1.0.0.0] [INFO] [MepElementOrientationHelper:70] [MepElementOrientationHelper] Width parameter matches Y dimension → Y-ORIENTED
+[2025-08-04 13:10:09.798] [v1.0.0.0] [INFO] [CableTraySleeveCommand:645] [CableTraySleeveCommand] Flow Direction: (0.000000,0.000000,-1.000000)
+[2025-08-04 13:10:09.798] [v1.0.0.0] [INFO] [CableTraySleeveCommand:646] [CableTraySleeveCommand] Width Direction: (0.000000,1.000000,0.000000)
+[2025-08-04 13:10:09.799] [v1.0.0.0] [INFO] [CableTraySleeveCommand:647] [CableTraySleeveCommand] CableTray 1953426: Y-ORIENTED
+[2025-08-04 13:10:09.800] [v1.0.0.0] [INFO] [CableTraySleeveCommand:655] [CableTraySleeveCommand] [FLOOR] Detected Y-oriented tray (bounding box). Passing Y orientation for rotation. No width/height swap.
+[2025-08-04 13:10:09.826] [v1.0.0.0] [INFO] [CableTraySleeveCommand:668] [CableTraySleeveCommand] DUPLICATION CHECK at (107.223218086, 28.105872462, 61.663385827):
+No sleeves found at location
+[2025-08-04 13:10:09.850] [v1.0.0.0] [INFO] [CableTraySleevePlacer:30] [CableTraySleevePlacer] USING PRE-CALCULATED ORIENTATION: (0.000000,1.000000,0.000000)
+[2025-08-04 13:10:09.851] [v1.0.0.0] [INFO] [CableTraySleevePlacer:59] [CableTraySleevePlacer] ENTRY: PlaceCableTraySleeve called with trayId=1953426
+[2025-08-04 13:10:09.851] [v1.0.0.0] [INFO] [CableTraySleevePlacer:64] [CableTraySleevePlacer] === LOG FILE START: PlaceCableTraySleeve called for cable tray 1953426 at intersection (107.223218086, 28.105872462, 61.663385827) ===
+[2025-08-04 13:10:09.852] [v1.0.0.0] [INFO] [CableTraySleevePlacer:65] [CableTraySleevePlacer] PlaceCableTraySleeve called for cable tray 1953426 at intersection (107.223218086, 28.105872462, 61.663385827)
+[2025-08-04 13:10:09.865] [v1.0.0.0] [INFO] [CableTraySleevePlacer:127] [CableTraySleevePlacer] Floor thickness detected (param: Default Thickness): 260.0mm
+[2025-08-04 13:10:09.877] [v1.0.0.0] [INFO] [CableTraySleevePlacer:186] [CableTraySleevePlacer] DEBUG: intersection=(107.223,28.106,61.663), placePoint=(107.223,28.106,61.663), mmDistance=0.0, allowedOffset=135.0
+[2025-08-04 13:10:09.878] [v1.0.0.0] [INFO] [CableTraySleevePlacer:193] [CableTraySleevePlacer] Intended centerline placement: placePoint=[107.223,28.106,61.663]
+[2025-08-04 13:10:09.878] [v1.0.0.0] [INFO] [CableTraySleevePlacer:194] [CableTraySleevePlacer] Placing sleeve: width=0.984251968503937, height=0.328083989501312, intersection=(107.223218085972,28.1058724618961,61.6633858267716)
+[2025-08-04 13:10:09.879] [v1.0.0.0] [INFO] [CableTraySleevePlacer:195] [CableTraySleevePlacer] Cable tray direction: (0, 0, -1)
+[2025-08-04 13:10:09.882] [v1.0.0.0] [INFO] [CableTraySleevePlacer:262] [CableTraySleevePlacer] HostOrientation parameter not found or read-only for sleeveId=2145886
+[2025-08-04 13:10:09.882] [v1.0.0.0] [INFO] [CableTraySleevePlacer:265] [CableTraySleevePlacer] HostOrientation after set: '<null>' for sleeveId=2145886
+[2025-08-04 13:10:09.883] [v1.0.0.0] [INFO] [CableTraySleevePlacer:280] [CableTraySleevePlacer] hostElement type: Autodesk.Revit.DB.Floor, category: Floors, id: 10934404, family: 
+[2025-08-04 13:10:09.883] [v1.0.0.0] [INFO] [CableTraySleevePlacer:406] [CableTraySleevePlacer] Setting Width to 400.0mm (internal: 1.312336) for cable tray 1953426
+[2025-08-04 13:10:09.884] [v1.0.0.0] [INFO] [CableTraySleevePlacer:410] [CableTraySleevePlacer] Verified Width set to 300.0mm for cable tray 1953426
+[2025-08-04 13:10:09.885] [v1.0.0.0] [INFO] [CableTraySleevePlacer:406] [CableTraySleevePlacer] Setting Height to 200.0mm (internal: 0.656168) for cable tray 1953426
+[2025-08-04 13:10:09.885] [v1.0.0.0] [INFO] [CableTraySleevePlacer:410] [CableTraySleevePlacer] Verified Height set to 200.0mm for cable tray 1953426
+[2025-08-04 13:10:09.886] [v1.0.0.0] [INFO] [CableTraySleevePlacer:406] [CableTraySleevePlacer] Setting Depth to 260.0mm (internal: 0.853018) for cable tray 1953426
+[2025-08-04 13:10:09.886] [v1.0.0.0] [INFO] [CableTraySleevePlacer:410] [CableTraySleevePlacer] Verified Depth set to 200.0mm for cable tray 1953426
+[2025-08-04 13:10:09.928] [v1.0.0.0] [INFO] [CableTraySleevePlacer:316] [CableTraySleevePlacer] [FLOOR] ROTATING: Using pre-calculated orientation from command: (0.000000,1.000000,0.000000)
+[2025-08-04 13:10:09.929] [v1.0.0.0] [INFO] [CableTraySleevePlacer:319] [CableTraySleevePlacer] [FLOOR] Rotation angle: 90.0 degrees for host type: Floor
+[2025-08-04 13:10:09.935] [v1.0.0.0] [INFO] [CableTraySleevePlacer:322] [CableTraySleevePlacer] [FLOOR] Applied rotation of 90.0 degrees (command determined Y-oriented)
+[2025-08-04 13:10:09.936] [v1.0.0.0] [INFO] [CableTraySleevePlacer:346] [CableTraySleevePlacer] Placement validation:
+[2025-08-04 13:10:09.937] [v1.0.0.0] [INFO] [CableTraySleevePlacer:347]   - Intended centerline: [107.223, 28.106, 61.663]
+[2025-08-04 13:10:09.938] [v1.0.0.0] [INFO] [CableTraySleevePlacer:348]   - Actual placement: [107.223, 28.106, 61.663]
+[2025-08-04 13:10:09.938] [v1.0.0.0] [INFO] [CableTraySleevePlacer:349]   - Offset: X=0.000, Y=0.000, Z=0.000, Total=0.000
+[2025-08-04 13:10:09.939] [v1.0.0.0] [INFO] [CableTraySleevePlacer:356] [CableTraySleevePlacer] SUCCESS: Sleeve placement is at the centerline.
+[2025-08-04 13:10:09.940] [v1.0.0.0] [INFO] [CableTraySleevePlacer:362] CableTray 1953426 - Intersection vs Sleeve position distance: 0.0mm
+[2025-08-04 13:10:09.941] [v1.0.0.0] [INFO] [CableTraySleevePlacer:363]   - Intersection: [107.223, 28.106, 61.663]
+[2025-08-04 13:10:09.942] [v1.0.0.0] [INFO] [CableTraySleevePlacer:364]   - Sleeve pos: [107.223, 28.106, 61.663]
+[2025-08-04 13:10:09.944] [v1.0.0.0] [INFO] [CableTraySleevePlacer:374] [CableTraySleevePlacer] Set Schedule Level to T01 for cable tray 1953426
+[2025-08-04 13:10:09.945] [v1.0.0.0] [INFO] [CableTraySleeveCommand:345] CableTray ID=1953426: Structural sleeve successfully placed at (107.223218086, 28.105872462, 61.663385827) with width-based orientation
+[2025-08-04 13:10:09.946] [v1.0.0.0] [INFO] [CableTraySleeveCommand:162] Processing CableTray ID=2142742
+[2025-08-04 13:10:09.984] [v1.0.0.0] [INFO] [EfficientIntersectionService:42] [EfficientIntersectionService] Filtered walls: 0 (from section box and bbox pre-check)
+[2025-08-04 13:10:10.047] [v1.0.0.0] [INFO] [EfficientIntersectionService:280] [EfficientIntersectionService] Pre-filtered structural elements: 2 (from 76 total)
+[2025-08-04 13:10:10.048] [v1.0.0.0] [INFO] [EfficientIntersectionService:99] [EfficientIntersectionService] Processing 2 pre-filtered structural elements
+[2025-08-04 13:10:10.049] [v1.0.0.0] [INFO] [CableTraySleeveCommand:214] CableTray ID=2142742: Wall hits: 0, Structural hits: 2
+[2025-08-04 13:10:10.050] [v1.0.0.0] [INFO] [CableTraySleeveCommand:223] [CableTraySleeveCommand] CableTray 2142742: Detected 2 floor(s) at intersection:
+[2025-08-04 13:10:10.050] [v1.0.0.0] [INFO] [CableTraySleeveCommand:230] [CableTraySleeveCommand]   Floor ID=1713828, Doc=Architecture_detached, Location=<no location>
+[2025-08-04 13:10:10.051] [v1.0.0.0] [INFO] [CableTraySleeveCommand:230] [CableTraySleeveCommand]   Floor ID=10934404, Doc=Architecture_detached, Location=<no location>
+[2025-08-04 13:10:10.052] [v1.0.0.0] [INFO] [CableTraySleeveCommand:247] CableTray ID=2142742: detected structural element: Floors, ID=1713828
+[2025-08-04 13:10:10.054] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Floors ID=1713828: STRUCTURAL DETECTED Hit by cable tray 2142742
+[2025-08-04 13:10:10.056] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=2142742, Structural ID=1713828, Position=(106.848044906, 26.601182763, 62.212926509)
+[2025-08-04 13:10:10.057] [v1.0.0.0] [INFO] [CableTraySleeveCommand:271] [CableTraySleeveCommand] CABLETRAY FLOOR DEBUG: CableTray 2142742 intersects Floor 1713828 [Architecture_detached] - Status: NON-STRUCTURAL, HOST
+[2025-08-04 13:10:10.058] [v1.0.0.0] [INFO] [CableTraySleeveCommand:273] [CableTraySleeveCommand] FLOOR_PARAM_IS_STRUCTURAL value: 0 (1=structural, 0=non-structural)
+[2025-08-04 13:10:10.059] [v1.0.0.0] [INFO] [CableTraySleeveCommand:283] [CableTraySleeveCommand] SKIP: CableTray 2142742 host Floor 1713828 [Architecture_detached] is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-04 13:10:10.059] [v1.0.0.0] [INFO] [CableTraySleeveCommand:247] CableTray ID=2142742: detected structural element: Floors, ID=10934404
+[2025-08-04 13:10:10.061] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Floors ID=10934404: STRUCTURAL DETECTED Hit by cable tray 2142742
+[2025-08-04 13:10:10.063] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=2142742, Structural ID=10934404, Position=(106.848044906, 26.601182763, 61.663385827)
+[2025-08-04 13:10:10.064] [v1.0.0.0] [INFO] [CableTraySleeveCommand:271] [CableTraySleeveCommand] CABLETRAY FLOOR DEBUG: CableTray 2142742 intersects Floor 10934404 [Architecture_detached] - Status: STRUCTURAL, HOST
+[2025-08-04 13:10:10.065] [v1.0.0.0] [INFO] [CableTraySleeveCommand:273] [CableTraySleeveCommand] FLOOR_PARAM_IS_STRUCTURAL value: 1 (1=structural, 0=non-structural)
+[2025-08-04 13:10:10.066] [v1.0.0.0] [INFO] [CableTraySleeveCommand:293] [CableTraySleeveCommand] CABLETRAY FLOOR SYMBOL: Found floor symbol: CabletrayOpeningOnSlab - CT#
+[2025-08-04 13:10:10.067] [v1.0.0.0] [INFO] [CableTraySleeveCommand:311] CableTray ID=2142742: Linked reference type detected: FLOOR
+[2025-08-04 13:10:10.068] [v1.0.0.0] [INFO] [CableTraySleeveCommand:320] CableTray ID=2142742: Using family: CabletrayOpeningOnSlab, Symbol: CT# for linked reference type FLOOR
+[2025-08-04 13:10:10.069] [v1.0.0.0] [INFO] [CableTraySleeveCommand:606] [CableTraySleeveCommand] ORIENTATION ANALYSIS for CableTray 2142742
+[2025-08-04 13:10:10.070] [v1.0.0.0] [INFO] [MepElementOrientationHelper:21] [MepElementOrientationHelper] === CABLETRAY ORIENTATION ANALYSIS ===
+[2025-08-04 13:10:10.071] [v1.0.0.0] [INFO] [MepElementOrientationHelper:26] [MepElementOrientationHelper] CableTray Width Parameter: 300.0mm
+[2025-08-04 13:10:10.072] [v1.0.0.0] [INFO] [MepElementOrientationHelper:45] [MepElementOrientationHelper] BoundingBox Dimensions:
+[2025-08-04 13:10:10.072] [v1.0.0.0] [INFO] [MepElementOrientationHelper:46]   - X dimension: 300.0mm
+[2025-08-04 13:10:10.073] [v1.0.0.0] [INFO] [MepElementOrientationHelper:47]   - Y dimension: 100.0mm
+[2025-08-04 13:10:10.074] [v1.0.0.0] [INFO] [MepElementOrientationHelper:48]   - Z dimension: 1200.0mm
+[2025-08-04 13:10:10.095] [v1.0.0.0] [INFO] [MepElementOrientationHelper:57] [MepElementOrientationHelper] Width Parameter Match Analysis:
+[2025-08-04 13:10:10.096] [v1.0.0.0] [INFO] [MepElementOrientationHelper:58]   - Matches X dimension: True (diff: 0.0mm)
+[2025-08-04 13:10:10.097] [v1.0.0.0] [INFO] [MepElementOrientationHelper:59]   - Matches Y dimension: False (diff: 200.0mm)
+[2025-08-04 13:10:10.098] [v1.0.0.0] [INFO] [MepElementOrientationHelper:60]   - Matches Z dimension: False (diff: 900.0mm)
+[2025-08-04 13:10:10.098] [v1.0.0.0] [INFO] [MepElementOrientationHelper:65] [MepElementOrientationHelper] Width parameter matches X dimension → X-ORIENTED
+[2025-08-04 13:10:10.099] [v1.0.0.0] [INFO] [CableTraySleeveCommand:645] [CableTraySleeveCommand] Flow Direction: (0.000000,0.000000,-1.000000)
+[2025-08-04 13:10:10.099] [v1.0.0.0] [INFO] [CableTraySleeveCommand:646] [CableTraySleeveCommand] Width Direction: (1.000000,0.000000,0.000000)
+[2025-08-04 13:10:10.100] [v1.0.0.0] [INFO] [CableTraySleeveCommand:647] [CableTraySleeveCommand] CableTray 2142742: X-ORIENTED
+[2025-08-04 13:10:10.100] [v1.0.0.0] [INFO] [CableTraySleeveCommand:660] [CableTraySleeveCommand] [FLOOR] Detected X-oriented tray (bounding box). Orientation=X
+[2025-08-04 13:10:10.125] [v1.0.0.0] [INFO] [CableTraySleeveCommand:668] [CableTraySleeveCommand] DUPLICATION CHECK at (106.848044906, 26.601182763, 61.663385827):
+No sleeves found at location
+[2025-08-04 13:10:10.150] [v1.0.0.0] [INFO] [CableTraySleevePlacer:30] [CableTraySleevePlacer] USING PRE-CALCULATED ORIENTATION: (1.000000,0.000000,0.000000)
+[2025-08-04 13:10:10.151] [v1.0.0.0] [INFO] [CableTraySleevePlacer:59] [CableTraySleevePlacer] ENTRY: PlaceCableTraySleeve called with trayId=2142742
+[2025-08-04 13:10:10.151] [v1.0.0.0] [INFO] [CableTraySleevePlacer:64] [CableTraySleevePlacer] === LOG FILE START: PlaceCableTraySleeve called for cable tray 2142742 at intersection (106.848044906, 26.601182763, 61.663385827) ===
+[2025-08-04 13:10:10.152] [v1.0.0.0] [INFO] [CableTraySleevePlacer:65] [CableTraySleevePlacer] PlaceCableTraySleeve called for cable tray 2142742 at intersection (106.848044906, 26.601182763, 61.663385827)
+[2025-08-04 13:10:10.164] [v1.0.0.0] [INFO] [CableTraySleevePlacer:127] [CableTraySleevePlacer] Floor thickness detected (param: Default Thickness): 260.0mm
+[2025-08-04 13:10:10.177] [v1.0.0.0] [INFO] [CableTraySleevePlacer:186] [CableTraySleevePlacer] DEBUG: intersection=(106.848,26.601,61.663), placePoint=(106.848,26.601,61.663), mmDistance=0.0, allowedOffset=135.0
+[2025-08-04 13:10:10.177] [v1.0.0.0] [INFO] [CableTraySleevePlacer:193] [CableTraySleevePlacer] Intended centerline placement: placePoint=[106.848,26.601,61.663]
+[2025-08-04 13:10:10.178] [v1.0.0.0] [INFO] [CableTraySleevePlacer:194] [CableTraySleevePlacer] Placing sleeve: width=0.984251968503937, height=0.328083989501312, intersection=(106.848044906056,26.6011827627755,61.6633858267716)
+[2025-08-04 13:10:10.178] [v1.0.0.0] [INFO] [CableTraySleevePlacer:195] [CableTraySleevePlacer] Cable tray direction: (0, 0, -1)
+[2025-08-04 13:10:10.181] [v1.0.0.0] [INFO] [CableTraySleevePlacer:262] [CableTraySleevePlacer] HostOrientation parameter not found or read-only for sleeveId=2145887
+[2025-08-04 13:10:10.181] [v1.0.0.0] [INFO] [CableTraySleevePlacer:265] [CableTraySleevePlacer] HostOrientation after set: '<null>' for sleeveId=2145887
+[2025-08-04 13:10:10.182] [v1.0.0.0] [INFO] [CableTraySleevePlacer:280] [CableTraySleevePlacer] hostElement type: Autodesk.Revit.DB.Floor, category: Floors, id: 10934404, family: 
+[2025-08-04 13:10:10.183] [v1.0.0.0] [INFO] [CableTraySleevePlacer:406] [CableTraySleevePlacer] Setting Width to 400.0mm (internal: 1.312336) for cable tray 2142742
+[2025-08-04 13:10:10.183] [v1.0.0.0] [INFO] [CableTraySleevePlacer:410] [CableTraySleevePlacer] Verified Width set to 300.0mm for cable tray 2142742
+[2025-08-04 13:10:10.184] [v1.0.0.0] [INFO] [CableTraySleevePlacer:406] [CableTraySleevePlacer] Setting Height to 200.0mm (internal: 0.656168) for cable tray 2142742
+[2025-08-04 13:10:10.184] [v1.0.0.0] [INFO] [CableTraySleevePlacer:410] [CableTraySleevePlacer] Verified Height set to 200.0mm for cable tray 2142742
+[2025-08-04 13:10:10.185] [v1.0.0.0] [INFO] [CableTraySleevePlacer:406] [CableTraySleevePlacer] Setting Depth to 260.0mm (internal: 0.853018) for cable tray 2142742
+[2025-08-04 13:10:10.185] [v1.0.0.0] [INFO] [CableTraySleevePlacer:410] [CableTraySleevePlacer] Verified Depth set to 200.0mm for cable tray 2142742
+[2025-08-04 13:10:10.227] [v1.0.0.0] [INFO] [CableTraySleevePlacer:316] [CableTraySleevePlacer] [FLOOR] ROTATING: Using pre-calculated orientation from command: (1.000000,0.000000,0.000000)
+[2025-08-04 13:10:10.228] [v1.0.0.0] [INFO] [CableTraySleevePlacer:319] [CableTraySleevePlacer] [FLOOR] Rotation angle: 0.0 degrees for host type: Floor
+[2025-08-04 13:10:10.231] [v1.0.0.0] [INFO] [CableTraySleevePlacer:322] [CableTraySleevePlacer] [FLOOR] Applied rotation of 0.0 degrees (command determined Y-oriented)
+[2025-08-04 13:10:10.231] [v1.0.0.0] [INFO] [CableTraySleevePlacer:346] [CableTraySleevePlacer] Placement validation:
+[2025-08-04 13:10:10.232] [v1.0.0.0] [INFO] [CableTraySleevePlacer:347]   - Intended centerline: [106.848, 26.601, 61.663]
+[2025-08-04 13:10:10.233] [v1.0.0.0] [INFO] [CableTraySleevePlacer:348]   - Actual placement: [106.848, 26.601, 61.663]
+[2025-08-04 13:10:10.234] [v1.0.0.0] [INFO] [CableTraySleevePlacer:349]   - Offset: X=0.000, Y=0.000, Z=0.000, Total=0.000
+[2025-08-04 13:10:10.235] [v1.0.0.0] [INFO] [CableTraySleevePlacer:356] [CableTraySleevePlacer] SUCCESS: Sleeve placement is at the centerline.
+[2025-08-04 13:10:10.236] [v1.0.0.0] [INFO] [CableTraySleevePlacer:362] CableTray 2142742 - Intersection vs Sleeve position distance: 0.0mm
+[2025-08-04 13:10:10.237] [v1.0.0.0] [INFO] [CableTraySleevePlacer:363]   - Intersection: [106.848, 26.601, 61.663]
+[2025-08-04 13:10:10.238] [v1.0.0.0] [INFO] [CableTraySleevePlacer:364]   - Sleeve pos: [106.848, 26.601, 61.663]
+[2025-08-04 13:10:10.240] [v1.0.0.0] [INFO] [CableTraySleevePlacer:374] [CableTraySleevePlacer] Set Schedule Level to T01 for cable tray 2142742
+[2025-08-04 13:10:10.241] [v1.0.0.0] [INFO] [CableTraySleeveCommand:345] CableTray ID=2142742: Structural sleeve successfully placed at (106.848044906, 26.601182763, 61.663385827) with width-based orientation
+[2025-08-04 13:10:10.266] [v1.0.0.0] [INFO] [CableTraySleeveCommand:418] Transaction committed for cable tray sleeve placement
+[2025-08-04 13:10:10.266] [v1.0.0.0] [INFO] [CableTraySleeveCommand:421] CableTraySleeveCommand summary: Total=5, Intersections=0, Placed=4, Missing=0, SkippedExisting=5, StructuralDetected=8, StructuralSleeves=4
+[2025-08-04 13:10:10.269] [v1.0.0.0] [INFO] [StructuralElementLogger:194] [STRUCTURAL] CableTraySleeveCommand summary - Processed: 5, Detected: 8, Placed: 4, Failed: 4
+[2025-08-04 13:10:10.270] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] SYSTEM ID=0: COMMAND COMPLETED Structural sleeve placement finished. Log file: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\StructuralElements_SleeveLog_20250804_131008.log
+[2025-08-04 13:10:10.270] [v1.0.0.0] [INFO] [CableTraySleeveCommand:428] Cable tray sleeves placement completed.

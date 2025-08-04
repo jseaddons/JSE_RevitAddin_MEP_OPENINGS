@@ -270,18 +270,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             BoundingBoxXYZ mepBBox)
         {
             var filteredElements = new List<(Element, Transform)>();
-            
-            // Get structural elements from host document using existing helper but with additional filtering
+            // Use the document directly (like duct logic) to collect from both host and visible links
             var structuralElements = StructuralElementCollectorHelper.CollectStructuralElementsVisibleOnly(doc);
-            
             var hostFiltered = structuralElements
-                .Where(tuple => IsElementInSectionBoxAndIntersectsMep(tuple.Item1, tuple.Item2, sectionBox, mepBBox))
+                .Where(tuple => IsElementInSectionBoxAndIntersectsMep(tuple.Item1, tuple.Item2 ?? Transform.Identity, sectionBox, mepBBox))
+                .Select(tuple => (tuple.Item1, tuple.Item2 ?? Transform.Identity))
                 .ToList();
-            
             filteredElements.AddRange(hostFiltered);
-            
             DebugLogger.Log($"[EfficientIntersectionService] Pre-filtered structural elements: {filteredElements.Count} (from {structuralElements.Count} total)");
-            
             return filteredElements;
         }
         

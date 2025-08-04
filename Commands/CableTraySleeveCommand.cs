@@ -216,6 +216,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     // PRIORITIZE STRUCTURAL INTERSECTIONS FIRST (floors and beams)
                     // Process structural intersections using new direct approach
                     bool structuralSleeveePlaced = false;
+                    // EXTENDED: Log all detected floor elements for this tray intersection
+                    var allFloors = structuralIntersections.Where(t => t.Item1 is Floor).ToList();
+                    if (allFloors.Count > 0)
+                    {
+                        DebugLogger.Log($"[CableTraySleeveCommand] CableTray {tray.Id.Value}: Detected {allFloors.Count} floor(s) at intersection:");
+                        foreach (var floorTuple in allFloors)
+                        {
+                            var floorElem = (Floor)floorTuple.Item1;
+                            var floorDoc = floorElem.Document;
+                            var floorLoc = floorElem.Location as LocationPoint;
+                            string locStr = floorLoc != null ? $"({floorLoc.Point.X:F3}, {floorLoc.Point.Y:F3}, {floorLoc.Point.Z:F3})" : "<no location>";
+                            DebugLogger.Log($"[CableTraySleeveCommand]   Floor ID={floorElem.Id.Value}, Doc={floorDoc.Title}, Location={locStr}");
+                        }
+                    }
+                    // Continue with normal intersection processing
                     foreach (var intersectionTuple in structuralIntersections)
                     {
                         if (processedCableTrays.Contains(tray.Id))
@@ -246,19 +261,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             familySymbolToUse = ctSlabSymbols.FirstOrDefault();
                             linkedReferenceType = "FLOOR";
 
-                            // FLOOR-SPECIFIC DEBUG: Add detailed floor detection logging for cable tray
+                            // EXTENDED FLOOR DEBUG LOGGING
                             var isStructuralParam = floor.get_Parameter(BuiltInParameter.FLOOR_PARAM_IS_STRUCTURAL);
                             bool isStructural = isStructuralParam != null && isStructuralParam.AsInteger() == 1;
                             string floorStructuralStatus = isStructural ? "STRUCTURAL" : "NON-STRUCTURAL";
-                            string floorDebugMsg = $"CABLETRAY FLOOR DEBUG: CableTray {tray.Id.Value} intersects Floor {floor.Id.Value} - Status: {floorStructuralStatus}";
+                            string docTitle = floor.Document.Title;
+                            string linkInfo = (transform != null) ? $"LINKED (Transform: {transform.Origin.X:F2},{transform.Origin.Y:F2},{transform.Origin.Z:F2})" : "HOST";
+                            string floorDebugMsg = $"CABLETRAY FLOOR DEBUG: CableTray {tray.Id.Value} intersects Floor {floor.Id.Value} [{docTitle}] - Status: {floorStructuralStatus}, {linkInfo}";
                             DebugLogger.Log($"[CableTraySleeveCommand] {floorDebugMsg}");
+                            if (isStructuralParam != null)
+                                DebugLogger.Log($"[CableTraySleeveCommand] FLOOR_PARAM_IS_STRUCTURAL value: {isStructuralParam.AsInteger()} (1=structural, 0=non-structural)");
+                            else
+                                DebugLogger.Log($"[CableTraySleeveCommand] FLOOR_PARAM_IS_STRUCTURAL parameter is NULL");
+                            if (transform != null)
+                                DebugLogger.Log($"[CableTraySleeveCommand] Floor transform: Origin=({transform.Origin.X:F2},{transform.Origin.Y:F2},{transform.Origin.Z:F2})");
+                            // END EXTENDED FLOOR DEBUG LOGGING
 
                             if (!isStructural)
                             {
-                                string skipMsg = $"SKIP: CableTray {tray.Id.Value} host Floor {floor.Id.Value} is NON-STRUCTURAL. Sleeve will NOT be placed.";
+                                string skipMsg = $"SKIP: CableTray {tray.Id.Value} host Floor {floor.Id.Value} [{docTitle}] is NON-STRUCTURAL. Sleeve will NOT be placed.";
                                 DebugLogger.Log($"[CableTraySleeveCommand] {skipMsg}");
                                 skippedExistingCount++;
-                                processedCableTrays.Add(tray.Id);
+                                // Don't mark as processed yet - let it try other floors
                                 continue;
                             }
 

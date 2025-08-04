@@ -13,7 +13,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Set to false to disable all logging globally.
         /// </summary>
-        public static bool IsEnabled = false;
+        public static bool IsEnabled = true;
         // Always log to the Log directory in the project source root
         private static string DuctLogFilePath = Path.Combine("c:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\Logs", "ductsleeveplacer.log");
         private static string CableTrayLogFilePath = Path.Combine("c:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\Logs", "cabletraysleeveplacer.log");
