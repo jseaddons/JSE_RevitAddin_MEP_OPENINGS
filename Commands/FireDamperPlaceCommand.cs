@@ -80,6 +80,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             DebugLogger.Log($"[FireDamperPlaceCommand] linkInstances count: {linkInstances.Count}");
             foreach (var linkInstance in linkInstances)
             {
+                // Skip hidden links (category or instance hidden in active view)
+                if (doc.ActiveView.GetCategoryHidden(linkInstance.Category.Id) || linkInstance.IsHidden(doc.ActiveView))
+                {
+                    DebugLogger.Log($"[FireDamperPlaceCommand] Skipping hidden linkInstance: {linkInstance.Name}");
+                    continue;
+                }
                 var linkedDoc = linkInstance.GetLinkDocument();
                 if (linkedDoc == null) continue;
                 var linkTransform = linkInstance.GetTotalTransform();
@@ -107,6 +113,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             // Linked walls
             foreach (var linkInstance in linkInstances)
             {
+                // Skip hidden links (category or instance hidden in active view)
+                if (doc.ActiveView.GetCategoryHidden(linkInstance.Category.Id) || linkInstance.IsHidden(doc.ActiveView))
+                {
+                    DebugLogger.Log($"[FireDamperPlaceCommand] Skipping hidden linkInstance for walls: {linkInstance.Name}");
+                    continue;
+                }
                 var linkedDoc = linkInstance.GetLinkDocument();
                 if (linkedDoc == null) { DebugLogger.Log("[FireDamperPlaceCommand] linkInstance with null linkedDoc"); continue; }
                 var linkTransform = linkInstance.GetTotalTransform();

@@ -74,6 +74,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
             return filteredList;
         }
 
+        /// <summary>
+        /// Get section box bounds from 3D view for efficient spatial filtering
+        /// </summary>
+        /// <param name="view3D">The 3D view</param>
+        /// <returns>BoundingBoxXYZ in world coordinates, or null if no section box</returns>
+        public static BoundingBoxXYZ GetSectionBoxBounds(View3D view3D)
+        {
+            if (view3D == null || !view3D.IsSectionBoxActive)
+            {
+                return null;
+            }
+            
+            try
+            {
+                BoundingBoxXYZ sectionBox = view3D.GetSectionBox();
+                if (sectionBox == null) return null;
+                
+                Transform transform = sectionBox.Transform;
+                
+                // Transform section box to world coordinates
+                XYZ worldMin = transform.OfPoint(sectionBox.Min);
+                XYZ worldMax = transform.OfPoint(sectionBox.Max);
+                
+                return new BoundingBoxXYZ
+                {
+                    Min = new XYZ(
+                        System.Math.Min(worldMin.X, worldMax.X),
+                        System.Math.Min(worldMin.Y, worldMax.Y),
+                        System.Math.Min(worldMin.Z, worldMax.Z)),
+                    Max = new XYZ(
+                        System.Math.Max(worldMin.X, worldMax.X),
+                        System.Math.Max(worldMin.Y, worldMax.Y),
+                        System.Math.Max(worldMin.Z, worldMax.Z))
+                };
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         private static Solid GetSectionBoxAsSolid(View3D view3D)
         {
             BoundingBoxXYZ sectionBox = view3D.GetSectionBox();

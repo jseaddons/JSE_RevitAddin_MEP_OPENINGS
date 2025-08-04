@@ -298,10 +298,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DebugLogger.Log($"[CableTraySleevePlacer] Warning during regenerate: {ex.Message}");
                 }
 
-                // Only apply rotation for floors (when preCalculatedOrientation is set)
+                // Apply rotation for floors or framing (when preCalculatedOrientation is set)
                 try
                 {
-                    if (hostElement is Floor && preCalculatedOrientation != null)
+                    // Rotate for framing or floor hosts when preCalculatedOrientation is set
+                    bool isFraming = hostElement is FamilyInstance famInst1 && famInst1.Category != null && famInst1.Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming;
+                    bool isFloor = hostElement is Floor;
+                    if ((isFraming || isFloor) && preCalculatedOrientation != null)
                     {
                         LocationPoint loc = instance.Location as LocationPoint;
                         if (loc == null)
@@ -309,17 +312,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             DebugLogger.Log("[CableTraySleevePlacer] ERROR: instance.Location is not a LocationPoint - cannot rotate.");
                             return instance;
                         }
-                        DebugLogger.Log($"[CableTraySleevePlacer] ROTATING: Using pre-calculated orientation from command: ({preCalculatedOrientation.X:F6},{preCalculatedOrientation.Y:F6},{preCalculatedOrientation.Z:F6})");
+                        string hostType = isFraming ? "FRAMING" : "FLOOR";
+                        DebugLogger.Log($"[CableTraySleevePlacer] [{hostType}] ROTATING: Using pre-calculated orientation from command: ({preCalculatedOrientation.X:F6},{preCalculatedOrientation.Y:F6},{preCalculatedOrientation.Z:F6})");
                         double sleeveAngle = Math.Atan2(preCalculatedOrientation.Y, preCalculatedOrientation.X);
                         double sleeveAngleDegrees = sleeveAngle * 180 / Math.PI;
-                        DebugLogger.Log($"[CableTraySleevePlacer] Rotation angle: {sleeveAngleDegrees:F1} degrees for host type: {hostElement?.GetType().Name ?? "Unknown"}");
+                        DebugLogger.Log($"[CableTraySleevePlacer] [{hostType}] Rotation angle: {sleeveAngleDegrees:F1} degrees for host type: {hostElement?.GetType().Name ?? "Unknown"}");
                         Line rotationAxis = Line.CreateBound(loc.Point, loc.Point + XYZ.BasisZ);
                         ElementTransformUtils.RotateElement(_doc, instance.Id, rotationAxis, sleeveAngle);
-                        DebugLogger.Log($"[CableTraySleevePlacer] Applied rotation of {sleeveAngleDegrees:F1} degrees (command determined Y-oriented)");
+                        DebugLogger.Log($"[CableTraySleevePlacer] [{hostType}] Applied rotation of {sleeveAngleDegrees:F1} degrees (command determined Y-oriented)");
                     }
                     else
                     {
-                        DebugLogger.Log($"[CableTraySleevePlacer] NO ROTATION: Wall/framing host or no preCalculatedOrientation. Sleeve placed as-is.");
+                        DebugLogger.Log($"[CableTraySleevePlacer] NO ROTATION: Not framing/floor or no preCalculatedOrientation. Sleeve placed as-is.");
                     }
                 }
                 catch (Exception ex)

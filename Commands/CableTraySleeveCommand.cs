@@ -80,13 +80,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 return Result.Failed;
             }
 
-            // Prepare wall filter only (keep existing wall detection working)
-            ElementFilter wallFilter = new ElementCategoryFilter(BuiltInCategory.OST_Walls);
-            var refIntersector = new ReferenceIntersector(wallFilter, FindReferenceTarget.Element, view3D)
-            {
-                FindReferencesInRevitLinks = true
-            };
-            
             // Collect cable trays from both host and visible linked models
             var mepElements = JSE_RevitAddin_MEP_OPENINGS.Helpers.MepElementCollectorHelper.CollectMepElementsVisibleOnly(doc);
             var trayTuples = mepElements
@@ -99,38 +92,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 TaskDialog.Show("Info", "No cable trays found in host or linked models.");
                 return Result.Succeeded;
             }
-
-            // DEBUG: Let's also test if walls would be detected using direct solid intersection like structural elements
-            StructuralElementLogger.LogStructuralElement("DEBUG_WALLS", 0, "WALL_SOLID_TEST", "Testing wall detection using direct solid approach like structural elements");
-            
-            // Collect walls from linked documents for comparison
-            var linkedWalls = new List<(Element, Transform)>();
-            foreach (var linkInstance in new FilteredElementCollector(doc).OfClass(typeof(RevitLinkInstance)).Cast<RevitLinkInstance>().Where(link => link.GetLinkDocument() != null))
-            {
-                var linkDoc = linkInstance.GetLinkDocument();
-                var linkTransform = linkInstance.GetTotalTransform();
-                
-                var walls = new FilteredElementCollector(linkDoc)
-                    .OfCategory(BuiltInCategory.OST_Walls)
-                    .WhereElementIsNotElementType()
-                    .Cast<Wall>()
-                    .ToList();
-                    
-                linkedWalls.AddRange(walls.Select(wall => (wall as Element, linkTransform)));
-                StructuralElementLogger.LogStructuralElement("DEBUG_WALLS", (int)linkInstance.Id.Value, "LINKED_WALLS_FOUND", $"Found {walls.Count} walls in {linkInstance.Name}");
-            }
-            
-            // Test first cable tray against walls using our direct solid method
-            var firstTrayTuple = trayTuples.FirstOrDefault();
-            var firstTray = firstTrayTuple.Item1;
-            if (firstTray != null && linkedWalls.Any())
-            {
-                var wallIntersections = FindDirectStructuralIntersections(firstTray, linkedWalls);
-                StructuralElementLogger.LogStructuralElement("DEBUG_WALLS", (int)firstTray.Id.Value, "WALL_SOLID_RESULT", $"Direct solid method found {wallIntersections.Count} wall intersections");
-            }
-
-            // Collect structural elements for direct solid intersection using global helper (only visible links)
-            var directStructuralElements = StructuralElementCollectorHelper.CollectStructuralElementsVisibleOnly(doc);
 
             // Place sleeves for each cable tray
             var placer = new CableTraySleevePlacer(doc);
@@ -216,7 +177,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     // Get tray dimensions for sleeve placement
                     double width = tray.LookupParameter("Width")?.AsDouble() ?? 0.0;
                     double height = tray.LookupParameter("Height")?.AsDouble() ?? 0.0;
-                    // Enhanced multi-direction raycasting for WALLS ONLY (keep existing wall detection working)
+                    // Enhanced multi-direction raycasting using efficient intersection service
                     XYZ rayDir = hostLine.Direction;
                     // Cast rays from multiple points along the cable tray (start, 25%, 50%, 75%, end)
                     var testPoints = new List<XYZ>
@@ -227,27 +188,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                          hostLine.Evaluate(0.75, true),    // 75% along
                          hostLine.GetEndPoint(1)           // End point
                      };
-                    var allWallHits = new List<(ReferenceWithContext hit, XYZ direction, XYZ rayOrigin)>();
-                    // Test wall intersections using existing ReferenceIntersector (keep this working)
-                    foreach (var testPoint in testPoints)
-                    {
-                        // Cast in primary direction (forward/backward)
-                        var hitsFwd = refIntersector.Find(testPoint, rayDir)?.Where(h => h != null).OrderBy(h => h.Proximity).ToList();
-                        var hitsBack = refIntersector.Find(testPoint, rayDir.Negate())?.Where(h => h != null).OrderBy(h => h.Proximity).ToList();
-                        // Also cast in perpendicular directions to catch walls parallel to cable tray
-                        var perpDir1 = new XYZ(-rayDir.Y, rayDir.X, 0).Normalize();
-                        var perpDir2 = perpDir1.Negate();
-                        var hitsPerp1 = refIntersector.Find(testPoint, perpDir1)?.Where(h => h != null).OrderBy(h => h.Proximity).ToList();
-                        var hitsPerp2 = refIntersector.Find(testPoint, perpDir2)?.Where(h => h != null).OrderBy(h => h.Proximity).ToList();
-                        // Add all hits with their ray origin point
-                        if (hitsFwd?.Any() == true) allWallHits.AddRange(hitsFwd.Select(h => (h, rayDir, testPoint)));
-                        if (hitsBack?.Any() == true) allWallHits.AddRange(hitsBack.Select(h => (h, rayDir.Negate(), testPoint)));
-                        if (hitsPerp1?.Any() == true) allWallHits.AddRange(hitsPerp1.Select(h => (h, perpDir1, testPoint)));
-                        if (hitsPerp2?.Any() == true) allWallHits.AddRange(hitsPerp2.Select(h => (h, perpDir2, testPoint)));
-                    }
-                    // Also check for structural element intersections using direct solid approach
-                    // Use the MEPCurve overload, which works for Duct, CableTray, and Pipe
-                    var structuralIntersections = JSE_RevitAddin_MEP_OPENINGS.Services.CableTraySleeveIntersectionService.FindDirectStructuralIntersectionBoundingBoxesVisibleOnly(tray, directStructuralElements, hostLine);
+
+                    // Use efficient intersection service for wall intersections
+                    var allWallHits = EfficientIntersectionService.FindWallIntersections(tray, hostLine, view3D, testPoints, rayDir);
+
+                    // Use efficient intersection service for structural intersections
+                    var structuralIntersections = EfficientIntersectionService.FindStructuralIntersections(tray, hostLine, view3D);
 
                     // Process wall intersections (existing logic, keep working)
                     ReferenceWithContext? bestWallHit = null;
@@ -350,15 +296,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         DebugLogger.Log($"CableTray ID={tray.Id.Value}: Using family: {familySymbolToUse.Family.Name}, Symbol: {familySymbolToUse.Name} for linked reference type {linkedReferenceType}");
 
                         // For wall: always use wall family, no orientation logic
-                        if (structuralElement is Wall || (structuralElement is FamilyInstance && ((FamilyInstance)structuralElement).Category != null && ((FamilyInstance)structuralElement).Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming))
+                        if (structuralElement is Wall || (structuralElement is FamilyInstance famInst && famInst.Category != null && famInst.Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming))
                         {
-                            if (PlaceCableTraySleeveAtLocation_Structural(doc, ctWallSymbols.FirstOrDefault(), structuralElement, intersectionPoint, sleeveDirection, width, height, tray))
+                            // For wall and framing: use orientation/rotation logic (bounding box, width/height swap, rotation)
+                            if (PlaceCableTraySleeveAtLocation_StructuralWithOrientation(doc, ctWallSymbols.FirstOrDefault(), structuralElement, intersectionPoint, sleeveDirection, width, height, tray))
                             {
                                 structuralSleevesPlacer++;
                                 placedCount++;
                                 processedCableTrays.Add(tray.Id);
                                 structuralSleeveePlaced = true;
-                                DebugLogger.Log($"CableTray ID={(int)tray.Id.Value}: Structural sleeve successfully placed at {intersectionPoint}");
+                                DebugLogger.Log($"CableTray ID={(int)tray.Id.Value}: Structural sleeve successfully placed at {intersectionPoint} with width-based orientation");
                                 break; // Only place one sleeve per cable tray
                             }
                         }
@@ -634,31 +581,61 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 int cableTrayId = (int)tray.Id.Value;
                 DebugLogger.Log($"[CableTraySleeveCommand] ORIENTATION ANALYSIS for CableTray {cableTrayId}");
                 
-                // Use the new bounding box based orientation helper
-                var orientationResult = JSE_RevitAddin_MEP_OPENINGS.Helpers.MepElementOrientationHelper.GetCableTrayWidthOrientation(tray);
-                string orientationStatus = orientationResult.orientation;
-                XYZ widthDirection = orientationResult.widthDirection;
-                
-                DebugLogger.Log($"[CableTraySleeveCommand] Flow Direction: ({direction.X:F6},{direction.Y:F6},{direction.Z:F6})");
-                DebugLogger.Log($"[CableTraySleeveCommand] Width Direction: ({widthDirection.X:F6},{widthDirection.Y:F6},{widthDirection.Z:F6})");
-                DebugLogger.Log($"[CableTraySleeveCommand] CableTray {cableTrayId}: {orientationStatus}");
-                
-                // For floor hosts, only pass orientation if rotation is needed (Y-oriented)
+                // For framing, use location curve direction for orientation
                 XYZ? preCalculatedOrientation = null;
                 double widthToUse = width;
                 double heightToUse = height;
-                if (orientationStatus == "Y-ORIENTED") // Only for Y-oriented cable trays
+                bool isFraming = hostElement is FamilyInstance famInst1 && famInst1.Category != null && famInst1.Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming;
+                if (isFraming)
                 {
-                    preCalculatedOrientation = widthDirection;
-                    DebugLogger.Log($"[CableTraySleeveCommand] Passing orientation to placer: ({preCalculatedOrientation.X:F6},{preCalculatedOrientation.Y:F6},{preCalculatedOrientation.Z:F6})");
-                    // Swap width and height for Y-oriented trays
-                    widthToUse = height;
-                    heightToUse = width;
-                    DebugLogger.Log($"[CableTraySleeveCommand] Swapping width/height for Y-ORIENTED: width={widthToUse}, height={heightToUse}");
+                    var curve = (tray.Location as LocationCurve)?.Curve as Line;
+                    if (curve != null)
+                    {
+                        var dir = curve.Direction;
+                        DebugLogger.Log($"[CableTraySleeveCommand] [FRAMING] Tray location curve direction: ({dir.X:F6},{dir.Y:F6},{dir.Z:F6})");
+                        // If running along Y (abs(Y) > abs(X)), treat as Y-oriented
+                        if (Math.Abs(dir.Y) > Math.Abs(dir.X))
+                        {
+                            preCalculatedOrientation = XYZ.BasisY;
+                            widthToUse = height;
+                            heightToUse = width;
+                            DebugLogger.Log($"[CableTraySleeveCommand] [FRAMING] Detected Y-oriented tray. Swapping width/height. Orientation=Y");
+                        }
+                        else
+                        {
+                            preCalculatedOrientation = XYZ.BasisX;
+                            DebugLogger.Log($"[CableTraySleeveCommand] [FRAMING] Detected X-oriented tray. Orientation=X");
+                        }
+                    }
+                    else
+                    {
+                        DebugLogger.Log($"[CableTraySleeveCommand] [FRAMING] ERROR: Could not get location curve for tray");
+                    }
                 }
                 else
                 {
-                    DebugLogger.Log($"[CableTraySleeveCommand] No orientation passed - X-oriented cable tray should not be rotated");
+                    // For floors and all other hosts, use bounding box width alignment (GetCableTrayWidthOrientation)
+                    var orientationResult = JSE_RevitAddin_MEP_OPENINGS.Helpers.MepElementOrientationHelper.GetCableTrayWidthOrientation(tray);
+                    string orientationStatus = orientationResult.orientation;
+                    XYZ widthDirection = orientationResult.widthDirection;
+                    DebugLogger.Log($"[CableTraySleeveCommand] Flow Direction: ({direction.X:F6},{direction.Y:F6},{direction.Z:F6})");
+                    DebugLogger.Log($"[CableTraySleeveCommand] Width Direction: ({widthDirection.X:F6},{widthDirection.Y:F6},{widthDirection.Z:F6})");
+                    DebugLogger.Log($"[CableTraySleeveCommand] CableTray {cableTrayId}: {orientationStatus}");
+                    // For floors, set preCalculatedOrientation and swap width/height if Y-oriented
+                    bool isFloor = hostElement is Floor;
+                    if (isFloor)
+                    {
+                        if (orientationStatus == "Y-ORIENTED")
+                        {
+                            preCalculatedOrientation = XYZ.BasisY;
+                            DebugLogger.Log($"[CableTraySleeveCommand] [FLOOR] Detected Y-oriented tray (bounding box). Passing Y orientation for rotation. No width/height swap.");
+                        }
+                        else if (orientationStatus == "X-ORIENTED")
+                        {
+                            preCalculatedOrientation = XYZ.BasisX;
+                            DebugLogger.Log($"[CableTraySleeveCommand] [FLOOR] Detected X-oriented tray (bounding box). Orientation=X");
+                        }
+                    }
                 }
                 
                 double sleeveCheckRadius = UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters);
@@ -697,9 +674,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             clearance = thicknessParam.AsDouble();
                         }
                     }
-                    else if (hostElement is FamilyInstance famInst && famInst.Category != null && famInst.Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming)
+                else if (hostElement is FamilyInstance famInst2 && famInst2.Category != null && famInst2.Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming)
                     {
-                        var bParam = famInst.Symbol.LookupParameter("b");
+                        var bParam = famInst2.Symbol.LookupParameter("b");
                         if (bParam != null && bParam.StorageType == StorageType.Double)
                         {
                             clearance = bParam.AsDouble();
@@ -729,136 +706,5 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         }
 
 
-        /// <summary>
-        /// Performs direct solid intersection check between cable tray and structural elements
-        /// </summary>
-        private List<(Element structuralElement, XYZ intersectionPoint)> FindDirectStructuralIntersections(
-            CableTray cableTray, List<(Element element, Transform linkTransform)> structuralElements)
-        {
-            var intersections = new List<(Element, XYZ)>();
-            StructuralElementLogger.LogStructuralElement("DIRECT_INTERSECTION", (int)cableTray.Id.Value, "STARTING_INTERSECTION", $"Testing cable tray against {structuralElements.Count} structural elements");
-            try
-            {
-                // Get cable tray centerline as Line
-                var curve = (cableTray.Location as LocationCurve)?.Curve as Line;
-                if (curve == null)
-                {
-                    StructuralElementLogger.LogStructuralElement("DIRECT_INTERSECTION", (int)cableTray.Id.Value, "NO_CURVE", "Cable tray has no valid centerline");
-                    return intersections;
-                }
-                // For each structural element, get solid and check face/line intersection
-                int elementIndex = 0;
-                foreach (var (structuralElement, linkTransform) in structuralElements)
-                {
-                    elementIndex++;
-                    try
-                    {
-                        bool isLinkedElement = linkTransform != null;
-                        StructuralElementLogger.LogStructuralElement("DIRECT_INTERSECTION", (int)structuralElement.Id.Value, "TESTING_ELEMENT", $"Testing element {elementIndex}/{structuralElements.Count}: {structuralElement.GetType().Name}, IsLinked: {isLinkedElement}");
-                        var structuralOptions = new Options();
-                        var structuralGeometry = structuralElement.get_Geometry(structuralOptions);
-            Solid? structuralSolid = null;
-                        foreach (var geomObj in structuralGeometry)
-                        {
-                            if (geomObj is Solid solid && solid.Volume > 0)
-                            {
-                                structuralSolid = solid;
-                                break;
-                            }
-                            else if (geomObj is GeometryInstance instance)
-                            {
-                                foreach (var instObj in instance.GetInstanceGeometry())
-                                {
-                                    if (instObj is Solid instSolid && instSolid.Volume > 0)
-                                    {
-                                        structuralSolid = instSolid;
-                                        break;
-                                    }
-                                }
-                                if (structuralSolid != null) break;
-                            }
-                        }
-                        if (structuralSolid == null)
-                        {
-                            StructuralElementLogger.LogStructuralElement("DIRECT_INTERSECTION", (int)structuralElement.Id.Value, "NO_SOLID", "No solid geometry found in structural element");
-                            continue;
-                        }
-                        // Apply linkTransform if this is a linked element
-                        if (isLinkedElement && linkTransform != null)
-                        {
-                            structuralSolid = SolidUtils.CreateTransformed(structuralSolid, linkTransform);
-                            StructuralElementLogger.LogStructuralElement("DIRECT_INTERSECTION", (int)structuralElement.Id.Value, "APPLIED_TRANSFORM", $"Applied linkTransform: {linkTransform}");
-                        }
-                        // Log bounding box for structural solid
-                        var structBbox = structuralSolid.GetBoundingBox();
-                        StructuralElementLogger.LogStructuralElement("DIRECT_INTERSECTION", (int)structuralElement.Id.Value, "STRUCT_BBOX", $"Min=({structBbox.Min.X:F2},{structBbox.Min.Y:F2},{structBbox.Min.Z:F2}), Max=({structBbox.Max.X:F2},{structBbox.Max.Y:F2},{structBbox.Max.Z:F2})");
-                        // Check intersection using face.Intersect(line, out ira)
-                        var intersectionPoints = new List<XYZ>();
-                        foreach (Face face in structuralSolid.Faces)
-                        {
-                            IntersectionResultArray? ira = null;
-                            SetComparisonResult res = face.Intersect(curve, out ira);
-                            if (res == SetComparisonResult.Overlap && ira != null)
-                            {
-                                foreach (IntersectionResult ir in ira)
-                                {
-                                    intersectionPoints.Add(ir.XYZPoint);
-                                }
-                            }
-                        }
-                        if (intersectionPoints.Count > 0)
-                        {
-                            // If two or more intersection points, use the midpoint between the two furthest apart (entry/exit)
-                            if (intersectionPoints.Count >= 2)
-                            {
-                                // Find the two points with the maximum distance between them
-                                double maxDist = double.MinValue;
-                                XYZ? ptA = null; XYZ? ptB = null;
-                                for (int i = 0; i < intersectionPoints.Count - 1; i++)
-                                {
-                                    for (int j = i + 1; j < intersectionPoints.Count; j++)
-                                    {
-                                        double dist = intersectionPoints[i].DistanceTo(intersectionPoints[j]);
-                                        if (dist > maxDist)
-                                        {
-                                            maxDist = dist;
-                                            ptA = intersectionPoints[i];
-                                            ptB = intersectionPoints[j];
-                                        }
-                                    }
-                                }
-                                if (ptA != null && ptB != null)
-                                {
-                                    var midpoint = new XYZ((ptA.X + ptB.X) / 2, (ptA.Y + ptB.Y) / 2, (ptA.Z + ptB.Z) / 2);
-                                    intersections.Add((structuralElement, midpoint));
-                                    StructuralElementLogger.LogStructuralElement("DIRECT_INTERSECTION", (int)structuralElement.Id.Value, "INTERSECTION_POINT", $"Entry={ptA}, Exit={ptB}, Midpoint={midpoint}");
-                                }
-                            }
-                            else
-                            {
-                                // Only one intersection point, use as is
-                                var pt = intersectionPoints[0];
-                                intersections.Add((structuralElement, pt));
-                                StructuralElementLogger.LogStructuralElement("DIRECT_INTERSECTION", (int)structuralElement.Id.Value, "INTERSECTION_POINT", $"Intersection at {pt}");
-                            }
-                        }
-                        else
-                        {
-                            StructuralElementLogger.LogStructuralElement("DIRECT_INTERSECTION", (int)structuralElement.Id.Value, "NO_INTERSECTION", "No intersection found with cable tray centerline");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        StructuralElementLogger.LogStructuralElement("DIRECT_INTERSECTION", (int)structuralElement.Id.Value, "ELEMENT_ERROR", $"Error testing element: {ex.Message}");
-                    }
-                }
-                StructuralElementLogger.LogStructuralElement("DIRECT_INTERSECTION", (int)cableTray.Id.Value, "INTERSECTION_COMPLETE", $"Tested {structuralElements.Count} elements, found {intersections.Count} intersections");
-            }
-            catch (Exception ex)
-            {
-                StructuralElementLogger.LogStructuralElement("DIRECT_INTERSECTION", (int)cableTray.Id.Value, "SOLID_ERROR", $"Error in direct intersection: {ex.Message}");
-            }
-            return intersections;
-        }
     }
 }
