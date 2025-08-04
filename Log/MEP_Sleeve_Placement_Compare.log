@@ -66,3 +66,5 @@
 [CableTraySleevePlacer] Placing sleeve: width=0.328083989501312, height=0.656167979002625, intersection=(104.401832393043,41.8139148658733,60.744750656168)
 [CableTraySleevePlacer] Cable tray direction: (1, 0, 0)
 [CableTraySleevePlacer] Placing sleeve: width=0.328083989501312, height=0.328083989501312, intersection=(104.401832393043,41.0199527047537,60.7447506561678)
+[CableTraySleevePlacer] Cable tray direction: (-1, 2.70716782324592E-14, 0)
+[CableTraySleevePlacer] Placing sleeve: width=0.328083989501312, height=0.328083989501312, intersection=(97.1128608920704,24.0522234385721,60.810730317651)

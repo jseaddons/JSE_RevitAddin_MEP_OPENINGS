@@ -1,92 +1,727 @@
-===== NEW LOG SESSION STARTED 2025-08-04 13:34:44 =====
+===== NEW LOG SESSION STARTED 2025-08-04 14:15:44 =====
 JSE_RevitAddin_MEP_OPENINGS Debug Log: OpeningsPLaceCommand.log
 Build Version: 1.0.0.0
-Build Timestamp: 2025-08-04T13:19:00.9430859+05:30
+Build Timestamp: 2025-08-04T14:13:28.5431581+05:30
 ====================================================
-[2025-08-04 13:34:44.932] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:50] OpeningsPLaceCommand: Execute started - running all sleeve placement commands
-[2025-08-04 13:34:44.934] [v1.0.0.0] [INFO] [StructuralElementLogger:86] [STRUCTURAL-LOG] Initialized structural elements log: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\StructuralElements_SleeveLog_20250804_133444.log
-[2025-08-04 13:34:44.935] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:54] StructuralElementLogger initialized. Log file: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\StructuralElements_SleeveLog_20250804_133444.log
-[2025-08-04 13:34:44.936] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:55] StructuralElementLogger status: READY
-[2025-08-04 13:34:44.937] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] SYSTEM ID=0: OPENINGS PLACE COMMAND STARTED Master command executing all sleeve placement commands with structural support
-[2025-08-04 13:34:44.938] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=999: LOGGER_TEST This is a test entry to verify logging is working
-[2025-08-04 13:34:44.939] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:69] DIAGNOSTIC INFO:
+[2025-08-04 14:15:44.611] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:50] OpeningsPLaceCommand: Execute started - running all sleeve placement commands
+[2025-08-04 14:15:44.614] [v1.0.0.0] [INFO] [StructuralElementLogger:86] [STRUCTURAL-LOG] Initialized structural elements log: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\StructuralElements_SleeveLog_20250804_141544.log
+[2025-08-04 14:15:44.615] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:54] StructuralElementLogger initialized. Log file: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\StructuralElements_SleeveLog_20250804_141544.log
+[2025-08-04 14:15:44.615] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:55] StructuralElementLogger status: READY
+[2025-08-04 14:15:44.617] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] SYSTEM ID=0: OPENINGS PLACE COMMAND STARTED Master command executing all sleeve placement commands with structural support
+[2025-08-04 14:15:44.618] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=999: LOGGER_TEST This is a test entry to verify logging is working
+[2025-08-04 14:15:44.620] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:69] DIAGNOSTIC INFO:
 - Logger Status: INITIALIZED
-- Log File Path: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\StructuralElements_SleeveLog_20250804_133444.log
+- Log File Path: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\StructuralElements_SleeveLog_20250804_141544.log
 - Log File Exists: YES
 - Project Directory Check: True
 - Logs Directory Check: True
-[2025-08-04 13:34:44.939] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:70] Structural Logger Diagnostic: DIAGNOSTIC INFO:
+[2025-08-04 14:15:44.621] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:70] Structural Logger Diagnostic: DIAGNOSTIC INFO:
 - Logger Status: INITIALIZED
-- Log File Path: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\StructuralElements_SleeveLog_20250804_133444.log
+- Log File Path: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\StructuralElements_SleeveLog_20250804_141544.log
 - Log File Exists: YES
 - Project Directory Check: True
 - Logs Directory Check: True
-[2025-08-04 13:34:44.973] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:84] Starting duct sleeve placement...
-[2025-08-04 13:34:45.077] [v1.0.0.0] [INFO] [DuctSleeveCommand:192] Found 8 existing duct sleeves in the model (wall and floor)
-[2025-08-04 13:34:45.127] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1836713 Line Start=(102.683727016, 34.609359324, 60.252624672), End=(102.749343814, 34.609359324, 60.252624672)
-[2025-08-04 13:34:45.132] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1836713 no intersection with any structural element
-[2025-08-04 13:34:45.133] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1836766 Line Start=(103.749343814, 34.609359324, 60.252624672), End=(104.740813630, 34.609359324, 60.252624672)
-[2025-08-04 13:34:45.135] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1836766 no intersection with any structural element
-[2025-08-04 13:34:45.136] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1836773 Line Start=(106.069553788, 33.280619166, 60.252624672), End=(106.069553788, 32.394080992, 60.252624672)
-[2025-08-04 13:34:45.137] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1836773 no intersection with any structural element
-[2025-08-04 13:34:45.141] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1837887 Line Start=(99.596456675, 32.873795019, 60.252624672), End=(99.596456675, 36.344923628, 60.252624672)
-[2025-08-04 13:34:45.143] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1837887 no intersection with any structural element
-[2025-08-04 13:34:45.144] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1837990 Line Start=(100.400262449, 34.609359324, 60.252624672), End=(100.334645651, 34.609359324, 60.252624672)
-[2025-08-04 13:34:45.146] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1837990 no intersection with any structural element
-[2025-08-04 13:34:45.147] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1838056 Line Start=(99.596456675, 36.344923628, 60.252624672), End=(99.596456675, 36.391155860, 60.252624672)
-[2025-08-04 13:34:45.149] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1838056 no intersection with any structural element
-[2025-08-04 13:34:45.150] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1838225 Line Start=(103.872375310, 37.719896017, 60.252624672), End=(104.326315355, 37.719896017, 60.252624672)
-[2025-08-04 13:34:45.152] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1838225 no intersection with any structural element
-[2025-08-04 13:34:45.153] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1838752 Line Start=(101.048228328, 38.765809567, 60.613517060), End=(101.959306363, 38.765809567, 60.613517060)
-[2025-08-04 13:34:45.155] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1838752 no intersection with any structural element
-[2025-08-04 13:34:45.156] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1838862 Line Start=(99.998904536, 38.765809567, 60.408364713), End=(100.048316800, 38.765809567, 60.457777019)
-[2025-08-04 13:34:45.158] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1838862 no intersection with any structural element
-[2025-08-04 13:34:45.159] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1838872 Line Start=(102.467836547, 40.574976177, 60.613517060), End=(102.467836547, 41.088211029, 60.613517060)
-[2025-08-04 13:34:45.161] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1838872 no intersection with any structural element
-[2025-08-04 13:34:45.162] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1838882 Line Start=(102.467836547, 41.856793931, 60.941601050), End=(102.467836547, 43.244156023, 60.941601050)
-[2025-08-04 13:34:45.164] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1838882 no intersection with any structural element
-[2025-08-04 13:34:45.165] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1839034 Line Start=(102.467836547, 41.464200370, 60.769256945), End=(102.467836547, 41.480804591, 60.785861166)
-[2025-08-04 13:34:45.167] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1839034 no intersection with any structural element
-[2025-08-04 13:34:45.168] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1839044 Line Start=(99.280854764, 43.752686207, 60.941601050), End=(101.959306363, 43.752686207, 60.941601050)
-[2025-08-04 13:34:45.170] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1839044 no intersection with any structural element
-[2025-08-04 13:34:45.171] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1839407 Line Start=(107.452417747, 32.394080992, 59.793307087), End=(107.452417747, 41.088835287, 59.793307087)
-[2025-08-04 13:34:45.172] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1839407 no intersection with any structural element
-[2025-08-04 13:34:45.173] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1839417 Line Start=(98.624686785, 41.597365470, 59.793307087), End=(98.251957282, 41.597365470, 59.793307087)
-[2025-08-04 13:34:45.175] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1839417 no intersection with any structural element
-[2025-08-04 13:34:45.176] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1839431 Line Start=(97.743427098, 41.597365470, 62.664041995), End=(97.743427098, 41.597365470, 60.301837270)
-[2025-08-04 13:34:45.178] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1839431 no intersection with any structural element
-[2025-08-04 13:34:45.179] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1839557 Line Start=(98.055106888, 43.752686207, 61.450131234), End=(98.055106888, 43.752686207, 63.238188976)
-[2025-08-04 13:34:45.181] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1839557 no intersection with any structural element
-[2025-08-04 13:34:45.182] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1840373 Line Start=(100.925196832, 37.719896017, 60.252624672), End=(103.380249326, 37.719896017, 60.252624672)
-[2025-08-04 13:34:45.184] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1840373 no intersection with any structural element
-[2025-08-04 13:34:45.185] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1840618 Line Start=(100.424306287, 38.765809567, 60.613517060), End=(100.556102344, 38.765809567, 60.613517060)
-[2025-08-04 13:34:45.186] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1840618 no intersection with any structural element
-[2025-08-04 13:34:45.187] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1841005 Line Start=(104.483943632, 41.597365470, 59.793307087), End=(100.703740139, 41.597365470, 59.793307087)
-[2025-08-04 13:34:45.189] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1841005 no intersection with any structural element
-[2025-08-04 13:34:45.190] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1844367 Line Start=(101.387550419, 42.708507283, 59.383202100), End=(101.959306363, 42.708507283, 59.383202100)
-[2025-08-04 13:34:45.194] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1844367 no intersection with any structural element
-[2025-08-04 13:34:45.196] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1844602 Line Start=(100.170330774, 42.001394958, 59.383202100), End=(100.239939181, 42.001394958, 59.383202100)
-[2025-08-04 13:34:45.198] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1844602 no intersection with any structural element
-[2025-08-04 13:34:45.199] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1844609 Line Start=(101.011561078, 42.552767399, 59.383202100), End=(100.615928521, 42.157134842, 59.383202100)
-[2025-08-04 13:34:45.201] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1844609 no intersection with any structural element
-[2025-08-04 13:34:45.202] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1844877 Line Start=(102.467836547, 42.708507283, 60.433070866), End=(102.467836547, 42.708507283, 59.891732283)
-[2025-08-04 13:34:45.205] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1844877 no intersection with any structural element
-[2025-08-04 13:34:45.206] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1844998 Line Start=(99.622915049, 38.765809567, 60.252624672), End=(98.143481137, 38.765809567, 60.252624672)
-[2025-08-04 13:34:45.208] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 1844998 intersects FamilyInstance 5100513 BBox=((98.600036047, 38.765809567, 60.252624672),(98.600036047, 38.765809567, 60.252624672))
-[2025-08-04 13:34:45.240] [v1.0.0.0] [INFO] [DuctSleeveCommand:296] [DuctSleeveCommand] DUPLICATION CHECK at (98.600036047, 38.765809567, 60.252624672):
+[2025-08-04 14:15:44.657] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:84] Starting duct sleeve placement...
+[2025-08-04 14:15:44.817] [v1.0.0.0] [INFO] [DuctSleeveCommand:192] Found 13 existing duct sleeves in the model (wall and floor)
+[2025-08-04 14:15:44.902] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1836713 Line Start=(102.683727016, 34.609359324, 60.252624672), End=(102.749343814, 34.609359324, 60.252624672)
+[2025-08-04 14:15:44.913] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1836713 no intersection with any structural element
+[2025-08-04 14:15:44.915] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1836766 Line Start=(103.749343814, 34.609359324, 60.252624672), End=(104.740813630, 34.609359324, 60.252624672)
+[2025-08-04 14:15:44.924] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 1836766 intersects Wall 10933084 BBox=((104.073748404, 34.609359324, 60.252624672),(104.401832393, 34.609359324, 60.252624672))
+[2025-08-04 14:15:44.958] [v1.0.0.0] [INFO] [DuctSleeveCommand:296] [DuctSleeveCommand] DUPLICATION CHECK at (104.237790398, 34.609359324, 60.252624672):
+Individual sleeves: DS# (ID:2145433)
+[2025-08-04 14:15:44.990] [v1.0.0.0] [INFO] [DuctSleeveCommand:304] [DuctSleeveCommand] SKIP: Duct 1836766 host Wall 10933084 duplicate sleeve (individual or cluster) exists near (104.237790398, 34.609359324, 60.252624672)
+[2025-08-04 14:15:44.991] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1836773 Line Start=(106.069553788, 33.280619166, 60.252624672), End=(106.069553788, 32.394080992, 60.252624672)
+[2025-08-04 14:15:45.001] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1836773 no intersection with any structural element
+[2025-08-04 14:15:45.002] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1837887 Line Start=(99.596456675, 32.873795019, 60.252624672), End=(99.596456675, 36.344923628, 60.252624672)
+[2025-08-04 14:15:45.011] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1837887 no intersection with any structural element
+[2025-08-04 14:15:45.012] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1837990 Line Start=(100.400262449, 34.609359324, 60.252624672), End=(100.334645651, 34.609359324, 60.252624672)
+[2025-08-04 14:15:45.021] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1837990 no intersection with any structural element
+[2025-08-04 14:15:45.022] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1838056 Line Start=(99.596456675, 36.344923628, 60.252624672), End=(99.596456675, 36.391155860, 60.252624672)
+[2025-08-04 14:15:45.031] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1838056 no intersection with any structural element
+[2025-08-04 14:15:45.032] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1838225 Line Start=(103.872375310, 37.719896017, 60.252624672), End=(104.326315355, 37.719896017, 60.252624672)
+[2025-08-04 14:15:45.042] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 1838225 intersects Wall 10933084 BBox=((104.073748404, 37.719896017, 60.252624672),(104.073748404, 37.719896017, 60.252624672))
+[2025-08-04 14:15:45.072] [v1.0.0.0] [INFO] [DuctSleeveCommand:296] [DuctSleeveCommand] DUPLICATION CHECK at (104.073748404, 37.719896017, 60.252624672):
+Individual sleeves: DS# (ID:2145435)
+[2025-08-04 14:15:45.100] [v1.0.0.0] [INFO] [DuctSleeveCommand:304] [DuctSleeveCommand] SKIP: Duct 1838225 host Wall 10933084 duplicate sleeve (individual or cluster) exists near (104.073748404, 37.719896017, 60.252624672)
+[2025-08-04 14:15:45.101] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1838752 Line Start=(101.048228328, 38.765809567, 60.613517060), End=(101.959306363, 38.765809567, 60.613517060)
+[2025-08-04 14:15:45.109] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1838752 no intersection with any structural element
+[2025-08-04 14:15:45.110] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1838862 Line Start=(99.998904536, 38.765809567, 60.408364713), End=(100.048316800, 38.765809567, 60.457777019)
+[2025-08-04 14:15:45.117] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1838862 no intersection with any structural element
+[2025-08-04 14:15:45.118] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1838872 Line Start=(102.467836547, 40.574976177, 60.613517060), End=(102.467836547, 41.088211029, 60.613517060)
+[2025-08-04 14:15:45.126] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1838872 no intersection with any structural element
+[2025-08-04 14:15:45.127] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1838882 Line Start=(102.467836547, 41.856793931, 60.941601050), End=(102.467836547, 43.244156023, 60.941601050)
+[2025-08-04 14:15:45.134] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1838882 no intersection with any structural element
+[2025-08-04 14:15:45.135] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1839034 Line Start=(102.467836547, 41.464200370, 60.769256945), End=(102.467836547, 41.480804591, 60.785861166)
+[2025-08-04 14:15:45.143] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1839034 no intersection with any structural element
+[2025-08-04 14:15:45.144] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1839407 Line Start=(107.452417747, 32.394080992, 59.793307087), End=(107.452417747, 41.088835287, 59.793307087)
+[2025-08-04 14:15:45.152] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1839407 no intersection with any structural element
+[2025-08-04 14:15:45.153] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1839417 Line Start=(98.624686785, 41.597365470, 59.793307087), End=(98.251957282, 41.597365470, 59.793307087)
+[2025-08-04 14:15:45.160] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1839417 no intersection with any structural element
+[2025-08-04 14:15:45.161] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1839431 Line Start=(97.743427098, 41.597365470, 62.664041995), End=(97.743427098, 41.597365470, 60.301837270)
+[2025-08-04 14:15:45.169] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1839431 no intersection with any structural element
+[2025-08-04 14:15:45.170] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1840373 Line Start=(100.925196832, 37.719896017, 60.252624672), End=(103.380249326, 37.719896017, 60.252624672)
+[2025-08-04 14:15:45.193] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1840373 no intersection with any structural element
+[2025-08-04 14:15:45.194] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1840618 Line Start=(100.424306287, 38.765809567, 60.613517060), End=(100.556102344, 38.765809567, 60.613517060)
+[2025-08-04 14:15:45.204] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1840618 no intersection with any structural element
+[2025-08-04 14:15:45.205] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1841005 Line Start=(104.483943632, 41.597365470, 59.793307087), End=(100.703740139, 41.597365470, 59.793307087)
+[2025-08-04 14:15:45.222] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 1841005 intersects Wall 10933084 BBox=((104.073748404, 41.597365470, 59.793307087),(104.401832393, 41.597365470, 59.793307087))
+[2025-08-04 14:15:45.252] [v1.0.0.0] [INFO] [DuctSleeveCommand:296] [DuctSleeveCommand] DUPLICATION CHECK at (104.237790398, 41.597365470, 59.793307087):
+Individual sleeves: DS# (ID:2145437)
+[2025-08-04 14:15:45.280] [v1.0.0.0] [INFO] [DuctSleeveCommand:304] [DuctSleeveCommand] SKIP: Duct 1841005 host Wall 10933084 duplicate sleeve (individual or cluster) exists near (104.237790398, 41.597365470, 59.793307087)
+[2025-08-04 14:15:45.281] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1844602 Line Start=(100.170330774, 42.001394958, 59.383202100), End=(100.239939181, 42.001394958, 59.383202100)
+[2025-08-04 14:15:45.290] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1844602 no intersection with any structural element
+[2025-08-04 14:15:45.291] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1844609 Line Start=(101.011561078, 42.552767399, 59.383202100), End=(100.615928521, 42.157134842, 59.383202100)
+[2025-08-04 14:15:45.307] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1844609 no intersection with any structural element
+[2025-08-04 14:15:45.309] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1844998 Line Start=(99.622915049, 38.765809567, 60.252624672), End=(98.143481137, 38.765809567, 60.252624672)
+[2025-08-04 14:15:45.321] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1844998 no intersection with any structural element
+[2025-08-04 14:15:45.322] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1845367 Line Start=(106.250532160, 31.606679418, 60.269028871), End=(106.250532160, 31.737913013, 60.269028871)
+[2025-08-04 14:15:45.330] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1845367 no intersection with any structural element
+[2025-08-04 14:15:45.331] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1845413 Line Start=(104.610112212, 32.065997003, 60.301837270), End=(107.890952107, 32.065997003, 60.301837270)
+[2025-08-04 14:15:45.338] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1845413 no intersection with any structural element
+[2025-08-04 14:15:45.339] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1872157 Line Start=(100.211614155, 41.597365470, 59.793307087), End=(99.280854764, 41.597365470, 59.793307087)
+[2025-08-04 14:15:45.347] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 1872157 intersects Wall 10932981 BBox=((99.345732264, 41.597365470, 59.793307087),(99.394944862, 41.597365470, 59.793307087))
+[2025-08-04 14:15:45.372] [v1.0.0.0] [INFO] [DuctSleeveCommand:296] [DuctSleeveCommand] DUPLICATION CHECK at (99.370338563, 41.597365470, 59.793307087):
+Individual sleeves: DS# (ID:2145439)
+[2025-08-04 14:15:45.397] [v1.0.0.0] [INFO] [DuctSleeveCommand:304] [DuctSleeveCommand] SKIP: Duct 1872157 host Wall 10932981 duplicate sleeve (individual or cluster) exists near (99.370338563, 41.597365470, 59.793307087)
+[2025-08-04 14:15:45.398] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1875986 Line Start=(106.943887564, 41.597365470, 59.793307087), End=(104.812027622, 41.597365470, 59.793307087)
+[2025-08-04 14:15:45.414] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1875986 no intersection with any structural element
+[2025-08-04 14:15:45.416] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1876236 Line Start=(102.467836547, 39.274339750, 60.613517060), End=(102.467836547, 39.918808198, 60.613517060)
+[2025-08-04 14:15:45.433] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1876236 no intersection with any structural element
+[2025-08-04 14:15:45.434] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1933792 Line Start=(99.753919125, 30.347622614, 63.057742782), End=(99.753919125, 30.347622614, 55.511811024)
+[2025-08-04 14:15:45.442] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 1933792 intersects Floor 1713828 BBox=((99.753919125, 30.347622614, 62.089895013),(99.753919125, 30.347622614, 62.335958005))
+[2025-08-04 14:15:45.443] [v1.0.0.0] [INFO] [DuctSleeveCommand:262] [DuctSleeveCommand] FLOOR DEBUG: Duct 1933792 intersects Floor 1713828 - Status: NON-STRUCTURAL
+[2025-08-04 14:15:45.444] [v1.0.0.0] [INFO] [DuctSleeveCommand:269] [DuctSleeveCommand] SKIP: Duct 1933792 host Floor 1713828 is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-04 14:15:45.445] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 1933792 intersects Floor 10934404 BBox=((99.753919125, 30.347622614, 61.236876640),(99.753919125, 30.347622614, 62.089895013))
+[2025-08-04 14:15:45.446] [v1.0.0.0] [INFO] [DuctSleeveCommand:262] [DuctSleeveCommand] FLOOR DEBUG: Duct 1933792 intersects Floor 10934404 - Status: STRUCTURAL
+[2025-08-04 14:15:45.447] [v1.0.0.0] [INFO] [DuctSleeveCommand:280] [DuctSleeveCommand] FLOOR SYMBOL: Found floor symbol: DuctOpeningOnSlab - DS#
+[2025-08-04 14:15:45.472] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnSlab (ID:2145997) detected via bounding box at location (99.753919125, 30.347622614, 61.663385827)
+[2025-08-04 14:15:45.473] [v1.0.0.0] [INFO] [DuctSleeveCommand:296] [DuctSleeveCommand] DUPLICATION CHECK at (99.753919125, 30.347622614, 61.663385827):
+Cluster sleeves: DS# (ID:2145997)
+[2025-08-04 14:15:45.498] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnSlab (ID:2145997) detected via bounding box at location (99.753919125, 30.347622614, 61.663385827)
+[2025-08-04 14:15:45.499] [v1.0.0.0] [INFO] [DuctSleeveCommand:304] [DuctSleeveCommand] SKIP: Duct 1933792 host Floor 10934404 duplicate sleeve (individual or cluster) exists near (99.753919125, 30.347622614, 61.663385827)
+[2025-08-04 14:15:45.500] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1935079 Line Start=(109.030454629, 28.024919218, 60.252624672), End=(112.311294524, 28.024919218, 60.252624672)
+[2025-08-04 14:15:45.507] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1935079 no intersection with any structural element
+[2025-08-04 14:15:45.509] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1936185 Line Start=(109.030454629, 28.254578011, 60.252624672), End=(112.311294524, 28.254578011, 60.252624672)
+[2025-08-04 14:15:45.525] [v1.0.0.0] [INFO] [DuctSleeveCommand:448] [DuctSleeveCommand] SKIP: Duct 1936185 no intersection with any structural element
+[2025-08-04 14:15:45.526] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1950980 Line Start=(100.946031966, 26.377346247, 62.697660362), End=(100.946031966, 26.377346247, 54.628801967)
+[2025-08-04 14:15:45.535] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 1950980 intersects Floor 1713828 BBox=((100.946031966, 26.377346247, 62.089895013),(100.946031966, 26.377346247, 62.335958005))
+[2025-08-04 14:15:45.536] [v1.0.0.0] [INFO] [DuctSleeveCommand:262] [DuctSleeveCommand] FLOOR DEBUG: Duct 1950980 intersects Floor 1713828 - Status: NON-STRUCTURAL
+[2025-08-04 14:15:45.537] [v1.0.0.0] [INFO] [DuctSleeveCommand:269] [DuctSleeveCommand] SKIP: Duct 1950980 host Floor 1713828 is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-04 14:15:45.538] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 1950980 intersects Floor 10934404 BBox=((100.946031966, 26.377346247, 61.236876640),(100.946031966, 26.377346247, 62.089895013))
+[2025-08-04 14:15:45.539] [v1.0.0.0] [INFO] [DuctSleeveCommand:262] [DuctSleeveCommand] FLOOR DEBUG: Duct 1950980 intersects Floor 10934404 - Status: STRUCTURAL
+[2025-08-04 14:15:45.541] [v1.0.0.0] [INFO] [DuctSleeveCommand:280] [DuctSleeveCommand] FLOOR SYMBOL: Found floor symbol: DuctOpeningOnSlab - DS#
+[2025-08-04 14:15:45.576] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnSlab (ID:2145881) detected via bounding box at location (100.946031966, 26.377346247, 61.663385827)
+[2025-08-04 14:15:45.577] [v1.0.0.0] [INFO] [DuctSleeveCommand:296] [DuctSleeveCommand] DUPLICATION CHECK at (100.946031966, 26.377346247, 61.663385827):
+Cluster sleeves: DS# (ID:2145881)
+[2025-08-04 14:15:45.606] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnSlab (ID:2145881) detected via bounding box at location (100.946031966, 26.377346247, 61.663385827)
+[2025-08-04 14:15:45.607] [v1.0.0.0] [INFO] [DuctSleeveCommand:304] [DuctSleeveCommand] SKIP: Duct 1950980 host Floor 10934404 duplicate sleeve (individual or cluster) exists near (100.946031966, 26.377346247, 61.663385827)
+[2025-08-04 14:15:45.608] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 1950997 Line Start=(100.081193146, 26.356028745, 62.697660362), End=(100.081193146, 26.356028745, 55.151728604)
+[2025-08-04 14:15:45.618] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 1950997 intersects Floor 1713828 BBox=((100.081193146, 26.356028745, 62.089895013),(100.081193146, 26.356028745, 62.335958005))
+[2025-08-04 14:15:45.619] [v1.0.0.0] [INFO] [DuctSleeveCommand:262] [DuctSleeveCommand] FLOOR DEBUG: Duct 1950997 intersects Floor 1713828 - Status: NON-STRUCTURAL
+[2025-08-04 14:15:45.620] [v1.0.0.0] [INFO] [DuctSleeveCommand:269] [DuctSleeveCommand] SKIP: Duct 1950997 host Floor 1713828 is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-04 14:15:45.621] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 1950997 intersects Floor 10934404 BBox=((100.081193146, 26.356028745, 61.236876640),(100.081193146, 26.356028745, 62.089895013))
+[2025-08-04 14:15:45.622] [v1.0.0.0] [INFO] [DuctSleeveCommand:262] [DuctSleeveCommand] FLOOR DEBUG: Duct 1950997 intersects Floor 10934404 - Status: STRUCTURAL
+[2025-08-04 14:15:45.623] [v1.0.0.0] [INFO] [DuctSleeveCommand:280] [DuctSleeveCommand] FLOOR SYMBOL: Found floor symbol: DuctOpeningOnSlab - DS#
+[2025-08-04 14:15:45.649] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnSlab (ID:2145881) detected via bounding box at location (100.081193146, 26.356028745, 61.663385827)
+[2025-08-04 14:15:45.650] [v1.0.0.0] [INFO] [DuctSleeveCommand:296] [DuctSleeveCommand] DUPLICATION CHECK at (100.081193146, 26.356028745, 61.663385827):
+Cluster sleeves: DS# (ID:2145881)
+[2025-08-04 14:15:45.675] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnSlab (ID:2145881) detected via bounding box at location (100.081193146, 26.356028745, 61.663385827)
+[2025-08-04 14:15:45.676] [v1.0.0.0] [INFO] [DuctSleeveCommand:304] [DuctSleeveCommand] SKIP: Duct 1950997 host Floor 10934404 duplicate sleeve (individual or cluster) exists near (100.081193146, 26.356028745, 61.663385827)
+[2025-08-04 14:15:45.677] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 2047679 Line Start=(102.535816902, 25.812588226, 62.697660362), End=(102.535816902, 25.812588226, 54.628801967)
+[2025-08-04 14:15:45.685] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 2047679 intersects Floor 1713828 BBox=((102.535816902, 25.812588226, 62.089895013),(102.535816902, 25.812588226, 62.335958005))
+[2025-08-04 14:15:45.686] [v1.0.0.0] [INFO] [DuctSleeveCommand:262] [DuctSleeveCommand] FLOOR DEBUG: Duct 2047679 intersects Floor 1713828 - Status: NON-STRUCTURAL
+[2025-08-04 14:15:45.686] [v1.0.0.0] [INFO] [DuctSleeveCommand:269] [DuctSleeveCommand] SKIP: Duct 2047679 host Floor 1713828 is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-04 14:15:45.687] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 2047679 intersects Floor 10934404 BBox=((102.535816902, 25.812588226, 61.236876640),(102.535816902, 25.812588226, 62.089895013))
+[2025-08-04 14:15:45.688] [v1.0.0.0] [INFO] [DuctSleeveCommand:262] [DuctSleeveCommand] FLOOR DEBUG: Duct 2047679 intersects Floor 10934404 - Status: STRUCTURAL
+[2025-08-04 14:15:45.689] [v1.0.0.0] [INFO] [DuctSleeveCommand:280] [DuctSleeveCommand] FLOOR SYMBOL: Found floor symbol: DuctOpeningOnSlab - DS#
+[2025-08-04 14:15:45.714] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnSlab (ID:2145882) detected via bounding box at location (102.535816902, 25.812588226, 61.663385827)
+[2025-08-04 14:15:45.715] [v1.0.0.0] [INFO] [DuctSleeveCommand:296] [DuctSleeveCommand] DUPLICATION CHECK at (102.535816902, 25.812588226, 61.663385827):
+Cluster sleeves: DS# (ID:2145882)
+[2025-08-04 14:15:45.740] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnSlab (ID:2145882) detected via bounding box at location (102.535816902, 25.812588226, 61.663385827)
+[2025-08-04 14:15:45.741] [v1.0.0.0] [INFO] [DuctSleeveCommand:304] [DuctSleeveCommand] SKIP: Duct 2047679 host Floor 10934404 duplicate sleeve (individual or cluster) exists near (102.535816902, 25.812588226, 61.663385827)
+[2025-08-04 14:15:45.742] [v1.0.0.0] [INFO] [DuctSleeveCommand:235] [DuctSleeveCommand] PROCESSING: Duct 2047862 Line Start=(102.535816902, 26.403139407, 62.697660362), End=(102.535816902, 26.403139407, 54.628801967)
+[2025-08-04 14:15:45.750] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 2047862 intersects Floor 1713828 BBox=((102.535816902, 26.403139407, 62.089895013),(102.535816902, 26.403139407, 62.335958005))
+[2025-08-04 14:15:45.751] [v1.0.0.0] [INFO] [DuctSleeveCommand:262] [DuctSleeveCommand] FLOOR DEBUG: Duct 2047862 intersects Floor 1713828 - Status: NON-STRUCTURAL
+[2025-08-04 14:15:45.752] [v1.0.0.0] [INFO] [DuctSleeveCommand:269] [DuctSleeveCommand] SKIP: Duct 2047862 host Floor 1713828 is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-04 14:15:45.753] [v1.0.0.0] [INFO] [DuctSleeveCommand:251] [DuctSleeveCommand] HOST: Duct 2047862 intersects Floor 10934404 BBox=((102.535816902, 26.403139407, 61.236876640),(102.535816902, 26.403139407, 62.089895013))
+[2025-08-04 14:15:45.754] [v1.0.0.0] [INFO] [DuctSleeveCommand:262] [DuctSleeveCommand] FLOOR DEBUG: Duct 2047862 intersects Floor 10934404 - Status: STRUCTURAL
+[2025-08-04 14:15:45.755] [v1.0.0.0] [INFO] [DuctSleeveCommand:280] [DuctSleeveCommand] FLOOR SYMBOL: Found floor symbol: DuctOpeningOnSlab - DS#
+[2025-08-04 14:15:45.780] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnSlab (ID:2145882) detected via bounding box at location (102.535816902, 26.403139407, 61.663385827)
+[2025-08-04 14:15:45.781] [v1.0.0.0] [INFO] [DuctSleeveCommand:296] [DuctSleeveCommand] DUPLICATION CHECK at (102.535816902, 26.403139407, 61.663385827):
+Cluster sleeves: DS# (ID:2145882)
+[2025-08-04 14:15:45.807] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnSlab (ID:2145882) detected via bounding box at location (102.535816902, 26.403139407, 61.663385827)
+[2025-08-04 14:15:45.808] [v1.0.0.0] [INFO] [DuctSleeveCommand:304] [DuctSleeveCommand] SKIP: Duct 2047862 host Floor 10934404 duplicate sleeve (individual or cluster) exists near (102.535816902, 26.403139407, 61.663385827)
+[2025-08-04 14:15:45.811] [v1.0.0.0] [INFO] [DuctSleeveCommand:460] [DuctSleeveCommand] Wrote duct summary log to: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\DuctSleeveLog_20250804_141544.log
+[2025-08-04 14:15:45.811] [v1.0.0.0] [INFO] [DuctSleeveCommand:461] DUCT SLEEVE SUMMARY: Placed=0, Skipped=38, Errors=0
+[2025-08-04 14:15:45.812] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:152] Duct sleeve placement completed successfully
+[2025-08-04 14:15:45.812] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:97] Starting damper sleeve placement...
+[2025-08-04 14:15:45.813] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:165] Executing FireDamperPlaceCommand...
+[2025-08-04 14:15:45.818] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:19] === [FireDamperPlaceCommand] DEBUG START ===
+[2025-08-04 14:15:45.819] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:22] [FireDamperPlaceCommand] After InitLogFile
+[2025-08-04 14:15:45.819] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:26] [FireDamperPlaceCommand] Got UIDocument and Document
+[2025-08-04 14:15:45.831] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:40] [FireDamperPlaceCommand] Found openingSymbol: DamperOpeningOnWall - DMS#
+[2025-08-04 14:15:45.832] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:60] [FireDamperPlaceCommand] Opening symbol activated
+[2025-08-04 14:15:45.892] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:65] [FireDamperPlaceCommand] damperTuples total count: 14
+[2025-08-04 14:15:45.933] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:69] [FireDamperPlaceCommand] wallTuples total count: 64
+[2025-08-04 14:15:45.946] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:78] [FireDamperPlaceCommand] existingSleeves count: 2
+[2025-08-04 14:15:45.946] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:84] [FireDamperPlaceCommand] Existing sleeve: Family=DamperOpeningOnWall, Symbol=DMS#, Location=(98.959482712, 43.834707205, 60.941601050)
+[2025-08-04 14:15:45.947] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:84] [FireDamperPlaceCommand] Existing sleeve: Family=DamperOpeningOnWall, Symbol=DMS#, Location=(98.959482712, 41.597365470, 59.875328084)
+[2025-08-04 14:15:45.948] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:97] [FireDamperPlaceCommand] Entered Execute. damperTuples count: 14
+[2025-08-04 14:15:45.948] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1871829, Family=LPJV_MHV - Motorized fire and smoke Damper - Rectangular, Symbol=MSFD
+[2025-08-04 14:15:45.950] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1871829 - Detected connector side: Right
+[2025-08-04 14:15:45.952] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1871829 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (99.034791772, 43.752686207, 60.941601050)
+[2025-08-04 14:15:46.023] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:251] [OpeningDuplicationChecker] Found 1 individual sleeves within 100mm of location (98.959482712, 43.834707205, 60.941601050)
+[2025-08-04 14:15:46.024] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:189] [FireDamperPlaceCommand] Failed to place sleeve for damper id=1871829 in wall id=2082305
+[2025-08-04 14:15:46.025] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1872154, Family=LPJV_MHV - Motorized fire and smoke Damper - Rectangular, Symbol=MSFD
+[2025-08-04 14:15:46.026] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1872154 - Detected connector side: Bottom
+[2025-08-04 14:15:46.026] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1872154 - Offset vector: (0.000000000, 0.000000000, -1.000000000), Sleeve position: (98.952770774, 41.597365470, 59.711286089)
+[2025-08-04 14:15:46.081] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:251] [OpeningDuplicationChecker] Found 1 individual sleeves within 100mm of location (98.959482712, 41.597365470, 59.875328084)
+[2025-08-04 14:15:46.082] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:189] [FireDamperPlaceCommand] Failed to place sleeve for damper id=1872154 in wall id=2082305
+[2025-08-04 14:15:46.083] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1875983, Family=M_Duct Accessary-Fire Damper-Rectangular-Simple, Symbol=Standard
+[2025-08-04 14:15:46.083] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1875983 - Detected connector side: Right
+[2025-08-04 14:15:46.084] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1875983 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (104.730006624, 41.597365470, 59.793307087)
+[2025-08-04 14:15:46.108] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1876234, Family=LPJV_MHV - Motorized fire and smoke Damper - Rectangular, Symbol=MSFD
+[2025-08-04 14:15:46.109] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1876234 - Detected connector side: Left
+[2025-08-04 14:15:46.110] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1876234 - Offset vector: (-1.000000000, 0.000000000, 0.000000000), Sleeve position: (102.385815549, 40.246892188, 60.613517060)
+[2025-08-04 14:15:46.235] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:157] [FireDamperPlaceCommand] Successfully placed sleeve for damper id=1876234 in wall id=10932962
+[2025-08-04 14:15:46.236] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:165] [FireDamperPlaceCommand] === CONNECTOR DETAILS FOR DAMPER 1876234 ===
+[2025-08-04 14:15:46.236] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:166] [FireDamperPlaceCommand] Damper id=1876234 - Total connectors: 2
+[2025-08-04 14:15:46.238] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:172] [FireDamperPlaceCommand] Damper id=1876234 - Connector[0]: Origin=(102.467836547, 40.574976177, 60.613517060), BasisX=(-1.000000000, 0.000000000, 0.000000000)
+[2025-08-04 14:15:46.239] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:173] [FireDamperPlaceCommand] Damper id=1876234 - Connector[0]: X=-1.000, Y=0.000, Z=0.000
+[2025-08-04 14:15:46.239] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:174] [FireDamperPlaceCommand] Damper id=1876234 - Connector[0]: AbsX=1.000, AbsY=0.000, AbsZ=0.000
+[2025-08-04 14:15:46.240] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:172] [FireDamperPlaceCommand] Damper id=1876234 - Connector[1]: Origin=(102.467836547, 39.918808198, 60.613517060), BasisX=(1.000000000, 0.000000000, 0.000000000)
+[2025-08-04 14:15:46.240] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:173] [FireDamperPlaceCommand] Damper id=1876234 - Connector[1]: X=1.000, Y=0.000, Z=0.000
+[2025-08-04 14:15:46.241] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:174] [FireDamperPlaceCommand] Damper id=1876234 - Connector[1]: AbsX=1.000, AbsY=0.000, AbsZ=0.000
+[2025-08-04 14:15:46.242] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:180] [FireDamperPlaceCommand] Damper id=1876234 - SELECTED Connector BasisX: (-1.000000000, 0.000000000, 0.000000000)
+[2025-08-04 14:15:46.242] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:181] [FireDamperPlaceCommand] Damper id=1876234 - Direction analysis: Z=0.000 (>0.9=Top, <-0.9=Bottom), X=-1.000 (>0.9=Right, <-0.9=Left)
+[2025-08-04 14:15:46.243] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:183] [FireDamperPlaceCommand] === END CONNECTOR DETAILS ===
+[2025-08-04 14:15:46.244] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=2145527, Family=DamperOpeningOnWall, Symbol=DMS#
+[2025-08-04 14:15:46.245] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=2145527 - Detected connector side: Right
+[2025-08-04 14:15:46.246] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=2145527 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (99.041503709, 43.834707205, 60.941601050)
+[2025-08-04 14:15:46.283] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:189] [FireDamperPlaceCommand] Failed to place sleeve for damper id=2145527 in wall id=2082305
+[2025-08-04 14:15:46.284] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=2145528, Family=DamperOpeningOnWall, Symbol=DMS#
+[2025-08-04 14:15:46.284] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=2145528 - Detected connector side: Right
+[2025-08-04 14:15:46.285] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=2145528 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (99.041503709, 41.597365470, 59.875328084)
+[2025-08-04 14:15:46.321] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:189] [FireDamperPlaceCommand] Failed to place sleeve for damper id=2145528 in wall id=2082305
+[2025-08-04 14:15:46.321] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747233, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 14:15:46.322] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747233 - Detected connector side: Right
+[2025-08-04 14:15:46.322] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747233 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (26.770415514, 18.878331000, 59.547244094)
+[2025-08-04 14:15:46.350] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747506, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 14:15:46.351] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747506 - Detected connector side: Right
+[2025-08-04 14:15:46.351] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747506 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (27.338805260, 35.341653634, 59.547244094)
+[2025-08-04 14:15:46.380] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747537, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 14:15:46.380] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747537 - Detected connector side: Right
+[2025-08-04 14:15:46.381] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747537 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (23.410905310, 31.723548334, 59.383202100)
+[2025-08-04 14:15:46.409] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747561, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 14:15:46.410] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747561 - Detected connector side: Right
+[2025-08-04 14:15:46.410] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747561 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (23.347659850, 41.221579830, 59.383202100)
+[2025-08-04 14:15:46.438] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747599, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 14:15:46.439] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747599 - Detected connector side: Left
+[2025-08-04 14:15:46.440] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747599 - Offset vector: (-1.000000000, 0.000000000, 0.000000000), Sleeve position: (23.248943126, 24.320593879, 59.875328084)
+[2025-08-04 14:15:46.473] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747619, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 14:15:46.474] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747619 - Detected connector side: Right
+[2025-08-04 14:15:46.475] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747619 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (23.475440457, 21.571477275, 59.875328084)
+[2025-08-04 14:15:46.503] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747673, Family=M_Duct Accessary-Fire Damper-Rectangular-Simple, Symbol=Standard
+[2025-08-04 14:15:46.503] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747673 - Detected connector side: Right
+[2025-08-04 14:15:46.504] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747673 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (27.590773821, 30.870529961, 61.023622047)
+[2025-08-04 14:15:46.538] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747688, Family=M_Duct Accessary-Fire Damper-Rectangular-Simple, Symbol=Standard
+[2025-08-04 14:15:46.539] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747688 - Detected connector side: Right
+[2025-08-04 14:15:46.539] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747688 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (27.559055170, 28.648740248, 61.023622047)
+[2025-08-04 14:15:46.582] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:201] FireDamperPlaceCommand summary: Total=14, Placed=1, SkippedExisting=0
+[2025-08-04 14:15:46.583] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:176] Damper sleeve placement completed successfully
+[2025-08-04 14:15:46.583] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:100] Starting cable tray sleeve placement...
+[2025-08-04 14:15:46.584] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:189] Executing CableTraySleeveCommand...
+[2025-08-04 14:15:46.609] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=0: CT_FAMILY_SEARCH Found 110 family symbols in project
+[2025-08-04 14:15:46.611] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=1049: CT_FAMILY_FOUND Family: Section Head - Filled, Symbol: Section Head - Filled
+[2025-08-04 14:15:46.612] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=16216: CT_FAMILY_FOUND Family: Rectangular Handrail, Symbol: 50 x 50mm
+[2025-08-04 14:15:46.613] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=28045: CT_FAMILY_FOUND Family: Section Tail - Filled, Symbol: Section Tail - Filled
+[2025-08-04 14:15:46.614] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=112441: CT_FAMILY_FOUND Family: Rectangular Union, Symbol: Standard
+[2025-08-04 14:15:46.616] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=498585: CT_FAMILY_FOUND Family: Rectangular Medium Radius Bend - Flanged, Symbol: Standard
+[2025-08-04 14:15:46.618] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=498587: CT_FAMILY_FOUND Family: Rectangular Square Tee - Flanged, Symbol: Standard
+[2025-08-04 14:15:46.620] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=498589: CT_FAMILY_FOUND Family: Rectangular Shoe Branch - Flanged, Symbol: Standard
+[2025-08-04 14:15:46.622] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=498591: CT_FAMILY_FOUND Family: Rectangular Concentric Taper - Flanged, Symbol: Standard
+[2025-08-04 14:15:46.624] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=498593: CT_FAMILY_FOUND Family: Rectangular - Round Transformation - Flanged, Symbol: Standard
+[2025-08-04 14:15:46.626] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] DIAGNOSTIC ID=499382: CT_FAMILY_FOUND Family: Rectangular Blank End, Symbol: Standard
+[2025-08-04 14:15:46.630] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] SUCCESS ID=2124183: CT_FAMILY_FOUND Using cable tray wall sleeve family: CableTrayOpeningOnWall, Symbol: CT#
+[2025-08-04 14:15:46.632] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] SUCCESS ID=2126788: CT_FAMILY_FOUND Using cable tray slab sleeve family: CabletrayOpeningOnSlab, Symbol: CT#
+[2025-08-04 14:15:46.734] [v1.0.0.0] [INFO] [CableTraySleeveCommand:106] Found 23 existing cable tray sleeves in the model
+[2025-08-04 14:15:46.748] [v1.0.0.0] [INFO] [CableTraySleeveCommand:112] --- Details of Existing Cable Tray Sleeves ---
+[2025-08-04 14:15:46.749] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145536, Location: (110.012439698, 21.491141908, 58.448162730), Width: 200.0mm, Height: 300.0mm, Depth: 5.0mm
+[2025-08-04 14:15:46.750] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145567, Location: (107.143694544, 44.291338671, 61.030839239), Width: 200.0mm, Height: 160.3mm, Depth: 399.9mm
+[2025-08-04 14:15:46.752] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145568, Location: (104.237790398, 37.962657475, 61.030839239), Width: 308.3mm, Height: 160.3mm, Depth: 100.0mm
+[2025-08-04 14:15:46.753] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145569, Location: (97.112860892, 29.861269371, 60.695661089), Width: 775.2mm, Height: 133.4mm, Depth: 200.0mm
+[2025-08-04 14:15:46.755] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145576, Location: (109.904855940, 28.139748615, 60.252624672), Width: 220.0mm, Height: 250.0mm, Depth: 50.0mm
+[2025-08-04 14:15:46.756] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145577, Location: (103.108812175, 44.947479738, 60.252624672), Width: 200.0mm, Height: 300.0mm, Depth: 495.0mm
+[2025-08-04 14:15:46.758] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145581, Location: (105.473099239, 44.291338671, 60.744750656), Width: 200.0mm, Height: 300.0mm, Depth: 328.8mm
+[2025-08-04 14:15:46.760] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145582, Location: (104.237790398, 36.162668147, 60.744750656), Width: 389.0mm, Height: 200.0mm, Depth: 100.0mm
+[2025-08-04 14:15:46.761] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145735, Location: (109.988665861, 26.747074331, 58.448162730), Width: 200.0mm, Height: 300.0mm, Depth: 5.0mm
+[2025-08-04 14:15:46.763] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145880, Location: (99.248407111, 31.531798041, 60.810730318), Width: 200.0mm, Height: 300.0mm, Depth: 52.3mm
+[2025-08-04 14:15:46.765] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145932, Location: (97.861847071, 24.052223439, 60.810730318), Width: 200.0mm, Height: 200.0mm, Depth: 450.0mm
+[2025-08-04 14:15:46.766] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145980, Location: (97.692406475, 27.974712229, 60.695661089), Width: 133.4mm, Height: 133.4mm, Depth: 553.3mm
+[2025-08-04 14:15:46.768] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145981, Location: (97.692406475, 27.067564972, 60.695661089), Width: 133.4mm, Height: 133.4mm, Depth: 553.3mm
+[2025-08-04 14:15:46.769] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145982, Location: (97.692406475, 24.620400682, 60.695661089), Width: 133.4mm, Height: 133.4mm, Depth: 553.3mm
+[2025-08-04 14:15:46.771] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145983, Location: (97.861847071, 37.962657475, 61.030839239), Width: 308.3mm, Height: 160.3mm, Depth: 450.0mm
+[2025-08-04 14:15:46.773] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145984, Location: (97.861847071, 29.558067527, 60.695661089), Width: 590.3mm, Height: 133.4mm, Depth: 450.0mm
+[2025-08-04 14:15:46.774] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145985, Location: (97.861847071, 25.811855708, 60.695661089), Width: 332.0mm, Height: 133.4mm, Depth: 450.0mm
+[2025-08-04 14:15:46.776] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145986, Location: (110.810367436, 25.143247054, 58.249073015), Width: 221.8mm, Height: 133.4mm, Depth: 450.0mm
+[2025-08-04 14:15:46.777] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145992, Location: (110.810367436, 28.139748615, 60.252624672), Width: 220.0mm, Height: 250.0mm, Depth: 450.0mm
+[2025-08-04 14:15:46.779] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145993, Location: (103.108812175, 43.963227683, 60.252624672), Width: 300.0mm, Height: 300.0mm, Depth: 495.0mm
+[2025-08-04 14:15:46.780] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145994, Location: (97.861847071, 20.548913421, 60.252624672), Width: 640.0mm, Height: 250.0mm, Depth: 450.0mm
+[2025-08-04 14:15:46.782] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145995, Location: (104.237790398, 41.416933785, 60.744750656), Width: 442.0mm, Height: 300.0mm, Depth: 100.0mm
+[2025-08-04 14:15:46.784] [v1.0.0.0] [INFO] [CableTraySleeveCommand:120]   Sleeve ID: 2145996, Location: (97.861847071, 22.392478966, 60.810730318), Width: 402.2mm, Height: 300.0mm, Depth: 450.0mm
+[2025-08-04 14:15:46.784] [v1.0.0.0] [INFO] [CableTraySleeveCommand:122] ------------------------------------------
+[2025-08-04 14:15:46.786] [v1.0.0.0] [INFO] [CableTraySleeveCommand:140] Found 9 cable trays to process
+[2025-08-04 14:15:46.788] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] SYSTEM ID=0: PROCESSING STARTED Total cable trays to process: 9
+[2025-08-04 14:15:46.788] [v1.0.0.0] [INFO] [CableTraySleeveCommand:148] Transaction started for cable tray sleeve placement
+[2025-08-04 14:15:46.789] [v1.0.0.0] [INFO] [CableTraySleeveCommand:150] Starting wall intersection tests for cable trays
+[2025-08-04 14:15:46.790] [v1.0.0.0] [INFO] [CableTraySleeveCommand:162] Processing CableTray ID=1874033
+[2025-08-04 14:15:46.828] [v1.0.0.0] [INFO] [EfficientIntersectionService:44] [EfficientIntersectionService] Filtered walls: 9 (from section box and bbox pre-check)
+[2025-08-04 14:15:46.882] [v1.0.0.0] [INFO] [EfficientIntersectionService:285] [EfficientIntersectionService] Pre-filtered structural elements: 11 (from 76 total)
+[2025-08-04 14:15:46.883] [v1.0.0.0] [INFO] [EfficientIntersectionService:101] [EfficientIntersectionService] Processing 11 pre-filtered structural elements
+[2025-08-04 14:15:46.887] [v1.0.0.0] [INFO] [CableTraySleeveCommand:214] CableTray ID=1874033: Wall hits: 6, Structural hits: 0
+[2025-08-04 14:15:46.887] [v1.0.0.0] [INFO] [CableTraySleeveCommand:380] CableTray ID=1874033: detected wall element: Walls, ID=10933084
+[2025-08-04 14:15:46.889] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=10933084: ELEMENT DETECTED Hit by cable tray 1874033
+[2025-08-04 14:15:46.891] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-WALL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1874033, Wall ID=10933084, Position=(104.401832393, 41.813914866, 60.744750656)
+[2025-08-04 14:15:46.892] [v1.0.0.0] [INFO] [CableTraySleeveCommand:397] CableTray ID=1874033: Using wall family: CableTrayOpeningOnWall, Symbol: CT#
+[2025-08-04 14:15:46.926] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145995) detected via bounding box at location (104.401832393, 41.813914866, 60.744750656)
+[2025-08-04 14:15:46.927] [v1.0.0.0] [INFO] [CableTraySleeveCommand:449] [CableTraySleeveCommand] DUPLICATION CHECK at (104.401832393, 41.813914866, 60.744750656):
+Cluster sleeves: CT# (ID:2145995)
+[2025-08-04 14:15:46.954] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145995) detected via bounding box at location (104.401832393, 41.813914866, 60.744750656)
+[2025-08-04 14:15:46.955] [v1.0.0.0] [INFO] [CableTraySleeveCommand:455] [CableTraySleeveCommand] SKIP: CableTray 1874033 duplicate sleeve (individual or cluster) exists near (104.401832393, 41.813914866, 60.744750656)
+[2025-08-04 14:15:46.956] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=10933084: SLEEVE_FAILED Reason: Existing sleeve found at location
+[2025-08-04 14:15:46.957] [v1.0.0.0] [INFO] [CableTraySleeveCommand:162] Processing CableTray ID=1874043
+[2025-08-04 14:15:46.994] [v1.0.0.0] [INFO] [EfficientIntersectionService:44] [EfficientIntersectionService] Filtered walls: 4 (from section box and bbox pre-check)
+[2025-08-04 14:15:47.053] [v1.0.0.0] [INFO] [EfficientIntersectionService:285] [EfficientIntersectionService] Pre-filtered structural elements: 6 (from 76 total)
+[2025-08-04 14:15:47.054] [v1.0.0.0] [INFO] [EfficientIntersectionService:101] [EfficientIntersectionService] Processing 6 pre-filtered structural elements
+[2025-08-04 14:15:47.057] [v1.0.0.0] [INFO] [CableTraySleeveCommand:214] CableTray ID=1874043: Wall hits: 35, Structural hits: 1
+[2025-08-04 14:15:47.057] [v1.0.0.0] [INFO] [CableTraySleeveCommand:247] CableTray ID=1874043: detected structural element: Walls, ID=10933084
+[2025-08-04 14:15:47.058] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=10933084: STRUCTURAL DETECTED Hit by cable tray 1874043
+[2025-08-04 14:15:47.059] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1874043, Structural ID=10933084, Position=(104.237790398, 36.472706423, 60.744750656)
+[2025-08-04 14:15:47.060] [v1.0.0.0] [INFO] [CableTraySleeveCommand:316] CableTray ID=1874043: Linked reference type detected: WALL
+[2025-08-04 14:15:47.060] [v1.0.0.0] [INFO] [CableTraySleeveCommand:325] CableTray ID=1874043: Using family: CableTrayOpeningOnWall, Symbol: CT# for linked reference type WALL
+[2025-08-04 14:15:47.062] [v1.0.0.0] [INFO] [CableTraySleeveCommand:611] [CableTraySleeveCommand] ORIENTATION ANALYSIS for CableTray 1874043
+[2025-08-04 14:15:47.064] [v1.0.0.0] [INFO] [MepElementOrientationHelper:21] [MepElementOrientationHelper] === CABLETRAY ORIENTATION ANALYSIS ===
+[2025-08-04 14:15:47.065] [v1.0.0.0] [INFO] [MepElementOrientationHelper:26] [MepElementOrientationHelper] CableTray Width Parameter: 100.0mm
+[2025-08-04 14:15:47.065] [v1.0.0.0] [INFO] [MepElementOrientationHelper:45] [MepElementOrientationHelper] BoundingBox Dimensions:
+[2025-08-04 14:15:47.065] [v1.0.0.0] [INFO] [MepElementOrientationHelper:46]   - X dimension: 400.0mm
+[2025-08-04 14:15:47.066] [v1.0.0.0] [INFO] [MepElementOrientationHelper:47]   - Y dimension: 100.0mm
+[2025-08-04 14:15:47.066] [v1.0.0.0] [INFO] [MepElementOrientationHelper:48]   - Z dimension: 100.0mm
+[2025-08-04 14:15:47.067] [v1.0.0.0] [INFO] [MepElementOrientationHelper:57] [MepElementOrientationHelper] Width Parameter Match Analysis:
+[2025-08-04 14:15:47.067] [v1.0.0.0] [INFO] [MepElementOrientationHelper:58]   - Matches X dimension: False (diff: 300.0mm)
+[2025-08-04 14:15:47.068] [v1.0.0.0] [INFO] [MepElementOrientationHelper:59]   - Matches Y dimension: True (diff: 0.0mm)
+[2025-08-04 14:15:47.068] [v1.0.0.0] [INFO] [MepElementOrientationHelper:60]   - Matches Z dimension: True (diff: 0.0mm)
+[2025-08-04 14:15:47.069] [v1.0.0.0] [INFO] [MepElementOrientationHelper:70] [MepElementOrientationHelper] Width parameter matches Y dimension → Y-ORIENTED
+[2025-08-04 14:15:47.069] [v1.0.0.0] [INFO] [CableTraySleeveCommand:650] [CableTraySleeveCommand] Flow Direction: (-1.000000,0.000000,0.000000)
+[2025-08-04 14:15:47.069] [v1.0.0.0] [INFO] [CableTraySleeveCommand:651] [CableTraySleeveCommand] Width Direction: (0.000000,1.000000,0.000000)
+[2025-08-04 14:15:47.070] [v1.0.0.0] [INFO] [CableTraySleeveCommand:652] [CableTraySleeveCommand] CableTray 1874043: Y-ORIENTED
+[2025-08-04 14:15:47.094] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145582) detected via bounding box at location (104.237790398, 36.472706423, 60.744750656)
+[2025-08-04 14:15:47.095] [v1.0.0.0] [INFO] [CableTraySleeveCommand:673] [CableTraySleeveCommand] DUPLICATION CHECK at (104.237790398, 36.472706423, 60.744750656):
+Cluster sleeves: CT# (ID:2145582)
+[2025-08-04 14:15:47.118] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145582) detected via bounding box at location (104.237790398, 36.472706423, 60.744750656)
+[2025-08-04 14:15:47.120] [v1.0.0.0] [INFO] [CableTraySleeveCommand:679] [CableTraySleeveCommand] SKIP: CableTray 1874043 duplicate sleeve (individual or cluster) exists near (104.237790398, 36.472706423, 60.744750656)
+[2025-08-04 14:15:47.120] [v1.0.0.0] [INFO] [CableTraySleeveCommand:380] CableTray ID=1874043: detected wall element: Walls, ID=10933084
+[2025-08-04 14:15:47.121] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=10933084: ELEMENT DETECTED Hit by cable tray 1874043
+[2025-08-04 14:15:47.122] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-WALL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1874043, Wall ID=10933084, Position=(104.073748404, 36.472706423, 60.744750656)
+[2025-08-04 14:15:47.123] [v1.0.0.0] [INFO] [CableTraySleeveCommand:397] CableTray ID=1874043: Using wall family: CableTrayOpeningOnWall, Symbol: CT#
+[2025-08-04 14:15:47.146] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145582) detected via bounding box at location (104.073748404, 36.472706423, 60.744750656)
+[2025-08-04 14:15:47.148] [v1.0.0.0] [INFO] [CableTraySleeveCommand:449] [CableTraySleeveCommand] DUPLICATION CHECK at (104.073748404, 36.472706423, 60.744750656):
+Cluster sleeves: CT# (ID:2145582)
+[2025-08-04 14:15:47.171] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145582) detected via bounding box at location (104.073748404, 36.472706423, 60.744750656)
+[2025-08-04 14:15:47.172] [v1.0.0.0] [INFO] [CableTraySleeveCommand:455] [CableTraySleeveCommand] SKIP: CableTray 1874043 duplicate sleeve (individual or cluster) exists near (104.073748404, 36.472706423, 60.744750656)
+[2025-08-04 14:15:47.173] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=10933084: SLEEVE_FAILED Reason: Existing sleeve found at location
+[2025-08-04 14:15:47.174] [v1.0.0.0] [INFO] [CableTraySleeveCommand:162] Processing CableTray ID=1874995
+[2025-08-04 14:15:47.206] [v1.0.0.0] [INFO] [EfficientIntersectionService:44] [EfficientIntersectionService] Filtered walls: 9 (from section box and bbox pre-check)
+[2025-08-04 14:15:47.258] [v1.0.0.0] [INFO] [EfficientIntersectionService:285] [EfficientIntersectionService] Pre-filtered structural elements: 11 (from 76 total)
+[2025-08-04 14:15:47.259] [v1.0.0.0] [INFO] [EfficientIntersectionService:101] [EfficientIntersectionService] Processing 11 pre-filtered structural elements
+[2025-08-04 14:15:47.261] [v1.0.0.0] [INFO] [CableTraySleeveCommand:214] CableTray ID=1874995: Wall hits: 6, Structural hits: 0
+[2025-08-04 14:15:47.262] [v1.0.0.0] [INFO] [CableTraySleeveCommand:380] CableTray ID=1874995: detected wall element: Walls, ID=10933084
+[2025-08-04 14:15:47.263] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=10933084: ELEMENT DETECTED Hit by cable tray 1874995
+[2025-08-04 14:15:47.265] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-WALL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1874995, Wall ID=10933084, Position=(104.401832393, 41.019952705, 60.744750656)
+[2025-08-04 14:15:47.265] [v1.0.0.0] [INFO] [CableTraySleeveCommand:397] CableTray ID=1874995: Using wall family: CableTrayOpeningOnWall, Symbol: CT#
+[2025-08-04 14:15:47.303] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145995) detected via bounding box at location (104.401832393, 41.019952705, 60.744750656)
+[2025-08-04 14:15:47.304] [v1.0.0.0] [INFO] [CableTraySleeveCommand:449] [CableTraySleeveCommand] DUPLICATION CHECK at (104.401832393, 41.019952705, 60.744750656):
+Cluster sleeves: CT# (ID:2145995)
+[2025-08-04 14:15:47.331] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145995) detected via bounding box at location (104.401832393, 41.019952705, 60.744750656)
+[2025-08-04 14:15:47.332] [v1.0.0.0] [INFO] [CableTraySleeveCommand:455] [CableTraySleeveCommand] SKIP: CableTray 1874995 duplicate sleeve (individual or cluster) exists near (104.401832393, 41.019952705, 60.744750656)
+[2025-08-04 14:15:47.333] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=10933084: SLEEVE_FAILED Reason: Existing sleeve found at location
+[2025-08-04 14:15:47.334] [v1.0.0.0] [INFO] [CableTraySleeveCommand:162] Processing CableTray ID=1875003
+[2025-08-04 14:15:47.373] [v1.0.0.0] [INFO] [EfficientIntersectionService:44] [EfficientIntersectionService] Filtered walls: 5 (from section box and bbox pre-check)
+[2025-08-04 14:15:47.430] [v1.0.0.0] [INFO] [EfficientIntersectionService:285] [EfficientIntersectionService] Pre-filtered structural elements: 7 (from 76 total)
+[2025-08-04 14:15:47.431] [v1.0.0.0] [INFO] [EfficientIntersectionService:101] [EfficientIntersectionService] Processing 7 pre-filtered structural elements
+[2025-08-04 14:15:47.433] [v1.0.0.0] [INFO] [CableTraySleeveCommand:214] CableTray ID=1875003: Wall hits: 30, Structural hits: 1
+[2025-08-04 14:15:47.434] [v1.0.0.0] [INFO] [CableTraySleeveCommand:247] CableTray ID=1875003: detected structural element: Walls, ID=10933084
+[2025-08-04 14:15:47.434] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=10933084: STRUCTURAL DETECTED Hit by cable tray 1875003
+[2025-08-04 14:15:47.435] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1875003, Structural ID=10933084, Position=(104.237790398, 35.852629870, 60.744750656)
+[2025-08-04 14:15:47.436] [v1.0.0.0] [INFO] [CableTraySleeveCommand:316] CableTray ID=1875003: Linked reference type detected: WALL
+[2025-08-04 14:15:47.436] [v1.0.0.0] [INFO] [CableTraySleeveCommand:325] CableTray ID=1875003: Using family: CableTrayOpeningOnWall, Symbol: CT# for linked reference type WALL
+[2025-08-04 14:15:47.437] [v1.0.0.0] [INFO] [CableTraySleeveCommand:611] [CableTraySleeveCommand] ORIENTATION ANALYSIS for CableTray 1875003
+[2025-08-04 14:15:47.437] [v1.0.0.0] [INFO] [MepElementOrientationHelper:21] [MepElementOrientationHelper] === CABLETRAY ORIENTATION ANALYSIS ===
+[2025-08-04 14:15:47.438] [v1.0.0.0] [INFO] [MepElementOrientationHelper:26] [MepElementOrientationHelper] CableTray Width Parameter: 100.0mm
+[2025-08-04 14:15:47.438] [v1.0.0.0] [INFO] [MepElementOrientationHelper:45] [MepElementOrientationHelper] BoundingBox Dimensions:
+[2025-08-04 14:15:47.438] [v1.0.0.0] [INFO] [MepElementOrientationHelper:46]   - X dimension: 485.0mm
+[2025-08-04 14:15:47.439] [v1.0.0.0] [INFO] [MepElementOrientationHelper:47]   - Y dimension: 100.0mm
+[2025-08-04 14:15:47.439] [v1.0.0.0] [INFO] [MepElementOrientationHelper:48]   - Z dimension: 100.0mm
+[2025-08-04 14:15:47.440] [v1.0.0.0] [INFO] [MepElementOrientationHelper:57] [MepElementOrientationHelper] Width Parameter Match Analysis:
+[2025-08-04 14:15:47.440] [v1.0.0.0] [INFO] [MepElementOrientationHelper:58]   - Matches X dimension: False (diff: 385.0mm)
+[2025-08-04 14:15:47.441] [v1.0.0.0] [INFO] [MepElementOrientationHelper:59]   - Matches Y dimension: True (diff: 0.0mm)
+[2025-08-04 14:15:47.441] [v1.0.0.0] [INFO] [MepElementOrientationHelper:60]   - Matches Z dimension: True (diff: 0.0mm)
+[2025-08-04 14:15:47.442] [v1.0.0.0] [INFO] [MepElementOrientationHelper:70] [MepElementOrientationHelper] Width parameter matches Y dimension → Y-ORIENTED
+[2025-08-04 14:15:47.442] [v1.0.0.0] [INFO] [CableTraySleeveCommand:650] [CableTraySleeveCommand] Flow Direction: (-1.000000,0.000000,0.000000)
+[2025-08-04 14:15:47.443] [v1.0.0.0] [INFO] [CableTraySleeveCommand:651] [CableTraySleeveCommand] Width Direction: (0.000000,1.000000,0.000000)
+[2025-08-04 14:15:47.444] [v1.0.0.0] [INFO] [CableTraySleeveCommand:652] [CableTraySleeveCommand] CableTray 1875003: Y-ORIENTED
+[2025-08-04 14:15:47.471] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145582) detected via bounding box at location (104.237790398, 35.852629870, 60.744750656)
+[2025-08-04 14:15:47.473] [v1.0.0.0] [INFO] [CableTraySleeveCommand:673] [CableTraySleeveCommand] DUPLICATION CHECK at (104.237790398, 35.852629870, 60.744750656):
+Cluster sleeves: CT# (ID:2145582)
+[2025-08-04 14:15:47.500] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145582) detected via bounding box at location (104.237790398, 35.852629870, 60.744750656)
+[2025-08-04 14:15:47.502] [v1.0.0.0] [INFO] [CableTraySleeveCommand:679] [CableTraySleeveCommand] SKIP: CableTray 1875003 duplicate sleeve (individual or cluster) exists near (104.237790398, 35.852629870, 60.744750656)
+[2025-08-04 14:15:47.502] [v1.0.0.0] [INFO] [CableTraySleeveCommand:380] CableTray ID=1875003: detected wall element: Walls, ID=10933084
+[2025-08-04 14:15:47.503] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=10933084: ELEMENT DETECTED Hit by cable tray 1875003
+[2025-08-04 14:15:47.505] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-WALL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1875003, Wall ID=10933084, Position=(104.073748404, 35.852629870, 60.744750656)
+[2025-08-04 14:15:47.506] [v1.0.0.0] [INFO] [CableTraySleeveCommand:397] CableTray ID=1875003: Using wall family: CableTrayOpeningOnWall, Symbol: CT#
+[2025-08-04 14:15:47.533] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145582) detected via bounding box at location (104.073748404, 35.852629870, 60.744750656)
+[2025-08-04 14:15:47.535] [v1.0.0.0] [INFO] [CableTraySleeveCommand:449] [CableTraySleeveCommand] DUPLICATION CHECK at (104.073748404, 35.852629870, 60.744750656):
+Cluster sleeves: CT# (ID:2145582)
+[2025-08-04 14:15:47.574] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145582) detected via bounding box at location (104.073748404, 35.852629870, 60.744750656)
+[2025-08-04 14:15:47.575] [v1.0.0.0] [INFO] [CableTraySleeveCommand:455] [CableTraySleeveCommand] SKIP: CableTray 1875003 duplicate sleeve (individual or cluster) exists near (104.073748404, 35.852629870, 60.744750656)
+[2025-08-04 14:15:47.576] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=10933084: SLEEVE_FAILED Reason: Existing sleeve found at location
+[2025-08-04 14:15:47.577] [v1.0.0.0] [INFO] [CableTraySleeveCommand:162] Processing CableTray ID=1953336
+[2025-08-04 14:15:47.612] [v1.0.0.0] [INFO] [EfficientIntersectionService:44] [EfficientIntersectionService] Filtered walls: 2 (from section box and bbox pre-check)
+[2025-08-04 14:15:47.678] [v1.0.0.0] [INFO] [EfficientIntersectionService:285] [EfficientIntersectionService] Pre-filtered structural elements: 4 (from 76 total)
+[2025-08-04 14:15:47.678] [v1.0.0.0] [INFO] [EfficientIntersectionService:101] [EfficientIntersectionService] Processing 4 pre-filtered structural elements
+[2025-08-04 14:15:47.680] [v1.0.0.0] [INFO] [CableTraySleeveCommand:214] CableTray ID=1953336: Wall hits: 18, Structural hits: 1
+[2025-08-04 14:15:47.680] [v1.0.0.0] [INFO] [CableTraySleeveCommand:247] CableTray ID=1953336: detected structural element: Walls, ID=2700957
+[2025-08-04 14:15:47.681] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Walls ID=2700957: STRUCTURAL DETECTED Hit by cable tray 1953336
+[2025-08-04 14:15:47.682] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1953336, Structural ID=2700957, Position=(97.112860892, 24.052223439, 60.810730318)
+[2025-08-04 14:15:47.683] [v1.0.0.0] [INFO] [CableTraySleeveCommand:316] CableTray ID=1953336: Linked reference type detected: WALL
+[2025-08-04 14:15:47.683] [v1.0.0.0] [INFO] [CableTraySleeveCommand:325] CableTray ID=1953336: Using family: CableTrayOpeningOnWall, Symbol: CT# for linked reference type WALL
+[2025-08-04 14:15:47.684] [v1.0.0.0] [INFO] [CableTraySleeveCommand:611] [CableTraySleeveCommand] ORIENTATION ANALYSIS for CableTray 1953336
+[2025-08-04 14:15:47.685] [v1.0.0.0] [INFO] [MepElementOrientationHelper:21] [MepElementOrientationHelper] === CABLETRAY ORIENTATION ANALYSIS ===
+[2025-08-04 14:15:47.686] [v1.0.0.0] [INFO] [MepElementOrientationHelper:26] [MepElementOrientationHelper] CableTray Width Parameter: 100.0mm
+[2025-08-04 14:15:47.686] [v1.0.0.0] [INFO] [MepElementOrientationHelper:45] [MepElementOrientationHelper] BoundingBox Dimensions:
+[2025-08-04 14:15:47.687] [v1.0.0.0] [INFO] [MepElementOrientationHelper:46]   - X dimension: 1800.0mm
+[2025-08-04 14:15:47.687] [v1.0.0.0] [INFO] [MepElementOrientationHelper:47]   - Y dimension: 100.0mm
+[2025-08-04 14:15:47.688] [v1.0.0.0] [INFO] [MepElementOrientationHelper:48]   - Z dimension: 100.0mm
+[2025-08-04 14:15:47.689] [v1.0.0.0] [INFO] [MepElementOrientationHelper:57] [MepElementOrientationHelper] Width Parameter Match Analysis:
+[2025-08-04 14:15:47.689] [v1.0.0.0] [INFO] [MepElementOrientationHelper:58]   - Matches X dimension: False (diff: 1700.0mm)
+[2025-08-04 14:15:47.690] [v1.0.0.0] [INFO] [MepElementOrientationHelper:59]   - Matches Y dimension: True (diff: 0.0mm)
+[2025-08-04 14:15:47.690] [v1.0.0.0] [INFO] [MepElementOrientationHelper:60]   - Matches Z dimension: True (diff: 0.0mm)
+[2025-08-04 14:15:47.691] [v1.0.0.0] [INFO] [MepElementOrientationHelper:70] [MepElementOrientationHelper] Width parameter matches Y dimension → Y-ORIENTED
+[2025-08-04 14:15:47.692] [v1.0.0.0] [INFO] [CableTraySleeveCommand:650] [CableTraySleeveCommand] Flow Direction: (-1.000000,0.000000,0.000000)
+[2025-08-04 14:15:47.693] [v1.0.0.0] [INFO] [CableTraySleeveCommand:651] [CableTraySleeveCommand] Width Direction: (0.000000,1.000000,0.000000)
+[2025-08-04 14:15:47.694] [v1.0.0.0] [INFO] [CableTraySleeveCommand:652] [CableTraySleeveCommand] CableTray 1953336: Y-ORIENTED
+[2025-08-04 14:15:47.727] [v1.0.0.0] [INFO] [CableTraySleeveCommand:673] [CableTraySleeveCommand] DUPLICATION CHECK at (97.112860892, 24.052223439, 60.810730318):
 No sleeves found at location
-[2025-08-04 13:34:45.312] [v1.0.0.0] [INFO] [DuctSleevePlacer:29] [DuctSleevePlacer] Constructor called
-[2025-08-04 13:34:45.313] [v1.0.0.0] [INFO] [DuctSleeveCommand:342] [DuctSleeveCommand] DEBUG BEFORE PLACER: DuctId=1844998, HostType=FamilyInstance, HostId=5100513
-[2025-08-04 13:34:45.313] [v1.0.0.0] [INFO] [DuctSleeveCommand:343] [DuctSleeveCommand] DEBUG INTERSECTION: (98.600036, 38.765810, 60.252625)
-[2025-08-04 13:34:45.314] [v1.0.0.0] [INFO] [DuctSleeveCommand:344] [DuctSleeveCommand] DEBUG DIRECTION: (-1.000000, 0.000000, 0.000000)
-[2025-08-04 13:34:45.315] [v1.0.0.0] [INFO] [DuctSleeveCommand:345] [DuctSleeveCommand] DEBUG SIZE: Width=0.820210, Height=0.820210
-[2025-08-04 13:34:45.316] [v1.0.0.0] [INFO] [DuctSleeveCommand:346] [DuctSleeveCommand] DEBUG FAMILY: DuctOpeningOnWall - DS#
-[2025-08-04 13:34:45.317] [v1.0.0.0] [INFO] [DuctSleeveCommand:349] [DuctSleeveCommand] === DUCT ORIENTATION ANALYSIS ===
-[2025-08-04 13:34:45.318] [v1.0.0.0] [INFO] [DuctSleeveCommand:350] [DuctSleeveCommand] Duct Width Parameter: 150.0mm
-[2025-08-04 13:34:45.319] [v1.0.0.0] [INFO] [DuctSleeveCommand:351] [DuctSleeveCommand] Duct Height Parameter: 150.0mm
-[2025-08-04 13:34:45.320] [v1.0.0.0] [INFO] [DuctSleeveCommand:352] [DuctSleeveCommand] Original ductLine.Direction: (-1.000000, 0.000000, 0.000000)
-[2025-08-04 13:34:45.321] [v1.0.0.0] [INFO] [DuctSleeveCommand:353] [DuctSleeveCommand] Transformed hostLine.Direction: (-1.000000, 0.000000, 0.000000)
-[2025-08-04 13:34:45.322] [v1.0.0.0] [INFO] [DuctSleeveCommand:375] [DuctSleeveCommand] Got width direction from connector: (0.000, -1.000, 0.000)
-[2025-08-04 13:34:45.323] [v1.0.0.0] [INFO] [DuctSleeveCommand:405] [DuctSleeveCommand] Duct width direction (world): (0.000, -1.000, 0.000)
-[2025-08-04 13:34:45.324] [v1.0.0.0] [INFO] [DuctSleeveCommand:406] [DuctSleeveCommand] ORIENTATION STATUS: Y-ORIENTED
-[2025-08-04 13:34:45.325] [v1.0.0.0] [INFO] [DuctSleeveCommand:411] [DuctSleeveCommand] Passing Y-oriented duct to placer for rotation.
+[2025-08-04 14:15:47.750] [v1.0.0.0] [INFO] [CableTraySleevePlacer:32] [CableTraySleevePlacer] USING PRE-CALCULATED ORIENTATION: null
+[2025-08-04 14:15:47.761] [v1.0.0.0] [INFO] [CableTraySleevePlacer:61] [CableTraySleevePlacer] ENTRY: PlaceCableTraySleeve called with trayId=1953336
+[2025-08-04 14:15:47.761] [v1.0.0.0] [INFO] [CableTraySleevePlacer:66] [CableTraySleevePlacer] === LOG FILE START: PlaceCableTraySleeve called for cable tray 1953336 at intersection (97.112860892, 24.052223439, 60.810730318) ===
+[2025-08-04 14:15:47.762] [v1.0.0.0] [INFO] [CableTraySleevePlacer:67] [CableTraySleevePlacer] PlaceCableTraySleeve called for cable tray 1953336 at intersection (97.112860892, 24.052223439, 60.810730318)
+[2025-08-04 14:15:47.786] [v1.0.0.0] [INFO] [CableTraySleevePlacer:192] [CableTraySleevePlacer] DEBUG: intersection=(97.113,24.052,60.811), placePoint=(97.113,24.052,60.811), mmDistance=0.0, allowedOffset=105.0
+[2025-08-04 14:15:47.787] [v1.0.0.0] [INFO] [CableTraySleevePlacer:199] [CableTraySleevePlacer] Intended centerline placement: placePoint=[97.113,24.052,60.811]
+[2025-08-04 14:15:47.788] [v1.0.0.0] [INFO] [CableTraySleevePlacer:200] [CableTraySleevePlacer] Placing sleeve: width=0.328083989501312, height=0.328083989501312, intersection=(97.1128608920704,24.0522234385721,60.810730317651)
+[2025-08-04 14:15:47.788] [v1.0.0.0] [INFO] [CableTraySleevePlacer:201] [CableTraySleevePlacer] Cable tray direction: (-1, 2.70716782324592E-14, 0)
+[2025-08-04 14:15:47.791] [v1.0.0.0] [INFO] [CableTraySleevePlacer:268] [CableTraySleevePlacer] HostOrientation parameter not found or read-only for sleeveId=2146082
+[2025-08-04 14:15:47.791] [v1.0.0.0] [INFO] [CableTraySleevePlacer:271] [CableTraySleevePlacer] HostOrientation after set: '<null>' for sleeveId=2146082
+[2025-08-04 14:15:47.792] [v1.0.0.0] [INFO] [CableTraySleevePlacer:292] [CableTraySleevePlacer] WARNING: Could not set Level parameter for sleeveId=2146082. No writable level parameter found.
+[2025-08-04 14:15:47.792] [v1.0.0.0] [INFO] [CableTraySleevePlacer:295] [CableTraySleevePlacer] hostElement type: Autodesk.Revit.DB.Wall, category: Walls, id: 2700957, family: 
+[2025-08-04 14:15:47.798] [v1.0.0.0] [INFO] [CableTraySleevePlacer:411] [CableTraySleevePlacer] Setting Width to 200.0mm (internal: 0.656168) for cable tray 1953336
+[2025-08-04 14:15:47.799] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Verified Width set to 300.0mm for cable tray 1953336
+[2025-08-04 14:15:47.799] [v1.0.0.0] [INFO] [CableTraySleevePlacer:411] [CableTraySleevePlacer] Setting Height to 200.0mm (internal: 0.656168) for cable tray 1953336
+[2025-08-04 14:15:47.800] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Verified Height set to 100.0mm for cable tray 1953336
+[2025-08-04 14:15:47.801] [v1.0.0.0] [INFO] [CableTraySleevePlacer:411] [CableTraySleevePlacer] Setting Depth to 200.0mm (internal: 0.656168) for cable tray 1953336
+[2025-08-04 14:15:47.801] [v1.0.0.0] [INFO] [CableTraySleevePlacer:415] [CableTraySleevePlacer] Verified Depth set to 500.0mm for cable tray 1953336
+[2025-08-04 14:15:47.882] [v1.0.0.0] [INFO] [CableTraySleevePlacer:341] [CableTraySleevePlacer] NO ROTATION: Not framing/floor or no preCalculatedOrientation. Sleeve placed as-is.
+[2025-08-04 14:15:47.883] [v1.0.0.0] [INFO] [CableTraySleevePlacer:367] CableTray 1953336 - Intersection vs Sleeve position distance: 0.0mm
+[2025-08-04 14:15:47.884] [v1.0.0.0] [INFO] [CableTraySleevePlacer:368]   - Intersection: [97.113, 24.052, 60.811]
+[2025-08-04 14:15:47.884] [v1.0.0.0] [INFO] [CableTraySleevePlacer:369]   - Sleeve pos: [97.113, 24.052, 60.811]
+[2025-08-04 14:15:47.885] [v1.0.0.0] [INFO] [CableTraySleevePlacer:379] [CableTraySleevePlacer] Set Schedule Level to T01 for cable tray 1953336
+[2025-08-04 14:15:47.886] [v1.0.0.0] [INFO] [CableTraySleeveCommand:337] CableTray ID=1953336: Structural sleeve successfully placed at (97.112860892, 24.052223439, 60.810730318) with width-based orientation
+[2025-08-04 14:15:47.887] [v1.0.0.0] [INFO] [CableTraySleeveCommand:162] Processing CableTray ID=1953384
+[2025-08-04 14:15:47.927] [v1.0.0.0] [INFO] [EfficientIntersectionService:44] [EfficientIntersectionService] Filtered walls: 0 (from section box and bbox pre-check)
+[2025-08-04 14:15:47.995] [v1.0.0.0] [INFO] [EfficientIntersectionService:285] [EfficientIntersectionService] Pre-filtered structural elements: 2 (from 76 total)
+[2025-08-04 14:15:47.995] [v1.0.0.0] [INFO] [EfficientIntersectionService:101] [EfficientIntersectionService] Processing 2 pre-filtered structural elements
+[2025-08-04 14:15:47.996] [v1.0.0.0] [INFO] [CableTraySleeveCommand:214] CableTray ID=1953384: Wall hits: 0, Structural hits: 2
+[2025-08-04 14:15:47.997] [v1.0.0.0] [INFO] [CableTraySleeveCommand:223] [CableTraySleeveCommand] CableTray 1953384: Detected 2 floor(s) at intersection:
+[2025-08-04 14:15:47.998] [v1.0.0.0] [INFO] [CableTraySleeveCommand:230] [CableTraySleeveCommand]   Floor ID=1713828, Doc=Architecture_detached, Location=<no location>
+[2025-08-04 14:15:47.998] [v1.0.0.0] [INFO] [CableTraySleeveCommand:230] [CableTraySleeveCommand]   Floor ID=10934404, Doc=Architecture_detached, Location=<no location>
+[2025-08-04 14:15:47.999] [v1.0.0.0] [INFO] [CableTraySleeveCommand:247] CableTray ID=1953384: detected structural element: Floors, ID=1713828
+[2025-08-04 14:15:48.000] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Floors ID=1713828: STRUCTURAL DETECTED Hit by cable tray 1953384
+[2025-08-04 14:15:48.001] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1953384, Structural ID=1713828, Position=(106.969486514, 25.145670788, 62.212926509)
+[2025-08-04 14:15:48.001] [v1.0.0.0] [INFO] [CableTraySleeveCommand:276] [CableTraySleeveCommand] CABLETRAY FLOOR DEBUG: CableTray 1953384 intersects Floor 1713828 [Architecture_detached] - Status: NON-STRUCTURAL, HOST
+[2025-08-04 14:15:48.002] [v1.0.0.0] [INFO] [CableTraySleeveCommand:278] [CableTraySleeveCommand] FLOOR_PARAM_IS_STRUCTURAL value: 0 (1=structural, 0=non-structural)
+[2025-08-04 14:15:48.002] [v1.0.0.0] [INFO] [CableTraySleeveCommand:288] [CableTraySleeveCommand] SKIP: CableTray 1953384 host Floor 1713828 [Architecture_detached] is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-04 14:15:48.003] [v1.0.0.0] [INFO] [CableTraySleeveCommand:247] CableTray ID=1953384: detected structural element: Floors, ID=10934404
+[2025-08-04 14:15:48.003] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Floors ID=10934404: STRUCTURAL DETECTED Hit by cable tray 1953384
+[2025-08-04 14:15:48.004] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1953384, Structural ID=10934404, Position=(106.969486514, 25.145670788, 61.663385827)
+[2025-08-04 14:15:48.005] [v1.0.0.0] [INFO] [CableTraySleeveCommand:276] [CableTraySleeveCommand] CABLETRAY FLOOR DEBUG: CableTray 1953384 intersects Floor 10934404 [Architecture_detached] - Status: STRUCTURAL, HOST
+[2025-08-04 14:15:48.005] [v1.0.0.0] [INFO] [CableTraySleeveCommand:278] [CableTraySleeveCommand] FLOOR_PARAM_IS_STRUCTURAL value: 1 (1=structural, 0=non-structural)
+[2025-08-04 14:15:48.006] [v1.0.0.0] [INFO] [CableTraySleeveCommand:298] [CableTraySleeveCommand] CABLETRAY FLOOR SYMBOL: Found floor symbol: CabletrayOpeningOnSlab - CT#
+[2025-08-04 14:15:48.006] [v1.0.0.0] [INFO] [CableTraySleeveCommand:316] CableTray ID=1953384: Linked reference type detected: FLOOR
+[2025-08-04 14:15:48.007] [v1.0.0.0] [INFO] [CableTraySleeveCommand:325] CableTray ID=1953384: Using family: CabletrayOpeningOnSlab, Symbol: CT# for linked reference type FLOOR
+[2025-08-04 14:15:48.007] [v1.0.0.0] [INFO] [CableTraySleeveCommand:611] [CableTraySleeveCommand] ORIENTATION ANALYSIS for CableTray 1953384
+[2025-08-04 14:15:48.008] [v1.0.0.0] [INFO] [MepElementOrientationHelper:21] [MepElementOrientationHelper] === CABLETRAY ORIENTATION ANALYSIS ===
+[2025-08-04 14:15:48.009] [v1.0.0.0] [INFO] [MepElementOrientationHelper:26] [MepElementOrientationHelper] CableTray Width Parameter: 300.0mm
+[2025-08-04 14:15:48.009] [v1.0.0.0] [INFO] [MepElementOrientationHelper:45] [MepElementOrientationHelper] BoundingBox Dimensions:
+[2025-08-04 14:15:48.010] [v1.0.0.0] [INFO] [MepElementOrientationHelper:46]   - X dimension: 100.0mm
+[2025-08-04 14:15:48.010] [v1.0.0.0] [INFO] [MepElementOrientationHelper:47]   - Y dimension: 300.0mm
+[2025-08-04 14:15:48.011] [v1.0.0.0] [INFO] [MepElementOrientationHelper:48]   - Z dimension: 1200.0mm
+[2025-08-04 14:15:48.011] [v1.0.0.0] [INFO] [MepElementOrientationHelper:57] [MepElementOrientationHelper] Width Parameter Match Analysis:
+[2025-08-04 14:15:48.012] [v1.0.0.0] [INFO] [MepElementOrientationHelper:58]   - Matches X dimension: False (diff: 200.0mm)
+[2025-08-04 14:15:48.012] [v1.0.0.0] [INFO] [MepElementOrientationHelper:59]   - Matches Y dimension: True (diff: 0.0mm)
+[2025-08-04 14:15:48.013] [v1.0.0.0] [INFO] [MepElementOrientationHelper:60]   - Matches Z dimension: False (diff: 900.0mm)
+[2025-08-04 14:15:48.013] [v1.0.0.0] [INFO] [MepElementOrientationHelper:70] [MepElementOrientationHelper] Width parameter matches Y dimension → Y-ORIENTED
+[2025-08-04 14:15:48.014] [v1.0.0.0] [INFO] [CableTraySleeveCommand:650] [CableTraySleeveCommand] Flow Direction: (0.000000,0.000000,-1.000000)
+[2025-08-04 14:15:48.014] [v1.0.0.0] [INFO] [CableTraySleeveCommand:651] [CableTraySleeveCommand] Width Direction: (0.000000,1.000000,0.000000)
+[2025-08-04 14:15:48.014] [v1.0.0.0] [INFO] [CableTraySleeveCommand:652] [CableTraySleeveCommand] CableTray 1953384: Y-ORIENTED
+[2025-08-04 14:15:48.015] [v1.0.0.0] [INFO] [CableTraySleeveCommand:660] [CableTraySleeveCommand] [FLOOR] Detected Y-oriented tray (bounding box). Passing Y orientation for rotation. No width/height swap.
+[2025-08-04 14:15:48.039] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnSlab (ID:2145998) detected via bounding box at location (106.969486514, 25.145670788, 61.663385827)
+[2025-08-04 14:15:48.039] [v1.0.0.0] [INFO] [CableTraySleeveCommand:673] [CableTraySleeveCommand] DUPLICATION CHECK at (106.969486514, 25.145670788, 61.663385827):
+Cluster sleeves: DS# (ID:2145998)
+[2025-08-04 14:15:48.080] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnSlab (ID:2145998) detected via bounding box at location (106.969486514, 25.145670788, 61.663385827)
+[2025-08-04 14:15:48.081] [v1.0.0.0] [INFO] [CableTraySleeveCommand:679] [CableTraySleeveCommand] SKIP: CableTray 1953384 duplicate sleeve (individual or cluster) exists near (106.969486514, 25.145670788, 61.663385827)
+[2025-08-04 14:15:48.082] [v1.0.0.0] [INFO] [CableTraySleeveCommand:162] Processing CableTray ID=1953421
+[2025-08-04 14:15:48.122] [v1.0.0.0] [INFO] [EfficientIntersectionService:44] [EfficientIntersectionService] Filtered walls: 0 (from section box and bbox pre-check)
+[2025-08-04 14:15:48.180] [v1.0.0.0] [INFO] [EfficientIntersectionService:285] [EfficientIntersectionService] Pre-filtered structural elements: 2 (from 76 total)
+[2025-08-04 14:15:48.181] [v1.0.0.0] [INFO] [EfficientIntersectionService:101] [EfficientIntersectionService] Processing 2 pre-filtered structural elements
+[2025-08-04 14:15:48.182] [v1.0.0.0] [INFO] [CableTraySleeveCommand:214] CableTray ID=1953421: Wall hits: 0, Structural hits: 2
+[2025-08-04 14:15:48.182] [v1.0.0.0] [INFO] [CableTraySleeveCommand:223] [CableTraySleeveCommand] CableTray 1953421: Detected 2 floor(s) at intersection:
+[2025-08-04 14:15:48.183] [v1.0.0.0] [INFO] [CableTraySleeveCommand:230] [CableTraySleeveCommand]   Floor ID=1713828, Doc=Architecture_detached, Location=<no location>
+[2025-08-04 14:15:48.184] [v1.0.0.0] [INFO] [CableTraySleeveCommand:230] [CableTraySleeveCommand]   Floor ID=10934404, Doc=Architecture_detached, Location=<no location>
+[2025-08-04 14:15:48.184] [v1.0.0.0] [INFO] [CableTraySleeveCommand:247] CableTray ID=1953421: detected structural element: Floors, ID=1713828
+[2025-08-04 14:15:48.185] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Floors ID=1713828: STRUCTURAL DETECTED Hit by cable tray 1953421
+[2025-08-04 14:15:48.186] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1953421, Structural ID=1713828, Position=(107.533334452, 25.131574589, 62.212926509)
+[2025-08-04 14:15:48.186] [v1.0.0.0] [INFO] [CableTraySleeveCommand:276] [CableTraySleeveCommand] CABLETRAY FLOOR DEBUG: CableTray 1953421 intersects Floor 1713828 [Architecture_detached] - Status: NON-STRUCTURAL, HOST
+[2025-08-04 14:15:48.187] [v1.0.0.0] [INFO] [CableTraySleeveCommand:278] [CableTraySleeveCommand] FLOOR_PARAM_IS_STRUCTURAL value: 0 (1=structural, 0=non-structural)
+[2025-08-04 14:15:48.187] [v1.0.0.0] [INFO] [CableTraySleeveCommand:288] [CableTraySleeveCommand] SKIP: CableTray 1953421 host Floor 1713828 [Architecture_detached] is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-04 14:15:48.188] [v1.0.0.0] [INFO] [CableTraySleeveCommand:247] CableTray ID=1953421: detected structural element: Floors, ID=10934404
+[2025-08-04 14:15:48.188] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Floors ID=10934404: STRUCTURAL DETECTED Hit by cable tray 1953421
+[2025-08-04 14:15:48.189] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1953421, Structural ID=10934404, Position=(107.533334452, 25.131574589, 61.663385827)
+[2025-08-04 14:15:48.190] [v1.0.0.0] [INFO] [CableTraySleeveCommand:276] [CableTraySleeveCommand] CABLETRAY FLOOR DEBUG: CableTray 1953421 intersects Floor 10934404 [Architecture_detached] - Status: STRUCTURAL, HOST
+[2025-08-04 14:15:48.190] [v1.0.0.0] [INFO] [CableTraySleeveCommand:278] [CableTraySleeveCommand] FLOOR_PARAM_IS_STRUCTURAL value: 1 (1=structural, 0=non-structural)
+[2025-08-04 14:15:48.191] [v1.0.0.0] [INFO] [CableTraySleeveCommand:298] [CableTraySleeveCommand] CABLETRAY FLOOR SYMBOL: Found floor symbol: CabletrayOpeningOnSlab - CT#
+[2025-08-04 14:15:48.191] [v1.0.0.0] [INFO] [CableTraySleeveCommand:316] CableTray ID=1953421: Linked reference type detected: FLOOR
+[2025-08-04 14:15:48.192] [v1.0.0.0] [INFO] [CableTraySleeveCommand:325] CableTray ID=1953421: Using family: CabletrayOpeningOnSlab, Symbol: CT# for linked reference type FLOOR
+[2025-08-04 14:15:48.193] [v1.0.0.0] [INFO] [CableTraySleeveCommand:611] [CableTraySleeveCommand] ORIENTATION ANALYSIS for CableTray 1953421
+[2025-08-04 14:15:48.194] [v1.0.0.0] [INFO] [MepElementOrientationHelper:21] [MepElementOrientationHelper] === CABLETRAY ORIENTATION ANALYSIS ===
+[2025-08-04 14:15:48.194] [v1.0.0.0] [INFO] [MepElementOrientationHelper:26] [MepElementOrientationHelper] CableTray Width Parameter: 300.0mm
+[2025-08-04 14:15:48.195] [v1.0.0.0] [INFO] [MepElementOrientationHelper:45] [MepElementOrientationHelper] BoundingBox Dimensions:
+[2025-08-04 14:15:48.195] [v1.0.0.0] [INFO] [MepElementOrientationHelper:46]   - X dimension: 100.0mm
+[2025-08-04 14:15:48.196] [v1.0.0.0] [INFO] [MepElementOrientationHelper:47]   - Y dimension: 300.0mm
+[2025-08-04 14:15:48.197] [v1.0.0.0] [INFO] [MepElementOrientationHelper:48]   - Z dimension: 1200.0mm
+[2025-08-04 14:15:48.198] [v1.0.0.0] [INFO] [MepElementOrientationHelper:57] [MepElementOrientationHelper] Width Parameter Match Analysis:
+[2025-08-04 14:15:48.199] [v1.0.0.0] [INFO] [MepElementOrientationHelper:58]   - Matches X dimension: False (diff: 200.0mm)
+[2025-08-04 14:15:48.199] [v1.0.0.0] [INFO] [MepElementOrientationHelper:59]   - Matches Y dimension: True (diff: 0.0mm)
+[2025-08-04 14:15:48.200] [v1.0.0.0] [INFO] [MepElementOrientationHelper:60]   - Matches Z dimension: False (diff: 900.0mm)
+[2025-08-04 14:15:48.200] [v1.0.0.0] [INFO] [MepElementOrientationHelper:70] [MepElementOrientationHelper] Width parameter matches Y dimension → Y-ORIENTED
+[2025-08-04 14:15:48.201] [v1.0.0.0] [INFO] [CableTraySleeveCommand:650] [CableTraySleeveCommand] Flow Direction: (0.000000,0.000000,-1.000000)
+[2025-08-04 14:15:48.202] [v1.0.0.0] [INFO] [CableTraySleeveCommand:651] [CableTraySleeveCommand] Width Direction: (0.000000,1.000000,0.000000)
+[2025-08-04 14:15:48.202] [v1.0.0.0] [INFO] [CableTraySleeveCommand:652] [CableTraySleeveCommand] CableTray 1953421: Y-ORIENTED
+[2025-08-04 14:15:48.203] [v1.0.0.0] [INFO] [CableTraySleeveCommand:660] [CableTraySleeveCommand] [FLOOR] Detected Y-oriented tray (bounding box). Passing Y orientation for rotation. No width/height swap.
+[2025-08-04 14:15:48.227] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnSlab (ID:2145998) detected via bounding box at location (107.533334452, 25.131574589, 61.663385827)
+[2025-08-04 14:15:48.228] [v1.0.0.0] [INFO] [CableTraySleeveCommand:673] [CableTraySleeveCommand] DUPLICATION CHECK at (107.533334452, 25.131574589, 61.663385827):
+Cluster sleeves: DS# (ID:2145998)
+[2025-08-04 14:15:48.252] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnSlab (ID:2145998) detected via bounding box at location (107.533334452, 25.131574589, 61.663385827)
+[2025-08-04 14:15:48.253] [v1.0.0.0] [INFO] [CableTraySleeveCommand:679] [CableTraySleeveCommand] SKIP: CableTray 1953421 duplicate sleeve (individual or cluster) exists near (107.533334452, 25.131574589, 61.663385827)
+[2025-08-04 14:15:48.254] [v1.0.0.0] [INFO] [CableTraySleeveCommand:162] Processing CableTray ID=1953426
+[2025-08-04 14:15:48.285] [v1.0.0.0] [INFO] [EfficientIntersectionService:44] [EfficientIntersectionService] Filtered walls: 0 (from section box and bbox pre-check)
+[2025-08-04 14:15:48.343] [v1.0.0.0] [INFO] [EfficientIntersectionService:285] [EfficientIntersectionService] Pre-filtered structural elements: 2 (from 76 total)
+[2025-08-04 14:15:48.344] [v1.0.0.0] [INFO] [EfficientIntersectionService:101] [EfficientIntersectionService] Processing 2 pre-filtered structural elements
+[2025-08-04 14:15:48.345] [v1.0.0.0] [INFO] [CableTraySleeveCommand:214] CableTray ID=1953426: Wall hits: 0, Structural hits: 2
+[2025-08-04 14:15:48.345] [v1.0.0.0] [INFO] [CableTraySleeveCommand:223] [CableTraySleeveCommand] CableTray 1953426: Detected 2 floor(s) at intersection:
+[2025-08-04 14:15:48.346] [v1.0.0.0] [INFO] [CableTraySleeveCommand:230] [CableTraySleeveCommand]   Floor ID=1713828, Doc=Architecture_detached, Location=<no location>
+[2025-08-04 14:15:48.346] [v1.0.0.0] [INFO] [CableTraySleeveCommand:230] [CableTraySleeveCommand]   Floor ID=10934404, Doc=Architecture_detached, Location=<no location>
+[2025-08-04 14:15:48.347] [v1.0.0.0] [INFO] [CableTraySleeveCommand:247] CableTray ID=1953426: detected structural element: Floors, ID=1713828
+[2025-08-04 14:15:48.348] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Floors ID=1713828: STRUCTURAL DETECTED Hit by cable tray 1953426
+[2025-08-04 14:15:48.349] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1953426, Structural ID=1713828, Position=(107.223218086, 28.105872462, 62.212926509)
+[2025-08-04 14:15:48.349] [v1.0.0.0] [INFO] [CableTraySleeveCommand:276] [CableTraySleeveCommand] CABLETRAY FLOOR DEBUG: CableTray 1953426 intersects Floor 1713828 [Architecture_detached] - Status: NON-STRUCTURAL, HOST
+[2025-08-04 14:15:48.350] [v1.0.0.0] [INFO] [CableTraySleeveCommand:278] [CableTraySleeveCommand] FLOOR_PARAM_IS_STRUCTURAL value: 0 (1=structural, 0=non-structural)
+[2025-08-04 14:15:48.350] [v1.0.0.0] [INFO] [CableTraySleeveCommand:288] [CableTraySleeveCommand] SKIP: CableTray 1953426 host Floor 1713828 [Architecture_detached] is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-04 14:15:48.350] [v1.0.0.0] [INFO] [CableTraySleeveCommand:247] CableTray ID=1953426: detected structural element: Floors, ID=10934404
+[2025-08-04 14:15:48.351] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Floors ID=10934404: STRUCTURAL DETECTED Hit by cable tray 1953426
+[2025-08-04 14:15:48.352] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=1953426, Structural ID=10934404, Position=(107.223218086, 28.105872462, 61.663385827)
+[2025-08-04 14:15:48.353] [v1.0.0.0] [INFO] [CableTraySleeveCommand:276] [CableTraySleeveCommand] CABLETRAY FLOOR DEBUG: CableTray 1953426 intersects Floor 10934404 [Architecture_detached] - Status: STRUCTURAL, HOST
+[2025-08-04 14:15:48.353] [v1.0.0.0] [INFO] [CableTraySleeveCommand:278] [CableTraySleeveCommand] FLOOR_PARAM_IS_STRUCTURAL value: 1 (1=structural, 0=non-structural)
+[2025-08-04 14:15:48.353] [v1.0.0.0] [INFO] [CableTraySleeveCommand:298] [CableTraySleeveCommand] CABLETRAY FLOOR SYMBOL: Found floor symbol: CabletrayOpeningOnSlab - CT#
+[2025-08-04 14:15:48.354] [v1.0.0.0] [INFO] [CableTraySleeveCommand:316] CableTray ID=1953426: Linked reference type detected: FLOOR
+[2025-08-04 14:15:48.354] [v1.0.0.0] [INFO] [CableTraySleeveCommand:325] CableTray ID=1953426: Using family: CabletrayOpeningOnSlab, Symbol: CT# for linked reference type FLOOR
+[2025-08-04 14:15:48.355] [v1.0.0.0] [INFO] [CableTraySleeveCommand:611] [CableTraySleeveCommand] ORIENTATION ANALYSIS for CableTray 1953426
+[2025-08-04 14:15:48.355] [v1.0.0.0] [INFO] [MepElementOrientationHelper:21] [MepElementOrientationHelper] === CABLETRAY ORIENTATION ANALYSIS ===
+[2025-08-04 14:15:48.356] [v1.0.0.0] [INFO] [MepElementOrientationHelper:26] [MepElementOrientationHelper] CableTray Width Parameter: 300.0mm
+[2025-08-04 14:15:48.356] [v1.0.0.0] [INFO] [MepElementOrientationHelper:45] [MepElementOrientationHelper] BoundingBox Dimensions:
+[2025-08-04 14:15:48.357] [v1.0.0.0] [INFO] [MepElementOrientationHelper:46]   - X dimension: 100.0mm
+[2025-08-04 14:15:48.357] [v1.0.0.0] [INFO] [MepElementOrientationHelper:47]   - Y dimension: 300.0mm
+[2025-08-04 14:15:48.357] [v1.0.0.0] [INFO] [MepElementOrientationHelper:48]   - Z dimension: 1200.0mm
+[2025-08-04 14:15:48.358] [v1.0.0.0] [INFO] [MepElementOrientationHelper:57] [MepElementOrientationHelper] Width Parameter Match Analysis:
+[2025-08-04 14:15:48.358] [v1.0.0.0] [INFO] [MepElementOrientationHelper:58]   - Matches X dimension: False (diff: 200.0mm)
+[2025-08-04 14:15:48.359] [v1.0.0.0] [INFO] [MepElementOrientationHelper:59]   - Matches Y dimension: True (diff: 0.0mm)
+[2025-08-04 14:15:48.359] [v1.0.0.0] [INFO] [MepElementOrientationHelper:60]   - Matches Z dimension: False (diff: 900.0mm)
+[2025-08-04 14:15:48.360] [v1.0.0.0] [INFO] [MepElementOrientationHelper:70] [MepElementOrientationHelper] Width parameter matches Y dimension → Y-ORIENTED
+[2025-08-04 14:15:48.361] [v1.0.0.0] [INFO] [CableTraySleeveCommand:650] [CableTraySleeveCommand] Flow Direction: (0.000000,0.000000,-1.000000)
+[2025-08-04 14:15:48.362] [v1.0.0.0] [INFO] [CableTraySleeveCommand:651] [CableTraySleeveCommand] Width Direction: (0.000000,1.000000,0.000000)
+[2025-08-04 14:15:48.363] [v1.0.0.0] [INFO] [CableTraySleeveCommand:652] [CableTraySleeveCommand] CableTray 1953426: Y-ORIENTED
+[2025-08-04 14:15:48.364] [v1.0.0.0] [INFO] [CableTraySleeveCommand:660] [CableTraySleeveCommand] [FLOOR] Detected Y-oriented tray (bounding box). Passing Y orientation for rotation. No width/height swap.
+[2025-08-04 14:15:48.396] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnSlab (ID:2145999) detected via bounding box at location (107.223218086, 28.105872462, 61.663385827)
+[2025-08-04 14:15:48.397] [v1.0.0.0] [INFO] [CableTraySleeveCommand:673] [CableTraySleeveCommand] DUPLICATION CHECK at (107.223218086, 28.105872462, 61.663385827):
+Cluster sleeves: DS# (ID:2145999)
+[2025-08-04 14:15:48.423] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnSlab (ID:2145999) detected via bounding box at location (107.223218086, 28.105872462, 61.663385827)
+[2025-08-04 14:15:48.423] [v1.0.0.0] [INFO] [CableTraySleeveCommand:679] [CableTraySleeveCommand] SKIP: CableTray 1953426 duplicate sleeve (individual or cluster) exists near (107.223218086, 28.105872462, 61.663385827)
+[2025-08-04 14:15:48.424] [v1.0.0.0] [INFO] [CableTraySleeveCommand:162] Processing CableTray ID=2142742
+[2025-08-04 14:15:48.456] [v1.0.0.0] [INFO] [EfficientIntersectionService:44] [EfficientIntersectionService] Filtered walls: 0 (from section box and bbox pre-check)
+[2025-08-04 14:15:48.514] [v1.0.0.0] [INFO] [EfficientIntersectionService:285] [EfficientIntersectionService] Pre-filtered structural elements: 2 (from 76 total)
+[2025-08-04 14:15:48.515] [v1.0.0.0] [INFO] [EfficientIntersectionService:101] [EfficientIntersectionService] Processing 2 pre-filtered structural elements
+[2025-08-04 14:15:48.516] [v1.0.0.0] [INFO] [CableTraySleeveCommand:214] CableTray ID=2142742: Wall hits: 0, Structural hits: 2
+[2025-08-04 14:15:48.516] [v1.0.0.0] [INFO] [CableTraySleeveCommand:223] [CableTraySleeveCommand] CableTray 2142742: Detected 2 floor(s) at intersection:
+[2025-08-04 14:15:48.517] [v1.0.0.0] [INFO] [CableTraySleeveCommand:230] [CableTraySleeveCommand]   Floor ID=1713828, Doc=Architecture_detached, Location=<no location>
+[2025-08-04 14:15:48.518] [v1.0.0.0] [INFO] [CableTraySleeveCommand:230] [CableTraySleeveCommand]   Floor ID=10934404, Doc=Architecture_detached, Location=<no location>
+[2025-08-04 14:15:48.518] [v1.0.0.0] [INFO] [CableTraySleeveCommand:247] CableTray ID=2142742: detected structural element: Floors, ID=1713828
+[2025-08-04 14:15:48.519] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Floors ID=1713828: STRUCTURAL DETECTED Hit by cable tray 2142742
+[2025-08-04 14:15:48.520] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=2142742, Structural ID=1713828, Position=(106.848044906, 26.601182763, 62.212926509)
+[2025-08-04 14:15:48.520] [v1.0.0.0] [INFO] [CableTraySleeveCommand:276] [CableTraySleeveCommand] CABLETRAY FLOOR DEBUG: CableTray 2142742 intersects Floor 1713828 [Architecture_detached] - Status: NON-STRUCTURAL, HOST
+[2025-08-04 14:15:48.521] [v1.0.0.0] [INFO] [CableTraySleeveCommand:278] [CableTraySleeveCommand] FLOOR_PARAM_IS_STRUCTURAL value: 0 (1=structural, 0=non-structural)
+[2025-08-04 14:15:48.521] [v1.0.0.0] [INFO] [CableTraySleeveCommand:288] [CableTraySleeveCommand] SKIP: CableTray 2142742 host Floor 1713828 [Architecture_detached] is NON-STRUCTURAL. Sleeve will NOT be placed.
+[2025-08-04 14:15:48.522] [v1.0.0.0] [INFO] [CableTraySleeveCommand:247] CableTray ID=2142742: detected structural element: Floors, ID=10934404
+[2025-08-04 14:15:48.523] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] Floors ID=10934404: STRUCTURAL DETECTED Hit by cable tray 2142742
+[2025-08-04 14:15:48.523] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] CableTray-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS CableTray ID=2142742, Structural ID=10934404, Position=(106.848044906, 26.601182763, 61.663385827)
+[2025-08-04 14:15:48.524] [v1.0.0.0] [INFO] [CableTraySleeveCommand:276] [CableTraySleeveCommand] CABLETRAY FLOOR DEBUG: CableTray 2142742 intersects Floor 10934404 [Architecture_detached] - Status: STRUCTURAL, HOST
+[2025-08-04 14:15:48.524] [v1.0.0.0] [INFO] [CableTraySleeveCommand:278] [CableTraySleeveCommand] FLOOR_PARAM_IS_STRUCTURAL value: 1 (1=structural, 0=non-structural)
+[2025-08-04 14:15:48.525] [v1.0.0.0] [INFO] [CableTraySleeveCommand:298] [CableTraySleeveCommand] CABLETRAY FLOOR SYMBOL: Found floor symbol: CabletrayOpeningOnSlab - CT#
+[2025-08-04 14:15:48.525] [v1.0.0.0] [INFO] [CableTraySleeveCommand:316] CableTray ID=2142742: Linked reference type detected: FLOOR
+[2025-08-04 14:15:48.526] [v1.0.0.0] [INFO] [CableTraySleeveCommand:325] CableTray ID=2142742: Using family: CabletrayOpeningOnSlab, Symbol: CT# for linked reference type FLOOR
+[2025-08-04 14:15:48.526] [v1.0.0.0] [INFO] [CableTraySleeveCommand:611] [CableTraySleeveCommand] ORIENTATION ANALYSIS for CableTray 2142742
+[2025-08-04 14:15:48.527] [v1.0.0.0] [INFO] [MepElementOrientationHelper:21] [MepElementOrientationHelper] === CABLETRAY ORIENTATION ANALYSIS ===
+[2025-08-04 14:15:48.527] [v1.0.0.0] [INFO] [MepElementOrientationHelper:26] [MepElementOrientationHelper] CableTray Width Parameter: 300.0mm
+[2025-08-04 14:15:48.529] [v1.0.0.0] [INFO] [MepElementOrientationHelper:45] [MepElementOrientationHelper] BoundingBox Dimensions:
+[2025-08-04 14:15:48.530] [v1.0.0.0] [INFO] [MepElementOrientationHelper:46]   - X dimension: 300.0mm
+[2025-08-04 14:15:48.531] [v1.0.0.0] [INFO] [MepElementOrientationHelper:47]   - Y dimension: 100.0mm
+[2025-08-04 14:15:48.532] [v1.0.0.0] [INFO] [MepElementOrientationHelper:48]   - Z dimension: 1200.0mm
+[2025-08-04 14:15:48.533] [v1.0.0.0] [INFO] [MepElementOrientationHelper:57] [MepElementOrientationHelper] Width Parameter Match Analysis:
+[2025-08-04 14:15:48.534] [v1.0.0.0] [INFO] [MepElementOrientationHelper:58]   - Matches X dimension: True (diff: 0.0mm)
+[2025-08-04 14:15:48.535] [v1.0.0.0] [INFO] [MepElementOrientationHelper:59]   - Matches Y dimension: False (diff: 200.0mm)
+[2025-08-04 14:15:48.536] [v1.0.0.0] [INFO] [MepElementOrientationHelper:60]   - Matches Z dimension: False (diff: 900.0mm)
+[2025-08-04 14:15:48.536] [v1.0.0.0] [INFO] [MepElementOrientationHelper:65] [MepElementOrientationHelper] Width parameter matches X dimension → X-ORIENTED
+[2025-08-04 14:15:48.537] [v1.0.0.0] [INFO] [CableTraySleeveCommand:650] [CableTraySleeveCommand] Flow Direction: (0.000000,0.000000,-1.000000)
+[2025-08-04 14:15:48.537] [v1.0.0.0] [INFO] [CableTraySleeveCommand:651] [CableTraySleeveCommand] Width Direction: (1.000000,0.000000,0.000000)
+[2025-08-04 14:15:48.538] [v1.0.0.0] [INFO] [CableTraySleeveCommand:652] [CableTraySleeveCommand] CableTray 2142742: X-ORIENTED
+[2025-08-04 14:15:48.538] [v1.0.0.0] [INFO] [CableTraySleeveCommand:665] [CableTraySleeveCommand] [FLOOR] Detected X-oriented tray (bounding box). Orientation=X
+[2025-08-04 14:15:48.564] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnSlab (ID:2146000) detected via bounding box at location (106.848044906, 26.601182763, 61.663385827)
+[2025-08-04 14:15:48.564] [v1.0.0.0] [INFO] [CableTraySleeveCommand:673] [CableTraySleeveCommand] DUPLICATION CHECK at (106.848044906, 26.601182763, 61.663385827):
+Cluster sleeves: DS# (ID:2146000)
+[2025-08-04 14:15:48.589] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnSlab (ID:2146000) detected via bounding box at location (106.848044906, 26.601182763, 61.663385827)
+[2025-08-04 14:15:48.590] [v1.0.0.0] [INFO] [CableTraySleeveCommand:679] [CableTraySleeveCommand] SKIP: CableTray 2142742 duplicate sleeve (individual or cluster) exists near (106.848044906, 26.601182763, 61.663385827)
+[2025-08-04 14:15:48.609] [v1.0.0.0] [INFO] [CableTraySleeveCommand:423] Transaction committed for cable tray sleeve placement
+[2025-08-04 14:15:48.610] [v1.0.0.0] [INFO] [CableTraySleeveCommand:426] CableTraySleeveCommand summary: Total=9, Intersections=0, Placed=1, Missing=0, SkippedExisting=8, StructuralDetected=11, StructuralSleeves=1
+[2025-08-04 14:15:48.614] [v1.0.0.0] [INFO] [StructuralElementLogger:194] [STRUCTURAL] CableTraySleeveCommand summary - Processed: 9, Detected: 11, Placed: 1, Failed: 10
+[2025-08-04 14:15:48.615] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] SYSTEM ID=0: COMMAND COMPLETED Structural sleeve placement finished. Log file: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\StructuralElements_SleeveLog_20250804_141544.log
+[2025-08-04 14:15:48.616] [v1.0.0.0] [INFO] [CableTraySleeveCommand:433] Cable tray sleeves placement completed.
+[2025-08-04 14:15:48.617] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:200] Cable tray sleeve placement completed successfully
+[2025-08-04 14:15:48.618] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:103] Starting pipe sleeve placement...
+[2025-08-04 14:15:48.619] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:213] Executing PipeSleeveCommand...
+[2025-08-04 14:15:50.232] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145567) detected via bounding box at location (106.750721093, 44.291338671, 61.030839239)
+[2025-08-04 14:15:50.233] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:220] [OpeningDuplicationChecker] Found 1 cluster sleeves within 10mm of location (106.750721093, 44.291338671, 61.030839239)
+[2025-08-04 14:15:50.234] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:223]   - Cluster: ClusterOpeningOnWallX - CT# (ID:2145567)
+[2025-08-04 14:15:50.259] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145567) detected via bounding box at location (106.750721093, 44.373359669, 61.030839239)
+[2025-08-04 14:15:50.261] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:220] [OpeningDuplicationChecker] Found 1 cluster sleeves within 10mm of location (106.750721093, 44.373359669, 61.030839239)
+[2025-08-04 14:15:50.261] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:223]   - Cluster: ClusterOpeningOnWallX - CT# (ID:2145567)
+[2025-08-04 14:15:50.299] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145568) detected via bounding box at location (104.237790398, 38.205418934, 61.030839239)
+[2025-08-04 14:15:50.300] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:220] [OpeningDuplicationChecker] Found 1 cluster sleeves within 10mm of location (104.237790398, 38.205418934, 61.030839239)
+[2025-08-04 14:15:50.301] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:223]   - Cluster: ClusterOpeningOnWallX - CT# (ID:2145568)
+[2025-08-04 14:15:50.384] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145567) detected via bounding box at location (107.536667995, 44.291338671, 61.030839239)
+[2025-08-04 14:15:50.386] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:220] [OpeningDuplicationChecker] Found 1 cluster sleeves within 10mm of location (107.536667995, 44.291338671, 61.030839239)
+[2025-08-04 14:15:50.387] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:223]   - Cluster: ClusterOpeningOnWallX - CT# (ID:2145567)
+[2025-08-04 14:15:50.423] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145567) detected via bounding box at location (107.536667995, 44.373359669, 61.030839239)
+[2025-08-04 14:15:50.425] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:220] [OpeningDuplicationChecker] Found 1 cluster sleeves within 10mm of location (107.536667995, 44.373359669, 61.030839239)
+[2025-08-04 14:15:50.426] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:223]   - Cluster: ClusterOpeningOnWallX - CT# (ID:2145567)
+[2025-08-04 14:15:50.477] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145568) detected via bounding box at location (104.237790398, 37.719896017, 61.030839239)
+[2025-08-04 14:15:50.479] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:220] [OpeningDuplicationChecker] Found 1 cluster sleeves within 10mm of location (104.237790398, 37.719896017, 61.030839239)
+[2025-08-04 14:15:50.480] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:223]   - Cluster: ClusterOpeningOnWallX - CT# (ID:2145568)
+[2025-08-04 14:15:50.521] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145569) detected via bounding box at location (97.112860892, 30.914056225, 60.695661089)
+[2025-08-04 14:15:50.523] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:220] [OpeningDuplicationChecker] Found 1 cluster sleeves within 10mm of location (97.112860892, 30.914056225, 60.695661089)
+[2025-08-04 14:15:50.523] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:223]   - Cluster: ClusterOpeningOnWallX - CT# (ID:2145569)
+[2025-08-04 14:15:50.565] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145569) detected via bounding box at location (97.112860892, 30.307652538, 60.695661089)
+[2025-08-04 14:15:50.566] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145984) detected via bounding box at location (97.112860892, 30.307652538, 60.695661089)
+[2025-08-04 14:15:50.567] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:220] [OpeningDuplicationChecker] Found 2 cluster sleeves within 10mm of location (97.112860892, 30.307652538, 60.695661089)
+[2025-08-04 14:15:50.568] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:223]   - Cluster: ClusterOpeningOnWallX - CT# (ID:2145569)
+[2025-08-04 14:15:50.569] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:223]   - Cluster: ClusterOpeningOnWallX - CT# (ID:2145984)
+[2025-08-04 14:15:50.609] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145569) detected via bounding box at location (97.112860892, 29.555886951, 60.695661089)
+[2025-08-04 14:15:50.610] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145984) detected via bounding box at location (97.112860892, 29.555886951, 60.695661089)
+[2025-08-04 14:15:50.612] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:220] [OpeningDuplicationChecker] Found 2 cluster sleeves within 10mm of location (97.112860892, 29.555886951, 60.695661089)
+[2025-08-04 14:15:50.612] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:223]   - Cluster: ClusterOpeningOnWallX - CT# (ID:2145569)
+[2025-08-04 14:15:50.613] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:223]   - Cluster: ClusterOpeningOnWallX - CT# (ID:2145984)
+[2025-08-04 14:15:50.653] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145569) detected via bounding box at location (97.112860892, 28.808482517, 60.695661089)
+[2025-08-04 14:15:50.654] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145984) detected via bounding box at location (97.112860892, 28.808482517, 60.695661089)
+[2025-08-04 14:15:50.655] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:220] [OpeningDuplicationChecker] Found 2 cluster sleeves within 10mm of location (97.112860892, 28.808482517, 60.695661089)
+[2025-08-04 14:15:50.656] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:223]   - Cluster: ClusterOpeningOnWallX - CT# (ID:2145569)
+[2025-08-04 14:15:50.656] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:223]   - Cluster: ClusterOpeningOnWallX - CT# (ID:2145984)
+[2025-08-04 14:15:50.693] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145980) detected via bounding box at location (97.112860892, 27.974712229, 60.695661089)
+[2025-08-04 14:15:50.694] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:220] [OpeningDuplicationChecker] Found 1 cluster sleeves within 10mm of location (97.112860892, 27.974712229, 60.695661089)
+[2025-08-04 14:15:50.695] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:223]   - Cluster: ClusterOpeningOnWallX - CT# (ID:2145980)
+[2025-08-04 14:15:50.731] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145981) detected via bounding box at location (97.112860892, 27.067564972, 60.695661089)
+[2025-08-04 14:15:50.732] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:220] [OpeningDuplicationChecker] Found 1 cluster sleeves within 10mm of location (97.112860892, 27.067564972, 60.695661089)
+[2025-08-04 14:15:50.732] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:223]   - Cluster: ClusterOpeningOnWallX - CT# (ID:2145981)
+[2025-08-04 14:15:50.787] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145985) detected via bounding box at location (97.112860892, 26.137697644, 60.695661089)
+[2025-08-04 14:15:50.788] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:220] [OpeningDuplicationChecker] Found 1 cluster sleeves within 10mm of location (97.112860892, 26.137697644, 60.695661089)
+[2025-08-04 14:15:50.789] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:223]   - Cluster: ClusterOpeningOnWallX - CT# (ID:2145985)
+[2025-08-04 14:15:50.826] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145985) detected via bounding box at location (97.112860892, 25.486013772, 60.695661089)
+[2025-08-04 14:15:50.827] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:220] [OpeningDuplicationChecker] Found 1 cluster sleeves within 10mm of location (97.112860892, 25.486013772, 60.695661089)
+[2025-08-04 14:15:50.827] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:223]   - Cluster: ClusterOpeningOnWallX - CT# (ID:2145985)
+[2025-08-04 14:15:50.882] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnWallX (ID:2145982) detected via bounding box at location (97.112860892, 24.620400682, 60.695661089)
+[2025-08-04 14:15:50.883] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:220] [OpeningDuplicationChecker] Found 1 cluster sleeves within 10mm of location (97.112860892, 24.620400682, 60.695661089)
+[2025-08-04 14:15:50.884] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:223]   - Cluster: ClusterOpeningOnWallX - CT# (ID:2145982)
+[2025-08-04 14:15:50.914] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:209] [OpeningDuplicationChecker] Found 1 individual sleeves within 10mm of location (109.904855940, 28.963920685, 60.695661089)
+[2025-08-04 14:15:50.962] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnSlab (ID:2145997) detected via bounding box at location (98.711590234, 30.914056225, 62.212926509)
+[2025-08-04 14:15:50.998] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnSlab (ID:2145997) detected via bounding box at location (98.711590234, 30.914056225, 61.663385827)
+[2025-08-04 14:15:51.023] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:209] [OpeningDuplicationChecker] Found 1 individual sleeves within 10mm of location (102.859868541, 31.704042136, 60.695661089)
+[2025-08-04 14:15:51.061] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:209] [OpeningDuplicationChecker] Found 1 individual sleeves within 10mm of location (109.904855940, 27.067564972, 58.780844929)
+[2025-08-04 14:15:51.109] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnSlab (ID:2145879) detected via bounding box at location (101.200081075, 28.630240884, 62.212926509)
+[2025-08-04 14:15:51.110] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:220] [OpeningDuplicationChecker] Found 1 cluster sleeves within 10mm of location (101.200081075, 28.630240884, 62.212926509)
+[2025-08-04 14:15:51.111] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:223]   - Cluster: ClusterOpeningOnSlab - DS# (ID:2145879)
+[2025-08-04 14:15:51.147] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnSlab (ID:2145879) detected via bounding box at location (101.200081075, 28.630240884, 61.663385827)
+[2025-08-04 14:15:51.148] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:220] [OpeningDuplicationChecker] Found 1 cluster sleeves within 10mm of location (101.200081075, 28.630240884, 61.663385827)
+[2025-08-04 14:15:51.149] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:223]   - Cluster: ClusterOpeningOnSlab - DS# (ID:2145879)
+[2025-08-04 14:15:51.192] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnSlab (ID:2145879) detected via bounding box at location (101.404339647, 28.630240884, 62.212926509)
+[2025-08-04 14:15:51.194] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:220] [OpeningDuplicationChecker] Found 1 cluster sleeves within 10mm of location (101.404339647, 28.630240884, 62.212926509)
+[2025-08-04 14:15:51.194] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:223]   - Cluster: ClusterOpeningOnSlab - DS# (ID:2145879)
+[2025-08-04 14:15:51.222] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:126] [OpeningDuplicationChecker] Cluster ClusterOpeningOnSlab (ID:2145879) detected via bounding box at location (101.404339647, 28.630240884, 61.663385827)
+[2025-08-04 14:15:51.224] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:220] [OpeningDuplicationChecker] Found 1 cluster sleeves within 10mm of location (101.404339647, 28.630240884, 61.663385827)
+[2025-08-04 14:15:51.224] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:223]   - Cluster: ClusterOpeningOnSlab - DS# (ID:2145879)
+[2025-08-04 14:15:51.226] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:224] Pipe sleeve placement completed successfully
+[2025-08-04 14:15:51.226] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:106] Starting rectangular pipe clustering...
+[2025-08-04 14:15:51.227] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:237] Executing PipeOpeningsRectCommand...
+[2025-08-04 14:15:51.257] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:53] Starting transaction: Place Rectangular Pipe Openings
+[2025-08-04 14:15:51.270] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:82] Processing sleeve 2145558 for level assignment
+[2025-08-04 14:15:51.271] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:93] Got reference level from helper for sleeve 2145558: T01
+[2025-08-04 14:15:51.271] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:109] Setting Schedule Level for sleeve 2145558, StorageType: ElementId
+[2025-08-04 14:15:51.272] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:113] Set sleeve 2145558 Schedule Level to ElementId: 1462542 (T01)
+[2025-08-04 14:15:51.272] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:82] Processing sleeve 2145561 for level assignment
+[2025-08-04 14:15:51.273] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:93] Got reference level from helper for sleeve 2145561: T01
+[2025-08-04 14:15:51.274] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:109] Setting Schedule Level for sleeve 2145561, StorageType: ElementId
+[2025-08-04 14:15:51.275] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:113] Set sleeve 2145561 Schedule Level to ElementId: 1462542 (T01)
+[2025-08-04 14:15:51.276] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:82] Processing sleeve 2145562 for level assignment
+[2025-08-04 14:15:51.277] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:93] Got reference level from helper for sleeve 2145562: T01
+[2025-08-04 14:15:51.278] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:109] Setting Schedule Level for sleeve 2145562, StorageType: ElementId
+[2025-08-04 14:15:51.279] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:113] Set sleeve 2145562 Schedule Level to ElementId: 1462542 (T01)
+[2025-08-04 14:15:51.280] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:82] Processing sleeve 2145973 for level assignment
+[2025-08-04 14:15:51.281] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:93] Got reference level from helper for sleeve 2145973: T01
+[2025-08-04 14:15:51.282] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:109] Setting Schedule Level for sleeve 2145973, StorageType: ElementId
+[2025-08-04 14:15:51.283] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:113] Set sleeve 2145973 Schedule Level to ElementId: 1462542 (T01)
+[2025-08-04 14:15:51.283] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:82] Processing sleeve 2145975 for level assignment
+[2025-08-04 14:15:51.284] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:93] Got reference level from helper for sleeve 2145975: T01
+[2025-08-04 14:15:51.286] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:109] Setting Schedule Level for sleeve 2145975, StorageType: ElementId
+[2025-08-04 14:15:51.287] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:113] Set sleeve 2145975 Schedule Level to ElementId: 1462542 (T01)
+[2025-08-04 14:15:51.288] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:82] Processing sleeve 2145977 for level assignment
+[2025-08-04 14:15:51.289] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:93] Got reference level from helper for sleeve 2145977: T01
+[2025-08-04 14:15:51.290] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:109] Setting Schedule Level for sleeve 2145977, StorageType: ElementId
+[2025-08-04 14:15:51.291] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:113] Set sleeve 2145977 Schedule Level to ElementId: 1462542 (T01)
+[2025-08-04 14:15:51.294] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:167] Edge gap between 2145558 and 2145561: 2089.7 mm
+[2025-08-04 14:15:51.295] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:167] Edge gap between 2145558 and 2145973: 115.7 mm
+[2025-08-04 14:15:51.297] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:167] Edge gap between 2145561 and 2145973: 2348.9 mm
+[2025-08-04 14:15:51.298] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:167] Edge gap between 2145562 and 2145977: 142.6 mm
+[2025-08-04 14:15:51.299] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:179] Cluster formation complete. Total clusters: 6
+[2025-08-04 14:15:51.300] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:182] Cluster 0: 1 sleeves
+[2025-08-04 14:15:51.301] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:182] Cluster 1: 1 sleeves
+[2025-08-04 14:15:51.302] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:182] Cluster 2: 1 sleeves
+[2025-08-04 14:15:51.303] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:182] Cluster 3: 1 sleeves
+[2025-08-04 14:15:51.304] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:182] Cluster 4: 1 sleeves
+[2025-08-04 14:15:51.305] [v1.0.0.0] [INFO] [PipeOpeningsRectCommand:182] Cluster 5: 1 sleeves
+[2025-08-04 14:15:51.308] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:248] Rectangular pipe opening placement completed successfully
+[2025-08-04 14:15:51.309] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:109] Starting rectangular sleeve clustering...
+[2025-08-04 14:15:51.311] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:27] Executing RectangularSleeveClusterCommandV2...

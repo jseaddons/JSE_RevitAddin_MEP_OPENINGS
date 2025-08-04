@@ -1263,3 +1263,198 @@ No sleeves found at location
 [2025-08-04 13:34:26.488] [v1.0.0.0] [INFO] [StructuralElementLogger:194] [STRUCTURAL] CableTraySleeveCommand summary - Processed: 13, Detected: 7, Placed: 7, Failed: 0
 [2025-08-04 13:34:26.488] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] SYSTEM ID=0: COMMAND COMPLETED Structural sleeve placement finished. Log file: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\StructuralElements_SleeveLog_20250804_133415.log
 [2025-08-04 13:34:26.489] [v1.0.0.0] [INFO] [CableTraySleeveCommand:428] Cable tray sleeves placement completed.
+[2025-08-04 14:13:52.707] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:19] === [FireDamperPlaceCommand] DEBUG START ===
+[2025-08-04 14:13:52.707] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:22] [FireDamperPlaceCommand] After InitLogFile
+[2025-08-04 14:13:52.708] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:26] [FireDamperPlaceCommand] Got UIDocument and Document
+[2025-08-04 14:13:52.720] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:40] [FireDamperPlaceCommand] Found openingSymbol: DamperOpeningOnWall - DMS#
+[2025-08-04 14:13:52.722] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:60] [FireDamperPlaceCommand] Opening symbol activated
+[2025-08-04 14:13:52.767] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:65] [FireDamperPlaceCommand] damperTuples total count: 15
+[2025-08-04 14:13:52.806] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:69] [FireDamperPlaceCommand] wallTuples total count: 64
+[2025-08-04 14:13:52.817] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:78] [FireDamperPlaceCommand] existingSleeves count: 3
+[2025-08-04 14:13:52.818] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:84] [FireDamperPlaceCommand] Existing sleeve: Family=DamperOpeningOnWall, Symbol=DMS#, Location=(98.959482712, 43.834707205, 60.941601050)
+[2025-08-04 14:13:52.818] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:84] [FireDamperPlaceCommand] Existing sleeve: Family=DamperOpeningOnWall, Symbol=DMS#, Location=(98.959482712, 41.597365470, 59.875328084)
+[2025-08-04 14:13:52.819] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:84] [FireDamperPlaceCommand] Existing sleeve: Family=DamperOpeningOnWall, Symbol=DMS#, Location=(102.549857544, 40.246142736, 60.613517060)
+[2025-08-04 14:13:52.820] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:97] [FireDamperPlaceCommand] Entered Execute. damperTuples count: 15
+[2025-08-04 14:13:52.820] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1871829, Family=LPJV_MHV - Motorized fire and smoke Damper - Rectangular, Symbol=MSFD
+[2025-08-04 14:13:52.822] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1871829 - Detected connector side: Right
+[2025-08-04 14:13:52.823] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1871829 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (99.034791772, 43.752686207, 60.941601050)
+[2025-08-04 14:13:52.902] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:251] [OpeningDuplicationChecker] Found 1 individual sleeves within 100mm of location (98.959482712, 43.834707205, 60.941601050)
+[2025-08-04 14:13:52.903] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:189] [FireDamperPlaceCommand] Failed to place sleeve for damper id=1871829 in wall id=2082305
+[2025-08-04 14:13:52.903] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1872154, Family=LPJV_MHV - Motorized fire and smoke Damper - Rectangular, Symbol=MSFD
+[2025-08-04 14:13:52.905] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1872154 - Detected connector side: Top
+[2025-08-04 14:13:52.906] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1872154 - Offset vector: (0.000000000, 0.000000000, 1.000000000), Sleeve position: (98.952770774, 41.597365470, 59.875328084)
+[2025-08-04 14:13:52.932] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:251] [OpeningDuplicationChecker] Found 1 individual sleeves within 100mm of location (98.952770774, 41.597365470, 59.875328084)
+[2025-08-04 14:13:52.932] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:131] [FireDamperPlaceCommand] Skipping damper id=1872154 due to existing sleeve at location.
+[2025-08-04 14:13:52.933] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1875983, Family=M_Duct Accessary-Fire Damper-Rectangular-Simple, Symbol=Standard
+[2025-08-04 14:13:52.933] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1875983 - Detected connector side: Right
+[2025-08-04 14:13:52.934] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1875983 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (104.730006624, 41.597365470, 59.793307087)
+[2025-08-04 14:13:52.966] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1876234, Family=LPJV_MHV - Motorized fire and smoke Damper - Rectangular, Symbol=MSFD
+[2025-08-04 14:13:52.967] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1876234 - Detected connector side: Right
+[2025-08-04 14:13:52.967] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1876234 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (102.549857544, 40.246892188, 60.613517060)
+[2025-08-04 14:13:52.979] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:251] [OpeningDuplicationChecker] Found 1 individual sleeves within 100mm of location (102.549857544, 40.246892188, 60.613517060)
+[2025-08-04 14:13:52.980] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:131] [FireDamperPlaceCommand] Skipping damper id=1876234 due to existing sleeve at location.
+[2025-08-04 14:13:52.981] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=2145527, Family=DamperOpeningOnWall, Symbol=DMS#
+[2025-08-04 14:13:52.981] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=2145527 - Detected connector side: Right
+[2025-08-04 14:13:52.982] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=2145527 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (99.041503709, 43.834707205, 60.941601050)
+[2025-08-04 14:13:53.005] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:189] [FireDamperPlaceCommand] Failed to place sleeve for damper id=2145527 in wall id=2082305
+[2025-08-04 14:13:53.006] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=2145528, Family=DamperOpeningOnWall, Symbol=DMS#
+[2025-08-04 14:13:53.006] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=2145528 - Detected connector side: Right
+[2025-08-04 14:13:53.007] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=2145528 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (99.041503709, 41.597365470, 59.875328084)
+[2025-08-04 14:13:53.039] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:189] [FireDamperPlaceCommand] Failed to place sleeve for damper id=2145528 in wall id=2082305
+[2025-08-04 14:13:53.040] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=2145734, Family=DamperOpeningOnWall, Symbol=DMS#
+[2025-08-04 14:13:53.040] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=2145734 - Detected connector side: Right
+[2025-08-04 14:13:53.041] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=2145734 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (102.631878542, 40.246142736, 60.613517060)
+[2025-08-04 14:13:53.068] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:189] [FireDamperPlaceCommand] Failed to place sleeve for damper id=2145734 in wall id=10932962
+[2025-08-04 14:13:53.068] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747233, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 14:13:53.069] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747233 - Detected connector side: Right
+[2025-08-04 14:13:53.069] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747233 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (26.770415514, 18.878331000, 59.547244094)
+[2025-08-04 14:13:53.096] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747506, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 14:13:53.097] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747506 - Detected connector side: Right
+[2025-08-04 14:13:53.097] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747506 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (27.338805260, 35.341653634, 59.547244094)
+[2025-08-04 14:13:53.140] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747537, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 14:13:53.141] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747537 - Detected connector side: Right
+[2025-08-04 14:13:53.141] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747537 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (23.410905310, 31.723548334, 59.383202100)
+[2025-08-04 14:13:53.166] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747561, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 14:13:53.166] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747561 - Detected connector side: Right
+[2025-08-04 14:13:53.167] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747561 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (23.347659850, 41.221579830, 59.383202100)
+[2025-08-04 14:13:53.192] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747599, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 14:13:53.193] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747599 - Detected connector side: Left
+[2025-08-04 14:13:53.194] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747599 - Offset vector: (-1.000000000, 0.000000000, 0.000000000), Sleeve position: (23.248943126, 24.320593879, 59.875328084)
+[2025-08-04 14:13:53.226] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747619, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 14:13:53.227] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747619 - Detected connector side: Right
+[2025-08-04 14:13:53.228] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747619 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (23.475440457, 21.571477275, 59.875328084)
+[2025-08-04 14:13:53.256] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747673, Family=M_Duct Accessary-Fire Damper-Rectangular-Simple, Symbol=Standard
+[2025-08-04 14:13:53.257] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747673 - Detected connector side: Right
+[2025-08-04 14:13:53.258] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747673 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (27.590773821, 30.870529961, 61.023622047)
+[2025-08-04 14:13:53.283] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747688, Family=M_Duct Accessary-Fire Damper-Rectangular-Simple, Symbol=Standard
+[2025-08-04 14:13:53.284] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747688 - Detected connector side: Right
+[2025-08-04 14:13:53.284] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747688 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (27.559055170, 28.648740248, 61.023622047)
+[2025-08-04 14:13:53.315] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:201] FireDamperPlaceCommand summary: Total=15, Placed=0, SkippedExisting=2
+[2025-08-04 14:14:28.974] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:19] === [FireDamperPlaceCommand] DEBUG START ===
+[2025-08-04 14:14:28.975] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:22] [FireDamperPlaceCommand] After InitLogFile
+[2025-08-04 14:14:28.975] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:26] [FireDamperPlaceCommand] Got UIDocument and Document
+[2025-08-04 14:14:28.991] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:40] [FireDamperPlaceCommand] Found openingSymbol: DamperOpeningOnWall - DMS#
+[2025-08-04 14:14:28.993] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:60] [FireDamperPlaceCommand] Opening symbol activated
+[2025-08-04 14:14:29.044] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:65] [FireDamperPlaceCommand] damperTuples total count: 14
+[2025-08-04 14:14:29.095] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:69] [FireDamperPlaceCommand] wallTuples total count: 0
+[2025-08-04 14:14:29.111] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:78] [FireDamperPlaceCommand] existingSleeves count: 2
+[2025-08-04 14:14:29.111] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:84] [FireDamperPlaceCommand] Existing sleeve: Family=DamperOpeningOnWall, Symbol=DMS#, Location=(98.959482712, 43.834707205, 60.941601050)
+[2025-08-04 14:14:29.112] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:84] [FireDamperPlaceCommand] Existing sleeve: Family=DamperOpeningOnWall, Symbol=DMS#, Location=(98.959482712, 41.597365470, 59.875328084)
+[2025-08-04 14:14:29.113] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:97] [FireDamperPlaceCommand] Entered Execute. damperTuples count: 14
+[2025-08-04 14:14:29.113] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1871829, Family=LPJV_MHV - Motorized fire and smoke Damper - Rectangular, Symbol=MSFD
+[2025-08-04 14:14:29.115] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1871829 - Detected connector side: Right
+[2025-08-04 14:14:29.115] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1871829 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (99.034791772, 43.752686207, 60.941601050)
+[2025-08-04 14:14:29.155] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1872154, Family=LPJV_MHV - Motorized fire and smoke Damper - Rectangular, Symbol=MSFD
+[2025-08-04 14:14:29.155] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1872154 - Detected connector side: Top
+[2025-08-04 14:14:29.155] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1872154 - Offset vector: (0.000000000, 0.000000000, 1.000000000), Sleeve position: (98.952770774, 41.597365470, 59.875328084)
+[2025-08-04 14:14:29.167] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:251] [OpeningDuplicationChecker] Found 1 individual sleeves within 100mm of location (98.952770774, 41.597365470, 59.875328084)
+[2025-08-04 14:14:29.168] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:131] [FireDamperPlaceCommand] Skipping damper id=1872154 due to existing sleeve at location.
+[2025-08-04 14:14:29.169] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1875983, Family=M_Duct Accessary-Fire Damper-Rectangular-Simple, Symbol=Standard
+[2025-08-04 14:14:29.170] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1875983 - Detected connector side: Right
+[2025-08-04 14:14:29.171] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1875983 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (104.730006624, 41.597365470, 59.793307087)
+[2025-08-04 14:14:29.209] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1876234, Family=LPJV_MHV - Motorized fire and smoke Damper - Rectangular, Symbol=MSFD
+[2025-08-04 14:14:29.210] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1876234 - Detected connector side: Left
+[2025-08-04 14:14:29.211] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1876234 - Offset vector: (-1.000000000, 0.000000000, 0.000000000), Sleeve position: (102.385815549, 40.246892188, 60.613517060)
+[2025-08-04 14:14:29.233] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=2145527, Family=DamperOpeningOnWall, Symbol=DMS#
+[2025-08-04 14:14:29.234] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=2145527 - Detected connector side: Right
+[2025-08-04 14:14:29.235] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=2145527 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (99.041503709, 43.834707205, 60.941601050)
+[2025-08-04 14:14:29.257] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=2145528, Family=DamperOpeningOnWall, Symbol=DMS#
+[2025-08-04 14:14:29.258] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=2145528 - Detected connector side: Right
+[2025-08-04 14:14:29.259] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=2145528 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (99.041503709, 41.597365470, 59.875328084)
+[2025-08-04 14:14:29.298] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747233, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 14:14:29.299] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747233 - Detected connector side: Right
+[2025-08-04 14:14:29.300] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747233 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (26.770415514, 18.878331000, 59.547244094)
+[2025-08-04 14:14:29.339] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747506, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 14:14:29.340] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747506 - Detected connector side: Right
+[2025-08-04 14:14:29.342] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747506 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (27.338805260, 35.341653634, 59.547244094)
+[2025-08-04 14:14:29.374] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747537, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 14:14:29.375] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747537 - Detected connector side: Right
+[2025-08-04 14:14:29.375] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747537 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (23.410905310, 31.723548334, 59.383202100)
+[2025-08-04 14:14:29.399] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747561, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 14:14:29.400] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747561 - Detected connector side: Right
+[2025-08-04 14:14:29.401] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747561 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (23.347659850, 41.221579830, 59.383202100)
+[2025-08-04 14:14:29.428] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747599, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 14:14:29.429] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747599 - Detected connector side: Left
+[2025-08-04 14:14:29.430] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747599 - Offset vector: (-1.000000000, 0.000000000, 0.000000000), Sleeve position: (23.248943126, 24.320593879, 59.875328084)
+[2025-08-04 14:14:29.455] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747619, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 14:14:29.457] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747619 - Detected connector side: Right
+[2025-08-04 14:14:29.457] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747619 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (23.475440457, 21.571477275, 59.875328084)
+[2025-08-04 14:14:29.480] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747673, Family=M_Duct Accessary-Fire Damper-Rectangular-Simple, Symbol=Standard
+[2025-08-04 14:14:29.481] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747673 - Detected connector side: Right
+[2025-08-04 14:14:29.481] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747673 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (27.590773821, 30.870529961, 61.023622047)
+[2025-08-04 14:14:29.504] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747688, Family=M_Duct Accessary-Fire Damper-Rectangular-Simple, Symbol=Standard
+[2025-08-04 14:14:29.505] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747688 - Detected connector side: Right
+[2025-08-04 14:14:29.506] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747688 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (27.559055170, 28.648740248, 61.023622047)
+[2025-08-04 14:14:29.543] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:201] FireDamperPlaceCommand summary: Total=14, Placed=0, SkippedExisting=1
+[2025-08-04 14:14:37.763] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:19] === [FireDamperPlaceCommand] DEBUG START ===
+[2025-08-04 14:14:37.764] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:22] [FireDamperPlaceCommand] After InitLogFile
+[2025-08-04 14:14:37.764] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:26] [FireDamperPlaceCommand] Got UIDocument and Document
+[2025-08-04 14:14:37.775] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:40] [FireDamperPlaceCommand] Found openingSymbol: DamperOpeningOnWall - DMS#
+[2025-08-04 14:14:37.777] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:60] [FireDamperPlaceCommand] Opening symbol activated
+[2025-08-04 14:14:37.823] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:65] [FireDamperPlaceCommand] damperTuples total count: 14
+[2025-08-04 14:14:37.863] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:69] [FireDamperPlaceCommand] wallTuples total count: 64
+[2025-08-04 14:14:37.876] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:78] [FireDamperPlaceCommand] existingSleeves count: 2
+[2025-08-04 14:14:37.876] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:84] [FireDamperPlaceCommand] Existing sleeve: Family=DamperOpeningOnWall, Symbol=DMS#, Location=(98.959482712, 43.834707205, 60.941601050)
+[2025-08-04 14:14:37.877] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:84] [FireDamperPlaceCommand] Existing sleeve: Family=DamperOpeningOnWall, Symbol=DMS#, Location=(98.959482712, 41.597365470, 59.875328084)
+[2025-08-04 14:14:37.879] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:97] [FireDamperPlaceCommand] Entered Execute. damperTuples count: 14
+[2025-08-04 14:14:37.880] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1871829, Family=LPJV_MHV - Motorized fire and smoke Damper - Rectangular, Symbol=MSFD
+[2025-08-04 14:14:37.882] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1871829 - Detected connector side: Right
+[2025-08-04 14:14:37.884] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1871829 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (99.034791772, 43.752686207, 60.941601050)
+[2025-08-04 14:14:37.954] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:251] [OpeningDuplicationChecker] Found 1 individual sleeves within 100mm of location (98.959482712, 43.834707205, 60.941601050)
+[2025-08-04 14:14:37.955] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:189] [FireDamperPlaceCommand] Failed to place sleeve for damper id=1871829 in wall id=2082305
+[2025-08-04 14:14:37.956] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1872154, Family=LPJV_MHV - Motorized fire and smoke Damper - Rectangular, Symbol=MSFD
+[2025-08-04 14:14:37.956] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1872154 - Detected connector side: Top
+[2025-08-04 14:14:37.957] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1872154 - Offset vector: (0.000000000, 0.000000000, 1.000000000), Sleeve position: (98.952770774, 41.597365470, 59.875328084)
+[2025-08-04 14:14:37.970] [v1.0.0.0] [INFO] [OpeningDuplicationChecker:251] [OpeningDuplicationChecker] Found 1 individual sleeves within 100mm of location (98.952770774, 41.597365470, 59.875328084)
+[2025-08-04 14:14:37.970] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:131] [FireDamperPlaceCommand] Skipping damper id=1872154 due to existing sleeve at location.
+[2025-08-04 14:14:37.970] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1875983, Family=M_Duct Accessary-Fire Damper-Rectangular-Simple, Symbol=Standard
+[2025-08-04 14:14:37.971] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1875983 - Detected connector side: Right
+[2025-08-04 14:14:37.971] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1875983 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (104.730006624, 41.597365470, 59.793307087)
+[2025-08-04 14:14:37.996] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1876234, Family=LPJV_MHV - Motorized fire and smoke Damper - Rectangular, Symbol=MSFD
+[2025-08-04 14:14:37.997] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1876234 - Detected connector side: Left
+[2025-08-04 14:14:37.998] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1876234 - Offset vector: (-1.000000000, 0.000000000, 0.000000000), Sleeve position: (102.385815549, 40.246892188, 60.613517060)
+[2025-08-04 14:14:38.132] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:157] [FireDamperPlaceCommand] Successfully placed sleeve for damper id=1876234 in wall id=10932962
+[2025-08-04 14:14:38.132] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:165] [FireDamperPlaceCommand] === CONNECTOR DETAILS FOR DAMPER 1876234 ===
+[2025-08-04 14:14:38.133] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:166] [FireDamperPlaceCommand] Damper id=1876234 - Total connectors: 2
+[2025-08-04 14:14:38.134] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:172] [FireDamperPlaceCommand] Damper id=1876234 - Connector[0]: Origin=(102.467836547, 40.574976177, 60.613517060), BasisX=(-1.000000000, 0.000000000, 0.000000000)
+[2025-08-04 14:14:38.134] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:173] [FireDamperPlaceCommand] Damper id=1876234 - Connector[0]: X=-1.000, Y=0.000, Z=0.000
+[2025-08-04 14:14:38.135] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:174] [FireDamperPlaceCommand] Damper id=1876234 - Connector[0]: AbsX=1.000, AbsY=0.000, AbsZ=0.000
+[2025-08-04 14:14:38.135] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:172] [FireDamperPlaceCommand] Damper id=1876234 - Connector[1]: Origin=(102.467836547, 39.918808198, 60.613517060), BasisX=(1.000000000, 0.000000000, 0.000000000)
+[2025-08-04 14:14:38.136] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:173] [FireDamperPlaceCommand] Damper id=1876234 - Connector[1]: X=1.000, Y=0.000, Z=0.000
+[2025-08-04 14:14:38.136] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:174] [FireDamperPlaceCommand] Damper id=1876234 - Connector[1]: AbsX=1.000, AbsY=0.000, AbsZ=0.000
+[2025-08-04 14:14:38.137] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:180] [FireDamperPlaceCommand] Damper id=1876234 - SELECTED Connector BasisX: (-1.000000000, 0.000000000, 0.000000000)
+[2025-08-04 14:14:38.137] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:181] [FireDamperPlaceCommand] Damper id=1876234 - Direction analysis: Z=0.000 (>0.9=Top, <-0.9=Bottom), X=-1.000 (>0.9=Right, <-0.9=Left)
+[2025-08-04 14:14:38.138] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:183] [FireDamperPlaceCommand] === END CONNECTOR DETAILS ===
+[2025-08-04 14:14:38.139] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=2145527, Family=DamperOpeningOnWall, Symbol=DMS#
+[2025-08-04 14:14:38.139] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=2145527 - Detected connector side: Right
+[2025-08-04 14:14:38.140] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=2145527 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (99.041503709, 43.834707205, 60.941601050)
+[2025-08-04 14:14:38.163] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:189] [FireDamperPlaceCommand] Failed to place sleeve for damper id=2145527 in wall id=2082305
+[2025-08-04 14:14:38.164] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=2145528, Family=DamperOpeningOnWall, Symbol=DMS#
+[2025-08-04 14:14:38.165] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=2145528 - Detected connector side: Right
+[2025-08-04 14:14:38.166] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=2145528 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (99.041503709, 41.597365470, 59.875328084)
+[2025-08-04 14:14:38.208] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:189] [FireDamperPlaceCommand] Failed to place sleeve for damper id=2145528 in wall id=2082305
+[2025-08-04 14:14:38.209] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747233, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 14:14:38.210] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747233 - Detected connector side: Right
+[2025-08-04 14:14:38.211] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747233 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (26.770415514, 18.878331000, 59.547244094)
+[2025-08-04 14:14:38.235] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747506, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 14:14:38.235] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747506 - Detected connector side: Right
+[2025-08-04 14:14:38.236] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747506 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (27.338805260, 35.341653634, 59.547244094)
+[2025-08-04 14:14:38.260] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747537, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 14:14:38.261] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747537 - Detected connector side: Right
+[2025-08-04 14:14:38.261] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747537 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (23.410905310, 31.723548334, 59.383202100)
+[2025-08-04 14:14:38.286] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747561, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 14:14:38.286] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747561 - Detected connector side: Right
+[2025-08-04 14:14:38.287] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747561 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (23.347659850, 41.221579830, 59.383202100)
+[2025-08-04 14:14:38.312] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747599, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 14:14:38.312] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747599 - Detected connector side: Left
+[2025-08-04 14:14:38.313] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747599 - Offset vector: (-1.000000000, 0.000000000, 0.000000000), Sleeve position: (23.248943126, 24.320593879, 59.875328084)
+[2025-08-04 14:14:38.344] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747619, Family=M_Duct Accessory-Balancing Damper-Rectangular, Symbol=VCD
+[2025-08-04 14:14:38.345] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747619 - Detected connector side: Right
+[2025-08-04 14:14:38.346] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747619 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (23.475440457, 21.571477275, 59.875328084)
+[2025-08-04 14:14:38.373] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747673, Family=M_Duct Accessary-Fire Damper-Rectangular-Simple, Symbol=Standard
+[2025-08-04 14:14:38.374] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747673 - Detected connector side: Right
+[2025-08-04 14:14:38.375] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747673 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (27.590773821, 30.870529961, 61.023622047)
+[2025-08-04 14:14:38.403] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:107] [FireDamperPlaceCommand] Processing damper id=1747688, Family=M_Duct Accessary-Fire Damper-Rectangular-Simple, Symbol=Standard
+[2025-08-04 14:14:38.404] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:114] [FireDamperPlaceCommand] Damper id=1747688 - Detected connector side: Right
+[2025-08-04 14:14:38.405] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:120] [FireDamperPlaceCommand] Damper id=1747688 - Offset vector: (1.000000000, 0.000000000, 0.000000000), Sleeve position: (27.559055170, 28.648740248, 61.023622047)
+[2025-08-04 14:14:38.451] [v1.0.0.0] [INFO] [FireDamperPlaceCommand:201] FireDamperPlaceCommand summary: Total=14, Placed=1, SkippedExisting=1
