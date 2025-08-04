@@ -78,7 +78,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             
             void Log(string msg)
             {
-                File.AppendAllText(logPath, $"{DateTime.Now:HH:mm:ss} {msg}\n");
+                // Logging disabled
             }
             // --- End insert ---
             

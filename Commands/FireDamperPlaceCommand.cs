@@ -59,77 +59,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             }
             DebugLogger.Log("[FireDamperPlaceCommand] Opening symbol activated");
 
-            // Collect dampers (host and linked) - use direct collection instead of MEP-only helper
-            var damperTuples = new List<(FamilyInstance, Transform?)>();
-            
-            // Host dampers
-            var hostDampers = new FilteredElementCollector(doc)
-                .OfClass(typeof(FamilyInstance))
-                .Cast<FamilyInstance>()
-                .Where(fi => fi.Symbol.Family.Name.Contains("Damper"))
-                .ToList();
-            damperTuples.AddRange(hostDampers.Select(d => (d, (Transform?)null)));
-            DebugLogger.Log($"[FireDamperPlaceCommand] hostDampers count: {hostDampers.Count}");
-            
-            // Linked dampers
-            var linkInstances = new FilteredElementCollector(doc)
-                .OfClass(typeof(RevitLinkInstance))
-                .Cast<RevitLinkInstance>()
-                .Where(li => li.GetLinkDocument() != null)
-                .ToList();
-            DebugLogger.Log($"[FireDamperPlaceCommand] linkInstances count: {linkInstances.Count}");
-            foreach (var linkInstance in linkInstances)
-            {
-                // Skip hidden links (category or instance hidden in active view)
-                if (doc.ActiveView.GetCategoryHidden(linkInstance.Category.Id) || linkInstance.IsHidden(doc.ActiveView))
-                {
-                    DebugLogger.Log($"[FireDamperPlaceCommand] Skipping hidden linkInstance: {linkInstance.Name}");
-                    continue;
-                }
-                var linkedDoc = linkInstance.GetLinkDocument();
-                if (linkedDoc == null) continue;
-                var linkTransform = linkInstance.GetTotalTransform();
-                var linkedDampers = new FilteredElementCollector(linkedDoc)
-                    .OfClass(typeof(FamilyInstance))
-                    .Cast<FamilyInstance>()
-                    .Where(fi => fi.Symbol.Family.Name.Contains("Damper"))
-                    .ToList();
-                damperTuples.AddRange(linkedDampers.Select(d => (d, (Transform?)linkTransform)));
-                DebugLogger.Log($"[FireDamperPlaceCommand] linkedDampers count: {linkedDampers.Count} for linkInstance {linkInstance.Name}");
-            }
-            
+
+            // Collect visible dampers (host + visible links) using helper
+            var damperTuples = JSE_RevitAddin_MEP_OPENINGS.Helpers.MepElementCollectorHelper.CollectFamilyInstancesVisibleOnly(doc, "Damper");
             DebugLogger.Log($"[FireDamperPlaceCommand] damperTuples total count: {damperTuples.Count}");
 
-            // Collect walls (host and linked) as tuples (wall, transform)
-            var wallTuples = new List<(Wall, Transform?)>();
-            // Host walls
-            var hostWalls = new FilteredElementCollector(doc)
-                .OfClass(typeof(Wall))
-                .WhereElementIsNotElementType()
-                .Cast<Wall>()
-                .ToList();
-            wallTuples.AddRange(hostWalls.Select(w => (w, (Transform?)null)));
-            DebugLogger.Log($"[FireDamperPlaceCommand] hostWalls count: {hostWalls.Count}");
-            // Linked walls
-            foreach (var linkInstance in linkInstances)
-            {
-                // Skip hidden links (category or instance hidden in active view)
-                if (doc.ActiveView.GetCategoryHidden(linkInstance.Category.Id) || linkInstance.IsHidden(doc.ActiveView))
-                {
-                    DebugLogger.Log($"[FireDamperPlaceCommand] Skipping hidden linkInstance for walls: {linkInstance.Name}");
-                    continue;
-                }
-                var linkedDoc = linkInstance.GetLinkDocument();
-                if (linkedDoc == null) { DebugLogger.Log("[FireDamperPlaceCommand] linkInstance with null linkedDoc"); continue; }
-                var linkTransform = linkInstance.GetTotalTransform();
-                var linkedWalls = new FilteredElementCollector(linkedDoc)
-                    .OfClass(typeof(Wall))
-                    .WhereElementIsNotElementType()
-                    .Cast<Wall>()
-                    .ToList();
-                wallTuples.AddRange(linkedWalls.Select(w => (w, (Transform?)linkTransform)));
-                DebugLogger.Log($"[FireDamperPlaceCommand] linkedWalls count: {linkedWalls.Count} for linkInstance {linkInstance.Name}");
-            }
+            // Collect visible walls (host + visible links) using helper
+            var wallTuples = JSE_RevitAddin_MEP_OPENINGS.Helpers.MepElementCollectorHelper.CollectWallsVisibleOnly(doc);
+            DebugLogger.Log($"[FireDamperPlaceCommand] wallTuples total count: {wallTuples.Count}");
 
             // SUPPRESSION: Collect existing damper sleeves to avoid duplicates
             var existingSleeves = new FilteredElementCollector(doc)

@@ -8,9 +8,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// <summary>
     /// Static logger class for debug messages with support for log levels and source tracking
     /// </summary>
-    /// <summary>
-    /// Static logger class for debug messages with support for log levels and source tracking
-    /// </summary>
     public static class DebugLogger
     {
         /// <summary>
