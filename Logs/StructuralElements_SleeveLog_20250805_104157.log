@@ -1,0 +1,35 @@
+===== STRUCTURAL ELEMENTS SLEEVE PLACEMENT LOG =====
+Session Started: 2025-08-05 10:41:57
+Log File: StructuralElements_SleeveLog_20250805_104157.log
+JSE RevitAddin MEP Openings - Structural Elements Support
+====================================================
+
+[2025-08-05 10:41:57.146] SYSTEM ID=0: OPENINGS PLACE COMMAND STARTED - Master command executing all sleeve placement commands with structural support
+[2025-08-05 10:41:57.147] DIAGNOSTIC ID=999: LOGGER_TEST - This is a test entry to verify logging is working
+[2025-08-05 10:41:58.353] DIAGNOSTIC ID=0: CT_FAMILY_SEARCH - Found 110 family symbols in project
+[2025-08-05 10:41:58.357] DIAGNOSTIC ID=1049: CT_FAMILY_FOUND - Family: Section Head - Filled, Symbol: Section Head - Filled
+[2025-08-05 10:41:58.358] DIAGNOSTIC ID=16216: CT_FAMILY_FOUND - Family: Rectangular Handrail, Symbol: 50 x 50mm
+[2025-08-05 10:41:58.359] DIAGNOSTIC ID=28045: CT_FAMILY_FOUND - Family: Section Tail - Filled, Symbol: Section Tail - Filled
+[2025-08-05 10:41:58.360] DIAGNOSTIC ID=112441: CT_FAMILY_FOUND - Family: Rectangular Union, Symbol: Standard
+[2025-08-05 10:41:58.360] DIAGNOSTIC ID=498585: CT_FAMILY_FOUND - Family: Rectangular Medium Radius Bend - Flanged, Symbol: Standard
+[2025-08-05 10:41:58.361] DIAGNOSTIC ID=498587: CT_FAMILY_FOUND - Family: Rectangular Square Tee - Flanged, Symbol: Standard
+[2025-08-05 10:41:58.362] DIAGNOSTIC ID=498589: CT_FAMILY_FOUND - Family: Rectangular Shoe Branch - Flanged, Symbol: Standard
+[2025-08-05 10:41:58.363] DIAGNOSTIC ID=498591: CT_FAMILY_FOUND - Family: Rectangular Concentric Taper - Flanged, Symbol: Standard
+[2025-08-05 10:41:58.363] DIAGNOSTIC ID=498593: CT_FAMILY_FOUND - Family: Rectangular - Round Transformation - Flanged, Symbol: Standard
+[2025-08-05 10:41:58.364] DIAGNOSTIC ID=499382: CT_FAMILY_FOUND - Family: Rectangular Blank End, Symbol: Standard
+[2025-08-05 10:41:58.366] SUCCESS ID=2124183: CT_FAMILY_FOUND - Using cable tray wall sleeve family: CableTrayOpeningOnWall, Symbol: CT#
+[2025-08-05 10:41:58.367] SUCCESS ID=2126788: CT_FAMILY_FOUND - Using cable tray slab sleeve family: CabletrayOpeningOnSlab, Symbol: CT#
+[2025-08-05 10:41:58.467] SYSTEM ID=0: PROCESSING STARTED - Total cable trays to process: 1
+[2025-08-05 10:41:58.575] WALLS ID=2700957: STRUCTURAL DETECTED - Hit by cable tray 1953336
+[2025-08-05 10:41:58.576] CABLETRAY-STRUCTURAL INTERSECTION ID=0: INTERSECTION_DETAILS - CableTray ID=1953336, Structural ID=2700957, Position=(97.112860892, 24.052223439, 60.810730318)
+
+[2025-08-05 10:41:58.731] ===== CABLETRAYSLEEVECOMMAND STRUCTURAL ELEMENTS SUMMARY =====
+Total Elements Processed: 1
+Structural Elements Detected: 1
+Sleeves Successfully Placed: 1
+Placement Failures: 0
+Success Rate: 100.0%
+=========================================
+
+[2025-08-05 10:41:58.732] SYSTEM ID=0: COMMAND COMPLETED - Structural sleeve placement finished. Log file: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\StructuralElements_SleeveLog_20250805_104157.log
+[2025-08-05 10:42:00.549] SYSTEM ID=0: OPENINGS PLACE COMMAND COMPLETED - All sleeve placement commands finished. Structural log file: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\StructuralElements_SleeveLog_20250805_104157.log

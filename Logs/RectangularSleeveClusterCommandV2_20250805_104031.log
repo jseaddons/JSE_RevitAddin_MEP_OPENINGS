@@ -1,0 +1,21 @@
+===== NEW LOG SESSION STARTED 2025-08-05 10:40:31 =====
+JSE_RevitAddin_MEP_OPENINGS Debug Log: RectangularSleeveClusterCommandV2_20250805_104031.log
+Build Version: 1.0.0.0
+Build Timestamp: 2025-08-04T14:13:28.5431581+05:30
+====================================================
+[2025-08-05 10:40:31.891] [v1.0.0.0] [INFO] [RectangularSleeveClusterCommandV2:48] Assembly version: 1.0.0.0
+[2025-08-05 10:40:31.891] [v1.0.0.0] [INFO] [RectangularSleeveClusterCommandV2:49] Assembly build timestamp: 2025-08-04T14:13:28.5431581+05:30
+[2025-08-05 10:40:31.892] [v1.0.0.0] [INFO] [RectangularSleeveClusterCommandV2:50] *** RectangularSleeveClusterCommandV2 START ***
+[2025-08-05 10:40:31.946] [v1.0.0.0] [INFO] [RectangularSleeveClusterCommandV2:270] [CLUSTER-DEBUG] Cluster placement points:
+[2025-08-05 10:40:31.947] [v1.0.0.0] [INFO] [RectangularSleeveClusterCommandV2:272] [CLUSTER-DEBUG]   - (106.969, 25.146, 61.663)
+[2025-08-05 10:40:31.947] [v1.0.0.0] [INFO] [RectangularSleeveClusterCommandV2:272] [CLUSTER-DEBUG]   - (107.533, 25.132, 61.663)
+[2025-08-05 10:40:31.948] [v1.0.0.0] [INFO] [RectangularSleeveClusterCommandV2:273] [CLUSTER-DEBUG] BoundingBox Min=(106.641, 24.475, 61.237)
+[2025-08-05 10:40:31.949] [v1.0.0.0] [INFO] [RectangularSleeveClusterCommandV2:274] [CLUSTER-DEBUG] BoundingBox Max=(107.861, 25.802, 62.090)
+[2025-08-05 10:40:31.949] [v1.0.0.0] [INFO] [RectangularSleeveClusterCommandV2:275] [CLUSTER-DEBUG] BoundingBox center=(107.251, 25.139, 61.663)
+[2025-08-05 10:40:31.950] [v1.0.0.0] [INFO] [RectangularSleeveClusterCommandV2:277] [CLUSTER-DEBUG] Average placement point=(107.251, 25.139, 61.663)
+[2025-08-05 10:40:31.950] [v1.0.0.0] [INFO] [RectangularSleeveClusterCommandV2:278] [CLUSTER-DEBUG] Center-Avg delta=(0.000, 0.000, 0.000)
+[2025-08-05 10:40:32.132] [v1.0.0.0] [INFO] [RectangularSleeveClusterCommandV2:291] All symbol groups processed. Summary: 1 openings placed, 2 sleeves deleted.
+[2025-08-05 10:40:32.133] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:38] Rectangular sleeve clustering V2 completed successfully
+[2025-08-05 10:40:32.133] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:112] OpeningsPLaceCommand: All sleeve commands completed
+[2025-08-05 10:40:32.134] [v1.0.0.0] [INFO] [StructuralElementLogger:114] [STRUCTURAL] SYSTEM ID=0: OPENINGS PLACE COMMAND COMPLETED All sleeve placement commands finished. Structural log file: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\StructuralElements_SleeveLog_20250805_104024.log
+[2025-08-05 10:40:32.134] [v1.0.0.0] [INFO] [OpeningsPLaceCommand:116] OpeningsPLaceCommand: All sleeve placement commands completed. Structural elements log available at: c:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Logs\StructuralElements_SleeveLog_20250805_104024.log

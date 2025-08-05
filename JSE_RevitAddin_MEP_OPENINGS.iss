@@ -28,12 +28,16 @@ Source: "bin\Debug R24\JSE_RevitAddin_MEP_OPENINGS.addin"; DestDir: "{userappdat
 Source: "bin\Debug R24\JSE_RevitAddin_MEP_OPENINGS.dll"; DestDir: "{commonappdata}\Autodesk\Revit\Addins\2024"; Flags: ignoreversion
 Source: "bin\Debug R24\JSE_RevitAddin_MEP_OPENINGS.addin"; DestDir: "{commonappdata}\Autodesk\Revit\Addins\2024"; Flags: ignoreversion
 
+; Revit 2023 support
+Source: "bin\Debug R24\JSE_RevitAddin_MEP_OPENINGS.dll"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2023"; Flags: ignoreversion
+Source: "bin\Debug R24\JSE_RevitAddin_MEP_OPENINGS.addin"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2023"; Flags: ignoreversion
+Source: "bin\Debug R24\JSE_RevitAddin_MEP_OPENINGS.dll"; DestDir: "{commonappdata}\Autodesk\Revit\Addins\2023"; Flags: ignoreversion
+Source: "bin\Debug R24\JSE_RevitAddin_MEP_OPENINGS.addin"; DestDir: "{commonappdata}\Autodesk\Revit\Addins\2023"; Flags: ignoreversion
+
 
 [Icons]
 Name: "{autoprograms}\MEP OPENING Uninstall"; Filename: "{uninstallexe}"
 
-[Run]
-Filename: "{cmd}"; Parameters: "/C echo Installation complete. Please restart Revit to load the add-in. & pause"; Flags: runhidden
 
 
 
