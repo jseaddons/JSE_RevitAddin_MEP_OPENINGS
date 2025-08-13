@@ -584,17 +584,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var collector = new FilteredElementCollector(doc)
                 .OfClass(typeof(FamilyInstance))
                 .OfCategory(BuiltInCategory.OST_DuctAccessory);
-            bool found = false;
+
             foreach (FamilyInstance fi in collector)
             {
                 LocationPoint loc = fi.Location as LocationPoint;
-                double dist = loc != null ? loc.Point.DistanceTo(intersection) : double.MaxValue;
-                string famName = fi.Symbol.FamilyName.ToLower();
-                string typeName = fi.Symbol.Name.ToLower();
-                DebugLogger.Log($"[DuctSleevePlacer][DamperCheck] Duct {ductElementId}: Found accessory {fi.Id.Value} at dist={dist:F3}, family={famName}, type={typeName}");
-                found = true;
+                if (loc == null) continue;
+
+                double dist = loc.Point.DistanceTo(intersection);
+
+                if (dist < searchRadius)
+                {
+                    string famName = fi.Symbol.FamilyName.ToLower();
+                    string typeName = fi.Symbol.Name.ToLower();
+                    DebugLogger.Log($"[DuctSleevePlacer][DamperCheck] Duct {ductElementId}: Found damper {fi.Id.Value} at dist={dist:F3} (within radius), family={famName}, type={typeName}. Skipping sleeve placement.");
+                    return true;
+                }
             }
-            return found;
+            
+            return false;
         }
     }
 }
