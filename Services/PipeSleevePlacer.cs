@@ -294,7 +294,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (pipe != null)
                 {
-                    Level refLevel = HostLevelHelper.GetHostReferenceLevel(_doc, pipe);
+                    Level? refLevel = HostLevelHelper.GetHostReferenceLevel(_doc, pipe);
                     if (refLevel != null)
                     {
                         Parameter schedLevelParam = instance.LookupParameter("Schedule Level");

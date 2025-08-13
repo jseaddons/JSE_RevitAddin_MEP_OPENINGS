@@ -1,0 +1,34 @@
+[2025-08-13 15:37:18] Processing Duct 1836766
+[2025-08-13 15:37:18] Duct 1836766: No insulation found
+[2025-08-13 15:37:18] Duct 1836766: Returning clearance (non-insulated) = 50.00 mm
+[2025-08-13 15:37:18] Processing Duct 1838225
+[2025-08-13 15:37:18] Duct 1838225: No insulation found
+[2025-08-13 15:37:18] Duct 1838225: Returning clearance (non-insulated) = 50.00 mm
+[2025-08-13 15:37:18] Processing Duct 1841005
+[2025-08-13 15:37:18] Duct 1841005: Found insulation in host doc, insulationId=1875987
+[2025-08-13 15:37:18] Duct 1841005: Parsed insulation thickness from display string: 25 mm -> 25 mm
+[2025-08-13 15:37:18] Duct 1841005: Returning clearance (insulated) = 50.00 mm
+[2025-08-13 15:37:19] Processing Duct 1872157
+[2025-08-13 15:37:19] Duct 1872157: No insulation found
+[2025-08-13 15:37:19] Duct 1872157: Returning clearance (non-insulated) = 50.00 mm
+[2025-08-13 15:37:19] Processing Duct 1933792
+[2025-08-13 15:37:19] Duct 1933792: No insulation found
+[2025-08-13 15:37:19] Duct 1933792: Returning clearance (non-insulated) = 50.00 mm
+[2025-08-13 15:37:19] Processing Duct 1950980
+[2025-08-13 15:37:19] Duct 1950980: No insulation found
+[2025-08-13 15:37:19] Duct 1950980: Returning clearance (non-insulated) = 50.00 mm
+[2025-08-13 15:37:19] Processing Duct 1950997
+[2025-08-13 15:37:19] Duct 1950997: No insulation found
+[2025-08-13 15:37:19] Duct 1950997: Returning clearance (non-insulated) = 50.00 mm
+[2025-08-13 15:37:20] Processing Duct 1951504
+[2025-08-13 15:37:20] Duct 1951504: No insulation found
+[2025-08-13 15:37:20] Duct 1951504: Returning clearance (non-insulated) = 50.00 mm
+[2025-08-13 15:37:20] Processing Duct 1951563
+[2025-08-13 15:37:20] Duct 1951563: No insulation found
+[2025-08-13 15:37:20] Duct 1951563: Returning clearance (non-insulated) = 50.00 mm
+[2025-08-13 15:37:20] Processing Duct 2047679
+[2025-08-13 15:37:20] Duct 2047679: No insulation found
+[2025-08-13 15:37:20] Duct 2047679: Returning clearance (non-insulated) = 50.00 mm
+[2025-08-13 15:37:20] Processing Duct 2047862
+[2025-08-13 15:37:20] Duct 2047862: No insulation found
+[2025-08-13 15:37:20] Duct 2047862: Returning clearance (non-insulated) = 50.00 mm

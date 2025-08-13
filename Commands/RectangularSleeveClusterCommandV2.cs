@@ -179,7 +179,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         var (width, height, depth, mid) = ClusterBoundingBoxServices.GetClusterBoundingBox(cluster);
 
                         // Use reference level from first sleeve in cluster
-                        Level refLevel = HostLevelHelper.GetHostReferenceLevel(doc, cluster[0]);
+                        Level? refLevel = HostLevelHelper.GetHostReferenceLevel(doc, cluster[0]);
+                        if (refLevel == null)
+                        {
+                            DebugLogger.Log($"Reference level not found for cluster sleeve. Skipping cluster.");
+                            continue;
+                        }
 
                         
 
@@ -194,7 +199,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 
                         // Always use bounding box center (mid) for placement, just like X-axis
                         // Place the cluster sleeve family instance at the cluster midpoint
-                        FamilyInstance inst = doc.Create.NewFamilyInstance(mid, clusterSymbol, refLevel, StructuralType.NonStructural);
+                        FamilyInstance inst = doc.Create.NewFamilyInstance(mid, clusterSymbol, refLevel!, StructuralType.NonStructural);
 
                         // Determine if rotation is needed based on host and orientation
                         double rotationAngle = 0.0;

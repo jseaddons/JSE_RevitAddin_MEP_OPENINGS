@@ -81,8 +81,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 {
                     DebugLogger.Log($"Processing sleeve {sleeve.Id.Value} for level assignment");
                     // Try to get reference level from parameter or helper
-                    Level refLevel = HostLevelHelper.GetHostReferenceLevel(doc, sleeve);
-                    if (refLevel == null)
+                    Level? refLevelNullable = HostLevelHelper.GetHostReferenceLevel(doc, sleeve);
+                    Level refLevel;
+                    if (refLevelNullable == null)
                     {
                         var pt = (sleeve.Location as LocationPoint)?.Point ?? sleeve.GetTransform().Origin;
                         refLevel = GetNearestPositiveZLevel(doc, pt);
@@ -90,6 +91,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     }
                     else
                     {
+                        refLevel = refLevelNullable;
                         DebugLogger.Log($"Got reference level from helper for sleeve {sleeve.Id.Value}: {refLevel.Name}");
                     }
                     if (refLevel != null)
@@ -190,7 +192,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     // Use ClusterBoundingBoxServices to get bounding box and midpoint (like RectangularSleeveClusterCommandV2)
                     var (width, height, depth, mid) = ClusterBoundingBoxServices.GetClusterBoundingBox(cluster);
                     // Use reference level from first sleeve in cluster
-                    Level refLevel = HostLevelHelper.GetHostReferenceLevel(doc, cluster[0]);
+                    Level? refLevelNullable = HostLevelHelper.GetHostReferenceLevel(doc, cluster[0]);
+                    Level refLevel;
+                    if (refLevelNullable == null)
+                    {
+                        var pt = (cluster[0].Location as LocationPoint)?.Point ?? cluster[0].GetTransform().Origin;
+                        refLevel = GetNearestPositiveZLevel(doc, pt);
+                    }
+                    else
+                    {
+                        refLevel = refLevelNullable;
+                    }
                     // Duplicate suppression
                     double clusterSuppressionTol = UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters);
                     var existingRects = new FilteredElementCollector(doc)

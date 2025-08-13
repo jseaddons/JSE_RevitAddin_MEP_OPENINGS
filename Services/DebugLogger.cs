@@ -49,14 +49,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!Directory.Exists(logDir))
                     Directory.CreateDirectory(logDir);
                 // If logFileName has an extension, use as is; otherwise, add .log
-                string fileName = logFileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase) ? logFileName : logFileName + ".log";
-                LogFilePath = Path.Combine(logDir, fileName);
+                                LogFilePath = Path.Combine(logDir, logFileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase) ? logFileName : logFileName + ".log");
                 // Include build/version information
                 var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "n/a";
                 var buildTimestamp = File.GetLastWriteTime(Assembly.GetExecutingAssembly().Location).ToString("o");
                 string header =
                     $"===== NEW LOG SESSION STARTED {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n" +
-                    $"JSE_RevitAddin_MEP_OPENINGS Debug Log: {fileName}\n" +
+                    $"JSE_RevitAddin_MEP_OPENINGS Debug Log: {logFileName}\n" +
                     $"Build Version: {version}\n" +
                     $"Build Timestamp: {buildTimestamp}\n" +
                     $"====================================================\n";

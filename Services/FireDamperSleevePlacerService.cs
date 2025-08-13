@@ -409,7 +409,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 // Set the Schedule Level parameter
-                Level refLevel = JSE_RevitAddin_MEP_OPENINGS.Helpers.HostLevelHelper.GetHostReferenceLevel(_doc, accessory);
+                Level? refLevel = JSE_RevitAddin_MEP_OPENINGS.Helpers.HostLevelHelper.GetHostReferenceLevel(_doc, accessory);
                 if (refLevel != null)
                 {
                     Parameter schedLevelParam = instance.LookupParameter("Schedule Level");

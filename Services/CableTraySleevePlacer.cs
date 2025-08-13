@@ -369,7 +369,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Log($"  - Sleeve pos: [{finalPosition.X:F3}, {finalPosition.Y:F3}, {finalPosition.Z:F3}]");
 
                 // Get reference level from host element (cable tray)
-                Level refLevel = JSE_RevitAddin_MEP_OPENINGS.Helpers.HostLevelHelper.GetHostReferenceLevel(_doc, tray!);
+                Level? refLevel = JSE_RevitAddin_MEP_OPENINGS.Helpers.HostLevelHelper.GetHostReferenceLevel(_doc, tray!);
                 if (refLevel != null)
                 {
                     Parameter schedLevelParam = instance.LookupParameter("Schedule Level");
