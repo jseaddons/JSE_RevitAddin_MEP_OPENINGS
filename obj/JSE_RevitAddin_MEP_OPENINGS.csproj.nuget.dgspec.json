@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS.csproj": {}
+    "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj": {}
   },
   "projects": {
-    "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS.csproj": {
+    "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS.csproj",
+        "projectUniqueName": "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj",
         "projectName": "JSE_RevitAddin_MEP_OPENINGS",
-        "projectPath": "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS.csproj",
+        "projectPath": "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj",
         "packagesPath": "C:\\Users\\jse2084\\.nuget\\packages\\",
-        "outputPath": "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\obj\\",
+        "outputPath": "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\jse2084\\AppData\\Roaming\\NuGet\\NuGet.Config",

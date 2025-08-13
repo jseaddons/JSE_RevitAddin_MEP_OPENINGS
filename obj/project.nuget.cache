@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "V7KE8lSzoU0=",
+  "dgSpecHash": "VMVTA05dbBk=",
   "success": true,
-  "projectFilePath": "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS.csproj",
+  "projectFilePath": "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\jse2084\\.nuget\\packages\\communitytoolkit.mvvm\\8.4.0\\communitytoolkit.mvvm.8.4.0.nupkg.sha512",
     "C:\\Users\\jse2084\\.nuget\\packages\\ilrepack\\2.0.41\\ilrepack.2.0.41.nupkg.sha512",
@@ -29,9 +29,9 @@
       "code": "NU1603",
       "level": "Warning",
       "message": "JSE_RevitAddin_MEP_OPENINGS depends on Nice3point.Revit.Api.RevitAPI (>= 2024.0.2) but Nice3point.Revit.Api.RevitAPI 2024.0.2 was not found. Nice3point.Revit.Api.RevitAPI 2024.2.0 was resolved instead.",
-      "projectPath": "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS.csproj",
+      "projectPath": "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj",
       "warningLevel": 1,
-      "filePath": "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS.csproj",
+      "filePath": "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj",
       "libraryId": "Nice3point.Revit.Api.RevitAPI",
       "targetGraphs": [
         ".NETFramework,Version=v4.8"
@@ -41,9 +41,9 @@
       "code": "NU1603",
       "level": "Warning",
       "message": "JSE_RevitAddin_MEP_OPENINGS depends on Nice3point.Revit.Api.RevitAPIUI (>= 2024.0.2) but Nice3point.Revit.Api.RevitAPIUI 2024.0.2 was not found. Nice3point.Revit.Api.RevitAPIUI 2024.2.0 was resolved instead.",
-      "projectPath": "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS.csproj",
+      "projectPath": "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj",
       "warningLevel": 1,
-      "filePath": "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS.csproj",
+      "filePath": "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj",
       "libraryId": "Nice3point.Revit.Api.RevitAPIUI",
       "targetGraphs": [
         ".NETFramework,Version=v4.8"
@@ -53,9 +53,9 @@
       "code": "NU1603",
       "level": "Warning",
       "message": "JSE_RevitAddin_MEP_OPENINGS depends on Nice3point.Revit.Extensions (>= 2024.0.8) but Nice3point.Revit.Extensions 2024.0.8 was not found. Nice3point.Revit.Extensions 2024.1.0 was resolved instead.",
-      "projectPath": "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS.csproj",
+      "projectPath": "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj",
       "warningLevel": 1,
-      "filePath": "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS.csproj",
+      "filePath": "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj",
       "libraryId": "Nice3point.Revit.Extensions",
       "targetGraphs": [
         ".NETFramework,Version=v4.8"
@@ -65,9 +65,9 @@
       "code": "NU1603",
       "level": "Warning",
       "message": "JSE_RevitAddin_MEP_OPENINGS depends on Nice3point.Revit.Toolkit (>= 2024.0.5) but Nice3point.Revit.Toolkit 2024.0.5 was not found. Nice3point.Revit.Toolkit 2024.1.0 was resolved instead.",
-      "projectPath": "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS.csproj",
+      "projectPath": "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj",
       "warningLevel": 1,
-      "filePath": "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS.csproj",
+      "filePath": "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj",
       "libraryId": "Nice3point.Revit.Toolkit",
       "targetGraphs": [
         ".NETFramework,Version=v4.8"
