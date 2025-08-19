@@ -43,12 +43,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     var markParam = fi.LookupParameter("Mark");
                     if (markParam == null || markParam.IsReadOnly)
                     {
-                        DebugLogger.Warning($"Skipping element ID {fi.Id.Value}: Mark parameter is null or read-only.");
+                        DebugLogger.Warning($"Skipping element ID {fi.Id.IntegerValue}: Mark parameter is null or read-only.");
                         continue;
                     }
 
                     string existingMark = markParam.AsString();
-                    DebugLogger.Debug($"Processing element ID {fi.Id.Value}: Existing Mark = '{existingMark}', Family Name = '{fi.Symbol.Family.Name}', Family Type Name = '{fi.Symbol.Name}'");
+                    DebugLogger.Debug($"Processing element ID {fi.Id.IntegerValue}: Existing Mark = '{existingMark}', Family Name = '{fi.Symbol.Family.Name}', Family Type Name = '{fi.Symbol.Name}'");
 
                     // Remove previously added prefix if present
                     if (!string.IsNullOrEmpty(existingMark) && existingMark.StartsWith(prefix))
@@ -90,7 +90,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     }
                     else
                     {
-                        DebugLogger.Warning($"Element ID {fi.Id.Value} does not match any known family name patterns. Family Name: {familyName}, Type Name: {typeName}");
+                        DebugLogger.Warning($"Element ID {fi.Id.IntegerValue} does not match any known family name patterns. Family Name: {familyName}, Type Name: {typeName}");
                     }
                 }
 

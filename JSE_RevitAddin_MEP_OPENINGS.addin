@@ -2,7 +2,7 @@
 <RevitAddIns>
 	<AddIn Type="Application">
 		<Name>JSE_RevitAddin_MEP_OPENINGS</Name>
-		<Assembly>X:\JSE_RevitAddin_MEP_OPENINGS.dll</Assembly>
+		<Assembly>JSE_RevitAddin_MEP_OPENINGS.dll</Assembly>
 		<AddInId>8084851F-2670-4ED8-80C6-B643B82F032D</AddInId>
 		<FullClassName>JSE_RevitAddin_MEP_OPENINGS.Application</FullClassName>
 		<VendorId>JSE</VendorId>

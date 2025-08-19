@@ -19,19 +19,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <returns>True if a cluster sleeve exists at the location</returns>
         public static bool IsClusterSleeveAtLocation(Document doc, XYZ location, double tolerance)
         {
-            var collector = new FilteredElementCollector(doc)
-                .OfClass(typeof(FamilyInstance))
-                .Cast<FamilyInstance>()
-                .Where(fi => fi.Symbol.Family.Name.StartsWith("Cluster", StringComparison.OrdinalIgnoreCase));
-
-            foreach (var fi in collector)
+            // Delegate to OpeningDuplicationChecker which implements section-box aware
+            // cluster bounding-box checks and hostType filtering. This avoids scanning all
+            // Cluster families in large models.
+            try
             {
-                var fiLocation = (fi.Location as LocationPoint)?.Point;
-                if (fiLocation == null) continue;
-                if (location.DistanceTo(fiLocation) <= tolerance)
-                    return true;
+                if (doc == null)
+                {
+                    return false;
+                }
+                // No hostType provided here; the caller should use host-specific checks when possible.
+                // Try to respect the active 3D view section box to avoid scanning the entire document
+                BoundingBoxXYZ? sectionBox = null;
+                try { if (doc?.ActiveView is View3D vb) sectionBox = JSE_RevitAddin_MEP_OPENINGS.Helpers.SectionBoxHelper.GetSectionBoxBounds(vb); } catch { }
+                bool inside = OpeningDuplicationChecker.IsLocationWithinClusterBounds(doc!, location, tolerance, null, sectionBox);
+                return inside;
             }
-            return false;
+            catch
+            {
+                // Fallback to conservative scan if the checker fails
+                var collector = new FilteredElementCollector(doc)
+                    .OfClass(typeof(FamilyInstance))
+                    .Cast<FamilyInstance>()
+                    .Where(fi => fi.Symbol.Family.Name.StartsWith("Cluster", StringComparison.OrdinalIgnoreCase));
+
+                foreach (var fi in collector)
+                {
+                    var fiLocation = (fi.Location as LocationPoint)?.Point;
+                    if (fiLocation == null) continue;
+                    if (location.DistanceTo(fiLocation) <= tolerance)
+                        return true;
+                }
+                return false;
+            }
         }
     }
 }

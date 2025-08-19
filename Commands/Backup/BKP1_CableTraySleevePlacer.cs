@@ -28,7 +28,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             Element hostElement)
         {
             DebugLogger.Log($"[CableTraySleevePlacer] ENTRY: PlaceCableTraySleeve called with trayId={(tray != null ? tray.Id.IntegerValue.ToString() : "null")}");
-            int cableTrayId = (tray != null) ? (int)tray.Id.Value : 0;
+            int cableTrayId = (tray != null) ? (int)tray.Id.IntegerValue : 0;
             try
             {
                 DebugLogger.Log($"[CableTraySleevePlacer] === LOG FILE START: PlaceCableTraySleeve called for cable tray {cableTrayId} at intersection {intersection} ===");
@@ -187,7 +187,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             placePoint = intersection; // no offset for floor
             DebugLogger.Log($"[CableTraySleevePlacer] Cable tray direction for floor sleeve: ({direction.X:F3}, {direction.Y:F3}, {direction.Z:F3})");
                 }
-                else if (hostElement is FamilyInstance famInst && famInst.Category != null && famInst.Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming)
+                else if (hostElement is FamilyInstance famInst && famInst.Category != null && famInst.Category.Id.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
                 {
             var framingType = famInst.Symbol;
             var bParam = framingType.LookupParameter("b");
@@ -270,7 +270,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     hostOrientationToSet = "FloorHosted";
                 }
-                else if (hostElement is FamilyInstance famInst2 && famInst2.Category != null && famInst2.Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming)
+                else if (hostElement is FamilyInstance famInst2 && famInst2.Category != null && famInst2.Category.Id.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
                 {
                     var locationCurve = famInst2.Location as LocationCurve;
                     if (locationCurve != null)
@@ -302,14 +302,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (hostOrientationParam != null && !hostOrientationParam.IsReadOnly)
                 {
                     hostOrientationParam.Set(hostOrientationToSet);
-                    DebugLogger.Log($"[CableTraySleevePlacer] HostOrientation set to '{hostOrientationToSet}' for sleeveId={instance.Id.Value}");
+                    DebugLogger.Log($"[CableTraySleevePlacer] HostOrientation set to '{hostOrientationToSet}' for sleeveId={instance.Id.IntegerValue}");
                 }
                 else
                 {
-                    DebugLogger.Log($"[CableTraySleevePlacer] HostOrientation parameter not found or read-only for sleeveId={instance.Id.Value}");
+                    DebugLogger.Log($"[CableTraySleevePlacer] HostOrientation parameter not found or read-only for sleeveId={instance.Id.IntegerValue}");
                 }
                 string hostOrientationValue = hostOrientationParam != null ? hostOrientationParam.AsString() : "<null>";
-                DebugLogger.Log($"[CableTraySleevePlacer] HostOrientation after set: '{hostOrientationValue}' for sleeveId={instance.Id.Value}");
+                DebugLogger.Log($"[CableTraySleevePlacer] HostOrientation after set: '{hostOrientationValue}' for sleeveId={instance.Id.IntegerValue}");
 
                 // Explicitly set the Level parameter for schedule consistency
                 Parameter levelParam = instance.get_Parameter(BuiltInParameter.INSTANCE_REFERENCE_LEVEL_PARAM);
@@ -326,7 +326,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 DebugLogger.Log($"[CableTraySleevePlacer] hostElement type: {hostElement?.GetType().FullName}, category: {hostElement?.Category?.Name}, id: {hostElement?.Id}, family: {(hostElement as FamilyInstance)?.Symbol?.FamilyName}");
                 bool isFloorHost = hostElement is Floor
-                    || (hostElement is FamilyInstance fi && fi.Category != null && fi.Category.Id.Value == (int)BuiltInCategory.OST_Floors);
+                    || (hostElement is FamilyInstance fi && fi.Category != null && fi.Category.Id.IntegerValue == (int)BuiltInCategory.OST_Floors);
                 // Use helper for clearance
                 double clearance = JSE_RevitAddin_MEP_OPENINGS.Helpers.SleeveClearanceHelper.GetClearance(tray);
                 double widthWithClearance = width + 2 * clearance;
@@ -362,7 +362,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 shouldRotate = JSE_RevitAddin_MEP_OPENINGS.Helpers.SleeveRiserOrientationHelper.ShouldRotateRiserSleeve(tray, loc.Point, width, height);
                             }
                             JSE_RevitAddin_MEP_OPENINGS.Helpers.SleeveRiserOrientationHelper.LogRiserDebugInfo(
-                                "CableTray", (int)tray.Id.Value, bbox, width, height, loc.Point, hostElement, direction, shouldRotate);
+                                "CableTray", (int)tray.Id.IntegerValue, bbox, width, height, loc.Point, hostElement, direction, shouldRotate);
                             if (isVertical && shouldRotate)
                             {
                                 Line axis = Line.CreateBound(loc.Point, loc.Point + XYZ.BasisZ);
@@ -409,7 +409,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // }
 // ------------- END MASTER FIX -------------
                 // Framing-normal based rotation for framing hosts - COMMENTED OUT FOR DEBUGGING
-                // if (hostElement is FamilyInstance framingInst && framingInst.Category != null && framingInst.Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming)
+                // if (hostElement is FamilyInstance framingInst && framingInst.Category != null && framingInst.Category.Id.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
                 // {
                 //     LocationCurve lc = framingInst.Location as LocationCurve;
                 //     if (lc?.Curve is Line framingLn)

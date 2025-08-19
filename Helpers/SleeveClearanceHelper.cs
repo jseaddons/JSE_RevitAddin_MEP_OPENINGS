@@ -17,7 +17,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
             if (mepElement is Duct duct)
             {
                 double insulationThickness = 0.0;
-                int ductId = (int)(duct.Id?.Value ?? 0);
+                int ductId = (int)(duct.Id?.IntegerValue ?? 0);
                 string logDir = @"C:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Log";
                 if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                 string logFile = Path.Combine(logDir, $"SleeveClearanceHelperLog_{DateTime.Now:yyyyMMdd}.log");
@@ -30,7 +30,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                     .FirstOrDefault(ins => ins.HostElementId == duct.Id);
                 if (insulation != null)
                 {
-                    Log($"Duct {ductId}: Found insulation in host doc, insulationId={(insulation.Id != null ? insulation.Id.Value.ToString() : "null")}");
+                    Log($"Duct {ductId}: Found insulation in host doc, insulationId={(insulation.Id != null ? insulation.Id.IntegerValue.ToString() : "null")}");
                 }
                 // If not found, search in all visible linked documents
                 if (insulation == null)
@@ -46,7 +46,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                                 .FirstOrDefault(ins => ins.HostElementId == duct.Id);
                             if (linkIns != null)
                             {
-                                Log($"Duct {ductId}: Found insulation in linked doc, insulationId={(linkIns.Id != null ? linkIns.Id.Value.ToString() : "null")}");
+                                Log($"Duct {ductId}: Found insulation in linked doc, insulationId={(linkIns.Id != null ? linkIns.Id.IntegerValue.ToString() : "null")}");
                             }
                             if (linkIns != null)
                             {

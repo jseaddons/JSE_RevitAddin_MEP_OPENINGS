@@ -36,8 +36,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public void PlaceDuctSleeveWithOrientation(Duct duct, XYZ intersection, double width, double height, 
             XYZ ductDirection, XYZ preCalculatedOrientation, FamilySymbol sleeveSymbol, Element hostElement, XYZ? faceNormal = null)
         {
-            JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.SetDuctLogFile();
-            int ductElementId = (int)(duct?.Id?.Value ?? 0);
+            int ductElementId = (int)(duct?.Id?.IntegerValue ?? 0);
             try
             {
                 DebugLogger.Log($"[DuctSleevePlacer] USING PRE-CALCULATED ORIENTATION: ({preCalculatedOrientation.X:F6},{preCalculatedOrientation.Y:F6},{preCalculatedOrientation.Z:F6})");
@@ -50,14 +49,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 // Call the standard placement method but with the pre-calculated orientation
                 PlaceDuctSleeve(duct, intersection, width, height, ductDirection, sleeveSymbol, hostElement, faceNormal, preCalculatedOrientation);
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Log($"[DuctSleevePlacer] Exception in PlaceDuctSleeveWithOrientation for duct {ductElementId}: {ex.Message}");
-                DebugLogger.Log($"[DuctSleevePlacer] Stack trace: {ex.StackTrace}");
-                SleeveLogManager.LogDuctSleeveFailure(ductElementId, $"Exception during placement: {ex.Message}");
-                throw; // Re-throw to ensure error is not silently ignored
-            }
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Log($"[DuctSleevePlacer] Exception in PlaceDuctSleeveWithOrientation for duct {ductElementId}: {ex.Message}");
+                    DebugLogger.Log($"[DuctSleevePlacer] Stack trace: {ex.StackTrace}");
+                    DebugLogger.Error($"[DuctSleevePlacer] FAILURE: Exception during placement for duct {ductElementId}: {ex.Message}");
+                    throw; // Re-throw to ensure error is not silently ignored
+                }
         }
 
         /// <summary>
@@ -67,7 +66,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             XYZ ductDirection, FamilySymbol sleeveSymbol, Element hostElement, XYZ? faceNormal = null, XYZ? preCalculatedOrientation = null)
         {
             JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.SetDuctLogFile();
-            int ductElementId = (int)(duct?.Id?.Value ?? 0);
+            int ductElementId = (int)(duct?.Id?.IntegerValue ?? 0);
             try
             {
                 DebugLogger.Log($"[DuctSleevePlacer] DIAGNOSTIC: Called for ductId={ductElementId}, hostType={hostElement?.GetType().Name}, direction=({ductDirection.X:F3},{ductDirection.Y:F3},{ductDirection.Z:F3})");
@@ -83,7 +82,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (duct == null || intersection == null || sleeveSymbol == null || hostElement == null)
                 {
                     DebugLogger.Log($"[DuctSleevePlacer] Null parameter check failed");
-                    SleeveLogManager.LogDuctSleeveFailure(ductElementId, "Null parameters provided");
+                    DebugLogger.Error($"[DuctSleevePlacer] FAILURE: Null parameters provided for duct {ductElementId}");
                     return;
                 }
 
@@ -91,7 +90,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (hostElement is Wall hostWall && IsDamperAtIntersection(_doc, intersection, hostWall, ductElementId))
                 {
                     DebugLogger.Log($"[DuctSleevePlacer] Damper detected at intersection for duct {ductElementId}, skipping sleeve placement.");
-                    SleeveLogManager.LogDuctSleeveFailure(ductElementId, "Damper present at intersection");
+                    DebugLogger.Warning($"[DuctSleevePlacer] FAILURE: Damper present at intersection for duct {ductElementId}");
                     return;
                 }
 
@@ -115,7 +114,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (ductEndDist < quarterWall)
                     {
                         DebugLogger.Log($"[DuctSleevePlacer] Duct {ductElementId} ends before 1/4 wall depth (dist={ductEndDist:F3}, 1/4 wall={quarterWall:F3}), skipping sleeve placement.");
-                        SleeveLogManager.LogDuctSleeveFailure(ductElementId, "Duct ends before 1/4 wall depth");
+                        DebugLogger.Warning($"[DuctSleevePlacer] FAILURE: Duct ends before 1/4 wall depth for duct {ductElementId}");
                         return;
                     }
                 }
@@ -126,12 +125,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     Parameter structuralParam = floor.get_Parameter(BuiltInParameter.FLOOR_PARAM_IS_STRUCTURAL);
                     bool isStructural = structuralParam?.AsInteger() == 1;
                     
-                    DebugLogger.Log($"[DuctSleevePlacer] STRUCTURAL CHECK: FloorId={floor.Id.Value}, IsStructural={isStructural}");
+                    DebugLogger.Log($"[DuctSleevePlacer] STRUCTURAL CHECK: FloorId={floor.Id.IntegerValue}, IsStructural={isStructural}");
                     
                     if (!isStructural)
                     {
-                        DebugLogger.Log($"[DuctSleevePlacer] ERROR: Non-structural floor {floor.Id.Value} passed to duct placer! This should have been filtered in the command. Skipping placement for duct {ductElementId}.");
-                        SleeveLogManager.LogDuctSleeveFailure(ductElementId, $"Non-structural floor {floor.Id.Value} - should be filtered in command");
+                        DebugLogger.Log($"[DuctSleevePlacer] ERROR: Non-structural floor {floor.Id.IntegerValue} passed to duct placer! This should have been filtered in the command. Skipping placement for duct {ductElementId}.");
+                        DebugLogger.Warning($"[DuctSleevePlacer] FAILURE: Non-structural floor {floor.Id.IntegerValue} for duct {ductElementId}");
                         return;
                     }
                     
@@ -181,7 +180,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     placePoint = intersection; // no offset for floor
                     DebugLogger.Log($"[DuctSleevePlacer] Duct direction for floor sleeve: ({ductDirection.X:F3}, {ductDirection.Y:F3}, {ductDirection.Z:F3})");
                 }
-                else if (hostElement is FamilyInstance famInst && famInst.Category != null && famInst.Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming)
+                else if (hostElement is FamilyInstance famInst && famInst.Category != null && famInst.Category.Id.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
                 {
                     var framingType = famInst.Symbol;
                     var bParam = framingType.LookupParameter("b");
@@ -196,7 +195,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 else
                 {
                     DebugLogger.Log($"[DuctSleevePlacer] Unsupported host type for duct {ductElementId}, skipping");
-                    SleeveLogManager.LogDuctSleeveFailure(ductElementId, "Unsupported host type");
+                    DebugLogger.Warning($"[DuctSleevePlacer] FAILURE: Unsupported host type for duct {ductElementId}");
                     return;
                 }
 
@@ -213,7 +212,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (level == null)
                 {
                     DebugLogger.Log($"[DuctSleevePlacer] No level found for placement");
-                    SleeveLogManager.LogDuctSleeveFailure(ductElementId, "No level found for placement");
+                    DebugLogger.Error($"[DuctSleevePlacer] FAILURE: No level found for placement for duct {ductElementId}");
                     return;
                 }
 
@@ -227,7 +226,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (isAtOrigin || isTooFar)
                 {
                     DebugLogger.Log($"[DuctSleevePlacer] ERROR: placePoint invalid for duct {ductElementId}: isAtOrigin={isAtOrigin}, isTooFar={isTooFar}, mmDistance={mmDistance:F1}, allowedOffset={allowedOffset:F1}. Skipping placement. Intersection: [{intersection.X:F3},{intersection.Y:F3},{intersection.Z:F3}], placePoint: [{placePoint.X:F3},{placePoint.Y:F3},{placePoint.Z:F3}]");
-                    SleeveLogManager.LogDuctSleeveFailure(ductElementId, $"Invalid placePoint: isAtOrigin={isAtOrigin}, isTooFar={isTooFar}, mmDistance={mmDistance:F1}, allowedOffset={allowedOffset:F1}");
+                    DebugLogger.Warning($"[DuctSleevePlacer] FAILURE: Invalid placePoint for duct {ductElementId}: isAtOrigin={isAtOrigin}, isTooFar={isTooFar}, mmDistance={mmDistance:F1}, allowedOffset={allowedOffset:F1}");
                     return;
                 }
 
@@ -265,7 +264,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     hostOrientationToSet = "FloorHosted";
                 }
-                else if (hostElement is FamilyInstance famInst && famInst.Category != null && famInst.Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming)
+                else if (hostElement is FamilyInstance famInst && famInst.Category != null && famInst.Category.Id.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
                 {
                     // Use framing direction to determine orientation (X or Y)
                     var locationCurve = famInst.Location as LocationCurve;
@@ -299,15 +298,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (hostOrientationParam != null && !hostOrientationParam.IsReadOnly)
                 {
                     hostOrientationParam.Set(hostOrientationToSet);
-                    DebugLogger.Log($"[DuctSleevePlacer] HostOrientation set to '{hostOrientationToSet}' for sleeveId={instance.Id.Value}");
+                    DebugLogger.Log($"[DuctSleevePlacer] HostOrientation set to '{hostOrientationToSet}' for sleeveId={instance.Id.IntegerValue}");
                 }
                 else
                 {
-                    DebugLogger.Log($"[DuctSleevePlacer] HostOrientation parameter not found or read-only for sleeveId={instance.Id.Value}");
+                    DebugLogger.Log($"[DuctSleevePlacer] HostOrientation parameter not found or read-only for sleeveId={instance.Id.IntegerValue}");
                 }
                 // Explicitly log HostOrientation value after setting
                 string hostOrientationValue = hostOrientationParam != null ? hostOrientationParam.AsString() : "<null>";
-                DebugLogger.Log($"[DuctSleevePlacer] HostOrientation after set: '{hostOrientationValue}' for sleeveId={instance.Id.Value}");
+                DebugLogger.Log($"[DuctSleevePlacer] HostOrientation after set: '{hostOrientationValue}' for sleeveId={instance.Id.IntegerValue}");
                 // Explicitly set the Level parameter for schedule consistency
                 Parameter levelParam = instance.get_Parameter(BuiltInParameter.INSTANCE_REFERENCE_LEVEL_PARAM);
                 if (levelParam != null && !levelParam.IsReadOnly)
@@ -342,13 +341,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DebugLogger.Log($"[DuctSleevePlacer] Warning during regenerate: {ex.Message}");
                 }
                 
-                DebugLogger.Log($"[DuctSleevePlacer] PLACED: ductId={ductElementId}, sleeveId={instance.Id.Value}, at {intersection}");
+                DebugLogger.Log($"[DuctSleevePlacer] PLACED: ductId={ductElementId}, sleeveId={instance.Id.IntegerValue}, at {intersection}");
 
                 // Only rotate for Y-axis ducts
                 // Align sleeve to duct direction for ALL host types
                 DebugLogger.Log($"[DuctSleevePlacer] hostElement type: {hostElement?.GetType().FullName}, category: {hostElement?.Category?.Name}, id: {hostElement?.Id}, family: {(hostElement as FamilyInstance)?.Symbol?.FamilyName}");
                 bool isFloorHost = hostElement is Floor
-                    || (hostElement is FamilyInstance fi && fi.Category != null && fi.Category.Id.Value == (int)BuiltInCategory.OST_Floors);
+                    || (hostElement is FamilyInstance fi && fi.Category != null && fi.Category.Id.IntegerValue == (int)BuiltInCategory.OST_Floors);
                 
                 try
                 {
@@ -441,7 +440,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Log($"Duct {ductElementId} - Intersection vs Sleeve position distance: {finalDistance:F1}mm");
                 DebugLogger.Log($"  - Intersection: [{intersection.X:F3}, {intersection.Y:F3}, {intersection.Z:F3}]");
                 DebugLogger.Log($"  - Sleeve pos: [{finalPosition.X:F3}, {finalPosition.Y:F3}, {finalPosition.Z:F3}]");
-                SleeveLogManager.LogDuctSleeveSuccess(ductElementId, (int)instance.Id.Value, finalWidth, finalHeight, finalPosition);
+                DebugLogger.Info($"[DuctSleevePlacer] SUCCESS: Placed sleeve for duct {ductElementId} -> sleeveId={(int)instance.Id.IntegerValue}, width={finalWidth:F1}mm, height={finalHeight:F1}mm, pos=({finalPosition.X:F3},{finalPosition.Y:F3},{finalPosition.Z:F3})");
                 
                 // Get reference level from host element (duct)
                 Level? refLevel = HostLevelHelper.GetHostReferenceLevel(_doc, duct);
@@ -459,7 +458,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 DebugLogger.Log($"[DuctSleevePlacer] Exception in PlaceDuctSleeve for duct {ductElementId}: {ex.Message}");
                 DebugLogger.Log($"[DuctSleevePlacer] Stack trace: {ex.StackTrace}");
-                SleeveLogManager.LogDuctSleeveFailure(ductElementId, $"Exception during placement: {ex.Message}");
+                DebugLogger.Error($"[DuctSleevePlacer] FAILURE: Exception during placement for duct {ductElementId}: {ex.Message}");
                 throw; // Re-throw to ensure error is not silently ignored
             }
         }
@@ -587,16 +586,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             foreach (FamilyInstance fi in collector)
             {
-                LocationPoint loc = fi.Location as LocationPoint;
+                LocationPoint? loc = fi.Location as LocationPoint;
                 if (loc == null) continue;
 
-                double dist = loc.Point.DistanceTo(intersection);
+                XYZ? locPoint = loc.Point;
+                if (locPoint == null) continue;
+
+                double dist = locPoint.DistanceTo(intersection);
 
                 if (dist < searchRadius)
                 {
                     string famName = fi.Symbol.FamilyName.ToLower();
                     string typeName = fi.Symbol.Name.ToLower();
-                    DebugLogger.Log($"[DuctSleevePlacer][DamperCheck] Duct {ductElementId}: Found damper {fi.Id.Value} at dist={dist:F3} (within radius), family={famName}, type={typeName}. Skipping sleeve placement.");
+                    DebugLogger.Log($"[DuctSleevePlacer][DamperCheck] Duct {ductElementId}: Found damper {fi.Id.IntegerValue} at dist={dist:F3} (within radius), family={famName}, type={typeName}. Skipping sleeve placement.");
                     return true;
                 }
             }

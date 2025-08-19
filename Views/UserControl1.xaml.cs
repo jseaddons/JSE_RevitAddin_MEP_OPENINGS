@@ -1,4 +1,4 @@
-﻿using System.Windows.Controls;
+using System.Windows.Controls;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Views
 {

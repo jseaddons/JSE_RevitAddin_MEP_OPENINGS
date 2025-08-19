@@ -43,6 +43,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             }
 
 
+            // --- Initialize diagnostics logger early so collector diagnostics are recorded ---
+            string absoluteLogDir = Path.Combine("C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23", "Log");
+            string absoluteLogPath = Path.Combine(absoluteLogDir, $"PipeSleeve_{DateTime.Now:yyyyMMdd_HHmmss}.log");
+            Services.DebugLogger.InitAbsoluteLogFile(absoluteLogPath);
+            try { Services.DebugLogger.Info("PipeSleeveCommand initialized log at: " + absoluteLogPath); } catch { }
+            if (!System.IO.File.Exists(absoluteLogPath))
+            {
+                try
+                {
+                    Services.DebugLogger.InitCustomLogFileOverwrite($"PipeSleeve_{DateTime.Now:yyyyMMdd_HHmmss}");
+                    Services.DebugLogger.Info("PipeSleeveCommand - absolute log path not writable, fell back to MyDocuments.");
+                }
+                catch { }
+            }
+            void Log(string msg) => Services.DebugLogger.Info(msg);
+
             // Collect pipes from both host and visible linked models
             var mepElements = JSE_RevitAddin_MEP_OPENINGS.Helpers.MepElementCollectorHelper.CollectMepElementsVisibleOnly(doc);
             var pipeTuples = mepElements
@@ -66,24 +82,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 .ToList();
 
             int placedCount = 0, skippedCount = 0, errorCount = 0;
-              
-            
-            // --- Insert here ---
-            string logPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "JSE_RevitAddin_Logs",
-                $"PipeSleeve_{DateTime.Now:yyyyMMdd_HHmmss}.log"
-            );
-            Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
-            
-            void Log(string msg)
-            {
-                // Logging disabled
-            }
-            // --- End insert ---
             
             
-            var structuralElements = PipeSleeveIntersectionService.CollectStructuralElementsForDirectIntersectionVisibleOnly(doc);
+            var structuralElements = MepIntersectionService.CollectStructuralElementsForDirectIntersectionVisibleOnly(doc, Log);
             // Ensure structuralElements is List<(Element, Transform?)>
             // If the method returns List<Element>, convert it:
             // var structuralElements = PipeSleeveIntersectionService.CollectStructuralElementsForDirectIntersectionVisibleOnly(doc)
@@ -93,6 +94,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             using (var tx = new Transaction(doc, "Place Pipe Sleeves"))
             {
                 tx.Start();
+                try
+                {
+                    // Register failure preprocessor to suppress duplicate-instance warnings
+                    var fho = tx.GetFailureHandlingOptions();
+                    fho.SetFailuresPreprocessor(new JSE_RevitAddin_MEP_OPENINGS.Services.DuplicateInstanceSuppressor());
+                    tx.SetFailureHandlingOptions(fho);
+                }
+                catch { /* If API not available or fails, continue without suppressor */ }
+
                 var placerService = new PipeSleevePlacerService(
                     doc,
                     pipeTuples,

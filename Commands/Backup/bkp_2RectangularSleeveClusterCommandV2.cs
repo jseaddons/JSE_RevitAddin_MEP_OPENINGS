@@ -130,7 +130,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 foreach (var groupEntry in clustersByGroup)
                 {
                     var groupKey = groupEntry.Key;
-                    var clusters = groupEntry.Value;
+                    var clusters = groupEntry.IntegerValue;
 
                     foreach (var cluster in clusters)
                     {

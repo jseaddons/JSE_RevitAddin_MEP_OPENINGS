@@ -4,7 +4,7 @@
 library
 C#
 .cs
-C:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\obj\Debug R24\
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug R24\
 JSE_RevitAddin_MEP_OPENINGS
 none
 false
@@ -12,9 +12,9 @@ false
 
 4-188654945
 
-77-26252404
+801481527377
 39565240023
 ViewModels\FamilySelectionWindow.xaml;Views\JSE_RevitAddin_MEP_OPENINGSDialog.xaml;Views\JSE_RevitAddin_MEP_OPENINGSView.xaml;Views\UserControl1.xaml;
 
-False
+True
 

@@ -14,7 +14,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
             if (x == null || y == null)
                 return false;
 
-            return x.ElementId.Value == y.ElementId.Value;
+            return x.ElementId.IntegerValue == y.ElementId.IntegerValue;
         }
 
         public int GetHashCode(Reference obj)
@@ -22,7 +22,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
             if (obj == null)
                 return 0;
 
-            return obj.ElementId.Value.GetHashCode();
+            return obj.ElementId.IntegerValue.GetHashCode();
         }
     }
 }

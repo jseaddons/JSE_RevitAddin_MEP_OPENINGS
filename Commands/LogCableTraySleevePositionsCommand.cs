@@ -30,7 +30,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 double width = sleeve.LookupParameter("Width")?.AsDouble() ?? 0.0;
                 double height = sleeve.LookupParameter("Height")?.AsDouble() ?? 0.0;
                 double depth = sleeve.LookupParameter("Depth")?.AsDouble() ?? 0.0;
-                DebugLogger.Log($"Sleeve ID: {sleeve.Id.Value}, Family: {sleeve.Symbol.Family.Name}, Symbol: {sleeve.Symbol.Name}, Position: {pt?.ToString() ?? "N/A"}, Width: {UnitUtils.ConvertFromInternalUnits(width, UnitTypeId.Millimeters):F1}mm, Height: {UnitUtils.ConvertFromInternalUnits(height, UnitTypeId.Millimeters):F1}mm, Depth: {UnitUtils.ConvertFromInternalUnits(depth, UnitTypeId.Millimeters):F1}mm");
+                DebugLogger.Log($"Sleeve ID: {sleeve.Id.IntegerValue}, Family: {sleeve.Symbol.Family.Name}, Symbol: {sleeve.Symbol.Name}, Position: {pt?.ToString() ?? "N/A"}, Width: {UnitUtils.ConvertFromInternalUnits(width, UnitTypeId.Millimeters):F1}mm, Height: {UnitUtils.ConvertFromInternalUnits(height, UnitTypeId.Millimeters):F1}mm, Depth: {UnitUtils.ConvertFromInternalUnits(depth, UnitTypeId.Millimeters):F1}mm");
             }
             DebugLogger.Log($"--- End CableTray Sleeve Position Diagnostic ---");
             TaskDialog.Show("CableTray Sleeve Diagnostic", $"Logged {sleeves.Count} cable tray sleeves to DebugLogger.");

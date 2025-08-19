@@ -55,8 +55,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             DebugLogger.Log($"StructuralElementLogger status: {(StructuralElementLogger.IsLoggerInitialized() ? "READY" : "FAILED")}");
             
             // TEST: Create a test log entry to verify the logger is working
-            StructuralElementLogger.LogStructuralElement("SYSTEM", new Autodesk.Revit.DB.ElementId(0L), "OPENINGS PLACE COMMAND STARTED", "Master command executing all sleeve placement commands with structural support");
-            StructuralElementLogger.LogStructuralElement("DIAGNOSTIC", new Autodesk.Revit.DB.ElementId(999L), "LOGGER_TEST", "This is a test entry to verify logging is working");
+            StructuralElementLogger.LogStructuralElement("SYSTEM", new Autodesk.Revit.DB.ElementId((BuiltInParameter)0L), "OPENINGS PLACE COMMAND STARTED", "Master command executing all sleeve placement commands with structural support");
+            StructuralElementLogger.LogStructuralElement("DIAGNOSTIC", new Autodesk.Revit.DB.ElementId((BuiltInParameter)999L), "LOGGER_TEST", "This is a test entry to verify logging is working");
             
             // Show detailed diagnostic information
             string diagnosticInfo = $"DIAGNOSTIC INFO:\n" +
@@ -93,45 +93,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             )
             .Select(t => ((Autodesk.Revit.DB.Mechanical.Duct)t.element, t.transform)).ToList();
             PlaceDuctSleeves(commandData, doc, filteredDucts);
-            
+            DebugLogger.Log("Duct sleeve batch completed. Proceeding to damper sleeves...");
+            StructuralElementLogger.LogStructuralElement("SYSTEM", new Autodesk.Revit.DB.ElementId((BuiltInParameter)0L), "DUCT_SLEEVES_COMPLETED", "Duct sleeve batch finished successfully.");
+
             DebugLogger.Log("Starting damper sleeve placement...");
             PlaceDamperSleeves(commandData, doc);
-            
+            DebugLogger.Log("Damper sleeve batch completed. Proceeding to cable tray sleeves...");
+            StructuralElementLogger.LogStructuralElement("SYSTEM", new Autodesk.Revit.DB.ElementId((BuiltInParameter)0L), "DAMPER_SLEEVES_COMPLETED", "Damper sleeve batch finished successfully.");
+
             DebugLogger.Log("Starting cable tray sleeve placement...");
             PlaceCableTraySleeves(commandData, doc);
-            
+            DebugLogger.Log("Cable tray sleeve batch completed. Proceeding to pipe sleeves...");
+            StructuralElementLogger.LogStructuralElement("SYSTEM", new Autodesk.Revit.DB.ElementId((BuiltInParameter)0L), "CABLETRAY_SLEEVES_COMPLETED", "Cable tray sleeve batch finished successfully.");
+
             DebugLogger.Log("Starting pipe sleeve placement...");
             PlacePipeSleeves(commandData, doc);
-            
+            DebugLogger.Log("Pipe sleeve batch completed. Proceeding to rectangular pipe clustering...");
+            StructuralElementLogger.LogStructuralElement("SYSTEM", new Autodesk.Revit.DB.ElementId((BuiltInParameter)0L), "PIPE_SLEEVES_COMPLETED", "Pipe sleeve batch finished successfully.");
+
             DebugLogger.Log("Starting rectangular pipe clustering...");
             PlaceRectangularPipeOpenings(commandData, doc); // Enabled to allow PipeOpeningsRectCommand to run
             
             DebugLogger.Log("Starting rectangular sleeve clustering...");
             PlaceRectangularSleeveClusterV2(commandData, doc);
-
             DebugLogger.Log("OpeningsPLaceCommand: All sleeve commands completed");
-            
+
             // Log completion of structural elements processing
-            StructuralElementLogger.LogStructuralElement("SYSTEM", new Autodesk.Revit.DB.ElementId(0L), "OPENINGS PLACE COMMAND COMPLETED", $"All sleeve placement commands finished. Structural log file: {StructuralElementLogger.GetLogFilePath()}");
+            StructuralElementLogger.LogStructuralElement("SYSTEM", new Autodesk.Revit.DB.ElementId((BuiltInParameter)0L), "OPENINGS_PLACE_COMMAND_COMPLETED", $"All sleeve placement commands finished. Structural log file: {StructuralElementLogger.GetLogFilePath()}");
             DebugLogger.Log($"OpeningsPLaceCommand: All sleeve placement commands completed. Structural elements log available at: {StructuralElementLogger.GetLogFilePath()}");
-            
-            TaskDialog.Show("All Sleeve Commands Completed", 
-                "All sleeve placement commands have been executed successfully.\n\n" +
-                "Check the individual log files for detailed results:\n" +
-                "- DuctSleeveCommand.log\n" +
-                "- FireDamperPlaceCommand.log (or DamperLogger.log)\n" +
-                "- CableTraySleeveCommand.log (or RevitAddin_Debug.log)\n" +
-                "- PipeSleeveCommand.log (or RevitAddin_Debug.log)\n" +
-                "- PipeOpeningsRectCommand.log (rectangular pipe clustering)\n" +
-                "- RectangularSleeveClusterCommandV2.log (rectangular sleeve clustering)\n" +
-                "- OpeningsPLaceCommand.log\n\n" +
-                "Features:\n" +
-                "• Accurate reporting: Each command shows actual placed vs. skipped counts\n" +
-                "• Automatic suppression: Skips ALL elements that already have sleeves (pipes, ducts, cable trays, dampers)\n" +
-                "• Pipe exclusions: Steep inclines (>15°) and fitting clusters (3+ fittings) are excluded\n" +
-                "• Rectangular clustering: Groups nearby circular sleeves into efficient rectangular openings\n" +
-                "• Safe re-execution: Can run multiple times without creating duplicates\n" +
-                "• Comprehensive logging: All decisions and exclusions are logged");
+
+            // Non-modal final notice: log-only summary (no TaskDialog)
+            DebugLogger.Log("OpeningsPLaceCommand: Summary - Ducts, Dampers, Cable Trays, Pipes, Rectangular clustering completed.");
             return Result.Succeeded;
         }
 

@@ -61,3 +61,5 @@ packages/
 # Ignore custom PowerShell scripts
 FixRevitErrors.ps1
 ReplaceElementIdValueWithBackup.ps1
+
+.fake

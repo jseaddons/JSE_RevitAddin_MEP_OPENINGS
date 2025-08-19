@@ -1,4 +1,4 @@
-﻿using Autodesk.Revit.UI;
+using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Commands;
 using JSE_RevitAddin_MEP_OPENINGS.Security;
 using Nice3point.Revit.Toolkit.External;
@@ -37,22 +37,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS
         {
             var panel = Application.CreatePanel("Commands", "JSE_RevitAddin_MEP_OPENINGS");
 
-            panel.AddPushButton<StartupCommand>("Execute")
-                .SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png")
-                .SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+            var button1 = panel.AddPushButton<StartupCommand>("Execute");
+            button1.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+            button1.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
 
             panel.AddSeparator(); // This adds a visual gap
 
-            panel.AddPushButton<OpeningsPLaceCommand>("Openings")
-                .SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png")
-                .SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+            var button2 = panel.AddPushButton<OpeningsPLaceCommand>("Openings");
+            button2.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+            button2.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
 
             panel.AddSeparator(); // This adds a visual gap
 
-            panel.AddPushButton<MarkParameterAddValue>("Mark Parameters")
-                .SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png")
-                .SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+            var button3 = panel.AddPushButton<MarkParameterAddValue>("Mark Parameters");
+            button3.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+            button3.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
 
+            panel.AddSeparator(); // This adds a visual gap
+
+            var button4 = panel.AddPushButton<ClusterMergeCommand>("Cluster Merge");
+            button4.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+            button4.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+
+            panel.AddSeparator(); // This adds a visual gap
+
+            var button5 = panel.AddPushButton<DeletePipeSleevesCommand>("Delete Pipe Sleeves");
+            button5.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+            button5.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+
+            panel.AddSeparator(); // This adds a visual gap
+
+            var button6 = panel.AddPushButton<GetSleeveSummaryCommand>("Sleeve Summary");
+            button6.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+            button6.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
         }
 
 

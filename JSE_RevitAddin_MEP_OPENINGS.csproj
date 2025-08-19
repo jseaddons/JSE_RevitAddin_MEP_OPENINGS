@@ -1,4 +1,10 @@
 <!-- IMPORTANT: THERE IS NO HOST WALL, ONLY LINKED WALLS. ALL CODE AND LOGIC MUST ASSUME WALLS ARE LINKED. -->
+
+<!-- WARNING: THIS PROJECT IS STRICTLY FOR REVIT 2023. -->
+<!-- DO NOT CHANGE THE Nice3point.Revit.* PACKAGE VERSIONS BELOW. -->
+<!-- If you change these versions, the add-in will NOT work and will cause runtime errors. -->
+<!-- Only use the exact versions specified for Revit 2023 base installation. -->
+<!-- If you need to upgrade to a different Revit version, consult the developer. -->
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
@@ -60,10 +66,10 @@
   <ItemGroup>
     <Compile Remove="Commands\ApplyOpeningsFromCsvCommand.cs" />
     <PackageReference Include="Nice3point.Revit.Build.Tasks" Version="3.0.1" />
-    <PackageReference Include="Nice3point.Revit.Toolkit" Version="2024.0.5" />
-    <PackageReference Include="Nice3point.Revit.Extensions" Version="2024.0.8" />
-    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2024.0.2" />
-    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2024.0.2" />
+    <PackageReference Include="Nice3point.Revit.Toolkit" Version="2023.1.0" />
+    <PackageReference Include="Nice3point.Revit.Extensions" Version="2023.1.0" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2023.1.1" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2023.1.1" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="Serilog" Version="4.2.0" />
     <PackageReference Include="Serilog.Sinks.Debug" Version="3.0.0" />
@@ -106,10 +112,10 @@
 
   <ItemGroup>
     <Reference Include="RevitAPI">
-      <HintPath>$(ProgramFiles)\Autodesk\Revit 2024\RevitAPI.dll</HintPath>
+      <HintPath>$(ProgramFiles)\Autodesk\Revit $(RevitVersion)\RevitAPI.dll</HintPath>
     </Reference>
     <Reference Include="RevitAPIUI">
-      <HintPath>$(ProgramFiles)\Autodesk\Revit 2024\RevitAPIUI.dll</HintPath>
+      <HintPath>$(ProgramFiles)\Autodesk\Revit $(RevitVersion)\RevitAPIUI.dll</HintPath>
     </Reference>
   </ItemGroup>
 

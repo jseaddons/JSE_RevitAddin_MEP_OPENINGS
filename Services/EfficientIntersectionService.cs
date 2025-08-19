@@ -19,6 +19,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Find wall intersections with MEP element using section box filtering and bounding box pre-checks
         /// </summary>
+        // ...existing code...
         public static List<(ReferenceWithContext hit, XYZ direction, XYZ rayOrigin)> FindWallIntersections(
             MEPCurve mepElement, 
             Line mepLine, 
@@ -34,9 +35,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 DebugLogger.Log("[EfficientIntersectionService] No section box found, using full model");
             }
+
+            // (diagnostics moved to after mepBBox is computed)
             
             // Create MEP bounding box for pre-filtering
             var mepBBox = GetMepElementBoundingBox(mepElement, mepLine);
+
+            // Diagnostic: log section box and MEP bbox to help detect coordinate-frame mismatches
+            try
+            {
+                var sb = sectionBox;
+                DebugLogger.Log($"[EfficientIntersectionService] DIAG SectionBox: {(sb == null ? "<null>" : $"Min={FormatXYZ(sb.Min)}, Max={FormatXYZ(sb.Max)}")}");
+                DebugLogger.Log($"[EfficientIntersectionService] DIAG MEP BBox: Min={FormatXYZ(mepBBox.Min)}, Max={FormatXYZ(mepBBox.Max)}");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[EfficientIntersectionService] DIAG error while logging section/mep bbox: {ex.Message}");
+            }
             
             // Pre-filter walls by section box and bounding box intersection
             var filteredWalls = GetFilteredWallsInSectionBox(mepElement.Document, view3D, sectionBox ?? new BoundingBoxXYZ(), mepBBox);
@@ -50,35 +65,166 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 FindReferencesInRevitLinks = true
             };
             
+            // If the MEP element lives in a linked document, resolve the link transform
+            // from the host view so we can transform MEP test points into host coordinates.
+            // ReferenceIntersector with FindReferencesInRevitLinks=true will handle linked walls automatically.
+            Transform linkTransform = Transform.Identity;
+            bool hasLinkTransform = false;
+            try
+            {
+                if (mepElement.Document != view3D.Document)
+                {
+                    var linkInstanceInHost = new FilteredElementCollector(view3D.Document)
+                        .OfClass(typeof(RevitLinkInstance))
+                        .Cast<RevitLinkInstance>()
+                        .FirstOrDefault(li => li.GetLinkDocument() != null && li.GetLinkDocument().Equals(mepElement.Document));
+
+                    if (linkInstanceInHost != null)
+                    {
+                        linkTransform = linkInstanceInHost.GetTotalTransform();
+                        hasLinkTransform = linkTransform != null && !linkTransform.IsIdentity;
+                        var originStr = linkTransform != null ? FormatXYZ(linkTransform.Origin) : "<identity>";
+                        var linkIdStr = linkInstanceInHost?.Id.IntegerValue.ToString() ?? "<no-id>";
+                        DebugLogger.Log($"[EfficientIntersectionService] DIAG using MEP link transform from RevitLinkInstance Id={linkIdStr}, Origin={originStr}");
+                    }
+                    else
+                    {
+                        DebugLogger.Log($"[EfficientIntersectionService] DIAG WARNING: No RevitLinkInstance found for MEP document '{mepElement.Document.Title}'");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[EfficientIntersectionService] DIAG error resolving MEP link transform: {ex.Message}");
+            }
+            
             // Cast rays from test points with early termination
             foreach (var testPoint in testPoints)
             {
-                // Skip if test point is outside section box
-                if (sectionBox != null && !IsPointInBoundingBox(testPoint, sectionBox))
+                // For linked MEP elements, we need to transform test points to host coordinates
+                // since ReferenceIntersector operates in the view's coordinate system.
+                // However, ReferenceIntersector with FindReferencesInRevitLinks=true will automatically
+                // find both host and linked walls regardless of which document they're in.
+                var testPointHost = testPoint;
+                var rayDirHost = rayDirection;
+                if (hasLinkTransform && linkTransform != null)
+                {
+                    try
+                    {
+                        testPointHost = linkTransform.OfPoint(testPoint);
+                        rayDirHost = linkTransform.OfVector(rayDirection);
+                        DebugLogger.Log($"[EfficientIntersectionService] DIAG transformed test point: {FormatXYZ(testPoint)} -> {FormatXYZ(testPointHost)}");
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLogger.Log($"[EfficientIntersectionService] DIAG error transforming test point/ray to host: {ex.Message}");
+                        testPointHost = testPoint;
+                        rayDirHost = rayDirection;
+                    }
+                }
+
+                // Skip section box check for linked MEP elements since the transform may move
+                // test points far outside the section box even though the MEP element itself is within it.
+                if (sectionBox != null && !hasLinkTransform && !IsPointInBoundingBox(testPoint, sectionBox))
                 {
                     continue;
                 }
-                
+
+                // TEMPORARY FIX: Use original test points since ReferenceIntersector handles linked discovery
+                // TODO: Investigate proper coordinate space for ray casting with linked elements
+                var rayOrigin = hasLinkTransform ? testPoint : testPointHost;
+                var rayDir = hasLinkTransform ? rayDirection : rayDirHost;
+
                 // Cast in primary directions
-                var hitsFwd = refIntersector.Find(testPoint, rayDirection)?.Where(h => h != null).OrderBy(h => h.Proximity).Take(3).ToList();
-                var hitsBack = refIntersector.Find(testPoint, rayDirection.Negate())?.Where(h => h != null).OrderBy(h => h.Proximity).Take(3).ToList();
+                var hitsFwd = refIntersector.Find(rayOrigin, rayDir)?.Where(h => h != null).OrderBy(h => h.Proximity).Take(3).ToList();
+                var hitsBack = refIntersector.Find(rayOrigin, rayDir.Negate())?.Where(h => h != null).OrderBy(h => h.Proximity).Take(3).ToList();
                 
-                // Cast in perpendicular directions for parallel walls
-                var perpDir1 = new XYZ(-rayDirection.Y, rayDirection.X, 0).Normalize();
-                var perpDir2 = perpDir1.Negate();
-                var hitsPerp1 = refIntersector.Find(testPoint, perpDir1)?.Where(h => h != null).OrderBy(h => h.Proximity).Take(2).ToList();
-                var hitsPerp2 = refIntersector.Find(testPoint, perpDir2)?.Where(h => h != null).OrderBy(h => h.Proximity).Take(2).ToList();
-                
-                // Add hits with their ray origin
-                if (hitsFwd?.Any() == true) allWallHits.AddRange(hitsFwd.Select(h => (h, rayDirection, testPoint)));
-                if (hitsBack?.Any() == true) allWallHits.AddRange(hitsBack.Select(h => (h, rayDirection.Negate(), testPoint)));
-                if (hitsPerp1?.Any() == true) allWallHits.AddRange(hitsPerp1.Select(h => (h, perpDir1, testPoint)));
-                if (hitsPerp2?.Any() == true) allWallHits.AddRange(hitsPerp2.Select(h => (h, perpDir2, testPoint)));
+                // Cast in perpendicular directions for parallel walls (safe: skip when rayDirection has no horizontal component)
+                var eps = 1e-9;
+                bool hasHorizontal = Math.Abs(rayDir.X) > eps || Math.Abs(rayDir.Y) > eps;
+                XYZ? perpDir1 = null;
+                XYZ? perpDir2 = null;
+                if (hasHorizontal)
+                {
+                    var tmp = new XYZ(-rayDir.Y, rayDir.X, 0);
+                    var lenTmp = Math.Sqrt(tmp.X * tmp.X + tmp.Y * tmp.Y + tmp.Z * tmp.Z);
+                    if (lenTmp > eps)
+                    {
+                        perpDir1 = new XYZ(tmp.X / lenTmp, tmp.Y / lenTmp, tmp.Z / lenTmp);
+                        perpDir2 = perpDir1.Negate();
+                    }
+                }
+
+                var hitsPerp1 = perpDir1 != null ? refIntersector.Find(rayOrigin, perpDir1)?.Where(h => h != null).OrderBy(h => h.Proximity).Take(2).ToList() : null;
+                var hitsPerp2 = perpDir2 != null ? refIntersector.Find(rayOrigin, perpDir2)?.Where(h => h != null).OrderBy(h => h.Proximity).Take(2).ToList() : null;
+
+                // Aggregate hits by element id and by direction seen
+                var hitMap = new Dictionary<int, List<(ReferenceWithContext hit, XYZ dir)>>();
+                void AddHitsToMap(IEnumerable<ReferenceWithContext>? hits, XYZ dir)
+                {
+                    if (hits == null) return;
+                    foreach (var h in hits)
+                    {
+                        if (h == null) continue;
+                        var eid = h.GetReference()?.ElementId.IntegerValue ?? -1;
+                        if (eid == -1) continue;
+                        if (!hitMap.TryGetValue(eid, out var list))
+                        {
+                            list = new List<(ReferenceWithContext, XYZ)>();
+                            hitMap[eid] = list;
+                        }
+                        list.Add((h, dir));
+                    }
+                }
+        
+                AddHitsToMap(hitsFwd, rayDir);
+                AddHitsToMap(hitsBack, rayDir.Negate());
+                if (perpDir1 != null) AddHitsToMap(hitsPerp1, perpDir1);
+                if (perpDir2 != null) AddHitsToMap(hitsPerp2, perpDir2);
+        
+                // Consider a wall a valid penetration if it is seen from two or more distinct ray directions
+                foreach (var kv in hitMap)
+                {
+                    var dirs = kv.Value
+                        .Select(v => v.dir)
+                        .Select(d =>
+                        {
+                            var len = Math.Sqrt(d.X * d.X + d.Y * d.Y + d.Z * d.Z);
+                            return len > eps ? new XYZ(d.X / len, d.Y / len, d.Z / len) : null;
+                        })
+                        .Where(d => d != null)
+                        .Cast<XYZ>()
+                        .ToList();
+
+                    // count distinct directions using dot-product (angle test)
+                    var distinct = new List<XYZ>();
+                    double dirSameThreshold = 0.9995; // cosine threshold for considering two directions equivalent
+                    foreach (var d in dirs)
+                    {
+                        bool isNew = true;
+                        foreach (var ex in distinct)
+                        {
+                            if (Math.Abs(ex.DotProduct(d)) > dirSameThreshold)
+                            {
+                                isNew = false;
+                                break;
+                            }
+                        }
+                        if (isNew) distinct.Add(d);
+                    }
+
+                    if (distinct.Count < 2) continue;
+
+                    // pick the closest hit among the collected hits for this element id
+                    var representative = kv.Value.OrderBy(v => v.hit.Proximity).First();
+                    // store the ray origin used for clarity downstream
+                    allWallHits.Add((representative.hit, representative.dir, rayOrigin));
+                }
             }
             
             return allWallHits;
         }
-        
+              
         /// <summary>
         /// Find structural intersections with MEP element using efficient bounding box pre-filtering
         /// </summary>
@@ -122,7 +268,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 catch (Exception ex)
                 {
-                    DebugLogger.Log($"[EfficientIntersectionService] Error processing structural element {structuralElement.Id.Value}: {ex.Message}");
+                    DebugLogger.Log($"[EfficientIntersectionService] Error processing structural element {structuralElement.Id.IntegerValue}: {ex.Message}");
                 }
             }
             
@@ -219,6 +365,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                    point.Y >= bbox.Min.Y && point.Y <= bbox.Max.Y &&
                    point.Z >= bbox.Min.Z && point.Z <= bbox.Max.Z;
         }
+
+        /// <summary>
+        /// Format XYZ for diagnostic logging
+        /// </summary>
+        private static string FormatXYZ(XYZ p)
+        {
+            if (p == null) return "<null>";
+            return string.Format("({0:0.000},{1:0.000},{2:0.000})", p.X, p.Y, p.Z);
+        }
         
         /// <summary>
         /// Get filtered walls within section box and intersecting MEP bounding box
@@ -231,29 +386,76 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             var filteredWalls = new List<(Element, Transform)>();
 
-            // Get walls from host document
-            var hostWalls = new FilteredElementCollector(doc, view3D.Id)
+            // Transform-aware prefilter: convert the provided MEP bbox into the host view's coordinate space
+            // so bounding-box comparisons are performed in the same frame as element bboxes.
+            var mepBBoxInHost = mepBBox;
+            try
+            {
+                if (doc != view3D.Document && mepBBox != null)
+                {
+                    var linkInstanceInHost = new FilteredElementCollector(view3D.Document)
+                        .OfClass(typeof(RevitLinkInstance))
+                        .Cast<RevitLinkInstance>()
+                        .FirstOrDefault(li => li.GetLinkDocument() != null && li.GetLinkDocument().Equals(doc));
+
+                    if (linkInstanceInHost != null)
+                    {
+                        var t = linkInstanceInHost.GetTotalTransform();
+                        var pMin = t.OfPoint(mepBBox.Min);
+                        var pMax = t.OfPoint(mepBBox.Max);
+                        mepBBoxInHost = new BoundingBoxXYZ
+                        {
+                            Min = new XYZ(Math.Min(pMin.X, pMax.X), Math.Min(pMin.Y, pMax.Y), Math.Min(pMin.Z, pMax.Z)),
+                            Max = new XYZ(Math.Max(pMin.X, pMax.X), Math.Max(pMin.Y, pMax.Y), Math.Max(pMin.Z, pMax.Z))
+                        };
+
+                        DebugLogger.Log($"[EfficientIntersectionService] DIAG converted MEP bbox into host coords: Min={FormatXYZ(mepBBoxInHost.Min)}, Max={FormatXYZ(mepBBoxInHost.Max)}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[EfficientIntersectionService] DIAG error converting MEP bbox to host coords: {ex.Message}");
+            }
+
+            // Get walls from host document (use the view's document when providing a view id)
+            var hostWalls = new FilteredElementCollector(view3D.Document, view3D.Id)
                 .OfCategory(BuiltInCategory.OST_Walls)
                 .WhereElementIsNotElementType()
-                .Where(w => IsElementInSectionBoxAndIntersectsMep(w, Transform.Identity, sectionBox, mepBBox))
+                .Where(w => IsElementInSectionBoxAndIntersectsMep(w, Transform.Identity, sectionBox, mepBBoxInHost))
                 .Select(w => (w, Transform.Identity))
                 .ToList();
 
             filteredWalls.AddRange(hostWalls);
 
             // Get walls from visible linked documents
-            foreach (var linkInstance in new FilteredElementCollector(doc)
+            // NOTE: collect RevitLinkInstance objects from the host view's document so we enumerate
+            // actual link instances placed in the host model (the previous code accidentally
+            // collected from the linked document itself which yields no host link instances).
+            foreach (var linkInstance in new FilteredElementCollector(view3D.Document)
                 .OfClass(typeof(RevitLinkInstance))
                 .Cast<RevitLinkInstance>()
-                .Where(link => link.GetLinkDocument() != null))
+                .Where(li => li.GetLinkDocument() != null))
             {
                 var linkDoc = linkInstance.GetLinkDocument();
                 var linkTransform = linkInstance.GetTotalTransform();
 
+                // Diagnostic: log link instance info and transform origin
+                try
+                {
+                    var linkTitle = linkDoc != null ? linkDoc.Title : "<no-link-doc>";
+                    var origin = linkTransform != null ? FormatXYZ(linkTransform.Origin) : "<identity>";
+                    DebugLogger.Log($"[EfficientIntersectionService] DIAG LinkInstance Id={linkInstance.Id.IntegerValue}, LinkDoc='{linkTitle}', TransformOrigin={origin}");
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Log($"[EfficientIntersectionService] DIAG LinkInstance logging error: {ex.Message}");
+                }
+
                 var linkedWalls = new FilteredElementCollector(linkDoc)
                     .OfCategory(BuiltInCategory.OST_Walls)
                     .WhereElementIsNotElementType()
-                    .Where(w => IsElementInSectionBoxAndIntersectsMep(w, linkTransform, sectionBox, mepBBox))
+                    .Where(w => IsElementInSectionBoxAndIntersectsMep(w, linkTransform, sectionBox, mepBBoxInHost))
                     .Select(w => (w as Element, linkTransform ?? Transform.Identity))
                     .ToList();
 
@@ -368,7 +570,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                DebugLogger.Log($"[EfficientIntersectionService] Solid intersection error for element {structuralElement.Id.Value}: {ex.Message}");
+                DebugLogger.Log($"[EfficientIntersectionService] Solid intersection error for element {structuralElement.Id.IntegerValue}: {ex.Message}");
             }
 
             return intersectionPoints;

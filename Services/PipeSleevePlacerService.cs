@@ -39,8 +39,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _pipeSlabSymbol = pipeSlabSymbol;
             _existingSleeves = existingSleeves;
             _log = log;
-            // Fix ambiguous constructor: explicitly cast to the correct type if needed
-            _placer = (PipeSleevePlacer)Activator.CreateInstance(typeof(PipeSleevePlacer), _doc)!;
+            _placer = new PipeSleevePlacer(doc);
         }
 
         public void PlaceAllPipeSleeves()
@@ -49,97 +48,68 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             SkippedCount = 0;
             ErrorCount = 0;
             _log($"PipeSleevePlacerService: Starting. Pipe count = {_pipeTuples.Count}, Structural host count = {_structuralElements.Count}");
-            _log("Pipe IDs: " + string.Join(", ", _pipeTuples.Select(t => t.Item1?.Id.Value.ToString() ?? "null")));
+            _log("Pipe IDs: " + string.Join(", ", _pipeTuples.Select(t => t.Item1?.Id.IntegerValue.ToString() ?? "null")));
             _log("Host types: " + string.Join(", ", _structuralElements.Select(e => e.Item1?.GetType().FullName ?? "null")));
             foreach (var tuple in _pipeTuples)
             {
                 var pipe = tuple.Item1;
                 var transform = tuple.Item2;
-                int pipeIdValue = (int)(pipe?.Id?.Value ?? -1);
+                int pipeIdValue = (int)(pipe?.Id?.IntegerValue ?? -1);
                 _log($"Processing pipe {pipeIdValue}");
                 if (pipe == null) { SkippedCount++; _log("Skipped: pipe is null"); continue; }
-                var locCurve = pipe.Location as LocationCurve;
-                var pipeLine = locCurve?.Curve as Line;
+
+                var locationCurve = pipe.Location as LocationCurve;
+                if (locationCurve == null)
+                {
+                    SkippedCount++;
+                    _log($"Skipped: pipe {pipeIdValue} has no LocationCurve");
+                    continue;
+                }
+
+                var pipeLine = locationCurve.Curve as Line;
                 if (pipeLine == null)
                 {
                     SkippedCount++;
                     _log($"Skipped: pipe {pipeIdValue} has no valid Line geometry");
                     continue;
                 }
-                // --- CLUSTERING DATA PREP FOR SOIL/WASTE SYSTEMS ---
-                var system = pipe.MEPSystem;
-                string systemName = system?.Name ?? "NULL";
-                _log($"Pipe {pipeIdValue}: MEP System = {systemName}");
-                string sysName = system?.Name?.ToLowerInvariant() ?? "";
-                bool isSoilWasteSanitary = !string.IsNullOrEmpty(sysName) && (sysName.Contains("soil") || sysName.Contains("waste") || sysName.Contains("sp ") || sysName.Contains("sanitary"));
-                List<FamilyInstance>? allFittings = null;
-                double clusterRadius = 0;
-                if (isSoilWasteSanitary)
-                {
-                    _log($"Pipe {pipeIdValue}: SOIL/WASTE system detected - clustering data will be checked per intersection host");
-                    clusterRadius = UnitUtils.ConvertToInternalUnits(300.0, UnitTypeId.Millimeters);
-                    var pipeCurve = pipeLine;
-                    if (pipeCurve != null && system != null)
-                    {
-                        var hostFittings = new FilteredElementCollector(_doc)
-                            .OfClass(typeof(FamilyInstance))
-                            .WhereElementIsNotElementType()
-                            .Cast<FamilyInstance>()
-                            .Where(fi =>
-                                fi.MEPModel != null &&
-                                fi.MEPModel.ConnectorManager != null &&
-                                fi.MEPModel.ConnectorManager.Connectors != null &&
-                                fi.MEPModel.ConnectorManager.Connectors.Cast<Connector>().Any(c => c.MEPSystem != null && c.MEPSystem.Id == system.Id)
-                            )
-                            .ToList();
-                        _log($"Pipe {pipeIdValue}: Found {hostFittings.Count} host fittings in system {systemName}");
-                        allFittings = new List<FamilyInstance>(hostFittings);
-                        var linkInstances = new FilteredElementCollector(_doc)
-                            .OfClass(typeof(RevitLinkInstance))
-                            .Cast<RevitLinkInstance>()
-                            .Where(li => li.GetLinkDocument() != null)
-                            .ToList();
-                        foreach (var linkInstance in linkInstances)
-                        {
-                            var linkedDoc = linkInstance.GetLinkDocument();
-                            if (linkedDoc == null) continue;
-                            var linkedFittings = new FilteredElementCollector(linkedDoc)
-                                .OfClass(typeof(FamilyInstance))
-                                .WhereElementIsNotElementType()
-                                .Cast<FamilyInstance>()
-                                .Where(fi =>
-                                    fi.MEPModel != null &&
-                                    fi.MEPModel.ConnectorManager != null &&
-                                    fi.MEPModel.ConnectorManager.Connectors != null &&
-                                    fi.MEPModel.ConnectorManager.Connectors.Cast<Connector>().Any(c => c.MEPSystem != null && c.MEPSystem.Name == systemName)
-                                )
-                                .ToList();
-                            allFittings.AddRange(linkedFittings);
-                            _log($"Pipe {pipeIdValue}: Found {linkedFittings.Count} linked fittings in {linkInstance.Name}");
-                        }
-                        _log($"Pipe {pipeIdValue}: Total fittings in system = {allFittings.Count}");
-                    }
-                }
-                // --- END CLUSTERING DATA PREP ---
 
-                // Transform geometry if from a linked model
                 Line hostLine = pipeLine;
+                BoundingBoxXYZ? pipeBBox = null;
                 if (transform != null)
                 {
+                    // transform pipe end points into host coords
                     hostLine = Line.CreateBound(
                         transform.OfPoint(pipeLine.GetEndPoint(0)),
-                        transform.OfPoint(pipeLine.GetEndPoint(1))
-                    );
+                        transform.OfPoint(pipeLine.GetEndPoint(1)));
+                    // derive bbox in host coords
+                    var origBbox = pipe.get_BoundingBox(null);
+                    if (origBbox != null)
+                    {
+                        var min = transform.OfPoint(origBbox.Min);
+                        var max = transform.OfPoint(origBbox.Max);
+                        pipeBBox = new BoundingBoxXYZ { Min = new XYZ(Math.Min(min.X, max.X), Math.Min(min.Y, max.Y), Math.Min(min.Z, max.Z)), Max = new XYZ(Math.Max(min.X, max.X), Math.Max(min.Y, max.Y), Math.Max(min.Z, max.Z)) };
+                    }
                 }
-                // Accept intersections as List<(Element, object?, XYZ)> for robust transform handling
-                var intersections = PipeSleeveIntersectionService.FindDirectStructuralIntersectionBoundingBoxesVisibleOnly(pipe, _structuralElements, hostLine);
-                _log($"Pipe {pipe.Id.Value}: Found {intersections?.Count ?? 0} intersections");
+
+                List<(Element, BoundingBoxXYZ, XYZ)> intersections = new List<(Element, BoundingBoxXYZ, XYZ)>();
+                if (transform == null)
+                {
+                    intersections = MepIntersectionService.FindIntersections(pipe, _structuralElements, _log);
+                }
+                else
+                {
+                    _log($"[TransformDebug] Pipe {pipe.Id.IntegerValue} transformed to host line Start={hostLine.GetEndPoint(0)}, End={hostLine.GetEndPoint(1)}; pipeBBox={pipeBBox}");
+                    intersections = MepIntersectionService.FindIntersections(hostLine, pipeBBox, _structuralElements, _log);
+                }
+                
+                _log($"Pipe {pipe.Id.IntegerValue}: Found {intersections?.Count ?? 0} intersections");
                 if (intersections != null)
                 {
                     foreach (var it in intersections)
                     {
                         var h = it.Item1;
-                        _log($"  Intersection host: {h?.Id.Value ?? -1}, type: {h?.GetType().FullName ?? "null"}");
+                        _log($"  Intersection host: {h?.Id.IntegerValue ?? -1}, type: {h?.GetType().FullName ?? "null"}");
                     }
                 }
                 if (intersections != null && intersections.Count > 0)
@@ -147,16 +117,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     foreach (var intersectionTuple in intersections)
                     {
                         Element hostElem = intersectionTuple.Item1;
-                        object hostTransform = intersectionTuple.Item2;
                         XYZ intersectionPoint = intersectionTuple.Item3;
                         if (hostElem == null)
                         {
                             SkippedCount++;
-                            _log($"Skipped: intersection host element is null");
+                            _log("Skipped: intersection host element is null");
                             continue;
                         }
-                        _log($"Checking intersection at {intersectionPoint} with host {hostElem.Id.Value}");
-                        string hostId = hostElem.Id.Value.ToString();
+                        // Determine if this pipe is essentially vertical (Z-aligned)
+                        bool isVerticalPipe = false;
+                        try
+                        {
+                            var dir = pipeLine.Direction;
+                            if (dir != null)
+                            {
+                                var nd = dir.Normalize();
+                                isVerticalPipe = Math.Abs(nd.Z) > 0.9; // mostly vertical
+                            }
+                        }
+                        catch { /* ignore */ }
+                        _log($"Checking intersection at {intersectionPoint} with host {hostElem.Id.IntegerValue}");
+                        string hostId = hostElem.Id.IntegerValue.ToString();
                         string hostType = hostElem.GetType().FullName;
                         string hostMsg = $"HOST: Pipe {pipe.Id} intersects {hostType} {hostId}";
                         _log($"[PipeSleevePlacerService] {hostMsg}");
@@ -164,79 +145,245 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             bool isWall = hostElem.GetType().Name.Contains("Wall", StringComparison.OrdinalIgnoreCase);
                             bool isFraming = false;
-                            bool isFloor = hostElem is Floor;
-                            if (hostElem is FamilyInstance famInst && famInst.Category != null && famInst.Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming)
+                            if (hostElem is FamilyInstance famInst && famInst.Category != null && famInst.Category.Id.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
                             {
                                 isFraming = true;
                             }
-                            // --- CLUSTERING SUPPRESSION FOR WALLS AND FLOORS (PER INTERSECTION) ---
-                            int intersectionClusterCount = 0;
-                            if (isSoilWasteSanitary && allFittings != null && (isWall || isFloor))
-                            {
-                                foreach (var fi in allFittings)
-                                {
-                                    var fittingLoc = (fi.Location as LocationPoint)?.Point;
-                                    if (fittingLoc != null)
-                                    {
-                                        double distance = fittingLoc.DistanceTo(intersectionPoint);
-                                        double distanceMM = UnitUtils.ConvertFromInternalUnits(distance, UnitTypeId.Millimeters);
-                                        _log($"Pipe {pipe.Id.Value}: Fitting {fi.Id.Value} at {fittingLoc}, distance to intersection = {distanceMM:F1}mm");
-                                        if (distance <= clusterRadius)
-                                        {
-                                            intersectionClusterCount++;
-                                            _log($"Pipe {pipe.Id.Value}: Fitting {fi.Id.Value} is WITHIN cluster radius of intersection ({distanceMM:F1}mm <= 300mm)");
-                                        }
-                                    }
-                                }
-                                _log($"Pipe {pipe.Id.Value}: Cluster count at intersection = {intersectionClusterCount} (threshold = 0)");
-                                if (intersectionClusterCount > 0)
-                                {
-                                    _log($"*** CLUSTERING SUPPRESSION *** Pipe ID={pipe.Id.Value} - sleeve placement SKIPPED for host type {(isWall ? "WALL" : "FLOOR")} due to fitting clustering for SOIL/WASTE system. Found {intersectionClusterCount} fittings within {UnitUtils.ConvertFromInternalUnits(clusterRadius, UnitTypeId.Millimeters):F0}mm radius at intersection.");
-                                    SkippedCount++;
-                                    continue;
-                                }
-                            }
-                            XYZ placePoint = intersectionPoint;
-                            var xform = hostTransform as Transform;
-                            if (xform != null)
-                            {
-                                placePoint = xform.OfPoint(intersectionPoint);
-                                _log($"[Transform] Applied link transform to intersectionPoint: {intersectionPoint} -> {placePoint}");
-                            }
-                            if (isWall)
-                            {
-                                var wall = hostElem as Wall;
-                                if (wall != null)
-                                {
-                                    var wallLocCurve = wall.Location as LocationCurve;
-                                    if (wallLocCurve != null && wallLocCurve.Curve != null)
-                                    {
-                                        XYZ wallCenter = wallLocCurve.Curve.Evaluate(0.5, true);
-                                        XYZ wallNormal = wall.Orientation.Normalize();
-                                        double distToCenter = (placePoint - wallCenter).DotProduct(wallNormal);
-                                        placePoint = placePoint - wallNormal.Multiply(distToCenter);
-                                        _log($"[CenterlineProjection] Projected to wall centerline: wallCenter={wallCenter}, wallNormal={wallNormal}, result={placePoint}");
-                                    }
-                                }
-                            }
-                            _log($"Placing sleeve: hostElem type = {hostElem.GetType().FullName}, isWall = {isWall}, isFraming = {isFraming}, placePoint = {placePoint}");
-                            double indivTol = UnitUtils.ConvertToInternalUnits(10.0, UnitTypeId.Millimeters); // 10mm for individual sleeves
-                            double clusterTol = UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters); // 100mm for clusters
-                            bool duplicate = OpeningDuplicationChecker.IsAnySleeveAtLocation(_doc, placePoint, indivTol)
-                                || OpeningDuplicationChecker.FindAllClusterSleevesAtLocation(_doc, placePoint, clusterTol).Any();
-                            if (duplicate)
+                            // If this is a vertical pipe embedded in a wall or structural framing, skip processing
+                            if (isVerticalPipe && (isWall || isFraming))
                             {
                                 SkippedCount++;
-                                _log($"Suppressed: existing individual or cluster sleeve found at {placePoint}");
+                                _log($"SKIP: Pipe {pipe.Id} is vertical and hosted by {(isWall ? "Wall" : "Structural Framing")}; skipping sleeve placement.");
+                                continue;
+                            }
+                            
+                            XYZ placePoint = intersectionPoint;
+
+                            // If host is a wall, project the intersection point to the wall location curve (nearest point)
+                            if (isWall && hostElem is Wall wall)
+                            {
+                                try
+                                {
+                                    var loc = wall.Location as LocationCurve;
+                                    var curve = loc?.Curve;
+                                    if (curve != null)
+                                    {
+                                        // If the wall element lives in a linked document, do the projection in the
+                                        // link's coordinate space and then transform the projected point back to host.
+                                        bool hostElemIsLinked = hostElem.Document != null && hostElem.Document != _doc;
+                                        Transform? hostTransform = null;
+                                        if (hostElemIsLinked)
+                                        {
+                                            hostTransform = FindTransformForLinkedElement(hostElem);
+                                        }
+
+                                        if (hostElemIsLinked && hostTransform != null)
+                                        {
+                                            // intersectionPoint is in host coords (intersection calculated after transforming
+                                            // link geometry). Convert it to link coords, project, then convert projected point
+                                            // back to host coords for placement. Preserve original intersection Z.
+                                            try
+                                            {
+                                                var linkIntersection = hostTransform.Inverse.OfPoint(intersectionPoint);
+                                                var proj = curve.Project(linkIntersection);
+                                                if (proj != null)
+                                                {
+                                                    var cp = proj.XYZPoint;
+                                                    var cpHost = hostTransform.OfPoint(cp);
+                                                    placePoint = new XYZ(cpHost.X, cpHost.Y, intersectionPoint.Z);
+                                                    _log($"[CenterlineProjection] (link-doc) Projected in link coords: wallCenter=({cp.X:F6},{cp.Y:F6},{cp.Z:F6}), cp->host={cpHost}, result={placePoint}");
+                                                }
+                                                else
+                                                {
+                                                    _log($"[CenterlineProjection] (link-doc) Project returned null; falling back to intersectionPoint");
+                                                    placePoint = intersectionPoint;
+                                                }
+                                            }
+                                            catch (Exception ex)
+                                            {
+                                                _log($"[CenterlineProjection] (link-doc) Exception projecting to wall centerline: {ex.Message}");
+                                                placePoint = intersectionPoint;
+                                            }
+                                        }
+                                        else
+                                        {
+                                            // Not a linked host or no transform available: perform projection in the element's
+                                            // own coordinate space (this is safe when the element belongs to the active doc),
+                                            // otherwise fall back to helper or intersection.
+                                            if (!hostElemIsLinked)
+                                            {
+                                                var proj = curve.Project(intersectionPoint);
+                                                if (proj != null)
+                                                {
+                                                    var cp = proj.XYZPoint;
+                                                    placePoint = new XYZ(cp.X, cp.Y, intersectionPoint.Z);
+                                                    _log($"[CenterlineProjection] Projected to wall centerline using XYZPoint: wallCenter=({cp.X:F6},{cp.Y:F6},{cp.Z:F6}), result={placePoint}");
+                                                }
+                                                else
+                                                {
+                                                    placePoint = WallCenterlineHelper.GetElementCenterlinePoint(wall, intersectionPoint);
+                                                    _log($"[CenterlineProjection] Project returned null; using WallCenterlineHelper result={placePoint}");
+                                                }
+                                            }
+                                            else
+                                            {
+                                                // Linked host but we couldn't locate the transform. Safer to place at the intersection
+                                                // than to project with mismatched coordinates.
+                                                _log($"[CenterlineProjection] Host is linked but no transform found; using intersectionPoint as placePoint");
+                                                placePoint = intersectionPoint;
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        placePoint = WallCenterlineHelper.GetElementCenterlinePoint(wall, intersectionPoint);
+                                        _log($"[CenterlineProjection] No wall location curve; using WallCenterlineHelper result={placePoint}");
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    _log($"[CenterlineProjection] Exception projecting to wall centerline: {ex.Message}");
+                                    placePoint = intersectionPoint;
+                                }
+                            }
+
+                            _log($"Placing sleeve: hostElem type = {hostElem.GetType().FullName}, isWall = {isWall}, isFraming = {isFraming}, placePoint = {placePoint}");
+
+                            // DIAGNOSTIC: Check if host element is from linked document and needs transform
+                            bool hostIsLinked = hostElem?.Document != null && hostElem.Document != _doc;
+                            string hostIdStr = hostElem?.Id.IntegerValue.ToString() ?? "null";
+                            string hostTypeStr = hostElem?.GetType().Name ?? "null";
+                            // Read IFC GUID parameter (diagnostic) - try a few common names
+                            string hostIfcGuid = "NULL";
+                            try
+                            {
+                                if (hostElem != null)
+                                {
+                                    var ifcParam = hostElem.LookupParameter("IfcGUID") ?? hostElem.LookupParameter("IfcGuid") ?? hostElem.LookupParameter("Ifc GUID");
+                                    if (ifcParam != null)
+                                    {
+                                        hostIfcGuid = ifcParam.AsString() ?? ifcParam.AsValueString() ?? "NULL";
+                                    }
+                                }
+                            }
+                            catch { /* ignore */ }
+                            
+                            _log($"[TransformDebug] Pipe {pipe.Id} analysis:");
+                            _log($"[TransformDebug]   - Pipe document: '{pipe.Document?.Title ?? "NULL"}' vs Active: '{_doc?.Title ?? "NULL"}'");
+                            _log($"[TransformDebug]   - Pipe from linked doc: {(pipe.Document != _doc)}");
+                            _log($"[TransformDebug]   - Host {hostTypeStr} (ID:{hostIdStr}) document: '{hostElem?.Document?.Title ?? "NULL"}'");
+                            _log($"[TransformDebug]   - Host {hostTypeStr} (ID:{hostIdStr}) from linked doc: {hostIsLinked}");
+                            _log($"[TransformDebug]   - Host IfcGUID: '{hostIfcGuid}'");
+                            _log($"[TransformDebug]   - Transform provided: {(transform != null)}");
+                            _log($"[TransformDebug]   - Original intersection center: {intersectionPoint}");
+                            _log($"[TransformDebug]   - Original placePoint: {placePoint}");
+                            
+                            if (transform != null)
+                            {
+                                _log($"[TransformDebug]   - Transform origin: {transform.Origin}");
+                                _log($"[TransformDebug]   - Transform basis X: {transform.BasisX}");
+                                _log($"[TransformDebug]   - Transform basis Y: {transform.BasisY}");
+                                _log($"[TransformDebug]   - Transform basis Z: {transform.BasisZ}");
+                            }
+
+                            // IMPORTANT: `MepIntersectionService` returns intersection points in the active
+                            // document coordinate space (it transforms linked structural solids before
+                            // computing intersections). DO NOT re-apply the source-element transform to
+                            // these intersection-derived points — that causes double-transforms and large
+                            // coordinate deltas. We therefore use the intersection-derived placePoint as
+                            // the final placement point unless we have a strong reason to prefer the
+                            // projected centerline result.
+                            XYZ placePtToUse = placePoint;
+                            if (transform != null)
+                            {
+                                // There is a tuple transform (source element from a link). This transform
+                                // maps link->active coordinates and should only be used for transforming
+                                // source-element-local coordinates. Intersection points are already
+                                // active-doc coordinates, so ignore `transform` here (log for diagnostics).
+                                _log($"[TransformDebug] Info: source element has a tuple transform; ignoring it for intersection-derived point (placePoint={placePoint}).");
+                            }
+                            else if (hostIsLinked)
+                            {
+                                // Host lives in a linked document and we didn't receive a tuple transform.
+                                // We may still locate a RevitLinkInstance for diagnostics, but we must
+                                // NOT apply hostTransform.OfPoint to an active-doc intersection point
+                                // (that would double-transform). Instead, compare the projected and
+                                // intersection points in active-doc coords directly and choose the
+                                // most faithful one.
+                                Transform? hostTransform = FindTransformForLinkedElement(hostElem);
+                                if (hostTransform != null)
+                                {
+                                    try
+                                    {
+                                        double diff = placePoint.DistanceTo(intersectionPoint);
+                                        double diffMM = UnitUtils.ConvertFromInternalUnits(diff, UnitTypeId.Millimeters);
+                                        _log($"[TransformDebug]   - projected (active): {placePoint}");
+                                        _log($"[TransformDebug]   - intersection (active): {intersectionPoint}");
+                                        _log($"[TransformDebug]   - projected vs intersection difference = {diffMM:F1}mm");
+
+                                        double thresholdMM = 50.0;
+                                        if (diffMM > thresholdMM)
+                                        {
+                                            placePtToUse = intersectionPoint;
+                                            _log($"[TransformDebug] NOTE: projected and intersection differ by {diffMM:F1}mm; using intersection point for placement.");
+                                        }
+                                        else
+                                        {
+                                            placePtToUse = placePoint;
+                                        }
+
+                                        _log($"[TransformDebug] SUCCESS: Selected placePtToUse: {placePtToUse}");
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        _log($"[TransformDebug] ERROR while comparing projected/intersection: {ex.Message}");
+                                    }
+                                }
+                                else
+                                {
+                                    _log($"[TransformDebug] WARNING: Could not find RevitLinkInstance for host document '{hostElem?.Document?.Title}'. Using intersection point.");
+                                    placePtToUse = intersectionPoint;
+                                }
+                            }
+
+                            double distMM = UnitUtils.ConvertFromInternalUnits(placePtToUse.DistanceTo(placePoint), UnitTypeId.Millimeters);
+                            double dzMM = UnitUtils.ConvertFromInternalUnits(placePtToUse.Z - placePoint.Z, UnitTypeId.Millimeters);
+                            _log($"[PlacementDebug] Final placement decision:");
+                            _log($"[PlacementDebug]   - Will place at: {placePtToUse} (delta={distMM:F1}mm, dz={dzMM:F1}mm)");
+
+                            double indivTol = UnitUtils.ConvertToInternalUnits(10.0, UnitTypeId.Millimeters); // 10mm for individual sleeves
+                            double clusterTol = UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters); // 100mm for clusters
+
+                            // OPTIMIZATION: Use the enhanced duplication suppressor which first checks nearby
+                            // individual sleeves and then cluster bounding boxes, while accepting a hostType
+                            // and sectionBox to avoid scanning unrelated cluster families.
+                            _log($"[DuplicationCheck] Starting optimized checks for location {placePtToUse} (individual tol={UnitUtils.ConvertFromInternalUnits(indivTol, UnitTypeId.Millimeters):F0}mm, cluster tol={UnitUtils.ConvertFromInternalUnits(clusterTol, UnitTypeId.Millimeters):F0}mm)");
+                            BoundingBoxXYZ? sectionBox = null;
+                            try
+                            {
+                                if (_doc != null && _doc.ActiveView is View3D vb)
+                                    sectionBox = SectionBoxHelper.GetSectionBoxBounds(vb);
+                            }
+                            catch { /* ignore */ }
+
+                            string hostTypeFilter = hostElem is Wall ? "DuctOpeningOnWall" : (hostElem is Floor ? "DuctOpeningOnSlab" : "DuctOpeningOnWall");
+                            _log($"[DuplicationCheck] using hostTypeFilter={hostTypeFilter}, sectionBoxProvided={(sectionBox!=null)}");
+
+                            bool duplicateExists = OpeningDuplicationChecker.IsAnySleeveAtLocationEnhanced(_doc!, placePtToUse, indivTol, clusterExpansion: clusterTol, ignoreIds: null, hostType: hostTypeFilter, sectionBox: sectionBox);
+                            if (duplicateExists)
+                            {
+                                _log($"SKIP: Pipe {pipe.Id} host {hostTypeStr} {hostIdStr} duplicate sleeve (individual or cluster) exists near {placePtToUse} (optimized check)");
+                                SkippedCount++;
                                 continue;
                             }
                             FamilySymbol symbolToUse = (isWall || isFraming) ? _pipeWallSymbol : _pipeSlabSymbol;
+                            
                             _placer.PlaceSleeve(
                                 pipe,
-                                placePoint,
-                                hostLine.Direction,
+                                placePtToUse,
+                                pipeLine.Direction,
                                 symbolToUse,
-                                hostElem
+                                hostElem!
                             );
                             PlacedCount++;
                         }
@@ -253,6 +400,97 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     _log($"Skipped: pipe {pipe.Id} has no intersection with structural host");
                 }
             }
+        }
+
+        /// <summary>
+        /// Finds the RevitLinkInstance transform for a linked element
+        /// </summary>
+        private Transform? FindTransformForLinkedElement(Element? linkedElement)
+        {
+            if (linkedElement?.Document == null || _doc == null)
+                return null;
+            
+            try
+            {
+                // Find all RevitLinkInstances in the active document
+                var linkInstances = new FilteredElementCollector(_doc)
+                    .OfClass(typeof(RevitLinkInstance))
+                    .Cast<RevitLinkInstance>()
+                    .ToList();
+
+                // Find the link instance that points to the same document as the linked element
+                foreach (var linkInstance in linkInstances)
+                {
+                    var linkDoc = linkInstance.GetLinkDocument();
+                    if (linkDoc != null && 
+                        string.Equals(linkDoc.Title, linkedElement.Document.Title, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var transform = linkInstance.GetTotalTransform();
+                        _log($"[TransformDebug] Found matching RevitLinkInstance for document '{linkDoc.Title}'");
+                        _log($"[TransformDebug]   - Transform origin: {transform.Origin}");
+                        return transform;
+                    }
+                }
+                
+                _log($"[TransformDebug] No matching RevitLinkInstance found for document '{linkedElement.Document.Title}'");
+                _log($"[TransformDebug] Available linked documents:");
+                foreach (var linkInstance in linkInstances)
+                {
+                    var linkDoc = linkInstance.GetLinkDocument();
+                    _log($"[TransformDebug]   - '{linkDoc?.Title ?? "NULL"}'");
+                }
+                
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _log($"[TransformDebug] ERROR in FindTransformForLinkedElement: {ex.Message}");
+                return null;
+            }
+        }
+    }
+}
+
+// Local helpers copied from ProgressiveMepSleeveService to keep PipeSleevePlacerService self-contained
+namespace JSE_RevitAddin_MEP_OPENINGS.Services
+{
+    public static partial class PipeSleevePlacerServiceHelpers
+    {
+        public static bool PointInBoundingBox(XYZ pt, BoundingBoxXYZ bbox)
+        {
+            return pt.X >= bbox.Min.X - 1e-6 && pt.X <= bbox.Max.X + 1e-6 &&
+                   pt.Y >= bbox.Min.Y - 1e-6 && pt.Y <= bbox.Max.Y + 1e-6 &&
+                   pt.Z >= bbox.Min.Z - 1e-6 && pt.Z <= bbox.Max.Z + 1e-6;
+        }
+
+        public static BoundingBoxXYZ TransformBoundingBox(BoundingBoxXYZ bbox, Transform transform)
+        {
+            var corners = new[] {
+                new XYZ(bbox.Min.X, bbox.Min.Y, bbox.Min.Z),
+                new XYZ(bbox.Min.X, bbox.Min.Y, bbox.Max.Z),
+                new XYZ(bbox.Min.X, bbox.Max.Y, bbox.Min.Z),
+                new XYZ(bbox.Min.X, bbox.Max.Y, bbox.Max.Z),
+                new XYZ(bbox.Max.X, bbox.Min.Y, bbox.Min.Z),
+                new XYZ(bbox.Max.X, bbox.Min.Y, bbox.Max.Z),
+                new XYZ(bbox.Max.X, bbox.Max.Y, bbox.Min.Z),
+                new XYZ(bbox.Max.X, bbox.Max.Y, bbox.Max.Z)
+            };
+            var transformed = corners.Select(pt => transform.OfPoint(pt)).ToList();
+            var min = new XYZ(transformed.Min(p => p.X), transformed.Min(p => p.Y), transformed.Min(p => p.Z));
+            var max = new XYZ(transformed.Max(p => p.X), transformed.Max(p => p.Y), transformed.Max(p => p.Z));
+            return new BoundingBoxXYZ { Min = min, Max = max };
+        }
+
+        public static XYZ OffsetVector4Way(string side, Transform damperT)
+        {
+            return side switch
+            {
+                "Right" => XYZ.BasisX,
+                "Left" => -XYZ.BasisX,
+                "Top" => XYZ.BasisZ,
+                "Bottom" => -XYZ.BasisZ,
+                _ => XYZ.BasisX,
+            };
         }
     }
 }

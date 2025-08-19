@@ -22,11 +22,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             double toleranceDist = UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters);
             double toleranceMm = UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters);
             double zTolerance = UnitUtils.ConvertToInternalUnits(1.0, UnitTypeId.Millimeters);
-            var sleeves = new FilteredElementCollector(doc)
+            var rawSleeves = new FilteredElementCollector(doc)
                 .OfClass(typeof(FamilyInstance))
                 .Cast<FamilyInstance>()
                 .Where(fi => fi.Symbol.Family.Name.Contains("OpeningOnWall") && fi.Symbol.Name.StartsWith("PS#"))
                 .ToList();
+
+            // Filter by active 3D section box to reduce candidates
+            List<FamilyInstance> sleeves;
+            try
+            {
+                var rawElements = rawSleeves.Cast<Element>().Select(e => (element: (Element)e, transform: (Transform?)null)).ToList();
+                var filtered = SectionBoxHelper.FilterElementsBySectionBox(uiDoc, rawElements);
+                sleeves = filtered.Select(t => t.element).OfType<FamilyInstance>().ToList();
+                DebugLogger.Log($"[PipeOpeningsRect] Raw sleeves={rawSleeves.Count}, Filtered by section box={sleeves.Count}");
+                // If section-box filtering yields 0 but raw collection had items, fall back to raw to avoid silent no-op
+                if (sleeves.Count == 0 && rawSleeves.Count > 0)
+                {
+                    var sampleIds = rawSleeves.Take(10).Select(fi => fi.Id.IntegerValue.ToString()).ToList();
+                    DebugLogger.Log($"[PipeOpeningsRect] Section-box filtering yielded 0 results; falling back to raw collection of {rawSleeves.Count} sleeves. SampleIds={string.Join(",", sampleIds)}");
+                    sleeves = rawSleeves;
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[PipeOpeningsRect] SectionBox filtering failed: {ex.Message}; falling back to raw collection");
+                sleeves = rawSleeves;
+            }
             
             if (sleeves.Count == 0)
             {
@@ -79,7 +101,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 // Ensure all sleeves have a valid Level and Schedule Level parameter before clustering
                 foreach (var sleeve in sleeves)
                 {
-                    DebugLogger.Log($"Processing sleeve {sleeve.Id.Value} for level assignment");
+                    DebugLogger.Log($"Processing sleeve {sleeve.Id.IntegerValue} for level assignment");
                     // Try to get reference level from parameter or helper
                     Level? refLevelNullable = HostLevelHelper.GetHostReferenceLevel(doc, sleeve);
                     Level refLevel;
@@ -87,12 +109,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     {
                         var pt = (sleeve.Location as LocationPoint)?.Point ?? sleeve.GetTransform().Origin;
                         refLevel = GetNearestPositiveZLevel(doc, pt);
-                        DebugLogger.Log($"Using nearest positive Z level for sleeve {sleeve.Id.Value}: {refLevel?.Name ?? "null"}");
+                        DebugLogger.Log($"Using nearest positive Z level for sleeve {sleeve.Id.IntegerValue}: {refLevel?.Name ?? "null"}");
                     }
                     else
                     {
                         refLevel = refLevelNullable;
-                        DebugLogger.Log($"Got reference level from helper for sleeve {sleeve.Id.Value}: {refLevel.Name}");
+                        DebugLogger.Log($"Got reference level from helper for sleeve {sleeve.Id.IntegerValue}: {refLevel.Name}");
                     }
                     if (refLevel != null)
                     {
@@ -102,37 +124,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         if (levelParam != null && !levelParam.IsReadOnly && levelParam.StorageType == StorageType.ElementId)
                         {
                             levelParam.Set(refLevel.Id);
-                            DebugLogger.Log($"Set Level parameter for sleeve {sleeve.Id.Value} to {refLevel.Name}");
+                            DebugLogger.Log($"Set Level parameter for sleeve {sleeve.Id.IntegerValue} to {refLevel.Name}");
                         }
                         // Set Schedule Level if available
                         var schedLevelParam = sleeve.LookupParameter("Schedule Level");
                         if (schedLevelParam != null && !schedLevelParam.IsReadOnly)
                         {
-                            DebugLogger.Log($"Setting Schedule Level for sleeve {sleeve.Id.Value}, StorageType: {schedLevelParam.StorageType}");
+                            DebugLogger.Log($"Setting Schedule Level for sleeve {sleeve.Id.IntegerValue}, StorageType: {schedLevelParam.StorageType}");
                             if (schedLevelParam.StorageType == StorageType.ElementId)
                             {
                                 schedLevelParam.Set(refLevel.Id);
-                                DebugLogger.Log($"Set sleeve {sleeve.Id.Value} Schedule Level to ElementId: {refLevel.Id.Value} ({refLevel.Name})");
+                                DebugLogger.Log($"Set sleeve {sleeve.Id.IntegerValue} Schedule Level to ElementId: {refLevel.Id.IntegerValue} ({refLevel.Name})");
                             }
                             else if (schedLevelParam.StorageType == StorageType.String)
                             {
                                 schedLevelParam.Set(refLevel.Name);
-                                DebugLogger.Log($"Set sleeve {sleeve.Id.Value} Schedule Level to String: '{refLevel.Name}'");
+                                DebugLogger.Log($"Set sleeve {sleeve.Id.IntegerValue} Schedule Level to String: '{refLevel.Name}'");
                             }
                             else if (schedLevelParam.StorageType == StorageType.Integer)
                             {
-                                schedLevelParam.Set(refLevel.Id.Value);
-                                DebugLogger.Log($"Set sleeve {sleeve.Id.Value} Schedule Level to Integer: {refLevel.Id.Value} ({refLevel.Name})");
+                                schedLevelParam.Set(refLevel.Id.IntegerValue);
+                                DebugLogger.Log($"Set sleeve {sleeve.Id.IntegerValue} Schedule Level to Integer: {refLevel.Id.IntegerValue} ({refLevel.Name})");
                             }
                         }
                         else
                         {
-                            DebugLogger.Log($"Sleeve {sleeve.Id.Value} has no Schedule Level parameter or it's read-only");
+                            DebugLogger.Log($"Sleeve {sleeve.Id.IntegerValue} has no Schedule Level parameter or it's read-only");
                         }
                     }
                     else
                     {
-                        DebugLogger.Log($"No reference level found for sleeve {sleeve.Id.Value}");
+                        DebugLogger.Log($"No reference level found for sleeve {sleeve.Id.IntegerValue}");
                     }
                 }
 
@@ -205,19 +227,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     }
                     // Duplicate suppression
                     double clusterSuppressionTol = UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters);
-                    var existingRects = new FilteredElementCollector(doc)
-                        .OfClass(typeof(FamilyInstance))
-                        .Cast<FamilyInstance>()
-                        .Where(fi => fi.Symbol.Family.Name.Equals("ClusterOpeningOnWallX", System.StringComparison.OrdinalIgnoreCase))
-                        .ToList();
-                    bool duplicateFound = existingRects.Any(rect => {
-                        var loc = (rect.Location as LocationPoint)?.Point ?? rect.GetTransform().Origin;
-                        double dist = mid.DistanceTo(loc);
-                        return dist <= clusterSuppressionTol;
-                    });
+                    BoundingBoxXYZ? sectionBoxForDoc = null;
+                    try { if (uiDoc.ActiveView is View3D vb3) sectionBoxForDoc = SectionBoxHelper.GetSectionBoxBounds(vb3); } catch { }
+                    bool duplicateFound = OpeningDuplicationChecker.IsLocationWithinClusterBounds(doc, mid, clusterSuppressionTol, hostType: "ClusterOpeningOnWallX", sectionBox: sectionBoxForDoc);
                     if (duplicateFound)
                     {
-                        DebugLogger.Log($"Suppressed duplicate rectangular opening at {mid} (existing rectangular opening within 100mm)");
+                        DebugLogger.Log($"Suppressed duplicate rectangular opening at {mid} (existing rectangular opening within 100mm) (optimized)");
                         continue;
                     }
                     // Place the cluster sleeve family instance at the cluster midpoint
@@ -238,7 +253,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     if (heightParam != null && !heightParam.IsReadOnly) heightParam.Set(depth); // Z
                     if (depthParam != null && !depthParam.IsReadOnly) depthParam.Set(hostThickness); // X
                     placedCount++;
-                    DebugLogger.Log($"Rectangular opening created with id {inst.Id.Value} (total placed: {placedCount})");
+                    DebugLogger.Log($"Rectangular opening created with id {inst.Id.IntegerValue} (total placed: {placedCount})");
                     // Delete originals
                     foreach (var s in cluster)
                     {

@@ -10,14 +10,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// </summary>
     public static class DebugLogger
     {
-        /// <summary>
-        /// Set to false to disable all logging globally.
-        /// </summary>
-        public static bool IsEnabled = true;
-        // Always log to the Log directory in the project source root
-        private static string DuctLogFilePath = Path.Combine("c:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\Logs", "ductsleeveplacer.log");
-        private static string CableTrayLogFilePath = Path.Combine("c:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\Logs", "cabletraysleeveplacer.log");
-        private static string LogFilePath = CableTrayLogFilePath; // Default
+    /// <summary>
+    /// Set to false to disable all logging globally.
+    /// Default enabled here to allow runtime diagnostics for cable tray placement.
+    /// Toggle to false if you want to silence logs.
+    /// </summary>
+    public static bool IsEnabled = true;
+    // Always log to the hard-coded Log directory requested by the user
+    private static readonly string LogDir = "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\Log";
+    private static string DuctLogFilePath = Path.Combine(LogDir, "ductsleeveplacer.log");
+    private static string CableTrayLogFilePath = Path.Combine(LogDir, "cabletraysleeveplacer.log");
+    private static string DamperLogFilePath = Path.Combine(LogDir, "dampersleeveplacer.log");
+    private static string LogFilePath = CableTrayLogFilePath; // Default
 
         public enum LogLevel
         {
@@ -33,7 +37,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public static void InitLogFile()
         {
             if (!IsEnabled) return;
-            InitLogFile(Path.Combine("Log", "cabletraysleeveplacer"));
+            InitLogFile("cabletraysleeveplacer");
         }
 
         /// <summary>
@@ -44,20 +48,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (!IsEnabled) return;
             try
             {
-                // Set log file path in project source root Log directory
-                string logDir = "c:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\Logs";
+                // Use the hard-coded log directory and ensure it exists
+                string logDir = LogDir;
                 if (!Directory.Exists(logDir))
                     Directory.CreateDirectory(logDir);
                 // If logFileName has an extension, use as is; otherwise, add .log
-                                LogFilePath = Path.Combine(logDir, logFileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase) ? logFileName : logFileName + ".log");
+                LogFilePath = Path.Combine(logDir, logFileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase) ? logFileName : logFileName + ".log");
                 // Include build/version information
                 var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "n/a";
                 var buildTimestamp = File.GetLastWriteTime(Assembly.GetExecutingAssembly().Location).ToString("o");
+                string assemblyPath = Assembly.GetExecutingAssembly().Location;
                 string header =
                     $"===== NEW LOG SESSION STARTED {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n" +
                     $"JSE_RevitAddin_MEP_OPENINGS Debug Log: {logFileName}\n" +
                     $"Build Version: {version}\n" +
                     $"Build Timestamp: {buildTimestamp}\n" +
+                    $"Wrote: {assemblyPath}\n" +
                     $"====================================================\n";
                 File.WriteAllText(LogFilePath, header);
             }
@@ -78,18 +84,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (!IsEnabled) return;
             try
             {
-                // Set log file path with build timestamp
+                // Set log file path with build timestamp under the hard-coded log directory
                 string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                LogFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), $"{logFileName}_{timestamp}.log");
+                if (!Directory.Exists(LogDir)) Directory.CreateDirectory(LogDir);
+                LogFilePath = Path.Combine(LogDir, $"{logFileName}_{timestamp}.log");
 
                 // Include build/version information
                 var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "n/a";
                 var buildTimestamp = File.GetLastWriteTime(Assembly.GetExecutingAssembly().Location).ToString("o");
+                string assemblyPath = Assembly.GetExecutingAssembly().Location;
                 string header =
                     $"===== NEW LOG SESSION STARTED {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n" +
                     $"JSE_RevitAddin_MEP_OPENINGS Debug Log: {logFileName}\n" +
                     $"Build Version: {version}\n" +
                     $"Build Timestamp: {buildTimestamp}\n" +
+                    $"Wrote: {assemblyPath}\n" +
                     $"====================================================\n";
                 File.WriteAllText(LogFilePath, header);
             }
@@ -107,19 +116,54 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (!IsEnabled) return;
             try
             {
-                // Set log file path
-                LogFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), $"{logFileName}.log");
+                // Set log file path under the hard-coded log directory (overwrite mode)
+                if (!Directory.Exists(LogDir)) Directory.CreateDirectory(LogDir);
+                LogFilePath = Path.Combine(LogDir, $"{logFileName}.log");
 
                 // Include build/version information
                 var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "n/a";
                 var buildTimestamp = File.GetLastWriteTime(Assembly.GetExecutingAssembly().Location).ToString("o");
+                string assemblyPath = Assembly.GetExecutingAssembly().Location;
                 string header =
                     $"===== NEW LOG SESSION STARTED {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n" +
                     $"JSE_RevitAddin_MEP_OPENINGS Debug Log: {logFileName}\n" +
                     $"Build Version: {version}\n" +
                     $"Build Timestamp: {buildTimestamp}\n" +
+                    $"Wrote: {assemblyPath}\n" +
                     $"====================================================\n";
                 File.WriteAllText(LogFilePath, header); // Overwrite existing content
+            }
+            catch
+            {
+                // Silently fail - we don't want logging to break the application
+            }
+        }
+
+        /// <summary>
+        /// Initialize log file using an absolute path (full filename). Creates directory if needed.
+        /// </summary>
+        public static void InitAbsoluteLogFile(string absoluteFilePath)
+        {
+            if (!IsEnabled) return;
+            try
+            {
+                var logDir = Path.GetDirectoryName(absoluteFilePath);
+                if (!string.IsNullOrEmpty(logDir) && !Directory.Exists(logDir))
+                    Directory.CreateDirectory(logDir);
+
+                LogFilePath = absoluteFilePath;
+
+                var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "n/a";
+                var buildTimestamp = File.GetLastWriteTime(Assembly.GetExecutingAssembly().Location).ToString("o");
+                string assemblyPath = Assembly.GetExecutingAssembly().Location;
+                string header =
+                    $"===== NEW LOG SESSION STARTED {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n" +
+                    $"JSE_RevitAddin_MEP_OPENINGS Debug Log: {Path.GetFileName(absoluteFilePath)}\n" +
+                    $"Build Version: {version}\n" +
+                    $"Build Timestamp: {buildTimestamp}\n" +
+                    $"Wrote: {assemblyPath}\n" +
+                    $"====================================================\n";
+                File.WriteAllText(LogFilePath, header);
             }
             catch
             {
@@ -134,6 +178,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public static void SetCableTrayLogFile()
         {
             LogFilePath = CableTrayLogFilePath;
+        }
+        public static void SetDamperLogFile()
+        {
+            LogFilePath = DamperLogFilePath;
         }
 
         /// <summary>

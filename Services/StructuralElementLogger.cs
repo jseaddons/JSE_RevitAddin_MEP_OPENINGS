@@ -103,7 +103,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-                string logEntry = $"[{timestamp}] {elementType.ToUpper()} ID={elementId.Value}: {action}";
+                string logEntry = $"[{timestamp}] {elementType.ToUpper()} ID={elementId.IntegerValue}: {action}";
                 if (!string.IsNullOrEmpty(details))
                     logEntry += $" - {details}";
                 logEntry += "\n";
@@ -111,7 +111,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 File.AppendAllText(LogFilePath, logEntry);
 
                 // Also log to main debug logger with special prefix
-                DebugLogger.Log($"[STRUCTURAL] {elementType} ID={elementId.Value}: {action} {details}");
+                DebugLogger.Log($"[STRUCTURAL] {elementType} ID={elementId.IntegerValue}: {action} {details}");
             }
             catch (Exception ex)
             {
@@ -125,7 +125,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public static void LogSleevePlace(string elementType, Autodesk.Revit.DB.ElementId elementId, Autodesk.Revit.DB.ElementId sleeveId, string position, string size)
         {
             if (!DebugLogger.IsEnabled) return;
-            LogStructuralElement(elementType, elementId, "SLEEVE PLACED", $"Sleeve ID={sleeveId.Value}, Position={position}, Size={size}");
+            LogStructuralElement(elementType, elementId, "SLEEVE PLACED", $"Sleeve ID={sleeveId.IntegerValue}, Position={position}, Size={size}");
         }
 
         /// <summary>
@@ -144,13 +144,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             if (!DebugLogger.IsEnabled) return;
             string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-            string logEntry = $"[{timestamp}] {mepElementType}-{structuralElementType.ToUpper()} INTERSECTION - {mepElementType} ID={mepElementId.Value}, {structuralElementType} ID={structuralElementId.Value}, Position={position}\n";
+            string logEntry = $"[{timestamp}] {mepElementType}-{structuralElementType.ToUpper()} INTERSECTION - {mepElementType} ID={mepElementId.IntegerValue}, {structuralElementType} ID={structuralElementId.IntegerValue}, Position={position}\n";
             
             try
             {
                 if (!IsInitialized)
                     InitializeLogger();
-                DebugLogger.Log($"[STRUCTURAL] {mepElementType}-{structuralElementType} intersection detected - MEP ID={mepElementId.Value}, Structural ID={structuralElementId.Value}");
+                DebugLogger.Log($"[STRUCTURAL] {mepElementType}-{structuralElementType} intersection detected - MEP ID={mepElementId.IntegerValue}, Structural ID={structuralElementId.IntegerValue}");
                 DebugLogger.Log($"[STRUCTURAL] {mepElementType}-{structuralElementType} intersection detected - MEP ID={mepElementId}, Structural ID={structuralElementId}");
             }
             catch (Exception ex)

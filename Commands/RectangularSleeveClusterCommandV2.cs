@@ -57,16 +57,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             double toleranceMm = UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters);
 
             // Collect all placed rectangular sleeves (PS Rectangular family instances)
-            var sleeves = new FilteredElementCollector(doc)
+            var rawSleeves = new FilteredElementCollector(doc)
                 .OfClass(typeof(FamilyInstance))
                 .Cast<FamilyInstance>()
                 .Where(fi => fi.Symbol.Family.Name.EndsWith("OpeningOnWall", StringComparison.OrdinalIgnoreCase)
                           || fi.Symbol.Family.Name.EndsWith("OpeningOnSlab", StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
+            // Use SectionBoxHelper to reduce to only elements visible in the active 3D section box
+            List<FamilyInstance> sleeves;
+            try
+            {
+                var rawElements = rawSleeves.Cast<Element>().Select(e => (element: (Element)e, transform: (Transform?)null)).ToList();
+                var filtered = SectionBoxHelper.FilterElementsBySectionBox(uiDoc, rawElements);
+                sleeves = filtered.Select(t => t.element).OfType<FamilyInstance>().ToList();
+                DebugLogger.Log($"[RectangularCluster] Raw sleeves={rawSleeves.Count}, Filtered by section box={sleeves.Count}");
+                // If section-box filtering returns zero but we had raw sleeves, assume the section
+                // box is positioned such that nothing passed the filter. Fall back to raw collection
+                // to avoid silently doing nothing when the user expects clustering.
+                if (sleeves.Count == 0 && rawSleeves.Count > 0)
+                {
+                    DebugLogger.Log($"[RectangularCluster] Section-box filtering yielded 0 results; falling back to raw collection of {rawSleeves.Count} sleeves.");
+                    sleeves = rawSleeves;
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[RectangularCluster] SectionBox filtering failed: {ex.Message}; falling back to raw collection");
+                sleeves = rawSleeves;
+            }
+
             using (var tx = new Transaction(doc, "Place Clustered Rectangular Openings V2"))
             {
                 tx.Start();
+
+                // Debug targets: user-provided sleeve ids that must cluster
+                var debugTargetIds = new HashSet<int> { 775507, 775509, 775510 };
 
                 var sleeveGroups = sleeves.GroupBy(sleeve => {
                     // Use HostOrientation parameter only
@@ -83,46 +109,186 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     return new SleeveGroupKey(hostType, systemType, effectiveOrientation);
                 });
 
+                // Diagnostic: log group counts and sample ids to understand why no clusters form
+                try
+                {
+                    foreach (var g in sleeveGroups)
+                    {
+                        var list = g.ToList();
+                        var ids = list.Select(fi => fi.Id.IntegerValue.ToString()).Take(10).ToList();
+                        DebugLogger.Log($"[ClusterDiag] Group hostType={g.Key.hostType}, systemType={g.Key.systemType}, orientation={g.Key.orientation}, count={list.Count}, sampleIds={string.Join(",", ids)}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Log($"[ClusterDiag] Failed to log sleeveGroups: {ex.Message}");
+                }
+
                 // For each group, form clusters based on edge-to-edge distance (≤ 100mm)
                 Dictionary<SleeveGroupKey, List<List<FamilyInstance>>> clustersByGroup = new Dictionary<SleeveGroupKey, List<List<FamilyInstance>>>();
                 foreach (var group in sleeveGroups)
                 {
+                    // Build a list of family sleeves and precompute centers and bboxes once
                     var familySleeves = group.ToList();
-                    var groupLocations = familySleeves.ToDictionary(s => s, s => (s.Location as LocationPoint)?.Point ?? s.GetTransform().Origin);
-                    var groupClusters = new List<List<FamilyInstance>>();
-                    var unprocessedGroup = new List<FamilyInstance>(familySleeves);
-                    while (unprocessedGroup.Any())
+                    var centers = new Dictionary<FamilyInstance, XYZ>(familySleeves.Count);
+                    var bboxes = new Dictionary<FamilyInstance, BoundingBoxXYZ>(familySleeves.Count);
+                    foreach (var s in familySleeves)
                     {
+                        var center = (s.Location as LocationPoint)?.Point ?? s.GetTransform().Origin;
+                        centers[s] = center;
+                        try { var bb = s.get_BoundingBox(null); if (bb != null) bboxes[s] = bb; } catch { }
+                    }
+
+                    // Targeted diagnostic: if this group contains any of the target IDs, dump center and bbox info
+                    try
+                    {
+                        if (familySleeves.Any(fi => debugTargetIds.Contains(fi.Id.IntegerValue)))
+                        {
+                            DebugLogger.Log($"[TARGET-DIAG] Group contains target IDs ({string.Join(",", familySleeves.Where(fi => debugTargetIds.Contains(fi.Id.IntegerValue)).Select(fi => fi.Id.IntegerValue))}). Dumping centers and bboxes:");
+                            foreach (var fi in familySleeves)
+                            {
+                                int id = fi.Id.IntegerValue;
+                                var c = centers.ContainsKey(fi) ? centers[fi] : (fi.Location as LocationPoint)?.Point ?? fi.GetTransform().Origin;
+                                BoundingBoxXYZ? bb = null;
+                                try { bb = bboxes.ContainsKey(fi) ? bboxes[fi] : fi.get_BoundingBox(null); } catch { }
+                                if (bb != null)
+                                {
+                                    DebugLogger.Log($"[TARGET-DIAG] ID={id}, Center=({c.X:F4},{c.Y:F4},{c.Z:F4}), BBoxMin=({bb.Min.X:F4},{bb.Min.Y:F4},{bb.Min.Z:F4}), BBoxMax=({bb.Max.X:F4},{bb.Max.Y:F4},{bb.Max.Z:F4})");
+                                }
+                                else
+                                {
+                                    DebugLogger.Log($"[TARGET-DIAG] ID={id}, Center=({c.X:F4},{c.Y:F4},{c.Z:F4}), BBox=NULL");
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLogger.Log($"[TARGET-DIAG] Failed to write target diagnostics: {ex.Message}");
+                    }
+
+                    // Spatial hash grid using toleranceDist as cell size to limit neighbor searches
+                    var grid = new Dictionary<(int, int, int), List<FamilyInstance>>();
+                    double cellSize = toleranceDist > 0.0 ? toleranceDist : UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters);
+                    // Build grid by bounding-box extents (so border proximity is respected)
+                    foreach (var s in familySleeves)
+                    {
+                        BoundingBoxXYZ? bb = null;
+                        try { bb = bboxes.ContainsKey(s) ? bboxes[s] : s.get_BoundingBox(null); } catch { }
+                        if (bb != null)
+                        {
+                            int min_ix = (int)Math.Floor(bb.Min.X / cellSize);
+                            int max_ix = (int)Math.Floor(bb.Max.X / cellSize);
+                            int min_iy = (int)Math.Floor(bb.Min.Y / cellSize);
+                            int max_iy = (int)Math.Floor(bb.Max.Y / cellSize);
+                            int min_iz = (int)Math.Floor(bb.Min.Z / cellSize);
+                            int max_iz = (int)Math.Floor(bb.Max.Z / cellSize);
+                            for (int gx = min_ix; gx <= max_ix; gx++)
+                                for (int gy = min_iy; gy <= max_iy; gy++)
+                                    for (int gz = min_iz; gz <= max_iz; gz++)
+                                    {
+                                        var key = (gx, gy, gz);
+                                        if (!grid.TryGetValue(key, out var list)) { list = new List<FamilyInstance>(); grid[key] = list; }
+                                        list.Add(s);
+                                    }
+                        }
+                        else
+                        {
+                            // Fallback to center-based bucketing when bbox unavailable
+                            var c = centers[s];
+                            int ix = (int)Math.Floor(c.X / cellSize);
+                            int iy = (int)Math.Floor(c.Y / cellSize);
+                            int iz = (int)Math.Floor(c.Z / cellSize);
+                            var key = (ix, iy, iz);
+                            if (!grid.TryGetValue(key, out var list)) { list = new List<FamilyInstance>(); grid[key] = list; }
+                            list.Add(s);
+                        }
+                    }
+
+                    var groupClusters = new List<List<FamilyInstance>>();
+                    var unprocessedSet = new HashSet<FamilyInstance>(familySleeves);
+
+                    while (unprocessedSet.Count > 0)
+                    {
+                        var start = unprocessedSet.First();
                         var queue = new Queue<FamilyInstance>();
                         var cluster = new List<FamilyInstance>();
-                        queue.Enqueue(unprocessedGroup[0]);
-                        unprocessedGroup.RemoveAt(0);
-                        while (queue.Any())
+                        queue.Enqueue(start);
+                        unprocessedSet.Remove(start);
+
+                        while (queue.Count > 0)
                         {
                             var inst = queue.Dequeue();
                             cluster.Add(inst);
-                            var o1_bbox = inst.get_BoundingBox(null);
-                            var neighbors = unprocessedGroup.Where(s =>
-                            {
-                                if (o1_bbox == null) return false;
-                                var o2_bbox = s.get_BoundingBox(null);
-                                if (o2_bbox == null) return false;
 
-                                // Check if bounding boxes are within tolerance
+                            // Find candidate neighbors using buckets overlapped by the instance bbox expanded by tolerance
+                            BoundingBoxXYZ o1_bbox = bboxes.ContainsKey(inst) ? bboxes[inst] : inst.get_BoundingBox(null);
+                            var candidates = new List<FamilyInstance>();
+                            if (o1_bbox != null)
+                            {
+                                double exMinX = o1_bbox.Min.X - toleranceDist;
+                                double exMaxX = o1_bbox.Max.X + toleranceDist;
+                                double exMinY = o1_bbox.Min.Y - toleranceDist;
+                                double exMaxY = o1_bbox.Max.Y + toleranceDist;
+                                double exMinZ = o1_bbox.Min.Z - toleranceDist;
+                                double exMaxZ = o1_bbox.Max.Z + toleranceDist;
+
+                                int min_ix = (int)Math.Floor(exMinX / cellSize);
+                                int max_ix = (int)Math.Floor(exMaxX / cellSize);
+                                int min_iy = (int)Math.Floor(exMinY / cellSize);
+                                int max_iy = (int)Math.Floor(exMaxY / cellSize);
+                                int min_iz = (int)Math.Floor(exMinZ / cellSize);
+                                int max_iz = (int)Math.Floor(exMaxZ / cellSize);
+
+                                for (int gx = min_ix; gx <= max_ix; gx++)
+                                    for (int gy = min_iy; gy <= max_iy; gy++)
+                                        for (int gz = min_iz; gz <= max_iz; gz++)
+                                        {
+                                            var key = (gx, gy, gz);
+                                            if (grid.TryGetValue(key, out var bucket)) candidates.AddRange(bucket);
+                                        }
+                            }
+                            else
+                            {
+                                // Fallback to center-neighbor search (previous 3x3x3)
+                                var c = centers[inst];
+                                int ix = (int)Math.Floor(c.X / cellSize);
+                                int iy = (int)Math.Floor(c.Y / cellSize);
+                                int iz = (int)Math.Floor(c.Z / cellSize);
+                                for (int dx = -1; dx <= 1; dx++)
+                                    for (int dy = -1; dy <= 1; dy++)
+                                        for (int dz = -1; dz <= 1; dz++)
+                                        {
+                                            var key = (ix + dx, iy + dy, iz + dz);
+                                            if (grid.TryGetValue(key, out var bucket)) candidates.AddRange(bucket);
+                                        }
+                            }
+
+                            // Check actual bbox overlap with tolerance only for candidates
+                            // o1_bbox already computed above for candidate search; reuse it
+                            var neighbors = new List<FamilyInstance>();
+                            foreach (var s in candidates)
+                            {
+                                if (!unprocessedSet.Contains(s)) continue;
+                                if (s == inst) continue;
+                                var o2_bbox = bboxes.ContainsKey(s) ? bboxes[s] : s.get_BoundingBox(null);
+                                if (o1_bbox == null || o2_bbox == null) continue;
+
                                 bool xOverlap = o1_bbox.Max.X >= o2_bbox.Min.X - toleranceDist && o1_bbox.Min.X <= o2_bbox.Max.X + toleranceDist;
                                 bool yOverlap = o1_bbox.Max.Y >= o2_bbox.Min.Y - toleranceDist && o1_bbox.Min.Y <= o2_bbox.Max.Y + toleranceDist;
                                 bool zOverlap = o1_bbox.Max.Z >= o2_bbox.Min.Z - toleranceDist && o1_bbox.Min.Z <= o2_bbox.Max.Z + toleranceDist;
+                                if (xOverlap && yOverlap && zOverlap) neighbors.Add(s);
+                            }
 
-                                return xOverlap && yOverlap && zOverlap;
-                            }).ToList();
                             foreach (var n in neighbors)
                             {
-                                queue.Enqueue(n);
-                                unprocessedGroup.Remove(n);
+                                if (unprocessedSet.Remove(n)) queue.Enqueue(n);
                             }
                         }
+
                         groupClusters.Add(cluster);
                     }
+
                     clustersByGroup[group.Key] = groupClusters;
                 }
 
@@ -134,6 +300,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 
                     foreach (var cluster in clusters)
                     {
+                            try
+                            {
+                                var sampleIds = cluster.Select(fi => fi.Id.IntegerValue.ToString()).Take(10).ToList();
+                                DebugLogger.Log($"[ClusterDiag] Processing cluster size={cluster.Count}, sampleIds={string.Join(",", sampleIds)}");
+                            }
+                            catch { }
+
                         // Skip pipe clusters on Wall or Structural Framing only (let PipeOpeningsRectCommand handle them)
                         if (groupKey.systemType == "Pipe" && (groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing"))
                             continue;
@@ -191,9 +364,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 
                         // --- Cluster sleeve duplicate suppression ---
                         double clusterSuppressionTol = UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters);
-                        if (ClusterSleeveDuplicationService.IsClusterSleeveAtLocation(doc, mid, clusterSuppressionTol))
+                        // Use section-box and hostType aware cluster bounds check to avoid scanning all clusters
+                        BoundingBoxXYZ? sectionBoxForDoc = null;
+                        try { if (uiDoc.ActiveView is View3D vb2) sectionBoxForDoc = SectionBoxHelper.GetSectionBoxBounds(vb2); } catch { }
+                        string clusterHostType = groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing" ? "ClusterOpeningOnWallX" : "ClusterOpeningOnSlab";
+                        bool clusterExists = OpeningDuplicationChecker.IsLocationWithinClusterBounds(doc, mid, clusterSuppressionTol, hostType: clusterHostType, sectionBox: sectionBoxForDoc);
+                        if (clusterExists)
                         {
-                            DebugLogger.Log($"Suppression: Existing cluster sleeve found within {UnitUtils.ConvertFromInternalUnits(clusterSuppressionTol, UnitTypeId.Millimeters):F0}mm at {mid}, skipping placement.");
+                            DebugLogger.Log($"Suppression: Existing cluster sleeve found within {UnitUtils.ConvertFromInternalUnits(clusterSuppressionTol, UnitTypeId.Millimeters):F0}mm at {mid}, skipping placement. (optimized)");
                             continue;
                         }
 

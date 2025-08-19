@@ -2,6 +2,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using System.Collections.Generic;
 using System.Linq;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
 {
@@ -88,12 +89,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
             // 1. Raw list – same as before
             var raw = CollectRawElements(doc, categories);
 
-            // 2. Optional UIDocument – if we have one, clip by section box
-            if (doc.IsLinked)                       // linked-doc case → no UIDoc available
-                return raw;
+            // Log raw counts and small samples for diagnostics (non-invasive)
+            try
+            {
+                int hostRawCount = raw.Count(t => t.transform == null);
+                int linkedRawCount = raw.Count - hostRawCount;
+                DebugLogger.Info($"[SectionBoxDiag] Raw elements - host={hostRawCount}, linked={linkedRawCount}");
+                foreach (var sample in raw.Take(3))
+                {
+                    var el = sample.element;
+                    int idVal = el?.Id.IntegerValue ?? -1;
+                    string cat = el?.Category != null ? el.Category.Name : "<no-category>";
+                    DebugLogger.Info($"[SectionBoxDiag] Raw sample: Id={idVal}, Category={cat}, IsLinked={(sample.transform!=null)}");
+                }
+            }
+            catch { }
 
-            var uiDoc = new UIDocument(doc);        // host-doc case
-            return SectionBoxHelper.FilterElementsBySectionBox(uiDoc, raw);
+            // If the document is a linked doc we cannot construct a UIDocument for filtering
+            if (doc.IsLinked) return raw;
+
+            // Use the SectionBoxHelper which performs solid-based filtering and handles
+            // linked elements by transforming the section-box into link-local space.
+            var uiDoc = new UIDocument(doc);
+            var filtered = SectionBoxHelper.FilterElementsBySectionBox(uiDoc, raw.ToList());
+
+            // Log filtered counts and small samples
+            try
+            {
+                int hostFiltered = filtered.Count(t => t.transform == null);
+                int linkedFiltered = filtered.Count - hostFiltered;
+                DebugLogger.Info($"[SectionBoxDiag] Filtered elements - host={hostFiltered}, linked={linkedFiltered}");
+                foreach (var sample in filtered.Take(3))
+                {
+                    var el = sample.element;
+                    int idVal = el?.Id.IntegerValue ?? -1;
+                    string cat = el?.Category != null ? el.Category.Name : "<no-category>";
+                    DebugLogger.Info($"[SectionBoxDiag] Filtered sample: Id={idVal}, Category={cat}, IsLinked={(sample.transform!=null)}");
+                }
+            }
+            catch { }
+
+            return filtered;
         }
 
         /// <summary>Legacy façade – pipes, ducts, cable trays, conduits.</summary>
@@ -141,6 +177,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                 foreach (var e in linked) result.Add((e, tr));
             }
             return result;
+        }
+
+        // Simple AABB intersection used by section-box filtering
+        private static bool BoundingBoxesIntersect(XYZ min1, XYZ max1, XYZ min2, XYZ max2)
+        {
+            return !(max1.X < min2.X || min1.X > max2.X ||
+                     max1.Y < min2.Y || min1.Y > max2.Y ||
+                     max1.Z < min2.Z || min1.Z > max2.Z);
         }
     }
 }

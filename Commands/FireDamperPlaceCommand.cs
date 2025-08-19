@@ -16,9 +16,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             Document? doc = null;
             try
             {
+                // Route command-level logging to the damper-specific log file so
+                // all messages produced by this command appear in the damper log
+                // instead of the default cable-tray log.
+                DebugLogger.SetDamperLogFile();
+                DebugLogger.InitLogFile("dampersleeveplacer");
+                DamperLogger.InitLogFile();
+
                 DebugLogger.Log("=== [FireDamperPlaceCommand] DEBUG START ===");
-                // TEMP: Comment out DamperLogger.InitLogFile() to fix logger conflict
-                // DamperLogger.InitLogFile();
                 DebugLogger.Log("[FireDamperPlaceCommand] After InitLogFile");
 
                 uiDoc = commandData.Application.ActiveUIDocument;
@@ -63,6 +68,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             // Collect visible dampers (host + visible links) using helper
             var damperTuples = JSE_RevitAddin_MEP_OPENINGS.Helpers.MepElementCollectorHelper.CollectFamilyInstancesVisibleOnly(doc, "Damper");
             DebugLogger.Log($"[FireDamperPlaceCommand] damperTuples total count: {damperTuples.Count}");
+
+            // Apply section-box filtering to dampers so we only process dampers inside the active 3D view's section box
+            // This mirrors the proven duct collection logic and prevents scanning the entire model.
+            try
+            {
+                var uiDocLocal = new UIDocument(doc);
+                var rawList = damperTuples.Select(d => (element: (Element)d.instance, transform: d.transform)).ToList();
+                var filtered = JSE_RevitAddin_MEP_OPENINGS.Helpers.SectionBoxHelper.FilterElementsBySectionBox(uiDocLocal, rawList);
+                var filteredDampers = filtered.Select(t => ((FamilyInstance)t.element, t.transform)).ToList();
+                DebugLogger.Log($"[FireDamperPlaceCommand] damperTuples filtered by section box: before={damperTuples.Count}, after={filteredDampers.Count}");
+                damperTuples = filteredDampers;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[FireDamperPlaceCommand] Section-box filtering failed: {ex.Message}");
+            }
 
             // Collect visible walls (host + visible links) using helper
             var wallTuples = JSE_RevitAddin_MEP_OPENINGS.Helpers.MepElementCollectorHelper.CollectWallsVisibleOnly(doc);
@@ -115,7 +136,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     
                     // Always use 25mm offset toward connector side
                     double offset25 = UnitUtils.ConvertToInternalUnits(25.0, UnitTypeId.Millimeters);
-                    XYZ offsetVec = OffsetVector4Way(side, damper.GetTotalTransform());
+                    XYZ offsetVec = UtilityClass.OffsetVector4Way(side, damper.GetTotalTransform());
                     XYZ sleevePos = damperLoc + offsetVec * offset25;
                     DebugLogger.Log($"[FireDamperPlaceCommand] Damper id={damper.Id} - Offset vector: {offsetVec}, Sleeve position: {sleevePos}");
 
@@ -125,7 +146,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 
                     // 5. Duplication suppression
                     double sleeveCheckRadius = UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters);
-                    if (OpeningDuplicationChecker.IsAnySleeveAtLocationEnhanced(doc, sleevePos, sleeveCheckRadius))
+                    BoundingBoxXYZ? sectionBox = null;
+                    if (uiDoc.ActiveView is View3D vb) sectionBox = JSE_RevitAddin_MEP_OPENINGS.Helpers.SectionBoxHelper.GetSectionBoxBounds(vb);
+                    // Require same family for damper duplication checks to avoid skipping due to nearby duct openings
+                    if (OpeningDuplicationChecker.IsAnySleeveAtLocationEnhanced(doc, sleevePos, sleeveCheckRadius, clusterExpansion: 0.0, ignoreIds: null, hostType: "OpeningOnWall", sectionBox: sectionBox, requireSameFamily: true, familyName: damper.Symbol?.Family?.Name))
                     {
                         skippedExistingCount++;
                         DebugLogger.Log($"[FireDamperPlaceCommand] Skipping damper id={damper.Id} due to existing sleeve at location.");
@@ -141,15 +165,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         BoundingBoxXYZ wallBBox = wall.get_BoundingBox(null);
                         if (wallBBox == null) continue;
                         if (wallTransform != null)
-                            wallBBox = TransformBoundingBox(wallBBox, wallTransform);
+                            wallBBox = UtilityClass.TransformBoundingBox(wallBBox, wallTransform);
 
                         // Use helper to check if point is inside bounding box
-                        if (PointInBoundingBox(sleevePos, wallBBox))
+                        if (UtilityClass.PointInBoundingBox(sleevePos, wallBBox))
                         {
                             // Use the unified service with debug logging enabled
                             // Enable debug logging to diagnose placement issues
                             var sleevePlacer = new JSE_RevitAddin_MEP_OPENINGS.Services.FireDamperSleevePlacerService(doc, enableDebugLogging: true);
-                            bool placed = sleevePlacer.PlaceFireDamperSleeve(damper, openingSymbol, wall);
+                            // Find original transforms from collected tuples
+                            Transform? damperTr = tuple.Item2;
+                            Transform? wallTr = wallTuple.Item2;
+                            bool placed = sleevePlacer.PlaceFireDamperSleeve(damper, openingSymbol, wall, damperTr, wallTr);
                             
                             if (placed)
                             {
@@ -157,7 +184,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                                 DebugLogger.Log($"[FireDamperPlaceCommand] Successfully placed sleeve for damper id={damper.Id} in wall id={wall.Id}");
                                 
                                 // Enhanced connector debugging ONLY for successfully placed sleeves
-                                if (damper.Id.Value == 1876234)
+                                if (damper.Id.IntegerValue == 1876234)
                                 {
                                     var cm = damper.MEPModel?.ConnectorManager;
                                     if (cm != null)
@@ -201,55 +228,5 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             DebugLogger.Log($"FireDamperPlaceCommand summary: Total={totalDampers}, Placed={placedCount}, SkippedExisting={skippedExistingCount}");
             return Autodesk.Revit.UI.Result.Succeeded;
         }
-
-        /// <summary>
-        /// Returns true if point is inside bounding box (inclusive).
-        /// </summary>
-        private static bool PointInBoundingBox(XYZ pt, BoundingBoxXYZ bbox)
-        {
-            return pt.X >= bbox.Min.X - 1e-6 && pt.X <= bbox.Max.X + 1e-6 &&
-                   pt.Y >= bbox.Min.Y - 1e-6 && pt.Y <= bbox.Max.Y + 1e-6 &&
-                   pt.Z >= bbox.Min.Z - 1e-6 && pt.Z <= bbox.Max.Z + 1e-6;
-        }
-
-        /// <summary>
-        /// Returns "Left", "Right", "Top", "Bottom" for MSFD family
-        /// (connectors are front/back in family but we map them to Left/Right).
-        /// </summary>
-        
-        /// <summary>
-        /// Converts side string to unit vector in WORLD coordinates (not damper local).
-        /// </summary>
-        private static XYZ OffsetVector4Way(string side, Transform damperT)
-        {
-            switch (side)
-            {
-                case "Right":  return  XYZ.BasisX;   // World +X direction
-                case "Left":   return -XYZ.BasisX;   // World -X direction  
-                case "Top":    return  XYZ.BasisZ;   // World +Z direction
-                case "Bottom": return -XYZ.BasisZ;   // World -Z direction
-                default:       return  XYZ.BasisX;   // fallback to world +X
-            }
-        }
-
-        // Helper to transform a bounding box by a transform
-        private BoundingBoxXYZ TransformBoundingBox(BoundingBoxXYZ bbox, Transform transform)
-        {
-            var corners = new[] {
-                new XYZ(bbox.Min.X, bbox.Min.Y, bbox.Min.Z),
-                new XYZ(bbox.Min.X, bbox.Min.Y, bbox.Max.Z),
-                new XYZ(bbox.Min.X, bbox.Max.Y, bbox.Min.Z),
-                new XYZ(bbox.Min.X, bbox.Max.Y, bbox.Max.Z),
-                new XYZ(bbox.Max.X, bbox.Min.Y, bbox.Min.Z),
-                new XYZ(bbox.Max.X, bbox.Min.Y, bbox.Max.Z),
-                new XYZ(bbox.Max.X, bbox.Max.Y, bbox.Min.Z),
-                new XYZ(bbox.Max.X, bbox.Max.Y, bbox.Max.Z)
-            };
-            var transformed = corners.Select(pt => transform.OfPoint(pt)).ToList();
-            var min = new XYZ(transformed.Min(p => p.X), transformed.Min(p => p.Y), transformed.Min(p => p.Z));
-            var max = new XYZ(transformed.Max(p => p.X), transformed.Max(p => p.Y), transformed.Max(p => p.Z));
-            var newBox = new BoundingBoxXYZ { Min = min, Max = max };
-            return newBox;
-        }     
     }
 }

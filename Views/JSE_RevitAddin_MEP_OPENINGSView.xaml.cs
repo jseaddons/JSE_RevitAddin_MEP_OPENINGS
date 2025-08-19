@@ -1,4 +1,4 @@
-﻿using JSE_RevitAddin_MEP_OPENINGS.ViewModels;
+using JSE_RevitAddin_MEP_OPENINGS.ViewModels;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Views
 {

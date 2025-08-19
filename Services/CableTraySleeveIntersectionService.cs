@@ -19,7 +19,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             if (cableTrayCenterline == null)
             {
-                DebugLogger.Log($"[CableTraySleeveIntersectionService] Cable tray centerline is null for CableTray ID={cableTray.Id.Value}");
+                DebugLogger.Log($"[CableTraySleeveIntersectionService] Cable tray centerline is null for CableTray ID={cableTray.Id.IntegerValue}");
                 return intersections;
             }
 
@@ -32,7 +32,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var structuralGeometry = structuralElement.get_Geometry(structuralOptions);
                     if (structuralGeometry == null)
                     {
-                        DebugLogger.Log($"[CableTraySleeveIntersectionService] Geometry is null for structural element ID={structuralElement.Id.Value}");
+                        DebugLogger.Log($"[CableTraySleeveIntersectionService] Geometry is null for structural element ID={structuralElement.Id.IntegerValue}");
                         continue;
                     }
                     Solid? structuralSolid = null;
@@ -60,7 +60,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     if (structuralSolid == null)
                     {
-                        DebugLogger.Log($"[CableTraySleeveIntersectionService] No solid geometry found for structural element ID={structuralElement.Id.Value}");
+                        DebugLogger.Log($"[CableTraySleeveIntersectionService] No solid geometry found for structural element ID={structuralElement.Id.IntegerValue}");
                         continue;
                     }
 
@@ -126,7 +126,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (bbox == null)
                         {
                             bbox = structuralElement.get_BoundingBox(null);
-                            DebugLogger.Log($"[CableTraySleeveIntersectionService] Solid bounding box was null for element ID={structuralElement.Id.Value}, used element bounding box instead.");
+                            DebugLogger.Log($"[CableTraySleeveIntersectionService] Solid bounding box was null for element ID={structuralElement.Id.IntegerValue}, used element bounding box instead.");
                         }
                         if (bbox != null)
                         {
@@ -134,13 +134,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                         else
                         {
-                            DebugLogger.Log($"[CableTraySleeveIntersectionService] Both solid and element bounding boxes are null for element ID={structuralElement.Id.Value}");
+                            DebugLogger.Log($"[CableTraySleeveIntersectionService] Both solid and element bounding boxes are null for element ID={structuralElement.Id.IntegerValue}");
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    DebugLogger.Log($"[CableTraySleeveIntersectionService] Error testing structural element ID={structuralElement.Id.Value}: {ex.Message}");
+                    DebugLogger.Log($"[CableTraySleeveIntersectionService] Error testing structural element ID={structuralElement.Id.IntegerValue}: {ex.Message}");
                 }
             }
 

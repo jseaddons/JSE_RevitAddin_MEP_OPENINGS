@@ -29,7 +29,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             double dy = bbox.Max.Y - bbox.Min.Y;
             double tol = 1e-6;
 
-            DebugLogger.Log($"ElementId={elementId.Value} dx={dx}, dy={dy}, width={elemWidth}, height={elemHeight}");
+            DebugLogger.Log($"ElementId={elementId.IntegerValue} dx={dx}, dy={dy}, width={elemWidth}, height={elemHeight}");
 
             if (Math.Abs(dx - elemWidth) < tol && Math.Abs(dy - elemHeight) < tol)
             {

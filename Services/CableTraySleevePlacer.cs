@@ -26,7 +26,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public FamilyInstance? PlaceCableTraySleeveWithOrientation(CableTray tray, XYZ intersection, double width, double height, 
             XYZ direction, XYZ? preCalculatedOrientation, FamilySymbol sleeveSymbol, Element hostElement)
         {
-            int cableTrayId = (int)(tray?.Id?.Value ?? 0);
+            int cableTrayId = (int)(tray?.Id?.IntegerValue ?? 0);
             try
             {
                 DebugLogger.Log($"[CableTraySleevePlacer] USING PRE-CALCULATED ORIENTATION: {(preCalculatedOrientation != null ? $"({preCalculatedOrientation.X:F6},{preCalculatedOrientation.Y:F6},{preCalculatedOrientation.Z:F6})" : "null")}");
@@ -58,8 +58,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             Element hostElement,
             XYZ? preCalculatedOrientation = null)
         {
-            DebugLogger.Log($"[CableTraySleevePlacer] ENTRY: PlaceCableTraySleeve called with trayId={(tray != null ? tray.Id.Value.ToString() : "null")}");
-            int cableTrayId = (tray != null) ? (int)tray.Id.Value : 0;
+            // Ensure cable-tray specific log file is selected (mirror duct logic)
+            JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.SetCableTrayLogFile();
+            DebugLogger.Log($"[CableTraySleevePlacer] ENTRY: PlaceCableTraySleeve called with trayId={(tray != null ? tray.Id.IntegerValue.ToString() : "null")}");
+            int cableTrayId = (tray != null) ? (int)tray.Id.IntegerValue : 0;
             try
             {
 
@@ -75,15 +77,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // --- NEW: Prevent placement in invisible/hidden linked files ---
             // If hostElement is from a linked file, check if the link is visible in the active view
             Document hostDoc = hostElement.Document;
+            RevitLinkInstance? linkInstance = null;
             if (hostDoc.IsLinked)
             {
                 // Find the RevitLinkInstance in the main doc that corresponds to this linked doc
-                var linkInstance = new FilteredElementCollector(_doc)
+                var allLinks = new FilteredElementCollector(_doc)
                     .OfClass(typeof(RevitLinkInstance))
                     .Cast<RevitLinkInstance>()
-                    .FirstOrDefault(link => link.GetLinkDocument() == hostDoc);
+                    .ToList();
+
+                // Try exact Document match first
+                linkInstance = allLinks.FirstOrDefault(link => link.GetLinkDocument() == hostDoc);
+
+                // If not found, try matching by linked document Title or PathName (some APIs return different Document instances)
+                if (linkInstance == null)
+                {
+                    string hostTitle = hostDoc.Title ?? string.Empty;
+                    string hostPath = string.Empty;
+                    try { hostPath = hostDoc.PathName ?? string.Empty; } catch { hostPath = string.Empty; }
+                    linkInstance = allLinks.FirstOrDefault(link =>
+                        (link.GetLinkDocument()?.Title ?? string.Empty) == hostTitle
+                        || (link.GetLinkDocument()?.PathName ?? string.Empty) == hostPath);
+                }
+
+                DebugLogger.Log($"[CableTraySleevePlacer] Found {allLinks.Count} RevitLinkInstances in host doc for matching. Matched linkInstance present={linkInstance != null}");
                 if (linkInstance != null)
                 {
+                    DebugLogger.Log($"[CableTraySleevePlacer] Matched link doc title: {linkInstance.GetLinkDocument()?.Title}");
                     var activeView = _doc.ActiveView;
                     bool isHidden = activeView.GetCategoryHidden(linkInstance.Category.Id) || linkInstance.IsHidden(activeView);
                     if (isHidden)
@@ -92,9 +112,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         return null;
                     }
                 }
+                else
+                {
+                    DebugLogger.Log($"[CableTraySleevePlacer] WARNING: Could not find matching RevitLinkInstance for linked host document. Proceeding with placement using computed host coords.");
+                }
             }
 
                 // Host-specific logic for depth, normal, and placement point
+                // COPY EXACT DUCT LOGIC - DO NOT CHANGE
                 double sleeveDepth = 0.0;
                 XYZ n = XYZ.BasisX;
                 XYZ placePoint = intersection;
@@ -102,9 +127,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     double wallThickness = wall.get_Parameter(BuiltInParameter.WALL_ATTR_WIDTH_PARAM)?.AsDouble() ?? wall.Width;
                     n = GetWallNormal(wall, intersection).Normalize();
-                    // Use robust centerline projection for XY, keep Z from intersection
-                    XYZ centerlinePoint = GetWallCenterlinePoint(wall, intersection);
-                    placePoint = new XYZ(centerlinePoint.X, centerlinePoint.Y, intersection.Z);
+                    // EXACT DUCT LOGIC: Use intersection + wall offset for centerline
+                    XYZ wallVector = n.Multiply(-wallThickness);
+                    placePoint = intersection + wallVector.Multiply(0.5); // wall centerline
                     sleeveDepth = wallThickness;
                 }
                 else if (hostElement is Floor floor)
@@ -125,7 +150,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     else
                     {
-                        DebugLogger.Log($"[CableTraySleevePlacer] WARNING: floorType is null for floor {floor.Id.Value}. Cannot determine thickness. Using fallback 500mm.");
+                        DebugLogger.Log($"[CableTraySleevePlacer] WARNING: floorType is null for floor {floor.Id.IntegerValue}. Cannot determine thickness. Using fallback 500mm.");
                     }
                     if (thicknessParam != null && thicknessParam.StorageType == StorageType.Double)
                     {
@@ -149,7 +174,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     n = XYZ.BasisZ;
                     placePoint = intersection; // no offset for floor
                 }
-                else if (hostElement is FamilyInstance famInst && famInst.Category != null && famInst.Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming)
+                else if (hostElement is FamilyInstance famInst && famInst.Category != null && famInst.Category.Id.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
                 {
                     var framingType = famInst.Symbol;
                     var bParam = framingType.LookupParameter("b");
@@ -171,11 +196,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!sleeveSymbol.IsActive)
                     sleeveSymbol.Activate();
 
-                // Find the nearest or lowest level for placement
+                // NOTE: MepIntersectionService returns intersection points already in host coordinates.
+                // Do NOT transform again - this would cause double transformation and incorrect placement.
+                // Follow the same pattern as DuctSleevePlacerService.
+                XYZ placePointForDoc = placePoint;
+                DebugLogger.Log($"[CableTraySleevePlacer] Using intersection point as-is (already in host coords): ({placePoint.X:F6},{placePoint.Y:F6},{placePoint.Z:F6})");
+
+                // Find the nearest or lowest level for placement (use host Z coordinate)
+                double searchZ = placePointForDoc.Z;
                 Level? level = new FilteredElementCollector(_doc)
                     .OfClass(typeof(Level))
                     .Cast<Level>()
-                    .OrderBy(lvl => Math.Abs(lvl.Elevation - placePoint.Z))
+                    .OrderBy(lvl => Math.Abs(lvl.Elevation - searchZ))
                     .FirstOrDefault();
                 if (level == null)
                 {
@@ -206,8 +238,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     System.IO.File.AppendAllText(compareLogPath, $"[CableTraySleevePlacer] Placing sleeve: width={width}, height={height}, intersection=({intersection.X},{intersection.Y},{intersection.Z})\n");
                 }
 
+                // Create the instance in the host document at the intersection (match duct behavior)
                 FamilyInstance instance = _doc.Create.NewFamilyInstance(
-                    placePoint,
+                    intersection,
                     sleeveSymbol,
                     level,
                     StructuralType.NonStructural);
@@ -229,7 +262,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     hostOrientationToSet = "FloorHosted";
                 }
-                else if (hostElement is FamilyInstance famInst2 && famInst2.Category != null && famInst2.Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming)
+                else if (hostElement is FamilyInstance famInst2 && famInst2.Category != null && famInst2.Category.Id.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
                 {
                     var locationCurve = famInst2.Location as LocationCurve;
                     if (locationCurve != null)
@@ -261,14 +294,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (hostOrientationParam != null && !hostOrientationParam.IsReadOnly)
                 {
                     hostOrientationParam.Set(hostOrientationToSet);
-                    DebugLogger.Log($"[CableTraySleevePlacer] HostOrientation set to '{hostOrientationToSet}' for sleeveId={instance.Id.Value}");
+                    DebugLogger.Log($"[CableTraySleevePlacer] HostOrientation set to '{hostOrientationToSet}' for sleeveId={instance.Id.IntegerValue}");
                 }
                 else
                 {
-                    DebugLogger.Log($"[CableTraySleevePlacer] HostOrientation parameter not found or read-only for sleeveId={instance.Id.Value}");
+                    DebugLogger.Log($"[CableTraySleevePlacer] HostOrientation parameter not found or read-only for sleeveId={instance.Id.IntegerValue}");
                 }
                 string hostOrientationValue = hostOrientationParam != null ? hostOrientationParam.AsString() : "<null>";
-                DebugLogger.Log($"[CableTraySleevePlacer] HostOrientation after set: '{hostOrientationValue}' for sleeveId={instance.Id.Value}");
+                DebugLogger.Log($"[CableTraySleevePlacer] HostOrientation after set: '{hostOrientationValue}' for sleeveId={instance.Id.IntegerValue}");
 
                 // Explicitly set the Level parameter for schedule consistency
                 Parameter levelParam = instance.get_Parameter(BuiltInParameter.INSTANCE_REFERENCE_LEVEL_PARAM);
@@ -289,12 +322,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 if (!levelSet)
                 {
-                    DebugLogger.Log($"[CableTraySleevePlacer] WARNING: Could not set Level parameter for sleeveId={instance.Id.Value}. No writable level parameter found.");
+                    DebugLogger.Log($"[CableTraySleevePlacer] WARNING: Could not set Level parameter for sleeveId={instance.Id.IntegerValue}. No writable level parameter found.");
                 }
 
                 DebugLogger.Log($"[CableTraySleevePlacer] hostElement type: {hostElement?.GetType().FullName}, category: {hostElement?.Category?.Name}, id: {hostElement?.Id}, family: {(hostElement as FamilyInstance)?.Symbol?.FamilyName}");
                 bool isFloorHost = hostElement is Floor
-                    || (hostElement is FamilyInstance fi && fi.Category != null && fi.Category.Id.Value == (int)BuiltInCategory.OST_Floors);
+                    || (hostElement is FamilyInstance fi && fi.Category != null && fi.Category.Id.IntegerValue == (int)BuiltInCategory.OST_Floors);
                 // Use helper for clearance
                 double clearance = JSE_RevitAddin_MEP_OPENINGS.Helpers.SleeveClearanceHelper.GetClearance(tray!);
                 double widthWithClearance = width + 2 * clearance;
@@ -317,7 +350,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 try
                 {
                     // Rotate for framing or floor hosts when preCalculatedOrientation is set
-                    bool isFraming = hostElement is FamilyInstance famInst1 && famInst1.Category != null && famInst1.Category.Id.Value == (int)BuiltInCategory.OST_StructuralFraming;
+                    bool isFraming = hostElement is FamilyInstance famInst1 && famInst1.Category != null && famInst1.Category.Id.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming;
                     bool isFloor = hostElement is Floor;
                     if ((isFraming || isFloor) && preCalculatedOrientation != null)
                     {
@@ -378,6 +411,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         schedLevelParam.Set(refLevel.Id);
                         DebugLogger.Log($"[CableTraySleevePlacer] Set Schedule Level to {refLevel.Name} for cable tray {cableTrayId}");
                     }
+                }
+
+                // Mirror duct placer: emit a clear PLACED/INFO log with instance id and final position
+                try
+                {
+                    var instId = instance.Id.IntegerValue;
+                    DebugLogger.Log($"[CableTraySleevePlacer] PLACED: cableTrayId={cableTrayId}, sleeveId={instId}, at hostCoords=({placePointForDoc.X:F6},{placePointForDoc.Y:F6},{placePointForDoc.Z:F6})");
+                    finalWidth = GetParameterValue(instance, "Width");
+                    finalHeight = GetParameterValue(instance, "Height");
+                    DebugLogger.Info($"[CableTraySleevePlacer] SUCCESS: Placed sleeve for cable tray {cableTrayId} -> sleeveId={instId}, width={finalWidth:F1}mm, height={finalHeight:F1}mm, pos=({placePointForDoc.X:F3},{placePointForDoc.Y:F3},{placePointForDoc.Z:F3})");
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Log($"[CableTraySleevePlacer] Warning logging placement info: {ex.Message}");
                 }
 
                 return instance;
