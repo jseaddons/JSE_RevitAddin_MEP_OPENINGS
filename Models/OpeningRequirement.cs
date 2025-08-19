@@ -6,14 +6,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
      /// </summary>
     public class OpeningRequirement
     {
-        public ElementId ElementId { get; set; }
+        public ElementId? ElementId { get; set; }
         public double Width { get; set; }
         public double Height { get; set; }
-        public XYZ Location { get; set; }
-        public XYZ Direction { get; set; }
-        public ElementId WallId { get; set; }
-        public ElementId TypeId { get; set; }
-        public string ElementType { get; set; }
+        public XYZ? Location { get; set; }
+        public XYZ? Direction { get; set; }
+        public ElementId? WallId { get; set; }
+        public ElementId? TypeId { get; set; }
+        public string? ElementType { get; set; }
         public double ElementDiameter { get; set; }
         public double InsulationThickness { get; set; }
         public double IntersectionX { get; set; }
@@ -22,7 +22,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public double PipeDiameter { get; set; }
         public double DuctWidth { get; set; }
         public double DuctHeight { get; set; }
-        public string MepType { get; set; }
+        public string? MepType { get; set; }
         public long WallIdValue { get; set; } // Numeric property for use in CSV export
 
         public OpeningRequirement()

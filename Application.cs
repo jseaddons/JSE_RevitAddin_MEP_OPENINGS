@@ -36,6 +36,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS
         private void CreateRibbon()
         {
             var panel = Application.CreatePanel("Commands", "JSE_RevitAddin_MEP_OPENINGS");
+            if (panel == null)
+            {
+                // Panel creation failed for some environment; skip ribbon creation to avoid null references.
+                return;
+            }
 
             var button1 = panel.AddPushButton<StartupCommand>("Execute");
             button1.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
@@ -61,15 +66,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS
 
             panel.AddSeparator(); // This adds a visual gap
 
-            var button5 = panel.AddPushButton<DeletePipeSleevesCommand>("Delete Pipe Sleeves");
-            button5.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
-            button5.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
-
-            panel.AddSeparator(); // This adds a visual gap
-
-            var button6 = panel.AddPushButton<GetSleeveSummaryCommand>("Sleeve Summary");
-            button6.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
-            button6.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+            // Deleted commands removed from ribbon: DeletePipeSleevesCommand, GetSleeveSummaryCommand
         }
 
 

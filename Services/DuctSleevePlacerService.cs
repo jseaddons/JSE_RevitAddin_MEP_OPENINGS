@@ -175,7 +175,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // Apply per-side clearance (clearance is per-side, so add twice)
                         w = w + 2 * clearance;
                         h2 = h2 + 2 * clearance;
-                        if (hostElem == null) { ErrorCount++; continue; }
+                        // hostElem was null-guarded earlier; no need to check again here.
                         try
                         {
                             FamilySymbol? symbolToUse = null;
