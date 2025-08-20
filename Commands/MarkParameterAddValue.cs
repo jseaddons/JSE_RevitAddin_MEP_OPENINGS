@@ -37,7 +37,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     .Where(fi => fi.Symbol.Family.Name.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0)
                     .ToList();
 
-                int pipeIndex = 1, ductIndex = 1, damperIndex = 1, cableTrayIndex = 1;
+                int pipeIndex = 1, ductIndex = 1, damperIndex = 1, cableTrayIndex = 1, clusterIndex = 1;
                 foreach (var fi in allOpenings)
                 {
                     var markParam = fi.LookupParameter("Mark");
@@ -87,6 +87,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         markParam.Set($"{prefix}CT-{cableTrayIndex:000}");
                         DebugLogger.Info($"Assigned Mark: {prefix}CT-{cableTrayIndex:000}");
                         cableTrayIndex++;
+                    }
+                    // Cluster opening sleeve families: start mark values with CO-
+                    else if (familyName.StartsWith("Cluster", StringComparison.OrdinalIgnoreCase) ||
+                             familyName.IndexOf("Cluster", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                             typeName.EndsWith("Rect", StringComparison.OrdinalIgnoreCase))
+                    {
+                        markParam.Set($"{prefix}CO-{clusterIndex:000}");
+                        DebugLogger.Info($"Assigned Mark: {prefix}CO-{clusterIndex:000}");
+                        clusterIndex++;
                     }
                     else
                     {
