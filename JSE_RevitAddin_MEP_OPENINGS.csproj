@@ -96,6 +96,9 @@
   <ItemGroup>
     <Compile Remove="Services\*BKP*.cs" />
     <Compile Remove="Commands\*BKP*.cs" />
+  <Compile Remove="Archive\**\*.cs" />
+  <Compile Remove="Commands\ClusterMergeCommand.cs" />
+  <Compile Remove="Commands\CleanCableTraySleevesCommand.cs" />
     <Compile Remove="Commands\IndividualDuctSleeveCommand.cs" />
     <Compile Remove="Services\Backup\*BKP*.cs" />
     <Compile Remove="Commands\Backup\*BKP*.cs" />

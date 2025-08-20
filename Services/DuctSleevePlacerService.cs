@@ -44,6 +44,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             SkippedCount = 0;
             ErrorCount = 0;
 
+            // Collect all sleeves and filter by section box
+            var allSleeves = new FilteredElementCollector(_doc)
+                .OfClass(typeof(FamilyInstance))
+                .Cast<FamilyInstance>()
+                .Where(fi => (fi.Symbol.Family.Name.Contains("OpeningOnWall") || fi.Symbol.Family.Name.Contains("OpeningOnSlab")))
+                .ToList();
+
+            BoundingBoxXYZ? sectionBox = null;
+            try
+            {
+                if (_doc.ActiveView is View3D vb)
+                    sectionBox = SectionBoxHelper.GetSectionBoxBounds(vb);
+            }
+            catch { /* ignore */ }
+
+            if (sectionBox != null)
+            {
+                allSleeves = allSleeves.Where(s =>
+                {
+                    var bb = s.get_BoundingBox(null);
+                    return bb != null && BoundingBoxesIntersect(bb, sectionBox);
+                }).ToList();
+            }
+
+            var sleeveGrid = new SleeveSpatialGrid(allSleeves);
+            var spatialService = new SpatialPartitioningService(_structuralElements);
+
             foreach (var tuple in _ductTuples)
             {
                 var duct = tuple.Item1;
@@ -68,6 +95,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 _log?.Invoke($"PROCESSING: Duct {duct.Id} Line Start={hostLine.GetEndPoint(0)}, End={hostLine.GetEndPoint(1)}");
 
+                var nearbyStructuralElements = spatialService.GetNearbyElements(duct);
+                if (!nearbyStructuralElements.Any())
+                {
+                    _log?.Invoke($"SKIP: Duct {duct.Id} no nearby structural elements found.");
+                    SkippedCount++;
+                    continue;
+                }
+
                 List<(Element, BoundingBoxXYZ, XYZ)> intersections;
                 if (transform != null)
                 {
@@ -81,11 +116,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         Min = new XYZ(Math.Min(p0.X, p1.X), Math.Min(p0.Y, p1.Y), Math.Min(p0.Z, p1.Z)),
                         Max = new XYZ(Math.Max(p0.X, p1.X), Math.Max(p0.Y, p1.Y), Math.Max(p0.Z, p1.Z))
                     };
-                    intersections = MepIntersectionService.FindIntersections(hostLine, mepBBox, _structuralElements, _log ?? (_ => {}));
+                    intersections = MepIntersectionService.FindIntersections(hostLine, mepBBox, nearbyStructuralElements, _log ?? (_ => {}));
                 }
                 else
                 {
-                    intersections = MepIntersectionService.FindIntersections(duct, _structuralElements, _log ?? (_ => {}));
+                    intersections = MepIntersectionService.FindIntersections(duct, nearbyStructuralElements, _log ?? (_ => {}));
                 }
                 if (intersections.Count > 0)
                 {
@@ -138,20 +173,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         double clusterTol = UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters);
                         // Use optimized duplication suppressor which checks individual sleeves first and
                         // then cluster bounding boxes. Pass hostType and sectionBox to reduce scanning.
-                        BoundingBoxXYZ? sectionBox = null;
-                        try
-                        {
-                            if (_doc.ActiveView is View3D vb)
-                                sectionBox = SectionBoxHelper.GetSectionBoxBounds(vb);
-                        }
-                        catch { /* ignore */ }
-
-                        // Determine a reasonable hostType filter for cluster families (prefer specific DuctOpening names)
                         string hostTypeFilter = hostElem is Wall ? "DuctOpeningOnWall" : (hostElem is Floor ? "DuctOpeningOnSlab" : "DuctOpeningOnWall");
 
-                        _log?.Invoke($"[DuplicationCheck Optimized] Duct {duct.Id}: using enhanced duplication checker hostType={hostTypeFilter}, sectionBoxProvided={(sectionBox!=null)}");
+                        _log?.Invoke($"[DuplicationCheck Optimized] Duct {duct.Id}: using enhanced duplication checker hostType={hostTypeFilter}");
 
-                        bool duplicateExists = OpeningDuplicationChecker.IsAnySleeveAtLocationEnhanced(_doc, placePt, indivTol, clusterExpansion: clusterTol, ignoreIds: null, hostType: hostTypeFilter, sectionBox: sectionBox);
+                        var nearbySleeves = sleeveGrid.GetNearbySleeves(placePt, indivTol > clusterTol ? indivTol : clusterTol);
+                        bool duplicateExists = OpeningDuplicationChecker.IsAnySleeveAtLocationOptimized(placePt, indivTol, clusterTol, nearbySleeves, hostTypeFilter);
+
                         if (duplicateExists)
                         {
                             _log?.Invoke($"SKIP: Duct {duct.Id} host {hostType} {hostId} duplicate sleeve (individual or cluster) exists near {placePt} (optimized check)");
@@ -268,6 +296,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     SkippedCount++;
                 }
             }
+        }
+
+        private static bool BoundingBoxesIntersect(BoundingBoxXYZ a, BoundingBoxXYZ b)
+        {
+            if (a == null || b == null) return false;
+            return !(a.Max.X < b.Min.X || a.Min.X > b.Max.X ||
+                     a.Max.Y < b.Min.Y || a.Min.Y > b.Max.Y ||
+                     a.Max.Z < b.Min.Z || a.Min.Z > b.Max.Z);
         }
     }
 }

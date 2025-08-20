@@ -352,7 +352,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Rotate for framing or floor hosts when preCalculatedOrientation is set
                     bool isFraming = hostElement is FamilyInstance famInst1 && famInst1.Category != null && famInst1.Category.Id.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming;
                     bool isFloor = hostElement is Floor;
-                    if ((isFraming || isFloor) && preCalculatedOrientation != null)
+                    bool isWall = hostElement is Wall;
+                    // Rotate for walls, framing or floors when preCalculatedOrientation is provided
+                    bool allowRotate = true;
+                    // Defensive guard: if host is a Wall, only allow rotation when the wall is Y-oriented
+                    if (isWall)
+                    {
+                        try
+                        {
+                            var theWall = hostElement as Wall;
+                            if (theWall != null)
+                            {
+                                var wallNormal = GetWallNormal(theWall, intersection);
+                                double absWX = Math.Abs(wallNormal.X);
+                                double absWY = Math.Abs(wallNormal.Y);
+                                if (absWY <= absWX)
+                                {
+                                    allowRotate = false;
+                                    DebugLogger.Log($"[CableTraySleevePlacer] WALL GUARD: Wall is X-oriented (absWX={absWX:F6} >= absWY={absWY:F6}) - skipping rotation even if preCalculatedOrientation provided.");
+                                }
+                            }
+                            else
+                            {
+                                DebugLogger.Log($"[CableTraySleevePlacer] WALL GUARD: hostElement is not a Wall instance as expected; skipping orientation guard.");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            DebugLogger.Log($"[CableTraySleevePlacer] WALL GUARD: Failed to evaluate wall orientation: {ex.Message}. Allowing rotation if preCalculatedOrientation provided.");
+                        }
+                    }
+
+                    if ((isFraming || isFloor || isWall) && preCalculatedOrientation != null && allowRotate)
                     {
                         var loc = instance.Location as LocationPoint;
                         if (loc == null)
@@ -368,10 +399,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         Line rotationAxis = Line.CreateBound(loc.Point, loc.Point + XYZ.BasisZ);
                         ElementTransformUtils.RotateElement(_doc, instance.Id, rotationAxis, sleeveAngle);
                         DebugLogger.Log($"[CableTraySleevePlacer] [{hostType}] Applied rotation of {sleeveAngleDegrees:F1} degrees (command determined Y-oriented)");
+                        // Confirm rotation by logging instance transform basis
+                        try
+                        {
+                            var instLoc = instance.Location as LocationPoint;
+                            if (instLoc != null)
+                            {
+                                DebugLogger.Log($"[CableTraySleevePlacer] [{hostType}] Rotation confirmed for sleeveId={instance.Id.IntegerValue}. Location after rotate: ({instLoc.Point.X:F6},{instLoc.Point.Y:F6},{instLoc.Point.Z:F6})");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            DebugLogger.Log($"[CableTraySleevePlacer] [{hostType}] Rotation confirmation log failed: {ex.Message}");
+                        }
                     }
                     else
                     {
-                        DebugLogger.Log($"[CableTraySleevePlacer] NO ROTATION: Not framing/floor or no preCalculatedOrientation. Sleeve placed as-is.");
+                        DebugLogger.Log($"[CableTraySleevePlacer] NO ROTATION: Not framing/floor or no preCalculatedOrientation or rotation guarded. Sleeve placed as-is.");
                     }
                 }
                 catch (Exception ex)

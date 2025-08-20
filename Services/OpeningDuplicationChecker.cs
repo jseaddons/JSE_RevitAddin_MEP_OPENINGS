@@ -617,6 +617,56 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
+        /// <summary>
+        /// New overload that accepts a pre-filtered list of nearby sleeves for optimized checking.
+        /// </summary>
+    public static bool IsAnySleeveAtLocationOptimized(XYZ location, double tolerance, double clusterExpansion, List<FamilyInstance> nearbySleeves, string? hostType = null)
+        {
+            // Check for individual sleeves using distance from the pre-filtered list
+            foreach (var sleeve in nearbySleeves)
+            {
+                var sleeveLocation = (sleeve.Location as LocationPoint)?.Point;
+                if (sleeveLocation != null && location.DistanceTo(sleeveLocation) <= tolerance)
+                {
+                    try
+                    {
+                        double distMm = UnitUtils.ConvertFromInternalUnits(location.DistanceTo(sleeveLocation), UnitTypeId.Millimeters);
+                        DebugLogger.Log($"[OpeningDuplicationChecker] Optimized DUPLICATE MATCH: Individual sleeve ID:{sleeve.Id.IntegerValue} family='{sleeve.Symbol?.Family?.Name ?? "<unknown>"}' symbol='{sleeve.Symbol?.Name ?? "<unknown>"}' distance={distMm:F1}mm tolerance={UnitUtils.ConvertFromInternalUnits(tolerance, UnitTypeId.Millimeters):F1}mm hostType={(hostType ?? "<none>")}");
+                    }
+                    catch { }
+                    return true;
+                }
+            }
+
+            // Check for cluster sleeves using bounding box intersection from the pre-filtered list
+            foreach (var sleeve in nearbySleeves)
+            {
+                var fam = sleeve.Symbol?.Family?.Name ?? string.Empty;
+                if (fam.StartsWith("Cluster", StringComparison.OrdinalIgnoreCase) || fam.EndsWith("Rect", StringComparison.OrdinalIgnoreCase))
+                {
+                    var boundingBox = sleeve.get_BoundingBox(null);
+                    if (boundingBox != null)
+                    {
+                        var expandedMin = boundingBox.Min - new XYZ(clusterExpansion, clusterExpansion, clusterExpansion);
+                        var expandedMax = boundingBox.Max + new XYZ(clusterExpansion, clusterExpansion, clusterExpansion);
+                        if (location.X >= expandedMin.X && location.X <= expandedMax.X &&
+                            location.Y >= expandedMin.Y && location.Y <= expandedMax.Y)
+                        {
+                            try
+                            {
+                                DebugLogger.Log($"[OpeningDuplicationChecker] Optimized DUPLICATE MATCH: Cluster sleeve ID:{sleeve.Id.IntegerValue} family='{fam}' expandedMin=({expandedMin.X:F3},{expandedMin.Y:F3},{expandedMin.Z:F3}) expandedMax=({expandedMax.X:F3},{expandedMax.Y:F3},{expandedMax.Z:F3}) clusterExpansion={UnitUtils.ConvertFromInternalUnits(clusterExpansion, UnitTypeId.Millimeters):F1}mm hostType={(hostType ?? "<none>")}");
+                            }
+                            catch { }
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// Returns a summary of what sleeve types exist at the given location for debugging purposes.
         /// </summary>
         /// <param name="doc">Revit document</param>
@@ -673,4 +723,3 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
     }
 }
-
