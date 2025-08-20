@@ -102,32 +102,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             var placer = new CableTraySleevePlacer(doc);
 
             // SUPPRESSION: Collect existing cable tray sleeves to avoid duplicates
-            List<FamilyInstance> existingSleeves;
+            var allSleeves = new FilteredElementCollector(doc)
+                .OfClass(typeof(FamilyInstance))
+                .Cast<FamilyInstance>()
+                .Where(fi => (fi.Symbol.Family.Name.Contains("OpeningOnWall") || fi.Symbol.Family.Name.Contains("OpeningOnSlab")))
+                .ToList();
+
+            BoundingBoxXYZ? sectionBox = null;
             try
             {
-                var rawExisting = new FilteredElementCollector(doc)
-                    .OfClass(typeof(FamilyInstance))
-                    .Cast<FamilyInstance>()
-                    .Where(fi => (fi.Symbol.Family.Name.Contains("OpeningOnWall") || fi.Symbol.Family.Name.Contains("OpeningOnSlab"))
-                                 && fi.Symbol.Name.StartsWith("CT#", System.StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-
-                var rawElements = rawExisting.Cast<Element>().Select(e => (element: (Element)e, transform: (Transform?)null)).ToList();
-                var filteredExisting = JSE_RevitAddin_MEP_OPENINGS.Helpers.SectionBoxHelper.FilterElementsBySectionBox(uiDoc, rawElements);
-                existingSleeves = filteredExisting.Select(t => t.element).OfType<FamilyInstance>().ToList();
+                if (doc.ActiveView is View3D vb)
+                    sectionBox = SectionBoxHelper.GetSectionBoxBounds(vb);
             }
-            catch
+            catch { /* ignore */ }
+
+            if (sectionBox != null)
             {
-                // Fallback to full collection if section-box filtering fails for any reason
-                existingSleeves = new FilteredElementCollector(doc)
-                    .OfClass(typeof(FamilyInstance))
-                    .Cast<FamilyInstance>()
-                    .Where(fi => (fi.Symbol.Family.Name.Contains("OpeningOnWall") || fi.Symbol.Family.Name.Contains("OpeningOnSlab"))
-                                 && fi.Symbol.Name.StartsWith("CT#", System.StringComparison.OrdinalIgnoreCase))
-                    .ToList();
+                allSleeves = allSleeves.Where(s =>
+                {
+                    var bb = s.get_BoundingBox(null);
+                    return bb != null && BoundingBoxesIntersect(bb, sectionBox);
+                }).ToList();
             }
 
-            DebugLogger.Log($"Found {existingSleeves.Count} existing cable tray sleeves visible in the active section box (or total if fallback)");
+            var sleeveGrid = new SleeveSpatialGrid(allSleeves);
+            DebugLogger.Log($"Found {allSleeves.Count} existing cable tray sleeves visible in the active section box (or total if fallback)");
 
             // Log details of existing cable tray sleeves (doc-wide helper - kept for diagnostic value)
             var allExistingCTSleeves = OpeningDuplicationChecker.FindCableTraySleeves(doc);
@@ -147,7 +146,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             }
 
             // Create a map of existing sleeve locations for quick lookup
-            var existingSleeveLocations = existingSleeves.ToDictionary(
+            var existingSleeveLocations = allSleeves.ToDictionary(
                 sleeve => sleeve,
                 sleeve => (sleeve.Location as LocationPoint)?.Point ?? sleeve.GetTransform().Origin
             );
@@ -171,6 +170,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 
             // Collect structural elements using section box filtering (same as ducts/pipes)
             var structuralElements = JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService.CollectStructuralElementsForDirectIntersectionVisibleOnly(doc, Log);
+
+            var spatialService = new SpatialPartitioningService(structuralElements);
 
             using (var tx = new Transaction(doc, "Place Cable Tray Sleeves"))
             {
@@ -232,8 +233,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         };
                     }
                     
+                    var nearbyStructuralElements = spatialService.GetNearbyElements(tray);
+                    if (!nearbyStructuralElements.Any())
+                    {
+                        DebugLogger.Log($"SKIP: CableTray {tray.Id} no nearby structural elements found.");
+                        skippedExistingCount++;
+                        continue;
+                    }
+
                     // Use MepIntersectionService for wall intersections (like duct logic)
-                    var wallIntersections = JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService.FindIntersections(hostLine, trayBBox, structuralElements, Log);
+                    var wallIntersections = JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService.FindIntersections(hostLine, trayBBox, nearbyStructuralElements, Log);
 
                     // Convert wallIntersections to the same format as allWallHits for downstream code
                     var allWallHits = wallIntersections
@@ -249,11 +258,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     List<(Element, BoundingBoxXYZ, XYZ)> structuralIntersections;
                     if (transform != null)
                     {
-                        structuralIntersections = JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService.FindIntersections(hostLine, trayBBox, structuralElements, Log);
+                        structuralIntersections = JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService.FindIntersections(hostLine, trayBBox, nearbyStructuralElements, Log);
                     }
                     else
                     {
-                        structuralIntersections = JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService.FindIntersections(tray, structuralElements, Log);
+                        structuralIntersections = JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService.FindIntersections(tray, nearbyStructuralElements, Log);
                     }
                     DebugLogger.Log($"[CableTraySleeveCommand] CableTray {tray.Id.IntegerValue}: structuralIntersections count = {structuralIntersections.Count}");
 
@@ -417,10 +426,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         // For wall: always use wall family, no orientation logic
                             if (structuralElement is Wall || (structuralElement is FamilyInstance famInst && famInst.Category != null && famInst.Category.Id.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming))
                         {
-                            // For wall and framing: use orientation/rotation logic (bounding box, width/height swap, rotation)
-                            if (PlaceCableTraySleeveAtLocation_StructuralWithOrientation(doc, ctWallSymbols.FirstOrDefault(), structuralElement, intersectionToPass, dirToPass, width, height, tray))
-                            {
-                                structuralSleevesPlacer++;
+                        // For wall and framing: use orientation/rotation logic (bounding box, width/height swap, rotation)
+                        if (PlaceCableTraySleeveAtLocation_StructuralWithOrientation(doc, sleeveGrid, ctWallSymbols.FirstOrDefault(), structuralElement, intersectionToPass, dirToPass, width, height, tray))
+                        {
+                            structuralSleevesPlacer++;
                                 placedCount++;
                                 processedCableTrays.Add(tray.Id);
                                 structuralSleeveePlaced = true;
@@ -431,7 +440,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         // For floor: use slab family and orientation logic
                         else if (structuralElement is Floor)
                         {
-                            if (PlaceCableTraySleeveAtLocation_StructuralWithOrientation(doc, familySymbolToUse, structuralElement, intersectionToPass, dirToPass, width, height, tray))
+                            if (PlaceCableTraySleeveAtLocation_StructuralWithOrientation(doc, sleeveGrid, familySymbolToUse, structuralElement, intersectionToPass, dirToPass, width, height, tray))
                             {
                                 structuralSleevesPlacer++;
                                 placedCount++;
@@ -519,7 +528,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                                     continue;
                                 }
                                 DebugLogger.Log($"CableTray ID={tray.Id.IntegerValue}: Using wall family: {wallFamilySymbol.Family.Name}, Symbol: {wallFamilySymbol.Name}");
-                                if (PlaceCableTraySleeveAtLocation_Wall(doc, wallFamilySymbol, linkedReferenceElement, intersectionToPass, dirToPass, width, height, tray.Id))
+                                if (PlaceCableTraySleeveAtLocation_Wall(doc, sleeveGrid, wallFamilySymbol, linkedReferenceElement, intersectionToPass, dirToPass, width, height, tray.Id))
                                 {
                                     placedCount++;
                                     processedCableTrays.Add(tray.Id);
@@ -562,7 +571,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         /// <summary>
         /// Places a cable tray wall sleeve at the specified location with duplication checking
         /// </summary>
-        private bool PlaceCableTraySleeveAtLocation_Wall(Document doc, FamilySymbol ctWallSymbol, Element hostElement, XYZ placementPoint, XYZ direction, double width, double height, ElementId trayId)
+        private bool PlaceCableTraySleeveAtLocation_Wall(Document doc, SleeveSpatialGrid sleeveGrid, FamilySymbol ctWallSymbol, Element hostElement, XYZ placementPoint, XYZ direction, double width, double height, ElementId trayId)
         {
             try
             {
@@ -606,8 +615,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 catch { }
 
                 string hostTypeFilter = hostElement is Wall ? "OpeningOnWall" : (hostElement is Floor ? "OpeningOnSlab" : "OpeningOnWall");
-                DebugLogger.Log($"[CableTraySleeveCommand] Using optimized duplication checker hostType={hostTypeFilter}, sectionBoxProvided={(sectionBox!=null)}");
-                bool duplicateExists = OpeningDuplicationChecker.IsAnySleeveAtLocationEnhanced(doc, placementPointHostCoords, sleeveCheckRadius, clusterExpansion: UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters), ignoreIds: null, hostType: hostTypeFilter, sectionBox: sectionBox);
+                DebugLogger.Log($"[CableTraySleeveCommand] Using optimized duplication checker hostType={hostTypeFilter}");
+
+                var nearbySleeves = sleeveGrid.GetNearbySleeves(placementPointHostCoords, sleeveCheckRadius);
+                bool duplicateExists = OpeningDuplicationChecker.IsAnySleeveAtLocationOptimized(placementPointHostCoords, sleeveCheckRadius, clusterExpansion, nearbySleeves, hostTypeFilter);
+
                 if (duplicateExists)
                 {
                     string msg = $"SKIP: CableTray {trayId.IntegerValue} duplicate sleeve (individual or cluster) exists near {placementPoint}";
@@ -644,8 +656,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     double maxY = placementPoint.Y + height / 2.0;
                     DebugLogger.Log($"CableTray ID={(int)trayId.IntegerValue}: [BBOX-DEBUG] Placement at ({placementPoint.X:F3}, {placementPoint.Y:F3}, {placementPoint.Z:F3}), BBox X=({UnitUtils.ConvertFromInternalUnits(minX, UnitTypeId.Millimeters):F1}, {UnitUtils.ConvertFromInternalUnits(maxX, UnitTypeId.Millimeters):F1}), Y=({UnitUtils.ConvertFromInternalUnits(minY, UnitTypeId.Millimeters):F1}, {UnitUtils.ConvertFromInternalUnits(maxY, UnitTypeId.Millimeters):F1}), Width={UnitUtils.ConvertFromInternalUnits(width, UnitTypeId.Millimeters):F1}mm, Height={UnitUtils.ConvertFromInternalUnits(height, UnitTypeId.Millimeters):F1}mm");
 
-                    // ALWAYS use XYZ.BasisX for wall/framing, never pass cable tray direction
-                    FamilyInstance? sleeveInstance = placer.PlaceCableTraySleeve((CableTray)null!, placementPoint, width, height, XYZ.BasisX, ctWallSymbol, wall);
+                    // Compute preCalculatedOrientation for wall: determine whether wall normal is X or Y oriented
+                    XYZ? preCalcForWall = null;
+                    try
+                    {
+                        // Attempt to compute wall normal from wall location curve if available
+                        XYZ wallNormal = XYZ.BasisY;
+                        try
+                        {
+                            var loc = wall.Location as LocationCurve;
+                            if (loc != null && loc.Curve is Line ln)
+                            {
+                                // Wall normal is line direction crossed with Z (approx)
+                                wallNormal = ln.Direction.CrossProduct(XYZ.BasisZ).Normalize();
+                            }
+                            else
+                            {
+                                // Fallback to using wall orientation by inspecting wall bounding box
+                                var bbox = wall.get_BoundingBox(null);
+                                if (bbox != null)
+                                {
+                                    double dx = Math.Abs(bbox.Max.X - bbox.Min.X);
+                                    double dy = Math.Abs(bbox.Max.Y - bbox.Min.Y);
+                                    wallNormal = dx > dy ? XYZ.BasisX : XYZ.BasisY;
+                                }
+                            }
+                        }
+                        catch { wallNormal = XYZ.BasisY; }
+
+                        double absXn = Math.Abs(wallNormal.X);
+                        double absYn = Math.Abs(wallNormal.Y);
+                        // Only rotate for walls that are Y-oriented (wall runs along Y axis)
+                        if (absYn > absXn)
+                        {
+                            preCalcForWall = XYZ.BasisY;
+                            DebugLogger.Log($"CableTray ID={(int)trayId.IntegerValue}: Wall is Y-oriented - will request rotation (preCalc orientation Y)");
+                        }
+                        else
+                        {
+                            preCalcForWall = null; // do not rotate for X-oriented walls
+                            DebugLogger.Log($"CableTray ID={(int)trayId.IntegerValue}: Wall is X-oriented - no rotation requested");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLogger.Log($"CableTray ID={(int)trayId.IntegerValue}: Failed to compute wall orientation: {ex.Message}. No rotation requested");
+                        preCalcForWall = null;
+                    }
+
+                    FamilyInstance? sleeveInstance = placer.PlaceCableTraySleeve((CableTray)null!, placementPoint, width, height, XYZ.BasisX, ctWallSymbol, wall, preCalcForWall);
                     if (sleeveInstance != null)
                     {
                         // --- Set Depth parameter as before ---
@@ -790,6 +849,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         /// </summary>
         private bool PlaceCableTraySleeveAtLocation_StructuralWithOrientation(
             Document doc,
+            SleeveSpatialGrid sleeveGrid,
             FamilySymbol ctSlabSymbol,
             Element hostElement,
             XYZ placementPoint,
@@ -858,6 +918,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             DebugLogger.Log($"[CableTraySleeveCommand] [FLOOR] Detected X-oriented tray (bounding box). Orientation=X");
                         }
                     }
+                    // For walls, compute orientation from wall geometry if not already set
+                    if (hostElement is Wall && preCalculatedOrientation == null)
+                    {
+                        try
+                        {
+                            var theWall = hostElement as Wall;
+                            XYZ wallNormal = XYZ.BasisY;
+                            var loc = theWall?.Location as LocationCurve;
+                            if (loc != null && loc.Curve is Line ln)
+                            {
+                                wallNormal = ln.Direction.CrossProduct(XYZ.BasisZ).Normalize();
+                            }
+                            else
+                            {
+                                var bb = theWall?.get_BoundingBox(null);
+                                if (bb != null)
+                                {
+                                    double dx = Math.Abs(bb.Max.X - bb.Min.X);
+                                    double dy = Math.Abs(bb.Max.Y - bb.Min.Y);
+                                    wallNormal = dx > dy ? XYZ.BasisX : XYZ.BasisY;
+                                }
+                            }
+
+                            double absX = Math.Abs(wallNormal.X);
+                            double absY = Math.Abs(wallNormal.Y);
+                            // Only request rotation for walls that are Y-oriented (wall runs along Y axis)
+                            if (absY > absX)
+                            {
+                                preCalculatedOrientation = XYZ.BasisY;
+                                DebugLogger.Log($"[CableTraySleeveCommand] [WALL] Wall is Y-oriented - requesting rotation (Y)");
+                            }
+                            else
+                            {
+                                preCalculatedOrientation = null; // do not rotate for X-oriented walls
+                                DebugLogger.Log($"[CableTraySleeveCommand] [WALL] Wall is X-oriented - no rotation requested");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            DebugLogger.Log($"[CableTraySleeveCommand] [WALL] Failed to compute wall orientation: {ex.Message}");
+                        }
+                    }
                 }
                 
                 double sleeveCheckRadius = UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters);
@@ -873,8 +975,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 catch { }
 
                 string hostTypeFilter2 = hostElement is Wall ? "OpeningOnWall" : (hostElement is Floor ? "OpeningOnSlab" : "OpeningOnWall");
-                DebugLogger.Log($"[CableTraySleeveCommand] Using optimized duplication checker hostType={hostTypeFilter2}, sectionBoxProvided={(sectionBox2!=null)}");
-                bool duplicateExists2 = OpeningDuplicationChecker.IsAnySleeveAtLocationEnhanced(doc, placementPoint, sleeveCheckRadius, clusterExpansion: UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters), ignoreIds: null, hostType: hostTypeFilter2, sectionBox: sectionBox2);
+                DebugLogger.Log($"[CableTraySleeveCommand] Using optimized duplication checker hostType={hostTypeFilter2}");
+
+                var nearbySleeves2 = sleeveGrid.GetNearbySleeves(placementPoint, sleeveCheckRadius);
+                bool duplicateExists2 = OpeningDuplicationChecker.IsAnySleeveAtLocationOptimized(placementPoint, sleeveCheckRadius, UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters), nearbySleeves2, hostTypeFilter2);
+
                 if (duplicateExists2)
                 {
                     string msg = $"SKIP: CableTray {cableTrayId} duplicate sleeve (individual or cluster) exists near {placementPoint}";
@@ -936,6 +1041,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             }
         }
 
-
+        private static bool BoundingBoxesIntersect(BoundingBoxXYZ a, BoundingBoxXYZ b)
+        {
+            if (a == null || b == null) return false;
+            return !(a.Max.X < b.Min.X || a.Min.X > b.Max.X ||
+                     a.Max.Y < b.Min.Y || a.Min.Y > b.Max.Y ||
+                     a.Max.Z < b.Min.Z || a.Min.Z > b.Max.Z);
+        }
     }
 }

@@ -50,6 +50,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _log($"PipeSleevePlacerService: Starting. Pipe count = {_pipeTuples.Count}, Structural host count = {_structuralElements.Count}");
             _log("Pipe IDs: " + string.Join(", ", _pipeTuples.Select(t => t.Item1?.Id.IntegerValue.ToString() ?? "null")));
             _log("Host types: " + string.Join(", ", _structuralElements.Select(e => e.Item1?.GetType().FullName ?? "null")));
+
+            // Collect all sleeves and filter by section box
+            var allSleeves = new FilteredElementCollector(_doc)
+                .OfClass(typeof(FamilyInstance))
+                .Cast<FamilyInstance>()
+                .Where(fi => (fi.Symbol.Family.Name.Contains("OpeningOnWall") || fi.Symbol.Family.Name.Contains("OpeningOnSlab")))
+                .ToList();
+
+            BoundingBoxXYZ? sectionBox = null;
+            try
+            {
+                if (_doc.ActiveView is View3D vb)
+                    sectionBox = SectionBoxHelper.GetSectionBoxBounds(vb);
+            }
+            catch { /* ignore */ }
+
+            if (sectionBox != null)
+            {
+                allSleeves = allSleeves.Where(s =>
+                {
+                    var bb = s.get_BoundingBox(null);
+                    return bb != null && BoundingBoxesIntersect(bb, sectionBox);
+                }).ToList();
+            }
+
+            var sleeveGrid = new SleeveSpatialGrid(allSleeves);
+            var spatialService = new SpatialPartitioningService(_structuralElements);
+
             foreach (var tuple in _pipeTuples)
             {
                 var pipe = tuple.Item1;
@@ -74,6 +102,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     continue;
                 }
 
+                var nearbyStructuralElements = spatialService.GetNearbyElements(pipe);
+                if (!nearbyStructuralElements.Any())
+                {
+                    _log($"SKIP: Pipe {pipe.Id} no nearby structural elements found.");
+                    SkippedCount++;
+                    continue;
+                }
+
                 Line hostLine = pipeLine;
                 BoundingBoxXYZ? pipeBBox = null;
                 if (transform != null)
@@ -95,12 +131,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 List<(Element, BoundingBoxXYZ, XYZ)> intersections = new List<(Element, BoundingBoxXYZ, XYZ)>();
                 if (transform == null)
                 {
-                    intersections = MepIntersectionService.FindIntersections(pipe, _structuralElements, _log);
+                    intersections = MepIntersectionService.FindIntersections(pipe, nearbyStructuralElements, _log);
                 }
                 else
                 {
                     _log($"[TransformDebug] Pipe {pipe.Id.IntegerValue} transformed to host line Start={hostLine.GetEndPoint(0)}, End={hostLine.GetEndPoint(1)}; pipeBBox={pipeBBox}");
-                    intersections = MepIntersectionService.FindIntersections(hostLine, pipeBBox, _structuralElements, _log);
+                    intersections = MepIntersectionService.FindIntersections(hostLine, pipeBBox, nearbyStructuralElements, _log);
                 }
                 
                 _log($"Pipe {pipe.Id.IntegerValue}: Found {intersections?.Count ?? 0} intersections");
@@ -358,18 +394,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // individual sleeves and then cluster bounding boxes, while accepting a hostType
                             // and sectionBox to avoid scanning unrelated cluster families.
                             _log($"[DuplicationCheck] Starting optimized checks for location {placePtToUse} (individual tol={UnitUtils.ConvertFromInternalUnits(indivTol, UnitTypeId.Millimeters):F0}mm, cluster tol={UnitUtils.ConvertFromInternalUnits(clusterTol, UnitTypeId.Millimeters):F0}mm)");
-                            BoundingBoxXYZ? sectionBox = null;
-                            try
+                            // Correct hostTypeFilter for pipes (was incorrectly using Duct names due to copy-paste)
+                            string hostTypeFilter = hostElem is Wall ? "PipeOpeningOnWall" : (hostElem is Floor ? "PipeOpeningOnSlab" : "PipeOpeningOnWall");
+                            _log($"[DuplicationCheck] using hostTypeFilter={hostTypeFilter}");
+
+                            var nearbySleeves = sleeveGrid.GetNearbySleeves(placePtToUse, indivTol > clusterTol ? indivTol : clusterTol);
+                            bool duplicateExists = OpeningDuplicationChecker.IsAnySleeveAtLocationOptimized(placePtToUse, indivTol, clusterTol, nearbySleeves, hostTypeFilter);
+
+                            // Optimized check pre-filters by nearby sleeve center points which can miss
+                            // large rectangular cluster sleeves whose center point is outside the
+                            // search radius but whose bounding box still covers the placement point.
+                            // As a defensive fallback, if the optimized check reports no duplicate,
+                            // perform a document-level cluster bounding-box check to be certain.
+                            if (!duplicateExists)
                             {
-                                if (_doc != null && _doc.ActiveView is View3D vb)
-                                    sectionBox = SectionBoxHelper.GetSectionBoxBounds(vb);
+                                try
+                                {
+                                    // Use the active view's section box if available to limit the doc scan
+                                    BoundingBoxXYZ? sectionBoxForDoc = null;
+                                    try { if (_doc.ActiveView is View3D vb2) sectionBoxForDoc = SectionBoxHelper.GetSectionBoxBounds(vb2); } catch { }
+                                    bool clusterBBoxHit = OpeningDuplicationChecker.IsLocationWithinClusterBounds(_doc, placePtToUse, clusterTol, hostTypeFilter, sectionBoxForDoc);
+                                    if (clusterBBoxHit)
+                                    {
+                                        _log($"SKIP: Pipe {pipe.Id} host {hostTypeStr} {hostIdStr} suppressed by existing cluster bounding box at {placePtToUse} (fallback doc-level check)");
+                                        SkippedCount++;
+                                        continue;
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    _log($"[DuplicationCheck] Fallback cluster bbox check failed: {ex.Message}");
+                                }
                             }
-                            catch { /* ignore */ }
 
-                            string hostTypeFilter = hostElem is Wall ? "DuctOpeningOnWall" : (hostElem is Floor ? "DuctOpeningOnSlab" : "DuctOpeningOnWall");
-                            _log($"[DuplicationCheck] using hostTypeFilter={hostTypeFilter}, sectionBoxProvided={(sectionBox!=null)}");
-
-                            bool duplicateExists = OpeningDuplicationChecker.IsAnySleeveAtLocationEnhanced(_doc!, placePtToUse, indivTol, clusterExpansion: clusterTol, ignoreIds: null, hostType: hostTypeFilter, sectionBox: sectionBox);
                             if (duplicateExists)
                             {
                                 _log($"SKIP: Pipe {pipe.Id} host {hostTypeStr} {hostIdStr} duplicate sleeve (individual or cluster) exists near {placePtToUse} (optimized check)");
@@ -400,6 +457,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     _log($"Skipped: pipe {pipe.Id} has no intersection with structural host");
                 }
             }
+        }
+
+        private static bool BoundingBoxesIntersect(BoundingBoxXYZ a, BoundingBoxXYZ b)
+        {
+            if (a == null || b == null) return false;
+            return !(a.Max.X < b.Min.X || a.Min.X > b.Max.X ||
+                     a.Max.Y < b.Min.Y || a.Min.Y > b.Max.Y ||
+                     a.Max.Z < b.Min.Z || a.Min.Z > b.Max.Z);
         }
 
         /// <summary>

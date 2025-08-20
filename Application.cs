@@ -60,9 +60,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS
 
             panel.AddSeparator(); // This adds a visual gap
 
-            var button4 = panel.AddPushButton<ClusterMergeCommand>("Cluster Merge");
-            button4.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
-            button4.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+            // ClusterMergeCommand removed from ribbon (command deprecated)
 
             panel.AddSeparator(); // This adds a visual gap
 

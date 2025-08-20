@@ -15,17 +15,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         {
             UIDocument uiDoc = commandData.Application.ActiveUIDocument;
             Document doc = uiDoc.Document;
+            // Create a dedicated log file under the repo Log directory for this command
+            string repoRoot = System.IO.Path.GetDirectoryName(doc.PathName) ?? System.Environment.CurrentDirectory;
+            string logDir = System.IO.Path.Combine(repoRoot, "Log");
+            try { if (!System.IO.Directory.Exists(logDir)) System.IO.Directory.CreateDirectory(logDir); } catch { }
+            string timestamp = System.DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            string commandLogPath = System.IO.Path.Combine(logDir, $"PipeOpeningsRect_{timestamp}.log");
+            void AppendCommandLog(string line)
+            {
+                try { System.IO.File.AppendAllLines(commandLogPath, new[] { $"[{System.DateTime.Now:yyyy-MM-dd HH:mm:ss}] {line}" }); } catch { }
+            }
+
             int placedCount = 0;
             int deletedCount = 0;
 
             // Collect all placed pipe sleeves (assuming circular PS# family instances)
             double toleranceDist = UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters);
             double toleranceMm = UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters);
-            double zTolerance = UnitUtils.ConvertToInternalUnits(1.0, UnitTypeId.Millimeters);
+            double zTolerance = UnitUtils.ConvertToInternalUnits(15.0, UnitTypeId.Millimeters);
             var rawSleeves = new FilteredElementCollector(doc)
                 .OfClass(typeof(FamilyInstance))
                 .Cast<FamilyInstance>()
-                .Where(fi => fi.Symbol.Family.Name.Contains("OpeningOnWall") && fi.Symbol.Name.StartsWith("PS#"))
+                .Where(fi =>
+                {
+                    var famName = fi.Symbol.Family.Name ?? string.Empty;
+                    var symName = fi.Symbol.Name ?? string.Empty;
+                    // Robust PS# detection: trim and check contains to tolerate leading spaces or different formatting
+                    bool familyOk = famName.Contains("OpeningOnWall");
+                    bool symbolOk = symName.Trim().IndexOf("PS#", System.StringComparison.OrdinalIgnoreCase) >= 0 || symName.IndexOf("PS#", System.StringComparison.OrdinalIgnoreCase) >= 0;
+                    return familyOk && symbolOk;
+                })
                 .ToList();
 
             // Filter by active 3D section box to reduce candidates
@@ -36,6 +55,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 var filtered = SectionBoxHelper.FilterElementsBySectionBox(uiDoc, rawElements);
                 sleeves = filtered.Select(t => t.element).OfType<FamilyInstance>().ToList();
                 DebugLogger.Log($"[PipeOpeningsRect] Raw sleeves={rawSleeves.Count}, Filtered by section box={sleeves.Count}");
+                AppendCommandLog($"Raw sleeves={rawSleeves.Count}, Filtered by section box={sleeves.Count}");
+                // Diagnostic: list a sample of PS# symbol names to help detect naming variations
+                var psNames = rawSleeves.Take(20).Select(fi => fi.Symbol.Name.Replace('\n', ' ')).ToList();
+                DebugLogger.Log($"[PipeOpeningsRect] Sample PS# symbol names: {string.Join(", ", psNames)}");
+                AppendCommandLog($"Sample PS# symbol names: {string.Join(", ", psNames)}");
                 // If section-box filtering yields 0 but raw collection had items, fall back to raw to avoid silent no-op
                 if (sleeves.Count == 0 && rawSleeves.Count > 0)
                 {
@@ -102,6 +126,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 foreach (var sleeve in sleeves)
                 {
                     DebugLogger.Log($"Processing sleeve {sleeve.Id.IntegerValue} for level assignment");
+                    AppendCommandLog($"Processing sleeve {sleeve.Id.IntegerValue} for level assignment");
                     // Try to get reference level from parameter or helper
                     Level? refLevelNullable = HostLevelHelper.GetHostReferenceLevel(doc, sleeve);
                     Level refLevel;
@@ -201,9 +226,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 }
                 // Log cluster summary
                 DebugLogger.Log($"Cluster formation complete. Total clusters: {clusters.Count}");
+                AppendCommandLog($"Cluster formation complete. Total clusters: {clusters.Count}");
                 for (int ci = 0; ci < clusters.Count; ci++)
                 {
                     DebugLogger.Log($"Cluster {ci}: {clusters[ci].Count} sleeves");
+                    AppendCommandLog($"Cluster {ci}: {clusters[ci].Count} sleeves");
                 }
                 // Process each cluster: one rectangle per cluster of size >=2
                 foreach (var cluster in clusters)
@@ -211,6 +238,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     if (cluster.Count < 2)
                         continue;
                     DebugLogger.Log($"Cluster of {cluster.Count} sleeves detected for replacement.");
+                    AppendCommandLog($"Cluster of {cluster.Count} sleeves detected for replacement.");
                     // Use ClusterBoundingBoxServices to get bounding box and midpoint (like RectangularSleeveClusterCommandV2)
                     var (width, height, depth, mid) = ClusterBoundingBoxServices.GetClusterBoundingBox(cluster);
                     // Use reference level from first sleeve in cluster
@@ -233,6 +261,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     if (duplicateFound)
                     {
                         DebugLogger.Log($"Suppressed duplicate rectangular opening at {mid} (existing rectangular opening within 100mm) (optimized)");
+                        AppendCommandLog($"Suppressed duplicate rectangular opening at {mid} (existing rectangular opening within 100mm) (optimized)");
                         continue;
                     }
                     // Place the cluster sleeve family instance at the cluster midpoint
@@ -254,6 +283,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     if (depthParam != null && !depthParam.IsReadOnly) depthParam.Set(hostThickness); // X
                     placedCount++;
                     DebugLogger.Log($"Rectangular opening created with id {inst.Id.IntegerValue} (total placed: {placedCount})");
+                    AppendCommandLog($"Rectangular opening created with id {inst.Id.IntegerValue} (total placed: {placedCount}) width={UnitUtils.ConvertFromInternalUnits(width, UnitTypeId.Millimeters):F1}mm height={UnitUtils.ConvertFromInternalUnits(height, UnitTypeId.Millimeters):F1}mm depth={UnitUtils.ConvertFromInternalUnits(depth, UnitTypeId.Millimeters):F1}mm mid={mid}");
                     // Delete originals
                     foreach (var s in cluster)
                     {
@@ -261,6 +291,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         deletedCount++;
                     }
                     DebugLogger.Log($"Deleted {cluster.Count} circular sleeves (total deleted: {deletedCount})");
+                    AppendCommandLog($"Deleted {cluster.Count} circular sleeves (total deleted: {deletedCount})");
                 }
                 tx.Commit();
             }
