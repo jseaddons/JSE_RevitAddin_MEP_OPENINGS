@@ -11,6 +11,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// </summary>
     public static class SleeveLogManager
     {
+        // Global logging disable flag
+        private static readonly bool LoggingEnabled = false;
+        
         // Log file paths
         private static readonly string SummaryLogPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "SleeveManager_Summary.log");
         private static readonly string PipeLogPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "SleeveManager_Pipes.log");
@@ -41,39 +44,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void InitializeLogs()
         {
-            if (!DebugLogger.IsEnabled) return;
-            try
-            {
-                // Create header for each log
-                string header = $"===== JSE MEP SLEEVE PLACEMENT LOG {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\r\n";
-        {
-            if (!DebugLogger.IsEnabled) return;
-            // ...existing code...
-        }
-                _totalDuctsWithWalls = 0;
-                _totalDuctSleevesPLaced = 0;
-                _totalCableTraysWithWalls = 0;
-                _totalCableTraySleevesPLaced = 0;
-                _missingPipes.Clear();
-                _missingDucts.Clear();
-                _missingCableTrays.Clear();
-                _warnings.Clear();
-                _processedElements.Clear();
-                _allModelPipes.Clear();
-                _allModelDucts.Clear();
-                _allModelCableTrays.Clear();
-
-                // Create/overwrite each log file
-                File.WriteAllText(SummaryLogPath, header + "SUMMARY LOG\r\n\r\n");
-                File.WriteAllText(PipeLogPath, header + "PIPE SLEEVE LOG\r\n\r\n");
-                File.WriteAllText(DuctLogPath, header + "DUCT SLEEVE LOG\r\n\r\n");
-                File.WriteAllText(CableTrayLogPath, header + "CABLE TRAY SLEEVE LOG\r\n\r\n");
-                File.WriteAllText(DebugLogPath, header + "DETAILED DEBUG LOG\r\n\r\n");
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Error($"Failed to initialize log files: {ex.Message}");
-            }
+            if (!LoggingEnabled) return;
+            // Logging disabled - no action needed
+            return;
         }
 
         /// <summary>
@@ -81,42 +54,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void RegisterModelElements(IEnumerable<int> pipeIds, IEnumerable<int> ductIds, IEnumerable<int> cableTrayIds)
         {
-            if (!DebugLogger.IsEnabled) return;
-            foreach (var id in pipeIds) _allModelPipes.Add(id);
-            foreach (var id in ductIds) _allModelDucts.Add(id);
-            foreach (var id in cableTrayIds) _allModelCableTrays.Add(id);
-
-            AppendToLog(DebugLogPath, $"Registered model elements - Pipes: {_allModelPipes.Count}, Ducts: {_allModelDucts.Count}, CableTrays: {_allModelCableTrays.Count}");
-
-            // Log all pipe IDs for debugging
-            StringBuilder pipeIds_str = new StringBuilder("Registered pipe IDs: ");
-            foreach (var id in _allModelPipes)
-            {
-                pipeIds_str.Append($"{id}, ");
-            }
-            AppendToLog(DebugLogPath, pipeIds_str.ToString());
+            if (!LoggingEnabled) return;
+            // Logging disabled - no action needed
+            return;
         }
         /// <summary>
         /// Log a found pipe wall intersection
         /// </summary>
         public static void LogPipeWallIntersection(int elementId, XYZ location, double diameter, int wallId = 0, XYZ? wallOrientation = null)
         {
-            if (!DebugLogger.IsEnabled) return;
-            _totalPipesWithWalls++;
-            _processedElements.Add(elementId);
-
-            string wallInfo = wallId > 0 ? $"wall {wallId}" : "wall";
-            string message = $"Found pipe {elementId} intersecting {wallInfo} at {FormatXYZ(location)}, diameter: {FormatMM(diameter)}mm";
-            AppendToLog(PipeLogPath, message);
-
-            // More detailed info in debug log
-            AppendToLog(DebugLogPath, $"PIPE-WALL INTERSECTION - Element: {elementId}, Wall: {(wallId > 0 ? wallId.ToString() : "unknown")}");
-            AppendToLog(DebugLogPath, $"  Location: {FormatXYZ(location)}");
-            if (wallOrientation != null)
-            {
-                AppendToLog(DebugLogPath, $"  Wall orientation: {FormatXYZ(wallOrientation)}");
-            }
-            AppendToLog(DebugLogPath, $"  Pipe diameter: {FormatMM(diameter)}mm");
+            if (!LoggingEnabled) return;
+            // Logging disabled - no action needed
+            return;
         }
 
         /// <summary>
@@ -124,16 +73,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void LogPipeSleeveSuccess(int elementId, int sleeveId, double sleeveDiameter, XYZ sleevePosition)
         {
-            if (!DebugLogger.IsEnabled) return;
-            _totalPipeSleevesPLaced++;
-
-            string message = $"SUCCESS: Placed sleeve {sleeveId} for pipe {elementId}, sleeve diameter: {FormatMM(sleeveDiameter)}mm";
-            AppendToLog(PipeLogPath, message);
-
-            // More detailed info in debug log
-            AppendToLog(DebugLogPath, $"PIPE SLEEVE PLACED - Pipe: {elementId}, Sleeve: {sleeveId}");
-            AppendToLog(DebugLogPath, $"  Final position: {FormatXYZ(sleevePosition)}");
-            AppendToLog(DebugLogPath, $"  Sleeve diameter: {FormatMM(sleeveDiameter)}mm");
+            if (!LoggingEnabled) return;
+            // Logging disabled - no action needed
+            return;
         }
 
         /// <summary>
@@ -141,15 +83,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void LogPipeSleeveFailure(int elementId, string reason)
         {
-            if (!DebugLogger.IsEnabled) return;
-            _processedElements.Add(elementId);
-            string message = $"FAILED: Could not place sleeve for pipe {elementId}. Reason: {reason}";
-            AppendToLog(PipeLogPath, message);
-            _missingPipes.Add($"Pipe {elementId}: {reason}");
-
-            // More detailed info in debug log
-            AppendToLog(DebugLogPath, $"PIPE SLEEVE FAILED - Element: {elementId}");
-            AppendToLog(DebugLogPath, $"  Reason: {reason}");
+            if (!LoggingEnabled) return;
+            // Logging disabled - no action needed
+            return;
         }
 
         /// <summary>

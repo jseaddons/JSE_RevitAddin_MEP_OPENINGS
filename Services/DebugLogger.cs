@@ -12,10 +12,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     {
     /// <summary>
     /// Set to false to disable all logging globally.
-    /// Default enabled here to allow runtime diagnostics for cable tray placement.
-    /// Toggle to false if you want to silence logs.
+    /// Disabled for production - no logging needed.
     /// </summary>
-    public static bool IsEnabled = true;
+    public static bool IsEnabled = false;
     // Always log to the hard-coded Log directory requested by the user
     private static readonly string LogDir = "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\Log";
     private static string DuctLogFilePath = Path.Combine(LogDir, "ductsleeveplacer.log");

@@ -5,8 +5,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.ViewModels
 {
     public class FamilySelectionViewModel
     {
-        public ObservableCollection<FamilySymbol> AvailableFamilies { get; }
-        public FamilySymbol SelectedFamily { get; set; }
+    public ObservableCollection<FamilySymbol> AvailableFamilies { get; } = new ObservableCollection<FamilySymbol>();
+    public FamilySymbol? SelectedFamily { get; set; } = null;
 
         public FamilySelectionViewModel(Document doc)
         {
@@ -16,7 +16,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.ViewModels
                 .OfCategory(BuiltInCategory.OST_GenericModel)
                 .Cast<FamilySymbol>();
 
-            AvailableFamilies = new ObservableCollection<FamilySymbol>(symbols);
+            foreach (var s in symbols)
+                AvailableFamilies.Add(s);
         }
     }
 }

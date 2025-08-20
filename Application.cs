@@ -2,8 +2,6 @@ using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Commands;
 using JSE_RevitAddin_MEP_OPENINGS.Security;
 using Nice3point.Revit.Toolkit.External;
-using Serilog;
-using Serilog.Events;
 
 namespace JSE_RevitAddin_MEP_OPENINGS
 {
@@ -15,22 +13,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS
     {
         public override void OnStartup()
         {
-            // Validate license before startup - Simple JSE domain check
-            if (!LicenseValidator.ValidateLicense() || !LicenseValidator.ValidateHardwareId())
+            // Silent domain validation - user should not be aware of this check
+            var domainValidation = DomainValidator.ValidateDomain();
+            if (!domainValidation.IsValid)
             {
-                TaskDialog.Show("License Error",
-                    "This add-in is licensed for JSE domain computers only. " +
-                    $"Current domain: {Environment.UserDomainName}");
+                // Silently fail - no error dialogs, no user notification
+                // Just return without loading the add-in
                 return;
             }
 
+            // Domain validation successful - no logging needed
             CreateLogger();
             CreateRibbon();
         }
 
         public override void OnShutdown()
         {
-            Log.CloseAndFlush();
+            // Logging disabled - no cleanup needed
         }
 
         private void CreateRibbon()
@@ -64,24 +63,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS
 
             panel.AddSeparator(); // This adds a visual gap
 
-            // Deleted commands removed from ribbon: DeletePipeSleevesCommand, GetSleeveSummaryCommand
+            // Deleted commands removed from ribbon: DeletePipeSleeveCommand, GetSleeveSummaryCommand
         }
 
 
         private static void CreateLogger()
         {
-            const string outputTemplate = "{Timestamp:yyyy-MM-dd HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}";
-
-            Log.Logger = new LoggerConfiguration()
-                .WriteTo.Debug(LogEventLevel.Debug, outputTemplate)
-                .MinimumLevel.Debug()
-                .CreateLogger();
-
-            AppDomain.CurrentDomain.UnhandledException += (_, args) =>
-            {
-                var exception = (Exception)args.ExceptionObject;
-                Log.Fatal(exception, "Domain unhandled exception");
-            };
+            // Logging disabled - no logger needed
+            // AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+            // {
+            //     // Exception logging disabled
+            // };
         }
     }
 }

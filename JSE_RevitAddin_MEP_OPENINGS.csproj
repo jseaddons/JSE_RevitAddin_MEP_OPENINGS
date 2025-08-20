@@ -96,9 +96,10 @@
   <ItemGroup>
     <Compile Remove="Services\*BKP*.cs" />
     <Compile Remove="Commands\*BKP*.cs" />
-  <Compile Remove="Archive\**\*.cs" />
+  <Compile Remove="Services\Archive\**\*.cs" />
   <Compile Remove="Commands\ClusterMergeCommand.cs" />
   <Compile Remove="Commands\CleanCableTraySleevesCommand.cs" />
+  <Compile Remove="Commands\CompareDuctCableTrayPlacementCommand.cs" />
     <Compile Remove="Commands\IndividualDuctSleeveCommand.cs" />
     <Compile Remove="Services\Backup\*BKP*.cs" />
     <Compile Remove="Commands\Backup\*BKP*.cs" />
@@ -111,6 +112,15 @@
     <Content Remove="Reference\**" />
     <EmbeddedResource Remove="BACKUP_WORKING_2025-06-26_16-30-47_CableTrayFixed\**" />
     <EmbeddedResource Remove="Reference\**" />
+  </ItemGroup>
+
+  <!-- Ensure excluded/archive files are known to the IDE as non-compilable to avoid editor diagnostics -->
+  <ItemGroup>
+    <None Include="Services\Archive\**\*.cs" />
+    <None Include="Commands\ClusterMergeCommand.cs" />
+    <None Include="Commands\CleanCableTraySleevesCommand.cs" />
+    <None Include="Commands\CompareDuctCableTrayPlacementCommand.cs" />
+    <None Include="Commands\IndividualDuctSleeveCommand.cs" />
   </ItemGroup>
 
   <ItemGroup>

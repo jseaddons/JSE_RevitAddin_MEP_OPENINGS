@@ -412,13 +412,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 {
                                     // Use the active view's section box if available to limit the doc scan
                                     BoundingBoxXYZ? sectionBoxForDoc = null;
-                                    try { if (_doc.ActiveView is View3D vb2) sectionBoxForDoc = SectionBoxHelper.GetSectionBoxBounds(vb2); } catch { }
-                                    bool clusterBBoxHit = OpeningDuplicationChecker.IsLocationWithinClusterBounds(_doc, placePtToUse, clusterTol, hostTypeFilter, sectionBoxForDoc);
-                                    if (clusterBBoxHit)
+                                    if (_doc != null)
                                     {
-                                        _log($"SKIP: Pipe {pipe.Id} host {hostTypeStr} {hostIdStr} suppressed by existing cluster bounding box at {placePtToUse} (fallback doc-level check)");
-                                        SkippedCount++;
-                                        continue;
+                                        try { if (_doc.ActiveView is View3D vb2) sectionBoxForDoc = SectionBoxHelper.GetSectionBoxBounds(vb2); } catch { }
+                                        bool clusterBBoxHit = OpeningDuplicationChecker.IsLocationWithinClusterBounds(_doc, placePtToUse, clusterTol, hostTypeFilter, sectionBoxForDoc);
+                                        if (clusterBBoxHit)
+                                        {
+                                            _log($"SKIP: Pipe {pipe.Id} host {hostTypeStr} {hostIdStr} suppressed by existing cluster bounding box at {placePtToUse} (fallback doc-level check)");
+                                            SkippedCount++;
+                                            continue;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        _log("[DuplicationCheck] Warning: _doc is null; skipping doc-level fallback check");
                                     }
                                 }
                                 catch (Exception ex)

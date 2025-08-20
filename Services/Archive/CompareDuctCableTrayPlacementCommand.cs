@@ -13,8 +13,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
-            UIDocument uidoc = commandData.Application.ActiveUIDocument;
-            Document doc = uidoc?.Document;
+            UIDocument? uidoc = commandData?.Application?.ActiveUIDocument;
+            Document? doc = uidoc?.Document;
+
+            if (uidoc == null || doc == null)
+            {
+                message = "No active document available.";
+                return Result.Failed;
+            }
 
             try
             {

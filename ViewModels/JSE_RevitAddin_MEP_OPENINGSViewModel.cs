@@ -10,9 +10,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.ViewModels
 {
     public sealed class JSE_RevitAddin_MEP_OPENINGSViewModel : ObservableObject
     {
-        private readonly ExternalCommandData _commandData;
+    private readonly ExternalCommandData _commandData;
 
-        public JSE_RevitAddin_MEP_OPENINGSViewModel(ExternalCommandData commandData = null)
+    // Require a non-null ExternalCommandData to avoid nullable conversion warnings and ensure commands
+    // always have the data they expect.
+    public JSE_RevitAddin_MEP_OPENINGSViewModel(ExternalCommandData commandData)
         {
             _commandData = commandData;
             PlaceOpeningsCommand = new RelayCommand(ExecutePlaceOpenings);
@@ -24,20 +26,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.ViewModels
 
         private void ExecutePlaceOpenings()
         {
-            if (_commandData == null) return;
-
             var command = new OpeningsPLaceCommand();
-            string message = null;
+            string message = string.Empty;
             ElementSet elements = new ElementSet();
             command.Execute(_commandData, ref message, elements);
         }
 
         private void ExecuteAddMarkParameter()
         {
-            if (_commandData == null) return;
-
             var command = new MarkParameterAddValue();
-            string message = null;
+            string message = string.Empty;
             ElementSet elements = new ElementSet();
             command.Execute(_commandData, ref message, elements);
         }

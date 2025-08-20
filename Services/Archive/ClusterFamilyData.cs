@@ -5,7 +5,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
     public class ClusterFamilyData
     {
         public ElementId Id { get; set; }
-        public XYZ Position { get; set; }
+    public XYZ? Position { get; set; }
         public double Width { get; set; }
         public double Height { get; set; }
         public bool IsFlipped { get; set; }
@@ -15,7 +15,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         {
             Instance = instance;
             Id = instance.Id;
-            Position = (instance.Location as LocationPoint)?.Point;
+            var locPoint = instance.Location as LocationPoint;
+            Position = locPoint?.Point;
             Width = GetParameter(instance, "Width");
             Height = GetParameter(instance, "Height");
             IsFlipped = instance.FacingFlipped;
