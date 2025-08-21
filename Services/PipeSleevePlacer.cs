@@ -1,4 +1,3 @@
-
 using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Plumbing;
@@ -196,6 +195,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                          sleeveSymbol,
                          pipeLevel,
                          StructuralType.NonStructural);
+
+                    // Dump instance parameters for debugging
+                    var instanceParams = instance.Parameters.Cast<Parameter>().Select(p => $"{p.Definition.Name} (IsReadOnly={p.IsReadOnly})");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[PipeSleevePlacer] DEBUG: Created instance parameters: {string.Join(", ", instanceParams)}");
 
                     // Set parameters after creation
                     SetParameterSafely(instance, "Diameter", totalDiameter, pipeElementId);
