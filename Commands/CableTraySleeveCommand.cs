@@ -236,9 +236,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     var nearbyStructuralElements = spatialService.GetNearbyElements(tray);
                     if (!nearbyStructuralElements.Any())
                     {
-                        DebugLogger.Log($"SKIP: CableTray {tray.Id} no nearby structural elements found.");
-                        skippedExistingCount++;
-                        continue;
+                        DebugLogger.Log($"WARNING: CableTray {tray.Id} no nearby structural elements found via spatial partitioning. Falling back to all structural elements.");
+                        
+                        // FALLBACK: Use all structural elements when spatial partitioning fails
+                        // This ensures the system works regardless of coordinate/precision issues
+                        nearbyStructuralElements = structuralElements;
+                        DebugLogger.Log($"Fallback: Using all {nearbyStructuralElements.Count} structural elements for cable tray {tray.Id}");
                     }
 
                     // Use MepIntersectionService for wall intersections (like duct logic)
@@ -563,6 +566,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 StructuralElementLogger.LogSummary("CableTraySleeveCommand", totalTrays, structuralElementsDetected, structuralSleevesPlacer, (structuralElementsDetected - structuralSleevesPlacer));
                 StructuralElementLogger.LogStructuralElement("SYSTEM", new Autodesk.Revit.DB.ElementId((BuiltInParameter)0L), "COMMAND COMPLETED", $"Structural sleeve placement finished. Log file: {StructuralElementLogger.GetLogFilePath()}");
             }
+
+            // Show status prompt to user
+            string summary = $"CABLE TRAY SLEEVE SUMMARY: Total={totalTrays}, Placed={placedCount}, Missing={missingCount}, Skipped={skippedExistingCount}, Structural={structuralSleevesPlacer}";
+            TaskDialog.Show("Cable Tray Sleeve Placement", summary);
 
             DebugLogger.Log("Cable tray sleeves placement completed.");
             return Result.Succeeded;

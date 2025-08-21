@@ -105,9 +105,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var nearbyStructuralElements = spatialService.GetNearbyElements(pipe);
                 if (!nearbyStructuralElements.Any())
                 {
-                    _log($"SKIP: Pipe {pipe.Id} no nearby structural elements found.");
-                    SkippedCount++;
-                    continue;
+                    _log($"WARNING: Pipe {pipe.Id} no nearby structural elements found via spatial partitioning. Falling back to all structural elements.");
+                    
+                    // FALLBACK: Use all structural elements when spatial partitioning fails
+                    // This ensures the system works regardless of coordinate/precision issues
+                    nearbyStructuralElements = _structuralElements;
+                    _log($"Fallback: Using all {nearbyStructuralElements.Count} structural elements for pipe {pipe.Id}");
                 }
 
                 Line hostLine = pipeLine;

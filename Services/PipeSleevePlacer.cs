@@ -104,12 +104,56 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!sleeveSymbol.IsActive)
                     sleeveSymbol.Activate();
 
-                Level level = new FilteredElementCollector(_doc)
-                    .OfClass(typeof(Level))
-                    .Cast<Level>()
-                    .OrderBy(lvl => Math.Abs(lvl.Elevation - placePoint.Z))
-                    .FirstOrDefault();
-                if (level == null)
+                // Get the pipe's actual level from the linked model, not the active document level
+                Level? pipeLevel = null;
+                if (pipe != null)
+                {
+                    // DEBUG: Check what parameters are available on the linked pipe
+                    JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[PipeSleevePlacer] DEBUG: Checking parameters for linked pipe {pipeElementId}");
+                    
+                    // Try to get the pipe's reference level using HostLevelHelper
+                    pipeLevel = HostLevelHelper.GetHostReferenceLevel(_doc, pipe);
+                    if (pipeLevel != null)
+                    {
+                        JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[PipeSleevePlacer] DEBUG: HostLevelHelper returned level: '{pipeLevel.Name}' (ID: {pipeLevel.Id.IntegerValue}) for pipe {pipeElementId}");
+                    }
+                    else
+                    {
+                        // DEBUG: Log what parameters are available on the linked pipe
+                        JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[PipeSleevePlacer] DEBUG: HostLevelHelper returned NULL for pipe {pipeElementId}");
+                        
+                        // Check what level parameters are available on the linked pipe
+                        var refLevelParam = pipe.LookupParameter("Reference Level");
+                        var levelParam = pipe.LookupParameter("Level");
+                        var hostLevelParam = pipe.LookupParameter("Host Level");
+                        
+                        JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[PipeSleevePlacer] DEBUG: Pipe {pipeElementId} parameters - Reference Level: {refLevelParam?.StorageType}, Level: {levelParam?.StorageType}, Host Level: {hostLevelParam?.StorageType}");
+                        
+                        if (refLevelParam != null)
+                            JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[PipeSleevePlacer] DEBUG: Reference Level value: {refLevelParam.AsString()}");
+                        if (levelParam != null)
+                            JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[PipeSleevePlacer] DEBUG: Level value: {levelParam.AsString()}");
+                        if (hostLevelParam != null)
+                            JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[PipeSleevePlacer] DEBUG: Host Level value: {hostLevelParam.AsString()}");
+                    }
+                }
+                
+                // Fallback: if we can't get the pipe's level, use the closest level in active document
+                if (pipeLevel == null)
+                {
+                    pipeLevel = new FilteredElementCollector(_doc)
+                        .OfClass(typeof(Level))
+                        .Cast<Level>()
+                        .OrderBy(lvl => Math.Abs(lvl.Elevation - placePoint.Z))
+                        .FirstOrDefault();
+                    
+                    if (pipeLevel != null)
+                    {
+                        JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[PipeSleevePlacer] Fallback: Using closest active document level: {pipeLevel.Name} for pipe {pipeElementId}");
+                    }
+                }
+                
+                if (pipeLevel == null)
                 {
                     DebugLogger.Error($"[PipeSleevePlacer] FAILURE: No level found for placement for pipe {pipeElementId}");
                     return false;
@@ -147,11 +191,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 FamilyInstance? instance = null;
                 try
                 {
-                    instance = _doc.Create.NewFamilyInstance(
-                        placePoint,
-                        sleeveSymbol,
-                        level,
-                        StructuralType.NonStructural);
+                                         instance = _doc.Create.NewFamilyInstance(
+                         placePoint,
+                         sleeveSymbol,
+                         pipeLevel,
+                         StructuralType.NonStructural);
 
                     // Set parameters after creation
                     SetParameterSafely(instance, "Diameter", totalDiameter, pipeElementId);
@@ -239,16 +283,51 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return false;
                 }
 
-                // Set schedule level parameter if available
-                if (pipe != null)
+                // Set both Level and Schedule Level parameters using the pipe's actual level
+                if (pipeLevel != null)
                 {
-                    Level? refLevel = HostLevelHelper.GetHostReferenceLevel(_doc, pipe);
-                    if (refLevel != null)
+                    // Set the Level parameter (Revit's internal level reference)
+                    Parameter levelParam = instance.get_Parameter(BuiltInParameter.INSTANCE_REFERENCE_LEVEL_PARAM);
+                    bool levelSet = false;
+                    if (levelParam != null && !levelParam.IsReadOnly)
                     {
-                        Parameter schedLevelParam = instance.LookupParameter("Schedule Level");
-                        if (schedLevelParam != null && !schedLevelParam.IsReadOnly)
-                            schedLevelParam.Set(refLevel.Id);
+                        levelParam.Set(pipeLevel.Id);
+                        levelSet = true;
                     }
+                    else
+                    {
+                        var levelByName = instance.LookupParameter("Level");
+                        if (levelByName != null && !levelByName.IsReadOnly)
+                        {
+                            levelByName.Set(pipeLevel.Id);
+                            levelSet = true;
+                        }
+                    }
+                    
+                    if (levelSet)
+                    {
+                        JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[PipeSleevePlacer] Set Level parameter to {pipeLevel.Name} for pipe {pipeElementId}");
+                    }
+                    else
+                    {
+                        JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[PipeSleevePlacer] WARNING: Could not set Level parameter for pipe {pipeElementId}. No writable level parameter found.");
+                    }
+                    
+                    // Set the Schedule Level parameter
+                    Parameter schedLevelParam = instance.LookupParameter("Schedule Level");
+                    if (schedLevelParam != null && !schedLevelParam.IsReadOnly)
+                    {
+                        schedLevelParam.Set(pipeLevel.Id);
+                        JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[PipeSleevePlacer] Set Schedule Level to {pipeLevel.Name} for pipe {pipeElementId}");
+                    }
+                    else
+                    {
+                        JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[PipeSleevePlacer] WARNING: Could not set Schedule Level parameter for pipe {pipeElementId}. No writable Schedule Level parameter found.");
+                    }
+                }
+                else
+                {
+                    JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[PipeSleevePlacer] WARNING: No level available to set parameters for pipe {pipeElementId}");
                 }
 
                 // Final validation and logging

@@ -342,6 +342,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var filtered = JSE_RevitAddin_MEP_OPENINGS.Helpers.MepElementCollectorHelper.CollectElementsVisibleOnly(doc, categories);
                 foreach (var t in filtered) elements.Add((t.element, t.transform));
                 log($"Finished structural element collection. Total elements found: {elements.Count}");
+                
+                // CRITICAL FIX: If section box filtering is too aggressive and filters out ALL elements,
+                // fall back to collecting structural elements without section box filtering
+                if (elements.Count == 0 && sectionBox != null)
+                {
+                    log("WARNING: Section box filtering removed ALL structural elements. Falling back to unfiltered collection.");
+                    
+                    // Collect structural elements without section box filtering as fallback
+                    var fallbackElements = new List<(Element, Transform?)>();
+                    
+                    // Host model elements
+                    var hostElements = new FilteredElementCollector(doc)
+                        .WherePasses(new ElementMulticategoryFilter(categories))
+                        .WhereElementIsNotElementType()
+                        .ToElements();
+                    foreach (var e in hostElements) fallbackElements.Add((e, null));
+                    
+                    // Linked model elements
+                    foreach (var link in new FilteredElementCollector(doc)
+                                 .OfClass(typeof(RevitLinkInstance))
+                                 .Cast<RevitLinkInstance>())
+                    {
+                        var linkDoc = link.GetLinkDocument();
+                        if (linkDoc == null ||
+                            doc.ActiveView.GetCategoryHidden(link.Category.Id) ||
+                            link.IsHidden(doc.ActiveView))
+                            continue;
+
+                        var tr = link.GetTotalTransform();
+                        var linked = new FilteredElementCollector(linkDoc)
+                            .WherePasses(new ElementMulticategoryFilter(categories))
+                            .WhereElementIsNotElementType()
+                            .ToElements();
+                        foreach (var e in linked) fallbackElements.Add((e, tr));
+                    }
+                    
+                    log($"Fallback collection found {fallbackElements.Count} structural elements.");
+                    return fallbackElements;
+                }
+                
                 return elements;
             }
             catch (Exception ex)

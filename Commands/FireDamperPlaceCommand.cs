@@ -226,6 +226,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 
             // Summary logging
             DebugLogger.Log($"FireDamperPlaceCommand summary: Total={totalDampers}, Placed={placedCount}, SkippedExisting={skippedExistingCount}");
+            
+            // Show status prompt to user
+            string summary = $"FIRE DAMPER SUMMARY: Total={totalDampers}, Placed={placedCount}, Skipped={skippedExistingCount}";
+            TaskDialog.Show("Fire Damper Placement", summary);
+            
             return Autodesk.Revit.UI.Result.Succeeded;
         }
     }

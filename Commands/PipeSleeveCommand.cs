@@ -119,6 +119,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 tx.Commit();
                 Log($"Placement complete. Placed: {placedCount}, Skipped: {skippedCount}, Errors: {errorCount}");
 
+                // Show status prompt to user
+                string summary = $"PIPE SLEEVE SUMMARY: Placed={placedCount}, Skipped={skippedCount}, Errors={errorCount}";
+                TaskDialog.Show("Pipe Sleeve Placement", summary);
             }
             return Result.Succeeded;
         }

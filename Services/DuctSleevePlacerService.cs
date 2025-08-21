@@ -98,9 +98,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var nearbyStructuralElements = spatialService.GetNearbyElements(duct);
                 if (!nearbyStructuralElements.Any())
                 {
-                    _log?.Invoke($"SKIP: Duct {duct.Id} no nearby structural elements found.");
-                    SkippedCount++;
-                    continue;
+                    _log?.Invoke($"WARNING: Duct {duct.Id} no nearby structural elements found via spatial partitioning. Falling back to all structural elements.");
+                    
+                    // FALLBACK: Use all structural elements when spatial partitioning fails
+                    // This ensures the system works regardless of coordinate/precision issues
+                    nearbyStructuralElements = _structuralElements;
+                    _log?.Invoke($"Fallback: Using all {nearbyStructuralElements.Count} structural elements for duct {duct.Id}");
                 }
 
                 List<(Element, BoundingBoxXYZ, XYZ)> intersections;
