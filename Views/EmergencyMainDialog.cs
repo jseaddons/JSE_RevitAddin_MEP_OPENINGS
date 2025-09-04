@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Linq;
+using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using WinForms = System.Windows.Forms;
@@ -50,6 +51,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.Panel _cableTrayPanel = null!;
         private WinForms.Panel _damperPanel = null!;
         private LinkedFileService? _linkedFileService;
+        // Opening type controls (right section)
+        private WinForms.Panel _openingTypePanel = null!;
+        private WinForms.RadioButton _rectangularRadio = null!;
+        private WinForms.RadioButton _circularRadio = null!;
+        // Parameter filter controls (right section)
+        private WinForms.Panel _parameterFilterPanel = null!;
+        private List<WinForms.Panel> _parameterRows = new List<WinForms.Panel>();
+        private WinForms.Button _addParameterButton = null!;
+
+        // constants (top of class)
+        private const int InnerRightWidth = 320;  // choose 300–360
 
         public EmergencyMainDialog(ApplicationProfileService appProfileService, Document? document = null)
         {
@@ -71,9 +83,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
             // Form properties
             this.Text = "JSE MEP Openings - Main Interface (Emergency WinForms Mode)";
-            this.Size = new System.Drawing.Size(1200, 800);
+            this.Size = new System.Drawing.Size(1100, 800);   // smaller default
             this.StartPosition = WinForms.FormStartPosition.CenterScreen;
-            this.MinimumSize = new System.Drawing.Size(1000, 600);
+            this.MinimumSize = new System.Drawing.Size(900, 600);  // was 1000,600
             this.TopMost = true;
 
             // Header Panel
@@ -222,7 +234,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 BackColor = System.Drawing.Color.White,
                 BorderStyle = WinForms.BorderStyle.FixedSingle,
-                Width = 300
+                Width = 460
             };
             this.Controls.Add(_rightPanel);
 
@@ -230,7 +242,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             InitializePanelContent();
             PositionPanels();
             BalanceLeftLayout();
-            this.Shown += (_, __) => BalanceLeftLayout();
+            this.Shown += (_, __) => _bottomLeftPanel.Height = (_leftPanel.Height - _horizontalSplitter.Height) / 2;
             this.Resize += (_, __) => BalanceLeftLayout();
             _leftPanel.Resize += (_, __) => BalanceLeftLayout();
 
@@ -546,8 +558,92 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _mepTypeCombo.SelectedIndex = 0;
             _rightPanel.Controls.Add(_mepTypeCombo);
 
+            // Opening Type (Rectangular / Circular)
+            CreateOpeningTypePanel();
+
             // Create clearance panels
             CreateClearancePanels();
+
+            // Parameter filter section
+            CreateParameterFilterPanel();
+            // Ensure correct panel visible at startup
+            UpdateClearanceVisibility();
+        }
+
+        private void CreateOpeningTypePanel()
+        {
+            _openingTypePanel = new WinForms.Panel
+            {
+                Location = new System.Drawing.Point(10, 80),
+                Size = new System.Drawing.Size(_rightPanel.Width - 20, 50),
+                BackColor = System.Drawing.Color.FromArgb(248, 249, 250),
+                BorderStyle = WinForms.BorderStyle.FixedSingle,
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right
+            };
+            _rightPanel.Controls.Add(_openingTypePanel);
+
+            var typeLabel = new WinForms.Label
+            {
+                Text = "Opening Type:",
+                Location = new System.Drawing.Point(10, 8),
+                Size = new System.Drawing.Size(100, 16)
+            };
+            _openingTypePanel.Controls.Add(typeLabel);
+
+            _rectangularRadio = new WinForms.RadioButton
+            {
+                Text = "Rectangular",
+                Location = new System.Drawing.Point(120, 6),
+                AutoSize = true
+            };
+            _openingTypePanel.Controls.Add(_rectangularRadio);
+
+            _circularRadio = new WinForms.RadioButton
+            {
+                Text = "Circular",
+                Location = new System.Drawing.Point(220, 6),
+                AutoSize = true
+            };
+            _openingTypePanel.Controls.Add(_circularRadio);
+
+            // default selection
+            _rectangularRadio.Checked = true;
+
+            // enable/disable by MEP type
+            _mepTypeCombo.SelectedIndexChanged += (_, __) => {
+                UpdateOpeningTypeAvailability();
+                UpdateClearanceVisibility();
+            };
+            UpdateOpeningTypeAvailability();
+        }
+
+        private void UpdateOpeningTypeAvailability()
+        {
+            // Both shapes remain selectable for all MEP types
+            _rectangularRadio.Enabled = true;
+            _circularRadio.Enabled = true;
+        }
+
+        private void UpdateClearanceVisibility()
+        {
+            var mep = _mepTypeCombo.SelectedItem?.ToString() ?? string.Empty;
+            // Hide all
+            _clearancePanel.Visible = false;
+            _cableTrayPanel.Visible = false;
+            _damperPanel.Visible = false;
+
+            if (mep.Equals("Cable Tray", StringComparison.OrdinalIgnoreCase))
+            {
+                _cableTrayPanel.Visible = true;
+            }
+            else if (mep.Equals("Duct Accessories", StringComparison.OrdinalIgnoreCase))
+            {
+                _damperPanel.Visible = true;
+            }
+            else
+            {
+                _clearancePanel.Visible = true; // default
+            }
         }
 
         private void CreateClearancePanels()
@@ -555,7 +651,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // Standard Clearance Panel
             _clearancePanel = new WinForms.Panel
             {
-                Location = new System.Drawing.Point(10, 80),
+                Location = new System.Drawing.Point(10, 140),
                 Size = new System.Drawing.Size(_rightPanel.Width - 20, 100),
                 BackColor = System.Drawing.Color.FromArgb(248, 249, 250),
                 BorderStyle = WinForms.BorderStyle.FixedSingle,
@@ -563,57 +659,218 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             _rightPanel.Controls.Add(_clearancePanel);
 
-            var clearanceLabel = new WinForms.Label
+            // Sub-headers
+            var normalHeader = new WinForms.Label
+            {
+                Text = "Normal (mm)",
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold),
+                Location = new System.Drawing.Point(170, 10),
+                Size = new System.Drawing.Size(100, 18)
+            };
+            _clearancePanel.Controls.Add(normalHeader);
+
+            var insulatedHeader = new WinForms.Label
+            {
+                Text = "Insulated (mm)",
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold),
+                Location = new System.Drawing.Point(300, 10),
+                Size = new System.Drawing.Size(110, 18)
+            };
+            _clearancePanel.Controls.Add(insulatedHeader);
+
+            // Row label
+            var clearanceRowLbl = new WinForms.Label
             {
                 Text = "Clearance per Side:",
-                Font = new System.Drawing.Font("Microsoft Sans Serif", 10F, System.Drawing.FontStyle.Bold),
-                ForeColor = System.Drawing.Color.FromArgb(51, 51, 51),
-                Location = new System.Drawing.Point(10, 10),
-                Size = new System.Drawing.Size(150, 20),
-                AutoSize = false
-            };
-            _clearancePanel.Controls.Add(clearanceLabel);
-
-            var clearanceTextBox = new WinForms.TextBox
-            {
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular),
                 Location = new System.Drawing.Point(10, 35),
-                Size = new System.Drawing.Size(100, 20),
+                Size = new System.Drawing.Size(150, 18)
+            };
+            _clearancePanel.Controls.Add(clearanceRowLbl);
+
+            // Inputs
+            var normalText = new WinForms.TextBox
+            {
+                Location = new System.Drawing.Point(170, 33),
+                Size = new System.Drawing.Size(60, 20),
                 Text = "25"
             };
-            _clearancePanel.Controls.Add(clearanceTextBox);
+            _clearancePanel.Controls.Add(normalText);
 
-            var mmLabel = new WinForms.Label
+            var insulatedText = new WinForms.TextBox
             {
-                Text = "mm",
-                Location = new System.Drawing.Point(120, 37),
-                Size = new System.Drawing.Size(20, 16),
-                AutoSize = false
+                Location = new System.Drawing.Point(300, 33),
+                Size = new System.Drawing.Size(60, 20),
+                Text = "30"
             };
-            _clearancePanel.Controls.Add(mmLabel);
+            _clearancePanel.Controls.Add(insulatedText);
 
-            // Cable Tray Panel (initially hidden)
+            // Cable Tray Panel (initially hidden) - Top Side + Other Sides
             _cableTrayPanel = new WinForms.Panel
             {
-                Location = new System.Drawing.Point(10, 80),
-                Size = new System.Drawing.Size(_rightPanel.Width - 20, 120),
+                Location = new System.Drawing.Point(10, 140),
+                Size = new System.Drawing.Size(_rightPanel.Width - 20, 110),
                 BackColor = System.Drawing.Color.FromArgb(248, 249, 250),
                 BorderStyle = WinForms.BorderStyle.FixedSingle,
                 Visible = false,
                 Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right
             };
             _rightPanel.Controls.Add(_cableTrayPanel);
+            var ctLabel = new WinForms.Label { Text = "Clearances:", Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold), Location = new System.Drawing.Point(10, 10), Size = new System.Drawing.Size(130, 18) };
+            _cableTrayPanel.Controls.Add(ctLabel);
+            var topSideLbl = new WinForms.Label { Text = "Top Side:", Location = new System.Drawing.Point(10, 40), Size = new System.Drawing.Size(120, 18) };
+            _cableTrayPanel.Controls.Add(topSideLbl);
+            var topSideTxt = new WinForms.TextBox { Location = new System.Drawing.Point(170, 38), Size = new System.Drawing.Size(60, 20), Text = "50" };
+            _cableTrayPanel.Controls.Add(topSideTxt);
+            var ctNormalHeader = new WinForms.Label { Text = "Normal (mm)", Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold), Location = new System.Drawing.Point(170, 18), Size = new System.Drawing.Size(110, 18) };
+            _cableTrayPanel.Controls.Add(ctNormalHeader);
+            // Stack 'Other Sides' below
+            var otherLbl = new WinForms.Label { Text = "Other Sides:", Location = new System.Drawing.Point(10, 70), Size = new System.Drawing.Size(120, 18) };
+            _cableTrayPanel.Controls.Add(otherLbl);
+            var otherTxt = new WinForms.TextBox { Location = new System.Drawing.Point(170, 68), Size = new System.Drawing.Size(60, 20), Text = "25" };
+            _cableTrayPanel.Controls.Add(otherTxt);
+            var ctInsHeader = new WinForms.Label { Text = "Insulated (mm)", Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold), Location = new System.Drawing.Point(300, 18), Size = new System.Drawing.Size(120, 18) };
+            _cableTrayPanel.Controls.Add(ctInsHeader);
+            var ctInsTopTxt = new WinForms.TextBox { Location = new System.Drawing.Point(300, 38), Size = new System.Drawing.Size(60, 20), Text = "35" };
+            _cableTrayPanel.Controls.Add(ctInsTopTxt);
+            var ctInsOtherTxt = new WinForms.TextBox { Location = new System.Drawing.Point(300, 68), Size = new System.Drawing.Size(60, 20), Text = "25" };
+            _cableTrayPanel.Controls.Add(ctInsOtherTxt);
 
-            // Damper Panel (initially hidden)
+            // Damper Panel (initially hidden) - MEP Side + Other Sides
             _damperPanel = new WinForms.Panel
             {
-                Location = new System.Drawing.Point(10, 80),
-                Size = new System.Drawing.Size(_rightPanel.Width - 20, 120),
+                Location = new System.Drawing.Point(10, 140),
+                Size = new System.Drawing.Size(_rightPanel.Width - 20, 110),
                 BackColor = System.Drawing.Color.FromArgb(248, 249, 250),
                 BorderStyle = WinForms.BorderStyle.FixedSingle,
                 Visible = false,
                 Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right
             };
             _rightPanel.Controls.Add(_damperPanel);
+            var dpLabel = new WinForms.Label { Text = "Clearances:", Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold), Location = new System.Drawing.Point(10, 10), Size = new System.Drawing.Size(160, 18) };
+            _damperPanel.Controls.Add(dpLabel);
+            var mepSideLbl = new WinForms.Label { Text = "MEP Connector Side:", Location = new System.Drawing.Point(10, 40), Size = new System.Drawing.Size(160, 18) };
+            _damperPanel.Controls.Add(mepSideLbl);
+            var mepSideTxt = new WinForms.TextBox { Location = new System.Drawing.Point(170, 38), Size = new System.Drawing.Size(60, 20), Text = "100" };
+            _damperPanel.Controls.Add(mepSideTxt);
+            var dNormalHeader = new WinForms.Label { Text = "Normal (mm)", Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold), Location = new System.Drawing.Point(170, 18), Size = new System.Drawing.Size(110, 18) };
+            _damperPanel.Controls.Add(dNormalHeader);
+            // Stack 'Other Sides' below
+            var otherDLbl = new WinForms.Label { Text = "Other Sides:", Location = new System.Drawing.Point(10, 70), Size = new System.Drawing.Size(120, 18) };
+            _damperPanel.Controls.Add(otherDLbl);
+            var otherDTxt = new WinForms.TextBox { Location = new System.Drawing.Point(170, 68), Size = new System.Drawing.Size(60, 20), Text = "50" };
+            _damperPanel.Controls.Add(otherDTxt);
+            var dInsHeader = new WinForms.Label { Text = "Insulated (mm)", Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold), Location = new System.Drawing.Point(300, 18), Size = new System.Drawing.Size(120, 18) };
+            _damperPanel.Controls.Add(dInsHeader);
+            var dInsTopTxt = new WinForms.TextBox { Location = new System.Drawing.Point(300, 38), Size = new System.Drawing.Size(60, 20), Text = "50" };
+            _damperPanel.Controls.Add(dInsTopTxt);
+            var dInsOtherTxt = new WinForms.TextBox { Location = new System.Drawing.Point(300, 68), Size = new System.Drawing.Size(60, 20), Text = "35" };
+            _damperPanel.Controls.Add(dInsOtherTxt);
+            var dInsUnit = new WinForms.Label { Text = "mm", Location = new System.Drawing.Point(400, 41), Size = new System.Drawing.Size(30, 16) };
+            _damperPanel.Controls.Add(dInsUnit);
+        }
+
+        private void CreateParameterFilterPanel()
+        {
+            _parameterFilterPanel = new WinForms.Panel
+            {
+                Location = new System.Drawing.Point(10, 270),
+                Size = new System.Drawing.Size(_rightPanel.Width - 20, 160),
+                BackColor = System.Drawing.Color.FromArgb(248, 249, 250),
+                BorderStyle = WinForms.BorderStyle.FixedSingle,
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right
+            };
+            _rightPanel.Controls.Add(_parameterFilterPanel);
+
+            var title = new WinForms.Label
+            {
+                Text = "Parameter Filter",
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold),
+                Location = new System.Drawing.Point(10, 8),
+                Size = new System.Drawing.Size(140, 18)
+            };
+            _parameterFilterPanel.Controls.Add(title);
+
+            // Add first two rows as defaults
+            AddParameterRow("Reference Level", "A_GARDEN LEVEL");
+            AddParameterRow("Size", "100x100");
+
+            // Add button (plus)
+            _addParameterButton = new WinForms.Button
+            {
+                Text = "+",
+                Location = new System.Drawing.Point(_parameterFilterPanel.Width - 35, 6),
+                Size = new System.Drawing.Size(24, 24),
+                BackColor = System.Drawing.Color.FromArgb(230, 255, 230),
+                FlatStyle = WinForms.FlatStyle.Flat,
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Right
+            };
+            _addParameterButton.Click += (_, __) => AddParameterRow("<Select>", "");
+            _parameterFilterPanel.Controls.Add(_addParameterButton);
+        }
+
+        private void AddParameterRow(string parameterName, string value)
+        {
+            int rowHeight = 28;
+            int top = 30 + (_parameterRows.Count * (rowHeight + 6));
+
+            var row = new WinForms.Panel
+            {
+                Location = new System.Drawing.Point(8, top),
+                Size = new System.Drawing.Size(_parameterFilterPanel.Width - 16, rowHeight),
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right
+            };
+            _parameterFilterPanel.Controls.Add(row);
+            _parameterRows.Add(row);
+
+            var nameCombo = new WinForms.ComboBox
+            {
+                Location = new System.Drawing.Point(0, 3),
+                Size = new System.Drawing.Size(150, 21),
+                DropDownStyle = WinForms.ComboBoxStyle.DropDownList
+            };
+            nameCombo.Items.AddRange(new[] { "Reference Level", "Size", "Service Type", "Category", "<Select>" });
+            nameCombo.SelectedItem = parameterName;
+            row.Controls.Add(nameCombo);
+
+            var valueCombo = new WinForms.ComboBox
+            {
+                Location = new System.Drawing.Point(160, 3),
+                Size = new System.Drawing.Size(row.Width - 160 - 60, 21),
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right,
+                DropDownStyle = WinForms.ComboBoxStyle.DropDownList
+            };
+            valueCombo.Items.AddRange(new[] { value, "<Auto Selection>", "100x100", "200x200", "A_GARDEN LEVEL", "ESSENTIAL POWER" });
+            valueCombo.SelectedIndex = 0;
+            row.Controls.Add(valueCombo);
+
+            var removeBtn = new WinForms.Button
+            {
+                Text = "-",
+                Location = new System.Drawing.Point(row.Width - 50, 2),
+                Size = new System.Drawing.Size(24, 24),
+                BackColor = System.Drawing.Color.FromArgb(255, 230, 230),
+                FlatStyle = WinForms.FlatStyle.Flat,
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Right
+            };
+            removeBtn.Click += (_, __) =>
+            {
+                _parameterFilterPanel.Controls.Remove(row);
+                _parameterRows.Remove(row);
+                ReflowParameterRows();
+            };
+            row.Controls.Add(removeBtn);
+        }
+
+        private void ReflowParameterRows()
+        {
+            int rowHeight = 28;
+            for (int i = 0; i < _parameterRows.Count; i++)
+            {
+                var row = _parameterRows[i];
+                row.Location = new System.Drawing.Point(8, 30 + (i * (rowHeight + 6)));
+                row.Size = new System.Drawing.Size(_parameterFilterPanel.Width - 16, rowHeight);
+            }
         }
 
         private void LoadProfileInfo()

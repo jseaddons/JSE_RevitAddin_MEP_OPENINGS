@@ -73,7 +73,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         // Open WinForms main dialog after profile action
                         var emergencyMainDlg = new Views.EmergencyMainDialog(appProfileService, doc);
                         emergencyMainDlg.Show(); // Modeless
-                        TaskDialog.Show("Debug", "MainDialog opened!");
+                        
                     }
                     else if (result == System.Windows.Forms.DialogResult.OK)
                     {
