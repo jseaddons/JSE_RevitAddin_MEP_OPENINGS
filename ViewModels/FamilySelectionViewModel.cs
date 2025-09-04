@@ -6,7 +6,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.ViewModels
     public class FamilySelectionViewModel
     {
         public ObservableCollection<FamilySymbol> AvailableFamilies { get; }
-        public FamilySymbol SelectedFamily { get; set; }
+        public FamilySymbol? SelectedFamily { get; set; } = null;
 
         public FamilySelectionViewModel(Document doc)
         {

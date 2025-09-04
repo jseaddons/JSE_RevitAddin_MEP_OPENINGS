@@ -183,6 +183,53 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var nearbySleeves = sleeveGrid.GetNearbySleeves(placePt, indivTol > clusterTol ? indivTol : clusterTol);
                         bool duplicateExists = OpeningDuplicationChecker.IsAnySleeveAtLocationOptimized(placePt, indivTol, clusterTol, nearbySleeves, hostTypeFilter);
 
+                        // IMPLEMENTED: Check for existing cluster openings before placing individual sleeves
+                        // This prevents individual sleeves from being placed where cluster openings already exist
+                        if (!duplicateExists)
+                        {
+                            try
+                            {
+                                // Check for existing ClusterOpeningOnWallX cluster openings
+                                var existingClusterOpenings = new FilteredElementCollector(_doc)
+                                    .OfClass(typeof(FamilyInstance))
+                                    .Cast<FamilyInstance>()
+                                    .Where(fi => fi.Symbol?.Family?.Name != null &&
+                                           fi.Symbol.Family.Name.Contains("ClusterOpeningOnWallX"))
+                                    .Where(fi => 
+                                    {
+                                        var fiLocation = (fi.Location as LocationPoint)?.Point;
+                                        if (fiLocation == null) return false;
+                                        
+                                        // Check if placement point is within the cluster opening's bounding box
+                                        var clusterBBox = fi.get_BoundingBox(null);
+                                        if (clusterBBox == null) return false;
+                                        
+                                        // Use 2D XY check for cluster membership (clusters are typically planar in XY)
+                                        bool insideXY = placePt.X >= clusterBBox.Min.X && placePt.X <= clusterBBox.Max.X &&
+                                                       placePt.Y >= clusterBBox.Min.Y && placePt.Y <= clusterBBox.Max.Y;
+                                        
+                                        if (insideXY)
+                                        {
+                                            _log?.Invoke($"[ClusterCheck] SKIP: Duct {duct.Id} placement point {placePt} is INSIDE existing cluster opening {fi.Symbol.Family.Name} (ID:{fi.Id.IntegerValue}) bounds min=({clusterBBox.Min.X:F3},{clusterBBox.Min.Y:F3}) max=({clusterBBox.Max.X:F3},{clusterBBox.Max.Y:F3})");
+                                        }
+                                        
+                                        return insideXY;
+                                    })
+                                    .ToList();
+
+                                if (existingClusterOpenings.Any())
+                                {
+                                    _log?.Invoke($"SKIP: Duct {duct.Id} host {hostType} {hostId} suppressed by existing cluster opening at {placePt} (cluster opening check)");
+                                    SkippedCount++;
+                                    continue;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _log?.Invoke($"[ClusterCheck] Cluster opening check failed: {ex.Message}");
+                            }
+                        }
+
                         if (duplicateExists)
                         {
                             _log?.Invoke($"SKIP: Duct {duct.Id} host {hostType} {hostId} duplicate sleeve (individual or cluster) exists near {placePt} (optimized check)");

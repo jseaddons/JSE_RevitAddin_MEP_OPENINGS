@@ -72,3 +72,17 @@ C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\JSE_RevitAddin_ME
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\JSE_Revi.99BEBF13.Up2Date
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\JSE_RevitAddin_MEP_OPENINGS.dll
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\JSE_RevitAddin_MEP_OPENINGS.pdb
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\Views\ConVoidStyles.baml
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\Views\LeftPanel.baml
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\Views\MiddlePanel.baml
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\Views\RightPanel.baml
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\Views\LeftPanel.g.cs
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\Views\MainDialog.g.cs
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\Views\MiddlePanel.g.cs
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\Views\ProfileManagementDialog.g.cs
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\Views\ProfileSetupDialog.g.cs
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\Views\RightPanel.g.cs
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\GeneratedInternalTypeHelper.g.cs
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\Views\MainDialog.baml
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\Views\ProfileManagementDialog.baml
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\Views\ProfileSetupDialog.baml

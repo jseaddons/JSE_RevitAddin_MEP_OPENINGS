@@ -12,15 +12,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
     {
         public override void Execute()
         {
-            // Initialize the debug log file
             DebugLogger.InitLogFile();
             DebugLogger.Log("JSE_RevitAddin_MEP_OPENINGS starting up...");
 
-            var viewModel = new JSE_RevitAddin_MEP_OPENINGSViewModel(ExternalCommandData);
-            var dialog = new JSE_RevitAddin_MEP_OPENINGS.Views.JSE_RevitAddin_MEP_OPENINGSDialog(viewModel);
-            DebugLogger.Log("Opening main dialog window");
-            dialog.ShowDialog();
-            DebugLogger.Log("Dialog closed, command completed");
+            // Ensure we're on the UI thread for WPF operations
+            if (System.Windows.Application.Current == null)
+            {
+                // Create WPF Application if it doesn't exist (required for Revit add-ins)
+                new System.Windows.Application();
+            }
+
+            var dialog = new MainDialog();
+            DebugLogger.Log("Opening MainDialog window (modeless)");
+            dialog.Show(); // Show modelessly to avoid blocking ExternalEvents
+            DebugLogger.Log("MainDialog opened, command completed (modeless dialog)");
         }
     }
 }

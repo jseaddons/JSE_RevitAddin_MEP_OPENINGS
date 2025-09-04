@@ -409,11 +409,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         /// <summary>
         /// Checks if a point is within the physical bounds of any cluster sleeve (using bounding box intersection).
+        /// FIXED: Now uses ONLY cluster's actual bounding box size - no unnecessary expansion tolerance.
         /// This is more accurate than center-point distance for large rectangular cluster openings.
         /// </summary>
         /// <param name="doc">Revit document</param>
         /// <param name="location">Location to check</param>
-        /// <param name="expansionTolerance">Additional tolerance to expand cluster bounding boxes (internal units)</param>
+        /// <param name="expansionTolerance">DEPRECATED: No longer used - clusters now use their actual bounding box size</param>
+        /// <param name="hostType">Host type filter (e.g., "OnWall", "OnSlab")</param>
+        /// <param name="sectionBox">Optional section box to limit search area</param>
         /// <returns>True if location is within any cluster sleeve's bounding box</returns>
     public static bool IsLocationWithinClusterBounds(Document doc, XYZ location, double expansionTolerance = 0.0, string? hostType = null, BoundingBoxXYZ? sectionBox = null)
         {
@@ -453,26 +456,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                     }
                     var clusterFamilyName = cluster.Symbol?.Family?.Name ?? "<unknown family>";
-                    DebugLogger.Log($"[OpeningDuplicationChecker] Checking cluster bounding box: {clusterFamilyName} (ID:{cluster.Id.IntegerValue}) expansionTolerance={UnitUtils.ConvertFromInternalUnits(expansionTolerance, UnitTypeId.Millimeters):F1}mm");
+                    DebugLogger.Log($"[OpeningDuplicationChecker] FIXED: Checking cluster bounding box: {clusterFamilyName} (ID:{cluster.Id.IntegerValue}) - NO expansion tolerance used");
                     var boundingBox = cluster.get_BoundingBox(null);
                         if (boundingBox != null)
                         {
-                            // Expand bounding box by tolerance if specified
-                            var expandedMin = boundingBox.Min - new XYZ(expansionTolerance, expansionTolerance, expansionTolerance);
-                            var expandedMax = boundingBox.Max + new XYZ(expansionTolerance, expansionTolerance, expansionTolerance);
-                            // Diagnostic logging for bounding box vs location
-                            DebugLogger.Log($"[OpeningDuplicationChecker] Cluster bbox (expanded) for ID:{cluster.Id.IntegerValue} min={expandedMin} max={expandedMax}; checking location={location}");
+                            // FIXED: Use ONLY the cluster's actual bounding box - no expansion
+                            // This ensures individual sleeves cannot be placed anywhere within the cluster area
+                            DebugLogger.Log($"[OpeningDuplicationChecker] FIXED: Cluster bbox (ACTUAL) for ID:{cluster.Id.IntegerValue} min={boundingBox.Min} max={boundingBox.Max}; checking location={location}");
 
                             // Use a 2D XY check for cluster membership (clusters are typically planar in XY).
                             // Z can vary due to thin family instances or placement offsets; using XY avoids false negatives
                             // when Z differs slightly between the placement point and the cluster family.
-                            bool insideXY = location.X >= expandedMin.X && location.X <= expandedMax.X &&
-                                            location.Y >= expandedMin.Y && location.Y <= expandedMax.Y;
+                            bool insideXY = location.X >= boundingBox.Min.X && location.X <= boundingBox.Max.X &&
+                                            location.Y >= boundingBox.Min.Y && location.Y <= boundingBox.Max.Y;
 
                             if (insideXY)
                             {
                                 var clusterFamilyName2 = cluster.Symbol?.Family?.Name ?? "<unknown family>";
-                                DebugLogger.Log($"[OpeningDuplicationChecker] Location {location} is within cluster {clusterFamilyName2} (ID:{cluster.Id.IntegerValue}) XY bounds (min={expandedMin} max={expandedMax})");
+                                DebugLogger.Log($"[OpeningDuplicationChecker] FIXED: Location {location} is within cluster {clusterFamilyName2} (ID:{cluster.Id.IntegerValue}) ACTUAL bounds (min={boundingBox.Min} max={boundingBox.Max})");
                                 return true;
                             }
                         }
@@ -541,14 +542,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         /// <summary>
         /// Enhanced comprehensive check: Returns true if ANY sleeve (individual OR cluster) exists at the location.
+        /// FIXED: Now uses ONLY cluster bounding box size - no unnecessary expansion tolerance.
         /// Uses bounding box intersection for cluster sleeves and distance checking for individual sleeves.
         /// This is the most accurate method for sleeve placement duplication checking.
         /// </summary>
         /// <param name="doc">Revit document</param>
         /// <param name="location">Location to check</param>
         /// <param name="tolerance">Distance tolerance for individual sleeves (internal units)</param>
-        /// <param name="clusterExpansion">Additional expansion for cluster bounding boxes (internal units)</param>
+        /// <param name="clusterExpansion">DEPRECATED: No longer used - clusters now use their actual bounding box size</param>
         /// <param name="ignoreIds">ElementIds to ignore in the check</param>
+        /// <param name="hostType">Host type filter (e.g., "OnWall", "OnSlab")</param>
+        /// <param name="sectionBox">Optional section box to limit search area</param>
+        /// <param name="requireSameFamily">If true, only check for sleeves of the same family</param>
+        /// <param name="familyName">Family name to match when requireSameFamily is true</param>
         /// <returns>True if any sleeve (individual or cluster) exists at the location</returns>
     public static bool IsAnySleeveAtLocationEnhanced(Document doc, XYZ location, double tolerance, double clusterExpansion = 0.0, IEnumerable<ElementId>? ignoreIds = null, string? hostType = null, BoundingBoxXYZ? sectionBox = null, bool requireSameFamily = false, string? familyName = null)
         {
@@ -587,10 +593,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
 
-            // Check for cluster sleeves using bounding box intersection (more accurate)
+            // FIXED: Check for cluster sleeves using bounding box intersection (more accurate)
+            // No more clusterExpansion - just use the real cluster dimensions
             if (!requireSameFamily || string.IsNullOrEmpty(familyName))
             {
-                if (IsLocationWithinClusterBounds(doc, location, clusterExpansion, hostType, sectionBox))
+                if (IsLocationWithinClusterBounds(doc, location, 0.0, hostType, sectionBox))
                 {
                     return true;
                 }
@@ -598,18 +605,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             else
             {
                 // When requiring same family, fetch cluster sleeves and verify family equality
-                var clusterList = FindAllClusterSleevesAtLocation(doc, location, clusterExpansion, hostType);
+                // FIXED: Use 0.0 for clusterExpansion since we only care about actual bounding box
+                var clusterList = FindAllClusterSleevesAtLocation(doc, location, 0.0, hostType);
                 if (ignoreIds != null)
                     clusterList = clusterList.Where(fi => !ignoreIds.Contains(fi.Id)).ToList();
                 var matchingClusters = clusterList.Where(fi => string.Equals(fi.Symbol?.Family?.Name ?? "", familyName, StringComparison.OrdinalIgnoreCase)).ToList();
                 if (matchingClusters.Any())
                 {
-                    DebugLogger.Log($"[OpeningDuplicationChecker] Found {matchingClusters.Count} cluster sleeve(s) matching required family '{familyName}'");
+                    DebugLogger.Log($"[OpeningDuplicationChecker] FIXED: Found {matchingClusters.Count} cluster sleeve(s) matching required family '{familyName}' using actual bounding box");
                     return true;
                 }
                 else
                 {
-                    DebugLogger.Log($"[OpeningDuplicationChecker] No cluster sleeves matched required family '{familyName}'");
+                    DebugLogger.Log($"[OpeningDuplicationChecker] FIXED: No cluster sleeves matched required family '{familyName}' using actual bounding box");
                 }
             }
 
@@ -619,7 +627,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// <summary>
         /// New overload that accepts a pre-filtered list of nearby sleeves for optimized checking.
+        /// FIXED: Now uses ONLY cluster bounding box size - no unnecessary expansion tolerance.
         /// </summary>
+        /// <param name="location">Location to check</param>
+        /// <param name="tolerance">Distance tolerance for individual sleeves (internal units)</param>
+        /// <param name="clusterExpansion">DEPRECATED: No longer used - clusters now use their actual bounding box size</param>
+        /// <param name="nearbySleeves">Pre-filtered list of sleeves to check</param>
+        /// <param name="hostType">Host type filter (e.g., "OnWall", "OnSlab")</param>
+        /// <returns>True if any sleeve (individual or cluster) exists at the location</returns>
     public static bool IsAnySleeveAtLocationOptimized(XYZ location, double tolerance, double clusterExpansion, List<FamilyInstance> nearbySleeves, string? hostType = null)
         {
             // Check for individual sleeves using distance from the pre-filtered list
@@ -638,7 +653,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
 
-            // Check for cluster sleeves using bounding box intersection from the pre-filtered list
+            // FIXED: Check for cluster sleeves using ONLY their actual bounding box size
+            // No more 100mm tolerance or clusterExpansion - just use the real cluster dimensions
             foreach (var sleeve in nearbySleeves)
             {
                 var fam = sleeve.Symbol?.Family?.Name ?? string.Empty;
@@ -647,14 +663,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var boundingBox = sleeve.get_BoundingBox(null);
                     if (boundingBox != null)
                     {
-                        var expandedMin = boundingBox.Min - new XYZ(clusterExpansion, clusterExpansion, clusterExpansion);
-                        var expandedMax = boundingBox.Max + new XYZ(clusterExpansion, clusterExpansion, clusterExpansion);
-                        if (location.X >= expandedMin.X && location.X <= expandedMax.X &&
-                            location.Y >= expandedMin.Y && location.Y <= expandedMax.Y)
+                        // FIXED: Use ONLY the cluster's actual bounding box - no expansion
+                        // This ensures individual sleeves cannot be placed anywhere within the cluster area
+                        if (location.X >= boundingBox.Min.X && location.X <= boundingBox.Max.X &&
+                            location.Y >= boundingBox.Min.Y && location.Y <= boundingBox.Max.Y)
                         {
                             try
                             {
-                                DebugLogger.Log($"[OpeningDuplicationChecker] Optimized DUPLICATE MATCH: Cluster sleeve ID:{sleeve.Id.IntegerValue} family='{fam}' expandedMin=({expandedMin.X:F3},{expandedMin.Y:F3},{expandedMin.Z:F3}) expandedMax=({expandedMax.X:F3},{expandedMax.Y:F3},{expandedMax.Z:F3}) clusterExpansion={UnitUtils.ConvertFromInternalUnits(clusterExpansion, UnitTypeId.Millimeters):F1}mm hostType={(hostType ?? "<none>")}");
+                                DebugLogger.Log($"[OpeningDuplicationChecker] FIXED: Cluster sleeve ID:{sleeve.Id.IntegerValue} family='{fam}' ACTUAL bounds min=({boundingBox.Min.X:F3},{boundingBox.Min.Y:F3},{boundingBox.Min.Z:F3}) max=({boundingBox.Max.X:F3},{boundingBox.Max.Y:F3},{boundingBox.Max.Z:F3}) - Location {location} is INSIDE cluster area");
                             }
                             catch { }
                             return true;

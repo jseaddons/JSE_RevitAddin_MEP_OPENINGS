@@ -26,7 +26,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Security
 
                 return true;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 // Show error message to user even on exception
                 TaskDialog.Show("License Error", 

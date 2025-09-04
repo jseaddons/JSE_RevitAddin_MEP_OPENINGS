@@ -23,17 +23,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS
             StackPanel stackPanel = new StackPanel { Margin = new Thickness(10) };
 
             // Add a label
-            Label label = new Label { Content = "Prefix:" };
+            System.Windows.Controls.Label label = new System.Windows.Controls.Label { Content = "Prefix:" };
             stackPanel.Children.Add(label);
 
             // Add a text box for input
-            TextBox textBox = new TextBox { Width = 250 };
+            System.Windows.Controls.TextBox textBox = new System.Windows.Controls.TextBox { Width = 250 };
             stackPanel.Children.Add(textBox);
 
             // Add OK and Cancel buttons
-            StackPanel buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
-            Button okButton = new Button { Content = "OK", Width = 75, Margin = new Thickness(5) };
-            Button cancelButton = new Button { Content = "Cancel", Width = 75, Margin = new Thickness(5) };
+            StackPanel buttonPanel = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, HorizontalAlignment = System.Windows.HorizontalAlignment.Center };
+            System.Windows.Controls.Button okButton = new System.Windows.Controls.Button { Content = "OK", Width = 75, Margin = new Thickness(5) };
+            System.Windows.Controls.Button cancelButton = new System.Windows.Controls.Button { Content = "Cancel", Width = 75, Margin = new Thickness(5) };
             buttonPanel.Children.Add(okButton);
             buttonPanel.Children.Add(cancelButton);
             stackPanel.Children.Add(buttonPanel);

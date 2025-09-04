@@ -19,7 +19,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             if (ViewModel.SelectedFamily != null)
                 DialogResult = true;
             else
-                MessageBox.Show("Please select a family.");
+                System.Windows.MessageBox.Show("Please select a family.");
         }
     }
 }

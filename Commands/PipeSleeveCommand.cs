@@ -16,8 +16,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
-            UIDocument uidoc = commandData.Application.ActiveUIDocument;
-            Document doc = uidoc.Document;
+            try
+            {
+                UIDocument uidoc = commandData.Application.ActiveUIDocument;
+                Document doc = uidoc.Document;
 
             var pipeWallSymbol = new FilteredElementCollector(doc)
                 .OfClass(typeof(FamilySymbol))
@@ -123,7 +125,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 string summary = $"PIPE SLEEVE SUMMARY: Placed={placedCount}, Skipped={skippedCount}, Errors={errorCount}";
                 TaskDialog.Show("Pipe Sleeve Placement", summary);
             }
-            return Result.Succeeded;
+                return Result.Succeeded;
+            }
+            catch (Exception ex)
+            {
+                // Ensure we capture unexpected errors so Revit's generic message can be diagnosed
+                try { Services.DebugLogger.Error("Unhandled exception in PipeSleeveCommand: " + ex.ToString()); } catch { }
+                try { message = ex.Message; } catch { }
+                try { TaskDialog.Show("Pipe Sleeve Error", "An unexpected error occurred: " + ex.Message); } catch { }
+                return Result.Failed;
+            }
         }
     }
 }

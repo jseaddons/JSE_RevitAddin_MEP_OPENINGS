@@ -1,0 +1,21 @@
+<UserControl x:Class="JSE_RevitAddin_MEP_OPENINGS.Views.MiddlePanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <GroupBox Grid.Row="0" Header="Reference Category" Margin="0,0,0,10">
+            <ListBox SelectionMode="Multiple" Height="200"/>
+        </GroupBox>
+
+        <GroupBox Grid.Row="1" Header="Create Horizontal Openings in">
+            <ListBox SelectionMode="Multiple" Height="300"/>
+        </GroupBox>
+    </Grid>
+</UserControl>
+
+

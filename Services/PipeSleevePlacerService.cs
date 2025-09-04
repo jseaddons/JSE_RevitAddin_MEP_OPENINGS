@@ -335,10 +335,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             XYZ placePtToUse = placePoint;
                             if (transform != null)
                             {
-                                // There is a tuple transform (source element from a link). This transform
-                                // maps link->active coordinates and should only be used for transforming
-                                // source-element-local coordinates. Intersection points are already
-                                // active-doc coordinates, so ignore `transform` here (log for diagnostics).
                                 _log($"[TransformDebug] Info: source element has a tuple transform; ignoring it for intersection-derived point (placePoint={placePoint}).");
                             }
                             else if (hostIsLinked)
@@ -393,16 +389,72 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             double indivTol = UnitUtils.ConvertToInternalUnits(10.0, UnitTypeId.Millimeters); // 10mm for individual sleeves
                             double clusterTol = UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters); // 100mm for clusters
 
-                            // OPTIMIZATION: Use the enhanced duplication suppressor which first checks nearby
-                            // individual sleeves and then cluster bounding boxes, while accepting a hostType
-                            // and sectionBox to avoid scanning unrelated cluster families.
-                            _log($"[DuplicationCheck] Starting optimized checks for location {placePtToUse} (individual tol={UnitUtils.ConvertFromInternalUnits(indivTol, UnitTypeId.Millimeters):F0}mm, cluster tol={UnitUtils.ConvertFromInternalUnits(clusterTol, UnitTypeId.Millimeters):F0}mm)");
-                            // Correct hostTypeFilter for pipes (was incorrectly using Duct names due to copy-paste)
+                            // FIXED: Check duplication for THIS SPECIFIC wall intersection, not the entire pipe area
+                            // The spatial partitioning was causing false duplicates when pipe cuts through multiple walls
+                            _log($"[DuplicationCheck] FIXED: Checking duplication for SPECIFIC wall intersection at {placePtToUse}");
+                            _log($"[DuplicationCheck] This prevents false duplicates when pipe cuts through multiple walls");
+                            
+                            // Use a much smaller search radius for this specific intersection point
+                            // Instead of the pipe's entire bounding box area
+                            double specificIntersectionRadius = UnitUtils.ConvertToInternalUnits(25.0, UnitTypeId.Millimeters); // 25mm radius around intersection
+                            
+                            // Get sleeves only near this specific intersection point, not the entire pipe area
+                            var nearbySleeves = sleeveGrid.GetNearbySleeves(placePtToUse, specificIntersectionRadius);
+                            _log($"[DuplicationCheck] FIXED: Using specific intersection radius {UnitUtils.ConvertFromInternalUnits(specificIntersectionRadius, UnitTypeId.Millimeters):F1}mm instead of pipe bounding box");
+                            _log($"[DuplicationCheck] Found {nearbySleeves.Count} sleeves near this specific intersection point");
+
+                            // Determine host-type-specific family name filter used by duplication checker
                             string hostTypeFilter = hostElem is Wall ? "PipeOpeningOnWall" : (hostElem is Floor ? "PipeOpeningOnSlab" : "PipeOpeningOnWall");
                             _log($"[DuplicationCheck] using hostTypeFilter={hostTypeFilter}");
 
-                            var nearbySleeves = sleeveGrid.GetNearbySleeves(placePtToUse, indivTol > clusterTol ? indivTol : clusterTol);
                             bool duplicateExists = OpeningDuplicationChecker.IsAnySleeveAtLocationOptimized(placePtToUse, indivTol, clusterTol, nearbySleeves, hostTypeFilter);
+
+                            // IMPLEMENTED: Check for existing cluster openings before placing individual sleeves
+                            // This prevents individual sleeves from being placed where cluster openings already exist
+                            if (!duplicateExists)
+                            {
+                                try
+                                {
+                                    // Check for existing ClusterOpeningOnWallX cluster openings
+                                    var existingClusterOpenings = new FilteredElementCollector(_doc)
+                                        .OfClass(typeof(FamilyInstance))
+                                        .Cast<FamilyInstance>()
+                                        .Where(fi => fi.Symbol?.Family?.Name != null &&
+                                               fi.Symbol.Family.Name.Contains("ClusterOpeningOnWallX"))
+                                        .Where(fi => 
+                                        {
+                                            var fiLocation = (fi.Location as LocationPoint)?.Point;
+                                            if (fiLocation == null) return false;
+                                            
+                                            // Check if placement point is within the cluster opening's bounding box
+                                            var clusterBBox = fi.get_BoundingBox(null);
+                                            if (clusterBBox == null) return false;
+                                            
+                                            // Use 2D XY check for cluster membership (clusters are typically planar in XY)
+                                            bool insideXY = placePtToUse.X >= clusterBBox.Min.X && placePtToUse.X <= clusterBBox.Max.X &&
+                                                           placePtToUse.Y >= clusterBBox.Min.Y && placePtToUse.Y <= clusterBBox.Max.Y;
+                                            
+                                            if (insideXY)
+                                            {
+                                                _log($"[ClusterCheck] SKIP: Pipe {pipe.Id} placement point {placePtToUse} is INSIDE existing cluster opening {fi.Symbol.Family.Name} (ID:{fi.Id.IntegerValue}) bounds min=({clusterBBox.Min.X:F3},{clusterBBox.Min.Y:F3}) max=({clusterBBox.Max.X:F3},{clusterBBox.Max.Y:F3})");
+                                            }
+                                            
+                                            return insideXY;
+                                        })
+                                        .ToList();
+
+                                    if (existingClusterOpenings.Any())
+                                    {
+                                        _log($"SKIP: Pipe {pipe.Id} host {hostTypeStr} {hostIdStr} suppressed by existing cluster opening at {placePtToUse} (cluster opening check)");
+                                        SkippedCount++;
+                                        continue;
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    _log($"[ClusterCheck] Cluster opening check failed: {ex.Message}");
+                                }
+                            }
 
                             // Optimized check pre-filters by nearby sleeve center points which can miss
                             // large rectangular cluster sleeves whose center point is outside the
@@ -415,8 +467,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 {
                                     // Use the active view's section box if available to limit the doc scan
                                     BoundingBoxXYZ? sectionBoxForDoc = null;
-                                    try { if (_doc.ActiveView is View3D vb2) sectionBoxForDoc = SectionBoxHelper.GetSectionBoxBounds(vb2); } catch { }
-                                    bool clusterBBoxHit = OpeningDuplicationChecker.IsLocationWithinClusterBounds(_doc, placePtToUse, clusterTol, hostTypeFilter, sectionBoxForDoc);
+                                    try { if (_doc?.ActiveView is View3D vb2) sectionBoxForDoc = SectionBoxHelper.GetSectionBoxBounds(vb2); } catch { }
+                                    bool clusterBBoxHit = OpeningDuplicationChecker.IsLocationWithinClusterBounds(_doc!, placePtToUse, clusterTol, hostTypeFilter, sectionBoxForDoc);
                                     if (clusterBBoxHit)
                                     {
                                         _log($"SKIP: Pipe {pipe.Id} host {hostTypeStr} {hostIdStr} suppressed by existing cluster bounding box at {placePtToUse} (fallback doc-level check)");
@@ -458,16 +510,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     SkippedCount++;
                     _log($"Skipped: pipe {pipe.Id} has no intersection with structural host");
+                    // Extra diagnostics for skipped pipes
+                    if (hostLine != null)
+                    {
+                        _log($"[DIAG] Skipped pipe {pipe.Id}: hostLine Start={hostLine.GetEndPoint(0)}, End={hostLine.GetEndPoint(1)}");
+                        var bbox = pipeBBox ?? pipe.get_BoundingBox(null);
+                        if (bbox != null)
+                        {
+                            _log($"[DIAG] Skipped pipe {pipe.Id}: BoundingBox Min={bbox.Min}, Max={bbox.Max}");
+                        }
+                        foreach (var hostTuple in nearbyStructuralElements)
+                        {
+                            var hostElem = hostTuple.Item1;
+                            var hostTransform = hostTuple.Item2;
+                            var hostBbox = hostElem.get_BoundingBox(null);
+                            if (hostTransform != null && hostBbox != null)
+                            {
+                                var tBbox = PipeSleevePlacerServiceHelpers.TransformBoundingBox(hostBbox, hostTransform);
+                                _log($"[DIAG] Host {hostElem.Id}: Transformed BoundingBox Min={tBbox.Min}, Max={tBbox.Max}");
+                            }
+                            else if (hostBbox != null)
+                            {
+                                _log($"[DIAG] Host {hostElem.Id}: BoundingBox Min={hostBbox.Min}, Max={hostBbox.Max}");
+                            }
+                        }
+                    }
                 }
             }
-        }
-
-        private static bool BoundingBoxesIntersect(BoundingBoxXYZ a, BoundingBoxXYZ b)
-        {
-            if (a == null || b == null) return false;
-            return !(a.Max.X < b.Min.X || a.Min.X > b.Max.X ||
-                     a.Max.Y < b.Min.Y || a.Min.Y > b.Max.Y ||
-                     a.Max.Z < b.Min.Z || a.Min.Z > b.Max.Z);
         }
 
         /// <summary>
@@ -515,6 +584,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 _log($"[TransformDebug] ERROR in FindTransformForLinkedElement: {ex.Message}");
                 return null;
             }
+        }
+
+        private static bool BoundingBoxesIntersect(BoundingBoxXYZ a, BoundingBoxXYZ b)
+        {
+            if (a == null || b == null) return false;
+            return !(a.Max.X < b.Min.X || a.Min.X > b.Max.X ||
+                     a.Max.Y < b.Min.Y || a.Min.Y > b.Max.Y ||
+                     a.Max.Z < b.Min.Z || a.Min.Z > b.Max.Z);
         }
     }
 }

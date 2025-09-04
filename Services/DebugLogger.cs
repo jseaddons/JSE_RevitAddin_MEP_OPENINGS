@@ -23,6 +23,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     private static string DamperLogFilePath = Path.Combine(LogDir, "dampersleeveplacer.log");
     private static string LogFilePath = CableTrayLogFilePath; // Default
 
+    // Single shared writer to avoid repeated open/close per log entry
+    private static readonly object _writerLock = new object();
+    private static StreamWriter? _writer = null;
+
+    // Cache assembly/version info to avoid repeated reflection calls during logging
+    private static readonly string _cachedVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "n/a";
+    private static readonly string _cachedAssemblyPath = Assembly.GetExecutingAssembly().Location;
+
         public enum LogLevel
         {
             Debug,
@@ -55,17 +63,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // If logFileName has an extension, use as is; otherwise, add .log
                 LogFilePath = Path.Combine(logDir, logFileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase) ? logFileName : logFileName + ".log");
                 // Include build/version information
-                var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "n/a";
-                var buildTimestamp = File.GetLastWriteTime(Assembly.GetExecutingAssembly().Location).ToString("o");
-                string assemblyPath = Assembly.GetExecutingAssembly().Location;
+                var buildTimestamp = File.GetLastWriteTime(_cachedAssemblyPath).ToString("o");
                 string header =
                     $"===== NEW LOG SESSION STARTED {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n" +
                     $"JSE_RevitAddin_MEP_OPENINGS Debug Log: {logFileName}\n" +
-                    $"Build Version: {version}\n" +
+                    $"Build Version: {_cachedVersion}\n" +
                     $"Build Timestamp: {buildTimestamp}\n" +
-                    $"Wrote: {assemblyPath}\n" +
+                    $"Wrote: {_cachedAssemblyPath}\n" +
                     $"====================================================\n";
-                File.WriteAllText(LogFilePath, header);
+                // Initialize writer
+                EnsureWriterInitialized(LogFilePath, header);
             }
             catch (Exception ex)
             {
@@ -89,18 +96,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!Directory.Exists(LogDir)) Directory.CreateDirectory(LogDir);
                 LogFilePath = Path.Combine(LogDir, $"{logFileName}_{timestamp}.log");
 
-                // Include build/version information
-                var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "n/a";
-                var buildTimestamp = File.GetLastWriteTime(Assembly.GetExecutingAssembly().Location).ToString("o");
-                string assemblyPath = Assembly.GetExecutingAssembly().Location;
+                var buildTimestamp = File.GetLastWriteTime(_cachedAssemblyPath).ToString("o");
                 string header =
                     $"===== NEW LOG SESSION STARTED {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n" +
                     $"JSE_RevitAddin_MEP_OPENINGS Debug Log: {logFileName}\n" +
-                    $"Build Version: {version}\n" +
+                    $"Build Version: {_cachedVersion}\n" +
                     $"Build Timestamp: {buildTimestamp}\n" +
-                    $"Wrote: {assemblyPath}\n" +
+                    $"Wrote: {_cachedAssemblyPath}\n" +
                     $"====================================================\n";
-                File.WriteAllText(LogFilePath, header);
+                EnsureWriterInitialized(LogFilePath, header);
             }
             catch
             {
@@ -121,17 +125,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 LogFilePath = Path.Combine(LogDir, $"{logFileName}.log");
 
                 // Include build/version information
-                var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "n/a";
-                var buildTimestamp = File.GetLastWriteTime(Assembly.GetExecutingAssembly().Location).ToString("o");
-                string assemblyPath = Assembly.GetExecutingAssembly().Location;
+                var buildTimestamp = File.GetLastWriteTime(_cachedAssemblyPath).ToString("o");
                 string header =
                     $"===== NEW LOG SESSION STARTED {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n" +
                     $"JSE_RevitAddin_MEP_OPENINGS Debug Log: {logFileName}\n" +
-                    $"Build Version: {version}\n" +
+                    $"Build Version: {_cachedVersion}\n" +
                     $"Build Timestamp: {buildTimestamp}\n" +
-                    $"Wrote: {assemblyPath}\n" +
+                    $"Wrote: {_cachedAssemblyPath}\n" +
                     $"====================================================\n";
-                File.WriteAllText(LogFilePath, header); // Overwrite existing content
+                EnsureWriterInitialized(LogFilePath, header, overwrite: true);
             }
             catch
             {
@@ -152,22 +154,53 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     Directory.CreateDirectory(logDir);
 
                 LogFilePath = absoluteFilePath;
-
-                var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "n/a";
-                var buildTimestamp = File.GetLastWriteTime(Assembly.GetExecutingAssembly().Location).ToString("o");
-                string assemblyPath = Assembly.GetExecutingAssembly().Location;
+                var buildTimestamp = File.GetLastWriteTime(_cachedAssemblyPath).ToString("o");
                 string header =
                     $"===== NEW LOG SESSION STARTED {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n" +
                     $"JSE_RevitAddin_MEP_OPENINGS Debug Log: {Path.GetFileName(absoluteFilePath)}\n" +
-                    $"Build Version: {version}\n" +
+                    $"Build Version: {_cachedVersion}\n" +
                     $"Build Timestamp: {buildTimestamp}\n" +
-                    $"Wrote: {assemblyPath}\n" +
+                    $"Wrote: {_cachedAssemblyPath}\n" +
                     $"====================================================\n";
-                File.WriteAllText(LogFilePath, header);
+                EnsureWriterInitialized(LogFilePath, header);
             }
             catch
             {
                 // Silently fail - we don't want logging to break the application
+            }
+        }
+
+        private static void EnsureWriterInitialized(string path, string header, bool overwrite = false)
+        {
+            try
+            {
+                lock (_writerLock)
+                {
+                    if (_writer != null)
+                    {
+                        // If already pointing to same file, nothing to do
+                        if (string.Equals(_writer?.BaseStream is FileStream fs ? fs.Name : null, path, StringComparison.OrdinalIgnoreCase))
+                            return;
+                        // Close existing writer
+                        try { if (_writer != null) { _writer.Flush(); _writer.Close(); _writer.Dispose(); } } catch { }
+                        _writer = null;
+                    }
+
+                    var dir = Path.GetDirectoryName(path);
+                    if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+
+                    var fileMode = overwrite ? FileMode.Create : FileMode.Append;
+                    var fsNew = new FileStream(path, fileMode, FileAccess.Write, FileShare.Read);
+                    _writer = new StreamWriter(fsNew) { AutoFlush = true };
+                    if (!overwrite)
+                        _writer.Write(header);
+                    else
+                        _writer.Write(header);
+                }
+            }
+            catch
+            {
+                // swallow - logging must not throw
             }
         }
 
@@ -209,12 +242,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 // Get the class name from the source file path
                 string className = Path.GetFileNameWithoutExtension(sourceFile);
-                // Get assembly version for this entry
-                string version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "n/a";
                 // Format the log entry with timestamp, version, level, class and line
                 string levelText = level.ToString().ToUpper();
-                var logEntry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [v{version}] [{levelText}] [{className}:{lineNumber}] {message}{Environment.NewLine}";
-                File.AppendAllText(LogFilePath, logEntry);
+                var logEntry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [v{_cachedVersion}] [{levelText}] [{className}:{lineNumber}] {message}{Environment.NewLine}";
+                lock (_writerLock)
+                {
+                    if (_writer == null)
+                    {
+                        // Try initialize minimal writer
+                        try { EnsureWriterInitialized(LogFilePath, ""); } catch { }
+                    }
+                    try { _writer?.Write(logEntry); } catch { }
+                }
             }
             catch
             {

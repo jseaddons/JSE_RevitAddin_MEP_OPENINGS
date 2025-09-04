@@ -15,17 +15,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS
     {
         public override void OnStartup()
         {
-            // Validate license before startup - Simple JSE domain check
-            if (!LicenseValidator.ValidateLicense() || !LicenseValidator.ValidateHardwareId())
+            // Initialize logging first so we can capture any startup failures
+            try
             {
-                TaskDialog.Show("License Error",
-                    "This add-in is licensed for JSE domain computers only. " +
-                    $"Current domain: {Environment.UserDomainName}");
-                return;
-            }
+                CreateLogger();
 
-            CreateLogger();
-            CreateRibbon();
+                // Validate license before startup - Simple JSE domain check
+                bool licensed = true;
+                try
+                {
+                    licensed = LicenseValidator.ValidateLicense() && LicenseValidator.ValidateHardwareId();
+                }
+                catch (Exception lex)
+                {
+                    // Log license validation exceptions but do not throw — allow ribbon creation for diagnostics
+                    Log.Error(lex, "License validation threw an exception");
+                    TaskDialog.Show("License Warning", "License validation encountered an error: " + lex.Message);
+                    licensed = false;
+                }
+
+                if (!licensed)
+                {
+                    // Inform the user but continue startup to avoid causing Revit to report an external command failure
+                    TaskDialog.Show("License Warning",
+                        "This add-in may not be licensed for this machine. The ribbon will still be created for testing and diagnostics.");
+                }
+
+                CreateRibbon();
+            }
+            catch (Exception ex)
+            {
+                // Catch any unexpected startup errors, log them and prevent them from propagating to Revit
+                try { Log.Fatal(ex, "Unhandled exception during OnStartup"); } catch { }
+                try { TaskDialog.Show("Startup Error", "An error occurred initializing the add-in: " + ex.Message); } catch { }
+            }
         }
 
         public override void OnShutdown()
@@ -63,6 +86,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS
             // ClusterMergeCommand removed from ribbon (command deprecated)
 
             panel.AddSeparator(); // This adds a visual gap
+
+            // Test Profile System Command
+            var button4 = panel.AddPushButton<TestProfileSystemCommand>("Test Profile");
+            button4.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+            button4.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+
+            panel.AddSeparator(); // This adds a visual gap
+
+            // Test Profile Management Command
+            var button5 = panel.AddPushButton<TestProfileManagementCommand>("Profile Manager");
+            button5.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+            button5.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
 
             // Deleted commands removed from ribbon: DeletePipeSleevesCommand, GetSleeveSummaryCommand
         }

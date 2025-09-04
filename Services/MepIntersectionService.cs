@@ -49,10 +49,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 return results;
             }
 
-            // Expand MEP bounding box slightly for intersection tolerance
-            const double tolerance = 1.0; // 1 foot tolerance
+            // REVERTED: Back to original 1.0 foot tolerance since spatial filtering wasn't the real issue
+            // The real problem is coordinate system/transform issues with linked files
+            const double tolerance = 1.0; // 1 foot tolerance - ORIGINAL
             var expandedMin = new XYZ(mepBBox.Min.X - tolerance, mepBBox.Min.Y - tolerance, mepBBox.Min.Z - tolerance);
             var expandedMax = new XYZ(mepBBox.Max.X + tolerance, mepBBox.Max.Y + tolerance, mepBBox.Max.Z + tolerance);
+            
+            log($"[MepIntersectionService] REVERTED: Using {tolerance} foot tolerance for spatial pre-filtering");
+            log($"[MepIntersectionService] The real issue is coordinate system/transform problems, not spatial filtering");
 
             int processedCount = 0;
             int spatiallyFilteredCount = 0;
@@ -85,6 +89,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max))
                         {
                             spatiallyFilteredCount++;
+                            // ENHANCED LOGGING: Track which walls are being filtered out
+                            var wallType = structuralElement.GetType().Name;
+                            var wallId = structuralElement.Id.IntegerValue;
+                            var distance = GetDistanceToMepElement(mepBBox, structBBox, linkTransform);
+                            log($"[MepIntersectionService] SPATIAL FILTER: Skipping {wallType} ID:{wallId} - Distance to MEP: {distance:F2}ft (tolerance: {tolerance:F1}ft)");
                             continue; // Skip expensive geometry processing
                         }
                     }
@@ -151,10 +160,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 Max = new XYZ(Math.Max(hostLine.GetEndPoint(0).X, hostLine.GetEndPoint(1).X), Math.Max(hostLine.GetEndPoint(0).Y, hostLine.GetEndPoint(1).Y), Math.Max(hostLine.GetEndPoint(0).Z, hostLine.GetEndPoint(1).Z))
             };
 
-            // Expand bbox slightly for tolerance (same approach as existing method)
-            const double tolerance = 1.0;
+            // REVERTED: Back to original 1.0 foot tolerance (same as main method)
+            // The real problem is coordinate system/transform issues with linked files
+            const double tolerance = 1.0; // 1 foot tolerance - ORIGINAL
             var expandedMin = new XYZ(mepBBox.Min.X - tolerance, mepBBox.Min.Y - tolerance, mepBBox.Min.Z - tolerance);
             var expandedMax = new XYZ(mepBBox.Max.X + tolerance, mepBBox.Max.Y + tolerance, mepBBox.Max.Z + tolerance);
+            
+            log($"[MepIntersectionService] REVERTED: Using {tolerance} foot tolerance for spatial pre-filtering (overload method)");
+            log($"[MepIntersectionService] The real issue is coordinate system/transform problems, not spatial filtering");
 
             int processedCount = 0;
             int spatiallyFilteredCount = 0;
@@ -182,6 +195,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max))
                         {
                             spatiallyFilteredCount++;
+                            // ENHANCED LOGGING: Track which walls are being filtered out (overload method)
+                            var wallType = structuralElement.GetType().Name;
+                            var wallId = structuralElement.Id.IntegerValue;
+                            var distance = GetDistanceToMepElement(mepBBox, structBBox, linkTransform);
+                            log($"[MepIntersectionService] SPATIAL FILTER: Skipping {wallType} ID:{wallId} - Distance to MEP: {distance:F2}ft (tolerance: {tolerance:F1}ft)");
                             continue;
                         }
                     }
@@ -395,6 +413,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public static List<(Element, Transform?)> CollectStructuralElementsForDirectIntersectionVisibleOnly(Document doc)
         {
             return CollectStructuralElementsForDirectIntersectionVisibleOnly(doc, _ => { });
+        }
+        
+        // Helper method to calculate distance between MEP element and structural element
+        private static double GetDistanceToMepElement(BoundingBoxXYZ mepBBox, BoundingBoxXYZ structBBox, Transform? linkTransform)
+        {
+            try
+            {
+                // Transform structural bbox if it's from a linked doc
+                BoundingBoxXYZ transformedStructBBox = structBBox;
+                if (linkTransform != null)
+                {
+                    var transformedMin = linkTransform.OfPoint(structBBox.Min);
+                    var transformedMax = linkTransform.OfPoint(structBBox.Max);
+                    transformedStructBBox = new BoundingBoxXYZ
+                    {
+                        Min = new XYZ(Math.Min(transformedMin.X, transformedMax.X), Math.Min(transformedMin.Y, transformedMax.Y), Math.Min(transformedMin.Z, transformedMax.Z)),
+                        Max = new XYZ(Math.Max(transformedMin.X, transformedMax.X), Math.Max(transformedMin.Y, transformedMax.Y), Math.Max(transformedMin.Z, transformedMax.Z))
+                    };
+                }
+                
+                // Calculate center points
+                var mepCenter = new XYZ(
+                    (mepBBox.Min.X + mepBBox.Max.X) / 2,
+                    (mepBBox.Min.Y + mepBBox.Max.Y) / 2,
+                    (mepBBox.Min.Z + mepBBox.Max.Z) / 2
+                );
+                
+                var structCenter = new XYZ(
+                    (transformedStructBBox.Min.X + transformedStructBBox.Max.X) / 2,
+                    (transformedStructBBox.Min.Y + transformedStructBBox.Max.Y) / 2,
+                    (transformedStructBBox.Min.Z + transformedStructBBox.Max.Z) / 2
+                );
+                
+                // Calculate distance in feet
+                var distance = mepCenter.DistanceTo(structCenter);
+                return UnitUtils.ConvertFromInternalUnits(distance, UnitTypeId.Feet);
+            }
+            catch
+            {
+                return -1.0; // Return -1 if calculation fails
+            }
         }
     }
 }
