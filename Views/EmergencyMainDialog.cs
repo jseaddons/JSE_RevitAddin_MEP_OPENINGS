@@ -204,18 +204,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // Left Panel (expanded to fill most space) - start below header
             _leftPanel = new WinForms.Panel
             {
-                Dock = WinForms.DockStyle.None,  // Change from Fill to None
                 BackColor = System.Drawing.Color.White,
-                BorderStyle = WinForms.BorderStyle.FixedSingle,
-                Location = new System.Drawing.Point(0, 80),  // Start below header (80px)
-                Size = new System.Drawing.Size(this.Width - 300, this.Height - 110)  // Full width minus right panel, minus header/status
+                BorderStyle = WinForms.BorderStyle.FixedSingle
             };
             this.Controls.Add(_leftPanel);
 
             // Main Splitter
             _mainSplitter = new WinForms.Splitter
             {
-                Dock = WinForms.DockStyle.Right,
                 Width = 3,
                 BackColor = System.Drawing.Color.Gray
             };
@@ -224,15 +220,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // Right Panel - reduced width
             _rightPanel = new WinForms.Panel
             {
-                Dock = WinForms.DockStyle.Right,
-                Width = 300,
                 BackColor = System.Drawing.Color.White,
-                BorderStyle = WinForms.BorderStyle.FixedSingle
+                BorderStyle = WinForms.BorderStyle.FixedSingle,
+                Width = 300
             };
             this.Controls.Add(_rightPanel);
 
             // Add content to panels
             InitializePanelContent();
+            PositionPanels();
+            BalanceLeftLayout();
+            this.Shown += (_, __) => BalanceLeftLayout();
+            this.Resize += (_, __) => BalanceLeftLayout();
+            _leftPanel.Resize += (_, __) => BalanceLeftLayout();
 
             this.ResumeLayout(false);
         }
@@ -302,7 +302,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _topRightPanel = new WinForms.Panel
             {
                 Dock = WinForms.DockStyle.Right,
-                Width = _topLeftPanel.Width / 2,
+                Width = 340,
                 BackColor = System.Drawing.Color.FromArgb(250, 250, 250),
                 BorderStyle = WinForms.BorderStyle.FixedSingle
             };
@@ -324,7 +324,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _bottomRightPanel = new WinForms.Panel
             {
                 Dock = WinForms.DockStyle.Right,
-                Width = _bottomLeftPanel.Width / 2,
+                Width = 340,
                 BackColor = System.Drawing.Color.FromArgb(250, 250, 250),
                 BorderStyle = WinForms.BorderStyle.FixedSingle
             };
@@ -463,12 +463,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 AutoSize = false
             };
             _bottomRightPanel.Controls.Add(horizontalLabel);
+            horizontalLabel.Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right;
 
             // ListBox for horizontal host categories
             var horizontalCategoriesListBox = new WinForms.CheckedListBox
             {
                 Location = new System.Drawing.Point(5, 36),
-                Size = new System.Drawing.Size(_bottomRightPanel.Width - 10, 60),
+                Size = new System.Drawing.Size(_bottomRightPanel.Width - 10, 70),
                 CheckOnClick = true,
                 Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Regular)
             };
@@ -489,12 +490,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 AutoSize = false
             };
             _bottomRightPanel.Controls.Add(verticalLabel);
+            verticalLabel.Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right;
 
             // ListBox for vertical host categories
             var verticalCategoriesListBox = new WinForms.CheckedListBox
             {
                 Location = new System.Drawing.Point(5, 116),
-                Size = new System.Drawing.Size(_bottomRightPanel.Width - 10, 60),
+                Size = new System.Drawing.Size(_bottomRightPanel.Width - 10, 70),
                 CheckOnClick = true,
                 Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Regular)
             };
@@ -511,7 +513,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             var rightTitle = new WinForms.Label
             {
                 Text = "Opening Configuration & Clearances",
-                Font = new System.Drawing.Font("Microsoft Sans Serif", 12F, System.Drawing.FontStyle.Bold),
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 10F, System.Drawing.FontStyle.Bold),
                 ForeColor = System.Drawing.Color.FromArgb(51, 51, 51),
                 Location = new System.Drawing.Point(10, 10),
                 Size = new System.Drawing.Size(_rightPanel.Width - 20, 25),
@@ -524,7 +526,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             var mepTypeLabel = new WinForms.Label
             {
                 Text = "MEP Type:",
-                Font = new System.Drawing.Font("Microsoft Sans Serif", 10F, System.Drawing.FontStyle.Bold),
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold),
                 ForeColor = System.Drawing.Color.FromArgb(51, 51, 51),
                 Location = new System.Drawing.Point(10, 45),
                 Size = new System.Drawing.Size(100, 20),
@@ -659,6 +661,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private void OnCloseClick(object? sender, EventArgs e)
         {
             this.Close();
+        }
+
+        private void PositionPanels()
+        {
+            int top = _headerPanel.Bottom;
+            int height = this.ClientSize.Height - top - _statusPanel.Height;
+
+            _rightPanel.Location = new System.Drawing.Point(this.ClientSize.Width - _rightPanel.Width, top);
+            _rightPanel.Size = new System.Drawing.Size(_rightPanel.Width, height);
+
+            _mainSplitter.Location = new System.Drawing.Point(_rightPanel.Left - _mainSplitter.Width, top);
+            _mainSplitter.Height = height;
+
+            _leftPanel.Location = new System.Drawing.Point(0, top);
+            _leftPanel.Size = new System.Drawing.Size(_mainSplitter.Left, height);
+        }
+
+        private void BalanceLeftLayout()
+        {
+            if (_leftPanel == null) return;
+
+            // equal top/bottom in the left column
+            int half = (_leftPanel.Height - _horizontalSplitter.Height) / 2;
+            _bottomLeftPanel.Height = half;
+
+            // make both right subsections (top-right and bottom-right inside left) wide enough
+            int rightCol = _rightPanel.Width; // match main right column
+            _topRightPanel.Width = 340;
+            _bottomRightPanel.Width = 340;
         }
     }
 }
