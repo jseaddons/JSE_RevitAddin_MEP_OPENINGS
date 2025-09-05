@@ -26,12 +26,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _profileDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
                                            "JSE_MEP_Openings");
             
-            // Make profiles project-specific - use Revit document path if available
+            // Make profiles project-specific - use a consistent identifier
             string currentProject;
             if (!string.IsNullOrEmpty(projectPath))
             {
-                // Use Revit document name
-                currentProject = Path.GetFileNameWithoutExtension(projectPath);
+                // Extract project identifier from path - use the working directory or a more stable identifier
+                // Instead of using the full document name which can vary, use a more consistent approach
+                var directoryName = Path.GetDirectoryName(projectPath);
+                if (!string.IsNullOrEmpty(directoryName))
+                {
+                    // Use the parent directory name as project identifier
+                    currentProject = Path.GetFileName(directoryName);
+                    
+                    // If it's still too specific, fall back to a more general identifier
+                    if (string.IsNullOrEmpty(currentProject) || currentProject.Contains("LINKED FILES"))
+                    {
+                        currentProject = "Revit 2023"; // Use a consistent project name
+                    }
+                }
+                else
+                {
+                    currentProject = "Revit 2023"; // Default fallback
+                }
             }
             else
             {
@@ -49,6 +65,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             LoadProfiles();
+            
+            // Debug: Log profile loading results
+            System.Diagnostics.Debug.WriteLine($"ProfileManagementService constructor: Profile file path: {_profileFilePath}");
+            System.Diagnostics.Debug.WriteLine($"ProfileManagementService constructor: Loaded {_availableProfiles.Count} profiles");
+            foreach (var profile in _availableProfiles)
+            {
+                System.Diagnostics.Debug.WriteLine($"ProfileManagementService constructor: Loaded profile: {profile.Name}");
+            }
         }
 
         /// <summary>
@@ -60,6 +84,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Gets all available profiles
         /// </summary>
         public IReadOnlyList<UserProfile> AvailableProfiles => _availableProfiles.AsReadOnly();
+
+        /// <summary>
+        /// Gets the profile file path
+        /// </summary>
+        public string ProfileFilePath => _profileFilePath;
 
         /// <summary>
         /// Creates a new profile with discipline validation
@@ -260,8 +289,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
+                System.Diagnostics.Debug.WriteLine($"LoadProfiles: Checking file: {_profileFilePath}");
+                System.Diagnostics.Debug.WriteLine($"LoadProfiles: File exists: {File.Exists(_profileFilePath)}");
+                
                 if (File.Exists(_profileFilePath))
                 {
+                    System.Diagnostics.Debug.WriteLine($"LoadProfiles: File size: {new FileInfo(_profileFilePath).Length} bytes");
                     var serializer = new XmlSerializer(typeof(List<UserProfile>));
                     using (var reader = new FileStream(_profileFilePath, FileMode.Open))
                     {
@@ -270,8 +303,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             _availableProfiles.Clear();
                             _availableProfiles.AddRange(profiles);
+                            System.Diagnostics.Debug.WriteLine($"LoadProfiles: Successfully loaded {profiles.Count} profiles");
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine($"LoadProfiles: Deserialized profiles is null");
                         }
                     }
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"LoadProfiles: Profile file does not exist");
                 }
             }
             catch (Exception ex)

@@ -188,7 +188,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             return allFiles.Where(f => f.FileType == LinkedFileType.Electrical || 
                                       f.FileType == LinkedFileType.Mechanical || 
-                                      f.FileType == LinkedFileType.Plumbing).ToList();
+                                      f.FileType == LinkedFileType.Plumbing ||
+                                      f.FileType == LinkedFileType.Unknown).ToList(); // Include Unknown files
         }
     }
 }

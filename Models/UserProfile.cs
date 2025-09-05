@@ -2,12 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Xml.Serialization;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Models
 {
     /// <summary>
     /// Represents a user profile with discipline information and preferences
     /// </summary>
+    [XmlRoot("UserProfile")]
     public class UserProfile : INotifyPropertyChanged
     {
         private Guid _id;
@@ -52,6 +54,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
             get => _isActive;
             set => SetProperty(ref _isActive, value);
         }
+        
+        /// <summary>
+        /// User's configuration settings for the application
+        /// </summary>
+        public UserConfiguration? Configuration { get; set; }
+        
+        /// <summary>
+        /// When this profile was last modified
+        /// </summary>
+        public DateTime LastModified { get; set; } = DateTime.Now;
 
         /// <summary>
         /// Gets the primary discipline (only one allowed)

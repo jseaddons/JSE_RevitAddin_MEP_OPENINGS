@@ -65,14 +65,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 LinkedFileType.Electrical => new List<MepCategory> 
                 { 
-                    MepCategory.CableTrays, 
-                    MepCategory.Conduits 
+                    MepCategory.CableTrays
+                    // Removed MepCategory.Conduits
                 },
                 LinkedFileType.Mechanical => new List<MepCategory> 
                 { 
                     MepCategory.Ducts, 
-                    MepCategory.DuctAccessories, 
-                    MepCategory.DuctFittings 
+                    MepCategory.DuctAccessories
+                    // Removed MepCategory.DuctFittings
                 },
                 LinkedFileType.Plumbing => new List<MepCategory> 
                 { 

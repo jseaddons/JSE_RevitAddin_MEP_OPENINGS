@@ -4,6 +4,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Security;
 using Nice3point.Revit.Toolkit.External;
 using Serilog;
 using Serilog.Events;
+using System.IO;
 
 namespace JSE_RevitAddin_MEP_OPENINGS
 {
@@ -15,6 +16,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS
     {
         public override void OnStartup()
         {
+            // IMMEDIATE LOGGING - Create file as soon as add-in loads
+            try
+            {
+                string startupLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\addin_startup.log";
+                File.AppendAllText(startupLogPath, $"[{DateTime.Now}] ADD-IN STARTUP: OnStartup() called\n");
+                File.AppendAllText(startupLogPath, $"[{DateTime.Now}] Assembly: {System.Reflection.Assembly.GetExecutingAssembly().Location}\n");
+                File.AppendAllText(startupLogPath, $"[{DateTime.Now}] Process: {System.Diagnostics.Process.GetCurrentProcess().ProcessName}\n");
+            }
+            catch (Exception startupEx)
+            {
+                // Try alternative location if main log fails
+                try
+                {
+                    File.AppendAllText(@"C:\temp\addin_startup.log", $"[{DateTime.Now}] ADD-IN STARTUP FAILED: {startupEx.Message}\n");
+                }
+                catch { }
+            }
+
             // Initialize logging first so we can capture any startup failures
             try
             {
@@ -58,12 +77,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS
 
         private void CreateRibbon()
         {
+            // Log ribbon creation start
+            try
+            {
+                string ribbonLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\ribbon_creation.log";
+                File.AppendAllText(ribbonLogPath, $"[{DateTime.Now}] CreateRibbon() started\n");
+            }
+            catch { }
+
             var panel = Application.CreatePanel("Commands", "JSE_RevitAddin_MEP_OPENINGS");
             if (panel == null)
             {
                 // Panel creation failed for some environment; skip ribbon creation to avoid null references.
+                try
+                {
+                    string ribbonLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\ribbon_creation.log";
+                    File.AppendAllText(ribbonLogPath, $"[{DateTime.Now}] Panel creation FAILED - null panel returned\n");
+                }
+                catch { }
                 return;
             }
+
+            try
+            {
+                string ribbonLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\ribbon_creation.log";
+                File.AppendAllText(ribbonLogPath, $"[{DateTime.Now}] Panel created successfully\n");
+            }
+            catch { }
 
             var button1 = panel.AddPushButton<StartupCommand>("Execute");
             button1.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
@@ -98,6 +138,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS
             var button5 = panel.AddPushButton<TestProfileManagementCommand>("Profile Manager");
             button5.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
             button5.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+
+            try
+            {
+                string ribbonLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\ribbon_creation.log";
+                File.AppendAllText(ribbonLogPath, $"[{DateTime.Now}] TestProfileManagementCommand button added to ribbon\n");
+                File.AppendAllText(ribbonLogPath, $"[{DateTime.Now}] Ribbon creation COMPLETED\n");
+            }
+            catch { }
 
             // Deleted commands removed from ribbon: DeletePipeSleevesCommand, GetSleeveSummaryCommand
         }
