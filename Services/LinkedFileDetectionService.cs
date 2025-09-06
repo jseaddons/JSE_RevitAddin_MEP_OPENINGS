@@ -45,7 +45,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             var upperFileName = fileName.ToUpper();
             
-            if (upperFileName.Contains("EL"))
+            if (upperFileName.Contains("EL") || upperFileName.Contains("EE"))
                 return LinkedFileType.Electrical;
             if (upperFileName.Contains("ME"))
                 return LinkedFileType.Mechanical;
@@ -53,7 +53,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 return LinkedFileType.Plumbing;
             if (upperFileName.Contains("ARC"))
                 return LinkedFileType.Architectural;
-            if (upperFileName.Contains("STR"))
+            if (upperFileName.Contains("STR") || upperFileName.Contains("-ST-"))
                 return LinkedFileType.Structural;
                 
             return LinkedFileType.Unknown;

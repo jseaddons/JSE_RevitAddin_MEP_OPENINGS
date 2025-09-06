@@ -75,6 +75,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.Panel _parameterFilterPanel = null!;
         private List<WinForms.Panel> _parameterRows = new List<WinForms.Panel>();
         private WinForms.Button _addParameterButton = null!;
+        // Service parameter tabs
+        private WinForms.TabControl _serviceParameterTabs = null!;
 
         // constants (top of class)
         private const int InnerRightWidth = 320;  // choose 300–360
@@ -542,7 +544,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             _topLeftPanel.Controls.Add(referenceFilesListBox);
 
-            // Use dynamic data only - no hardcoded fallback
+            // Always add the active document as a reference element
+            if (_activeDocument != null)
+            {
+                string activeDocName = _activeDocument.Title;
+                referenceFilesListBox.Items.Add($"{activeDocName} (Active Document)", true);
+                System.Diagnostics.Debug.WriteLine($"Added active document '{activeDocName}' to reference elements");
+            }
+            
+            // Add linked reference files if available
             if (_linkedFiles.Count > 0 && _linkedFileService != null)
             {
                 var referenceFiles = _linkedFileService.GetReferenceElementFiles(_linkedFiles);
@@ -555,23 +565,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     }
                     referenceFilesListBox.Items.Add(displayText, file.IsLoaded);
                 }
-                System.Diagnostics.Debug.WriteLine($"Populated top-left with {referenceFiles.Count} dynamic files");
-            }
-            else
-            {
-                // Show message that linked files need to be loaded
-                var noDataLabel = new WinForms.Label
-                {
-                    Text = "No linked files loaded.\nPlease ensure linked files are present in the Revit project.",
-                    Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Italic),
-                    ForeColor = System.Drawing.Color.Gray,
-                    Location = new System.Drawing.Point(10, 50),
-                    Size = new System.Drawing.Size(_topLeftPanel.Width - 20, 60),
-                    AutoSize = false,
-                    TextAlign = System.Drawing.ContentAlignment.MiddleCenter
-                };
-                _topLeftPanel.Controls.Add(noDataLabel);
-                System.Diagnostics.Debug.WriteLine("No linked files available - showing message to user");
+                System.Diagnostics.Debug.WriteLine($"Added {referenceFiles.Count} linked reference files to reference elements");
             }
         }
 
@@ -600,43 +594,83 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             _topRightPanel.Controls.Add(referenceCategoriesListBox);
 
-            // Use dynamic categories only - no hardcoded fallback
-            if (_linkedFiles.Count > 0 && _linkedFileService != null)
-            {
-                var referenceFiles = _linkedFileService.GetReferenceElementFiles(_linkedFiles);
-                var availableCategories = new HashSet<string>();
+            // Add event handler for category selection changes
+            referenceCategoriesListBox.ItemCheck += (sender, e) => {
+                // Use a timer to delay the update to avoid issues during the check operation
+                System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
+                timer.Interval = 10;
+                timer.Tick += (s, args) => {
+                    timer.Stop();
+                    timer.Dispose();
+                    UpdateMepTypeBasedOnSelection();
+                };
+                timer.Start();
+            };
 
-                foreach (var file in referenceFiles)
+            // Always show all 4 MEP categories regardless of linked files
+            var allMepCategories = new List<string> { "Ducts", "Duct Accessories", "Cable Trays", "Pipes" };
+            
+            foreach (var category in allMepCategories)
+            {
+                referenceCategoriesListBox.Items.Add(category, false);
+            }
+            
+            System.Diagnostics.Debug.WriteLine($"Populated MEP categories with {allMepCategories.Count} standard categories");
+        }
+
+        private void UpdateMepTypeBasedOnSelection()
+        {
+            try
+            {
+                // Get selected categories from the MEP Categories listbox
+                var selectedCategories = new List<string>();
+                var mepCategoriesListBox = _topRightPanel.Controls.OfType<WinForms.CheckedListBox>().FirstOrDefault();
+                
+                if (mepCategoriesListBox != null)
                 {
-                    var categories = LinkedFileDetectionService.GetAvailableCategories(file.FileType);
-                    foreach (var category in categories)
+                    for (int i = 0; i < mepCategoriesListBox.Items.Count; i++)
                     {
-                        availableCategories.Add(LinkedFileDetectionService.GetCategoryDisplayName(category));
+                        if (mepCategoriesListBox.GetItemChecked(i))
+                        {
+                            selectedCategories.Add(mepCategoriesListBox.Items[i].ToString());
+                        }
                     }
                 }
 
-                // Add available categories
-                foreach (var category in availableCategories.OrderBy(c => c))
+                if (selectedCategories.Count == 0)
                 {
-                    referenceCategoriesListBox.Items.Add(category, false);
+                    // No categories selected - grey out and clear
+                    _mepTypeCombo.Enabled = false;
+                    _mepTypeCombo.BackColor = System.Drawing.Color.LightGray;
+                    _mepTypeCombo.Items.Clear();
+                    _mepTypeCombo.Items.Add("<Select>");
+                    _mepTypeCombo.SelectedIndex = 0;
                 }
-                System.Diagnostics.Debug.WriteLine($"Populated MEP categories with {availableCategories.Count} dynamic categories");
-            }
-            else
-            {
-                // Show message that linked files need to be loaded
-                var noDataLabel = new WinForms.Label
+                else if (selectedCategories.Count == 1)
                 {
-                    Text = "No linked files loaded.\nMEP categories will be shown once linked files are available.",
-                    Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Italic),
-                    ForeColor = System.Drawing.Color.Gray,
-                    Location = new System.Drawing.Point(10, 50),
-                    Size = new System.Drawing.Size(_topRightPanel.Width - 20, 60),
-                    AutoSize = false,
-                    TextAlign = System.Drawing.ContentAlignment.MiddleCenter
-                };
-                _topRightPanel.Controls.Add(noDataLabel);
-                System.Diagnostics.Debug.WriteLine("No linked files available - showing message to user for MEP categories");
+                    // Single category selected - grey out and show the category
+                    _mepTypeCombo.Enabled = false;
+                    _mepTypeCombo.BackColor = System.Drawing.Color.LightGray;
+                    _mepTypeCombo.Items.Clear();
+                    _mepTypeCombo.Items.Add(selectedCategories[0]);
+                    _mepTypeCombo.SelectedIndex = 0;
+                    
+                    // Update clearance visibility for single selection
+                    UpdateClearanceVisibilityForCategory(selectedCategories[0]);
+                }
+                else
+                {
+                    // Multiple categories selected - enable and show only selected categories
+                    _mepTypeCombo.Enabled = true;
+                    _mepTypeCombo.BackColor = System.Drawing.Color.White;
+                    _mepTypeCombo.Items.Clear();
+                    _mepTypeCombo.Items.AddRange(selectedCategories.ToArray());
+                    _mepTypeCombo.SelectedIndex = 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error updating MEP Type based on selection: {ex.Message}");
             }
         }
 
@@ -665,7 +699,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             _bottomLeftPanel.Controls.Add(hostFilesListBox);
 
-            // Use dynamic data only - no hardcoded fallback
+            // Always add the active document as a host element
+            if (_activeDocument != null)
+            {
+                string activeDocName = _activeDocument.Title;
+                hostFilesListBox.Items.Add($"{activeDocName} (Active Document)", true);
+                System.Diagnostics.Debug.WriteLine($"Added active document '{activeDocName}' to host elements");
+            }
+            
+            // Add linked host files if available
             if (_linkedFiles.Count > 0 && _linkedFileService != null)
             {
                 var hostFiles = _linkedFileService.GetHostElementFiles(_linkedFiles);
@@ -678,23 +720,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     }
                     hostFilesListBox.Items.Add(displayText, file.IsLoaded);
                 }
-                System.Diagnostics.Debug.WriteLine($"Populated bottom-left with {hostFiles.Count} dynamic host files");
-            }
-            else
-            {
-                // Show message that linked files need to be loaded
-                var noDataLabel = new WinForms.Label
-                {
-                    Text = "No linked files loaded.\nPlease ensure architectural and structural linked files are present in the Revit project.",
-                    Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Italic),
-                    ForeColor = System.Drawing.Color.Gray,
-                    Location = new System.Drawing.Point(10, 50),
-                    Size = new System.Drawing.Size(_bottomLeftPanel.Width - 20, 60),
-                    AutoSize = false,
-                    TextAlign = System.Drawing.ContentAlignment.MiddleCenter
-                };
-                _bottomLeftPanel.Controls.Add(noDataLabel);
-                System.Diagnostics.Debug.WriteLine("No linked files available - showing message to user for host elements");
+                System.Diagnostics.Debug.WriteLine($"Added {hostFiles.Count} linked host files to host elements");
             }
         }
 
@@ -735,46 +761,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             _bottomRightPanel.Controls.Add(horizontalCategoriesListBox);
 
-            // Add horizontal categories based on available linked files
-            if (_linkedFiles.Count > 0 && _linkedFileService != null)
-            {
-                var hostFiles = _linkedFileService.GetHostElementFiles(_linkedFiles);
-                var horizontalCategories = new HashSet<string>();
-
-                foreach (var file in hostFiles)
-                {
-                    var categories = LinkedFileDetectionService.GetAvailableHostCategories(file.FileType);
-                    foreach (var category in categories)
-                    {
-                        var displayName = LinkedFileDetectionService.GetHostCategoryDisplayName(category);
-                        if (displayName == "Walls" || displayName == "Structural Framing")
-                        {
-                            horizontalCategories.Add(displayName);
-                        }
-                    }
-                }
-
-                foreach (var category in horizontalCategories.OrderBy(c => c))
-                {
-                    horizontalCategoriesListBox.Items.Add(category, true);
-                }
-                System.Diagnostics.Debug.WriteLine($"Added {horizontalCategories.Count} horizontal host categories");
-            }
-            else
-            {
-                // Show message when no linked files
-                var noDataLabel = new WinForms.Label
-                {
-                    Text = "No linked files.\nHorizontal openings require architectural/structural files.",
-                    Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Italic),
-                    ForeColor = System.Drawing.Color.Gray,
-                    Location = new System.Drawing.Point(10, 40),
-                    Size = new System.Drawing.Size(_bottomRightPanel.Width - 20, 40),
-                    AutoSize = false,
-                    TextAlign = System.Drawing.ContentAlignment.MiddleCenter
-                };
-                _bottomRightPanel.Controls.Add(noDataLabel);
-            }
+            // Always show Walls and Structural Framing categories regardless of linked files
+            horizontalCategoriesListBox.Items.Add("Walls", true);
+            horizontalCategoriesListBox.Items.Add("Structural Framing", true);
+            System.Diagnostics.Debug.WriteLine("Added Walls and Structural Framing to horizontal host categories");
 
             // Vertical Openings Section - positioned below horizontal
             var verticalLabel = new WinForms.Label
@@ -874,7 +864,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Size = new System.Drawing.Size(_rightPanel.Width - 130, 20),
                 Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular),
                 DropDownStyle = WinForms.ComboBoxStyle.DropDownList,
-                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right,
+                Visible = true, // Always visible
+                Enabled = false, // Initially disabled (greyed out)
+                BackColor = System.Drawing.Color.LightGray // Grey background when disabled
             };
             _mepTypeCombo.Items.AddRange(new[] { "Pipe", "Duct", "Duct Accessories", "Duct Fittings", "Cable Tray", "Conduit" });
             _mepTypeCombo.SelectedIndex = 0;
@@ -949,22 +942,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private void UpdateClearanceVisibility()
         {
             var mep = _mepTypeCombo.SelectedItem?.ToString() ?? string.Empty;
+            UpdateClearanceVisibilityForCategory(mep);
+        }
+
+        private void UpdateClearanceVisibilityForCategory(string category)
+        {
             // Hide all
             _clearancePanel.Visible = false;
             _cableTrayPanel.Visible = false;
             _damperPanel.Visible = false;
 
-            if (mep.Equals("Cable Tray", StringComparison.OrdinalIgnoreCase))
+            if (category.Equals("Cable Trays", StringComparison.OrdinalIgnoreCase))
             {
                 _cableTrayPanel.Visible = true;
+                SetDefaultClearanceValues("Cable Trays");
             }
-            else if (mep.Equals("Duct Accessories", StringComparison.OrdinalIgnoreCase))
+            else if (category.Equals("Duct Accessories", StringComparison.OrdinalIgnoreCase))
             {
                 _damperPanel.Visible = true;
+                SetDefaultClearanceValues("Duct Accessories");
+            }
+            else if (category.Equals("Ducts", StringComparison.OrdinalIgnoreCase))
+            {
+                _clearancePanel.Visible = true;
+                SetDefaultClearanceValues("Ducts");
+            }
+            else if (category.Equals("Pipes", StringComparison.OrdinalIgnoreCase))
+            {
+                _clearancePanel.Visible = true;
+                SetDefaultClearanceValues("Pipes");
             }
             else
             {
                 _clearancePanel.Visible = true; // default
+                SetDefaultClearanceValues("Default");
             }
         }
 
@@ -973,7 +984,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // Standard Clearance Panel
             _clearancePanel = new WinForms.Panel
             {
-                Location = new System.Drawing.Point(10, 140),
+                Location = new System.Drawing.Point(10, 135),
                 Size = new System.Drawing.Size(_rightPanel.Width - 20, 100),
                 BackColor = System.Drawing.Color.FromArgb(248, 249, 250),
                 BorderStyle = WinForms.BorderStyle.FixedSingle,
@@ -1014,23 +1025,53 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             var normalText = new WinForms.TextBox
             {
                 Location = new System.Drawing.Point(170, 33),
-                Size = new System.Drawing.Size(60, 20),
-                Text = "25"
+                Size = new System.Drawing.Size(50, 20),
+                Text = "50",
+                Tag = "normal_clearance",
+                Enabled = false,
+                BackColor = System.Drawing.Color.LightGray
             };
             _clearancePanel.Controls.Add(normalText);
+
+            var normalLockBtn = new WinForms.Button
+            {
+                Location = new System.Drawing.Point(225, 33),
+                Size = new System.Drawing.Size(25, 20),
+                Text = "🔒",
+                Font = new System.Drawing.Font("Segoe UI Emoji", 8F),
+                Tag = "normal_lock",
+                BackColor = System.Drawing.Color.LightGreen
+            };
+            normalLockBtn.Click += (s, e) => ToggleLock(normalLockBtn, normalText);
+            _clearancePanel.Controls.Add(normalLockBtn);
 
             var insulatedText = new WinForms.TextBox
             {
                 Location = new System.Drawing.Point(300, 33),
-                Size = new System.Drawing.Size(60, 20),
-                Text = "30"
+                Size = new System.Drawing.Size(50, 20),
+                Text = "25",
+                Tag = "insulated_clearance",
+                Enabled = false,
+                BackColor = System.Drawing.Color.LightGray
             };
             _clearancePanel.Controls.Add(insulatedText);
+
+            var insulatedLockBtn = new WinForms.Button
+            {
+                Location = new System.Drawing.Point(355, 33),
+                Size = new System.Drawing.Size(25, 20),
+                Text = "🔒",
+                Font = new System.Drawing.Font("Segoe UI Emoji", 8F),
+                Tag = "insulated_lock",
+                BackColor = System.Drawing.Color.LightGreen
+            };
+            insulatedLockBtn.Click += (s, e) => ToggleLock(insulatedLockBtn, insulatedText);
+            _clearancePanel.Controls.Add(insulatedLockBtn);
 
             // Cable Tray Panel (initially hidden) - Top Side + Other Sides
             _cableTrayPanel = new WinForms.Panel
             {
-                Location = new System.Drawing.Point(10, 140),
+                Location = new System.Drawing.Point(10, 135),
                 Size = new System.Drawing.Size(_rightPanel.Width - 20, 110),
                 BackColor = System.Drawing.Color.FromArgb(248, 249, 250),
                 BorderStyle = WinForms.BorderStyle.FixedSingle,
@@ -1042,26 +1083,78 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _cableTrayPanel.Controls.Add(ctLabel);
             var topSideLbl = new WinForms.Label { Text = "Top Side:", Location = new System.Drawing.Point(10, 40), Size = new System.Drawing.Size(120, 18) };
             _cableTrayPanel.Controls.Add(topSideLbl);
-            var topSideTxt = new WinForms.TextBox { Location = new System.Drawing.Point(170, 38), Size = new System.Drawing.Size(60, 20), Text = "50" };
-            _cableTrayPanel.Controls.Add(topSideTxt);
             var ctNormalHeader = new WinForms.Label { Text = "Normal (mm)", Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold), Location = new System.Drawing.Point(170, 18), Size = new System.Drawing.Size(110, 18) };
             _cableTrayPanel.Controls.Add(ctNormalHeader);
+            var ctInsHeader = new WinForms.Label { Text = "Insulated (mm)", Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold), Location = new System.Drawing.Point(300, 18), Size = new System.Drawing.Size(120, 18) };
+            _cableTrayPanel.Controls.Add(ctInsHeader);
+
+            var topSideTxt = new WinForms.TextBox { Location = new System.Drawing.Point(170, 38), Size = new System.Drawing.Size(50, 20), Text = "75", Tag = "cabletray_top_normal", Enabled = false, BackColor = System.Drawing.Color.LightGray };
+            _cableTrayPanel.Controls.Add(topSideTxt);
+
+            var topLockBtn = new WinForms.Button
+            {
+                Location = new System.Drawing.Point(225, 38),
+                Size = new System.Drawing.Size(25, 20),
+                Text = "🔒",
+                Font = new System.Drawing.Font("Segoe UI Emoji", 8F),
+                Tag = "cabletray_top_lock",
+                BackColor = System.Drawing.Color.LightGreen
+            };
+            topLockBtn.Click += (s, e) => ToggleLock(topLockBtn, topSideTxt);
+            _cableTrayPanel.Controls.Add(topLockBtn);
+
+            var ctInsTopTxt = new WinForms.TextBox { Location = new System.Drawing.Point(300, 38), Size = new System.Drawing.Size(50, 20), Text = "75", Tag = "cabletray_top_insulated", Enabled = false, BackColor = System.Drawing.Color.LightGray };
+            _cableTrayPanel.Controls.Add(ctInsTopTxt);
+
+            var topInsLockBtn = new WinForms.Button
+            {
+                Location = new System.Drawing.Point(355, 38),
+                Size = new System.Drawing.Size(25, 20),
+                Text = "🔒",
+                Font = new System.Drawing.Font("Segoe UI Emoji", 8F),
+                Tag = "cabletray_top_ins_lock",
+                BackColor = System.Drawing.Color.LightGreen
+            };
+            topInsLockBtn.Click += (s, e) => ToggleLock(topInsLockBtn, ctInsTopTxt);
+            _cableTrayPanel.Controls.Add(topInsLockBtn);
+
             // Stack 'Other Sides' below
             var otherLbl = new WinForms.Label { Text = "Other Sides:", Location = new System.Drawing.Point(10, 70), Size = new System.Drawing.Size(120, 18) };
             _cableTrayPanel.Controls.Add(otherLbl);
-            var otherTxt = new WinForms.TextBox { Location = new System.Drawing.Point(170, 68), Size = new System.Drawing.Size(60, 20), Text = "25" };
+            var otherTxt = new WinForms.TextBox { Location = new System.Drawing.Point(170, 68), Size = new System.Drawing.Size(50, 20), Text = "25", Tag = "cabletray_other_normal", Enabled = false, BackColor = System.Drawing.Color.LightGray };
             _cableTrayPanel.Controls.Add(otherTxt);
-            var ctInsHeader = new WinForms.Label { Text = "Insulated (mm)", Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold), Location = new System.Drawing.Point(300, 18), Size = new System.Drawing.Size(120, 18) };
-            _cableTrayPanel.Controls.Add(ctInsHeader);
-            var ctInsTopTxt = new WinForms.TextBox { Location = new System.Drawing.Point(300, 38), Size = new System.Drawing.Size(60, 20), Text = "35" };
-            _cableTrayPanel.Controls.Add(ctInsTopTxt);
-            var ctInsOtherTxt = new WinForms.TextBox { Location = new System.Drawing.Point(300, 68), Size = new System.Drawing.Size(60, 20), Text = "25" };
+
+            var otherLockBtn = new WinForms.Button
+            {
+                Location = new System.Drawing.Point(225, 68),
+                Size = new System.Drawing.Size(25, 20),
+                Text = "🔒",
+                Font = new System.Drawing.Font("Segoe UI Emoji", 8F),
+                Tag = "cabletray_other_lock",
+                BackColor = System.Drawing.Color.LightGreen
+            };
+            otherLockBtn.Click += (s, e) => ToggleLock(otherLockBtn, otherTxt);
+            _cableTrayPanel.Controls.Add(otherLockBtn);
+
+            var ctInsOtherTxt = new WinForms.TextBox { Location = new System.Drawing.Point(300, 68), Size = new System.Drawing.Size(50, 20), Text = "25", Tag = "cabletray_other_insulated", Enabled = false, BackColor = System.Drawing.Color.LightGray };
             _cableTrayPanel.Controls.Add(ctInsOtherTxt);
+
+            var otherInsLockBtn = new WinForms.Button
+            {
+                Location = new System.Drawing.Point(355, 68),
+                Size = new System.Drawing.Size(25, 20),
+                Text = "🔒",
+                Font = new System.Drawing.Font("Segoe UI Emoji", 8F),
+                Tag = "cabletray_other_ins_lock",
+                BackColor = System.Drawing.Color.LightGreen
+            };
+            otherInsLockBtn.Click += (s, e) => ToggleLock(otherInsLockBtn, ctInsOtherTxt);
+            _cableTrayPanel.Controls.Add(otherInsLockBtn);
 
             // Damper Panel (initially hidden) - MEP Side + Other Sides
             _damperPanel = new WinForms.Panel
             {
-                Location = new System.Drawing.Point(10, 140),
+                Location = new System.Drawing.Point(10, 135),
                 Size = new System.Drawing.Size(_rightPanel.Width - 20, 110),
                 BackColor = System.Drawing.Color.FromArgb(248, 249, 250),
                 BorderStyle = WinForms.BorderStyle.FixedSingle,
@@ -1073,62 +1166,340 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _damperPanel.Controls.Add(dpLabel);
             var mepSideLbl = new WinForms.Label { Text = "MEP Connector Side:", Location = new System.Drawing.Point(10, 40), Size = new System.Drawing.Size(160, 18) };
             _damperPanel.Controls.Add(mepSideLbl);
-            var mepSideTxt = new WinForms.TextBox { Location = new System.Drawing.Point(170, 38), Size = new System.Drawing.Size(60, 20), Text = "100" };
-            _damperPanel.Controls.Add(mepSideTxt);
             var dNormalHeader = new WinForms.Label { Text = "Normal (mm)", Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold), Location = new System.Drawing.Point(170, 18), Size = new System.Drawing.Size(110, 18) };
             _damperPanel.Controls.Add(dNormalHeader);
+            var dInsHeader = new WinForms.Label { Text = "Insulated (mm)", Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold), Location = new System.Drawing.Point(300, 18), Size = new System.Drawing.Size(120, 18) };
+            _damperPanel.Controls.Add(dInsHeader);
+
+            var mepSideTxt = new WinForms.TextBox { Location = new System.Drawing.Point(170, 38), Size = new System.Drawing.Size(50, 20), Text = "100", Tag = "ductaccessories_mep_normal", Enabled = false, BackColor = System.Drawing.Color.LightGray };
+            _damperPanel.Controls.Add(mepSideTxt);
+
+            var mepLockBtn = new WinForms.Button
+            {
+                Location = new System.Drawing.Point(225, 38),
+                Size = new System.Drawing.Size(25, 20),
+                Text = "🔒",
+                Font = new System.Drawing.Font("Segoe UI Emoji", 8F),
+                Tag = "ductaccessories_mep_lock",
+                BackColor = System.Drawing.Color.LightGreen
+            };
+            mepLockBtn.Click += (s, e) => ToggleLock(mepLockBtn, mepSideTxt);
+            _damperPanel.Controls.Add(mepLockBtn);
+
+            var dInsTopTxt = new WinForms.TextBox { Location = new System.Drawing.Point(300, 38), Size = new System.Drawing.Size(50, 20), Text = "100", Tag = "ductaccessories_mep_insulated", Enabled = false, BackColor = System.Drawing.Color.LightGray };
+            _damperPanel.Controls.Add(dInsTopTxt);
+
+            var mepInsLockBtn = new WinForms.Button
+            {
+                Location = new System.Drawing.Point(355, 38),
+                Size = new System.Drawing.Size(25, 20),
+                Text = "🔒",
+                Font = new System.Drawing.Font("Segoe UI Emoji", 8F),
+                Tag = "ductaccessories_mep_ins_lock",
+                BackColor = System.Drawing.Color.LightGreen
+            };
+            mepInsLockBtn.Click += (s, e) => ToggleLock(mepInsLockBtn, dInsTopTxt);
+            _damperPanel.Controls.Add(mepInsLockBtn);
+
             // Stack 'Other Sides' below
             var otherDLbl = new WinForms.Label { Text = "Other Sides:", Location = new System.Drawing.Point(10, 70), Size = new System.Drawing.Size(120, 18) };
             _damperPanel.Controls.Add(otherDLbl);
-            var otherDTxt = new WinForms.TextBox { Location = new System.Drawing.Point(170, 68), Size = new System.Drawing.Size(60, 20), Text = "50" };
+            var otherDTxt = new WinForms.TextBox { Location = new System.Drawing.Point(170, 68), Size = new System.Drawing.Size(50, 20), Text = "50", Tag = "ductaccessories_other_normal", Enabled = false, BackColor = System.Drawing.Color.LightGray };
             _damperPanel.Controls.Add(otherDTxt);
-            var dInsHeader = new WinForms.Label { Text = "Insulated (mm)", Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold), Location = new System.Drawing.Point(300, 18), Size = new System.Drawing.Size(120, 18) };
-            _damperPanel.Controls.Add(dInsHeader);
-            var dInsTopTxt = new WinForms.TextBox { Location = new System.Drawing.Point(300, 38), Size = new System.Drawing.Size(60, 20), Text = "50" };
-            _damperPanel.Controls.Add(dInsTopTxt);
-            var dInsOtherTxt = new WinForms.TextBox { Location = new System.Drawing.Point(300, 68), Size = new System.Drawing.Size(60, 20), Text = "35" };
+
+            var otherDLockBtn = new WinForms.Button
+            {
+                Location = new System.Drawing.Point(225, 68),
+                Size = new System.Drawing.Size(25, 20),
+                Text = "🔒",
+                Font = new System.Drawing.Font("Segoe UI Emoji", 8F),
+                Tag = "ductaccessories_other_lock",
+                BackColor = System.Drawing.Color.LightGreen
+            };
+            otherDLockBtn.Click += (s, e) => ToggleLock(otherDLockBtn, otherDTxt);
+            _damperPanel.Controls.Add(otherDLockBtn);
+
+            var dInsOtherTxt = new WinForms.TextBox { Location = new System.Drawing.Point(300, 68), Size = new System.Drawing.Size(50, 20), Text = "50", Tag = "ductaccessories_other_insulated", Enabled = false, BackColor = System.Drawing.Color.LightGray };
             _damperPanel.Controls.Add(dInsOtherTxt);
+
+            var otherDInsLockBtn = new WinForms.Button
+            {
+                Location = new System.Drawing.Point(355, 68),
+                Size = new System.Drawing.Size(25, 20),
+                Text = "🔒",
+                Font = new System.Drawing.Font("Segoe UI Emoji", 8F),
+                Tag = "ductaccessories_other_ins_lock",
+                BackColor = System.Drawing.Color.LightGreen
+            };
+            otherDInsLockBtn.Click += (s, e) => ToggleLock(otherDInsLockBtn, dInsOtherTxt);
+            _damperPanel.Controls.Add(otherDInsLockBtn);
             var dInsUnit = new WinForms.Label { Text = "mm", Location = new System.Drawing.Point(400, 41), Size = new System.Drawing.Size(30, 16) };
             _damperPanel.Controls.Add(dInsUnit);
+        }
+
+        private void ToggleLock(WinForms.Button lockBtn, WinForms.TextBox textBox)
+        {
+            if (lockBtn.Text == "🔒")
+            {
+                // Unlock - allow editing
+                lockBtn.Text = "🔓";
+                lockBtn.BackColor = System.Drawing.Color.LightCoral;
+                textBox.Enabled = true;
+                textBox.BackColor = System.Drawing.Color.White;
+            }
+            else
+            {
+                // Lock - disable editing
+                lockBtn.Text = "🔒";
+                lockBtn.BackColor = System.Drawing.Color.LightGreen;
+                textBox.Enabled = false;
+                textBox.BackColor = System.Drawing.Color.LightGray;
+            }
+        }
+
+        private void SetDefaultClearanceValues(string category)
+        {
+            try
+            {
+                switch (category.ToLower())
+                {
+                    case "ducts":
+                        SetClearancePanelValues("50", "25");
+                        break;
+                    case "pipes":
+                        SetClearancePanelValues("50", "25");
+                        break;
+                    case "cable trays":
+                        SetCableTrayPanelValues("75", "25", "75", "25");
+                        break;
+                    case "duct accessories":
+                        SetDamperPanelValues("100", "50", "100", "50");
+                        break;
+                    default:
+                        SetClearancePanelValues("50", "25");
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error setting default clearance values: {ex.Message}");
+            }
+        }
+
+        private void SetClearancePanelValues(string normalValue, string insulatedValue)
+        {
+            if (_clearancePanel?.Controls.Count > 0)
+            {
+                foreach (var control in _clearancePanel.Controls)
+                {
+                    if (control is WinForms.TextBox textBox)
+                    {
+                        if (textBox.Tag?.ToString() == "normal_clearance")
+                        {
+                            textBox.Text = normalValue;
+                        }
+                        else if (textBox.Tag?.ToString() == "insulated_clearance")
+                        {
+                            textBox.Text = insulatedValue;
+                        }
+                    }
+                }
+            }
+        }
+
+        private void SetCableTrayPanelValues(string topNormal, string otherNormal, string topInsulated, string otherInsulated)
+        {
+            if (_cableTrayPanel?.Controls.Count > 0)
+            {
+                foreach (var control in _cableTrayPanel.Controls)
+                {
+                    if (control is WinForms.TextBox textBox)
+                    {
+                        switch (textBox.Tag?.ToString())
+                        {
+                            case "cabletray_top_normal":
+                                textBox.Text = topNormal;
+                                break;
+                            case "cabletray_other_normal":
+                                textBox.Text = otherNormal;
+                                break;
+                            case "cabletray_top_insulated":
+                                textBox.Text = topInsulated;
+                                break;
+                            case "cabletray_other_insulated":
+                                textBox.Text = otherInsulated;
+                                break;
+                        }
+                    }
+                }
+            }
+        }
+
+        private void SetDamperPanelValues(string mepNormal, string otherNormal, string mepInsulated, string otherInsulated)
+        {
+            if (_damperPanel?.Controls.Count > 0)
+            {
+                foreach (var control in _damperPanel.Controls)
+                {
+                    if (control is WinForms.TextBox textBox)
+                    {
+                        switch (textBox.Tag?.ToString())
+                        {
+                            case "ductaccessories_mep_normal":
+                                textBox.Text = mepNormal;
+                                break;
+                            case "ductaccessories_other_normal":
+                                textBox.Text = otherNormal;
+                                break;
+                            case "ductaccessories_mep_insulated":
+                                textBox.Text = mepInsulated;
+                                break;
+                            case "ductaccessories_other_insulated":
+                                textBox.Text = otherInsulated;
+                                break;
+                        }
+                    }
+                }
+            }
         }
 
         private void CreateParameterFilterPanel()
         {
             _parameterFilterPanel = new WinForms.Panel
             {
-                Location = new System.Drawing.Point(10, 270),
-                Size = new System.Drawing.Size(_rightPanel.Width - 20, 160),
+                Location = new System.Drawing.Point(10, 250),
+                Size = new System.Drawing.Size(_rightPanel.Width - 20, _rightPanel.Height - 260),
                 BackColor = System.Drawing.Color.FromArgb(248, 249, 250),
                 BorderStyle = WinForms.BorderStyle.FixedSingle,
-                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right | WinForms.AnchorStyles.Bottom
             };
             _rightPanel.Controls.Add(_parameterFilterPanel);
 
             var title = new WinForms.Label
             {
-                Text = "Parameter Filter",
+                Text = "Service Parameters",
                 Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold),
                 Location = new System.Drawing.Point(10, 8),
                 Size = new System.Drawing.Size(140, 18)
             };
             _parameterFilterPanel.Controls.Add(title);
 
-            // Add first two rows as defaults
-            AddParameterRow("Reference Level", "A_GARDEN LEVEL");
-            AddParameterRow("Size", "100x100");
+            // Create tabbed service parameters
+            _serviceParameterTabs = new WinForms.TabControl
+            {
+                Location = new System.Drawing.Point(5, 25),
+                Size = new System.Drawing.Size(_parameterFilterPanel.Width - 10, _parameterFilterPanel.Height - 30),
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right | WinForms.AnchorStyles.Bottom
+            };
+            _parameterFilterPanel.Controls.Add(_serviceParameterTabs);
 
-            // Add button (plus)
-            _addParameterButton = new WinForms.Button
+            // Create service tabs
+            CreateServiceTab("Ducts", "DUCTS");
+            CreateServiceTab("Duct Accessories", "DUCT_ACCESSORIES");
+            CreateServiceTab("Cable Trays", "CABLE_TRAYS");
+            CreateServiceTab("Pipes", "PIPES");
+        }
+
+        private void CreateServiceTab(string tabName, string serviceCode)
+        {
+            var tabPage = new WinForms.TabPage(tabName);
+            
+            var servicePanel = new WinForms.Panel
+            {
+                Dock = WinForms.DockStyle.Fill,
+                BackColor = System.Drawing.Color.White,
+                Padding = new WinForms.Padding(3)
+            };
+
+            // Add default parameter rows for this service
+            AddServiceParameterRow(servicePanel, "Reference Level", "A_GARDEN LEVEL");
+            AddServiceParameterRow(servicePanel, "Size", "100x100");
+
+            // Add button (plus) for this service
+            var addButton = new WinForms.Button
             {
                 Text = "+",
-                Location = new System.Drawing.Point(_parameterFilterPanel.Width - 35, 6),
+                Location = new System.Drawing.Point(servicePanel.Width - 35, 6),
                 Size = new System.Drawing.Size(24, 24),
                 BackColor = System.Drawing.Color.FromArgb(230, 255, 230),
                 FlatStyle = WinForms.FlatStyle.Flat,
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Right,
+                Tag = serviceCode // Store service code for identification
+            };
+            addButton.Click += (_, __) => AddServiceParameterRow(servicePanel, "<Select>", "");
+            servicePanel.Controls.Add(addButton);
+
+            tabPage.Controls.Add(servicePanel);
+            _serviceParameterTabs.TabPages.Add(tabPage);
+        }
+
+        private void AddServiceParameterRow(WinForms.Panel servicePanel, string parameterName, string value)
+        {
+            int rowHeight = 24;
+            int top = 25 + (servicePanel.Controls.OfType<WinForms.Panel>().Count() * (rowHeight + 3));
+
+            var row = new WinForms.Panel
+            {
+                Location = new System.Drawing.Point(8, top),
+                Size = new System.Drawing.Size(servicePanel.Width - 16, rowHeight),
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right
+            };
+            servicePanel.Controls.Add(row);
+
+            var nameCombo = new WinForms.ComboBox
+            {
+                Location = new System.Drawing.Point(0, 2),
+                Size = new System.Drawing.Size(120, 20),
+                DropDownStyle = WinForms.ComboBoxStyle.DropDownList
+            };
+            
+            // Get real parameters from the model instead of hardcoded values
+            var availableParameters = GetAvailableParameters();
+            nameCombo.Items.AddRange(availableParameters.ToArray());
+            nameCombo.SelectedItem = parameterName;
+            
+            row.Controls.Add(nameCombo);
+
+            var valueCombo = new WinForms.ComboBox
+            {
+                Location = new System.Drawing.Point(130, 2),
+                Size = new System.Drawing.Size(row.Width - 130 - 30, 20),
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right,
+                DropDownStyle = WinForms.ComboBoxStyle.DropDownList
+            };
+            
+            // Add event handler for parameter selection changes
+            nameCombo.SelectedIndexChanged += (_, __) => {
+                valueCombo.Items.Clear();
+                valueCombo.Items.Add("<Auto Selection>");
+                valueCombo.SelectedIndex = 0;
+            };
+            
+            row.Controls.Add(valueCombo);
+
+            var removeBtn = new WinForms.Button
+            {
+                Text = "×",
+                Location = new System.Drawing.Point(row.Width - 25, 1),
+                Size = new System.Drawing.Size(20, 20),
+                BackColor = System.Drawing.Color.FromArgb(255, 230, 230),
+                FlatStyle = WinForms.FlatStyle.Flat,
                 Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Right
             };
-            _addParameterButton.Click += (_, __) => AddParameterRow("<Select>", "");
-            _parameterFilterPanel.Controls.Add(_addParameterButton);
+            removeBtn.Click += (_, __) => {
+                servicePanel.Controls.Remove(row);
+                RepositionServiceParameterRows(servicePanel);
+            };
+            row.Controls.Add(removeBtn);
+        }
+
+        private void RepositionServiceParameterRows(WinForms.Panel servicePanel)
+        {
+            var rows = servicePanel.Controls.OfType<WinForms.Panel>().ToList();
+            for (int i = 0; i < rows.Count; i++)
+            {
+                rows[i].Location = new System.Drawing.Point(8, 25 + (i * 27));
+            }
         }
 
         private void AddParameterRow(string parameterName, string value)
