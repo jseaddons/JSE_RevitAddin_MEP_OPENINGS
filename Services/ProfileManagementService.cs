@@ -23,15 +23,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         public ProfileManagementService(string? projectPath = null)
         {
-            _profileDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
-                                           "JSE_MEP_Openings");
-            
-            // Make profiles project-specific - use a consistent identifier
+            // Make profiles truly project-specific
             string currentProject;
             if (!string.IsNullOrEmpty(projectPath))
             {
                 // Extract project identifier from path - use the working directory or a more stable identifier
-                // Instead of using the full document name which can vary, use a more consistent approach
                 var directoryName = Path.GetDirectoryName(projectPath);
                 if (!string.IsNullOrEmpty(directoryName))
                 {
@@ -51,9 +47,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             else
             {
-                // Fallback to current directory
-                currentProject = Path.GetFileName(Environment.CurrentDirectory) ?? "Default";
+                currentProject = "Default"; // For testing without project path
             }
+            
+            // Create project-specific directory
+            _profileDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
+                                           "JSE_MEP_Openings", currentProject);
             
             _profileFilePath = Path.Combine(_profileDirectory, $"profiles_{currentProject}.xml");
             _availableProfiles = new List<UserProfile>();

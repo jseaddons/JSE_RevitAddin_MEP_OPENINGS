@@ -89,6 +89,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
+        /// Resets the singleton instance for a new project - call this when starting a new project
+        /// to ensure no old profile data persists
+        /// </summary>
+        public static void ResetForNewProject()
+        {
+            lock (_lock)
+            {
+                // Force cleanup of existing instance
+                CleanupInstance();
+                
+                // Create a fresh instance
+                _instance = new ApplicationProfileService();
+                
+                System.Diagnostics.Debug.WriteLine("ApplicationProfileService: Reset for new project - fresh instance created");
+                
+                // Log to file for debugging
+                var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_debug.log";
+                File.AppendAllText(debugLogPath, $"[{DateTime.Now}] ResetForNewProject: Fresh instance created\n");
+            }
+        }
+
+        /// <summary>
         /// Gets the current active profile
         /// </summary>
         public UserProfile? CurrentProfile => _currentProfile;
@@ -110,28 +132,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         { 
             get 
             {
-                // DIRECT FILE CHECK: Bypass ProfileManagementService and check profile files directly
+                // PROJECT-SPECIFIC CHECK: Use the current ProfileManagementService instead of global files
                 try
                 {
-                    var profileDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings");
-                    var revitProfileFile = Path.Combine(profileDir, "profiles_Revit 2023.xml");
-                    
                     // Log this check
                     var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_check_debug.log";
-                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Checking profile file: {revitProfileFile}\n");
-                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] File exists: {File.Exists(revitProfileFile)}\n");
+                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Checking project-specific profiles\n");
+                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] ProfileService.ProfileFilePath: {_profileService.ProfileFilePath}\n");
+                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Available profiles count: {_profileService.AvailableProfiles.Count}\n");
+                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Current profile: {_currentProfile?.Name ?? "null"}\n");
                     
-                    if (File.Exists(revitProfileFile))
-                    {
-                        var content = File.ReadAllText(revitProfileFile);
-                        bool hasProfiles = content.Contains("<Name>ram</Name>") || content.Contains("<Name>mech</Name>") || content.Contains("<UserProfile>");
-                        File.AppendAllText(debugLogPath, $"[{DateTime.Now}] File has profiles: {hasProfiles}\n");
-                        File.AppendAllText(debugLogPath, $"[{DateTime.Now}] IsProfileSetupRequired: {!hasProfiles}\n");
-                        return !hasProfiles;
-                    }
+                    // Check if we have any profiles for this project
+                    bool hasProfiles = _profileService.AvailableProfiles.Any();
+                    bool hasCurrentProfile = _currentProfile != null;
                     
-                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] File doesn't exist, setup required: True\n");
-                    return true;
+                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Has profiles: {hasProfiles}\n");
+                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Has current profile: {hasCurrentProfile}\n");
+                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Current profile name: {_currentProfile?.Name ?? "null"}\n");
+                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] IsProfileSetupRequired: {!hasProfiles || !hasCurrentProfile}\n");
+                    
+                    return !hasProfiles || !hasCurrentProfile;
                 }
                 catch (Exception ex)
                 {
@@ -213,11 +233,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                var defaultProfile = _profileService.GetDefaultProfile();
-                if (defaultProfile != null)
-                {
-                    _currentProfile = defaultProfile;
-                }
+                // Don't load any profile initially - wait for UpdateForCurrentDocument to set project-specific profile
+                _currentProfile = null;
+                System.Diagnostics.Debug.WriteLine("LoadCurrentProfile: Cleared current profile - will be set project-specific later");
+                
+                // Log to file for debugging
+                var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_debug.log";
+                File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadCurrentProfile: Cleared current profile\n");
             }
             catch (Exception ex)
             {
@@ -304,12 +326,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         System.Diagnostics.Debug.WriteLine($"UpdateForCurrentDocument: Found profile: {profile.Name}");
                     }
                     
-                    // Transfer current profile if it exists
-                    if (_currentProfile != null)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"UpdateForCurrentDocument: Transferring current profile: {_currentProfile.Name}");
-                        newProfileService.SetCurrentProfile(_currentProfile);
-                    }
+                    // Clear current profile for new project - don't transfer from previous project
+                    _currentProfile = null;
+                    System.Diagnostics.Debug.WriteLine($"UpdateForCurrentDocument: Cleared current profile for new project");
+                    
+                    // Log to file for debugging
+                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] UpdateForCurrentDocument: Cleared current profile for new project\n");
                     
                     // Unsubscribe from old service
                     _profileService.ProfileChanged -= OnProfileServiceProfileChanged;

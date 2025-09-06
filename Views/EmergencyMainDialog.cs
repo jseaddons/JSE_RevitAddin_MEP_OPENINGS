@@ -307,36 +307,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             this.Controls.Add(_statusPanel);
 
+            // Calculate left section right edge position (left panel width)
+            int leftSectionRightEdge = (this.Width - InnerRightWidth) - 20; // 20px margin from right edge of left section
+            
+            // Status Label (left side, smaller width to make room for buttons and progress bar)
             _statusLabel = new WinForms.Label
             {
                 Text = "Ready",
                 Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular),
                 ForeColor = System.Drawing.Color.FromArgb(102, 102, 102),
                 Location = new System.Drawing.Point(10, 5),
-                Size = new System.Drawing.Size(600, 20),
+                Size = new System.Drawing.Size(80, 20), // Reduced width to make room for buttons and progress bar
                 AutoSize = false
             };
             _statusPanel.Controls.Add(_statusLabel);
-
-            _progressBar = new WinForms.ProgressBar
-            {
-                Location = new System.Drawing.Point(10, 5),
-                Size = new System.Drawing.Size(200, 20),
-                Style = WinForms.ProgressBarStyle.Continuous,
-                Minimum = 0,
-                Maximum = 100,
-                Value = 0
-            };
-            _statusPanel.Controls.Add(_progressBar);
-
-            // Calculate left section right edge position (left panel width)
-            int leftSectionRightEdge = (this.Width - InnerRightWidth) - 20; // 20px margin from right edge of left section
-
-            // Refresh Button (aligned to left section right corner)
+            
+            int statusButtonSpacing = 5; // Space between status bar buttons
+            int buttonStartX = 100; // Start position for buttons (after status label)
+            
+            // Refresh Button (before progress bar)
             _refreshButton = new WinForms.Button
             {
                 Text = "Refresh",
-                Location = new System.Drawing.Point(leftSectionRightEdge - 130, 3), // 130px from right edge (60+60+10 spacing)
+                Location = new System.Drawing.Point(buttonStartX, 3), // After status label
                 Size = new System.Drawing.Size(60, 24),
                 BackColor = System.Drawing.Color.FromArgb(108, 117, 125),
                 ForeColor = System.Drawing.Color.White,
@@ -345,11 +338,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             _statusPanel.Controls.Add(_refreshButton);
 
-            // Configure Button (aligned to left section right corner)
+            // Configure Button (next to refresh button)
             _configureButton = new WinForms.Button
             {
                 Text = "Config",
-                Location = new System.Drawing.Point(leftSectionRightEdge - 65, 3), // 65px from right edge (60+5 spacing)
+                Location = new System.Drawing.Point(buttonStartX + 65 + statusButtonSpacing, 3), // Next to refresh button
                 Size = new System.Drawing.Size(60, 24),
                 BackColor = System.Drawing.Color.FromArgb(102, 16, 242),
                 ForeColor = System.Drawing.Color.White,
@@ -357,6 +350,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Bold)
             };
             _statusPanel.Controls.Add(_configureButton);
+            
+            // Progress Bar (after buttons, can be longer now)
+            int progressBarStartX = buttonStartX + 130 + statusButtonSpacing; // After both buttons
+            _progressBar = new WinForms.ProgressBar
+            {
+                Location = new System.Drawing.Point(progressBarStartX, 5), // After buttons
+                Size = new System.Drawing.Size(leftSectionRightEdge - progressBarStartX - 10, 20), // Dynamic width to fill remaining space
+                Style = WinForms.ProgressBarStyle.Continuous,
+                Minimum = 0,
+                Maximum = 100,
+                Value = 0
+            };
+            _statusPanel.Controls.Add(_progressBar);
+            
+            // Add event handlers for the buttons
+            _refreshButton.Click += OnRefreshClick;
+            _configureButton.Click += OnConfigureClick;
 
             // Left Panel (expanded to fill most space) - start below header
             _leftPanel = new WinForms.Panel
@@ -2327,6 +2337,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private void OnCloseClick(object? sender, EventArgs e)
         {
             this.Close();
+        }
+
+        private void OnRefreshClick(object? sender, EventArgs e)
+        {
+            // TODO: Implement refresh functionality
+            _statusLabel.Text = "Refresh clicked - functionality to be implemented";
+        }
+
+        private void OnConfigureClick(object? sender, EventArgs e)
+        {
+            // TODO: Implement configure functionality
+            _statusLabel.Text = "Configure clicked - functionality to be implemented";
         }
 
         private void PositionPanels()

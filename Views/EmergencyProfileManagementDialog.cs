@@ -179,8 +179,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // RESTORE CURRENT PROFILE: Load from saved state
             try
             {
-                var profileDir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings");
-                var currentProfileFile = System.IO.Path.Combine(profileDir, "current_profile.txt");
+                // Use project-specific directory for current profile file
+                var profileDir = System.IO.Path.GetDirectoryName(_appProfileService.ProfileService.ProfileFilePath);
+                var currentProfileFile = System.IO.Path.Combine(profileDir ?? "", "current_profile.txt");
                 var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_restore_debug.log";
                 
                 System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfileData: Checking for saved profile\n");
@@ -241,12 +242,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             
             try
             {
-                var profileDir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings");
-                var revitProfileFile = System.IO.Path.Combine(profileDir, "profiles_Revit 2023.xml");
+                // Use the project-specific profile file path from the ApplicationProfileService
+                var revitProfileFile = _appProfileService.ProfileService.ProfileFilePath;
                 
                 // Debug logging
                 var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_load_debug.log";
-                System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfileData: Checking file: {revitProfileFile}\n");
+                System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfileData: Checking project-specific file: {revitProfileFile}\n");
                 System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] File exists: {System.IO.File.Exists(revitProfileFile)}\n");
                 
                 if (System.IO.File.Exists(revitProfileFile))
