@@ -71,20 +71,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 
                 // Note: Removed WPF Application creation to prevent "Cannot create more than one System.Windows.Application instance" error
 
-                // STEP 3: Test EmergencyMainDialog with proper disposal
-                System.Diagnostics.Debug.WriteLine("Testing EmergencyMainDialog with proper disposal");
-                File.AppendAllText(logPath, $"[{DateTime.Now}] Testing EmergencyMainDialog with proper disposal\n");
+                // STEP 3: Test complete flow - Profile Management then Main Dialog
+                System.Diagnostics.Debug.WriteLine("Testing complete flow - Profile Management then Main Dialog");
+                File.AppendAllText(logPath, $"[{DateTime.Now}] Testing complete flow - Profile Management then Main Dialog\n");
                 
-                // Create main dialog with proper using statement
-                using (var mainDialog = new Views.EmergencyMainDialog(appProfileService, doc))
+                // First show profile management dialog
+                using (var profileMgmtDialog = new Views.EmergencyProfileManagementDialog(appProfileService))
                 {
-                    var result = mainDialog.ShowDialog();
-                    System.Diagnostics.Debug.WriteLine($"Main dialog result: {result}");
-                    File.AppendAllText(logPath, $"[{DateTime.Now}] Main dialog result: {result}\n");
+                    var result = profileMgmtDialog.ShowDialog();
+                    System.Diagnostics.Debug.WriteLine($"Profile management dialog result: {result}");
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] Profile management dialog result: {result}\n");
+                    
+                    if (result == System.Windows.Forms.DialogResult.OK && profileMgmtDialog.ShouldOpenMainDialog)
+                    {
+                        // Then show main dialog
+                        System.Diagnostics.Debug.WriteLine("Opening main dialog after profile management");
+                        File.AppendAllText(logPath, $"[{DateTime.Now}] Opening main dialog after profile management\n");
+                        
+                        using (var mainDialog = new Views.EmergencyMainDialog(appProfileService, doc))
+                        {
+                            var mainResult = mainDialog.ShowDialog();
+                            System.Diagnostics.Debug.WriteLine($"Main dialog result: {mainResult}");
+                            File.AppendAllText(logPath, $"[{DateTime.Now}] Main dialog result: {mainResult}\n");
+                        }
+                    }
                 }
                 
                 // Log success
-                File.AppendAllText(logPath, $"[{DateTime.Now}] EmergencyMainDialog shown and disposed successfully\n");
+                File.AppendAllText(logPath, $"[{DateTime.Now}] Complete flow tested successfully\n");
                 
                 // Note: Not cleaning up singleton to avoid potential issues
                 
