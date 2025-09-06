@@ -367,26 +367,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return _currentProfile;
         }
         
-        /// <summary>
-        /// Creates a default profile if none exists
-        /// </summary>
-        public UserProfile CreateDefaultProfile()
-        {
-            var defaultProfile = new UserProfile
-            {
-                Name = "Default",
-                Disciplines = new List<Discipline> { new Discipline { Name = "Coordination", IsPrimary = true } },
-                Language = "English",
-                CreatedDate = DateTime.Now,
-                IsActive = true,
-                Configuration = new Models.UserConfiguration()
-            };
-            
-            _currentProfile = defaultProfile;
-            ProfileChanged?.Invoke(this, new ProfileChangedEventArgs(defaultProfile));
-            
-            return defaultProfile;
-        }
         
         /// <summary>
         /// Saves the current profile to disk

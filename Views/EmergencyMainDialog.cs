@@ -1102,7 +1102,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Size = new System.Drawing.Size(150, 21),
                 DropDownStyle = WinForms.ComboBoxStyle.DropDownList
             };
-            nameCombo.Items.AddRange(new[] { "Reference Level", "Size", "Service Type", "Category", "<Select>" });
+            
+            // Get real parameters from the model instead of hardcoded values
+            var availableParameters = GetAvailableParameters();
+            nameCombo.Items.AddRange(availableParameters.ToArray());
             nameCombo.SelectedItem = parameterName;
             row.Controls.Add(nameCombo);
 
@@ -1113,7 +1116,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right,
                 DropDownStyle = WinForms.ComboBoxStyle.DropDownList
             };
-            valueCombo.Items.AddRange(new[] { value, "<Auto Selection>", "100x100", "200x200", "A_GARDEN LEVEL", "ESSENTIAL POWER" });
+            
+            // Get real parameter values instead of hardcoded values
+            var availableValues = GetAvailableParameterValues(parameterName);
+            valueCombo.Items.AddRange(availableValues.ToArray());
             valueCombo.SelectedIndex = 0;
             row.Controls.Add(valueCombo);
 
@@ -1143,6 +1149,184 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 var row = _parameterRows[i];
                 row.Location = new System.Drawing.Point(8, 30 + (i * (rowHeight + 6)));
                 row.Size = new System.Drawing.Size(_parameterFilterPanel.Width - 16, rowHeight);
+            }
+        }
+
+        /// <summary>
+        /// Gets available parameters from the current model for MEP categories
+        /// </summary>
+        private List<string> GetAvailableParameters()
+        {
+            var parameters = new List<string> { "<Select>" };
+            
+            try
+            {
+                if (_activeDocument != null)
+                {
+                    var parameterService = new ParameterExtractionService();
+                    
+                    // Get parameters for common MEP categories
+                    var mepCategories = new List<MepCategory>
+                    {
+                        MepCategory.Pipes,
+                        MepCategory.Ducts,
+                        MepCategory.CableTrays,
+                        MepCategory.Conduits
+                    };
+                    
+                    var parameterInfos = parameterService.GetParametersForMepCategories(_activeDocument, mepCategories);
+                    var parameterNames = parameterService.GetParameterNamesForDisplay(parameterInfos);
+                    
+                    // Add common useful parameters first
+                    var commonParameters = new List<string>
+                    {
+                        "Reference Level",
+                        "Size",
+                        "Service Type",
+                        "Category",
+                        "System Type",
+                        "System Name",
+                        "Comments",
+                        "Mark",
+                        "Type Mark",
+                        "Family",
+                        "Type"
+                    };
+                    
+                    // Add common parameters that exist in the model
+                    foreach (var commonParam in commonParameters)
+                    {
+                        if (parameterNames.Contains(commonParam) && !parameters.Contains(commonParam))
+                        {
+                            parameters.Add(commonParam);
+                        }
+                    }
+                    
+                    // Add other parameters from the model
+                    foreach (var paramName in parameterNames)
+                    {
+                        if (!parameters.Contains(paramName) && !string.IsNullOrEmpty(paramName))
+                        {
+                            parameters.Add(paramName);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log error but don't crash - fall back to basic parameters
+                try
+                {
+                    string logPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_extraction_error.log";
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] Error getting parameters: {ex.Message}\n");
+                }
+                catch { }
+                
+                // Fallback to basic parameters
+                parameters.AddRange(new[] { "Reference Level", "Size", "Service Type", "Category" });
+            }
+            
+            return parameters;
+        }
+
+        /// <summary>
+        /// Gets available values for a specific parameter from the current model
+        /// </summary>
+        private List<string> GetAvailableParameterValues(string parameterName)
+        {
+            var values = new List<string> { "<Auto Selection>" };
+            
+            try
+            {
+                if (_activeDocument != null && !string.IsNullOrEmpty(parameterName) && parameterName != "<Select>")
+                {
+                    var parameterService = new ParameterExtractionService();
+                    
+                    // Get parameters for common MEP categories
+                    var mepCategories = new List<MepCategory>
+                    {
+                        MepCategory.Pipes,
+                        MepCategory.Ducts,
+                        MepCategory.CableTrays,
+                        MepCategory.Conduits
+                    };
+                    
+                    var parameterInfos = parameterService.GetParametersForMepCategories(_activeDocument, mepCategories);
+                    var targetParameter = parameterInfos.FirstOrDefault(p => p.Name == parameterName);
+                    
+                    if (targetParameter != null && targetParameter.Values.Any())
+                    {
+                        // Add unique values from the model
+                        foreach (var value in targetParameter.Values)
+                        {
+                            if (!string.IsNullOrEmpty(value) && !values.Contains(value))
+                            {
+                                values.Add(value);
+                            }
+                        }
+                    }
+                    
+                    // Add some common values based on parameter type
+                    AddCommonValuesForParameter(parameterName, values);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log error but don't crash - fall back to basic values
+                try
+                {
+                    string logPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_values_error.log";
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] Error getting parameter values for '{parameterName}': {ex.Message}\n");
+                }
+                catch { }
+                
+                // Fallback to basic values
+                AddCommonValuesForParameter(parameterName, values);
+            }
+            
+            return values;
+        }
+
+        /// <summary>
+        /// Adds common values for specific parameter types
+        /// </summary>
+        private void AddCommonValuesForParameter(string parameterName, List<string> values)
+        {
+            switch (parameterName.ToLower())
+            {
+                case "size":
+                    var sizes = new[] { "100x100", "200x200", "300x300", "400x400", "100", "200", "300", "400" };
+                    foreach (var size in sizes)
+                    {
+                        if (!values.Contains(size)) values.Add(size);
+                    }
+                    break;
+                    
+                case "reference level":
+                case "level":
+                    var levels = new[] { "A_GARDEN LEVEL", "GROUND FLOOR", "FIRST FLOOR", "SECOND FLOOR" };
+                    foreach (var level in levels)
+                    {
+                        if (!values.Contains(level)) values.Add(level);
+                    }
+                    break;
+                    
+                case "service type":
+                case "system type":
+                    var services = new[] { "ESSENTIAL POWER", "LIGHTING", "HVAC", "PLUMBING", "FIRE PROTECTION" };
+                    foreach (var service in services)
+                    {
+                        if (!values.Contains(service)) values.Add(service);
+                    }
+                    break;
+                    
+                case "category":
+                    var categories = new[] { "Pipes", "Ducts", "Cable Trays", "Conduits" };
+                    foreach (var category in categories)
+                    {
+                        if (!values.Contains(category)) values.Add(category);
+                    }
+                    break;
             }
         }
 
@@ -1352,8 +1536,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 var currentProfile = _appProfileService.GetCurrentProfile();
                 if (currentProfile == null)
                 {
-                    DebugLogger.Warning("No current profile found - creating default profile");
-                    currentProfile = _appProfileService.CreateDefaultProfile();
+                    DebugLogger.Warning("No current profile found - user must create a profile first");
+                    // Don't create a default profile - let user create their own
+                    return;
                 }
                 
                 // Collect current UI state

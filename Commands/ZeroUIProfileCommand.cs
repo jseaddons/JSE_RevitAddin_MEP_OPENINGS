@@ -35,19 +35,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     
                     if (createResult == TaskDialogResult.Yes)
                     {
-                        // Create a default profile using TaskDialog input
-                        var profileName = GetProfileNameFromUser();
-                        if (!string.IsNullOrEmpty(profileName))
-                        {
-                            // Create a simple default profile
-                            var defaultProfile = CreateDefaultProfile(profileName);
-                            appProfileService.SetCurrentProfile(defaultProfile);
-                            
-                            TaskDialog.Show("Success", $"Profile '{profileName}' created successfully!");
-                            
-                            // Show main interface options
-                            ShowMainInterfaceOptions(appProfileService);
-                        }
+                        // Don't create fake profiles - redirect to proper profile creation
+                        TaskDialog.Show("Profile Creation", 
+                            "Please use the Profile Management dialog to create a proper profile with your discipline preferences.\n\n" +
+                            "This ensures you get a profile tailored to your specific project needs.",
+                            TaskDialogCommonButtons.Ok);
+                        
+                        // Show main interface options
+                        ShowMainInterfaceOptions(appProfileService);
                     }
                 }
                 else
@@ -82,25 +77,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             return string.Empty;
         }
         
-        private Models.UserProfile CreateDefaultProfile(string name)
-        {
-            // Create a simple default profile
-            var disciplines = new[]
-            {
-                new Models.Discipline { Name = "Architectural", IsSelected = true },
-                new Models.Discipline { Name = "Structural", IsSelected = true },
-                new Models.Discipline { Name = "Mechanical", IsSelected = true },
-                new Models.Discipline { Name = "Electrical", IsSelected = true },
-                new Models.Discipline { Name = "Plumbing", IsSelected = true }
-            };
-            
-            return new Models.UserProfile
-            {
-                Name = name,
-                Disciplines = disciplines.ToList(),
-                IsActive = true
-            };
-        }
         
         private void ShowMainInterfaceOptions(ApplicationProfileService appProfileService)
         {

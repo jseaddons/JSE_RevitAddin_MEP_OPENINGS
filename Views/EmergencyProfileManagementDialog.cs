@@ -277,19 +277,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         }
                     }
                     
-                    // Add profiles to list box (create simple profile objects for display)
+                    // Add profiles to list box (load actual profiles from XML)
                     foreach (var profileName in profileNames)
                     {
-                        // Create a minimal profile object for display purposes
-                        var simpleProfile = new JSE_RevitAddin_MEP_OPENINGS.Models.UserProfile
+                        // Load the actual profile from XML instead of creating a fake one
+                        var actualProfile = LoadProfileFromFile(profileName);
+                        if (actualProfile != null)
                         {
-                            Name = profileName,
-                            Disciplines = new System.Collections.Generic.List<JSE_RevitAddin_MEP_OPENINGS.Models.Discipline>()
-                        };
-                        
-                        var displayText = $"{profileName} - Profile";
-                        _profileListBox.Items.Add(new ProfileListItem { Profile = simpleProfile, DisplayText = displayText });
-                        System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Added profile to UI: {profileName}\n");
+                            var disciplines = string.Join(", ", actualProfile.Disciplines.Select(d => d.Name));
+                            var displayText = $"{profileName} - {disciplines}";
+                            _profileListBox.Items.Add(new ProfileListItem { Profile = actualProfile, DisplayText = displayText });
+                            System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Added actual profile to UI: {profileName}\n");
+                        }
+                        else
+                        {
+                            System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Failed to load profile: {profileName}\n");
+                        }
                     }
                     
                     System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Total profiles added: {profileNames.Count}\n");
@@ -316,6 +319,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
             // Set display member
             _profileListBox.DisplayMember = "DisplayText";
+        }
+
+        /// <summary>
+        /// Loads a specific profile from the XML file
+        /// </summary>
+        private JSE_RevitAddin_MEP_OPENINGS.Models.UserProfile? LoadProfileFromFile(string profileName)
+        {
+            try
+            {
+                var profileDir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings");
+                var revitProfileFile = System.IO.Path.Combine(profileDir, "profiles_Revit 2023.xml");
+                
+                if (!System.IO.File.Exists(revitProfileFile))
+                {
+                    return null;
+                }
+                
+                // Parse the XML file to find the specific profile
+                var content = System.IO.File.ReadAllText(revitProfileFile);
+                var serializer = new System.Xml.Serialization.XmlSerializer(typeof(System.Collections.Generic.List<JSE_RevitAddin_MEP_OPENINGS.Models.UserProfile>));
+                
+                using (var reader = new System.IO.StringReader(content))
+                {
+                    var profiles = (System.Collections.Generic.List<JSE_RevitAddin_MEP_OPENINGS.Models.UserProfile>?)serializer.Deserialize(reader);
+                    if (profiles != null)
+                    {
+                        return profiles.FirstOrDefault(p => p.Name == profileName);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_load_error.log";
+                System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Error loading profile '{profileName}': {ex.Message}\n");
+            }
+            
+            return null;
         }
 
         private void OnProfileSelectionChanged(object sender, EventArgs e)
@@ -388,19 +428,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     // SIMPLIFIED APPROACH: Create a working profile and bypass all XML deserialization issues
                     System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Creating functional profile for: {selectedItem.Profile.Name}\n");
                     
-                    // Create a complete, functional profile
-                    var workingProfile = new JSE_RevitAddin_MEP_OPENINGS.Models.UserProfile
+                    // Load the actual profile from the XML file instead of creating a fake one
+                    var workingProfile = LoadProfileFromFile(selectedItem.Profile.Name);
+                    if (workingProfile == null)
                     {
-                        Id = System.Guid.NewGuid(),
-                        Name = selectedItem.Profile.Name,
-                        Disciplines = new System.Collections.Generic.List<JSE_RevitAddin_MEP_OPENINGS.Models.Discipline>
-                        {
-                            new JSE_RevitAddin_MEP_OPENINGS.Models.Discipline("Mechanical", false, "Mechanical systems")
-                        },
-                        Language = "English",
-                        CreatedDate = DateTime.Now,
-                        IsActive = true
-                    };
+                        System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Failed to load profile from file: {selectedItem.Profile.Name}\n");
+                        WinForms.MessageBox.Show($"Failed to load profile '{selectedItem.Profile.Name}' from file.", 
+                            "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
+                        return;
+                    }
                     
                     // DIRECT PROFILE ASSIGNMENT: Bypass ApplicationProfileService validation
                     try
