@@ -18,6 +18,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
     {
         private readonly ApplicationProfileService _appProfileService;
         
+        // Store all collected parameters globally to persist across refreshes
+        private Dictionary<string, List<ParameterInfo>> _allCollectedParameters = new Dictionary<string, List<ParameterInfo>>();
+        
         // Main panels - 4-section layout
         private WinForms.Panel _leftPanel = null!;
         private WinForms.Panel _rightPanel = null!;
@@ -339,6 +342,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Bold)
             };
             _statusPanel.Controls.Add(_refreshButton);
+            System.Diagnostics.Debug.WriteLine($"Refresh button created at location: {_refreshButton.Location}, Size: {_refreshButton.Size}, Visible: {_refreshButton.Visible}");
 
             // Configure Button (next to refresh button)
             _configureButton = new WinForms.Button
@@ -369,6 +373,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // Add event handlers for the buttons
             _refreshButton.Click += OnRefreshClick;
             _configureButton.Click += OnConfigureClick;
+            
+            // Debug logging for button creation
+            System.Diagnostics.Debug.WriteLine($"Refresh button created: Location=({_refreshButton.Location.X},{_refreshButton.Location.Y}), Size=({_refreshButton.Size.Width},{_refreshButton.Size.Height}), Visible={_refreshButton.Visible}, Enabled={_refreshButton.Enabled}");
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Refresh button created: Location=({_refreshButton.Location.X},{_refreshButton.Location.Y}), Size=({_refreshButton.Size.Width},{_refreshButton.Size.Height}), Visible={_refreshButton.Visible}, Enabled={_refreshButton.Enabled}\n");
 
             // Left Panel (expanded to fill most space) - start below header
             _leftPanel = new WinForms.Panel
@@ -548,7 +556,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             if (_activeDocument != null)
             {
                 string activeDocName = _activeDocument.Title;
-                referenceFilesListBox.Items.Add($"{activeDocName} (Active Document)", true);
+                referenceFilesListBox.Items.Add($"{activeDocName} (Active Document)", false);
                 System.Diagnostics.Debug.WriteLine($"Added active document '{activeDocName}' to reference elements");
             }
             
@@ -563,7 +571,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     {
                         displayText += " [NOT LOADED]";
                     }
-                    referenceFilesListBox.Items.Add(displayText, file.IsLoaded);
+                    referenceFilesListBox.Items.Add(displayText, false);
                 }
                 System.Diagnostics.Debug.WriteLine($"Added {referenceFiles.Count} linked reference files to reference elements");
             }
@@ -703,7 +711,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             if (_activeDocument != null)
             {
                 string activeDocName = _activeDocument.Title;
-                hostFilesListBox.Items.Add($"{activeDocName} (Active Document)", true);
+                hostFilesListBox.Items.Add($"{activeDocName} (Active Document)", false);
                 System.Diagnostics.Debug.WriteLine($"Added active document '{activeDocName}' to host elements");
             }
             
@@ -718,7 +726,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     {
                         displayText += " [NOT LOADED]";
                     }
-                    hostFilesListBox.Items.Add(displayText, file.IsLoaded);
+                    hostFilesListBox.Items.Add(displayText, false);
                 }
                 System.Diagnostics.Debug.WriteLine($"Added {hostFiles.Count} linked host files to host elements");
             }
@@ -762,8 +770,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _bottomRightPanel.Controls.Add(horizontalCategoriesListBox);
 
             // Always show Walls and Structural Framing categories regardless of linked files
-            horizontalCategoriesListBox.Items.Add("Walls", true);
-            horizontalCategoriesListBox.Items.Add("Structural Framing", true);
+            horizontalCategoriesListBox.Items.Add("Walls", false);
+            horizontalCategoriesListBox.Items.Add("Structural Framing", false);
             System.Diagnostics.Debug.WriteLine("Added Walls and Structural Framing to horizontal host categories");
 
             // Vertical Openings Section - positioned below horizontal
@@ -810,7 +818,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
                 foreach (var category in verticalCategories.OrderBy(c => c))
                 {
-                    verticalCategoriesListBox.Items.Add(category, true);
+                    verticalCategoriesListBox.Items.Add(category, false);
                 }
                 System.Diagnostics.Debug.WriteLine($"Added {verticalCategories.Count} vertical host categories");
             }
@@ -2712,14 +2720,442 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         private void OnRefreshClick(object? sender, EventArgs e)
         {
-            // TODO: Implement refresh functionality
-            _statusLabel.Text = "Refresh clicked - functionality to be implemented";
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("=== REFRESH BUTTON CLICKED ===");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] REFRESH BUTTON CLICKED\n");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Progress bar before: Visible={_progressBar.Visible}, Value={_progressBar.Value}\n");
+                
+                _statusLabel.Text = "Refreshing parameters...";
+                _progressBar.Value = 0;
+                _progressBar.Visible = true;
+                _progressBar.BringToFront(); // Make sure it's on top
+                _refreshButton.Enabled = false;
+                
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Progress bar after: Visible={_progressBar.Visible}, Value={_progressBar.Value}, Location=({_progressBar.Location.X},{_progressBar.Location.Y}), Size=({_progressBar.Size.Width},{_progressBar.Size.Height})\n");
+                
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Getting selected categories\n");
+                
+                // Get selected categories
+                var selectedCategories = GetSelectedCategories();
+                System.Diagnostics.Debug.WriteLine($"Selected categories: {string.Join(", ", selectedCategories)}");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Selected categories: {string.Join(", ", selectedCategories)}\n");
+                
+                if (selectedCategories.Count == 0)
+                {
+                    _statusLabel.Text = "No categories selected - please select MEP categories first";
+                    _progressBar.Visible = false;
+                    _refreshButton.Enabled = true;
+                    System.Diagnostics.Debug.WriteLine("No categories selected - exiting");
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] No categories selected\n");
+                    return;
+                }
+                
+                _progressBar.Value = 25;
+                _statusLabel.Text = $"Collecting parameters for {selectedCategories.Count} categories...";
+                System.Diagnostics.Debug.WriteLine($"Active document: {_activeDocument?.Title ?? "NULL"}");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Active document: {_activeDocument?.Title ?? "NULL"}\n");
+                
+                // If no document was passed, try to get the current document
+                if (_activeDocument == null)
+                {
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] No document passed, trying to get current document\n");
+                    // Note: We can't access the current document from here without a command context
+                    _statusLabel.Text = "No document available - please use the main command";
+                    _progressBar.Visible = false;
+                    _refreshButton.Enabled = true;
+                    return;
+                }
+                
+                // Collect parameters for each selected category and accumulate them
+                var categoryParameters = new Dictionary<string, List<ParameterInfo>>();
+                int totalCategories = selectedCategories.Count;
+                for (int i = 0; i < selectedCategories.Count; i++)
+                {
+                    var category = selectedCategories[i];
+                    System.Diagnostics.Debug.WriteLine($"Getting parameters for category: {category}");
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Getting parameters for category: {category}\n");
+                    
+                    // Update progress bar
+                    int progress = (int)((i * 80.0) / totalCategories); // 80% for parameter collection
+                    _progressBar.Value = progress;
+                    _statusLabel.Text = $"Collecting parameters for {category}...";
+                    
+                    var parameters = GetParametersForCategory(category);
+                    
+                    // Accumulate parameters - add to existing or create new
+                    if (_allCollectedParameters.ContainsKey(category))
+                    {
+                        // Merge with existing parameters, avoiding duplicates
+                        var existingParams = _allCollectedParameters[category];
+                        var newParams = parameters.Where(p => !existingParams.Any(ep => ep.Name == p.Name)).ToList();
+                        existingParams.AddRange(newParams);
+                        categoryParameters[category] = existingParams;
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Merged {newParams.Count} new parameters with {existingParams.Count - newParams.Count} existing for {category}\n");
+                    }
+                    else
+                    {
+                        // First time collecting for this category
+                        _allCollectedParameters[category] = new List<ParameterInfo>(parameters);
+                        categoryParameters[category] = parameters;
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] First time collecting {parameters.Count} parameters for {category}\n");
+                    }
+                    
+                    System.Diagnostics.Debug.WriteLine($"Found {parameters.Count} parameters for {category}");
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Total parameters for {category}: {_allCollectedParameters[category].Count}\n");
+                }
+                
+                _progressBar.Value = 80;
+                _statusLabel.Text = "Updating parameter dropdowns...";
+                System.Diagnostics.Debug.WriteLine($"Total parameters collected: {categoryParameters.Values.Sum(p => p.Count)}");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Total parameters collected: {categoryParameters.Values.Sum(p => p.Count)}\n");
+                
+                // Update parameter service dropdowns
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Updating parameter dropdowns\n");
+                UpdateParameterServiceDropdowns(categoryParameters);
+                
+                _progressBar.Value = 95;
+                _statusLabel.Text = "Finalizing...";
+                
+                _progressBar.Value = 100;
+                _statusLabel.Text = $"Refresh complete - {categoryParameters.Values.Sum(p => p.Count)} parameters loaded";
+                _progressBar.Visible = false;
+                _refreshButton.Enabled = true;
+                System.Diagnostics.Debug.WriteLine("=== REFRESH COMPLETED ===");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] REFRESH COMPLETED\n");
+            }
+            catch (Exception ex)
+            {
+                _statusLabel.Text = $"Refresh failed: {ex.Message}";
+                _progressBar.Visible = false;
+                _refreshButton.Enabled = true;
+                System.Diagnostics.Debug.WriteLine($"Refresh error: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] REFRESH ERROR: {ex.Message}\n");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Stack trace: {ex.StackTrace}\n");
+            }
         }
 
         private void OnConfigureClick(object? sender, EventArgs e)
         {
-            // TODO: Implement configure functionality
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] CONFIGURE BUTTON CLICKED\n");
             _statusLabel.Text = "Configure clicked - functionality to be implemented";
+        }
+
+        private List<string> GetSelectedCategories()
+        {
+            var selectedCategories = new List<string>();
+            var mepCategoriesListBox = _topRightPanel.Controls.OfType<WinForms.CheckedListBox>().FirstOrDefault();
+            
+            System.Diagnostics.Debug.WriteLine($"MEP Categories ListBox found: {mepCategoriesListBox != null}");
+            
+            if (mepCategoriesListBox != null)
+            {
+                System.Diagnostics.Debug.WriteLine($"MEP Categories ListBox items count: {mepCategoriesListBox.Items.Count}");
+                for (int i = 0; i < mepCategoriesListBox.Items.Count; i++)
+                {
+                    bool isChecked = mepCategoriesListBox.GetItemChecked(i);
+                    string itemText = mepCategoriesListBox.Items[i].ToString();
+                    System.Diagnostics.Debug.WriteLine($"Item {i}: '{itemText}' - Checked: {isChecked}");
+                    
+                    if (isChecked)
+                    {
+                        selectedCategories.Add(itemText);
+                    }
+                }
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine("MEP Categories ListBox not found in _topRightPanel");
+            }
+            
+            return selectedCategories;
+        }
+
+        private List<ParameterInfo> GetParametersForCategory(string category)
+        {
+            var allParameters = new List<ParameterInfo>();
+            
+            try
+            {
+                // Get the appropriate BuiltInCategory based on the category name
+                BuiltInCategory? builtInCategory = GetBuiltInCategoryForMepCategory(category);
+                if (builtInCategory == null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"No BuiltInCategory found for {category}");
+                    return allParameters;
+                }
+                
+                var parameterService = new ParameterExtractionService();
+                
+                // 1. Get parameters from ACTIVE DOCUMENT if it's selected
+                var selectedReferenceFiles = GetSelectedReferenceFiles();
+                bool activeDocumentSelected = selectedReferenceFiles.Any(f => f.Contains("(Active Document)"));
+                
+                if (activeDocumentSelected && _activeDocument != null)
+                {
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Getting parameters from ACTIVE DOCUMENT for {category}\n");
+                    var activeDocParams = parameterService.GetParametersForCategory(_activeDocument, builtInCategory.Value);
+                    allParameters.AddRange(activeDocParams);
+                    System.Diagnostics.Debug.WriteLine($"Found {activeDocParams.Count} parameters from active document for {category}");
+                }
+                
+                // 2. Get parameters from SELECTED LINKED FILES
+                var selectedLinkedFiles = selectedReferenceFiles.Where(f => !f.Contains("(Active Document)")).ToList();
+                if (selectedLinkedFiles.Count > 0)
+                {
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Getting parameters from {selectedLinkedFiles.Count} LINKED FILES for {category}\n");
+                    
+                    foreach (var linkedFile in selectedLinkedFiles)
+                    {
+                        // Find the corresponding linked file document
+                        var linkedDoc = GetLinkedDocument(linkedFile);
+                        if (linkedDoc != null)
+                        {
+                            var linkedParams = parameterService.GetParametersForCategory(linkedDoc, builtInCategory.Value);
+                            allParameters.AddRange(linkedParams);
+                            System.Diagnostics.Debug.WriteLine($"Found {linkedParams.Count} parameters from linked file '{linkedFile}' for {category}");
+                        }
+                    }
+                }
+                
+                // Remove duplicates based on parameter name
+                allParameters = allParameters.GroupBy(p => p.Name).Select(g => g.First()).ToList();
+                
+                System.Diagnostics.Debug.WriteLine($"Total unique parameters found for {category}: {allParameters.Count}");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Total unique parameters for {category}: {allParameters.Count}\n");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error getting parameters for {category}: {ex.Message}");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Error getting parameters for {category}: {ex.Message}\n");
+            }
+            
+            return allParameters;
+        }
+
+        private BuiltInCategory? GetBuiltInCategoryForMepCategory(string category)
+        {
+            switch (category.ToLower())
+            {
+                case "ducts":
+                    return BuiltInCategory.OST_DuctCurves;
+                case "duct accessories":
+                    return BuiltInCategory.OST_DuctAccessory;
+                case "cable trays":
+                    return BuiltInCategory.OST_CableTray;
+                case "pipes":
+                    return BuiltInCategory.OST_PipeCurves;
+                default:
+                    return null;
+            }
+        }
+
+        private void UpdateParameterServiceDropdowns(Dictionary<string, List<ParameterInfo>> categoryParameters)
+        {
+            try
+            {
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Updating parameter dropdowns\n");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Available categories: {string.Join(", ", categoryParameters.Keys)}\n");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] All collected categories: {string.Join(", ", _allCollectedParameters.Keys)}\n");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Number of tabs: {_serviceParameterTabs?.TabPages.Count ?? 0}\n");
+                
+                if (_serviceParameterTabs?.TabPages.Count > 0)
+                {
+                    foreach (WinForms.TabPage tabPage in _serviceParameterTabs.TabPages)
+                    {
+                        string tabName = tabPage.Text;
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Processing tab: {tabName}\n");
+                        
+                        // Find matching category parameters from ALL collected parameters (persistent)
+                        var matchingParameters = new List<ParameterInfo>();
+                        foreach (var kvp in _allCollectedParameters) // Use _allCollectedParameters instead of categoryParameters
+                        {
+                            if (IsCategoryMatch(tabName, kvp.Key))
+                            {
+                                matchingParameters.AddRange(kvp.Value);
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Found {kvp.Value.Count} parameters for {kvp.Key} in tab {tabName}\n");
+                            }
+                        }
+                        
+                        // Update ALL parameter rows in this tab
+                        UpdateTabParameterDropdown(tabPage, matchingParameters);
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Updated dropdown for tab {tabName} with {matchingParameters.Count} parameters\n");
+                    }
+                }
+                else
+                {
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] No service parameter tabs found!\n");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error updating parameter dropdowns: {ex.Message}");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] ERROR updating parameter dropdowns: {ex.Message}\n");
+            }
+        }
+
+        private bool IsCategoryMatch(string tabName, string category)
+        {
+            // Map tab names to categories
+            switch (tabName.ToLower())
+            {
+                case "ducts":
+                    return category.Equals("Ducts", StringComparison.OrdinalIgnoreCase);
+                case "duct accessories":
+                    return category.Equals("Duct Accessories", StringComparison.OrdinalIgnoreCase);
+                case "cable trays":
+                    return category.Equals("Cable Trays", StringComparison.OrdinalIgnoreCase);
+                case "pipes":
+                    return category.Equals("Pipes", StringComparison.OrdinalIgnoreCase);
+                default:
+                    return false;
+            }
+        }
+
+        private void UpdateTabParameterDropdown(WinForms.TabPage tabPage, List<ParameterInfo> parameters)
+        {
+            try
+            {
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] UpdateTabParameterDropdown called for tab {tabPage.Text} with {parameters.Count} parameters\n");
+                
+                // Find ALL ComboBoxes in the tab (parameter name dropdowns) - look in nested panels too
+                var allComboBoxes = new List<WinForms.ComboBox>();
+                
+                // First, try direct ComboBoxes in tabPage
+                allComboBoxes.AddRange(tabPage.Controls.OfType<WinForms.ComboBox>());
+                
+                // Then look in nested panels (servicePanel -> row -> nameCombo)
+                var servicePanel = tabPage.Controls.OfType<WinForms.Panel>().FirstOrDefault();
+                if (servicePanel != null)
+                {
+                    var rowPanels = servicePanel.Controls.OfType<WinForms.Panel>();
+                    foreach (var rowPanel in rowPanels)
+                    {
+                        var comboBoxes = rowPanel.Controls.OfType<WinForms.ComboBox>();
+                        allComboBoxes.AddRange(comboBoxes);
+                    }
+                }
+                
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Found {allComboBoxes.Count} ComboBoxes in tab {tabPage.Text}\n");
+                
+                if (allComboBoxes.Count > 0)
+                {
+                    // Prepare parameter list once
+                    var groupedParameters = GroupParameters(parameters);
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Grouped parameters into {groupedParameters.Count} groups\n");
+                    
+                    // Update ALL ComboBoxes in this tab
+                    foreach (var nameCombo in allComboBoxes)
+                    {
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Updating ComboBox in tab {tabPage.Text}\n");
+                        
+                        nameCombo.Items.Clear();
+                        nameCombo.Items.Add("<Select Parameter>");
+                        
+                        foreach (var group in groupedParameters)
+                        {
+                            if (!string.IsNullOrEmpty(group.Key))
+                            {
+                                nameCombo.Items.Add($"--- {group.Key} ---");
+                            }
+                            foreach (var param in group.Value)
+                            {
+                                nameCombo.Items.Add($"{param.Name} ({param.Type})");
+                            }
+                        }
+                        
+                        nameCombo.SelectedIndex = 0;
+                    }
+                    
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Updated {allComboBoxes.Count} ComboBoxes in tab {tabPage.Text} with {allComboBoxes[0].Items.Count} total items each\n");
+                }
+                else
+                {
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] No ComboBoxes found in tab {tabPage.Text}\n");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error updating tab parameter dropdown: {ex.Message}");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] ERROR in UpdateTabParameterDropdown: {ex.Message}\n");
+            }
+        }
+
+        private Dictionary<string, List<ParameterInfo>> GroupParameters(List<ParameterInfo> parameters)
+        {
+            var grouped = new Dictionary<string, List<ParameterInfo>>();
+            
+            foreach (var param in parameters)
+            {
+                string group = GetParameterGroup(param.Name);
+                if (!grouped.ContainsKey(group))
+                {
+                    grouped[group] = new List<ParameterInfo>();
+                }
+                grouped[group].Add(param);
+            }
+            
+            return grouped;
+        }
+
+        private string GetParameterGroup(string parameterName)
+        {
+            // Group parameters by common prefixes/suffixes for easier selection
+            var upperName = parameterName.ToUpper();
+            
+            if (upperName.Contains("SIZE") || upperName.Contains("DIAMETER") || upperName.Contains("WIDTH") || upperName.Contains("HEIGHT"))
+                return "Size Parameters";
+            else if (upperName.Contains("LEVEL") || upperName.Contains("ELEVATION"))
+                return "Level Parameters";
+            else if (upperName.Contains("MATERIAL") || upperName.Contains("TYPE"))
+                return "Material/Type Parameters";
+            else if (upperName.Contains("SYSTEM") || upperName.Contains("CLASSIFICATION"))
+                return "System Parameters";
+            else if (upperName.Contains("FIRE") || upperName.Contains("SMOKE"))
+                return "Fire/Safety Parameters";
+            else
+                return "Other Parameters";
+        }
+
+
+        private Document? GetLinkedDocument(string linkedFileName)
+        {
+            try
+            {
+                // Extract the actual filename from the display text
+                string actualFileName = linkedFileName;
+                if (linkedFileName.Contains(" ("))
+                {
+                    actualFileName = linkedFileName.Substring(0, linkedFileName.IndexOf(" ("));
+                }
+                
+                // Find the linked file in the current document
+                if (_activeDocument != null)
+                {
+                    var linkedFiles = new FilteredElementCollector(_activeDocument)
+                        .OfClass(typeof(RevitLinkInstance))
+                        .Cast<RevitLinkInstance>()
+                        .Where(link => link.GetLinkDocument() != null)
+                        .ToList();
+                    
+                    foreach (var link in linkedFiles)
+                    {
+                        var linkDoc = link.GetLinkDocument();
+                        if (linkDoc != null && linkDoc.Title.Contains(actualFileName))
+                        {
+                            return linkDoc;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error getting linked document for '{linkedFileName}': {ex.Message}");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Error getting linked document for '{linkedFileName}': {ex.Message}\n");
+            }
+            
+            return null;
         }
 
         private void PositionPanels()
