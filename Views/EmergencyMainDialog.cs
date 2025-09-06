@@ -49,6 +49,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.Button _saveButton = null!;
         private WinForms.Button _closeButton = null!;
         
+        // Bottom control bar buttons (like conVoid UI)
+        private WinForms.Button _refreshButton = null!;
+        private WinForms.Button _configureButton = null!;
+        
         // Dynamic UI controls (only what we actually use)
         private WinForms.ComboBox _mepTypeCombo = null!;
         private WinForms.Panel _clearancePanel = null!;
@@ -57,6 +61,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private LinkedFileService? _linkedFileService;
         private List<LinkedFileInfo> _linkedFiles = new List<LinkedFileInfo>();
         private Document? _activeDocument;
+        
+        // Selection tracking for parameter filtering
+        private List<string> _selectedReferenceFiles = new List<string>();
+        private List<string> _selectedCategories = new List<string>();
+        private List<string> _selectedHostFiles = new List<string>();
         // Opening type controls (right section)
         private WinForms.Panel _openingTypePanel = null!;
         private WinForms.RadioButton _rectangularRadio = null!;
@@ -1107,6 +1116,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             var availableParameters = GetAvailableParameters();
             nameCombo.Items.AddRange(availableParameters.ToArray());
             nameCombo.SelectedItem = parameterName;
+            
+            // Add event handler to update parameter values when parameter selection changes
+            nameCombo.SelectedIndexChanged += (sender, e) => {
+                UpdateParameterValues(valueCombo, nameCombo.SelectedItem?.ToString());
+            };
+            
             row.Controls.Add(nameCombo);
 
             var valueCombo = new WinForms.ComboBox
@@ -1153,9 +1168,57 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         }
 
         /// <summary>
+        /// Updates parameter values dropdown based on selected parameter
+        /// </summary>
+        private void UpdateParameterValues(WinForms.ComboBox valueCombo, string? selectedParameter)
+        {
+            try
+            {
+                if (valueCombo == null || string.IsNullOrEmpty(selectedParameter) || selectedParameter == "<Select>")
+                {
+                    valueCombo.Items.Clear();
+                    valueCombo.Items.Add("<Auto Selection>");
+                    valueCombo.SelectedIndex = 0;
+                    return;
+                }
+
+                // Get parameter values for the selected parameter
+                var availableValues = GetAvailableParameterValues(selectedParameter);
+                
+                // Update the value combo box
+                valueCombo.Items.Clear();
+                valueCombo.Items.AddRange(availableValues.ToArray());
+                valueCombo.SelectedIndex = 0;
+            }
+            catch (Exception ex)
+            {
+                // Log error but don't crash
+                try
+                {
+                    string logPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_update_error.log";
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] Error updating parameter values for '{selectedParameter}': {ex.Message}\n");
+                }
+                catch { }
+                
+                // Fallback to basic values
+                valueCombo.Items.Clear();
+                valueCombo.Items.Add("<Auto Selection>");
+                valueCombo.SelectedIndex = 0;
+            }
+        }
+
+        /// <summary>
         /// Gets available parameters from the current model for MEP categories
         /// </summary>
         private List<string> GetAvailableParameters()
+        {
+            return GetAvailableParametersForCategories(null); // Get all categories
+        }
+
+        /// <summary>
+        /// Gets available parameters for specific MEP categories
+        /// </summary>
+        private List<string> GetAvailableParametersForCategories(List<MepCategory>? specificCategories)
         {
             var parameters = new List<string> { "<Select>" };
             
@@ -1165,8 +1228,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 {
                     var parameterService = new ParameterExtractionService();
                     
-                    // Get parameters for common MEP categories
-                    var mepCategories = new List<MepCategory>
+                    // Use specific categories if provided, otherwise use all common MEP categories
+                    var mepCategories = specificCategories ?? new List<MepCategory>
                     {
                         MepCategory.Pipes,
                         MepCategory.Ducts,
@@ -1227,6 +1290,77 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
             
             return parameters;
+        }
+
+        /// <summary>
+        /// Gets available parameters for specific categories (e.g., only Pipes, only Ducts, etc.)
+        /// </summary>
+        private List<string> GetAvailableParametersForSpecificCategories(List<string> categoryNames)
+        {
+            var parameters = new List<string> { "<Select>" };
+            
+            try
+            {
+                if (_activeDocument != null && categoryNames.Any())
+                {
+                    var parameterService = new ParameterExtractionService();
+                    
+                    // Convert category names to MepCategory enum
+                    var mepCategories = new List<MepCategory>();
+                    foreach (var categoryName in categoryNames)
+                    {
+                        var category = GetMepCategoryFromName(categoryName);
+                        if (category.HasValue)
+                        {
+                            mepCategories.Add(category.Value);
+                        }
+                    }
+                    
+                    if (mepCategories.Any())
+                    {
+                        var parameterInfos = parameterService.GetParametersForMepCategories(_activeDocument, mepCategories);
+                        var parameterNames = parameterService.GetParameterNamesForDisplay(parameterInfos);
+                        
+                        // Add category-specific parameters
+                        foreach (var paramName in parameterNames)
+                        {
+                            if (!string.IsNullOrEmpty(paramName) && !parameters.Contains(paramName))
+                            {
+                                parameters.Add(paramName);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log error but don't crash
+                try
+                {
+                    string logPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\category_parameter_error.log";
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] Error getting parameters for categories {string.Join(", ", categoryNames)}: {ex.Message}\n");
+                }
+                catch { }
+            }
+            
+            return parameters;
+        }
+
+        /// <summary>
+        /// Converts category name string to MepCategory enum
+        /// </summary>
+        private MepCategory? GetMepCategoryFromName(string categoryName)
+        {
+            return categoryName.ToLower() switch
+            {
+                "pipes" or "pipe" => MepCategory.Pipes,
+                "ducts" or "duct" => MepCategory.Ducts,
+                "cable trays" or "cable tray" => MepCategory.CableTrays,
+                "conduits" or "conduit" => MepCategory.Conduits,
+                "duct accessories" or "duct accessory" => MepCategory.DuctAccessories,
+                "duct fittings" or "duct fitting" => MepCategory.DuctFittings,
+                _ => null
+            };
         }
 
         /// <summary>
@@ -1327,6 +1461,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         if (!values.Contains(category)) values.Add(category);
                     }
                     break;
+            }
+        }
+
+        /// <summary>
+        /// Refreshes parameter dropdowns based on selected reference file and categories
+        /// </summary>
+        public void RefreshParametersForSelection(List<string> selectedCategories)
+        {
+            try
+            {
+                // Get category-specific parameters
+                var categoryParameters = GetAvailableParametersForSpecificCategories(selectedCategories);
+                
+                // Update all parameter name dropdowns in existing rows
+                foreach (var row in _parameterRows)
+                {
+                    var nameCombo = row.Controls.OfType<WinForms.ComboBox>().FirstOrDefault();
+                    if (nameCombo != null)
+                    {
+                        var currentSelection = nameCombo.SelectedItem?.ToString();
+                        
+                        // Update the dropdown items
+                        nameCombo.Items.Clear();
+                        nameCombo.Items.AddRange(categoryParameters.ToArray());
+                        
+                        // Restore selection if it still exists in the new list
+                        if (!string.IsNullOrEmpty(currentSelection) && categoryParameters.Contains(currentSelection))
+                        {
+                            nameCombo.SelectedItem = currentSelection;
+                        }
+                        else
+                        {
+                            nameCombo.SelectedIndex = 0; // Select "<Select>"
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log error but don't crash
+                try
+                {
+                    string logPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_refresh_error.log";
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] Error refreshing parameters for categories {string.Join(", ", selectedCategories)}: {ex.Message}\n");
+                }
+                catch { }
             }
         }
 
