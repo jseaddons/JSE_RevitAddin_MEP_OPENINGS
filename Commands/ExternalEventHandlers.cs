@@ -1,124 +1,124 @@
 using System;
-using Autodesk.Revit.UI;
+using System.Windows.Forms;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
-using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Views;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 {
     /// <summary>
-    /// External event handler for opening placement operations
+    /// External Event handler for UI operations to prevent crashes in Revit
     /// </summary>
-    public class OpeningPlacementExternalEventHandler : IExternalEventHandler
+    public class ShowDialogExternalEvent : IExternalEventHandler
     {
-        private readonly ApplicationProfileService _profileService;
+        private ApplicationProfileService? _appProfileService;
+        private Document? _document;
+        private DialogType _dialogType;
 
-        public OpeningPlacementExternalEventHandler(ApplicationProfileService profileService)
+        public enum DialogType
         {
-            _profileService = profileService ?? throw new ArgumentNullException(nameof(profileService));
+            MinimalTest,
+            ProfileSetup,
+            ProfileManagement,
+            MainDialog
+        }
+
+        public void SetParameters(ApplicationProfileService appProfileService, Document? document, DialogType dialogType)
+        {
+            _appProfileService = appProfileService;
+            _document = document;
+            _dialogType = dialogType;
         }
 
         public void Execute(UIApplication app)
         {
             try
             {
-                _profileService.StatusManager.UpdateStatus("Starting MEP opening placement...", StatusType.Processing);
-
-                // Get current document
-                var uiDoc = app.ActiveUIDocument;
-                if (uiDoc == null)
+                switch (_dialogType)
                 {
-                    _profileService.StatusManager.UpdateStatus("No active document found", StatusType.Error);
-                    return;
+                    case DialogType.MinimalTest:
+                        ShowMinimalTestDialog();
+                        break;
+                    case DialogType.ProfileSetup:
+                        ShowProfileSetupDialog();
+                        break;
+                    case DialogType.ProfileManagement:
+                        ShowProfileManagementDialog();
+                        break;
+                    case DialogType.MainDialog:
+                        ShowMainDialog();
+                        break;
                 }
-
-                var doc = uiDoc.Document;
-
-                // TODO: For now, we'll just update the status to indicate the ExternalEvent system is working
-                // In a full implementation, this would call the actual opening placement logic
-                // For example:
-                // var openingsService = new OpeningPlacementService(_profileService);
-                // var result = openingsService.PlaceOpenings(doc);
-
-                // Simulate successful completion for now
-                System.Threading.Thread.Sleep(1000); // Simulate processing time
-
-                _profileService.StatusManager.UpdateStatus("MEP opening placement completed successfully", StatusType.Success);
             }
             catch (Exception ex)
             {
-                _profileService.StatusManager.UpdateStatus($"Opening placement failed: {ex.Message}", StatusType.Error);
+                TaskDialog.Show("Error", $"Dialog execution failed: {ex.Message}");
             }
         }
 
-        public string GetName()
+        private void ShowMinimalTestDialog()
         {
-            return "MEP Opening Placement Handler";
-        }
-    }
-
-    /// <summary>
-    /// External event handler for parameter synchronization
-    /// </summary>
-    public class ParameterSyncExternalEventHandler : IExternalEventHandler
-    {
-        private readonly ApplicationProfileService _profileService;
-
-        public ParameterSyncExternalEventHandler(ApplicationProfileService profileService)
-        {
-            _profileService = profileService ?? throw new ArgumentNullException(nameof(profileService));
-        }
-
-        public void Execute(UIApplication app)
-        {
-            try
+            using (var testDialog = new System.Windows.Forms.Form())
             {
-                _profileService.StatusManager.UpdateStatus("Synchronizing parameters...", StatusType.Processing);
-
-                // TODO: Implement parameter synchronization logic
-
-                _profileService.StatusManager.UpdateStatus("Parameter synchronization completed", StatusType.Success);
+                testDialog.Text = "Minimal Test Dialog - External Event";
+                testDialog.Size = new System.Drawing.Size(400, 300);
+                testDialog.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
+                
+                var label = new System.Windows.Forms.Label
+                {
+                    Text = "This dialog is shown via External Event.\nThis should NOT crash on second execution.\n\nClose this and run the command again to test.",
+                    Dock = System.Windows.Forms.DockStyle.Fill,
+                    TextAlign = System.Drawing.ContentAlignment.MiddleCenter
+                };
+                
+                testDialog.Controls.Add(label);
+                testDialog.ShowDialog();
             }
-            catch (Exception ex)
+        }
+
+        private void ShowProfileSetupDialog()
+        {
+            if (_appProfileService == null) return;
+            
+            using (var emergencyDialog = new EmergencyProfileSetup(_appProfileService.ProfileService, _appProfileService.StatusManager))
             {
-                _profileService.StatusManager.UpdateStatus($"Parameter sync failed: {ex.Message}", StatusType.Error);
+                var result = emergencyDialog.ShowDialog();
+                if (result == DialogResult.OK && emergencyDialog.CreatedProfile != null)
+                {
+                    _appProfileService.SetCurrentProfile(emergencyDialog.CreatedProfile);
+                    TaskDialog.Show("Profile Setup", $"Profile '{emergencyDialog.CreatedProfile.Name}' created successfully!");
+                }
+            }
+        }
+
+        private void ShowProfileManagementDialog()
+        {
+            if (_appProfileService == null) return;
+            
+            using (var emergencyProfileMgmt = new EmergencyProfileManagementDialog(_appProfileService))
+            {
+                var result = emergencyProfileMgmt.ShowDialog();
+                if (result == DialogResult.OK && emergencyProfileMgmt.ShouldOpenMainDialog)
+                {
+                    ShowMainDialog();
+                }
+            }
+        }
+
+        private void ShowMainDialog()
+        {
+            if (_appProfileService == null || _document == null) return;
+            
+            using (var emergencyMainDlg = new EmergencyMainDialog(_appProfileService, _document))
+            {
+                emergencyMainDlg.ShowDialog();
             }
         }
 
         public string GetName()
         {
-            return "Parameter Sync Handler";
-        }
-    }
-
-    /// <summary>
-    /// External event handler for status updates
-    /// </summary>
-    public class StatusUpdateExternalEventHandler : IExternalEventHandler
-    {
-        private readonly ApplicationProfileService _profileService;
-        private string _message = string.Empty;
-        private StatusType _statusType = StatusType.Info;
-
-        public StatusUpdateExternalEventHandler(ApplicationProfileService profileService)
-        {
-            _profileService = profileService ?? throw new ArgumentNullException(nameof(profileService));
-        }
-
-        public void UpdateStatus(string message, StatusType statusType)
-        {
-            _message = message;
-            _statusType = statusType;
-        }
-
-        public void Execute(UIApplication app)
-        {
-            _profileService.StatusManager.UpdateStatus(_message, _statusType);
-        }
-
-        public string GetName()
-        {
-            return "Status Update Handler";
+            return "Show Dialog External Event";
         }
     }
 }

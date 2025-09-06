@@ -8,6 +8,7 @@ using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.ViewModels;
 using JSE_RevitAddin_MEP_OPENINGS.Views;
+using JSE_RevitAddin_MEP_OPENINGS.Commands;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 {
@@ -68,89 +69,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 File.AppendAllText(logPath, $"[{DateTime.Now}] Document path: {doc.PathName}\n");
                 File.AppendAllText(logPath, $"[{DateTime.Now}] IsProfileSetupRequired: {appProfileService.IsProfileSetupRequired}\n");
 
-                // Ensure WPF Application exists for Revit add-in compatibility
-                if (System.Windows.Application.Current == null)
+                // Note: Removed WPF Application creation to prevent "Cannot create more than one System.Windows.Application instance" error
+
+                // STEP 3: Test EmergencyMainDialog with proper disposal
+                System.Diagnostics.Debug.WriteLine("Testing EmergencyMainDialog with proper disposal");
+                File.AppendAllText(logPath, $"[{DateTime.Now}] Testing EmergencyMainDialog with proper disposal\n");
+                
+                // Create main dialog with proper using statement
+                using (var mainDialog = new Views.EmergencyMainDialog(appProfileService, doc))
                 {
-                    new System.Windows.Application();
-                }
-
-                // Check if profile setup is required
-                if (appProfileService.IsProfileSetupRequired)
-                {
-                    System.Diagnostics.Debug.WriteLine("Taking Profile Setup branch");
-                    File.AppendAllText(logPath, $"[{DateTime.Now}] Taking Profile Setup branch\n");
-                    
-                    // EMERGENCY MODE: Use WinForms ProfileSetup instead of WPF to avoid crashes
-                    var emergencyDialog = new Views.EmergencyProfileSetup(appProfileService.ProfileService, appProfileService.StatusManager);
-
-                    var result = emergencyDialog.ShowDialog();
-                    if (result == System.Windows.Forms.DialogResult.OK && emergencyDialog.CreatedProfile != null)
-                    {
-                        // Set the created profile as current
-                        appProfileService.SetCurrentProfile(emergencyDialog.CreatedProfile);
-                        
-                        // Debug: Check if profiles are now available
-                        System.Diagnostics.Debug.WriteLine($"After profile creation - IsProfileSetupRequired: {appProfileService.IsProfileSetupRequired}");
-                        File.AppendAllText(logPath, $"[{DateTime.Now}] After profile creation - IsProfileSetupRequired: {appProfileService.IsProfileSetupRequired}\n");
-
-                        // Show success message
-                        TaskDialog.Show("Profile Setup", $"Profile '{emergencyDialog.CreatedProfile.Name}' created successfully!");
-
-                        // EMERGENCY MODE: Open WinForms main dialog (crash-safe)
-                        System.Diagnostics.Debug.WriteLine("Creating EmergencyMainDialog after profile setup");
-                        using (var emergencyMainDlg = new JSE_RevitAddin_MEP_OPENINGS.Views.EmergencyMainDialog(appProfileService, doc))
-                        {
-                            emergencyMainDlg.ShowDialog(); // Modal dialog with proper disposal
-                        }
-                    }
-                    else
-                    {
-                        TaskDialog.Show("Profile Setup", "Profile setup was cancelled.");
-                        return Result.Cancelled;
-                    }
-                }
-                else
-                {
-                    System.Diagnostics.Debug.WriteLine("Taking Profile Management branch");
-                    File.AppendAllText(logPath, $"[{DateTime.Now}] Taking Profile Management branch\n");
-                    
-                    // EMERGENCY MODE: Use WinForms ProfileManagement instead of WPF to prevent crashes
-                    var emergencyProfileMgmt = new Views.EmergencyProfileManagementDialog(appProfileService);
-
-                    var result = emergencyProfileMgmt.ShowDialog();
-                    System.Diagnostics.Debug.WriteLine($"Profile management dialog result: {result}");
-                    System.Diagnostics.Debug.WriteLine($"ShouldOpenMainDialog: {emergencyProfileMgmt.ShouldOpenMainDialog}");
-
-                    if (result == System.Windows.Forms.DialogResult.OK && emergencyProfileMgmt.ShouldOpenMainDialog)
-                    {
-                        // Open WinForms main dialog after profile action
-                        System.Diagnostics.Debug.WriteLine("Creating EmergencyMainDialog after profile management");
-                        using (var emergencyMainDlg = new Views.EmergencyMainDialog(appProfileService, doc))
-                        {
-                            emergencyMainDlg.ShowDialog(); // Modal dialog with proper disposal
-                        }
-                    }
-                    else
-                    {
-                        System.Diagnostics.Debug.WriteLine("EmergencyMainDialog NOT created - conditions not met");
-                    }
+                    var result = mainDialog.ShowDialog();
+                    System.Diagnostics.Debug.WriteLine($"Main dialog result: {result}");
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] Main dialog result: {result}\n");
                 }
                 
-                // CRITICAL: Clean up the singleton instance to prevent crashes on subsequent executions
-                ApplicationProfileService.CleanupInstance();
+                // Log success
+                File.AppendAllText(logPath, $"[{DateTime.Now}] EmergencyMainDialog shown and disposed successfully\n");
+                
+                // Note: Not cleaning up singleton to avoid potential issues
                 
                 return Result.Succeeded;
             }
             catch (Exception ex)
             {
-                // Clean up even if there was an error
+                // Show error in TaskDialog instead of crashing
                 try
                 {
-                    ApplicationProfileService.CleanupInstance();
+                    TaskDialog.Show("Error", $"Command failed but Revit did not crash:\n\n{ex.Message}");
                 }
-                catch { }
+                catch
+                {
+                    // If even TaskDialog fails, just set the message
+                    message = $"Error: {ex.Message}";
+                }
                 
-                message = $"Error: {ex.Message}";
                 return Result.Failed;
             }
         }
@@ -177,6 +129,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"TestDirectEmergencyMainDialog ERROR: {ex.Message}");
+                
+                // Show error in TaskDialog instead of crashing
+                try
+                {
+                    var errorDialog = new TaskDialog("Static Test Error");
+                    errorDialog.MainInstruction = "Static Test Failed";
+                    errorDialog.MainContent = $"An error occurred in static test but Revit did not crash:\n\n{ex.Message}";
+                    errorDialog.CommonButtons = TaskDialogCommonButtons.Ok;
+                    errorDialog.Show();
+                }
+                catch { }
+                
                 // Clean up even if there was an error
                 try
                 {

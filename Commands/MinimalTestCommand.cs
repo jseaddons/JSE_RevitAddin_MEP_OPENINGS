@@ -1,14 +1,13 @@
 using System;
+using System.Windows.Forms;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 {
     /// <summary>
-    /// MINIMAL TEST - NO UI - ZERO CRASH RISK
-    /// Just tests if basic services work without any UI
+    /// Minimal test command to isolate the crash issue
     /// </summary>
     [Transaction(TransactionMode.Manual)]
     public class MinimalTestCommand : IExternalCommand
@@ -17,38 +16,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         {
             try
             {
-                // MINIMAL TEST - NO UI AT ALL
-                TaskDialog.Show("Minimal Test", "Command started successfully - NO UI!");
-                
-                // Test basic service access
-                var appProfileService = ApplicationProfileService.Instance;
-                
-                // Update profile service for current document
-                var doc = commandData.Application.ActiveUIDocument.Document;
-                var docPath = doc.PathName;
-                appProfileService.UpdateForCurrentDocument(docPath);
-                
-                TaskDialog.Show("Service Test", $"ApplicationProfileService created: {appProfileService != null}\nDocument: {docPath}");
-                
-                // Test profile status
-                var isSetupRequired = appProfileService?.IsProfileSetupRequired ?? false;
-                TaskDialog.Show("Profile Test", $"IsProfileSetupRequired: {isSetupRequired}");
-                
-                if (appProfileService.CurrentProfile != null)
+                // Create a simple WinForms dialog
+                using (var testDialog = new System.Windows.Forms.Form())
                 {
-                    TaskDialog.Show("Current Profile", $"Current Profile: {appProfileService.CurrentProfile.Name}");
-                }
-                else
-                {
-                    TaskDialog.Show("Current Profile", "No current profile");
+                    testDialog.Text = "Minimal Test Dialog";
+                    testDialog.Size = new System.Drawing.Size(400, 300);
+                    testDialog.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
+                    
+                    var label = new System.Windows.Forms.Label
+                    {
+                        Text = "This is a minimal test dialog.\nClose this and run the command again to test for crashes.",
+                        Dock = System.Windows.Forms.DockStyle.Fill,
+                        TextAlign = System.Drawing.ContentAlignment.MiddleCenter
+                    };
+                    
+                    testDialog.Controls.Add(label);
+                    
+                    // Show as modal dialog
+                    testDialog.ShowDialog();
                 }
                 
-                TaskDialog.Show("Success", "All tests passed - NO UI CRASHES!");
                 return Result.Succeeded;
             }
             catch (Exception ex)
             {
-                TaskDialog.Show("Error", $"Exception: {ex.Message}\n\nStack Trace:\n{ex.StackTrace}");
                 message = $"Error: {ex.Message}";
                 return Result.Failed;
             }
