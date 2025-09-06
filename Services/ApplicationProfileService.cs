@@ -58,6 +58,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
+        /// Cleans up the singleton instance - call this at the end of command execution
+        /// to prevent memory leaks and crashes on subsequent executions
+        /// </summary>
+        public static void CleanupInstance()
+        {
+            lock (_lock)
+            {
+                if (_instance != null)
+                {
+                    // Unsubscribe from all events to prevent memory leaks
+                    if (_instance._profileService != null)
+                    {
+                        _instance._profileService.ProfileChanged -= _instance.OnProfileServiceProfileChanged;
+                        _instance._profileService.StatusUpdated -= _instance.OnProfileServiceStatusUpdated;
+                    }
+                    
+                    if (_instance._statusManager != null)
+                    {
+                        _instance._statusManager.StatusUpdated -= _instance.OnStatusManagerStatusUpdated;
+                    }
+                    
+                    // Clear current profile reference
+                    _instance._currentProfile = null;
+                    
+                    // Dispose the instance
+                    _instance = null;
+                }
+            }
+        }
+
+        /// <summary>
         /// Gets the current active profile
         /// </summary>
         public UserProfile? CurrentProfile => _currentProfile;

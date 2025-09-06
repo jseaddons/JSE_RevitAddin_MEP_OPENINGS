@@ -49,9 +49,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.Button _saveButton = null!;
         private WinForms.Button _closeButton = null!;
         
-        // Bottom control bar buttons (like conVoid UI)
+        // Bottom control bar buttons (scaffolding only)
         private WinForms.Button _refreshButton = null!;
         private WinForms.Button _configureButton = null!;
+        
         
         // Dynamic UI controls (only what we actually use)
         private WinForms.ComboBox _mepTypeCombo = null!;
@@ -319,7 +320,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
             _progressBar = new WinForms.ProgressBar
             {
-                Location = new System.Drawing.Point(this.Width - 220, 5),
+                Location = new System.Drawing.Point(10, 5),
                 Size = new System.Drawing.Size(200, 20),
                 Style = WinForms.ProgressBarStyle.Continuous,
                 Minimum = 0,
@@ -327,6 +328,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Value = 0
             };
             _statusPanel.Controls.Add(_progressBar);
+
+            // Calculate left section right edge position (left panel width)
+            int leftSectionRightEdge = (this.Width - InnerRightWidth) - 20; // 20px margin from right edge of left section
+
+            // Refresh Button (aligned to left section right corner)
+            _refreshButton = new WinForms.Button
+            {
+                Text = "Refresh",
+                Location = new System.Drawing.Point(leftSectionRightEdge - 130, 3), // 130px from right edge (60+60+10 spacing)
+                Size = new System.Drawing.Size(60, 24),
+                BackColor = System.Drawing.Color.FromArgb(108, 117, 125),
+                ForeColor = System.Drawing.Color.White,
+                FlatStyle = WinForms.FlatStyle.Flat,
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Bold)
+            };
+            _statusPanel.Controls.Add(_refreshButton);
+
+            // Configure Button (aligned to left section right corner)
+            _configureButton = new WinForms.Button
+            {
+                Text = "Config",
+                Location = new System.Drawing.Point(leftSectionRightEdge - 65, 3), // 65px from right edge (60+5 spacing)
+                Size = new System.Drawing.Size(60, 24),
+                BackColor = System.Drawing.Color.FromArgb(102, 16, 242),
+                ForeColor = System.Drawing.Color.White,
+                FlatStyle = WinForms.FlatStyle.Flat,
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Bold)
+            };
+            _statusPanel.Controls.Add(_configureButton);
 
             // Left Panel (expanded to fill most space) - start below header
             _leftPanel = new WinForms.Panel
@@ -1117,11 +1147,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             nameCombo.Items.AddRange(availableParameters.ToArray());
             nameCombo.SelectedItem = parameterName;
             
-            // Add event handler to update parameter values when parameter selection changes
-            nameCombo.SelectedIndexChanged += (sender, e) => {
-                UpdateParameterValues(valueCombo, nameCombo.SelectedItem?.ToString());
-            };
-            
             row.Controls.Add(nameCombo);
 
             var valueCombo = new WinForms.ComboBox
@@ -1136,6 +1161,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             var availableValues = GetAvailableParameterValues(parameterName);
             valueCombo.Items.AddRange(availableValues.ToArray());
             valueCombo.SelectedIndex = 0;
+            
+            // Add event handler to update parameter values when parameter selection changes
+            nameCombo.SelectedIndexChanged += (sender, e) => {
+                UpdateParameterValues(valueCombo, nameCombo.SelectedItem?.ToString());
+            };
+            
             row.Controls.Add(valueCombo);
 
             var removeBtn = new WinForms.Button
@@ -1509,6 +1540,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 catch { }
             }
         }
+
 
         private void LoadProfileInfo()
         {

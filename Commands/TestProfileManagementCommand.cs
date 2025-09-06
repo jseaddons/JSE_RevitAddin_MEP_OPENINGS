@@ -98,8 +98,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 
                         // EMERGENCY MODE: Open WinForms main dialog (crash-safe)
                         System.Diagnostics.Debug.WriteLine("Creating EmergencyMainDialog after profile setup");
-                        var emergencyMainDlg = new JSE_RevitAddin_MEP_OPENINGS.Views.EmergencyMainDialog(appProfileService, doc);
-                        emergencyMainDlg.Show(); // Modeless dialog
+                        using (var emergencyMainDlg = new JSE_RevitAddin_MEP_OPENINGS.Views.EmergencyMainDialog(appProfileService, doc))
+                        {
+                            emergencyMainDlg.ShowDialog(); // Modal dialog with proper disposal
+                        }
                     }
                     else
                     {
@@ -123,8 +125,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     {
                         // Open WinForms main dialog after profile action
                         System.Diagnostics.Debug.WriteLine("Creating EmergencyMainDialog after profile management");
-                        var emergencyMainDlg = new Views.EmergencyMainDialog(appProfileService, doc);
-                        emergencyMainDlg.Show(); // Modeless
+                        using (var emergencyMainDlg = new Views.EmergencyMainDialog(appProfileService, doc))
+                        {
+                            emergencyMainDlg.ShowDialog(); // Modal dialog with proper disposal
+                        }
                     }
                     else
                     {
@@ -132,10 +136,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     }
                 }
                 
+                // CRITICAL: Clean up the singleton instance to prevent crashes on subsequent executions
+                ApplicationProfileService.CleanupInstance();
+                
                 return Result.Succeeded;
             }
             catch (Exception ex)
             {
+                // Clean up even if there was an error
+                try
+                {
+                    ApplicationProfileService.CleanupInstance();
+                }
+                catch { }
+                
                 message = $"Error: {ex.Message}";
                 return Result.Failed;
             }
@@ -151,13 +165,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 System.Diagnostics.Debug.WriteLine("=== TestDirectEmergencyMainDialog STARTED ===");
                 var appProfileService = ApplicationProfileService.Instance;
                 System.Diagnostics.Debug.WriteLine("Creating EmergencyMainDialog directly...");
-                var emergencyMainDlg = new JSE_RevitAddin_MEP_OPENINGS.Views.EmergencyMainDialog(appProfileService, doc);
-                emergencyMainDlg.Show();
+                using (var emergencyMainDlg = new JSE_RevitAddin_MEP_OPENINGS.Views.EmergencyMainDialog(appProfileService, doc))
+                {
+                    emergencyMainDlg.ShowDialog(); // Modal dialog with proper disposal
+                }
                 System.Diagnostics.Debug.WriteLine("=== TestDirectEmergencyMainDialog COMPLETED ===");
+                
+                // Clean up the singleton instance
+                ApplicationProfileService.CleanupInstance();
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"TestDirectEmergencyMainDialog ERROR: {ex.Message}");
+                // Clean up even if there was an error
+                try
+                {
+                    ApplicationProfileService.CleanupInstance();
+                }
+                catch { }
             }
         }
 
