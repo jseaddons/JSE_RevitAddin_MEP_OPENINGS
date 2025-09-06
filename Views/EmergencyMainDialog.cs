@@ -21,6 +21,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         // Store all collected parameters globally to persist across refreshes
         private Dictionary<string, List<ParameterInfo>> _allCollectedParameters = new Dictionary<string, List<ParameterInfo>>();
         
+        // Flag to prevent infinite loops during ComboBox population
+        private bool _isUpdatingComboBoxes = false;
+        
         // Main panels - 4-section layout
         private WinForms.Panel _leftPanel = null!;
         private WinForms.Panel _rightPanel = null!;
@@ -3066,6 +3069,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         }
                         
                         nameCombo.SelectedIndex = 0;
+                        
+                        // Add event handler for parameter selection to populate values
+                        nameCombo.SelectedIndexChanged += (sender, e) => OnParameterSelected(sender, e, tabPage.Text);
+                        
+                        // Add event handler for value selection to enable mapping
+                        var valueCombo = FindValueComboBox(nameCombo);
+                        if (valueCombo != null)
+                        {
+                            valueCombo.SelectedIndexChanged += (sender, e) => OnValueSelected(sender, e, tabPage.Text);
+                            
+                            // Initialize value ComboBox with default selection
+                            valueCombo.Items.Clear();
+                            valueCombo.Items.Add("<Select Value>");
+                            valueCombo.SelectedIndex = 0;
+                        }
                     }
                     
                     System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Updated {allComboBoxes.Count} ComboBoxes in tab {tabPage.Text} with {allComboBoxes[0].Items.Count} total items each\n");
@@ -3156,6 +3174,251 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
             
             return null;
+        }
+
+        private void OnParameterSelected(object? sender, EventArgs e, string tabName)
+        {
+            try
+            {
+                // Prevent infinite loops
+                if (_isUpdatingComboBoxes)
+                {
+                    return;
+                }
+                
+                if (sender is WinForms.ComboBox nameCombo && nameCombo.SelectedItem != null)
+                {
+                    string selectedParameter = nameCombo.SelectedItem.ToString();
+                    
+                    // Skip if it's a group header or default selection
+                    if (selectedParameter.StartsWith("---") || selectedParameter == "<Select Parameter>")
+                    {
+                        return;
+                    }
+                    
+                    // Extract parameter name (remove type info)
+                    string parameterName = selectedParameter.Split('(')[0].Trim();
+                    
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Parameter selected: {parameterName} in tab {tabName}\n");
+                    
+                    // Find the corresponding value ComboBox in the same row
+                    var valueCombo = FindValueComboBox(nameCombo);
+                    if (valueCombo != null)
+                    {
+                        // Set flag to prevent infinite loops
+                        _isUpdatingComboBoxes = true;
+                        
+                        try
+                        {
+                            // Get all unique values for this parameter from collected parameters
+                            var parameterValues = GetParameterValues(parameterName, tabName);
+                            
+                            // Populate the value ComboBox
+                            valueCombo.Items.Clear();
+                            valueCombo.Items.Add("<Select Value>");
+                            
+                            if (parameterValues.Count > 0)
+                            {
+                                valueCombo.Items.AddRange(parameterValues.ToArray());
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Populated value ComboBox with {parameterValues.Count} values for parameter {parameterName}: {string.Join(", ", parameterValues.Take(5))}\n");
+                            }
+                            else
+                            {
+                                valueCombo.Items.Add("No values found");
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] No values found for parameter {parameterName}\n");
+                            }
+                            
+                            valueCombo.SelectedIndex = 0;
+                        }
+                        finally
+                        {
+                            // Always reset the flag
+                            _isUpdatingComboBoxes = false;
+                        }
+                    }
+                    else
+                    {
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] No value ComboBox found for parameter {parameterName}\n");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Error in OnParameterSelected: {ex.Message}\n");
+                _isUpdatingComboBoxes = false; // Reset flag on error
+            }
+        }
+
+        private WinForms.ComboBox? FindValueComboBox(WinForms.ComboBox nameCombo)
+        {
+            try
+            {
+                // Find the parent row panel
+                var rowPanel = nameCombo.Parent as WinForms.Panel;
+                if (rowPanel != null)
+                {
+                    // Find the second ComboBox in the same row (value ComboBox)
+                    var comboBoxes = rowPanel.Controls.OfType<WinForms.ComboBox>().ToList();
+                    if (comboBoxes.Count >= 2)
+                    {
+                        // Return the second ComboBox (value ComboBox)
+                        return comboBoxes[1];
+                    }
+                }
+                return null;
+            }
+            catch (Exception ex)
+            {
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Error finding value ComboBox: {ex.Message}\n");
+                return null;
+            }
+        }
+
+        private List<string> GetParameterValues(string parameterName, string tabName)
+        {
+            try
+            {
+                var values = new HashSet<string>(); // Use HashSet to avoid duplicates
+                
+                // Get the category for this tab
+                string category = GetCategoryForTab(tabName);
+                if (string.IsNullOrEmpty(category) || !_allCollectedParameters.ContainsKey(category))
+                {
+                    return new List<string>();
+                }
+                
+                // Find the parameter in collected parameters
+                var parameters = _allCollectedParameters[category];
+                var targetParameter = parameters.FirstOrDefault(p => p.Name.Equals(parameterName, StringComparison.OrdinalIgnoreCase));
+                
+                if (targetParameter != null && targetParameter.Values != null)
+                {
+                    // Add all values from the parameter
+                    foreach (var value in targetParameter.Values)
+                    {
+                        if (!string.IsNullOrEmpty(value))
+                        {
+                            values.Add(value);
+                        }
+                    }
+                }
+                
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Found {values.Count} unique values for parameter {parameterName} in category {category}\n");
+                
+                return values.OrderBy(v => v).ToList(); // Return sorted list
+            }
+            catch (Exception ex)
+            {
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Error getting parameter values for {parameterName}: {ex.Message}\n");
+                return new List<string>();
+            }
+        }
+
+        private string GetCategoryForTab(string tabName)
+        {
+            // Map tab names back to categories
+            switch (tabName.ToLower())
+            {
+                case "ducts":
+                    return "Ducts";
+                case "duct accessories":
+                    return "Duct Accessories";
+                case "cable trays":
+                    return "Cable Trays";
+                case "pipes":
+                    return "Pipes";
+                default:
+                    return string.Empty;
+            }
+        }
+
+        private void OnValueSelected(object? sender, EventArgs e, string tabName)
+        {
+            try
+            {
+                // Prevent infinite loops
+                if (_isUpdatingComboBoxes)
+                {
+                    return;
+                }
+                
+                if (sender is WinForms.ComboBox valueCombo && valueCombo.SelectedItem != null)
+                {
+                    string selectedValue = valueCombo.SelectedItem.ToString();
+                    
+                    // Skip if it's default selection
+                    if (selectedValue == "<Select Value>" || selectedValue == "No values found")
+                    {
+                        return;
+                    }
+                    
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Value selected: {selectedValue} in tab {tabName}\n");
+                    
+                    // Find the corresponding parameter ComboBox in the same row
+                    var nameCombo = FindParameterComboBox(valueCombo);
+                    if (nameCombo != null && nameCombo.SelectedItem != null)
+                    {
+                        string selectedParameter = nameCombo.SelectedItem.ToString();
+                        if (!selectedParameter.StartsWith("---") && selectedParameter != "<Select Parameter>")
+                        {
+                            string parameterName = selectedParameter.Split('(')[0].Trim();
+                            
+                            // Show mapping information
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Ready to map: {parameterName} = {selectedValue} for {tabName}\n");
+                            
+                            // Handle different parameter types
+                            if (parameterName.Equals("Size", StringComparison.OrdinalIgnoreCase))
+                            {
+                                // For Size parameters, find reference elements with this size
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Size parameter selected - finding reference elements with size: {selectedValue}\n");
+                                // TODO: Add "Find Reference Elements" button to show elements with this size
+                            }
+                            else if (parameterName.Equals("Reference Level", StringComparison.OrdinalIgnoreCase) || 
+                                     parameterName.Equals("Level", StringComparison.OrdinalIgnoreCase))
+                            {
+                                // For Level parameters, this will be applied to all openings on that level
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Level parameter selected - will apply to all openings on level: {selectedValue}\n");
+                                // TODO: Add "Apply to All Openings on Level" button
+                            }
+                            else
+                            {
+                                // For other parameters (System Type, Material, etc.)
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Parameter {parameterName} selected - ready for mapping to openings\n");
+                                // TODO: Add "Map to Opening" button for general parameters
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Error in OnValueSelected: {ex.Message}\n");
+            }
+        }
+
+        private WinForms.ComboBox? FindParameterComboBox(WinForms.ComboBox valueCombo)
+        {
+            try
+            {
+                // Find the parent row panel
+                var rowPanel = valueCombo.Parent as WinForms.Panel;
+                if (rowPanel != null)
+                {
+                    // Find the first ComboBox in the same row (parameter ComboBox)
+                    var comboBoxes = rowPanel.Controls.OfType<WinForms.ComboBox>().ToList();
+                    if (comboBoxes.Count >= 2)
+                    {
+                        // Return the first ComboBox (parameter ComboBox)
+                        return comboBoxes[0];
+                    }
+                }
+                return null;
+            }
+            catch (Exception ex)
+            {
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Error finding parameter ComboBox: {ex.Message}\n");
+                return null;
+            }
         }
 
         private void PositionPanels()
