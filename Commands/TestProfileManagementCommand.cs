@@ -74,28 +74,66 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 
                 // Note: Removed WPF Application creation to prevent "Cannot create more than one System.Windows.Application instance" error
 
-                // STEP 3: Test complete flow - Profile Management then Main Dialog
-                System.Diagnostics.Debug.WriteLine("Testing complete flow - Profile Management then Main Dialog");
-                File.AppendAllText(logPath, $"[{DateTime.Now}] Testing complete flow - Profile Management then Main Dialog\n");
-                
-                // First show profile management dialog
-                using (var profileMgmtDialog = new Views.EmergencyProfileManagementDialog(appProfileService))
+                // CORRECT FLOW: Check if profile setup is required first
+                if (appProfileService.IsProfileSetupRequired)
                 {
-                    var result = profileMgmtDialog.ShowDialog();
-                    System.Diagnostics.Debug.WriteLine($"Profile management dialog result: {result}");
-                    File.AppendAllText(logPath, $"[{DateTime.Now}] Profile management dialog result: {result}\n");
+                    // No profiles exist - show CREATE PROFILE dialog first
+                    System.Diagnostics.Debug.WriteLine("No profiles found - showing CREATE PROFILE dialog");
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] No profiles found - showing CREATE PROFILE dialog\n");
                     
-                    if (result == System.Windows.Forms.DialogResult.OK && profileMgmtDialog.ShouldOpenMainDialog)
+                    using (var createProfileDialog = new Views.EmergencyProfileSetup(appProfileService.ProfileService, appProfileService.StatusManager))
                     {
-                        // Then show main dialog
-                        System.Diagnostics.Debug.WriteLine("Opening main dialog after profile management");
-                        File.AppendAllText(logPath, $"[{DateTime.Now}] Opening main dialog after profile management\n");
+                        var createResult = createProfileDialog.ShowDialog();
+                        System.Diagnostics.Debug.WriteLine($"Create profile dialog result: {createResult}");
+                        File.AppendAllText(logPath, $"[{DateTime.Now}] Create profile dialog result: {createResult}\n");
                         
-                        using (var mainDialog = new Views.EmergencyMainDialog(appProfileService, doc))
+                        if (createResult == System.Windows.Forms.DialogResult.OK && createProfileDialog.CreatedProfile != null)
                         {
-                            var mainResult = mainDialog.ShowDialog();
-                            System.Diagnostics.Debug.WriteLine($"Main dialog result: {mainResult}");
-                            File.AppendAllText(logPath, $"[{DateTime.Now}] Main dialog result: {mainResult}\n");
+                            // Set the new profile as current
+                            appProfileService.SetCurrentProfile(createProfileDialog.CreatedProfile);
+                            
+                            // CRITICAL: Save the profile to ensure persistence
+                            appProfileService.SaveCurrentProfile();
+                            System.Diagnostics.Debug.WriteLine($"Profile saved: {createProfileDialog.CreatedProfile.Name}");
+                            File.AppendAllText(logPath, $"[{DateTime.Now}] Profile saved: {createProfileDialog.CreatedProfile.Name}\n");
+                            
+                            // Then show main dialog
+                            System.Diagnostics.Debug.WriteLine("Opening main dialog after profile creation");
+                            File.AppendAllText(logPath, $"[{DateTime.Now}] Opening main dialog after profile creation\n");
+                            
+                            using (var mainDialog = new Views.EmergencyMainDialog(appProfileService, doc))
+                            {
+                                var mainResult = mainDialog.ShowDialog();
+                                System.Diagnostics.Debug.WriteLine($"Main dialog result: {mainResult}");
+                                File.AppendAllText(logPath, $"[{DateTime.Now}] Main dialog result: {mainResult}\n");
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    // Profiles exist - show PROFILE MANAGEMENT dialog first
+                    System.Diagnostics.Debug.WriteLine("Profiles exist - showing PROFILE MANAGEMENT dialog");
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] Profiles exist - showing PROFILE MANAGEMENT dialog\n");
+                    
+                    using (var profileMgmtDialog = new Views.EmergencyProfileManagementDialog(appProfileService))
+                    {
+                        var result = profileMgmtDialog.ShowDialog();
+                        System.Diagnostics.Debug.WriteLine($"Profile management dialog result: {result}");
+                        File.AppendAllText(logPath, $"[{DateTime.Now}] Profile management dialog result: {result}\n");
+                        
+                        if (result == System.Windows.Forms.DialogResult.OK && profileMgmtDialog.ShouldOpenMainDialog)
+                        {
+                            // Then show main dialog
+                            System.Diagnostics.Debug.WriteLine("Opening main dialog after profile management");
+                            File.AppendAllText(logPath, $"[{DateTime.Now}] Opening main dialog after profile management\n");
+                            
+                            using (var mainDialog = new Views.EmergencyMainDialog(appProfileService, doc))
+                            {
+                                var mainResult = mainDialog.ShowDialog();
+                                System.Diagnostics.Debug.WriteLine($"Main dialog result: {mainResult}");
+                                File.AppendAllText(logPath, $"[{DateTime.Now}] Main dialog result: {mainResult}\n");
+                            }
                         }
                     }
                 }

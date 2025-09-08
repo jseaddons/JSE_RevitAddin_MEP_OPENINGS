@@ -10,6 +10,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         Electrical,    // Contains "EL"
         Mechanical,    // Contains "ME" 
         Plumbing,      // Contains "PH"
+        FireProtection,  // Contains "FP" or "FF"
         Architectural, // Contains "ARC"
         Structural,    // Contains "STR"
         Unknown
@@ -51,9 +52,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 return LinkedFileType.Mechanical;
             if (upperFileName.Contains("PH"))
                 return LinkedFileType.Plumbing;
-            if (upperFileName.Contains("ARC"))
+            if (upperFileName.Contains("FP") || upperFileName.Contains("FF"))
+                return LinkedFileType.FireProtection;
+            if (upperFileName.Contains("ARC") || upperFileName.Contains("AR"))
                 return LinkedFileType.Architectural;
-            if (upperFileName.Contains("STR") || upperFileName.Contains("-ST-"))
+            if (upperFileName.Contains("STR") || upperFileName.Contains("-ST-") || upperFileName.Contains("ST"))
                 return LinkedFileType.Structural;
                 
             return LinkedFileType.Unknown;
@@ -75,6 +78,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Removed MepCategory.DuctFittings
                 },
                 LinkedFileType.Plumbing => new List<MepCategory> 
+                { 
+                    MepCategory.Pipes 
+                },
+                LinkedFileType.FireProtection => new List<MepCategory> 
                 { 
                     MepCategory.Pipes 
                 },

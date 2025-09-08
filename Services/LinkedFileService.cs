@@ -80,6 +80,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     LinkedFileType.Electrical => GetElectricalElementCount(linkDoc),
                     LinkedFileType.Mechanical => GetMechanicalElementCount(linkDoc),
                     LinkedFileType.Plumbing => GetPlumbingElementCount(linkDoc),
+                    LinkedFileType.FireProtection => GetPlumbingElementCount(linkDoc), // Same as plumbing
                     LinkedFileType.Architectural => GetArchitecturalElementCount(linkDoc),
                     LinkedFileType.Structural => GetStructuralElementCount(linkDoc),
                     _ => GetTotalElementCount(linkDoc)
@@ -189,6 +190,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return allFiles.Where(f => f.FileType == LinkedFileType.Electrical || 
                                       f.FileType == LinkedFileType.Mechanical || 
                                       f.FileType == LinkedFileType.Plumbing ||
+                                      f.FileType == LinkedFileType.FireProtection ||
                                       f.FileType == LinkedFileType.Unknown).ToList(); // Include Unknown files
         }
     }

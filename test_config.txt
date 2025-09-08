@@ -1,0 +1,6 @@
+ProfileName=mep
+LastModified=2025-09-08T16:30:00.0000000+05:30
+SelectedReferenceFiles=23058-SSH-HTL-ZZZ-MOD-ME-000001 (13577 elements)|23058-SSH-HTL-ZZZ-MOD-FP-000001 (9670 elements)|23058-SSH-HTL-ZZZ-MOD-EE-000001 (1711 elements)|23058-SSH-HTL-ZZZ-MOD-PH-000001 (25806 elements)
+SelectedHostFiles=23058-SSH-HTL-ZZZ-MOD-ST-000001 (1858 elements)|23058-SSH-HTL-ZZZ-MOD-AR-000001 (5309 elements)
+SelectedMepCategories=Ducts|Duct Accessories|Cable Trays|Pipes
+SelectedHostCategories=Walls|Structural Framing|Floors

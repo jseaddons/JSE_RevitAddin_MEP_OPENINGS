@@ -24,6 +24,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         // Flag to prevent infinite loops during ComboBox population
         private bool _isUpdatingComboBoxes = false;
         
+        
         // Main panels - 4-section layout
         private WinForms.Panel _leftPanel = null!;
         private WinForms.Panel _rightPanel = null!;
@@ -329,7 +330,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 AutoSize = false
             };
             _statusPanel.Controls.Add(_statusLabel);
-            
+
             int statusButtonSpacing = 5; // Space between status bar buttons
             int buttonStartX = 100; // Start position for buttons (after status label)
             
@@ -532,30 +533,51 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         private void PopulateTopLeftSection()
         {
-            // Title: "Reference Elements (MEP Files)" - make it shorter
+            // Title: "Reference Elements" 
             var title = new WinForms.Label
             {
-                Text = "Reference Elements",  // Remove "(MEP Files)" to make it shorter
+                Text = "Reference Elements",
                 Font = new System.Drawing.Font("Microsoft Sans Serif", 10F, System.Drawing.FontStyle.Bold),
                 ForeColor = System.Drawing.Color.FromArgb(51, 51, 51),
                 Location = new System.Drawing.Point(5, 2),
-                Size = new System.Drawing.Size(150, 30),  // Make it wider to fit
+                Size = new System.Drawing.Size(150, 30),
                 AutoSize = false
             };
             _topLeftPanel.Controls.Add(title);
 
-            // ListBox for linked files with checkboxes - starts right after title
+            // Main list for MEP files (Reference Elements)
             var referenceFilesListBox = new WinForms.CheckedListBox
             {
                 Location = new System.Drawing.Point(5, 40),
-                Size = new System.Drawing.Size(_topLeftPanel.Width - 10, _topLeftPanel.Height - 25),
-                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Bottom | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right,
+                Size = new System.Drawing.Size(_topLeftPanel.Width - 10, (_topLeftPanel.Height - 25) / 2 - 5),
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right,
                 CheckOnClick = true,
                 Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Regular)
             };
             _topLeftPanel.Controls.Add(referenceFilesListBox);
 
-            // Always add the active document as a reference element
+            // "Other Files" section for Architecture/Structural files
+            var otherFilesLabel = new WinForms.Label
+            {
+                Text = "Other Files:",
+                Location = new System.Drawing.Point(5, referenceFilesListBox.Bottom + 5),
+                Size = new System.Drawing.Size(200, 15),
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Bold),
+                ForeColor = System.Drawing.Color.Gray
+            };
+            _topLeftPanel.Controls.Add(otherFilesLabel);
+
+            var otherReferenceFilesListBox = new WinForms.CheckedListBox
+            {
+                Location = new System.Drawing.Point(5, otherFilesLabel.Bottom + 2),
+                Size = new System.Drawing.Size(_topLeftPanel.Width - 10, (_topLeftPanel.Height - 25) / 2 - 5),
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Bottom | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right,
+                CheckOnClick = true,
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Regular)
+            };
+            _topLeftPanel.Controls.Add(otherReferenceFilesListBox);
+
+            // Always add the active document as a reference element (available by default)
             if (_activeDocument != null)
             {
                 string activeDocName = _activeDocument.Title;
@@ -563,20 +585,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 System.Diagnostics.Debug.WriteLine($"Added active document '{activeDocName}' to reference elements");
             }
             
-            // Add linked reference files if available
+            // Get the other files list box
+            var listBoxes = _topLeftPanel.Controls.OfType<WinForms.CheckedListBox>().ToList();
+            var otherRefFilesListBox = listBoxes.Skip(1).FirstOrDefault();
+
+            // Add files to appropriate sections
             if (_linkedFiles.Count > 0 && _linkedFileService != null)
             {
-                var referenceFiles = _linkedFileService.GetReferenceElementFiles(_linkedFiles);
-                foreach (var file in referenceFiles)
+                foreach (var file in _linkedFiles)
                 {
                     string displayText = $"{file.FileName} ({file.ElementCount} elements)";
                     if (!file.IsLoaded)
                     {
                         displayText += " [NOT LOADED]";
                     }
-                    referenceFilesListBox.Items.Add(displayText, false);
+                    
+                    // Show MEP files in main list, others in "Other Files" section
+                    bool isAvailableForReference = IsFileAvailableForReference(file.FileType);
+                    if (isAvailableForReference)
+                    {
+                        referenceFilesListBox.Items.Add(displayText, false);
+            }
+            else
+            {
+                        otherRefFilesListBox?.Items.Add(displayText, false);
+                    }
                 }
-                System.Diagnostics.Debug.WriteLine($"Added {referenceFiles.Count} linked reference files to reference elements");
+                System.Diagnostics.Debug.WriteLine($"Added files to reference elements sections");
             }
         }
 
@@ -668,9 +703,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     
                     // Update clearance visibility for single selection
                     UpdateClearanceVisibilityForCategory(selectedCategories[0]);
-                }
-                else
-                {
+            }
+            else
+            {
                     // Multiple categories selected - enable and show only selected categories
                     _mepTypeCombo.Enabled = true;
                     _mepTypeCombo.BackColor = System.Drawing.Color.White;
@@ -687,30 +722,51 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         private void PopulateBottomLeftSection()
         {
-            // Title: "Host Elements (ARC/STR Files)" - make it shorter
+            // Title: "Host Elements"
             var title = new WinForms.Label
             {
-                Text = "Host Elements",  // Remove "(ARC/STR Files)" to make it shorter
+                Text = "Host Elements",
                 Font = new System.Drawing.Font("Microsoft Sans Serif", 10F, System.Drawing.FontStyle.Bold),
                 ForeColor = System.Drawing.Color.FromArgb(51, 51, 51),
                 Location = new System.Drawing.Point(5, 2),
-                Size = new System.Drawing.Size(150, 30),  // Make it wider to fit
+                Size = new System.Drawing.Size(150, 30),
                 AutoSize = false
             };
             _bottomLeftPanel.Controls.Add(title);
 
-            // ListBox for host files with checkboxes - starts right after title
+            // Main list for Architecture/Structural files (Host Elements)
             var hostFilesListBox = new WinForms.CheckedListBox
             {
                 Location = new System.Drawing.Point(5, 30),
-                Size = new System.Drawing.Size(_bottomLeftPanel.Width - 10, _bottomLeftPanel.Height - 25),
-                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Bottom | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right,
+                Size = new System.Drawing.Size(_bottomLeftPanel.Width - 10, (_bottomLeftPanel.Height - 25) / 2 - 5),
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right,
                 CheckOnClick = true,
                 Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Regular)
             };
             _bottomLeftPanel.Controls.Add(hostFilesListBox);
 
-            // Always add the active document as a host element
+            // "Other Files" section for MEP files
+            var otherHostFilesLabel = new WinForms.Label
+            {
+                Text = "Other Files:",
+                Location = new System.Drawing.Point(5, hostFilesListBox.Bottom + 5),
+                Size = new System.Drawing.Size(200, 15),
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Bold),
+                ForeColor = System.Drawing.Color.Gray
+            };
+            _bottomLeftPanel.Controls.Add(otherHostFilesLabel);
+
+            var otherHostFilesListBox = new WinForms.CheckedListBox
+            {
+                Location = new System.Drawing.Point(5, otherHostFilesLabel.Bottom + 2),
+                Size = new System.Drawing.Size(_bottomLeftPanel.Width - 10, (_bottomLeftPanel.Height - 25) / 2 - 5),
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Bottom | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right,
+                CheckOnClick = true,
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Regular)
+            };
+            _bottomLeftPanel.Controls.Add(otherHostFilesListBox);
+
+            // Always add the active document as a host element (available by default)
             if (_activeDocument != null)
             {
                 string activeDocName = _activeDocument.Title;
@@ -718,20 +774,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 System.Diagnostics.Debug.WriteLine($"Added active document '{activeDocName}' to host elements");
             }
             
-            // Add linked host files if available
+            // Get the other files list box
+            var hostListBoxes = _bottomLeftPanel.Controls.OfType<WinForms.CheckedListBox>().ToList();
+            var otherHostFilesListBox2 = hostListBoxes.Skip(1).FirstOrDefault();
+
+            // Add files to appropriate sections
             if (_linkedFiles.Count > 0 && _linkedFileService != null)
             {
-                var hostFiles = _linkedFileService.GetHostElementFiles(_linkedFiles);
-                foreach (var file in hostFiles)
+                foreach (var file in _linkedFiles)
                 {
                     string displayText = $"{file.FileName} ({file.ElementCount} elements)";
                     if (!file.IsLoaded)
                     {
                         displayText += " [NOT LOADED]";
                     }
-                    hostFilesListBox.Items.Add(displayText, false);
+                    
+                    // Show Architecture/Structural files in main list, others in "Other Files" section
+                    bool isAvailableForHost = IsFileAvailableForHost(file.FileType);
+                    if (isAvailableForHost)
+                    {
+                        hostFilesListBox.Items.Add(displayText, false);
+            }
+            else
+            {
+                        otherHostFilesListBox2?.Items.Add(displayText, false);
+                    }
                 }
-                System.Diagnostics.Debug.WriteLine($"Added {hostFiles.Count} linked host files to host elements");
+                System.Diagnostics.Debug.WriteLine($"Added files to host elements sections");
             }
         }
 
@@ -1267,6 +1336,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 textBox.BackColor = System.Drawing.Color.LightGray;
             }
         }
+
 
         private void SetDefaultClearanceValues(string category)
         {
@@ -2119,8 +2189,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 DebugLogger.Info("=== STARTING Save Configuration ===");
                 _statusLabel.Text = "Saving configuration...";
                 
+                // Check if we have a current profile
+                var currentProfile = _appProfileService.GetCurrentProfile();
+                DebugLogger.Info($"Current profile: {(currentProfile != null ? currentProfile.Name : "NULL")}");
+                
+                if (currentProfile == null)
+                {
+                    DebugLogger.Warning("No current profile - creating emergency profile");
+                    // Create an emergency profile if none exists
+                    var emergencyProfile = new UserProfile
+                    {
+                        Id = Guid.NewGuid(),
+                        Name = "Emergency Profile",
+                        Disciplines = new List<Discipline> { new Discipline("Mechanical", true, "Mechanical systems") },
+                        Language = "English",
+                        CreatedDate = DateTime.Now,
+                        IsActive = true
+                    };
+                    
+                    _appProfileService.SetCurrentProfile(emergencyProfile);
+                    DebugLogger.Info($"Created emergency profile: {emergencyProfile.Name}");
+                }
+                
                 // Save current profile with UI state
                 SaveCurrentConfiguration();
+                
+                // SIMPLE FIX: Save UI state directly to a simple file
+                SaveUIStateDirectly();
                 
                 _statusLabel.Text = "Configuration saved successfully";
                 DebugLogger.Info("=== Save Configuration COMPLETED ===");
@@ -2271,6 +2366,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                                 listBox.SetItemChecked(i, false);
                             }
                             
+                            // Debug: Log all items in the list box
+                            DebugLogger.Info($"ListBox contains {listBox.Items.Count} items:");
+                            for (int j = 0; j < listBox.Items.Count; j++)
+                            {
+                                DebugLogger.Info($"  Item {j}: {listBox.Items[j]}");
+                            }
+                            
+                            // Debug: Log all selected files to restore
+                            DebugLogger.Info($"Trying to restore {selectedFiles.Count} files:");
+                            foreach (var file in selectedFiles)
+                            {
+                                DebugLogger.Info($"  Need to restore: {file}");
+                            }
+                            
                             // Now check only the saved selections
                             for (int i = 0; i < listBox.Items.Count; i++)
                             {
@@ -2279,6 +2388,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                                 {
                                     listBox.SetItemChecked(i, true);
                                     DebugLogger.Info($"Restored reference file selection: {item} (index {i})");
+                                }
+                                else if (item != null)
+                                {
+                                    DebugLogger.Info($"File not found for restoration: {item}");
                                 }
                             }
                             
@@ -2458,6 +2571,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             try
             {
                 var currentProfile = _appProfileService.GetCurrentProfile();
+                
+                // Load configuration from text file if profile exists but configuration is null
+                if (currentProfile != null && currentProfile.Configuration == null)
+                {
+                    LoadConfigurationFromJsonFile(currentProfile);
+                }
+                
+                // SIMPLE FIX: Also load UI state directly
+                LoadUIStateDirectly();
+                
                 if (currentProfile?.Configuration != null)
                 {
                     DebugLogger.Info("=== STARTING RestoreConfigurationToUI ===");
@@ -2493,6 +2616,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 {
                     DebugLogger.Info("No configuration to restore to UI");
                 }
+                
             }
             catch (Exception ex)
             {
@@ -2515,8 +2639,249 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     return;
                 }
                 
-                var lines = System.IO.File.ReadAllLines(configFile);
+                var content = System.IO.File.ReadAllText(configFile);
                 var config = new UserConfiguration();
+                
+                DebugLogger.Info($"Configuration file content:\n{content}");
+                
+                // Parse the new multi-line format
+                var lines = content.Split(new string[] { Environment.NewLine, "\n", "\r" }, StringSplitOptions.None);
+                string currentSection = "";
+                
+                DebugLogger.Info($"Parsing {lines.Length} lines from config file");
+                
+                foreach (var line in lines)
+                {
+                    if (string.IsNullOrWhiteSpace(line))
+                        continue;
+                    
+                    // Check if this is a section header
+                    if (line.Contains("=") && !line.StartsWith("  "))
+                    {
+                        var parts = line.Split(new char[] { '=' }, 2);
+                        if (parts.Length == 2)
+                        {
+                            currentSection = parts[0].Trim();
+                            DebugLogger.Info($"Found section header: {currentSection}");
+                        }
+                    }
+                    else if (line.StartsWith("  ") && !string.IsNullOrEmpty(currentSection))
+                    {
+                        // This is a value under the current section
+                        var value = line.Trim();
+                        DebugLogger.Info($"Found value in {currentSection}: {value}");
+                        
+                        switch (currentSection)
+                        {
+                            case "SelectedReferenceFiles":
+                                if (config.SelectedReferenceFiles == null)
+                                    config.SelectedReferenceFiles = new List<string>();
+                                config.SelectedReferenceFiles.Add(value);
+                                break;
+                            case "SelectedHostFiles":
+                                if (config.SelectedHostFiles == null)
+                                    config.SelectedHostFiles = new List<string>();
+                                config.SelectedHostFiles.Add(value);
+                                break;
+                            case "SelectedMepCategories":
+                                if (config.SelectedMepCategories == null)
+                                    config.SelectedMepCategories = new List<string>();
+                                config.SelectedMepCategories.Add(value);
+                                break;
+                            case "SelectedHostCategories":
+                                if (config.SelectedHostCategories == null)
+                                    config.SelectedHostCategories = new List<string>();
+                                config.SelectedHostCategories.Add(value);
+                                break;
+                        }
+                    }
+                }
+                
+                // Log the loaded files
+                if (config.SelectedReferenceFiles != null)
+                {
+                    DebugLogger.Info($"Loaded SelectedReferenceFiles: {config.SelectedReferenceFiles.Count} files");
+                    foreach (var file in config.SelectedReferenceFiles)
+                    {
+                        DebugLogger.Info($"  Loaded reference file: {file}");
+                    }
+                }
+                
+                // Update profile with loaded configuration
+                profile.Configuration = config;
+                
+                DebugLogger.Info($"Loaded configuration from text file: {config.SelectedReferenceFiles?.Count ?? 0} reference files, {config.SelectedMepCategories?.Count ?? 0} MEP categories");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"Failed to load configuration from text file: {ex.Message}");
+            }
+        }
+        
+        private void SaveUIStateDirectly()
+        {
+            try
+            {
+                var uiState = new List<string>();
+                
+                // Save checked reference files
+                if (_topLeftPanel?.Controls.Count > 0)
+                {
+                    foreach (var control in _topLeftPanel.Controls)
+                    {
+                        if (control is WinForms.CheckedListBox listBox)
+                        {
+                            for (int i = 0; i < listBox.Items.Count; i++)
+                            {
+                                if (listBox.GetItemChecked(i))
+                                {
+                                    uiState.Add($"REF:{listBox.Items[i]}");
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Save checked MEP categories
+                if (_topRightPanel?.Controls.Count > 0)
+                {
+                    foreach (var control in _topRightPanel.Controls)
+                    {
+                        if (control is WinForms.CheckedListBox listBox)
+                        {
+                            for (int i = 0; i < listBox.Items.Count; i++)
+                            {
+                                if (listBox.GetItemChecked(i))
+                                {
+                                    uiState.Add($"MEP:{listBox.Items[i]}");
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Save checked host files
+                if (_bottomLeftPanel?.Controls.Count > 0)
+                {
+                    foreach (var control in _bottomLeftPanel.Controls)
+                    {
+                        if (control is WinForms.CheckedListBox listBox)
+                        {
+                            for (int i = 0; i < listBox.Items.Count; i++)
+                            {
+                                if (listBox.GetItemChecked(i))
+                                {
+                                    uiState.Add($"HOST:{listBox.Items[i]}");
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Save checked host categories
+                if (_bottomRightPanel?.Controls.Count > 0)
+                {
+                    foreach (var control in _bottomRightPanel.Controls)
+                    {
+                        if (control is WinForms.CheckedListBox listBox)
+                        {
+                            for (int i = 0; i < listBox.Items.Count; i++)
+                            {
+                                if (listBox.GetItemChecked(i))
+                                {
+                                    uiState.Add($"HOSTCAT:{listBox.Items[i]}");
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Save to simple file
+                var simpleFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
+                    "JSE_MEP_Openings", "ui_state.txt");
+                Directory.CreateDirectory(Path.GetDirectoryName(simpleFile) ?? "");
+                File.WriteAllLines(simpleFile, uiState);
+                
+                DebugLogger.Info($"Saved {uiState.Count} UI state items to: {simpleFile}");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"Failed to save UI state directly: {ex.Message}");
+            }
+        }
+        
+        private void LoadUIStateDirectly()
+        {
+            try
+            {
+                var simpleFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
+                    "JSE_MEP_Openings", "ui_state.txt");
+                
+                if (!File.Exists(simpleFile))
+                    return;
+                
+                var uiState = File.ReadAllLines(simpleFile).ToList();
+                DebugLogger.Info($"Loading {uiState.Count} UI state items from: {simpleFile}");
+                
+                // Restore reference files
+                foreach (var item in uiState.Where(x => x.StartsWith("REF:")))
+                {
+                    var value = item.Substring(4);
+                    RestoreCheckedItem(_topLeftPanel, value);
+                }
+                
+                // Restore MEP categories
+                foreach (var item in uiState.Where(x => x.StartsWith("MEP:")))
+                {
+                    var value = item.Substring(4);
+                    RestoreCheckedItem(_topRightPanel, value);
+                }
+                
+                // Restore host files
+                foreach (var item in uiState.Where(x => x.StartsWith("HOST:")))
+                {
+                    var value = item.Substring(5);
+                    RestoreCheckedItem(_bottomLeftPanel, value);
+                }
+                
+                // Restore host categories
+                foreach (var item in uiState.Where(x => x.StartsWith("HOSTCAT:")))
+                {
+                    var value = item.Substring(8);
+                    RestoreCheckedItem(_bottomRightPanel, value);
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"Failed to load UI state directly: {ex.Message}");
+            }
+        }
+        
+        private void RestoreCheckedItem(WinForms.Panel panel, string value)
+        {
+            if (panel?.Controls.Count > 0)
+            {
+                foreach (var control in panel.Controls)
+                {
+                    if (control is WinForms.CheckedListBox listBox)
+                    {
+                        for (int i = 0; i < listBox.Items.Count; i++)
+                        {
+                            if (listBox.Items[i]?.ToString() == value)
+                            {
+                                listBox.SetItemChecked(i, true);
+                                DebugLogger.Info($"Restored checked item: {value}");
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        private void ParseOldTextFormat(string content, UserConfiguration config)
+        {
+            var lines = content.Split(new string[] { Environment.NewLine, "\n", "\r" }, StringSplitOptions.None);
                 
                 foreach (var line in lines)
                 {
@@ -2545,15 +2910,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             config.SelectedHostCategories = string.IsNullOrEmpty(value) ? new List<string>() : value.Split('|').ToList();
                             break;
                     }
-                }
-                
-                profile.Configuration = config;
-                
-                DebugLogger.Info($"Loaded configuration from text file: {config.SelectedReferenceFiles?.Count ?? 0} reference files, {config.SelectedMepCategories?.Count ?? 0} MEP categories");
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Error($"Failed to load configuration from text file: {ex.Message}");
             }
         }
         
@@ -3332,6 +3688,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
         }
 
+        /// <summary>
+        /// Determines if a file type should be available for selection in the Reference Elements section
+        /// MEP files (ME, EL, PH) are available by default, Architecture/Structural files are locked
+        /// </summary>
+        private bool IsFileAvailableForReference(LinkedFileType fileType)
+        {
+            return fileType switch
+            {
+                LinkedFileType.Electrical => true,    // EL, EE files - available
+                LinkedFileType.Mechanical => true,    // ME files - available  
+                LinkedFileType.Plumbing => true,      // PH files - available
+                LinkedFileType.FireProtection => true, // FP, FF files - available
+                LinkedFileType.Architectural => false, // AR, ARC files - locked
+                LinkedFileType.Structural => false,   // ST, STR files - locked
+                LinkedFileType.Unknown => false,      // Unknown files - locked
+                _ => false
+            };
+        }
+
+        /// <summary>
+        /// Determines if a file type should be available for selection in the Host Elements section
+        /// Architecture/Structural files (AR, ARC, ST, STR) are available by default, MEP files are locked
+        /// </summary>
+        private bool IsFileAvailableForHost(LinkedFileType fileType)
+        {
+            return fileType switch
+            {
+                LinkedFileType.Architectural => true, // AR, ARC files - available
+                LinkedFileType.Structural => true,    // ST, STR files - available
+                LinkedFileType.Electrical => false,   // EL, EE files - locked
+                LinkedFileType.Mechanical => false,   // ME files - locked
+                LinkedFileType.Plumbing => false,     // PH files - locked
+                LinkedFileType.FireProtection => false, // FP, FF files - locked
+                LinkedFileType.Unknown => false,      // Unknown files - locked
+                _ => false
+            };
+        }
+
+
+
+
+
         private void OnValueSelected(object? sender, EventArgs e, string tabName)
         {
             try
@@ -3516,5 +3914,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
             DebugLogger.Info("=== BalanceLeftLayout COMPLETED ===");
         }
+
     }
 }

@@ -326,12 +326,87 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         System.Diagnostics.Debug.WriteLine($"UpdateForCurrentDocument: Found profile: {profile.Name}");
                     }
                     
-                    // Clear current profile for new project - don't transfer from previous project
-                    _currentProfile = null;
-                    System.Diagnostics.Debug.WriteLine($"UpdateForCurrentDocument: Cleared current profile for new project");
+                    // PRESERVE CURRENT PROFILE: Only clear if it's actually a different project
+                    var currentProjectPath = _profileService.ProfileFilePath;
+                    var newProjectPath = newProfileService.ProfileFilePath;
                     
-                    // Log to file for debugging
-                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] UpdateForCurrentDocument: Cleared current profile for new project\n");
+                    if (currentProjectPath != newProjectPath)
+                    {
+                        // Different project - clear current profile
+                        _currentProfile = null;
+                        System.Diagnostics.Debug.WriteLine($"UpdateForCurrentDocument: Different project detected - cleared current profile");
+                        File.AppendAllText(debugLogPath, $"[{DateTime.Now}] UpdateForCurrentDocument: Different project - cleared current profile\n");
+                    }
+                    else
+                    {
+                        // Same project - preserve current profile
+                        System.Diagnostics.Debug.WriteLine($"UpdateForCurrentDocument: Same project - preserving current profile: {_currentProfile?.Name ?? "null"}");
+                        File.AppendAllText(debugLogPath, $"[{DateTime.Now}] UpdateForCurrentDocument: Same project - preserving current profile: {_currentProfile?.Name ?? "null"}\n");
+                    }
+                    
+                    // CRITICAL: Try to load saved profile from current_profile.txt
+                    try
+                    {
+                        var projectProfileDir = Path.GetDirectoryName(newProfileService.ProfileFilePath);
+                        var currentProfileFile = Path.Combine(projectProfileDir ?? "", "current_profile.txt");
+                        
+                        if (File.Exists(currentProfileFile))
+                        {
+                            var savedProfileName = File.ReadAllText(currentProfileFile).Trim();
+                            System.Diagnostics.Debug.WriteLine($"UpdateForCurrentDocument: Found saved profile name: {savedProfileName}");
+                            File.AppendAllText(debugLogPath, $"[{DateTime.Now}] UpdateForCurrentDocument: Found saved profile name: {savedProfileName}\n");
+                            
+                            // Find the profile in available profiles
+                            var savedProfile = newProfileService.AvailableProfiles.FirstOrDefault(p => p.Name == savedProfileName);
+                            if (savedProfile != null)
+                            {
+                                _currentProfile = savedProfile;
+                                System.Diagnostics.Debug.WriteLine($"UpdateForCurrentDocument: Successfully loaded saved profile: {savedProfile.Name}");
+                                File.AppendAllText(debugLogPath, $"[{DateTime.Now}] UpdateForCurrentDocument: Successfully loaded saved profile: {savedProfile.Name}\n");
+                            }
+                            else
+                            {
+                                System.Diagnostics.Debug.WriteLine($"UpdateForCurrentDocument: Saved profile '{savedProfileName}' not found in available profiles");
+                                File.AppendAllText(debugLogPath, $"[{DateTime.Now}] UpdateForCurrentDocument: Saved profile '{savedProfileName}' not found in available profiles\n");
+                                
+                                // CRITICAL FIX: If profile exists in config but not in XML, create it from config
+                                var configFile = Path.Combine(projectProfileDir ?? "", $"config_{savedProfileName}.txt");
+                                if (File.Exists(configFile))
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"UpdateForCurrentDocument: Found config file, recreating profile from config");
+                                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] UpdateForCurrentDocument: Found config file, recreating profile from config\n");
+                                    
+                                    // Create a basic profile from the config
+                                    var recreatedProfile = new UserProfile
+                                    {
+                                        Id = Guid.NewGuid(),
+                                        Name = savedProfileName,
+                                        Disciplines = new List<Discipline> { new Discipline("Mechanical", true, "Mechanical systems") },
+                                        Language = "English",
+                                        CreatedDate = DateTime.Now,
+                                        IsActive = true
+                                    };
+                                    
+                                    // Add to available profiles and save
+                                    newProfileService.AddProfile(recreatedProfile); // This will create the XML file
+                                    
+                                    _currentProfile = recreatedProfile;
+                                    System.Diagnostics.Debug.WriteLine($"UpdateForCurrentDocument: Recreated and loaded profile: {recreatedProfile.Name}");
+                                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] UpdateForCurrentDocument: Recreated and loaded profile: {recreatedProfile.Name}\n");
+                                }
+                            }
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine($"UpdateForCurrentDocument: No current_profile.txt found at: {currentProfileFile}");
+                            File.AppendAllText(debugLogPath, $"[{DateTime.Now}] UpdateForCurrentDocument: No current_profile.txt found at: {currentProfileFile}\n");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"UpdateForCurrentDocument: Error loading saved profile: {ex.Message}");
+                        File.AppendAllText(debugLogPath, $"[{DateTime.Now}] UpdateForCurrentDocument: Error loading saved profile: {ex.Message}\n");
+                    }
                     
                     // Unsubscribe from old service
                     _profileService.ProfileChanged -= OnProfileServiceProfileChanged;
@@ -434,14 +509,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
                     File.AppendAllText(debugLogPath, $"[{DateTime.Now}] SaveCurrentProfile: Saving profile {_currentProfile.Name}\n");
                     
-                    // Also save the current profile name to a simple text file for persistence
-                    var profileDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings");
-                    if (!Directory.Exists(profileDir))
-                        Directory.CreateDirectory(profileDir);
+                    // Save the current profile name to PROJECT-SPECIFIC directory for persistence
+                    var projectProfileDir = Path.GetDirectoryName(_profileService.ProfileFilePath);
+                    if (!string.IsNullOrEmpty(projectProfileDir) && !Directory.Exists(projectProfileDir))
+                        Directory.CreateDirectory(projectProfileDir);
                     
-                    var currentProfileFile = Path.Combine(profileDir, "current_profile.txt");
+                    var currentProfileFile = Path.Combine(projectProfileDir ?? "", "current_profile.txt");
                     File.WriteAllText(currentProfileFile, _currentProfile.Name);
-                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Saved current profile name to: {currentProfileFile}\n");
+                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Saved current profile name to PROJECT-SPECIFIC: {currentProfileFile}\n");
                     
                     // CRITICAL: Save configuration separately to avoid XML serialization issues
                     try
@@ -497,38 +572,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return;
                 }
                 
-                // Save configuration to a simple JSON file (safer than XML)
-                var profileDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings");
-                if (!Directory.Exists(profileDir))
-                    Directory.CreateDirectory(profileDir);
+                // Save configuration to PROJECT-SPECIFIC directory (safer than XML)
+                var projectProfileDir = Path.GetDirectoryName(_profileService.ProfileFilePath);
+                if (!string.IsNullOrEmpty(projectProfileDir) && !Directory.Exists(projectProfileDir))
+                    Directory.CreateDirectory(projectProfileDir);
                 
-                var configFile = Path.Combine(profileDir, $"config_{profile.Name}.txt");
+                var configFile = Path.Combine(projectProfileDir ?? "", $"config_{profile.Name}.txt");
                 
-                // Convert configuration to simple key-value pairs
-                var configData = new Dictionary<string, object>
+                // Save as simple text format with each file on a separate line to avoid line break issues
+                using (var writer = new StreamWriter(configFile, false, System.Text.Encoding.UTF8))
                 {
-                    ["ProfileName"] = profile.Name,
-                    ["LastModified"] = DateTime.Now.ToString("O"),
-                    ["SelectedReferenceFiles"] = profile.Configuration.SelectedReferenceFiles ?? new List<string>(),
-                    ["SelectedHostFiles"] = profile.Configuration.SelectedHostFiles ?? new List<string>(),
-                    ["SelectedMepCategories"] = profile.Configuration.SelectedMepCategories ?? new List<string>(),
-                    ["SelectedHostCategories"] = profile.Configuration.SelectedHostCategories ?? new List<string>()
-                };
-                
-                // Save as simple text format (much safer than XML serialization)
-                var lines = new List<string>
-                {
-                    $"ProfileName={profile.Name}",
-                    $"LastModified={DateTime.Now:O}",
-                    $"SelectedReferenceFiles={string.Join("|", profile.Configuration.SelectedReferenceFiles ?? new List<string>())}",
-                    $"SelectedHostFiles={string.Join("|", profile.Configuration.SelectedHostFiles ?? new List<string>())}",
-                    $"SelectedMepCategories={string.Join("|", profile.Configuration.SelectedMepCategories ?? new List<string>())}",
-                    $"SelectedHostCategories={string.Join("|", profile.Configuration.SelectedHostCategories ?? new List<string>())}"
-                };
-                
-                File.WriteAllLines(configFile, lines);
+                    writer.WriteLine($"ProfileName={profile.Name}");
+                    writer.WriteLine($"LastModified={DateTime.Now:O}");
+                    
+                    // Write each reference file on a separate line
+                    writer.WriteLine("SelectedReferenceFiles=");
+                    foreach (var file in profile.Configuration.SelectedReferenceFiles ?? new List<string>())
+                    {
+                        writer.WriteLine($"  {file}");
+                    }
+                    
+                    // Write each host file on a separate line
+                    writer.WriteLine("SelectedHostFiles=");
+                    foreach (var file in profile.Configuration.SelectedHostFiles ?? new List<string>())
+                    {
+                        writer.WriteLine($"  {file}");
+                    }
+                    
+                    // Write each MEP category on a separate line
+                    writer.WriteLine("SelectedMepCategories=");
+                    foreach (var cat in profile.Configuration.SelectedMepCategories ?? new List<string>())
+                    {
+                        writer.WriteLine($"  {cat}");
+                    }
+                    
+                    // Write each host category on a separate line
+                    writer.WriteLine("SelectedHostCategories=");
+                    foreach (var cat in profile.Configuration.SelectedHostCategories ?? new List<string>())
+                    {
+                        writer.WriteLine($"  {cat}");
+                    }
+                }
                 File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Configuration saved to: {configFile}\n");
-                File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Saved {configData.Count} configuration settings\n");
+                File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Configuration saved successfully\n");
             }
             catch (Exception ex)
             {
