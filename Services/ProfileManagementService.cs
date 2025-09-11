@@ -27,32 +27,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             string currentProject;
             if (!string.IsNullOrEmpty(projectPath))
             {
-                // Extract project identifier from path - use the working directory or a more stable identifier
-                var directoryName = Path.GetDirectoryName(projectPath);
-                if (!string.IsNullOrEmpty(directoryName))
-                {
-                    // Use the parent directory name as project identifier
-                    currentProject = Path.GetFileName(directoryName);
-                    
-                    // If it's still too specific, fall back to a more general identifier
-                    if (string.IsNullOrEmpty(currentProject) || currentProject.Contains("LINKED FILES"))
-                    {
-                        currentProject = "Revit 2023"; // Use a consistent project name
-                    }
-                }
-                else
-                {
-                    currentProject = "Revit 2023"; // Default fallback
-                }
+                // Use the actual project path to create a unique identifier
+                // Hash the project path to create a stable, unique identifier
+                var projectHash = projectPath.GetHashCode().ToString("X8");
+                currentProject = $"Project_{projectHash}";
+                
+                System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Creating project-specific directory for path: {projectPath}");
+                System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Project identifier: {currentProject}");
             }
             else
             {
                 currentProject = "Default"; // For testing without project path
             }
             
-            // Create project-specific directory
-            _profileDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
-                                           "JSE_MEP_Openings", currentProject);
+            // Create project-specific directory in the project's directory, not global AppData
+            if (!string.IsNullOrEmpty(projectPath))
+            {
+                // Create profiles directory in the same directory as the project file
+                var projectDir = Path.GetDirectoryName(projectPath);
+                _profileDirectory = Path.Combine(projectDir ?? "", "JSE_MEP_Profiles");
+            }
+            else
+            {
+                // Fallback to AppData only for testing
+                _profileDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
+                                               "JSE_MEP_Openings", currentProject);
+            }
             
             _profileFilePath = Path.Combine(_profileDirectory, $"profiles_{currentProject}.xml");
             _availableProfiles = new List<UserProfile>();
@@ -395,8 +395,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return;
                 }
                 
-                // Look for config files
+                // FIXED: Only look for config files in the CURRENT PROJECT directory
+                // This ensures profiles are truly project-specific
                 var configFiles = Directory.GetFiles(profileDir, "config_*.txt");
+                File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfilesFromConfigFiles: Looking in project-specific directory: {profileDir}\n");
                 File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfilesFromConfigFiles: Found {configFiles.Length} config files\n");
                 
                 foreach (var configFile in configFiles)

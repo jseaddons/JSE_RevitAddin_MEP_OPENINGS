@@ -144,14 +144,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     // Check if we have any profiles for this project
                     bool hasProfiles = _profileService.AvailableProfiles.Any();
-                    bool hasCurrentProfile = _currentProfile != null;
                     
                     File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Has profiles: {hasProfiles}\n");
-                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Has current profile: {hasCurrentProfile}\n");
-                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Current profile name: {_currentProfile?.Name ?? "null"}\n");
-                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] IsProfileSetupRequired: {!hasProfiles || !hasCurrentProfile}\n");
+                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Available profiles count: {_profileService.AvailableProfiles.Count}\n");
+                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Current profile: {_currentProfile?.Name ?? "null"}\n");
+                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] IsProfileSetupRequired: {!hasProfiles}\n");
                     
-                    return !hasProfiles || !hasCurrentProfile;
+                    // FIXED LOGIC: Only show Create Profile if NO profiles exist
+                    // If profiles exist, show Profile Management instead
+                    return !hasProfiles;
                 }
                 catch (Exception ex)
                 {
