@@ -40,27 +40,73 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 currentProject = "Default"; // For testing without project path
             }
             
-            // Create project-specific directory in the project's directory, not global AppData
+            // Create project-specific directory with fallback for permission issues
             if (!string.IsNullOrEmpty(projectPath))
             {
-                // Create profiles directory in the same directory as the project file
-                var projectDir = Path.GetDirectoryName(projectPath);
-                _profileDirectory = Path.Combine(projectDir ?? "", "JSE_MEP_Profiles");
+                try
+                {
+                    // Try to create profiles directory in the same directory as the project file
+                    var projectDir = Path.GetDirectoryName(projectPath);
+                    var projectProfilesDir = Path.Combine(projectDir ?? "", "JSE_MEP_Profiles");
+                    
+                    // Test if we can create the directory
+                    if (!Directory.Exists(projectProfilesDir))
+                    {
+                        Directory.CreateDirectory(projectProfilesDir);
+                    }
+                    
+                    _profileDirectory = projectProfilesDir;
+                    System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Using project directory: {_profileDirectory}");
+                }
+                catch (Exception ex)
+                {
+                    // If we can't create in project directory, fall back to AppData with project-specific subfolder
+                    System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Cannot create project directory, using AppData fallback: {ex.Message}");
+                    
+                    var projectName = Path.GetFileNameWithoutExtension(projectPath) ?? "UnknownProject";
+                    _profileDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
+                                                   "JSE_MEP_Openings", "Projects", projectName);
+                    
+                    // Ensure the fallback directory exists
+                    if (!Directory.Exists(_profileDirectory))
+                    {
+                        Directory.CreateDirectory(_profileDirectory);
+                    }
+                }
             }
             else
             {
                 // Fallback to AppData only for testing
                 _profileDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
                                                "JSE_MEP_Openings", currentProject);
+                
+                // Ensure the directory exists
+                if (!Directory.Exists(_profileDirectory))
+                {
+                    Directory.CreateDirectory(_profileDirectory);
+                }
             }
             
             _profileFilePath = Path.Combine(_profileDirectory, $"profiles_{currentProject}.xml");
             _availableProfiles = new List<UserProfile>();
 
-            // Ensure directory exists
-            if (!Directory.Exists(_profileDirectory))
+            // Ensure directory exists with better error handling
+            try
             {
-                Directory.CreateDirectory(_profileDirectory);
+                if (!Directory.Exists(_profileDirectory))
+                {
+                    Directory.CreateDirectory(_profileDirectory);
+                    System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Created directory: {_profileDirectory}");
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Directory already exists: {_profileDirectory}");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ProfileManagementService: ERROR creating directory {_profileDirectory}: {ex.Message}");
+                throw new InvalidOperationException($"Cannot create profile directory at {_profileDirectory}. Please check permissions.", ex);
             }
 
             LoadProfiles();

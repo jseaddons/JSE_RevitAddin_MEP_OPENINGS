@@ -3197,8 +3197,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         private void OnConfigureClick(object? sender, EventArgs e)
         {
-            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] CONFIGURE BUTTON CLICKED\n");
-            _statusLabel.Text = "Configure clicked - functionality to be implemented";
+            try
+            {
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] CONFIGURE BUTTON CLICKED\n");
+                _statusLabel.Text = "Opening Settings dialog...";
+                
+                // Create and show settings dialog
+                var settings = new SettingsModel(); // You can load from saved settings here
+                var settingsDialog = new SettingsDialog(settings);
+                
+                if (settingsDialog.ShowDialog() == DialogResult.OK)
+                {
+                    // Settings were saved
+                    var savedSettings = settingsDialog.GetSettings();
+                    _statusLabel.Text = "Settings saved successfully";
+                    
+                    // TODO: Save settings to file or profile
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Settings saved successfully\n");
+                }
+                else
+                {
+                    _statusLabel.Text = "Settings cancelled";
+                }
+            }
+            catch (Exception ex)
+            {
+                _statusLabel.Text = $"Error opening settings: {ex.Message}";
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] CONFIGURE ERROR: {ex.Message}\n");
+            }
         }
 
         private List<string> GetSelectedCategories()
