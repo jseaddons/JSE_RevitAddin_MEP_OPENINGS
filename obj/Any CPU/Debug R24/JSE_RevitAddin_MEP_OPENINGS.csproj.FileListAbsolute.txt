@@ -86,3 +86,7 @@ C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\GeneratedInternal
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\Views\MainDialog.baml
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\Views\ProfileManagementDialog.baml
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\Views\ProfileSetupDialog.baml
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\Views\OpeningStatusPanel.baml
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\Views\OpeningStatusDialog.g.cs
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\Views\OpeningStatusPanel.g.cs
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Any CPU\Debug R24\Views\OpeningStatusDialog.baml

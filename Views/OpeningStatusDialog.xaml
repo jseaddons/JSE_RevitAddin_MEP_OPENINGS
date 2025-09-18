@@ -1,0 +1,78 @@
+<Window x:Class="JSE_RevitAddin_MEP_OPENINGS.Views.OpeningStatusDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:JSE_RevitAddin_MEP_OPENINGS.Views"
+        Title="Opening Status Monitor"
+        Width="700" Height="500"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResize">
+    
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        
+        <!-- Header with Controls -->
+        <Grid Grid.Row="0" Margin="0,0,0,15">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            
+            <TextBlock Grid.Column="0" Text="Opening Status Monitor" 
+                       FontSize="18" FontWeight="Bold"/>
+            
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button Content="Refresh" 
+                        Command="{Binding RefreshCommand}"
+                        Width="70" Height="30"
+                        Margin="0,0,10,0"/>
+                <Button Content="Check Updates" 
+                        Command="{Binding CheckForUpdatesCommand}"
+                        Width="100" Height="30"
+                        Margin="0,0,10,0"
+                        IsEnabled="{Binding CheckForUpdatesCommand.CanExecute}"/>
+                <Button Content="Force Check" 
+                        Command="{Binding ForceCheckCommand}"
+                        Width="80" Height="30"
+                        Margin="0,0,10,0"
+                        Background="Orange"
+                        Foreground="White"/>
+                <Button Content="Close" 
+                        Width="70" Height="30"
+                        Click="OnCloseClick"/>
+            </StackPanel>
+        </Grid>
+        
+        <!-- Status Panel -->
+        <local:OpeningStatusPanel Grid.Row="1" DataContext="{Binding StatusPanelViewModel}"/>
+        
+        <!-- Bottom Info -->
+        <Border Grid.Row="2" Background="#E9ECEF" Padding="10" Margin="0,15,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <TextBlock Text="Auto-Update: " FontWeight="Bold"/>
+                    <TextBlock Text="{Binding AutoUpdateStatus}" Margin="0,0,20,0"/>
+                    <TextBlock Text="Last Check: " FontWeight="Bold"/>
+                    <TextBlock Text="{Binding LastCheckTime}"/>
+                </StackPanel>
+                
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <TextBlock Text="Status: " FontWeight="Bold"/>
+                    <TextBlock Text="{Binding StatusSummary}" 
+                               FontStyle="Italic" 
+                               Foreground="Gray"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
+
+

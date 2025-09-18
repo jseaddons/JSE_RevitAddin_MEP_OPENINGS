@@ -16,6 +16,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         private ProfileManagementService _profileService;
         private readonly StatusManager _statusManager;
+        private readonly SettingsService _settingsService;
         private UserProfile? _currentProfile;
 
         public event EventHandler<ProfileChangedEventArgs>? ProfileChanged;
@@ -26,6 +27,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Initialize with a default profile service - will be updated when Revit document is available
             _profileService = new ProfileManagementService("Default");
             _statusManager = new StatusManager();
+            _settingsService = new SettingsService();
 
             // Subscribe to events
             _profileService.ProfileChanged += OnProfileServiceProfileChanged;
@@ -34,6 +36,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             // Load current profile if available
             LoadCurrentProfile();
+        }
+
+        public SettingsModel GetCurrentSettings()
+        {
+            if (CurrentProfile == null)
+                return new SettingsModel();
+
+            return _settingsService.GetSettings(CurrentProfile);
+        }
+
+        public void SaveCurrentSettings(SettingsModel settings)
+        {
+            if (CurrentProfile != null)
+            {
+                _settingsService.SaveSettings(CurrentProfile, settings);
+            }
         }
 
         /// <summary>

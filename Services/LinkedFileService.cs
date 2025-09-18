@@ -193,5 +193,77 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                       f.FileType == LinkedFileType.FireProtection ||
                                       f.FileType == LinkedFileType.Unknown).ToList(); // Include Unknown files
         }
+
+        public void AdoptProvisionForVoids(Document doc)
+        {
+            var settings = ApplicationProfileService.Instance.GetCurrentSettings();
+
+            if (!settings.AdoptProvisionForVoids)
+                return;
+
+            var linkedFiles = GetLinkedFiles(doc);
+
+            foreach (var linkedFile in linkedFiles)
+            {
+                if (linkedFile.LinkInstance == null)
+                    continue;
+
+                var linkedDoc = linkedFile.LinkInstance.GetLinkDocument();
+                if (linkedDoc == null)
+                    continue;
+
+                // Find provisions for voids in the linked document
+                var provisions = new FilteredElementCollector(linkedDoc)
+                    .OfClass(typeof(FamilyInstance))
+                    .OfCategory(BuiltInCategory.OST_GenericModel)
+                    .Where(e => e.Name.Contains("Provision for Void"))
+                    .Cast<FamilyInstance>()
+                    .ToList();
+
+                foreach (var provision in provisions)
+                {
+                    // Get the geometry of the provision
+                    var geometry = provision.get_Geometry(new Options());
+                    if (geometry == null)
+                        continue;
+
+                    // Get the transform of the linked document
+                    var transform = linkedFile.LinkInstance.GetTotalTransform();
+
+                    // Transform the geometry to the host document's coordinates
+                    var transformedGeometry = geometry.GetTransformed(transform);
+
+                    // Find the host element in the host document
+                    var hostElement = FindHostElement(doc, transformedGeometry);
+                    if (hostElement == null)
+                        continue;
+
+                    // Create an opening in the host document
+                    var opening = CreateOpeningFromProvision(doc, provision, transformedGeometry, hostElement);
+                    if (opening == null)
+                        continue;
+
+                    // Link the opening to the provision
+                    LinkOpeningToProvision(opening, provision);
+                }
+            }
+        }
+
+        private Element FindHostElement(Document doc, GeometryElement geometry)
+        {
+            // TODO: Implement logic to find the host element for the provision for void
+            return null;
+        }
+
+        private FamilyInstance CreateOpeningFromProvision(Document doc, FamilyInstance provision, GeometryElement geometry, Element hostElement)
+        {
+            // TODO: Implement logic to create an opening from the provision for void
+            return null;
+        }
+
+        private void LinkOpeningToProvision(FamilyInstance opening, FamilyInstance provision)
+        {
+            // TODO: Implement logic to link the opening to the provision for void
+        }
     }
 }

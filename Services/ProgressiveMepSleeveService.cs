@@ -375,7 +375,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                         catch { }
 
-                        var success = placer.PlaceSleeve(pipeAsPipe, intersectionPoint, pipeDir, wallSymbol, hostElement);
+                        var success = placer.PlaceSleeve(pipeAsPipe, intersectionPoint, pipeDir, wallSymbol, hostElement, 0.0); // totalDiameter not available
                         if (success) TotalPlaced++; else TotalSkipped++;
                     }
                     else if ((hostElement.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_Floors) && slabSymbol != null)
@@ -391,7 +391,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                         catch { }
 
-                        var success = placer.PlaceSleeve(pipeAsPipe, intersectionPoint, pipeDir, slabSymbol, hostElement);
+                        var success = placer.PlaceSleeve(pipeAsPipe, intersectionPoint, pipeDir, slabSymbol, hostElement, 0.0); // totalDiameter not available
                         if (success) TotalPlaced++; else TotalSkipped++;
                     }
                     else

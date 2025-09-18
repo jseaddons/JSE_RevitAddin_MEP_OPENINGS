@@ -6,6 +6,7 @@ using System.Linq;
 using Autodesk.Revit.DB.Structure;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
+using JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -17,6 +18,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly FamilySymbol _ductWallSymbol;
         private readonly FamilySymbol _ductSlabSymbol;
         private readonly Action<string> _log;
+        private readonly IClearanceProvider _clearanceProvider;
 
         public int PlacedCount { get; private set; }
         public int SkippedCount { get; private set; }
@@ -36,13 +38,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _ductWallSymbol = ductWallSymbol;
             _ductSlabSymbol = ductSlabSymbol;
             _log = log;
+            _clearanceProvider = new ClearanceProviderFactory().GetProvider("Ducts");
         }
+
 
         public void PlaceAllDuctSleeves()
         {
             PlacedCount = 0;
             SkippedCount = 0;
             ErrorCount = 0;
+
+            var settings = ApplicationProfileService.Instance.GetCurrentSettings();
 
             // Collect all sleeves and filter by section box
             var allSleeves = new FilteredElementCollector(_doc)
@@ -240,19 +246,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         double h2 = duct.get_Parameter(BuiltInParameter.RBS_CURVE_HEIGHT_PARAM)?.AsDouble() ?? 0;
                         // Support round ducts: use diameter when width/height are not provided
                         double diameter = duct.get_Parameter(BuiltInParameter.RBS_CURVE_DIAMETER_PARAM)?.AsDouble() ?? 0;
-                        double clearance = JSE_RevitAddin_MEP_OPENINGS.Helpers.SleeveClearanceHelper.GetClearance(duct);
+                        double clearance = ClearanceManager.Instance.GetClearance(duct);
 
                         if ((w <= 0.0 || h2 <= 0.0) && diameter > 0.0)
                         {
-                            // Round duct detected - use diameter for both width and height
-                            _log?.Invoke($"INFO: Duct {duct.Id} appears round - using diameter for sleeve: diameter={UnitUtils.ConvertFromInternalUnits(diameter, UnitTypeId.Millimeters):F1}mm");
-                            w = diameter;
-                            h2 = diameter;
+                            if (diameter > settings.RoundOpeningsRectangular)
+                            {
+                                _log?.Invoke($"INFO: Duct {duct.Id} is round and its diameter is greater than {settings.RoundOpeningsRectangular}. Creating a rectangular sleeve.");
+                                w = diameter;
+                                h2 = diameter;
+                            }
+                            else
+                            {
+                                // Round duct detected - use diameter for both width and height
+                                _log?.Invoke($"INFO: Duct {duct.Id} appears round - using diameter for sleeve: diameter={UnitUtils.ConvertFromInternalUnits(diameter, UnitTypeId.Millimeters):F1}mm");
+                                w = diameter;
+                                h2 = diameter;
+                            }
                         }
 
                         // Apply per-side clearance (clearance is per-side, so add twice)
                         w = w + 2 * clearance;
                         h2 = h2 + 2 * clearance;
+
+                        if (w * h2 < settings.IgnoreOpeningsSmallerThan)
+                        {
+                            _log?.Invoke($"SKIP: Duct {duct.Id} opening is smaller than {settings.IgnoreOpeningsSmallerThan}. Skipping placement.");
+                            SkippedCount++;
+                            continue;
+                        }
+
+                        if (settings.RoundUpDimensions != "Do not round up")
+                        {
+                            double roundValue = 0;
+                            if(double.TryParse(settings.RoundUpDimensions, out roundValue) && roundValue > 0)
+                            {
+                                w = Math.Ceiling(w / roundValue) * roundValue;
+                                h2 = Math.Ceiling(h2 / roundValue) * roundValue;
+                            }
+                        }
+
                         // hostElem was null-guarded earlier; no need to check again here.
                         try
                         {
@@ -329,7 +362,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                             else
                             {
-                                _log?.Invoke($"SKIP: Duct {duct.Id} intersection host element is null (not placing sleeve)");
+                                _log?.Invoke($"SKIP: Duct {duct.Id} intersection host element is null (not placing sleeve).");
                                 SkippedCount++;
                             }
                         }

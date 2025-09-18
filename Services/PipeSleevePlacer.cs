@@ -19,7 +19,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             XYZ intersection,
             XYZ pipeDirection,
             FamilySymbol sleeveSymbol,
-            Element hostElement)
+            Element hostElement,
+            double totalDiameter)
         {
             int pipeElementId = pipe != null ? (int)pipe.Id.IntegerValue : 0;
             try
@@ -170,19 +171,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return false;
                 }
 
-                // Compute diameter/clearance early so it is available for final logging
-                double pipeDiameter = 0;
-                double insulationThickness = 0;
-                if (pipe != null)
-                {
-                    pipeDiameter = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_OUTER_DIAMETER)?.AsDouble() ?? 0;
-                    insulationThickness = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_INSULATION_THICKNESS)?.AsDouble() ?? 0;
-                }
-                double clearance = insulationThickness > 0.0
-                    ? UnitUtils.ConvertToInternalUnits(25.0, UnitTypeId.Millimeters)
-                    : UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters);
-                double totalDiameter = pipeDiameter + 2 * insulationThickness + 2 * clearance;
-
                 // Create the instance and perform manipulations assuming the caller has an active Transaction.
                 // Avoid starting a nested Transaction here; starting transactions inside an already active transaction
                 // causes the "Starting a new transaction is not permitted" exception. The caller (command) must
@@ -195,6 +183,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                          sleeveSymbol,
                          pipeLevel,
                          StructuralType.NonStructural);
+
+                    var settings = ApplicationProfileService.Instance.GetCurrentSettings();
+
+                    if (settings.CutOpeningWithHosts)
+                    {
+                        try
+                        {
+                            InstanceVoidCutUtils.AddInstanceVoidCut(_doc, hostElement, instance);
+                        }
+                        catch (Exception ex)
+                        {
+                            DebugLogger.Error($"[PipeSleevePlacer] Failed to cut host element: {ex.Message}");
+                        }
+                    }
 
                     // Dump instance parameters for debugging
                     var instanceParams = instance.Parameters.Cast<Parameter>().Select(p => $"{p.Definition.Name} (IsReadOnly={p.IsReadOnly})");

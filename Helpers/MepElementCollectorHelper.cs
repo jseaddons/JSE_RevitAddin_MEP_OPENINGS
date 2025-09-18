@@ -86,8 +86,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
         public static List<(Element element, Transform? transform)> CollectElementsVisibleOnly(
             Document doc, IList<BuiltInCategory> categories)
         {
+            var settings = JSE_RevitAddin_MEP_OPENINGS.Services.ApplicationProfileService.Instance.GetCurrentSettings();
+
             // 1. Raw list – same as before
-            var raw = CollectRawElements(doc, categories);
+            var raw = CollectRawElements(doc, categories, settings);
 
             // Log raw counts and small samples for diagnostics (non-invasive)
             try
@@ -147,15 +149,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
         /* ---------- private helpers ---------- */
 
         private static List<(Element element, Transform? transform)> CollectRawElements(
-            Document doc, IList<BuiltInCategory> categories)
+            Document doc, IList<BuiltInCategory> categories, JSE_RevitAddin_MEP_OPENINGS.Models.SettingsModel settings)
         {
             var result = new List<(Element, Transform?)>();
 
             // host model
-            var host = new FilteredElementCollector(doc)
+            var hostCollector = new FilteredElementCollector(doc)
                 .WherePasses(new ElementMulticategoryFilter(categories))
-                .WhereElementIsNotElementType()
-                .ToElements();
+                .WhereElementIsNotElementType();
+
+            // if (!settings.IncludeHostElementsInDemolishedPhase) // Property not implemented yet
+            // {
+            //     hostCollector.Where(e => e.DemolishedTime == null); // DemolishedTime not available
+            // }
+
+            var host = hostCollector.ToElements();
+
+            if (!settings.IncludeHostElementsNotVisible)
+            {
+                host = host.Where(e => !e.IsHidden(doc.ActiveView)).ToList();
+            }
+
             foreach (var e in host) result.Add((e, null));
 
             // visible linked models
@@ -164,10 +178,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                          .Cast<RevitLinkInstance>())
             {
                 var linkDoc = link.GetLinkDocument();
-                if (linkDoc == null ||
-                    doc.ActiveView.GetCategoryHidden(link.Category.Id) ||
-                    link.IsHidden(doc.ActiveView))
+                if (linkDoc == null)
                     continue;
+
+                if (!settings.IncludeReferenceElementsNotVisible)
+                {
+                    if (doc.ActiveView.GetCategoryHidden(link.Category.Id) || link.IsHidden(doc.ActiveView))
+                        continue;
+                }
 
                 var tr = link.GetTotalTransform();
                 var linked = new FilteredElementCollector(linkDoc)

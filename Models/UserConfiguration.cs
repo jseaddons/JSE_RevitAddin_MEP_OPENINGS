@@ -47,5 +47,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// User who created this configuration
         /// </summary>
         public string CreatedBy { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Advanced settings for ConVoid-like features.
+        /// </summary>
+        public SettingsModel AdvancedSettings { get; set; } = new SettingsModel();
     }
 }

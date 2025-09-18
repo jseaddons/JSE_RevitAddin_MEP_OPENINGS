@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Mechanical;
 using Autodesk.Revit.DB.Structure;
+using JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders;
 
 
 
@@ -17,11 +19,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     {
         private readonly Document _doc;
         private readonly bool _enableDebugLogging;
+        private readonly IClearanceProvider _clearanceProvider;
 
         public FireDamperSleevePlacerService(Document doc, bool enableDebugLogging = false)
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _enableDebugLogging = enableDebugLogging;
+            _clearanceProvider = new ClearanceProviderFactory().GetProvider("Fire Dampers");
         }
 
         private void Log(string message)
@@ -31,6 +35,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DamperLogger.Log(message);
             }
         }
+
 
         /// <summary>
         /// Gets the connector side using world coordinates (for MSFD dampers).
@@ -229,10 +234,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 string familyTypeName = accessory.Symbol?.Name ?? "<unknown type>";
                 Log($"Damper family type name: {familyTypeName}");
 
-                // Clearance values
-                double clearance50 = UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters);
-                double clearance100 = UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters);
-
+                // Get clearance using provider (supports UI overrides)
+                double baseClearance = ClearanceManager.Instance.GetClearance(accessory);
+                
                 // Determine damper type (MSFD or Standard)
                 string typeNameUpper = familyTypeName?.Trim().ToUpperInvariant() ?? "";
                 bool isMSFD = typeNameUpper.Contains("MSFD");
@@ -260,8 +264,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     Log($"[DEBUG] Used GetConnectorSideLocal for non-MSFD. Detected connector side: {side}");
                 }
 
-                // Set clearances for each side
-                double left = clearance50, right = clearance50, top = clearance50, bottom = clearance50;
+                // Set clearances for each side using provider logic
+                double left = baseClearance, right = baseClearance, top = baseClearance, bottom = baseClearance;
                 if (isMSFD)
                 {
                     // If connector side is unknown, fallback to Right
@@ -272,20 +276,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         Log("[MSFD CLEARANCE] Connector side unknown, defaulting to 'Right' for clearance.");
                     }
                     
-                    // Apply 100mm clearance to the connector side, 50mm elsewhere
+                    // Apply double clearance to the connector side for MSFD dampers
+                    double connectorClearance = baseClearance * 2; // Double the base clearance for connector side
                     switch (effectiveSide)
                     {
-                        case "Left": left = clearance100; break;
-                        case "Right": right = clearance100; break;
-                        case "Top": top = clearance100; break;
-                        case "Bottom": bottom = clearance100; break;
+                        case "Left": left = connectorClearance; break;
+                        case "Right": right = connectorClearance; break;
+                        case "Top": top = connectorClearance; break;
+                        case "Bottom": bottom = connectorClearance; break;
                     }
                     
-                    Log($"[MSFD CLEARANCE] Applied 100mm clearance to {effectiveSide}, 50mm elsewhere. left={UnitUtils.ConvertFromInternalUnits(left, UnitTypeId.Millimeters)}, right={UnitUtils.ConvertFromInternalUnits(right, UnitTypeId.Millimeters)}, top={UnitUtils.ConvertFromInternalUnits(top, UnitTypeId.Millimeters)}, bottom={UnitUtils.ConvertFromInternalUnits(bottom, UnitTypeId.Millimeters)}");
+                    Log($"[MSFD CLEARANCE] Applied {UnitUtils.ConvertFromInternalUnits(connectorClearance, UnitTypeId.Millimeters):F1}mm clearance to {effectiveSide}, {UnitUtils.ConvertFromInternalUnits(baseClearance, UnitTypeId.Millimeters):F1}mm elsewhere. left={UnitUtils.ConvertFromInternalUnits(left, UnitTypeId.Millimeters):F1}, right={UnitUtils.ConvertFromInternalUnits(right, UnitTypeId.Millimeters):F1}, top={UnitUtils.ConvertFromInternalUnits(top, UnitTypeId.Millimeters):F1}, bottom={UnitUtils.ConvertFromInternalUnits(bottom, UnitTypeId.Millimeters):F1}");
                 }
                 else
                 {
-                    Log($"[STANDARD CLEARANCE] 50mm all sides. left={UnitUtils.ConvertFromInternalUnits(left, UnitTypeId.Millimeters)}, right={UnitUtils.ConvertFromInternalUnits(right, UnitTypeId.Millimeters)}, top={UnitUtils.ConvertFromInternalUnits(top, UnitTypeId.Millimeters)}, bottom={UnitUtils.ConvertFromInternalUnits(bottom, UnitTypeId.Millimeters)}");
+                    Log($"[STANDARD CLEARANCE] {UnitUtils.ConvertFromInternalUnits(baseClearance, UnitTypeId.Millimeters):F1}mm all sides. left={UnitUtils.ConvertFromInternalUnits(left, UnitTypeId.Millimeters):F1}, right={UnitUtils.ConvertFromInternalUnits(right, UnitTypeId.Millimeters):F1}, top={UnitUtils.ConvertFromInternalUnits(top, UnitTypeId.Millimeters):F1}, bottom={UnitUtils.ConvertFromInternalUnits(bottom, UnitTypeId.Millimeters):F1}");
                 }
 
                 // Compute sleeve dimensions

@@ -68,3 +68,7 @@ C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\System.Numerics
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\System.Runtime.CompilerServices.Unsafe.dll
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\System.Threading.Channels.dll
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\System.Threading.Tasks.Extensions.dll
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\OpeningStatusPanel.baml
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\OpeningStatusDialog.g.cs
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\OpeningStatusPanel.g.cs
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\OpeningStatusDialog.baml

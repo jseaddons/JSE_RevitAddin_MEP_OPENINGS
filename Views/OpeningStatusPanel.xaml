@@ -1,0 +1,165 @@
+<UserControl x:Class="JSE_RevitAddin_MEP_OPENINGS.Views.OpeningStatusPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             d:DesignHeight="450" d:DesignWidth="800">
+    
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        
+        <!-- Header -->
+        <Grid Grid.Row="0" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            
+            <TextBlock Grid.Column="0" Text="Opening Status" 
+                       FontSize="16" FontWeight="Bold"/>
+            
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button Content="Refresh" 
+                        Command="{Binding RefreshCommand}"
+                        Width="70" Height="25"
+                        Margin="0,0,5,0"/>
+                <Button Content="Clear All" 
+                        Command="{Binding ClearAllCommand}"
+                        Width="70" Height="25"
+                        Background="LightCoral"
+                        Foreground="White"/>
+            </StackPanel>
+        </Grid>
+        
+        <!-- Status List -->
+        <ListBox Grid.Row="1" ItemsSource="{Binding OpeningStatuses}">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <Expander Margin="5" IsExpanded="False">
+                        <Expander.Header>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                
+                                <!-- Status Icon -->
+                                <TextBlock Grid.Column="0" 
+                                           Text="{Binding StatusIcon}" 
+                                           FontSize="16" 
+                                           Margin="0,0,10,0"
+                                           VerticalAlignment="Center"/>
+                                
+                                <!-- Summary Info -->
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="{Binding OpeningIdText}" FontWeight="Bold"/>
+                                    <TextBlock Text="{Binding MepElementType}" FontSize="10" Foreground="Gray"/>
+                                </StackPanel>
+                                
+                                <!-- Movement Distance -->
+                                <TextBlock Grid.Column="2" 
+                                           Text="{Binding MovementDistance}" 
+                                           FontSize="10" 
+                                           Foreground="Orange"
+                                           Margin="10,0"
+                                           VerticalAlignment="Center"/>
+                                
+                                <!-- Action Button -->
+                                <Button Grid.Column="3" 
+                                        Content="Update" 
+                                        Width="60" 
+                                        Height="25"
+                                        Command="{Binding DataContext.UpdateOpeningCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}"
+                                        IsEnabled="{Binding CanUpdate}"/>
+                            </Grid>
+                        </Expander.Header>
+                        
+                        <!-- Detailed Information -->
+                        <Grid Margin="10,5">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            
+                            <!-- Opening Details -->
+                            <GroupBox Grid.Row="0" Header="Opening Details" Margin="0,0,0,5">
+                                <StackPanel Margin="10">
+                                    <TextBlock Text="{Binding OpeningIdText}" FontWeight="Bold"/>
+                                    <TextBlock Text="{Binding OpeningDimensions}" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding OpeningLocation}" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding OpeningFamilyName}" Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </GroupBox>
+                            
+                            <!-- MEP Element Details -->
+                            <GroupBox Grid.Row="1" Header="MEP Element Details" Margin="0,0,0,5">
+                                <StackPanel Margin="10">
+                                    <TextBlock Text="{Binding MepElementIdText}" FontWeight="Bold"/>
+                                    <TextBlock Text="{Binding MepElementType}" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding MepElementSize}" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding MepElementLocation}" Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </GroupBox>
+                            
+                            <!-- Wall Details -->
+                            <GroupBox Grid.Row="2" Header="Host Wall Details" Margin="0,0,0,5">
+                                <StackPanel Margin="10">
+                                    <TextBlock Text="{Binding WallIdText}" FontWeight="Bold"/>
+                                    <TextBlock Text="{Binding WallType}" Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </GroupBox>
+                            
+                            <!-- Status Information -->
+                            <GroupBox Grid.Row="3" Header="Status Information">
+                                <StackPanel Margin="10">
+                                    <TextBlock Text="{Binding Status}" FontWeight="Bold"/>
+                                    <TextBlock Text="{Binding LastUpdatedText}" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding MovementDistance}" Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </GroupBox>
+                        </Grid>
+                    </Expander>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+        
+        <!-- Summary -->
+        <Border Grid.Row="2" Background="#F8F9FA" Padding="10" Margin="0,10,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <TextBlock Text="Total Openings: " FontWeight="Bold"/>
+                    <TextBlock Text="{Binding TotalOpenings}" FontWeight="Bold" Margin="0,0,20,0"/>
+                    <TextBlock Text="Active: " FontWeight="Bold"/>
+                    <TextBlock Text="{Binding ActiveOpenings}" FontWeight="Bold" Foreground="Green" Margin="0,0,20,0"/>
+                    <TextBlock Text="Moved: " FontWeight="Bold"/>
+                    <TextBlock Text="{Binding MovedOpenings}" FontWeight="Bold" Foreground="Orange" Margin="0,0,20,0"/>
+                    <TextBlock Text="Errors: " FontWeight="Bold"/>
+                    <TextBlock Text="{Binding ErrorOpenings}" FontWeight="Bold" Foreground="Red"/>
+                </StackPanel>
+                
+                <TextBlock Grid.Column="1" 
+                           Text="{Binding StatusSummary}" 
+                           FontStyle="Italic" 
+                           Foreground="Gray"
+                           VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>
+
+

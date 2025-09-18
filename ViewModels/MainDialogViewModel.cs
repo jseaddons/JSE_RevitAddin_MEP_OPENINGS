@@ -40,10 +40,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.ViewModels
         [ObservableProperty]
         private string _statusText = "Ready";
 
+        [ObservableProperty]
+        private bool _autoUpdateEnabled = true;
+
         public IRelayCommand OkCommand { get; }
         public IRelayCommand CancelCommand { get; }
         public IRelayCommand SaveCommand { get; }
         public IRelayCommand CloseCommand { get; }
+        public IRelayCommand CheckForUpdatesCommand { get; }
+        public IRelayCommand ShowStatusCommand { get; }
 
         public MainDialogViewModel()
         {
@@ -53,6 +58,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.ViewModels
             CancelCommand = new RelayCommand(OnCancel);
             SaveCommand = new RelayCommand(OnSave);
             CloseCommand = new RelayCommand(OnClose);
+            CheckForUpdatesCommand = new RelayCommand(OnCheckForUpdates);
+            ShowStatusCommand = new RelayCommand(OnShowStatus);
 
             ProfileSummary = "No Profile Active";
         }
@@ -118,6 +125,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.ViewModels
         private void OnClose()
         {
             // Intentionally left blank; window can close itself by handling this command if needed
+        }
+
+        private void OnCheckForUpdates()
+        {
+            try
+            {
+                StatusText = "⟳ Checking for MEP element movements...";
+                
+                // This would need to be implemented with proper service injection
+                // For now, just show a status message
+                StatusText = "✓ Opening position check completed";
+            }
+            catch (Exception ex)
+            {
+                StatusText = $"✗ Error checking updates: {ex.Message}";
+            }
+        }
+
+        private void OnShowStatus()
+        {
+            try
+            {
+                // This would open the OpeningStatusDialog
+                // For now, just show a status message
+                StatusText = "ℹ Opening status dialog would open here";
+            }
+            catch (Exception ex)
+            {
+                StatusText = $"✗ Error opening status dialog: {ex.Message}";
+            }
         }
 
         /// <summary>

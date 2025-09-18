@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -18,6 +19,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly List<FamilyInstance> _existingSleeves;
         private readonly Action<string> _log;
         private readonly PipeSleevePlacer _placer;
+        private readonly IClearanceProvider _clearanceProvider;
+
+        /// <summary>
+        /// Get full penetration setting from ClearanceManager
+        /// </summary>
+        private static bool GetFullPenetrationSetting()
+        {
+            // For now, default to true (full penetration enabled)
+            // This could be enhanced to read from a global setting or UI configuration
+            return true;
+        }
 
         public int PlacedCount { get; private set; }
         public int SkippedCount { get; private set; }
@@ -40,7 +52,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _existingSleeves = existingSleeves;
             _log = log;
             _placer = new PipeSleevePlacer(doc);
+            _clearanceProvider = new ClearanceProviderFactory().GetProvider("Pipes");
         }
+
 
         public void PlaceAllPipeSleeves()
         {
@@ -50,6 +64,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _log($"PipeSleevePlacerService: Starting. Pipe count = {_pipeTuples.Count}, Structural host count = {_structuralElements.Count}");
             _log("Pipe IDs: " + string.Join(", ", _pipeTuples.Select(t => t.Item1?.Id.IntegerValue.ToString() ?? "null")));
             _log("Host types: " + string.Join(", ", _structuralElements.Select(e => e.Item1?.GetType().FullName ?? "null")));
+
+            var settings = ApplicationProfileService.Instance.GetCurrentSettings();
 
             // Collect all sleeves and filter by section box
             var allSleeves = new FilteredElementCollector(_doc)
@@ -134,7 +150,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 List<(Element, BoundingBoxXYZ, XYZ)> intersections = new List<(Element, BoundingBoxXYZ, XYZ)>();
                 if (transform == null)
                 {
-                    intersections = MepIntersectionService.FindIntersections(pipe, nearbyStructuralElements, _log);
+                    // Use full penetration logic if enabled
+                    bool fullPenetrationEnabled = GetFullPenetrationSetting(); // Static method call
+                    if (fullPenetrationEnabled)
+                    {
+                        intersections = MepIntersectionService.FindIntersectionsWithFullPenetration(pipe, nearbyStructuralElements, _log, forceFullPenetration: true);
+                    }
+                    else
+                    {
+                        intersections = MepIntersectionService.FindIntersections(pipe, nearbyStructuralElements, _log);
+                    }
                 }
                 else
                 {
@@ -488,15 +513,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 SkippedCount++;
                                 continue;
                             }
+
+                            double pipeDiameter = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_OUTER_DIAMETER)?.AsDouble() ?? 0;
+                            double insulationThickness = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_INSULATION_THICKNESS)?.AsDouble() ?? 0;
+                            double clearance = ClearanceManager.Instance.GetClearance(pipe);
+                            double totalDiameter = pipeDiameter + 2 * insulationThickness + 2 * clearance;
+
+                            if (totalDiameter * totalDiameter * Math.PI < settings.IgnoreOpeningsSmallerThan)
+                            {
+                                _log($"SKIP: Pipe {pipe.Id} opening is smaller than {settings.IgnoreOpeningsSmallerThan}. Skipping placement.");
+                                SkippedCount++;
+                                continue;
+                            }
+
+                            if (settings.RoundUpDimensions != "Do not round up")
+                            {
+                                double roundValue = 0;
+                                if(double.TryParse(settings.RoundUpDimensions, out roundValue) && roundValue > 0)
+                                {
+                                    totalDiameter = Math.Ceiling(totalDiameter / roundValue) * roundValue;
+                                }
+                            }
+
                             FamilySymbol symbolToUse = (isWall || isFraming) ? _pipeWallSymbol : _pipeSlabSymbol;
                             
-                            _placer.PlaceSleeve(
-                                pipe,
-                                placePtToUse,
-                                pipeLine.Direction,
-                                symbolToUse,
-                                hostElem!
-                            );
+                            if (pipeDiameter > settings.RoundOpeningsRectangular)
+                            {
+                                //Create rectangular sleeve
+                                _log?.Invoke($"INFO: Pipe {pipe.Id} is round and its diameter is greater than {settings.RoundOpeningsRectangular}. Creating a rectangular sleeve.");
+                                //TODO: Create rectangular sleeve
+                            }
+                            else
+                            {
+                                _placer.PlaceSleeve(
+                                    pipe,
+                                    placePtToUse,
+                                    pipeLine.Direction,
+                                    symbolToUse,
+                                    hostElem!,
+                                    totalDiameter
+                                );
+                            }
+
                             PlacedCount++;
                         }
                         catch (Exception ex)
@@ -637,5 +695,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 _ => XYZ.BasisX,
             };
         }
+
     }
 }

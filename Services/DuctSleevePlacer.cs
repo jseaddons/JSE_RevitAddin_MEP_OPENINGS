@@ -245,6 +245,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     sleeveSymbol,
                     level,
                     StructuralType.NonStructural);
+
+                var settings = ApplicationProfileService.Instance.GetCurrentSettings();
+
+                if (settings.CutOpeningWithHosts)
+                {
+                    try
+                    {
+                        InstanceVoidCutUtils.AddInstanceVoidCut(_doc, hostElement, instance);
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLogger.Error($"[DuctSleevePlacer] Failed to cut host element: {ex.Message}");
+                    }
+                }
                 // Set HostOrientation parameter for the new sleeve directly for wall/floor/framing
                 string hostOrientationToSet = "";
                 if (hostElement is Wall)
