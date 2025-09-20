@@ -36,6 +36,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             _document = document ?? throw new ArgumentNullException(nameof(document));
             _uiDocument = uiDocument ?? throw new ArgumentNullException(nameof(uiDocument));
+            
+            // Set logging context for orchestrator debugging
+            DebugLogger.SetServiceContext("Orchestrator");
             _disciplineExecutors = new Dictionary<string, DisciplineCommandExecutor>();
             _uiClearances = null;
             
@@ -58,6 +61,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public void SetFullPenetrationEnabled(bool enabled)
         {
             _fullPenetrationEnabled = enabled;
+        }
+        
+        
+        // Clash zone service for incremental updates
+        private ClashZoneService? _clashZoneService;
+        
+        /// <summary>
+        /// Set clash zone service for incremental sleeve placement
+        /// </summary>
+        /// <param name="clashZoneService">Service for managing clash zones</param>
+        public void SetClashZoneService(ClashZoneService clashZoneService)
+        {
+            _clashZoneService = clashZoneService;
+            DebugLogger.Info($"OpeningCommandOrchestrator: ClashZoneService set with {clashZoneService.GetClashZoneStatistics().total} existing clash zones");
         }
         
         /// <summary>
@@ -260,17 +277,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var commands = GetCommandsForDiscipline(filters);
                 result.CommandsExecuted = 0;
                 
+                DebugLogger.Info($"Found {commands.Count} commands to execute for {disciplineName}");
                 foreach (var command in commands)
                 {
                     try
                     {
+                        DebugLogger.Info($"Executing command: {command.GetType().Name}");
                         var commandResult = ExecuteCommandWithResourceManagement(command);
                         if (commandResult.Success)
                         {
                             result.CommandsExecuted++;
+                            DebugLogger.Info($"Command {command.GetType().Name} executed successfully");
                         }
                         else
                         {
+                            DebugLogger.Error($"Command {command.GetType().Name} failed: {commandResult.ErrorMessage}");
                             result.Errors.Add($"{command.GetType().Name}: {commandResult.ErrorMessage}");
                         }
                     }
@@ -302,6 +323,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
+        /// Create discipline executor for a given discipline
+        /// </summary>
+        private DisciplineCommandExecutor CreateDisciplineExecutor(string disciplineName)
+        {
+            return new DisciplineCommandExecutor(disciplineName);
+        }
+        
+        /// <summary>
         /// Execute command with proper resource management
         /// </summary>
         private CommandExecutionResult ExecuteCommandWithResourceManagement(IExternalCommand command)
@@ -310,27 +339,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             try
             {
-                // Create command data - ExternalCommandData requires parameters
-                // ExternalCommandData constructor issue - skip command execution for now
-                // var commandData = new ExternalCommandData();
-                // string message = "";
-                // ElementSet elements = new ElementSet();
-                // var commandResult = command.Execute(commandData, ref message, elements);
-                
-                // For now, assume success
-                var commandResult = Result.Succeeded;
-                
-                result.Success = commandResult == Result.Succeeded;
-                result.Message = "Command execution completed"; // message variable not available
-                
-                if (!result.Success)
+                // Execute command logic directly without ExternalCommandData
+                // Commands should have ExecuteImpl methods that take UIApplication
+                if (command is DuctSleeveCommand dsc)
                 {
-                    result.ErrorMessage = "Command execution failed"; // message variable not available
+                    var uiClearances = ClearanceManager.Instance.GetUIClearances();
+                    DebugLogger.Info($"Passing {uiClearances.Count} UI clearances to DuctSleeveCommand");
+                    
+                    // Call the command's core logic directly
+                    var commandResult = dsc.ExecuteImpl(_uiDocument.Application);
+                    result.Success = commandResult == Result.Succeeded;
+                    result.Message = "DuctSleeveCommand executed";
+                }
+                else
+                {
+                    // For other commands, we need to implement ExecuteImpl pattern
+                    DebugLogger.Warning($"Command {command.GetType().Name} does not support direct execution - skipping");
+                    result.Success = false;
+                    result.ErrorMessage = "Command does not support direct execution";
                 }
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"Command execution error: {ex.Message}");
                 result.Success = false;
                 result.ErrorMessage = ex.Message;
             }
@@ -475,14 +505,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _disciplineExecutors["Data Devices"] = new DisciplineCommandExecutor("Data Devices");
             _disciplineExecutors["Water Systems"] = new DisciplineCommandExecutor("Water Systems");
             _disciplineExecutors["HVAC Systems"] = new DisciplineCommandExecutor("HVAC Systems");
-        }
-        
-        /// <summary>
-        /// Create discipline executor for new disciplines
-        /// </summary>
-        private DisciplineCommandExecutor CreateDisciplineExecutor(string disciplineName)
-        {
-            return new DisciplineCommandExecutor(disciplineName);
         }
         
         /// <summary>

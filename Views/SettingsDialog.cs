@@ -5,6 +5,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 using WinForms = System.Windows.Forms;
 using Drawing = System.Drawing;
 
+using JSE_RevitAddin_MEP_OPENINGS.Services;
 namespace JSE_RevitAddin_MEP_OPENINGS.Views
 {
     /// <summary>
@@ -517,8 +518,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             catch (Exception ex)
             {
                 // Log the error for debugging
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", 
-                    $"[{DateTime.Now}] Error in SaveSettings: {ex.Message}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Error in SaveSettings: {ex.Message}\n");
                 throw; // Re-throw to show error dialog
             }
         }

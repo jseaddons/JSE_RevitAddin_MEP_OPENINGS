@@ -110,6 +110,7 @@
     <Compile Remove="Commands\Backup\*BKP*.cs" />
     <Compile Remove="*BKP*.cs" />
     <Compile Remove="*Backup*.cs" />
+    <Compile Remove="Backup\*.cs" />
     <Compile Remove="Reference\**" />
     <None Remove="BACKUP_WORKING_2025-06-26_16-30-47_CableTrayFixed\**" />
     <None Remove="Reference\**" />

@@ -25,6 +25,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         
         public OpeningProgressDialog()
         {
+            // Set logging context for progress dialog debugging
+            DebugLogger.SetServiceContext("ProgressDialog");
+            
             InitializeComponent();
             InitializeAutoCloseTimer();
         }
@@ -50,11 +53,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private void InitializeComponent()
         {
             this.Text = "Opening Creation Progress";
-            this.Size = new Size(500, 400);
+            this.Size = new Size(500, 450); // Increased height to accommodate cancel button
             this.StartPosition = FormStartPosition.CenterParent;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
             this.MinimizeBox = false;
+            this.TopMost = true; // Bring progress dialog to front
             
             // 1. Top Row: "Opening Created" label (centered)
             var openingCreatedLabel = new Label
@@ -113,16 +117,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _logListBox = new ListBox
             {
                 Location = new System.Drawing.Point(50, 205),
-                Size = new Size(400, 120),
+                Size = new Size(400, 100), // Reduced height from 120 to 100 to make room for buttons
                 Font = new Font("Consolas", 8F)
             };
             this.Controls.Add(_logListBox);
             
-            // 6. Buttons: Cancel and Close buttons
+            // 6. Buttons: Cancel and Close buttons (moved higher for better visibility)
             _cancelButton = new Button
             {
                 Text = "Cancel",
-                Location = new System.Drawing.Point(300, 340),
+                Location = new System.Drawing.Point(300, 380), // Moved up from 340 to 380
                 Size = new Size(80, 30)
             };
             _cancelButton.Click += CancelButton_Click;
@@ -131,7 +135,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             var closeButton = new Button
             {
                 Text = "Close",
-                Location = new System.Drawing.Point(390, 340),
+                Location = new System.Drawing.Point(390, 380), // Moved up from 340 to 380
                 Size = new Size(80, 30),
                 Enabled = false
             };

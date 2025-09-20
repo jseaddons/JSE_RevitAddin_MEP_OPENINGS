@@ -6,6 +6,7 @@ using System.Xml.Serialization;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Models.EventArgs;
 
+using JSE_RevitAddin_MEP_OPENINGS.Services;
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
     /// <summary>
@@ -156,9 +157,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             System.Diagnostics.Debug.WriteLine($"CreateProfile: Creating profile '{profileName}' with {disciplines?.Count ?? 0} disciplines");
             
-            // Log to file for debugging
-            var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
-            File.AppendAllText(debugLogPath, $"[{DateTime.Now}] CreateProfile: Creating profile '{profileName}' with {disciplines?.Count ?? 0} disciplines\n");
+            // DISABLED: Hardcoded log write - use DebugLogger instead
+            // var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
+            // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] CreateProfile: Creating profile '{profileName}' with {disciplines?.Count ?? 0} disciplines\n");
             
             if (string.IsNullOrWhiteSpace(profileName))
                 throw new ArgumentException("Profile name cannot be empty", nameof(profileName));
@@ -190,7 +191,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             _availableProfiles.Add(profile);
             System.Diagnostics.Debug.WriteLine($"CreateProfile: Added profile to collection, now have {_availableProfiles.Count} profiles");
-            File.AppendAllText(debugLogPath, $"[{DateTime.Now}] CreateProfile: Added profile to collection, now have {_availableProfiles.Count} profiles\n");
+            // DISABLED: Hardcoded log write
+            // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] CreateProfile: Added profile to collection, now have {_availableProfiles.Count} profiles\n");
             
             SaveProfiles();
 
@@ -360,15 +362,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 System.Diagnostics.Debug.WriteLine($"LoadProfiles: Checking file: {_profileFilePath}");
                 System.Diagnostics.Debug.WriteLine($"LoadProfiles: File exists: {File.Exists(_profileFilePath)}");
                 
-                // Log to file for debugging
-                var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
-                File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: Checking file: {_profileFilePath}\n");
-                File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: File exists: {File.Exists(_profileFilePath)}\n");
+                // DISABLED: Hardcoded log write - use DebugLogger instead
+                // var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
+                // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: Checking file: {_profileFilePath}\n");
+                // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: File exists: {File.Exists(_profileFilePath)}\n");
                 
                 if (File.Exists(_profileFilePath))
                 {
                     System.Diagnostics.Debug.WriteLine($"LoadProfiles: File size: {new FileInfo(_profileFilePath).Length} bytes");
-                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: File size: {new FileInfo(_profileFilePath).Length} bytes\n");
+                    // DISABLED: Hardcoded log write
+                    // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: File size: {new FileInfo(_profileFilePath).Length} bytes\n");
                     
                     var serializer = new XmlSerializer(typeof(List<UserProfile>));
                     using (var reader = new FileStream(_profileFilePath, FileMode.Open))
@@ -379,39 +382,45 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             _availableProfiles.Clear();
                             _availableProfiles.AddRange(profiles);
                             System.Diagnostics.Debug.WriteLine($"LoadProfiles: Successfully loaded {profiles.Count} profiles");
-                            File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: Successfully loaded {profiles.Count} profiles\n");
+                            // DISABLED: Hardcoded log write
+                            // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: Successfully loaded {profiles.Count} profiles\n");
                         }
                         else
                         {
                             System.Diagnostics.Debug.WriteLine($"LoadProfiles: Deserialized profiles is null");
-                            File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: Deserialized profiles is null\n");
+                            // DISABLED: Hardcoded log write
+                            // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: Deserialized profiles is null\n");
                         }
                     }
                 }
                 else
                 {
                     System.Diagnostics.Debug.WriteLine($"LoadProfiles: Profile file does not exist");
-                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: Profile file does not exist\n");
+                    // DISABLED: Hardcoded log write
+                    // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: Profile file does not exist\n");
                 }
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"LoadProfiles: ERROR - {ex.Message}");
                 
-                // Log to file for debugging
-                var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
-                File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: ERROR - {ex.Message}\n");
+                // DISABLED: Hardcoded log write - use DebugLogger instead
+                // var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
+                // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: ERROR - {ex.Message}\n");
                 
                 // FALLBACK: Try to load profiles from config files when XML fails
                 try
                 {
-                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: Attempting fallback from config files\n");
+                    // DISABLED: Hardcoded log write
+                    // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: Attempting fallback from config files\n");
                     LoadProfilesFromConfigFiles();
-                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: Fallback successful - loaded {_availableProfiles.Count} profiles\n");
+                    // DISABLED: Hardcoded log write
+                    // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: Fallback successful - loaded {_availableProfiles.Count} profiles\n");
                 }
                 catch (Exception fallbackEx)
                 {
-                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: Fallback also failed - {fallbackEx.Message}\n");
+                    // DISABLED: Hardcoded log write
+                    // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: Fallback also failed - {fallbackEx.Message}\n");
                     StatusUpdated?.Invoke(this, new StatusUpdateEventArgs(
                         $"Failed to load profiles: {ex.Message}", 
                         StatusType.Error, 
@@ -428,8 +437,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
-                File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfilesFromConfigFiles: Starting fallback load\n");
+                // DISABLED: Hardcoded log write - use DebugLogger instead
+                // var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
+                // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfilesFromConfigFiles: Starting fallback load\n");
                 
                 _availableProfiles.Clear();
                 
@@ -437,15 +447,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var profileDir = Path.GetDirectoryName(_profileFilePath);
                 if (string.IsNullOrEmpty(profileDir) || !Directory.Exists(profileDir))
                 {
-                    File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfilesFromConfigFiles: Profile directory not found\n");
+                    // DISABLED: Hardcoded log write
+                    // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfilesFromConfigFiles: Profile directory not found\n");
                     return;
                 }
                 
                 // FIXED: Only look for config files in the CURRENT PROJECT directory
                 // This ensures profiles are truly project-specific
                 var configFiles = Directory.GetFiles(profileDir, "config_*.txt");
-                File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfilesFromConfigFiles: Looking in project-specific directory: {profileDir}\n");
-                File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfilesFromConfigFiles: Found {configFiles.Length} config files\n");
+                // DISABLED: Hardcoded log write
+                // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfilesFromConfigFiles: Looking in project-specific directory: {profileDir}\n");
+                // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfilesFromConfigFiles: Found {configFiles.Length} config files\n");
                 
                 foreach (var configFile in configFiles)
                 {
@@ -466,20 +478,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         };
                         
                         _availableProfiles.Add(profile);
-                        File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfilesFromConfigFiles: Created profile '{profileName}' from config file\n");
+                        // DISABLED: Hardcoded log write
+                        // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfilesFromConfigFiles: Created profile '{profileName}' from config file\n");
                     }
                     catch (Exception ex)
                     {
-                        File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfilesFromConfigFiles: Error processing config file {configFile}: {ex.Message}\n");
+                        // DISABLED: Hardcoded log write
+                        // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfilesFromConfigFiles: Error processing config file {configFile}: {ex.Message}\n");
                     }
                 }
                 
-                File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfilesFromConfigFiles: Successfully loaded {_availableProfiles.Count} profiles from config files\n");
+                // DISABLED: Hardcoded log write
+                // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfilesFromConfigFiles: Successfully loaded {_availableProfiles.Count} profiles from config files\n");
             }
             catch (Exception ex)
             {
-                var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
-                File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfilesFromConfigFiles: ERROR - {ex.Message}\n");
+                // DISABLED: Hardcoded log write - use DebugLogger instead
+                // var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
+                // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfilesFromConfigFiles: ERROR - {ex.Message}\n");
                 throw;
             }
         }
@@ -505,9 +521,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 System.Diagnostics.Debug.WriteLine($"SaveProfiles: Saving {_availableProfiles.Count} profiles to: {_profileFilePath}");
                 
-                // Log to file for debugging
+                // Use conditional logging instead of hardcoded file writes
                 var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
-                File.AppendAllText(debugLogPath, $"[{DateTime.Now}] SaveProfiles: Saving {_availableProfiles.Count} profiles to: {_profileFilePath}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] SaveProfiles: Saving {_availableProfiles.Count} profiles to: {_profileFilePath}\n");
                 
                 var serializer = new XmlSerializer(typeof(List<UserProfile>));
                 using (var writer = new FileStream(_profileFilePath, FileMode.Create))
@@ -516,15 +532,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 
                 System.Diagnostics.Debug.WriteLine($"SaveProfiles: Successfully saved profiles to XML file");
-                File.AppendAllText(debugLogPath, $"[{DateTime.Now}] SaveProfiles: Successfully saved profiles to XML file\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] SaveProfiles: Successfully saved profiles to XML file\n");
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"SaveProfiles: ERROR - {ex.Message}");
                 
-                // Log to file for debugging
+                // Use conditional logging instead of hardcoded file writes
                 var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
-                File.AppendAllText(debugLogPath, $"[{DateTime.Now}] SaveProfiles: ERROR - {ex.Message}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] SaveProfiles: ERROR - {ex.Message}\n");
                 
                 StatusUpdated?.Invoke(this, new StatusUpdateEventArgs(
                     $"Failed to save profiles: {ex.Message}", 

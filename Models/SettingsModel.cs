@@ -26,7 +26,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public bool IncludeHostElementsDemolished { get; set; } = false;
 
         // Limits Section Properties
-        public double IgnoreOpeningsSmallerThan { get; set; } = 10.0;
+        public double IgnoreOpeningsSmallerThan { get; set; } = 0.1;
         public double RoundOpeningsRectangular { get; set; } = 200.0;
         public double JoinOpeningsDistance { get; set; } = 200.0;
         public double IgnoreOpeningsAngle { get; set; } = 45.0;

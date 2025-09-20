@@ -265,7 +265,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     }
                     else
                     {
-                        structuralIntersections = JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService.FindIntersections(tray, nearbyStructuralElements, Log);
+                        var intersections4Tuple = JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService.FindIntersections(tray, nearbyStructuralElements, Log);
+                        structuralIntersections = intersections4Tuple.Select(x => (x.Item2, x.Item3, x.Item4)).ToList();
                     }
                     DebugLogger.Log($"[CableTraySleeveCommand] CableTray {tray.Id.IntegerValue}: structuralIntersections count = {structuralIntersections.Count}");
 

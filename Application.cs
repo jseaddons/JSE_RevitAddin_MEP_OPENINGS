@@ -6,6 +6,7 @@ using Serilog;
 using Serilog.Events;
 using System.IO;
 
+using JSE_RevitAddin_MEP_OPENINGS.Services;
 namespace JSE_RevitAddin_MEP_OPENINGS
 {
     /// <summary>
@@ -29,7 +30,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS
                 // Try alternative location if main log fails
                 try
                 {
-                    File.AppendAllText(@"C:\temp\addin_startup.log", $"[{DateTime.Now}] ADD-IN STARTUP FAILED: {startupEx.Message}\n");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\temp\addin_startup.log", $"[{DateTime.Now}] ADD-IN STARTUP FAILED: {startupEx.Message}\n");
                 }
                 catch { }
             }

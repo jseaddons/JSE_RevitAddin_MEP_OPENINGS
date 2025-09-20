@@ -357,7 +357,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 foreach (var intersection in intersections)
                 {
                     var hostElement = intersection.Item1;
-                    var intersectionPoint = intersection.Item3;
+                    var intersectionPoint = intersection.Item4;
                     
                     // Determine appropriate placer and symbol
                     if (hostElement is Wall && wallSymbol != null)

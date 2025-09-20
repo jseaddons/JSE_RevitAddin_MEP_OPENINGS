@@ -4,8 +4,10 @@ using System.Linq;
 using System.Collections.Generic;
 using System.IO;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using WinForms = System.Windows.Forms;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Views
@@ -18,6 +20,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
     {
         private readonly ApplicationProfileService _appProfileService;
         private readonly Document? _document;
+        private readonly UIDocument? _uiDocument;
         
         // Store all collected parameters globally to persist across refreshes
         private Dictionary<string, List<Models.ParameterInfo>> _allCollectedParameters = new Dictionary<string, List<Models.ParameterInfo>>();
@@ -95,10 +98,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         // constants (top of class)
         private const int InnerRightWidth = 320;  // choose 300–360
 
-        public EmergencyMainDialog(ApplicationProfileService appProfileService, Document? document = null)
+        public EmergencyMainDialog(ApplicationProfileService appProfileService, Document? document = null, UIDocument? uiDocument = null)
         {
             _appProfileService = appProfileService;
             _document = document;
+            _uiDocument = uiDocument;
+            
+            // Close all log files to free file handles
+            DebugLogger.CloseAllLogFiles();
+            
+            // Set logging context for OK button debugging
+            DebugLogger.SetServiceContext("OKButton");
+            
             // STEP 1: IMMEDIATE LOG - Create timestamped log file to avoid overwriting
             string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
             string mainUiLogPath = $@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\MainUi_{timestamp}.log";
@@ -246,7 +257,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
             _statusBannerLabel = new WinForms.Label
             {
-                Text = "⚠️ No linked files found. Please link MEP, architectural, and structural files to use this feature.",
+                Text = "WARNING: No linked files found. Please link MEP, architectural, and structural files to use this feature.",
                 Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold),
                 ForeColor = System.Drawing.Color.FromArgb(51, 51, 51),
                 Location = new System.Drawing.Point(10, 8),
@@ -404,10 +415,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // Add event handlers for the buttons
             _refreshButton.Click += OnRefreshClick;
             _configureButton.Click += OnConfigureClick;
-            
-            // Debug logging for button creation
-            System.Diagnostics.Debug.WriteLine($"Refresh button created: Location=({_refreshButton.Location.X},{_refreshButton.Location.Y}), Size=({_refreshButton.Size.Width},{_refreshButton.Size.Height}), Visible={_refreshButton.Visible}, Enabled={_refreshButton.Enabled}");
-            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Refresh button created: Location=({_refreshButton.Location.X},{_refreshButton.Location.Y}), Size=({_refreshButton.Size.Width},{_refreshButton.Size.Height}), Visible={_refreshButton.Visible}, Enabled={_refreshButton.Enabled}\n");
+
+            // EXTENSIVE DEBUG LOGGING FOR BUTTON CREATION
+            System.Diagnostics.Debug.WriteLine($"[BUTTON_DEBUG] Refresh button created: Location=({_refreshButton.Location.X},{_refreshButton.Location.Y}), Size=({_refreshButton.Size.Width},{_refreshButton.Size.Height}), Visible={_refreshButton.Visible}, Enabled={_refreshButton.Enabled}");
+            System.Diagnostics.Debug.WriteLine($"[BUTTON_DEBUG] Refresh button text: '{_refreshButton.Text}'");
+            System.Diagnostics.Debug.WriteLine($"[BUTTON_DEBUG] Refresh button parent: {_refreshButton.Parent?.Name ?? "null"}");
+            System.Diagnostics.Debug.WriteLine($"[BUTTON_DEBUG] Status panel size: {_statusPanel.Size}, location: {_statusPanel.Location}");
+
+            // Log to multiple files to ensure visibility
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] REFRESH BUTTON CREATED: Location=({_refreshButton.Location.X},{_refreshButton.Location.Y}), Size=({_refreshButton.Size.Width},{_refreshButton.Size.Height}), Visible={_refreshButton.Visible}, Enabled={_refreshButton.Enabled}\n");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] REFRESH BUTTON CREATED: Visible={_refreshButton.Visible}, Enabled={_refreshButton.Enabled}\n");
+
+            // Test if event handler is attached by checking the Click event
+            var clickEvent = _refreshButton.GetType().GetEvent("Click");
+            if (clickEvent != null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[BUTTON_DEBUG] Click event found on refresh button");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Click event attached to refresh button\n");
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[BUTTON_DEBUG] ERROR: Click event NOT found on refresh button");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] ERROR: Click event NOT attached to refresh button\n");
+            }
 
             // Left Panel (expanded to fill most space) - start below header
             _leftPanel = new WinForms.Panel
@@ -1335,8 +1365,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Location = new System.Drawing.Point(225, 33),
                 Size = new System.Drawing.Size(25, 20),
-                Text = "🔒",
-                Font = new System.Drawing.Font("Segoe UI Emoji", 8F),
+                Text = "L",
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F),
                 Tag = "normal_lock",
                 BackColor = System.Drawing.Color.LightGreen
             };
@@ -1393,8 +1423,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Location = new System.Drawing.Point(225, 38),
                 Size = new System.Drawing.Size(25, 20),
-                Text = "🔒",
-                Font = new System.Drawing.Font("Segoe UI Emoji", 8F),
+                Text = "L",
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F),
                 Tag = "cabletray_top_lock",
                 BackColor = System.Drawing.Color.LightGreen
             };
@@ -2476,7 +2506,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 var selectedFilters = GetSelectedFilters();
                 
-                using var orchestrator = new OpeningCommandOrchestrator(_document, null); // _uiDocument not implemented yet
+                // Get UIDocument from current Revit context
+                DebugLogger.Info("ExecuteSelectedFiltersWithProgress: Starting UIDocument retrieval");
+                DebugLogger.Info($"ExecuteSelectedFiltersWithProgress: _uiDocument from constructor: {(_uiDocument != null ? "NOT NULL" : "NULL")}");
+                DebugLogger.Info($"ExecuteSelectedFiltersWithProgress: _document from constructor: {(_document != null ? "NOT NULL" : "NULL")}");
+                
+                var uiDocument = GetCurrentUIDocument();
+                DebugLogger.Info($"ExecuteSelectedFiltersWithProgress: GetCurrentUIDocument returned: {(uiDocument != null ? "NOT NULL" : "NULL")}");
+                
+                if (uiDocument == null)
+                {
+                    _statusLabel.Text = "Error: No active Revit document found";
+                    DebugLogger.Error("ExecuteSelectedFiltersWithProgress: No active UIDocument found - this will cause orchestrator to fail");
+                    return new OrchestrationResult
+                    {
+                        Success = false,
+                        ErrorMessage = "No active Revit document found"
+                    };
+                }
+                
+                DebugLogger.Info($"ExecuteSelectedFiltersWithProgress: About to create OpeningCommandOrchestrator with UIDocument: {uiDocument.Application.ActiveUIDocument?.Document?.Title ?? "Unknown"}");
+                
+                using var orchestrator = new OpeningCommandOrchestrator(_document, uiDocument);
                 
                 // Pass UI clearance settings to orchestrator
                 var clearanceSettings = GetClearanceSettings();
@@ -2485,6 +2536,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 // Pass full penetration setting to orchestrator
                 bool fullPenetrationEnabled = GetFullPenetrationSetting();
                 orchestrator.SetFullPenetrationEnabled(fullPenetrationEnabled);
+                
+                // Get clash zones from FILTER for incremental sleeve placement
+                var filterWithClashZones = selectedFilters.FirstOrDefault(f => f.ClashZoneStorage != null);
+                
+                if (filterWithClashZones?.ClashZoneStorage != null)
+                {
+                    var clashZoneService = new ClashZoneService(filterWithClashZones.ClashZoneStorage, (msg) => DebugLogger.Info(msg));
+                    orchestrator.SetClashZoneService(clashZoneService);
+                    DebugLogger.Info($"ExecuteSelectedFiltersWithProgress: Using clash zones from FILTER ({filterWithClashZones.ClashZoneStorage.ClashZones.Count} zones) for incremental placement");
+                }
+                else
+                {
+                    DebugLogger.Info("ExecuteSelectedFiltersWithProgress: No clash zones found in FILTER - will place sleeves for all intersections");
+                }
                 
                 var result = orchestrator.ExecuteMultipleFilters(selectedFilters, showProgress: true);
                 
@@ -2530,7 +2595,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     DebugLogger.Info($"Created emergency profile: {emergencyProfile.Name}");
                 }
                 
-                // Save current profile with UI state
+                // Save current profile with UI state and settings
                 SaveCurrentConfiguration();
                 
                 // SIMPLE FIX: Save UI state directly to a simple file
@@ -3552,6 +3617,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         }
 
         /// <summary>
+        /// Get selected filter items from the filters panel (left column)
+        /// </summary>
+        private List<string> GetSelectedFilterItems()
+        {
+            var selectedItems = new List<string>();
+
+            try
+            {
+                // Get selected items from the filters panel (left column)
+                if (_filtersPanel?.Controls.Count > 0)
+                {
+                    foreach (var control in _filtersPanel.Controls)
+                    {
+                        if (control is WinForms.ListBox listBox)
+                        {
+                            foreach (var selectedItem in listBox.SelectedItems)
+                            {
+                                if (selectedItem != null)
+                                {
+                                    selectedItems.Add(selectedItem.ToString() ?? "");
+                                }
+                            }
+                        }
+                    }
+                }
+
+                DebugLogger.Info($"GetSelectedFilterItems: Found {selectedItems.Count} selected filter items: {string.Join(", ", selectedItems)}");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"Failed to get selected filter items: {ex.Message}");
+            }
+
+            return selectedItems;
+        }
+
+        /// <summary>
         /// Get selected filters from the filters panel
         /// </summary>
         public List<OpeningFilter> GetSelectedFilters()
@@ -3560,23 +3662,51 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             
             try
             {
-                // For now, create default filters based on user-defined disciplines
-                // This will be enhanced when the filter management UI is fully implemented
-                var defaultFilters = new List<OpeningFilter>
+                // Read actual UI selections instead of hardcoded defaults
+                var selectedMepCategories = GetSelectedMepCategories();
+                DebugLogger.Info($"GetSelectedFilters: UI selected MEP categories: {string.Join(", ", selectedMepCategories)}");
+                
+                // Create filters only for selected categories
+                foreach (var categoryName in selectedMepCategories)
                 {
-                    OpeningFilter.CreateDefault(Models.MepCategory.Ducts, "Fire Fighting"),
-                    OpeningFilter.CreateDefault(Models.MepCategory.DuctAccessories, "Fire Fighting"),
-                    OpeningFilter.CreateDefault(Models.MepCategory.Pipes, "Water Systems"),
-                    OpeningFilter.CreateDefault(Models.MepCategory.CableTrays, "Data Devices")
-                };
-                
-                // Filter only enabled ones
-                selectedFilters = defaultFilters.Where(f => f.IsEnabled).ToList();
-                
-                DebugLogger.Info($"GetSelectedFilters: Returning {selectedFilters.Count} filters");
+                    Models.MepCategory category;
+                    string disciplineName;
+                    
+                    // Map UI category names to enum and discipline names
+                    switch (categoryName.ToLower())
+                    {
+                        case "ducts":
+                            category = Models.MepCategory.Ducts;
+                            disciplineName = "Fire Fighting";
+                            break;
+                        case "ductaccessories":
+                        case "duct accessories":
+                            category = Models.MepCategory.DuctAccessories;
+                            disciplineName = "Fire Fighting";
+                            break;
+                        case "pipes":
+                            category = Models.MepCategory.Pipes;
+                            disciplineName = "Water Systems";
+                            break;
+                        case "cabletrays":
+                        case "cable trays":
+                            category = Models.MepCategory.CableTrays;
+                            disciplineName = "Data Devices";
+                            break;
+                        default:
+                            DebugLogger.Warning($"GetSelectedFilters: Unknown category '{categoryName}' - skipping");
+                            continue;
+                    }
+                    
+                    var filter = OpeningFilter.CreateDefault(category, disciplineName);
+                    selectedFilters.Add(filter);
+                    DebugLogger.Info($"GetSelectedFilters: Created filter for {categoryName} -> {disciplineName}");
+                }
+
+                DebugLogger.Info($"GetSelectedFilters: Returning {selectedFilters.Count} filters based on UI selections");
                 foreach (var filter in selectedFilters)
                 {
-                    DebugLogger.Info($"  - {filter.GetDescription()}");
+                    DebugLogger.Info($"  - {filter.GetDescription()} (Category: {filter.Category})");
                 }
             }
             catch (Exception ex)
@@ -3665,119 +3795,613 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         private void OnRefreshClick(object? sender, EventArgs e)
         {
+            // IMMEDIATE LOGGING BEFORE ANYTHING ELSE
+            System.Diagnostics.Debug.WriteLine($"[ON_REFRESH_CLICK] === REFRESH BUTTON CLICKED AT {DateTime.Now} ===");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] === ON_REFRESH_CLICK STARTED ===\n");
+
             try
             {
-                System.Diagnostics.Debug.WriteLine("=== REFRESH BUTTON CLICKED ===");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] REFRESH BUTTON CLICKED\n");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Progress bar before: Visible={_progressBar.Visible}, Value={_progressBar.Value}\n");
-                
-                _statusLabel.Text = "Refreshing parameters...";
-                _progressBar.Value = 0;
-                _progressBar.Visible = true;
-                _progressBar.BringToFront(); // Make sure it's on top
-                _refreshButton.Enabled = false;
-                
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Progress bar after: Visible={_progressBar.Visible}, Value={_progressBar.Value}, Location=({_progressBar.Location.X},{_progressBar.Location.Y}), Size=({_progressBar.Size.Width},{_progressBar.Size.Height})\n");
-                
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Getting selected categories\n");
-                
-                // Get selected categories
-                var selectedCategories = GetSelectedCategories();
-                System.Diagnostics.Debug.WriteLine($"Selected categories: {string.Join(", ", selectedCategories)}");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Selected categories: {string.Join(", ", selectedCategories)}\n");
-                
-                if (selectedCategories.Count == 0)
-                {
-                    _statusLabel.Text = "No categories selected - please select MEP categories first";
-                    _progressBar.Visible = false;
-                    _refreshButton.Enabled = true;
-                    System.Diagnostics.Debug.WriteLine("No categories selected - exiting");
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] No categories selected\n");
-                    return;
-                }
-                
-                _progressBar.Value = 25;
-                _statusLabel.Text = $"Collecting parameters for {selectedCategories.Count} categories...";
-                System.Diagnostics.Debug.WriteLine($"Active document: {_activeDocument?.Title ?? "NULL"}");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Active document: {_activeDocument?.Title ?? "NULL"}\n");
-                
-                // If no document was passed, try to get the current document
-                if (_activeDocument == null)
-                {
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] No document passed, trying to get current document\n");
-                    // Note: We can't access the current document from here without a command context
-                    _statusLabel.Text = "No document available - please use the main command";
-                    _progressBar.Visible = false;
-                    _refreshButton.Enabled = true;
-                    return;
-                }
-                
-                // Collect parameters for each selected category and accumulate them
-                var categoryParameters = new Dictionary<string, List<Models.ParameterInfo>>();
-                int totalCategories = selectedCategories.Count;
-                for (int i = 0; i < selectedCategories.Count; i++)
-                {
-                    var category = selectedCategories[i];
-                    System.Diagnostics.Debug.WriteLine($"Getting parameters for category: {category}");
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Getting parameters for category: {category}\n");
-                    
-                    // Update progress bar
-                    int progress = (int)((i * 80.0) / totalCategories); // 80% for parameter collection
-                    _progressBar.Value = progress;
-                    _statusLabel.Text = $"Collecting parameters for {category}...";
-                    
-                    var parameters = GetParametersForCategory(category);
-                    
-                    // Accumulate parameters - add to existing or create new
-                    if (_allCollectedParameters.ContainsKey(category))
-                    {
-                        // Merge with existing parameters, avoiding duplicates
-                        var existingParams = _allCollectedParameters[category];
-                        var newParams = parameters.Where(p => !existingParams.Any(ep => ep.Name == p.Name)).ToList();
-                        existingParams.AddRange(newParams);
-                        categoryParameters[category] = existingParams;
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Merged {newParams.Count} new parameters with {existingParams.Count - newParams.Count} existing for {category}\n");
-                    }
-                    else
-                    {
-                        // First time collecting for this category
-                        _allCollectedParameters[category] = new List<Models.ParameterInfo>(parameters);
-                        categoryParameters[category] = parameters;
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] First time collecting {parameters.Count} parameters for {category}\n");
-                    }
-                    
-                    System.Diagnostics.Debug.WriteLine($"Found {parameters.Count} parameters for {category}");
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Total parameters for {category}: {_allCollectedParameters[category].Count}\n");
-                }
-                
-                _progressBar.Value = 80;
-                _statusLabel.Text = "Updating parameter dropdowns...";
-                System.Diagnostics.Debug.WriteLine($"Total parameters collected: {categoryParameters.Values.Sum(p => p.Count)}");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Total parameters collected: {categoryParameters.Values.Sum(p => p.Count)}\n");
-                
-                // Update parameter service dropdowns
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Updating parameter dropdowns\n");
-                UpdateParameterServiceDropdowns(categoryParameters);
-                
-                _progressBar.Value = 95;
-                _statusLabel.Text = "Finalizing...";
-                
-                _progressBar.Value = 100;
-                _statusLabel.Text = $"Refresh complete - {categoryParameters.Values.Sum(p => p.Count)} parameters loaded";
-                _progressBar.Visible = false;
-                _refreshButton.Enabled = true;
-                System.Diagnostics.Debug.WriteLine("=== REFRESH COMPLETED ===");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] REFRESH COMPLETED\n");
+                DebugLogger.Info("=== REFRESH BUTTON CLICKED ===");
+                System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] About to call Refresh() method");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] About to call Refresh() method\n");
+
+                Refresh();
+
+                System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] Refresh() method completed successfully");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] Refresh() method completed successfully\n");
             }
             catch (Exception ex)
             {
-                _statusLabel.Text = $"Refresh failed: {ex.Message}";
+                System.Diagnostics.Debug.WriteLine($"[ON_REFRESH_CLICK] ERROR: {ex.Message}");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] ERROR in OnRefreshClick: {ex.Message}\n");
+
+                _statusLabel.Text = $"Error during refresh: {ex.Message}";
                 _progressBar.Visible = false;
                 _refreshButton.Enabled = true;
-                System.Diagnostics.Debug.WriteLine($"Refresh error: {ex.Message}");
-                System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] REFRESH ERROR: {ex.Message}\n");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Stack trace: {ex.StackTrace}\n");
+                DebugLogger.Error($"Error in OnRefreshClick: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Core refresh method that implements the refresh process flowchart
+        /// </summary>
+        private void Refresh()
+        {
+            // Create timestamped refresh log file for debugging
+            string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+            string refreshLogPath = $@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\Refresh_{timestamp}.log";
+
+            // IMMEDIATE CONSOLE LOGGING FOR VISIBILITY
+            System.Diagnostics.Debug.WriteLine($"[REFRESH] === REFRESH METHOD STARTED AT {DateTime.Now} ===");
+            System.Diagnostics.Debug.WriteLine($"[REFRESH] Timestamp: {timestamp}");
+            System.Diagnostics.Debug.WriteLine($"[REFRESH] Log file will be: {refreshLogPath}");
+
+            try
+            {
+                // Ensure directory exists
+                string logDir = Path.GetDirectoryName(refreshLogPath) ?? @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log";
+                if (!Directory.Exists(logDir))
+                {
+                    Directory.CreateDirectory(logDir);
+                    System.Diagnostics.Debug.WriteLine($"[REFRESH] Created log directory: {logDir}");
+                }
+
+                // Write initial log entry
+                File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] === REFRESH METHOD STARTED ===\n");
+                File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] Refresh log file: Refresh_{timestamp}.log\n");
+                File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] Current profile: {_appProfileService?.GetCurrentProfile()?.Name ?? "None"}\n");
+
+                System.Diagnostics.Debug.WriteLine($"[REFRESH] Successfully created log file: {refreshLogPath}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[REFRESH] ERROR creating log file: {ex.Message}");
+                DebugLogger.Error($"Failed to create refresh log file: {ex.Message}");
+                // Continue with refresh even if logging fails
+            }
+
+            // Also write to the hardcoded refresh_debug.log file (like OnConfigureClick does)
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] REFRESH METHOD STARTED - Log file: Refresh_{timestamp}.log\n");
+
+            // Write to the main debug logger file that user can see
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] === REFRESH STARTED === Timestamp: {timestamp}\n");
+
+            DebugLogger.Info("=== REFRESH METHOD STARTED ===");
+            System.Diagnostics.Debug.WriteLine("[REFRESH] DebugLogger.Info called");
+
+            // Step 1: Check if filters are selected first (from filters panel)
+            var selectedFilterItems = GetSelectedFilterItems();
+            DebugLogger.Info($"[CLASH_DEBUG] Selected filter items: {string.Join(", ", selectedFilterItems)}");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Selected filter items: {string.Join(", ", selectedFilterItems)}\n");
+
+            if (selectedFilterItems.Count == 0)
+            {
+                MessageBox.Show("Please select at least one filter before refreshing.", "No Filters Selected",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                DebugLogger.Warning("Refresh: No filters selected - prompting user");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] ERROR: No filters selected - cannot proceed with clash detection\n");
+                return;
+            }
+
+            // Step 1.5: Get MEP categories for processing (optional - filters are the primary requirement)
+            var filtersToProcess = GetSelectedFilters();
+            DebugLogger.Info($"[CLASH_DEBUG] Found {filtersToProcess.Count} MEP category filters for processing");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] MEP filters to process: {filtersToProcess.Count}\n");
+
+            foreach (var filter in filtersToProcess)
+            {
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Filter: {filter.Name} - Category: {filter.Category} - Enabled: {filter.IsEnabled}\n");
+            }
+
+            DebugLogger.Info($"Refresh: Processing {filtersToProcess.Count} selected filters");
+
+            _statusLabel.Text = "Analyzing clash zones...";
+            _progressBar.Value = 0;
+            _progressBar.Visible = true;
+            _refreshButton.Enabled = false;
+
+            // Step 2: Check if we have a current profile with clash zone storage
+            _progressBar.Value = 10;
+            _statusLabel.Text = "Loading profile clash zones...";
+
+            var currentProfile = GetCurrentProfile();
+            DebugLogger.Info($"[CLASH_DEBUG] Current profile: {currentProfile?.Name ?? "NULL"}");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Profile loaded: {currentProfile?.Name ?? "NULL"}\n");
+
+            if (currentProfile?.Configuration?.ClashZoneStorage == null)
+            {
+                DebugLogger.Info("[CLASH_DEBUG] No clash zone storage in profile - proceeding with direct clash detection and filter saving");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] INFO: No clash zone storage - proceeding with direct clash detection\n");
+                // Continue with clash detection instead of falling back to basic refresh
+            }
+
+            // Step 3: Get current document
+            var document = GetCurrentDocument();
+            if (document == null)
+            {
+                _statusLabel.Text = "Error: No active Revit document found";
+                _progressBar.Visible = false;
+                _refreshButton.Enabled = true;
+                DebugLogger.Error("Refresh: No active document found");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] ERROR: No active Revit document found\n");
+                return;
+            }
+
+            DebugLogger.Info($"[CLASH_DEBUG] Active document: {document.Title}");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Document: {document.Title}\n");
+
+            // Step 4: Get current intersections
+            _progressBar.Value = 25;
+            _statusLabel.Text = "Detecting current intersections...";
+
+            DebugLogger.Info("[CLASH_DEBUG] Starting intersection detection...");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Starting MEP-structural intersection detection...\n");
+
+            var currentIntersections = GetCurrentIntersections();
+            DebugLogger.Info($"[CLASH_DEBUG] Found {currentIntersections.Count} current intersections");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] INTERSECTION DETECTION COMPLETE: {currentIntersections.Count} intersections found\n");
+
+            // Log intersection details to refresh log files
+            try
+            {
+                File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] INTERSECTION DETECTION RESULTS:\n");
+                File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] Total intersections found: {currentIntersections.Count}\n");
+
+                if (currentIntersections.Count > 0)
+                {
+                    File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] Intersection details:\n");
+                    for (int i = 0; i < Math.Min(currentIntersections.Count, 20); i++) // Log first 20 for better debugging
+                    {
+                        var intersection = currentIntersections[i];
+                        var mepElement = intersection.Item1;         // MEP element that caused intersection
+                        var structuralElement = intersection.Item2;  // Structural element intersected
+                        var intersectionBBox = intersection.Item3;   // Intersection bounding box
+                        var intersectionPoint = intersection.Item4;  // Intersection center point
+
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}]   Intersection {i + 1}:\n");
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}]     MEP Element ID: {mepElement.Id}\n");
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}]     MEP Element Name: {mepElement.Name}\n");
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}]     MEP Category: {mepElement.Category?.Name ?? "Unknown"}\n");
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}]     Structural Element ID: {structuralElement.Id}\n");
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}]     Structural Element Name: {structuralElement.Name}\n");
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}]     Structural Category: {structuralElement.Category?.Name ?? "Unknown"}\n");
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}]     Intersection Point: ({intersectionPoint.X:F2}, {intersectionPoint.Y:F2}, {intersectionPoint.Z:F2})\n");
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}]     Intersection BBox: Min({intersectionBBox.Min.X:F2}, {intersectionBBox.Min.Y:F2}, {intersectionBBox.Min.Z:F2}) Max({intersectionBBox.Max.X:F2}, {intersectionBBox.Max.Y:F2}, {intersectionBBox.Max.Z:F2})\n");
+                    }
+                    if (currentIntersections.Count > 20)
+                    {
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}]   ... and {currentIntersections.Count - 20} more intersections\n");
+                    }
+                }
+
+                // Also log to the hardcoded refresh_debug.log file
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Found {currentIntersections.Count} intersections during refresh\n");
+
+                // Log detailed intersection info to debug file
+                foreach (var intersection in currentIntersections.Take(10))
+                {
+                    var structuralElement = intersection.Item1;
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Structural Element: {structuralElement.Name} (ID: {structuralElement.Id}) Category: {structuralElement.Category?.Name ?? "Unknown"}\n");
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"Failed to log intersection details: {ex.Message}");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] ERROR logging intersection details: {ex.Message}\n");
+            }
+
+            if (currentIntersections.Count == 0)
+            {
+                _statusLabel.Text = "No intersections found";
+                _progressBar.Value = 100;
+                DebugLogger.Warning("Refresh: No intersections found - no clash zones to save");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] WARNING: No intersections found - clash detection returned empty results\n");
+
+                // Hide progress bar after a short delay
+                var noIntersectionsTimer = new System.Windows.Forms.Timer();
+                noIntersectionsTimer.Interval = 1500;
+                noIntersectionsTimer.Tick += (s, args) => {
+                    _progressBar.Visible = false;
+                    noIntersectionsTimer.Stop();
+                    noIntersectionsTimer.Dispose();
+                };
+                noIntersectionsTimer.Start();
+                _refreshButton.Enabled = true;
+                return;
+            }
+
+            // Step 5: Initialize clash zone service
+            _progressBar.Value = 40;
+            _statusLabel.Text = "Initializing clash zone service...";
+
+            DebugLogger.Info("[CLASH_DEBUG] Initializing ClashZoneService...");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Initializing ClashZoneService with {(currentProfile?.Configuration?.ClashZoneStorage?.ClashZones?.Count ?? 0)} existing zones\n");
+
+            // Create or use existing clash zone storage
+            var clashZoneStorage = currentProfile?.Configuration?.ClashZoneStorage ?? new ClashZoneStorage
+            {
+                ClashZones = new List<ClashZone>(),
+                LastUpdated = DateTime.Now,
+                DocumentHash = document?.PathName ?? "Unknown"
+            };
+
+            var clashZoneService = new ClashZoneService(clashZoneStorage, (msg) => {
+                DebugLogger.Info($"[CLASH_DEBUG] {msg}");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] {msg}\n");
+            });
+
+            // Step 6: Detect new clash zones
+            _progressBar.Value = 60;
+            _statusLabel.Text = "Detecting new clash zones...";
+
+            DebugLogger.Info("[CLASH_DEBUG] Calling DetectNewClashZones...");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Calling DetectNewClashZones with {currentIntersections.Count} intersections...\n");
+
+            var newClashZones = clashZoneService.DetectNewClashZones(currentIntersections, document);
+
+            DebugLogger.Info($"[CLASH_DEBUG] DetectNewClashZones returned {newClashZones?.Count ?? 0} new zones");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] DetectNewClashZones completed - {newClashZones?.Count ?? 0} new clash zones detected\n");
+
+            // Step 7: Get statistics
+            _progressBar.Value = 80;
+            _statusLabel.Text = "Calculating clash zone statistics...";
+
+            var (total, resolved, unresolved, newZones) = clashZoneService.GetClashZoneStatistics();
+
+            DebugLogger.Info($"[CLASH_DEBUG] Clash zone statistics - Total: {total}, Resolved: {resolved}, Unresolved: {unresolved}, New: {newZones}");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Statistics - Total: {total}, Resolved: {resolved}, Unresolved: {unresolved}, New: {newZones}\n");
+
+            // Step 8: Save clash zones to FILTER
+            _progressBar.Value = 90;
+            _statusLabel.Text = "Saving clash zones to filter...";
+
+            // Save clash zones to the current filter
+            if (filtersToProcess.Count > 0)
+            {
+                // Use the first enabled filter to store clash zones
+                var targetFilter = filtersToProcess.FirstOrDefault(f => f.IsEnabled);
+                if (targetFilter != null)
+                {
+                    if (currentProfile?.Configuration?.ClashZoneStorage != null)
+                    {
+                        targetFilter.ClashZoneStorage = currentProfile.Configuration.ClashZoneStorage;
+                        targetFilter.LastModified = DateTime.Now;
+                        DebugLogger.Info($"[CLASH_DEBUG] Saved clash zones to filter '{targetFilter.Name}'");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] SUCCESS: Saved {total} clash zones to filter '{targetFilter.Name}'\n");
+                    }
+                    else
+                    {
+                        DebugLogger.Warning("[CLASH_DEBUG] currentProfile.Configuration.ClashZoneStorage is null - cannot save clash zones");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] WARNING: currentProfile.Configuration.ClashZoneStorage is null\n");
+                    }
+                }
+                else
+                {
+                    DebugLogger.Warning("[CLASH_DEBUG] No enabled filter found to save clash zones");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] WARNING: No enabled filter found to save clash zones\n");
+                }
+            }
+            else
+            {
+                DebugLogger.Warning("[CLASH_DEBUG] No filters to process - cannot save clash zones");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] WARNING: No filters to process - cannot save clash zones\n");
+            }
+
+            // Step 9: Update UI with results
+            _progressBar.Value = 100;
+            _statusLabel.Text = $"Clash zones: {total} total, {unresolved} unresolved, {newZones} new";
+
+            DebugLogger.Info($"[CLASH_DEBUG] Clash zone refresh complete: {total} total, {unresolved} unresolved, {newZones} new");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] REFRESH COMPLETE: {total} total zones, {unresolved} unresolved, {newZones} new\n");
+
+            // Hide progress bar after a short delay
+            var completionTimer = new System.Windows.Forms.Timer();
+            completionTimer.Interval = 2000; // 2 seconds to show results
+            completionTimer.Tick += (s, args) => {
+                _progressBar.Visible = false;
+                completionTimer.Stop();
+                completionTimer.Dispose();
+            };
+            completionTimer.Start();
+
+            _refreshButton.Enabled = true;
+        }
+        
+        private void PerformBasicRefresh()
+        {
+            try
+            {
+                _progressBar.Value = 25;
+                _statusLabel.Text = "Updating element lists...";
+                
+                _progressBar.Value = 50;
+                _statusLabel.Text = "Refreshing clearance settings...";
+                
+                var clearances = GetClearanceSettings();
+                DebugLogger.Info($"Refreshed {clearances.Count} clearance settings");
+                
+                _progressBar.Value = 75;
+                _statusLabel.Text = "Finalizing refresh...";
+                
+                _progressBar.Value = 100;
+                _statusLabel.Text = "Basic refresh complete";
+                
+                var timer = new System.Windows.Forms.Timer();
+                timer.Interval = 1500;
+                timer.Tick += (s, args) => {
+                    _progressBar.Visible = false;
+                    timer.Stop();
+                    timer.Dispose();
+                };
+                timer.Start();
+                
+                _refreshButton.Enabled = true;
+            }
+            catch (Exception ex)
+            {
+                _statusLabel.Text = $"Error during basic refresh: {ex.Message}";
+                _progressBar.Visible = false;
+                _refreshButton.Enabled = true;
+                DebugLogger.Error($"Error in PerformBasicRefresh: {ex.Message}");
+            }
+        }
+
+
+        private void PerformClashDetectionAndSaveToFilter(List<OpeningFilter> selectedFilters)
+{
+    try
+    {
+        _progressBar.Value = 10;
+        _statusLabel.Text = "Starting clash detection...";
+
+        // Get current intersections
+        var currentIntersections = GetCurrentIntersections();
+        DebugLogger.Info($"Refresh: Found {currentIntersections.Count} current intersections");
+
+        if (currentIntersections.Count == 0)
+        {
+            DebugLogger.Warning("Refresh: No intersections found - no clash zones to save");
+            _statusLabel.Text = "No intersections found";
+            return;
+        }
+
+        // Save clash zones to the first enabled filter
+        var targetFilter = selectedFilters.FirstOrDefault(f => f.IsEnabled);
+        if (targetFilter != null)
+        {
+            // Create clash zone storage
+            var clashZoneStorage = new ClashZoneStorage
+            {
+                ClashZones = new List<ClashZone>(),
+                LastUpdated = DateTime.Now,
+                DocumentHash = _document?.PathName ?? "Unknown"
+            };
+
+            // Convert intersections to clash zones
+            foreach (var intersection in currentIntersections)
+            {
+                var mepElement = intersection.Item1;
+                var structuralElement = intersection.Item2;
+                var intersectionBBox = intersection.Item3;
+                var intersectionPoint = intersection.Item4;
+
+                var clashZone = new ClashZone
+                {
+                    MepElementId = mepElement.Id,
+                    StructuralElementId = structuralElement.Id,
+                    IntersectionPoint = intersectionPoint,
+                    ClashBoundingBox = intersectionBBox,
+                    DetectedAt = DateTime.Now,
+                    IsResolved = false
+                };
+                clashZoneStorage.ClashZones.Add(clashZone);
+            }
+
+            targetFilter.ClashZoneStorage = clashZoneStorage;
+            targetFilter.LastModified = DateTime.Now;
+
+            DebugLogger.Info($"Refresh: Saved {clashZoneStorage.ClashZones.Count} clash zones to filter '{targetFilter.Name}'");
+            _statusLabel.Text = $"Saved {clashZoneStorage.ClashZones.Count} clash zones to filter";
+        }
+        else
+        {
+            DebugLogger.Warning("Refresh: No enabled filter found to save clash zones");
+        }
+    }
+    catch (Exception ex)
+    {
+        DebugLogger.Error($"PerformClashDetectionAndSaveToFilter failed: {ex.Message}");
+        throw;
+    }
+}
+        
+        /// <summary>
+        /// Gets the current profile from the application
+        /// </summary>
+        private UserProfile? GetCurrentProfile()
+        {
+            try
+            {
+                // Get the current profile from the application profile service
+                var profile = _appProfileService?.GetCurrentProfile();
+                DebugLogger.Info($"GetCurrentProfile: Retrieved profile: {(profile?.Name ?? "NULL")}");
+                return profile;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"Error getting current profile: {ex.Message}");
+                return null;
+            }
+        }
+        
+        /// <summary>
+        /// Gets current intersections using MepIntersectionService
+        /// </summary>
+        private List<(Element, Element, BoundingBoxXYZ, XYZ)> GetCurrentIntersections()
+        {
+            try
+            {
+                DebugLogger.Info("GetCurrentIntersections: Starting intersection detection...");
+
+                var document = GetCurrentDocument();
+                if (document == null)
+                {
+                    DebugLogger.Warning("GetCurrentIntersections: No document available");
+                    return new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
+                }
+
+                // Get structural elements for intersection detection
+                var structuralElements = MepIntersectionService.CollectStructuralElementsForDirectIntersectionVisibleOnly(document, (msg) => DebugLogger.Info(msg));
+                DebugLogger.Info($"GetCurrentIntersections: Found {structuralElements.Count} structural elements");
+
+                // Get MEP elements (pipes, ducts, cable trays) from host and linked files
+                var mepElements = MepElementCollectorHelper.CollectMepElementsVisibleOnly(document);
+
+                // Count by category for logging
+                int pipes = 0, ducts = 0, cableTrays = 0;
+                foreach (var (element, transform) in mepElements)
+                {
+                    if (element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_PipeCurves) pipes++;
+                    else if (element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctCurves) ducts++;
+                    else if (element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_CableTray) cableTrays++;
+                }
+
+                DebugLogger.Info($"GetCurrentIntersections: Found {mepElements.Count} MEP elements ({pipes} pipes, {ducts} ducts, {cableTrays} cable trays)");
+
+                // Find intersections
+                var allIntersections = new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
+
+                foreach (var mepElement in mepElements)
+                {
+                    Element mepElementToUse = mepElement.Item1;
+                    Transform? mepTransform = mepElement.Item2;
+
+                    // Transform structural elements to match MEP coordinate system
+                    var transformedStructuralElements = new List<(Element, Transform?)>();
+                    foreach (var structuralElement in structuralElements)
+                    {
+                        Element structElement = structuralElement.Item1;
+                        Transform? structTransform = structuralElement.Item2;
+
+                        // If MEP element is from a different linked file than structural element,
+                        // we need to transform structural element to MEP coordinate system
+                        if (mepTransform != null && structTransform != null &&
+                            mepElementToUse.Document.Title != structElement.Document.Title)
+                        {
+                            // Transform structural element to MEP coordinate system
+                            Transform combinedTransform = mepTransform.Inverse.Multiply(structTransform);
+                            transformedStructuralElements.Add((structElement, combinedTransform));
+                            DebugLogger.Info($"GetCurrentIntersections: Transforming structural element {structElement.Id} from {structElement.Document.Title} to MEP coordinate system");
+                        }
+                        else
+                        {
+                            transformedStructuralElements.Add(structuralElement);
+                        }
+                    }
+
+                    DebugLogger.Info($"GetCurrentIntersections: Testing MEP element {mepElementToUse.Id} with coordinate transformation");
+
+                    var intersections = MepIntersectionService.FindIntersections(mepElementToUse, transformedStructuralElements, (msg) => DebugLogger.Info(msg));
+                    if (intersections != null && intersections.Count > 0)
+                    {
+                        DebugLogger.Info($"GetCurrentIntersections: Found {intersections.Count} intersections for MEP element {mepElementToUse.Id} with transformation");
+                        allIntersections.AddRange(intersections);
+                    }
+                    else
+                    {
+                        DebugLogger.Info($"GetCurrentIntersections: No intersections found for MEP element {mepElementToUse.Id} with transformation");
+                    }
+                }
+
+                DebugLogger.Info($"GetCurrentIntersections: Found {allIntersections.Count} total intersections");
+                return allIntersections;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"Error getting current intersections: {ex.Message}");
+                return new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
+            }
+        }
+        
+        /// <summary>
+        /// Gets the current Revit document
+        /// </summary>
+        private Document? GetCurrentDocument()
+        {
+            try
+            {
+                // Use the document passed to the constructor
+                if (_document != null)
+                {
+                    DebugLogger.Info($"GetCurrentDocument: Using document from constructor - {_document.Title}");
+                    return _document;
+                }
+                
+                // Try to get from UIDocument if available
+                var uiDoc = GetCurrentUIDocument();
+                if (uiDoc != null)
+                {
+                    DebugLogger.Info($"GetCurrentDocument: Using document from UIDocument - {uiDoc.Document.Title}");
+                    return uiDoc.Document;
+                }
+                
+                DebugLogger.Warning("GetCurrentDocument: No document available");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"Error getting current document: {ex.Message}");
+                return null;
+            }
+        }
+        
+        /// <summary>
+        /// Saves the current profile
+        /// </summary>
+        private void SaveCurrentProfile()
+        {
+            try
+            {
+                // This would need to be implemented based on your profile service
+                DebugLogger.Info("Profile saved successfully");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"Error saving current profile: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Gets the current UIDocument from Revit context
+        /// </summary>
+        private UIDocument? GetCurrentUIDocument()
+        {
+            try
+            {
+                DebugLogger.Info("GetCurrentUIDocument: Starting UIDocument retrieval");
+                DebugLogger.Info($"GetCurrentUIDocument: _uiDocument field is {(_uiDocument != null ? "NOT NULL" : "NULL")}");
+                
+                // First, try to use the UIDocument passed to the constructor
+                if (_uiDocument != null)
+                {
+                    DebugLogger.Info($"GetCurrentUIDocument: Using UIDocument from constructor - Document: {_uiDocument.Document?.Title ?? "Unknown"}");
+                    return _uiDocument;
+                }
+                
+                DebugLogger.Warning("GetCurrentUIDocument: _uiDocument is NULL - this means it wasn't passed to the constructor properly");
+                DebugLogger.Warning("GetCurrentUIDocument: This will cause the orchestrator to fail with ArgumentNullException");
+                
+                // Try to get UIDocument from the current Revit application
+                // Note: Application.Current is not available in all contexts
+                // This approach is not reliable in Revit add-ins
+                
+                DebugLogger.Warning("No active UIDocument found - this may cause issues with some operations");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"GetCurrentUIDocument: Error getting UIDocument: {ex.Message}");
+                return null;
             }
         }
 
@@ -3785,15 +4409,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         {
             try
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] CONFIGURE BUTTON CLICKED\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] CONFIGURE BUTTON CLICKED\n");
                 _statusLabel.Text = "Opening Settings dialog...";
                 
                 // Create and show settings dialog
                 var settings = new SettingsModel(); // You can load from saved settings here
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] SettingsModel created successfully\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] SettingsModel created successfully\n");
                 
                 var settingsDialog = new SettingsDialog(settings);
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] SettingsDialog created successfully\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] SettingsDialog created successfully\n");
                 
                 // Show the settings dialog as modal
                 using (settingsDialog)
@@ -3805,7 +4429,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         _statusLabel.Text = "Settings saved successfully";
                         
                         // TODO: Save settings to file or profile
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Settings saved successfully\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Settings saved successfully\n");
                     }
                     else
                     {
@@ -3824,8 +4448,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 statusTooltip.SetToolTip(_statusLabel, fullErrorMessage);
                 
                 // Log detailed error information
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] CONFIGURE ERROR: {ex.Message}\n");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] CONFIGURE STACK TRACE: {ex.StackTrace}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] CONFIGURE ERROR: {ex.Message}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] CONFIGURE STACK TRACE: {ex.StackTrace}\n");
                 
                 // Also show a message box with the full error for debugging (smaller dialog)
                 var errorMessage = $"Error opening settings dialog:\n\n{ex.Message}";
@@ -3895,7 +4519,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 
                 if (activeDocumentSelected && _activeDocument != null)
                 {
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Getting parameters from ACTIVE DOCUMENT for {category}\n");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Getting parameters from ACTIVE DOCUMENT for {category}\n");
                     var activeDocParams = parameterService.GetParametersForCategory(_activeDocument, builtInCategory.Value);
                     // allParameters.AddRange(activeDocParams); // Type conversion issue
                     System.Diagnostics.Debug.WriteLine($"Found {activeDocParams.Count} parameters from active document for {category}");
@@ -3905,7 +4529,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 var selectedLinkedFiles = selectedReferenceFiles.Where(f => !f.Contains("(Active Document)")).ToList();
                 if (selectedLinkedFiles.Count > 0)
                 {
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Getting parameters from {selectedLinkedFiles.Count} LINKED FILES for {category}\n");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Getting parameters from {selectedLinkedFiles.Count} LINKED FILES for {category}\n");
                     
                     foreach (var linkedFile in selectedLinkedFiles)
                     {
@@ -3924,12 +4548,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 allParameters = allParameters.GroupBy(p => p.Name).Select(g => g.First()).ToList();
                 
                 System.Diagnostics.Debug.WriteLine($"Total unique parameters found for {category}: {allParameters.Count}");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Total unique parameters for {category}: {allParameters.Count}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Total unique parameters for {category}: {allParameters.Count}\n");
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error getting parameters for {category}: {ex.Message}");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Error getting parameters for {category}: {ex.Message}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Error getting parameters for {category}: {ex.Message}\n");
             }
             
             return allParameters;
@@ -3956,17 +4580,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         {
             try
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Updating parameter dropdowns\n");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Available categories: {string.Join(", ", categoryParameters.Keys)}\n");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] All collected categories: {string.Join(", ", _allCollectedParameters.Keys)}\n");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Number of tabs: {_serviceParameterTabs?.TabPages.Count ?? 0}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Updating parameter dropdowns\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Available categories: {string.Join(", ", categoryParameters.Keys)}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] All collected categories: {string.Join(", ", _allCollectedParameters.Keys)}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Number of tabs: {_serviceParameterTabs?.TabPages.Count ?? 0}\n");
                 
                 if (_serviceParameterTabs?.TabPages.Count > 0)
                 {
                     foreach (WinForms.TabPage tabPage in _serviceParameterTabs.TabPages)
                     {
                         string tabName = tabPage.Text;
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Processing tab: {tabName}\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Processing tab: {tabName}\n");
                         
                         // Find matching category parameters from ALL collected parameters (persistent)
                         var matchingParameters = new List<Models.ParameterInfo>();
@@ -3975,24 +4599,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             if (IsCategoryMatch(tabName, kvp.Key))
                             {
                                 matchingParameters.AddRange(kvp.Value);
-                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Found {kvp.Value.Count} parameters for {kvp.Key} in tab {tabName}\n");
+                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Found {kvp.Value.Count} parameters for {kvp.Key} in tab {tabName}\n");
                             }
                         }
                         
                         // Update ALL parameter rows in this tab
                         UpdateTabParameterDropdown(tabPage, matchingParameters);
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Updated dropdown for tab {tabName} with {matchingParameters.Count} parameters\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Updated dropdown for tab {tabName} with {matchingParameters.Count} parameters\n");
                     }
                 }
                 else
                 {
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] No service parameter tabs found!\n");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] No service parameter tabs found!\n");
                 }
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error updating parameter dropdowns: {ex.Message}");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] ERROR updating parameter dropdowns: {ex.Message}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] ERROR updating parameter dropdowns: {ex.Message}\n");
             }
         }
 
@@ -4018,7 +4642,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         {
             try
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] UpdateTabParameterDropdown called for tab {tabPage.Text} with {parameters.Count} parameters\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] UpdateTabParameterDropdown called for tab {tabPage.Text} with {parameters.Count} parameters\n");
                 
                 // Find ALL ComboBoxes in the tab (parameter name dropdowns) - look in nested panels too
                 var allComboBoxes = new List<WinForms.ComboBox>();
@@ -4038,18 +4662,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     }
                 }
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Found {allComboBoxes.Count} ComboBoxes in tab {tabPage.Text}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Found {allComboBoxes.Count} ComboBoxes in tab {tabPage.Text}\n");
                 
                 if (allComboBoxes.Count > 0)
                 {
                     // Prepare parameter list once
                     var groupedParameters = GroupParameters(parameters);
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Grouped parameters into {groupedParameters.Count} groups\n");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Grouped parameters into {groupedParameters.Count} groups\n");
                     
                     // Update ALL ComboBoxes in this tab
                     foreach (var nameCombo in allComboBoxes)
                     {
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Updating ComboBox in tab {tabPage.Text}\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Updating ComboBox in tab {tabPage.Text}\n");
                         
                         nameCombo.Items.Clear();
                         nameCombo.Items.Add("<Select Parameter>");
@@ -4084,17 +4708,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         }
                     }
                     
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Updated {allComboBoxes.Count} ComboBoxes in tab {tabPage.Text} with {allComboBoxes[0].Items.Count} total items each\n");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Updated {allComboBoxes.Count} ComboBoxes in tab {tabPage.Text} with {allComboBoxes[0].Items.Count} total items each\n");
                 }
                 else
                 {
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] No ComboBoxes found in tab {tabPage.Text}\n");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] No ComboBoxes found in tab {tabPage.Text}\n");
                 }
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error updating tab parameter dropdown: {ex.Message}");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] ERROR in UpdateTabParameterDropdown: {ex.Message}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] ERROR in UpdateTabParameterDropdown: {ex.Message}\n");
             }
         }
 
@@ -4168,7 +4792,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error getting linked document for '{linkedFileName}': {ex.Message}");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Error getting linked document for '{linkedFileName}': {ex.Message}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Error getting linked document for '{linkedFileName}': {ex.Message}\n");
             }
             
             return null;
@@ -4197,7 +4821,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     // Extract parameter name (remove type info)
                     string parameterName = selectedParameter.Split('(')[0].Trim();
                     
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Parameter selected: {parameterName} in tab {tabName}\n");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Parameter selected: {parameterName} in tab {tabName}\n");
                     
                     // Find the corresponding value ComboBox in the same row
                     var valueCombo = FindValueComboBox(nameCombo);
@@ -4218,12 +4842,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             if (parameterValues.Count > 0)
                             {
                                 valueCombo.Items.AddRange(parameterValues.ToArray());
-                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Populated value ComboBox with {parameterValues.Count} values for parameter {parameterName}: {string.Join(", ", parameterValues.Take(5))}\n");
+                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Populated value ComboBox with {parameterValues.Count} values for parameter {parameterName}: {string.Join(", ", parameterValues.Take(5))}\n");
                             }
                             else
                             {
                                 valueCombo.Items.Add("No values found");
-                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] No values found for parameter {parameterName}\n");
+                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] No values found for parameter {parameterName}\n");
                             }
                             
                             valueCombo.SelectedIndex = 0;
@@ -4236,13 +4860,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     }
                     else
                     {
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] No value ComboBox found for parameter {parameterName}\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] No value ComboBox found for parameter {parameterName}\n");
                     }
                 }
             }
             catch (Exception ex)
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Error in OnParameterSelected: {ex.Message}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Error in OnParameterSelected: {ex.Message}\n");
                 _isUpdatingComboBoxes = false; // Reset flag on error
             }
         }
@@ -4267,7 +4891,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
             catch (Exception ex)
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Error finding value ComboBox: {ex.Message}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Error finding value ComboBox: {ex.Message}\n");
                 return null;
             }
         }
@@ -4301,13 +4925,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 //     }
                 // } // Values property not available in Models.ParameterInfo
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Found {values.Count} unique values for parameter {parameterName} in category {category}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Found {values.Count} unique values for parameter {parameterName} in category {category}\n");
                 
                 return values.OrderBy(v => v).ToList(); // Return sorted list
             }
             catch (Exception ex)
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Error getting parameter values for {parameterName}: {ex.Message}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Error getting parameter values for {parameterName}: {ex.Message}\n");
                 return new List<string>();
             }
         }
@@ -4392,7 +5016,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         return;
                     }
                     
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Value selected: {selectedValue} in tab {tabName}\n");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Value selected: {selectedValue} in tab {tabName}\n");
                     
                     // Find the corresponding parameter ComboBox in the same row
                     var nameCombo = FindParameterComboBox(valueCombo);
@@ -4404,26 +5028,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             string parameterName = selectedParameter.Split('(')[0].Trim();
                             
                             // Show mapping information
-                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Ready to map: {parameterName} = {selectedValue} for {tabName}\n");
+                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Ready to map: {parameterName} = {selectedValue} for {tabName}\n");
                             
                             // Handle different parameter types
                             if (parameterName.Equals("Size", StringComparison.OrdinalIgnoreCase))
                             {
                                 // For Size parameters, find reference elements with this size
-                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Size parameter selected - finding reference elements with size: {selectedValue}\n");
+                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Size parameter selected - finding reference elements with size: {selectedValue}\n");
                                 // TODO: Add "Find Reference Elements" button to show elements with this size
                             }
                             else if (parameterName.Equals("Reference Level", StringComparison.OrdinalIgnoreCase) || 
                                      parameterName.Equals("Level", StringComparison.OrdinalIgnoreCase))
                             {
                                 // For Level parameters, this will be applied to all openings on that level
-                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Level parameter selected - will apply to all openings on level: {selectedValue}\n");
+                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Level parameter selected - will apply to all openings on level: {selectedValue}\n");
                                 // TODO: Add "Apply to All Openings on Level" button
                             }
                             else
                             {
                                 // For other parameters (System Type, Material, etc.)
-                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Parameter {parameterName} selected - ready for mapping to openings\n");
+                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Parameter {parameterName} selected - ready for mapping to openings\n");
                                 // TODO: Add "Map to Opening" button for general parameters
                             }
                         }
@@ -4432,7 +5056,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
             catch (Exception ex)
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Error in OnValueSelected: {ex.Message}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Error in OnValueSelected: {ex.Message}\n");
             }
         }
 
@@ -4456,7 +5080,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
             catch (Exception ex)
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Error finding parameter ComboBox: {ex.Message}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Error finding parameter ComboBox: {ex.Message}\n");
                 return null;
             }
         }

@@ -52,5 +52,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// Advanced settings for ConVoid-like features.
         /// </summary>
         public SettingsModel AdvancedSettings { get; set; } = new SettingsModel();
+        
+        /// <summary>
+        /// Storage for clash zones detected in this configuration
+        /// </summary>
+        public ClashZoneStorage ClashZoneStorage { get; set; } = new ClashZoneStorage();
     }
 }

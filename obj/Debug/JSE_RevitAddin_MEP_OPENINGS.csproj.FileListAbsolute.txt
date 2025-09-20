@@ -1,3 +1,21 @@
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\JSE_RevitAddin_MEP_OPENINGS.addin
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\JSE_RevitAddin_MEP_OPENINGS.dll
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\JSE_RevitAddin_MEP_OPENINGS.pdb
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\CommunityToolkit.Mvvm.dll
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\JetBrains.Annotations.dll
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\Microsoft.Bcl.AsyncInterfaces.dll
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\Nice3point.Revit.Extensions.dll
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\Nice3point.Revit.Toolkit.dll
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\Serilog.dll
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\Serilog.Sinks.Debug.dll
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\System.Buffers.dll
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\System.ComponentModel.Annotations.dll
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\System.Diagnostics.DiagnosticSource.dll
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\System.Memory.dll
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\System.Numerics.Vectors.dll
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\System.Runtime.CompilerServices.Unsafe.dll
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\System.Threading.Channels.dll
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\System.Threading.Tasks.Extensions.dll
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug\Debug\JSE_RevitAddin_MEP_OPENINGS.addin
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug\Debug\JSE_RevitAddin_MEP_OPENINGS.dll
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug\Debug\JSE_RevitAddin_MEP_OPENINGS.pdb
@@ -22,6 +40,7 @@ C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\ConVoidStyles.baml
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\JSE_RevitAddin_MEP_OPENINGSDialog.baml
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\LeftPanel.baml
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\MiddlePanel.baml
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\OpeningStatusPanel.baml
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\RightPanel.baml
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\ViewModels\FamilySelectionWindow.g.cs
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\JSE_RevitAddin_MEP_OPENINGSDialog.g.cs
@@ -29,6 +48,8 @@ C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\JSE_RevitAddin_MEP_OPEN
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\LeftPanel.g.cs
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\MainDialog.g.cs
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\MiddlePanel.g.cs
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\OpeningStatusDialog.g.cs
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\OpeningStatusPanel.g.cs
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\ProfileManagementDialog.g.cs
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\ProfileSetupDialog.g.cs
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\RightPanel.g.cs
@@ -38,6 +59,7 @@ C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\JSE_RevitAddin_MEP_OPENINGS_M
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\JSE_RevitAddin_MEP_OPENINGS_MarkupCompile.lref
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\JSE_RevitAddin_MEP_OPENINGSView.baml
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\MainDialog.baml
+C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\OpeningStatusDialog.baml
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\ProfileManagementDialog.baml
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\ProfileSetupDialog.baml
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\UserControl1.baml
@@ -50,25 +72,3 @@ C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\JSE_RevitAddin_MEP_OPENINGS.s
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\JSE_Revi.99BEBF13.Up2Date
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\JSE_RevitAddin_MEP_OPENINGS.dll
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\JSE_RevitAddin_MEP_OPENINGS.pdb
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\JSE_RevitAddin_MEP_OPENINGS.addin
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\JSE_RevitAddin_MEP_OPENINGS.dll
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\JSE_RevitAddin_MEP_OPENINGS.pdb
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\CommunityToolkit.Mvvm.dll
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\JetBrains.Annotations.dll
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\Microsoft.Bcl.AsyncInterfaces.dll
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\Nice3point.Revit.Extensions.dll
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\Nice3point.Revit.Toolkit.dll
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\Serilog.dll
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\Serilog.Sinks.Debug.dll
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\System.Buffers.dll
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\System.ComponentModel.Annotations.dll
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\System.Diagnostics.DiagnosticSource.dll
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\System.Memory.dll
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\System.Numerics.Vectors.dll
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\System.Runtime.CompilerServices.Unsafe.dll
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\System.Threading.Channels.dll
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R23\Debug R23\System.Threading.Tasks.Extensions.dll
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\OpeningStatusPanel.baml
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\OpeningStatusDialog.g.cs
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\OpeningStatusPanel.g.cs
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Debug\Views\OpeningStatusDialog.baml

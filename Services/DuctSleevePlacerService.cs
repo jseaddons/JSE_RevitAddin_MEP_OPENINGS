@@ -7,6 +7,7 @@ using Autodesk.Revit.DB.Structure;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders;
+using JSE_RevitAddin_MEP_OPENINGS.Models;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -18,7 +19,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly FamilySymbol _ductWallSymbol;
         private readonly FamilySymbol _ductSlabSymbol;
         private readonly Action<string> _log;
-        private readonly IClearanceProvider _clearanceProvider;
+        private readonly ClearanceValues _clearanceValues; // Injected clearance values
 
         public int PlacedCount { get; private set; }
         public int SkippedCount { get; private set; }
@@ -30,15 +31,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             List<(Element, Transform?)> structuralElements,
             FamilySymbol ductWallSymbol,
             FamilySymbol ductSlabSymbol,
-            Action<string> log)
+            Action<string> log,
+            ClearanceValues clearanceValues)
         {
+            // Set logging context for DuctSleevePlacerService debugging
+            DebugLogger.SetServiceContext("SleevePlacers");
+            
             _doc = doc;
             _ductTuples = ductTuples;
             _structuralElements = structuralElements;
             _ductWallSymbol = ductWallSymbol;
             _ductSlabSymbol = ductSlabSymbol;
             _log = log;
-            _clearanceProvider = new ClearanceProviderFactory().GetProvider("Ducts");
+            _clearanceValues = clearanceValues ?? new ClearanceValues(); // Use defaults if null
         }
 
 
@@ -47,6 +52,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             PlacedCount = 0;
             SkippedCount = 0;
             ErrorCount = 0;
+            
+            DebugLogger.Info($"[DuctSleevePlacerService] Starting PlaceAllDuctSleeves with {_ductTuples.Count} ducts and {_structuralElements.Count} structural elements");
 
             var settings = ApplicationProfileService.Instance.GetCurrentSettings();
 
@@ -129,7 +136,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 else
                 {
-                    intersections = MepIntersectionService.FindIntersections(duct, nearbyStructuralElements, _log ?? (_ => {}));
+                    var intersections4Tuple = MepIntersectionService.FindIntersections(duct, nearbyStructuralElements, _log ?? (_ => {}));
+                    intersections = intersections4Tuple.Select(x => (x.Item2, x.Item3, x.Item4)).ToList();
                 }
                 if (intersections.Count > 0)
                 {
@@ -246,10 +254,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         double h2 = duct.get_Parameter(BuiltInParameter.RBS_CURVE_HEIGHT_PARAM)?.AsDouble() ?? 0;
                         // Support round ducts: use diameter when width/height are not provided
                         double diameter = duct.get_Parameter(BuiltInParameter.RBS_CURVE_DIAMETER_PARAM)?.AsDouble() ?? 0;
-                        double clearance = ClearanceManager.Instance.GetClearance(duct);
+                        
+                        // DEBUG: Log original duct dimensions
+                        DebugLogger.Log($"[DUCT_SIZE_DEBUG] Duct {duct.Id} original dimensions:");
+                        DebugLogger.Log($"  - Width: {w} internal units ({UnitUtils.ConvertFromInternalUnits(w, UnitTypeId.Millimeters):F1}mm)");
+                        DebugLogger.Log($"  - Height: {h2} internal units ({UnitUtils.ConvertFromInternalUnits(h2, UnitTypeId.Millimeters):F1}mm)");
+                        DebugLogger.Log($"  - Diameter: {diameter} internal units ({UnitUtils.ConvertFromInternalUnits(diameter, UnitTypeId.Millimeters):F1}mm)");
+                        // Use injected clearance values - no manager calls in hot path
+                        bool isInsulated = IsDuctInsulated(duct);
+                        double clearance = _clearanceValues.GetDuctClearance(isInsulated);
+                        double clearanceInInternalUnits = UnitUtils.ConvertToInternalUnits(clearance, UnitTypeId.Millimeters);
 
                         if ((w <= 0.0 || h2 <= 0.0) && diameter > 0.0)
                         {
+                            DebugLogger.Log($"[DUCT_SIZE_DEBUG] Duct {duct.Id} detected as round duct - using diameter");
                             if (diameter > settings.RoundOpeningsRectangular)
                             {
                                 _log?.Invoke($"INFO: Duct {duct.Id} is round and its diameter is greater than {settings.RoundOpeningsRectangular}. Creating a rectangular sleeve.");
@@ -263,11 +281,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 w = diameter;
                                 h2 = diameter;
                             }
+                            DebugLogger.Log($"[DUCT_SIZE_DEBUG] After round duct processing - Width: {w}, Height: {h2}");
                         }
 
                         // Apply per-side clearance (clearance is per-side, so add twice)
-                        w = w + 2 * clearance;
-                        h2 = h2 + 2 * clearance;
+                        w = w + 2 * clearanceInInternalUnits;
+                        h2 = h2 + 2 * clearanceInInternalUnits;
+                        
+                        // DEBUG: Log dimensions after clearance application
+                        DebugLogger.Log($"[DUCT_SIZE_DEBUG] Duct {duct.Id} after clearance application:");
+                        DebugLogger.Log($"  - Clearance: {clearance}mm ({clearanceInInternalUnits} internal units)");
+                        DebugLogger.Log($"  - Final Width: {w} internal units ({UnitUtils.ConvertFromInternalUnits(w, UnitTypeId.Millimeters):F1}mm)");
+                        DebugLogger.Log($"  - Final Height: {h2} internal units ({UnitUtils.ConvertFromInternalUnits(h2, UnitTypeId.Millimeters):F1}mm)");
+                        DebugLogger.Log($"  - Opening Area: {w * h2} internal units²");
+                        DebugLogger.Log($"  - Threshold: {settings.IgnoreOpeningsSmallerThan} internal units²");
 
                         if (w * h2 < settings.IgnoreOpeningsSmallerThan)
                         {
@@ -379,6 +406,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     SkippedCount++;
                 }
             }
+            
+            DebugLogger.Info($"[DuctSleevePlacerService] PlaceAllDuctSleeves completed: Placed={PlacedCount}, Skipped={SkippedCount}, Errors={ErrorCount}");
         }
 
         private static bool BoundingBoxesIntersect(BoundingBoxXYZ a, BoundingBoxXYZ b)
@@ -387,6 +416,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return !(a.Max.X < b.Min.X || a.Min.X > b.Max.X ||
                      a.Max.Y < b.Min.Y || a.Min.Y > b.Max.Y ||
                      a.Max.Z < b.Min.Z || a.Min.Z > b.Max.Z);
+        }
+
+        /// <summary>
+        /// Check if a duct is insulated - pure calculation, no manager calls
+        /// </summary>
+        private bool IsDuctInsulated(Duct duct)
+        {
+            try
+            {
+                // Use existing SleeveClearanceHelper logic for insulation detection
+                // This is a pure calculation, no UI dependencies
+                var baseClearance = SleeveClearanceHelper.GetClearance(duct);
+                var normalClearance = UnitUtils.ConvertToInternalUnits(_clearanceValues.DuctsNormalClearance, UnitTypeId.Millimeters);
+                
+                // If the calculated clearance is less than normal, it's likely insulated
+                return baseClearance < normalClearance;
+            }
+            catch
+            {
+                return false; // Default to non-insulated on error
+            }
         }
     }
 }

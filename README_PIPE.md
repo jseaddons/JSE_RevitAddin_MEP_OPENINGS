@@ -1,5 +1,17 @@
 # Pipe Sleeve Add-in — README
 
+## 🚨 **CRITICAL DOCUMENTATION FOR DEVELOPERS**
+
+**Before working with this codebase, you MUST read these critical documents:**
+
+- **📖 [External Command Execution Pattern](EXTERNAL_COMMAND_EXECUTION_PATTERN.md)** - Essential for understanding command execution
+- **⚡ [ExecuteImpl Quick Reference](EXECUTEIMPL_QUICK_REFERENCE.md)** - Quick reference for command implementation
+- **🔧 [Clearance Backend Implementation Guide](CLEARANCE_BACKEND_IMPLEMENTATION_GUIDE.md)** - Complete clearance flow documentation
+
+**⚠️ CRITICAL: The ExecuteImpl pattern is essential for the application to function correctly. Do not modify command execution without understanding this pattern.**
+
+---
+
 Purpose
 -------
 This document explains the workflow, objectives, debugging history, code changes, run instructions, and lessons learned for the Pipe Sleeve placement add-in in this repository. It is intended for developers and BIM/MEP engineers who will run, maintain, and extend the add-in.

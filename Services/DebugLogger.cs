@@ -16,6 +16,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// Toggle to false if you want to silence logs.
     /// </summary>
     public static bool IsEnabled = true;
+    
+    /// <summary>
+    /// Current service name for logging context
+    /// </summary>
+    public static string CurrentService = "MainUI";
     // Always log to the hard-coded Log directory requested by the user
     private static readonly string LogDir = "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\Log";
     private static string DuctLogFilePath = Path.Combine(LogDir, "ductsleeveplacer.log");
@@ -40,12 +45,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             Error
         }
 
+    /// <summary>
+    /// Check if logging is enabled for the current service
+    /// </summary>
+    private static bool IsLoggingEnabledForCurrentService()
+    {
+        if (!IsEnabled) return false;
+        return LoggingConfiguration.IsLoggingEnabled(CurrentService);
+    }
+    
+    /// <summary>
+    /// Close all file handles and stop logging
+    /// </summary>
+    public static void CloseAllLogFiles()
+    {
+        lock (_writerLock)
+        {
+            try 
+            { 
+                if (_writer != null) 
+                { 
+                    _writer.Flush(); 
+                    _writer.Close(); 
+                    _writer.Dispose(); 
+                } 
+            } 
+            catch { }
+            _writer = null;
+        }
+    }
+        
+        /// <summary>
+        /// Set the current service context for logging
+        /// </summary>
+        public static void SetServiceContext(string serviceName)
+        {
+            CurrentService = serviceName;
+        }
+        
         /// <summary>
         /// Start a new log file at application startup (default log name)
         /// </summary>
         public static void InitLogFile()
         {
-            if (!IsEnabled) return;
+            if (!IsLoggingEnabledForCurrentService()) return;
             InitLogFile("cabletraysleeveplacer");
         }
 
@@ -54,7 +97,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void InitLogFile(string logFileName)
         {
-            if (!IsEnabled) return;
+            if (!IsLoggingEnabledForCurrentService()) return;
             try
             {
                 // Use the hard-coded log directory and ensure it exists
@@ -89,7 +132,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void InitCustomLogFile(string logFileName)
         {
-            if (!IsEnabled) return;
+            if (!IsLoggingEnabledForCurrentService()) return;
             try
             {
                 // Set log file path with build timestamp under the hard-coded log directory
@@ -197,7 +240,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void InitAbsoluteLogFile(string absoluteFilePath)
         {
-            if (!IsEnabled) return;
+            if (!IsLoggingEnabledForCurrentService()) return;
             try
             {
                 var logDir = Path.GetDirectoryName(absoluteFilePath);
@@ -275,7 +318,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             [CallerFilePath] string sourceFile = "",
             [CallerLineNumber] int lineNumber = 0)
         {
-            if (!IsEnabled) return;
+            if (!IsLoggingEnabledForCurrentService()) return;
             Log(LogLevel.Info, message, sourceFile, lineNumber);
         }
 
@@ -288,7 +331,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             [CallerFilePath] string sourceFile = "",
             [CallerLineNumber] int lineNumber = 0)
         {
-            if (!IsEnabled) return;
+            if (!IsLoggingEnabledForCurrentService()) return;
             try
             {
                 // Get the class name from the source file path
@@ -319,7 +362,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             [CallerFilePath] string sourceFile = "",
             [CallerLineNumber] int lineNumber = 0)
         {
-            if (!IsEnabled) return;
+            if (!IsLoggingEnabledForCurrentService()) return;
             Log(LogLevel.Warning, message, sourceFile, lineNumber);
         }
 
@@ -330,7 +373,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             [CallerFilePath] string sourceFile = "",
             [CallerLineNumber] int lineNumber = 0)
         {
-            if (!IsEnabled) return;
+            if (!IsLoggingEnabledForCurrentService()) return;
             Log(LogLevel.Error, message, sourceFile, lineNumber);
         }
 

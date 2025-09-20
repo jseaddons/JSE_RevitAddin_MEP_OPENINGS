@@ -14,6 +14,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
     {
         private ApplicationProfileService? _appProfileService;
         private Document? _document;
+        private UIDocument? _uiDocument;
         private DialogType _dialogType;
 
         public enum DialogType
@@ -24,11 +25,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             MainDialog
         }
 
-        public void SetParameters(ApplicationProfileService appProfileService, Document? document, DialogType dialogType)
+        public void SetParameters(ApplicationProfileService appProfileService, Document? document, UIDocument? uiDocument, DialogType dialogType)
         {
             _appProfileService = appProfileService;
             _document = document;
+            _uiDocument = uiDocument;
             _dialogType = dialogType;
+            
+            // Set logging context for external events debugging
+            DebugLogger.SetServiceContext("ExternalEvents");
+            DebugLogger.Info($"ExternalEventHandlers.SetParameters: UIDocument = {(uiDocument != null ? "NOT NULL" : "NULL")}");
+            DebugLogger.Info($"ExternalEventHandlers.SetParameters: Document = {(document != null ? "NOT NULL" : "NULL")}");
         }
 
         public void Execute(UIApplication app)
@@ -110,9 +117,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         {
             if (_appProfileService == null || _document == null) return;
             
-            using (var emergencyMainDlg = new EmergencyMainDialog(_appProfileService, _document))
+            DebugLogger.Info($"ExternalEventHandlers.ShowMainDialog: About to create EmergencyMainDialog");
+            DebugLogger.Info($"ExternalEventHandlers.ShowMainDialog: _uiDocument = {(_uiDocument != null ? "NOT NULL" : "NULL")}");
+            DebugLogger.Info($"ExternalEventHandlers.ShowMainDialog: _document = {(_document != null ? "NOT NULL" : "NULL")}");
+            
+            // CRITICAL FIX: Get UIDocument from current Revit context if not available
+            var uiDocument = _uiDocument ?? GetCurrentUIDocument();
+            DebugLogger.Info($"ExternalEventHandlers.ShowMainDialog: Final UIDocument = {(uiDocument != null ? "NOT NULL" : "NULL")}");
+            
+            using (var emergencyMainDlg = new EmergencyMainDialog(_appProfileService, _document, uiDocument))
             {
+                DebugLogger.Info($"ExternalEventHandlers.ShowMainDialog: EmergencyMainDialog created successfully");
                 emergencyMainDlg.ShowDialog();
+            }
+        }
+        
+        /// <summary>
+        /// Gets the current UIDocument from Revit context
+        /// </summary>
+        private UIDocument? GetCurrentUIDocument()
+        {
+            try
+            {
+                // In ExternalEventHandlers, we don't have direct access to UIApplication
+                // The UIDocument should be passed through the SetParameters method
+                DebugLogger.Warning("ExternalEventHandlers.GetCurrentUIDocument: Cannot get UIDocument from Revit context in ExternalEventHandlers");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"ExternalEventHandlers.GetCurrentUIDocument: Error getting UIDocument: {ex.Message}");
+                return null;
             }
         }
 

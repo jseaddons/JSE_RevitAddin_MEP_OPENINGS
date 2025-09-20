@@ -5,6 +5,8 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Input;
+using Autodesk.Revit.DB;
+using Autodesk.Revit.UI;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
@@ -148,12 +150,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.ViewModels
             try
             {
                 // EMERGENCY MODE: Use WinForms MainDialog instead of WPF to prevent crashes
-                var emergencyMainDialog = new EmergencyMainDialog(_appProfileService);
+                // Get the current UIDocument from Revit context
+                var uiDocument = GetCurrentUIDocument();
+                var emergencyMainDialog = new EmergencyMainDialog(_appProfileService, null, uiDocument);
                 emergencyMainDialog.Show(); // Modeless for Revit compatibility
             }
             catch (Exception ex)
             {
                 _appProfileService.StatusManager.UpdateStatus($"Failed to open MainDialog: {ex.Message}", StatusType.Error);
+            }
+        }
+        
+        /// <summary>
+        /// Gets the current UIDocument from Revit context
+        /// </summary>
+        private UIDocument? GetCurrentUIDocument()
+        {
+            try
+            {
+                // Note: In WPF ViewModels, we don't have direct access to Revit's UIApplication
+                // This method will return null, and the EmergencyMainDialog will handle UIDocument retrieval
+                _appProfileService.StatusManager.UpdateStatus("UIDocument not available in WPF context - will be retrieved by dialog", StatusType.Info);
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _appProfileService.StatusManager.UpdateStatus($"Error getting UIDocument: {ex.Message}", StatusType.Warning);
+                return null;
             }
         }
 

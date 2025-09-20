@@ -150,16 +150,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 List<(Element, BoundingBoxXYZ, XYZ)> intersections = new List<(Element, BoundingBoxXYZ, XYZ)>();
                 if (transform == null)
                 {
-                    // Use full penetration logic if enabled
-                    bool fullPenetrationEnabled = GetFullPenetrationSetting(); // Static method call
-                    if (fullPenetrationEnabled)
-                    {
-                        intersections = MepIntersectionService.FindIntersectionsWithFullPenetration(pipe, nearbyStructuralElements, _log, forceFullPenetration: true);
-                    }
-                    else
-                    {
-                        intersections = MepIntersectionService.FindIntersections(pipe, nearbyStructuralElements, _log);
-                    }
+                    // Use regular intersection logic (full penetration method removed in working version)
+                    var intersections4Tuple = MepIntersectionService.FindIntersections(pipe, nearbyStructuralElements, _log);
+                    intersections = intersections4Tuple.Select(x => (x.Item2, x.Item3, x.Item4)).ToList();
                 }
                 else
                 {

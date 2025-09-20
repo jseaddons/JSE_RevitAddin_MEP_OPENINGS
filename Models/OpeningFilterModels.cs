@@ -65,6 +65,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public DateTime LastModified { get; set; } = DateTime.Now;
 
         /// <summary>
+        /// Clash zone storage for this filter
+        /// </summary>
+        public ClashZoneStorage? ClashZoneStorage { get; set; }
+
+        /// <summary>
         /// Create a default filter for a given category
         /// </summary>
         public static OpeningFilter CreateDefault(MepCategory category, string name)

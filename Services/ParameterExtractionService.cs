@@ -103,7 +103,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     var paramInfo = new ParameterInfo
                     {
-                        Name = param.Definition.Name,
+                        Name = param.Definition?.Name ?? "Unknown",
                         Type = param.StorageType.ToString(),
                         IsInstanceParameter = isInstance,
                         BuiltInParameter = param.Id.IntegerValue < 0 ?

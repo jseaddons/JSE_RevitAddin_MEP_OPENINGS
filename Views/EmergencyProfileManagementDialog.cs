@@ -184,12 +184,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 var currentProfileFile = System.IO.Path.Combine(profileDir ?? "", "current_profile.txt");
                 var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_restore_debug.log";
                 
-                System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfileData: Checking for saved profile\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfileData: Checking for saved profile\n");
                 
                 if (System.IO.File.Exists(currentProfileFile))
                 {
                     var savedProfileName = System.IO.File.ReadAllText(currentProfileFile).Trim();
-                    System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Found saved profile: {savedProfileName}\n");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Found saved profile: {savedProfileName}\n");
                     
                     // If no current profile or different profile, restore the saved one
                     if (_appProfileService.CurrentProfile == null || _appProfileService.CurrentProfile.Name != savedProfileName)
@@ -215,7 +215,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         if (currentProfileField != null)
                         {
                             currentProfileField.SetValue(_appProfileService, restoredProfile);
-                            System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Restored profile via reflection: {savedProfileName}\n");
+                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Restored profile via reflection: {savedProfileName}\n");
                         }
                     }
                 }
@@ -223,7 +223,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             catch (Exception ex)
             {
                 var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_restore_debug.log";
-                System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Profile restoration failed: {ex.Message}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Profile restoration failed: {ex.Message}\n");
             }
 
             // Update current profile info
@@ -247,14 +247,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 
                 // Debug logging
                 var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_load_debug.log";
-                System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfileData: Checking project-specific file: {revitProfileFile}\n");
-                System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] File exists: {System.IO.File.Exists(revitProfileFile)}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfileData: Checking project-specific file: {revitProfileFile}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] File exists: {System.IO.File.Exists(revitProfileFile)}\n");
                 
                 if (System.IO.File.Exists(revitProfileFile))
                 {
                     // SIMPLE TEXT PARSING: Parse profile names directly from XML content to avoid deserialization issues
                     var content = System.IO.File.ReadAllText(revitProfileFile);
-                    System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] File content length: {content.Length}\n");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] File content length: {content.Length}\n");
                     
                     // Parse profile names using simple text matching
                     var profileNames = new System.Collections.Generic.List<string>();
@@ -272,7 +272,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                                 if (!profileNames.Contains(profileName))
                                 {
                                     profileNames.Add(profileName);
-                                    System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Found profile name: {profileName}\n");
+                                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Found profile name: {profileName}\n");
                                 }
                             }
                         }
@@ -288,26 +288,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             var disciplines = string.Join(", ", actualProfile.Disciplines.Select(d => d.Name));
                             var displayText = $"{profileName} - {disciplines}";
                             _profileListBox.Items.Add(new ProfileListItem { Profile = actualProfile, DisplayText = displayText });
-                            System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Added actual profile to UI: {profileName}\n");
+                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Added actual profile to UI: {profileName}\n");
                         }
                         else
                         {
-                            System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Failed to load profile: {profileName}\n");
+                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Failed to load profile: {profileName}\n");
                         }
                     }
                     
-                    System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Total profiles added: {profileNames.Count}\n");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Total profiles added: {profileNames.Count}\n");
                 }
                 else
                 {
-                    System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Profile file does not exist\n");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Profile file does not exist\n");
                 }
             }
             catch (Exception ex)
             {
                 // Fallback to original method if direct loading fails
                 var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_load_debug.log";
-                System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Exception in LoadProfileData: {ex.Message}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Exception in LoadProfileData: {ex.Message}\n");
                 
                 // Try original method as fallback
                 foreach (var profile in _appProfileService.ProfileService.AvailableProfiles)
@@ -353,7 +353,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             catch (Exception ex)
             {
                 var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_load_error.log";
-                System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Error loading profile '{profileName}': {ex.Message}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Error loading profile '{profileName}': {ex.Message}\n");
             }
             
             return null;
@@ -388,12 +388,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         System.IO.File.WriteAllText(currentProfileFile, emergencySetup.CreatedProfile.Name);
                         
                         var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_creation_debug.log";
-                        System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] New profile created and set as current: {emergencySetup.CreatedProfile.Name}\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] New profile created and set as current: {emergencySetup.CreatedProfile.Name}\n");
                     }
                     catch (Exception saveEx)
                     {
                         var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_creation_debug.log";
-                        System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Failed to save new profile as current: {saveEx.Message}\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Failed to save new profile as current: {saveEx.Message}\n");
                     }
                     
                     // Refresh the data
@@ -424,16 +424,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 {
                     // DIRECT PROFILE LOADING: Load the complete profile from XML file
                     var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_switch_debug.log";
-                    System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Switching to profile: {selectedItem.Profile.Name}\n");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Switching to profile: {selectedItem.Profile.Name}\n");
                     
                     // SIMPLIFIED APPROACH: Create a working profile and bypass all XML deserialization issues
-                    System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Creating functional profile for: {selectedItem.Profile.Name}\n");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Creating functional profile for: {selectedItem.Profile.Name}\n");
                     
                     // Load the actual profile from the XML file instead of creating a fake one
                     var workingProfile = LoadProfileFromFile(selectedItem.Profile.Name);
                     if (workingProfile == null)
                     {
-                        System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Failed to load profile from file: {selectedItem.Profile.Name}\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Failed to load profile from file: {selectedItem.Profile.Name}\n");
                         WinForms.MessageBox.Show($"Failed to load profile '{selectedItem.Profile.Name}' from file.", 
                             "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
                         return;
@@ -449,13 +449,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         if (currentProfileField != null)
                         {
                             currentProfileField.SetValue(_appProfileService, workingProfile);
-                            System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Successfully set current profile via reflection: {workingProfile.Name}\n");
+                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Successfully set current profile via reflection: {workingProfile.Name}\n");
                         }
                         else
                         {
                             // Fallback to normal method
                             _appProfileService.SetCurrentProfile(workingProfile);
-                            System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Set profile using SetCurrentProfile method: {workingProfile.Name}\n");
+                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Set profile using SetCurrentProfile method: {workingProfile.Name}\n");
                         }
                         
                         // IMPORTANT: Save the switched profile as current to persistence file
@@ -464,11 +464,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             var profileDir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings");
                             var currentProfileFile = System.IO.Path.Combine(profileDir, "current_profile.txt");
                             System.IO.File.WriteAllText(currentProfileFile, workingProfile.Name);
-                            System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Updated current profile file to: {workingProfile.Name}\n");
+                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Updated current profile file to: {workingProfile.Name}\n");
                         }
                         catch (Exception fileEx)
                         {
-                            System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Failed to update current profile file: {fileEx.Message}\n");
+                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Failed to update current profile file: {fileEx.Message}\n");
                         }
                         
                         // Refresh the data
@@ -480,7 +480,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     }
                     catch (Exception setEx)
                     {
-                        System.IO.File.AppendAllText(debugLogPath, $"[{DateTime.Now}] Failed to set profile: {setEx.Message}\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Failed to set profile: {setEx.Message}\n");
                         WinForms.MessageBox.Show($"Failed to switch to profile '{selectedItem.Profile.Name}': {setEx.Message}", 
                             "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
                         return; // Don't proceed to close dialog

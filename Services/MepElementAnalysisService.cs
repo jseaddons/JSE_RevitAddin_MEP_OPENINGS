@@ -403,7 +403,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!string.IsNullOrEmpty(familyType))
                 {
                     // Extract size from family name if it contains dimensions
-                    if (familyType.Contains("x") || familyType.Contains("mm") || familyType.Contains("in"))
+                    if (!string.IsNullOrEmpty(familyType) && (familyType.Contains("x") || familyType.Contains("mm") || familyType.Contains("in")))
                     {
                         return familyType;
                     }

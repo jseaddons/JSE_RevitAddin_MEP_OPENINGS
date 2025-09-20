@@ -45,6 +45,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             try
             {
                 var uiApp = commandData.Application;
+                if (uiApp == null)
+                {
+                    message = "Application is null";
+                    return Result.Failed;
+                }
                 var uiDoc = uiApp.ActiveUIDocument;
                 var doc = uiDoc.Document;
 
@@ -101,12 +106,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             System.Diagnostics.Debug.WriteLine("Opening main dialog after profile creation");
                             File.AppendAllText(logPath, $"[{DateTime.Now}] Opening main dialog after profile creation\n");
                             
-                            using (var mainDialog = new Views.EmergencyMainDialog(appProfileService, doc))
-                            {
-                                var mainResult = mainDialog.ShowDialog();
-                                System.Diagnostics.Debug.WriteLine($"Main dialog result: {mainResult}");
-                                File.AppendAllText(logPath, $"[{DateTime.Now}] Main dialog result: {mainResult}\n");
-                            }
+                            ShowMainDialog(appProfileService, doc, uiDoc, logPath);
                         }
                     }
                 }
@@ -128,12 +128,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             System.Diagnostics.Debug.WriteLine("Opening main dialog after profile management");
                             File.AppendAllText(logPath, $"[{DateTime.Now}] Opening main dialog after profile management\n");
                             
-                            using (var mainDialog = new Views.EmergencyMainDialog(appProfileService, doc))
-                            {
-                                var mainResult = mainDialog.ShowDialog();
-                                System.Diagnostics.Debug.WriteLine($"Main dialog result: {mainResult}");
-                                File.AppendAllText(logPath, $"[{DateTime.Now}] Main dialog result: {mainResult}\n");
-                            }
+                            ShowMainDialog(appProfileService, doc, uiDoc, logPath);
                         }
                     }
                 }
@@ -163,45 +158,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         }
 
         /// <summary>
-        /// Simple test to directly create EmergencyMainDialog
+        /// Helper method to show the main dialog consistently
         /// </summary>
-        public static void TestDirectEmergencyMainDialog(Document doc)
+        private static void ShowMainDialog(ApplicationProfileService appProfileService, Document doc, UIDocument uiDoc, string logPath)
         {
             try
             {
-                System.Diagnostics.Debug.WriteLine("=== TestDirectEmergencyMainDialog STARTED ===");
-                var appProfileService = ApplicationProfileService.Instance;
-                System.Diagnostics.Debug.WriteLine("Creating EmergencyMainDialog directly...");
-                using (var emergencyMainDlg = new JSE_RevitAddin_MEP_OPENINGS.Views.EmergencyMainDialog(appProfileService, doc))
+                using (var mainDialog = new Views.EmergencyMainDialog(appProfileService, doc, uiDoc))
                 {
-                    emergencyMainDlg.ShowDialog(); // Modal dialog with proper disposal
+                    var mainResult = mainDialog.ShowDialog();
+                    System.Diagnostics.Debug.WriteLine($"Main dialog result: {mainResult}");
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] Main dialog result: {mainResult}\n");
                 }
-                System.Diagnostics.Debug.WriteLine("=== TestDirectEmergencyMainDialog COMPLETED ===");
-                
-                // Clean up the singleton instance
-                ApplicationProfileService.CleanupInstance();
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"TestDirectEmergencyMainDialog ERROR: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"ShowMainDialog ERROR: {ex.Message}");
+                File.AppendAllText(logPath, $"[{DateTime.Now}] ShowMainDialog ERROR: {ex.Message}\n");
                 
-                // Show error in TaskDialog instead of crashing
+                // Show error to user
                 try
                 {
-                    var errorDialog = new TaskDialog("Static Test Error");
-                    errorDialog.MainInstruction = "Static Test Failed";
-                    errorDialog.MainContent = $"An error occurred in static test but Revit did not crash:\n\n{ex.Message}";
+                    var errorDialog = new TaskDialog("Main Dialog Error");
+                    errorDialog.MainInstruction = "Failed to Open Main Dialog";
+                    errorDialog.MainContent = $"An error occurred opening the main dialog:\n\n{ex.Message}";
                     errorDialog.CommonButtons = TaskDialogCommonButtons.Ok;
                     errorDialog.Show();
                 }
-                catch { }
-                
-                // Clean up even if there was an error
-                try
+                catch (Exception tde)
                 {
-                    ApplicationProfileService.CleanupInstance();
+                    // TaskDialog failed, fall back to basic message
+                    System.Windows.Forms.MessageBox.Show($"Main Dialog Error: {ex.Message}", "Error", System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Error);
                 }
-                catch { }
             }
         }
 
@@ -220,7 +208,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             {
                 try
                 {
-                    File.AppendAllText(@"C:\temp\static_test.log", $"[{DateTime.Now}] StaticTest failed: {ex.Message}\n");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\temp\static_test.log", $"[{DateTime.Now}] StaticTest failed: {ex.Message}\n");
                 }
                 catch { }
             }

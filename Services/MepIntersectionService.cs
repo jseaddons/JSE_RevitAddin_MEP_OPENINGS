@@ -21,12 +21,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         // Main method to find intersections for a given MEP element - OPTIMIZED
-        public static List<(Element, BoundingBoxXYZ, XYZ)> FindIntersections(
+        public static List<(Element, Element, BoundingBoxXYZ, XYZ)> FindIntersections(
             Element mepElement,
             List<(Element, Transform?)> structuralElements,
             Action<string> log)
         {
-            var results = new List<(Element, BoundingBoxXYZ, XYZ)>();
+            var results = new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
             var locationCurve = mepElement.Location as LocationCurve;
             if (locationCurve == null)
             {
@@ -74,25 +74,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (structBBox != null)
                     {
                         // Transform structural bbox if it's from a linked doc
+                        BoundingBoxXYZ transformedStructBBox = structBBox;
                         if (linkTransform != null)
                         {
-                            var transformedMin = linkTransform.OfPoint(structBBox.Min);
-                            var transformedMax = linkTransform.OfPoint(structBBox.Max);
-                            structBBox = new BoundingBoxXYZ
+                            // CORRECTED: Transform all 8 corners of the bounding box to find true min/max in target coordinate system
+                            var corners = new[]
                             {
-                                Min = new XYZ(Math.Min(transformedMin.X, transformedMax.X), Math.Min(transformedMin.Y, transformedMax.Y), Math.Min(transformedMin.Z, transformedMax.Z)),
-                                Max = new XYZ(Math.Max(transformedMin.X, transformedMax.X), Math.Max(transformedMin.Y, transformedMax.Y), Math.Max(transformedMin.Z, transformedMax.Z))
+                                structBBox.Min,
+                                structBBox.Max,
+                                new XYZ(structBBox.Min.X, structBBox.Min.Y, structBBox.Max.Z),
+                                new XYZ(structBBox.Min.X, structBBox.Max.Y, structBBox.Min.Z),
+                                new XYZ(structBBox.Min.X, structBBox.Max.Y, structBBox.Max.Z),
+                                new XYZ(structBBox.Max.X, structBBox.Min.Y, structBBox.Min.Z),
+                                new XYZ(structBBox.Max.X, structBBox.Min.Y, structBBox.Max.Z),
+                                new XYZ(structBBox.Max.X, structBBox.Max.Y, structBBox.Min.Z)
+                            };
+
+                            var transformedCorners = corners.Select(c => linkTransform.OfPoint(c)).ToList();
+
+                            double minX = transformedCorners.Min(c => c.X);
+                            double minY = transformedCorners.Min(c => c.Y);
+                            double minZ = transformedCorners.Min(c => c.Z);
+                            double maxX = transformedCorners.Max(c => c.X);
+                            double maxY = transformedCorners.Max(c => c.Y);
+                            double maxZ = transformedCorners.Max(c => c.Z);
+
+                            transformedStructBBox = new BoundingBoxXYZ
+                            {
+                                Min = new XYZ(minX, minY, minZ),
+                                Max = new XYZ(maxX, maxY, maxZ)
                             };
                         }
-                        
+
                         // Quick bounding box intersection test
-                        if (!BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max))
+                        if (!BoundingBoxesIntersect(expandedMin, expandedMax, transformedStructBBox.Min, transformedStructBBox.Max))
                         {
                             spatiallyFilteredCount++;
                             // ENHANCED LOGGING: Track which walls are being filtered out
                             var wallType = structuralElement.GetType().Name;
                             var wallId = structuralElement.Id.IntegerValue;
-                            var distance = GetDistanceToMepElement(mepBBox, structBBox, linkTransform);
+                            var distance = GetDistanceToMepElement(mepBBox, transformedStructBBox, linkTransform);
                             log($"[MepIntersectionService] SPATIAL FILTER: Skipping {wallType} ID:{wallId} - Distance to MEP: {distance:F2}ft (tolerance: {tolerance:F1}ft)");
                             continue; // Skip expensive geometry processing
                         }
@@ -125,7 +146,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         var bbox = CreateBoundingBox(intersectionPoints);
                         var center = GetBoundingBoxCenter(bbox);
-                        results.Add((structuralElement, bbox, center));
+                        results.Add((mepElement, structuralElement, bbox, center));
                     }
                 }
                 catch (Exception ex)
@@ -182,23 +203,45 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var structBBox = structuralElement.get_BoundingBox(null);
                     if (structBBox != null)
                     {
+                        // Transform structural bbox if it's from a linked doc
+                        BoundingBoxXYZ transformedStructBBox = structBBox;
                         if (linkTransform != null)
                         {
-                            var transformedMin = linkTransform.OfPoint(structBBox.Min);
-                            var transformedMax = linkTransform.OfPoint(structBBox.Max);
-                            structBBox = new BoundingBoxXYZ
+                            // CORRECTED: Transform all 8 corners of the bounding box to find true min/max in target coordinate system
+                            var corners = new[]
                             {
-                                Min = new XYZ(Math.Min(transformedMin.X, transformedMax.X), Math.Min(transformedMin.Y, transformedMax.Y), Math.Min(transformedMin.Z, transformedMax.Z)),
-                                Max = new XYZ(Math.Max(transformedMin.X, transformedMax.X), Math.Max(transformedMin.Y, transformedMax.Y), Math.Max(transformedMin.Z, transformedMax.Z))
+                                structBBox.Min,
+                                structBBox.Max,
+                                new XYZ(structBBox.Min.X, structBBox.Min.Y, structBBox.Max.Z),
+                                new XYZ(structBBox.Min.X, structBBox.Max.Y, structBBox.Min.Z),
+                                new XYZ(structBBox.Min.X, structBBox.Max.Y, structBBox.Max.Z),
+                                new XYZ(structBBox.Max.X, structBBox.Min.Y, structBBox.Min.Z),
+                                new XYZ(structBBox.Max.X, structBBox.Min.Y, structBBox.Max.Z),
+                                new XYZ(structBBox.Max.X, structBBox.Max.Y, structBBox.Min.Z)
+                            };
+
+                            var transformedCorners = corners.Select(c => linkTransform.OfPoint(c)).ToList();
+
+                            double minX = transformedCorners.Min(c => c.X);
+                            double minY = transformedCorners.Min(c => c.Y);
+                            double minZ = transformedCorners.Min(c => c.Z);
+                            double maxX = transformedCorners.Max(c => c.X);
+                            double maxY = transformedCorners.Max(c => c.Y);
+                            double maxZ = transformedCorners.Max(c => c.Z);
+
+                            transformedStructBBox = new BoundingBoxXYZ
+                            {
+                                Min = new XYZ(minX, minY, minZ),
+                                Max = new XYZ(maxX, maxY, maxZ)
                             };
                         }
-                        if (!BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max))
+                        if (!BoundingBoxesIntersect(expandedMin, expandedMax, transformedStructBBox.Min, transformedStructBBox.Max))
                         {
                             spatiallyFilteredCount++;
                             // ENHANCED LOGGING: Track which walls are being filtered out (overload method)
                             var wallType = structuralElement.GetType().Name;
                             var wallId = structuralElement.Id.IntegerValue;
-                            var distance = GetDistanceToMepElement(mepBBox, structBBox, linkTransform);
+                            var distance = GetDistanceToMepElement(mepBBox, transformedStructBBox, linkTransform);
                             log($"[MepIntersectionService] SPATIAL FILTER: Skipping {wallType} ID:{wallId} - Distance to MEP: {distance:F2}ft (tolerance: {tolerance:F1}ft)");
                             continue;
                         }
@@ -424,441 +467,57 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 BoundingBoxXYZ transformedStructBBox = structBBox;
                 if (linkTransform != null)
                 {
-                    var transformedMin = linkTransform.OfPoint(structBBox.Min);
-                    var transformedMax = linkTransform.OfPoint(structBBox.Max);
+                    // CORRECTED: Transform all 8 corners of the bounding box to find true min/max in target coordinate system
+                    var corners = new[]
+                    {
+                        structBBox.Min,
+                        structBBox.Max,
+                        new XYZ(structBBox.Min.X, structBBox.Min.Y, structBBox.Max.Z),
+                        new XYZ(structBBox.Min.X, structBBox.Max.Y, structBBox.Min.Z),
+                        new XYZ(structBBox.Min.X, structBBox.Max.Y, structBBox.Max.Z),
+                        new XYZ(structBBox.Max.X, structBBox.Min.Y, structBBox.Min.Z),
+                        new XYZ(structBBox.Max.X, structBBox.Min.Y, structBBox.Max.Z),
+                        new XYZ(structBBox.Max.X, structBBox.Max.Y, structBBox.Min.Z)
+                    };
+
+                    var transformedCorners = corners.Select(c => linkTransform.OfPoint(c)).ToList();
+
+                    double minX = transformedCorners.Min(c => c.X);
+                    double minY = transformedCorners.Min(c => c.Y);
+                    double minZ = transformedCorners.Min(c => c.Z);
+                    double maxX = transformedCorners.Max(c => c.X);
+                    double maxY = transformedCorners.Max(c => c.Y);
+                    double maxZ = transformedCorners.Max(c => c.Z);
+
                     transformedStructBBox = new BoundingBoxXYZ
                     {
-                        Min = new XYZ(Math.Min(transformedMin.X, transformedMax.X), Math.Min(transformedMin.Y, transformedMax.Y), Math.Min(transformedMin.Z, transformedMax.Z)),
-                        Max = new XYZ(Math.Max(transformedMin.X, transformedMax.X), Math.Max(transformedMin.Y, transformedMax.Y), Math.Max(transformedMin.Z, transformedMax.Z))
+                        Min = new XYZ(minX, minY, minZ),
+                        Max = new XYZ(maxX, maxY, maxZ)
                     };
                 }
-                
+
                 // Calculate center points
                 var mepCenter = new XYZ(
                     (mepBBox.Min.X + mepBBox.Max.X) / 2,
                     (mepBBox.Min.Y + mepBBox.Max.Y) / 2,
                     (mepBBox.Min.Z + mepBBox.Max.Z) / 2
                 );
-                
+
                 var structCenter = new XYZ(
                     (transformedStructBBox.Min.X + transformedStructBBox.Max.X) / 2,
                     (transformedStructBBox.Min.Y + transformedStructBBox.Max.Y) / 2,
                     (transformedStructBBox.Min.Z + transformedStructBBox.Max.Z) / 2
                 );
-                
+
                 // Calculate distance in feet
                 var distance = mepCenter.DistanceTo(structCenter);
                 return UnitUtils.ConvertFromInternalUnits(distance, UnitTypeId.Feet);
             }
-            catch
-            {
-                return -1.0; // Return -1 if calculation fails
-            }
-        }
-
-        /// <summary>
-        /// Enhanced intersection detection with full penetration support
-        /// This method provides an alternative to the standard intersection detection
-        /// that can handle fitting interference by using full penetration logic
-        /// </summary>
-        public static List<(Element, BoundingBoxXYZ, XYZ)> FindIntersectionsWithFullPenetration(
-            Element mepElement,
-            List<(Element, Transform?)> structuralElements,
-            Action<string> log,
-            bool forceFullPenetration = false)
-        {
-            var results = new List<(Element, BoundingBoxXYZ, XYZ)>();
-            var locationCurve = mepElement.Location as LocationCurve;
-            if (locationCurve == null)
-            {
-                log($"ERROR: Could not get LocationCurve from element {mepElement.Id}.");
-                return results;
-            }
-
-            var line = locationCurve.Curve as Line;
-            if (line == null)
-            {
-                log($"ERROR: LocationCurve is not a Line for element {mepElement.Id}.");
-                return results;
-            }
-
-            // Check if MEP element has fittings that might interfere
-            bool hasFittings = HasFittingsAtIntersection(mepElement, log);
-            bool useFullPenetration = forceFullPenetration || hasFittings;
-
-            if (useFullPenetration)
-            {
-                log($"[FullPenetration] Using full penetration logic for element {mepElement.Id} (hasFittings: {hasFittings}, forceFullPenetration: {forceFullPenetration})");
-            }
-
-            // Get MEP element bounding box for spatial pre-filtering
-            var mepBBox = mepElement.get_BoundingBox(null);
-            if (mepBBox == null)
-            {
-                log($"WARNING: Could not get bounding box for MEP element {mepElement.Id}.");
-                return results;
-            }
-
-            const double tolerance = 1.0; // 1 foot tolerance
-            var expandedMin = new XYZ(mepBBox.Min.X - tolerance, mepBBox.Min.Y - tolerance, mepBBox.Min.Z - tolerance);
-            var expandedMax = new XYZ(mepBBox.Max.X + tolerance, mepBBox.Max.Y + tolerance, mepBBox.Max.Z + tolerance);
-
-            foreach (var tuple in structuralElements)
-            {
-                Element structuralElement = tuple.Item1;
-                Transform? linkTransform = tuple.Item2;
-                
-                try
-                {
-                    // SPATIAL PRE-FILTERING: Check bounding box intersection first
-                    var structBBox = structuralElement.get_BoundingBox(null);
-                    if (structBBox != null)
-                    {
-                        // Transform structural bbox if it's from a linked doc
-                        if (linkTransform != null)
-                        {
-                            var transformedMin = linkTransform.OfPoint(structBBox.Min);
-                            var transformedMax = linkTransform.OfPoint(structBBox.Max);
-                            structBBox = new BoundingBoxXYZ
-                            {
-                                Min = new XYZ(Math.Min(transformedMin.X, transformedMax.X), Math.Min(transformedMin.Y, transformedMax.Y), Math.Min(transformedMin.Z, transformedMax.Z)),
-                                Max = new XYZ(Math.Max(transformedMin.X, transformedMax.X), Math.Max(transformedMin.Y, transformedMax.Y), Math.Max(transformedMin.Z, transformedMax.Z))
-                            };
-                        }
-                        
-                        // Quick bounding box intersection test
-                        if (!BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max))
-                        {
-                            continue; // Skip expensive geometry processing
-                        }
-                    }
-
-                    // Get or create solid geometry
-                    string cacheKey = $"{structuralElement.Id}_{(linkTransform != null ? "linked" : "local")}";
-                    Solid? solid = null;
-                    if (_geometryCache.TryGetValue(cacheKey, out solid))
-                    {
-                        // Use cached solid
-                    }
-                    else
-                    {
-                        solid = GetElementSolid(structuralElement);
-                        if (solid != null && linkTransform != null)
-                        {
-                            solid = SolidUtils.CreateTransformed(solid, linkTransform);
-                        }
-                        _geometryCache[cacheKey] = solid;
-                    }
-                    
-                    if (solid == null) continue;
-
-                    XYZ intersectionPoint;
-                    BoundingBoxXYZ intersectionBBox;
-
-                    if (useFullPenetration)
-                    {
-                        // Use full penetration logic
-                        var fullPenetrationResult = CalculateFullPenetrationIntersection(solid, line, structuralElement, log);
-                        intersectionPoint = fullPenetrationResult.Item1;
-                        intersectionBBox = fullPenetrationResult.Item2;
-                    }
-                    else
-                    {
-                        // Use standard intersection logic
-                        var intersectionPoints = GetIntersectionPoints(solid, line, log);
-                        if (intersectionPoints.Count > 0)
-                        {
-                            intersectionBBox = CreateBoundingBox(intersectionPoints);
-                            intersectionPoint = GetBoundingBoxCenter(intersectionBBox);
-                        }
-                        else
-                        {
-                            continue; // No intersection found
-                        }
-                    }
-
-                    if (intersectionPoint != null)
-                    {
-                        results.Add((structuralElement, intersectionBBox, intersectionPoint));
-                    }
-                }
-                catch (Exception ex)
-                {
-                    log($"ERROR: Failed to process intersection for element {structuralElement.Id}: {ex.Message}");
-                }
-            }
-            
-            return results;
-        }
-
-        /// <summary>
-        /// Check if MEP element has fittings that might interfere with intersection detection
-        /// </summary>
-        private static bool HasFittingsAtIntersection(Element mepElement, Action<string> log)
-        {
-            try
-            {
-                var document = mepElement.Document;
-                var locationCurve = mepElement.Location as LocationCurve;
-                if (locationCurve?.Curve is Line line)
-                {
-                    // Check for fittings near the MEP element
-                    var fittings = new FilteredElementCollector(document)
-                        .OfClass(typeof(FamilyInstance))
-                        .WhereElementIsNotElementType()
-                        .Cast<FamilyInstance>()
-                        .Where(fi => IsFittingElement(fi));
-
-                    double searchRadius = UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters); // 100mm
-                    
-                    foreach (var fitting in fittings)
-                    {
-                        var fittingLocation = fitting.Location;
-                        if (fittingLocation is LocationPoint point)
-                        {
-                            var distance = point.Point.DistanceTo(line.GetEndPoint(0));
-                            if (distance < searchRadius)
-                            {
-                                log($"[FittingDetection] Found fitting {fitting.Symbol?.Family?.Name} near MEP element {mepElement.Id}");
-                                return true;
-                            }
-                        }
-                        else if (fittingLocation is LocationCurve curve)
-                        {
-                            // Check if fitting curve intersects with MEP element curve
-                            var curveLine = curve.Curve as Line;
-                            if (curveLine != null)
-                            {
-                                var distance = line.Distance(curveLine);
-                                if (distance < searchRadius)
-                                {
-                                    log($"[FittingDetection] Found fitting {fitting.Symbol?.Family?.Name} intersecting MEP element {mepElement.Id}");
-                                    return true;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
             catch (Exception ex)
             {
-                log($"[FittingDetection] Error checking for fittings: {ex.Message}");
-            }
-            
-            return false;
-        }
-
-        /// <summary>
-        /// Check if a FamilyInstance is a fitting element
-        /// </summary>
-        private static bool IsFittingElement(FamilyInstance fi)
-        {
-            if (fi?.Symbol?.Family?.Name == null) return false;
-            
-            string familyName = fi.Symbol.Family.Name.ToLowerInvariant();
-            string[] fittingKeywords = { "fitting", "elbow", "tee", "cross", "junction", "bend", "transition", "reducer", "wye", "coupling", "adapter" };
-            
-            return fittingKeywords.Any(keyword => familyName.Contains(keyword));
-        }
-
-        /// <summary>
-        /// Calculate full penetration intersection point and bounding box
-        /// This ensures the opening fully penetrates the host element regardless of fitting interference
-        /// </summary>
-        private static (XYZ, BoundingBoxXYZ) CalculateFullPenetrationIntersection(
-            Solid hostSolid, 
-            Line mepLine, 
-            Element hostElement, 
-            Action<string> log)
-        {
-            try
-            {
-                // Get host element bounds
-                var hostBBox = hostElement.get_BoundingBox(null);
-                if (hostBBox == null)
-                {
-                    log($"[FullPenetration] ERROR: Could not get bounding box for host element {hostElement.Id}");
-                    return (XYZ.Zero, new BoundingBoxXYZ());
-                }
-
-                // Calculate full penetration point
-                // This is the point where the MEP element should fully penetrate the host
-                XYZ fullPenetrationPoint = CalculateFullPenetrationPoint(mepLine, hostBBox, hostElement);
-                
-                // Calculate full penetration bounding box
-                BoundingBoxXYZ fullPenetrationBBox = CalculateFullPenetrationBoundingBox(mepLine, hostBBox, hostElement);
-                
-                log($"[FullPenetration] Calculated full penetration point: {fullPenetrationPoint}");
-                log($"[FullPenetration] Calculated full penetration bbox: Min={fullPenetrationBBox.Min}, Max={fullPenetrationBBox.Max}");
-                
-                return (fullPenetrationPoint, fullPenetrationBBox);
-            }
-            catch (Exception ex)
-            {
-                log($"[FullPenetration] ERROR: Failed to calculate full penetration intersection: {ex.Message}");
-                return (XYZ.Zero, new BoundingBoxXYZ());
-            }
-        }
-
-        /// <summary>
-        /// Calculate the full penetration point for MEP element through host element
-        /// </summary>
-        private static XYZ CalculateFullPenetrationPoint(Line mepLine, BoundingBoxXYZ hostBBox, Element hostElement)
-        {
-            // For walls: project MEP line through wall centerline
-            if (hostElement is Wall wall)
-            {
-                return ProjectMepLineThroughWall(mepLine, wall);
-            }
-            // For floors: project MEP line through floor center
-            else if (hostElement is Floor floor)
-            {
-                return ProjectMepLineThroughFloor(mepLine, floor);
-            }
-            // For other elements: use host element center
-            else
-            {
-                return GetBoundingBoxCenter(hostBBox);
-            }
-        }
-
-        /// <summary>
-        /// Project MEP line through wall to get full penetration point
-        /// </summary>
-        private static XYZ ProjectMepLineThroughWall(Line mepLine, Wall wall)
-        {
-            try
-            {
-                var wallLocation = wall.Location as LocationCurve;
-                if (wallLocation?.Curve is Line wallCenterline)
-                {
-                    // Project MEP line onto wall centerline
-                    var projection = wallCenterline.Project(mepLine.GetEndPoint(0));
-                    if (projection != null)
-                    {
-                        return projection.XYZPoint;
-                    }
-                }
-                
-                // Fallback: use wall center
-                var wallBBox = wall.get_BoundingBox(null);
-                return wallBBox != null ? GetBoundingBoxCenter(wallBBox) : mepLine.GetEndPoint(0);
-            }
-            catch
-            {
-                return mepLine.GetEndPoint(0);
-            }
-        }
-
-        /// <summary>
-        /// Project MEP line through floor to get full penetration point
-        /// </summary>
-        private static XYZ ProjectMepLineThroughFloor(Line mepLine, Floor floor)
-        {
-            try
-            {
-                var floorBBox = floor.get_BoundingBox(null);
-                if (floorBBox != null)
-                {
-                    // Use floor center point
-                    return GetBoundingBoxCenter(floorBBox);
-                }
-                
-                return mepLine.GetEndPoint(0);
-            }
-            catch
-            {
-                return mepLine.GetEndPoint(0);
-            }
-        }
-
-        /// <summary>
-        /// Calculate full penetration bounding box
-        /// </summary>
-        private static BoundingBoxXYZ CalculateFullPenetrationBoundingBox(Line mepLine, BoundingBoxXYZ hostBBox, Element hostElement)
-        {
-            // For full penetration, we want the bounding box to encompass the full host element
-            // This ensures the opening fully accommodates the MEP element
-            
-            if (hostElement is Wall wall)
-            {
-                // For walls: use full wall thickness
-                double wallThickness = wall.get_Parameter(BuiltInParameter.WALL_ATTR_WIDTH_PARAM)?.AsDouble() ?? wall.Width;
-                return ExpandBoundingBoxForFullPenetration(hostBBox, wallThickness);
-            }
-            else if (hostElement is Floor floor)
-            {
-                // For floors: use full floor thickness
-                double floorThickness = GetFloorThickness(floor);
-                return ExpandBoundingBoxForFullPenetration(hostBBox, floorThickness);
-            }
-            else
-            {
-                // For other elements: use host element bounds
-                return hostBBox;
-            }
-        }
-
-        /// <summary>
-        /// Expand bounding box for full penetration
-        /// </summary>
-        private static BoundingBoxXYZ ExpandBoundingBoxForFullPenetration(BoundingBoxXYZ originalBBox, double thickness)
-        {
-            // Expand the bounding box to ensure full penetration
-            double expansion = thickness * 0.1; // 10% expansion for safety
-            
-            return new BoundingBoxXYZ
-            {
-                Min = new XYZ(originalBBox.Min.X - expansion, originalBBox.Min.Y - expansion, originalBBox.Min.Z - expansion),
-                Max = new XYZ(originalBBox.Max.X + expansion, originalBBox.Max.Y + expansion, originalBBox.Max.Z + expansion)
-            };
-        }
-
-        /// <summary>
-        /// Get floor thickness
-        /// </summary>
-        private static double GetFloorThickness(Floor floor)
-        {
-            try
-            {
-                var thicknessParam = floor.get_Parameter(BuiltInParameter.FLOOR_ATTR_THICKNESS_PARAM);
-                return thicknessParam?.AsDouble() ?? UnitUtils.ConvertToInternalUnits(200.0, UnitTypeId.Millimeters); // Default 200mm
-            }
-            catch
-            {
-                return UnitUtils.ConvertToInternalUnits(200.0, UnitTypeId.Millimeters); // Default 200mm
-            }
-        }
-
-        /// <summary>
-        /// Get element solid geometry
-        /// </summary>
-        private static Solid? GetElementSolid(Element element)
-        {
-            try
-            {
-                var options = new Options
-                {
-                    DetailLevel = ViewDetailLevel.Fine,
-                    IncludeNonVisibleObjects = false
-                };
-                
-                var geometry = element.get_Geometry(options);
-                if (geometry == null) return null;
-                
-                foreach (GeometryObject geomObj in geometry)
-                {
-                    if (geomObj is Solid solid && solid.Volume > 0)
-                    {
-                        return solid;
-                    }
-                }
-                
-                return null;
-            }
-            catch
-            {
-                return null;
+                // Log the error and return -1 if calculation fails
+                Console.WriteLine($"ERROR in GetDistanceToMepElement: {ex.Message}");
+                return -1.0;
             }
         }
     }
