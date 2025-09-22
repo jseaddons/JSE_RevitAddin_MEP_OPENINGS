@@ -64,9 +64,9 @@
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
                     <Button Style="{StaticResource IconButtonStyle}" Content="←" ToolTip="Previous"/>
                     <Button Style="{StaticResource IconButtonStyle}" Content="→" ToolTip="Next" Margin="5,0,0,0"/>
-                    <Button Style="{StaticResource IconButtonStyle}" Content="⚡" ToolTip="Process" Margin="5,0,0,0"/>
-                    <Button Style="{StaticResource IconButtonStyle}" Content="🔧" ToolTip="Settings" Margin="5,0,0,0"/>
-                    <Button Style="{StaticResource IconButtonStyle}" Content="🔄" ToolTip="Refresh" Margin="5,0,0,0"/>
+                    <Button Style="{StaticResource IconButtonStyle}" Content="⚡" ToolTip="Process" Margin="5,0,0,0" Command="{Binding ProcessCommand}"/>
+                    <Button Style="{StaticResource IconButtonStyle}" Content="🔧" ToolTip="Settings" Margin="5,0,0,0" Command="{Binding SettingsCommand}"/>
+                    <Button Style="{StaticResource IconButtonStyle}" Content="🔄" ToolTip="Refresh" Margin="5,0,0,0" Command="{Binding RefreshCommand}"/>
                     <ComboBox Width="160" Margin="10,0,0,0" ItemsSource="{Binding OpeningModes}" SelectedItem="{Binding SelectedOpeningMode}"/>
                 </StackPanel>
 

@@ -49,6 +49,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.ViewModels
         public IRelayCommand CloseCommand { get; }
         public IRelayCommand CheckForUpdatesCommand { get; }
         public IRelayCommand ShowStatusCommand { get; }
+        public IRelayCommand ProcessCommand { get; }
+        public IRelayCommand SettingsCommand { get; }
+        public IRelayCommand RefreshCommand { get; }
 
         public MainDialogViewModel()
         {
@@ -60,6 +63,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.ViewModels
             CloseCommand = new RelayCommand(OnClose);
             CheckForUpdatesCommand = new RelayCommand(OnCheckForUpdates);
             ShowStatusCommand = new RelayCommand(OnShowStatus);
+            ProcessCommand = new RelayCommand(OnProcess);
+            SettingsCommand = new RelayCommand(OnSettings);
+            RefreshCommand = new RelayCommand(OnRefresh);
 
             ProfileSummary = "No Profile Active";
         }
@@ -155,6 +161,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.ViewModels
             {
                 StatusText = $"✗ Error opening status dialog: {ex.Message}";
             }
+        }
+
+        private void OnProcess()
+        {
+            // Process button - same as OK for now
+            OnOk();
+        }
+
+        private void OnSettings()
+        {
+            try
+            {
+                // This would open the SettingsDialog
+                // For now, just show a status message
+                StatusText = "ℹ Settings dialog would open here";
+            }
+            catch (Exception ex)
+            {
+                StatusText = $"✗ Error opening settings dialog: {ex.Message}";
+            }
+        }
+
+        private void OnRefresh()
+        {
+            // Refresh button - same as CheckForUpdates
+            OnCheckForUpdates();
         }
 
         /// <summary>

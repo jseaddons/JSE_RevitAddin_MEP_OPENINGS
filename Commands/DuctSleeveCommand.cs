@@ -179,15 +179,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 _uiClearances = GetUIClearanceValues();
                 Log($"UI clearances: {_uiClearances}");
 
-                // 2. Run the placer with the cached values
+                // 2. Run the placer (using SleeveClearanceHelper for UI clearance values)
                 var placerService = new DuctSleevePlacerService(
                     doc,
                     ductTuples,
                     structuralElements,
                     ductWallSymbol!,
                     ductSlabSymbol!,
-                    Log,
-                    _uiClearances
+                    Log
                 );
                 placerService.PlaceAllDuctSleeves();
                 tx.Commit();
@@ -211,12 +210,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 // Get clearance values from ClearanceManager (one-time read)
                 var uiClearances = ClearanceManager.Instance.GetUIClearances();
 
+                // DEBUG: Log the raw UI clearances dictionary
+                DebugLogger.Info($"[DuctSleeveCommand] Raw UI clearances from ClearanceManager:");
+                foreach (var kvp in uiClearances)
+                {
+                    DebugLogger.Info($"  {kvp.Key} = {kvp.Value}mm");
+                }
+
                 // Convert to immutable value object
                 var clearanceValues = ClearanceValues.FromDictionary(uiClearances);
 
                 // Note: We can't use LogToFile here because it's defined in ExecuteCore
                 // So we use DebugLogger directly for this method
-                DebugLogger.Info($"[DuctSleeveCommand] Retrieved UI clearances: {clearanceValues}");
+                DebugLogger.Info($"[DuctSleeveCommand] Converted clearance values: {clearanceValues}");
+                DebugLogger.Info($"[DuctSleeveCommand] DuctsNormalClearance: {clearanceValues.DuctsNormalClearance}mm");
+                DebugLogger.Info($"[DuctSleeveCommand] DuctsInsulatedClearance: {clearanceValues.DuctsInsulatedClearance}mm");
                 return clearanceValues;
             }
             catch (Exception ex)

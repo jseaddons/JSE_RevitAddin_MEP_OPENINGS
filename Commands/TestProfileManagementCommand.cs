@@ -164,12 +164,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         {
             try
             {
-                using (var mainDialog = new Views.EmergencyMainDialog(appProfileService, doc, uiDoc))
-                {
-                    var mainResult = mainDialog.ShowDialog();
-                    System.Diagnostics.Debug.WriteLine($"Main dialog result: {mainResult}");
-                    File.AppendAllText(logPath, $"[{DateTime.Now}] Main dialog result: {mainResult}\n");
-                }
+                // Show modeless to avoid blocking Revit UI (freeze) and allow interaction
+                var mainDialog = new Views.EmergencyMainDialog(appProfileService, doc, uiDoc);
+                mainDialog.Show();
+                File.AppendAllText(logPath, $"[{DateTime.Now}] Main dialog shown modeless.\n");
             }
             catch (Exception ex)
             {

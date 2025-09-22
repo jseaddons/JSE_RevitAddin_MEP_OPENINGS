@@ -115,7 +115,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 
         private void ShowMainDialog()
         {
-            if (_appProfileService == null || _document == null) return;
+            if (_appProfileService == null) return;
             
             DebugLogger.Info($"ExternalEventHandlers.ShowMainDialog: About to create EmergencyMainDialog");
             DebugLogger.Info($"ExternalEventHandlers.ShowMainDialog: _uiDocument = {(_uiDocument != null ? "NOT NULL" : "NULL")}");
@@ -125,11 +125,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             var uiDocument = _uiDocument ?? GetCurrentUIDocument();
             DebugLogger.Info($"ExternalEventHandlers.ShowMainDialog: Final UIDocument = {(uiDocument != null ? "NOT NULL" : "NULL")}");
             
-            using (var emergencyMainDlg = new EmergencyMainDialog(_appProfileService, _document, uiDocument))
-            {
-                DebugLogger.Info($"ExternalEventHandlers.ShowMainDialog: EmergencyMainDialog created successfully");
-                emergencyMainDlg.ShowDialog();
-            }
+            // Allow null document - EmergencyMainDialog can acquire it if needed
+            var emergencyMainDlg = new EmergencyMainDialog(_appProfileService, _document, uiDocument);
+            DebugLogger.Info($"ExternalEventHandlers.ShowMainDialog: EmergencyMainDialog created successfully");
+            // Show modeless to avoid blocking Revit UI and potential freezes
+            emergencyMainDlg.Show();
         }
         
         /// <summary>

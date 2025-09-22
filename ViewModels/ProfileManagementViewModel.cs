@@ -41,6 +41,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.ViewModels
             }
         }
 
+        public IRelayCommand CreateNewProfileCommand { get; }
+        public IRelayCommand SwitchProfileCommand { get; }
+        public IRelayCommand CloseCommand { get; }
+
         public event EventHandler? DialogClosed;
         public event EventHandler<ProfileCreatedEventArgs>? ProfileCreated;
 
@@ -48,13 +52,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.ViewModels
         {
             _appProfileService = appProfileService ?? throw new ArgumentNullException(nameof(appProfileService));
 
+            CreateNewProfileCommand = new RelayCommand(CreateNewProfile);
+            SwitchProfileCommand = new RelayCommand(SwitchProfile, CanSwitchProfile);
+            CloseCommand = new RelayCommand(Close);
+
             LoadData();
         }
 
         /// <summary>
         /// Command to create a new profile
         /// </summary>
-        [RelayCommand]
         private void CreateNewProfile()
         {
             try
@@ -86,7 +93,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.ViewModels
         /// <summary>
         /// Command to switch to the selected profile
         /// </summary>
-        [RelayCommand(CanExecute = nameof(CanSwitchProfile))]
         private void SwitchProfile()
         {
             if (SelectedProfile == null)
@@ -113,7 +119,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.ViewModels
         /// <summary>
         /// Command to close the dialog
         /// </summary>
-        [RelayCommand]
         private void Close()
         {
             DialogClosed?.Invoke(this, EventArgs.Empty);

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders
 {
@@ -43,7 +44,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders
         /// <param name="clearances">Dictionary of clearance settings from UI</param>
         public void SetUIClearances(Dictionary<string, double> clearances)
         {
+            DebugLogger.Info($"[CLEARANCE_DEBUG] ClearanceManager.SetUIClearances called with {clearances.Count} values:");
+            foreach (var kvp in clearances)
+            {
+                DebugLogger.Info($"[CLEARANCE_DEBUG]   {kvp.Key} = {kvp.Value}mm");
+            }
+            
             _uiClearances = clearances;
+            
+            DebugLogger.Info($"[CLEARANCE_DEBUG] ClearanceManager._uiClearances set successfully");
         }
         
         /// <summary>
@@ -80,7 +89,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders
         /// <returns>Dictionary of UI clearance settings</returns>
         public Dictionary<string, double> GetUIClearances()
         {
-            return _uiClearances ?? new Dictionary<string, double>();
+            var result = _uiClearances ?? new Dictionary<string, double>();
+            
+            DebugLogger.Info($"[CLEARANCE_DEBUG] ClearanceManager.GetUIClearances returning {result.Count} values:");
+            foreach (var kvp in result)
+            {
+                DebugLogger.Info($"[CLEARANCE_DEBUG]   {kvp.Key} = {kvp.Value}mm");
+            }
+            
+            return result;
         }
     }
 }

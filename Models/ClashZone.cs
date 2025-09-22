@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Xml.Serialization;
 using Autodesk.Revit.DB;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Models
@@ -17,21 +18,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// <summary>
         /// The MEP element involved in the clash
         /// </summary>
+        [XmlIgnore]
         public ElementId MepElementId { get; set; }
         
         /// <summary>
         /// The structural element involved in the clash
         /// </summary>
+        [XmlIgnore]
         public ElementId StructuralElementId { get; set; }
         
         /// <summary>
         /// The intersection point where the clash occurs
         /// </summary>
+        [XmlIgnore]
         public XYZ IntersectionPoint { get; set; }
         
         /// <summary>
         /// The bounding box of the clash zone
         /// </summary>
+        [XmlIgnore]
         public BoundingBoxXYZ ClashBoundingBox { get; set; }
         
         /// <summary>
@@ -52,6 +57,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// <summary>
         /// The sleeve element ID if resolved
         /// </summary>
+        [XmlIgnore]
         public ElementId? ResolvedSleeveId { get; set; }
         
         /// <summary>
@@ -82,12 +88,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// <summary>
         /// Additional metadata about the clash
         /// </summary>
+        [XmlIgnore]
         public Dictionary<string, string> Metadata { get; set; } = new Dictionary<string, string>();
     }
     
     /// <summary>
     /// Container for storing clash zones in a profile
     /// </summary>
+    [XmlRoot("ClashZoneStorage")]
     public class ClashZoneStorage
     {
         /// <summary>
@@ -123,6 +131,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// <summary>
         /// Settings used for clash detection
         /// </summary>
+        [XmlIgnore]
         public Dictionary<string, object> DetectionSettings { get; set; } = new Dictionary<string, object>();
     }
 }

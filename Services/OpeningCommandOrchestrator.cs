@@ -51,7 +51,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <param name="clearances">Dictionary of clearance settings from UI</param>
         public void SetUIClearances(Dictionary<string, double> clearances)
         {
+            DebugLogger.Info($"[CLEARANCE_DEBUG] OpeningCommandOrchestrator.SetUIClearances called with {clearances.Count} clearance values:");
+            foreach (var kvp in clearances)
+            {
+                DebugLogger.Info($"[CLEARANCE_DEBUG]   {kvp.Key} = {kvp.Value}mm");
+            }
+            
             ClearanceManager.Instance.SetUIClearances(clearances);
+            
+            DebugLogger.Info($"[CLEARANCE_DEBUG] ClearanceManager.SetUIClearances completed");
         }
 
         /// <summary>

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Models
 {
@@ -43,20 +44,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// </summary>
         public static ClearanceValues FromDictionary(Dictionary<string, double> uiClearances)
         {
+            DebugLogger.Info($"[CLEARANCE_DEBUG] ClearanceValues.FromDictionary called with {uiClearances?.Count ?? 0} values:");
+            if (uiClearances != null)
+            {
+                foreach (var kvp in uiClearances)
+                {
+                    DebugLogger.Info($"[CLEARANCE_DEBUG]   {kvp.Key} = {kvp.Value}mm");
+                }
+            }
+            
             if (uiClearances == null || uiClearances.Count == 0)
             {
+                DebugLogger.Info($"[CLEARANCE_DEBUG] Using default ClearanceValues (no UI clearances provided)");
                 return new ClearanceValues(); // Use defaults
             }
 
+            var ductsNormal = GetValueOrDefault(uiClearances, "ducts_normal_clearance", 50.0);
+            var ductsInsulated = GetValueOrDefault(uiClearances, "ducts_insulated_clearance", 25.0);
+            var pipesNormal = GetValueOrDefault(uiClearances, "pipes_normal_clearance", 50.0);
+            var pipesInsulated = GetValueOrDefault(uiClearances, "pipes_insulated_clearance", 25.0);
+            var cableTrayTop = GetValueOrDefault(uiClearances, "cabletray_top_normal", 75.0);
+            var cableTrayOther = GetValueOrDefault(uiClearances, "cabletray_other_normal", 25.0);
+            var fireDamperStandard = GetValueOrDefault(uiClearances, "fire_damper_standard_clearance", 50.0);
+            var fireDamperMsfd = GetValueOrDefault(uiClearances, "fire_damper_msfd_clearance", 100.0);
+            
+            DebugLogger.Info($"[CLEARANCE_DEBUG] Extracted clearance values:");
+            DebugLogger.Info($"[CLEARANCE_DEBUG]   ducts_normal_clearance: {ductsNormal}mm");
+            DebugLogger.Info($"[CLEARANCE_DEBUG]   ducts_insulated_clearance: {ductsInsulated}mm");
+            DebugLogger.Info($"[CLEARANCE_DEBUG]   pipes_normal_clearance: {pipesNormal}mm");
+            DebugLogger.Info($"[CLEARANCE_DEBUG]   pipes_insulated_clearance: {pipesInsulated}mm");
+            DebugLogger.Info($"[CLEARANCE_DEBUG]   cabletray_top_normal: {cableTrayTop}mm");
+            DebugLogger.Info($"[CLEARANCE_DEBUG]   cabletray_other_normal: {cableTrayOther}mm");
+            DebugLogger.Info($"[CLEARANCE_DEBUG]   fire_damper_standard_clearance: {fireDamperStandard}mm");
+            DebugLogger.Info($"[CLEARANCE_DEBUG]   fire_damper_msfd_clearance: {fireDamperMsfd}mm");
+
             return new ClearanceValues(
-                ductsNormal: GetValueOrDefault(uiClearances, "ducts_normal_clearance", 50.0),
-                ductsInsulated: GetValueOrDefault(uiClearances, "ducts_insulated_clearance", 25.0),
-                pipesNormal: GetValueOrDefault(uiClearances, "pipes_normal_clearance", 50.0),
-                pipesInsulated: GetValueOrDefault(uiClearances, "pipes_insulated_clearance", 25.0),
-                cableTrayTop: GetValueOrDefault(uiClearances, "cabletray_top_normal", 75.0),
-                cableTrayOther: GetValueOrDefault(uiClearances, "cabletray_other_normal", 25.0),
-                fireDamperStandard: GetValueOrDefault(uiClearances, "fire_damper_standard_clearance", 50.0),
-                fireDamperMsfd: GetValueOrDefault(uiClearances, "fire_damper_msfd_clearance", 100.0)
+                ductsNormal: ductsNormal,
+                ductsInsulated: ductsInsulated,
+                pipesNormal: pipesNormal,
+                pipesInsulated: pipesInsulated,
+                cableTrayTop: cableTrayTop,
+                cableTrayOther: cableTrayOther,
+                fireDamperStandard: fireDamperStandard,
+                fireDamperMsfd: fireDamperMsfd
             );
         }
 
@@ -70,7 +100,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// </summary>
         public double GetDuctClearance(bool isInsulated)
         {
-            return isInsulated ? DuctsInsulatedClearance : DuctsNormalClearance;
+            double clearance = isInsulated ? DuctsInsulatedClearance : DuctsNormalClearance;
+            DebugLogger.Info($"[CLEARANCE_DEBUG] ClearanceValues.GetDuctClearance(isInsulated={isInsulated}) = {clearance}mm");
+            return clearance;
         }
 
         /// <summary>

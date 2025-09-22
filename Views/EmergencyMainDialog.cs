@@ -19,6 +19,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
     public partial class EmergencyMainDialog : WinForms.Form
     {
         private readonly ApplicationProfileService _appProfileService;
+        private readonly FilterManagementService _filterManagementService;
         private readonly Document? _document;
         private readonly UIDocument? _uiDocument;
         
@@ -145,6 +146,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
             // STEP 2: Continue with normal initialization
             _appProfileService = appProfileService ?? throw new ArgumentNullException(nameof(appProfileService));
+            _filterManagementService = new FilterManagementService(
+                msg => DebugLogger.Info(msg),
+                msg => _statusLabel.Text = msg
+            );
             _linkedFileService = new LinkedFileService();
             _activeDocument = document;
 
@@ -671,6 +676,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             toolTip.SetToolTip(deleteFilterButton, "Delete Filter");
             toolTip.SetToolTip(saveFilterButton, "Save Filter");
             toolTip.SetToolTip(loadFilterButton, "Load Filter");
+            
+            // Add click event handlers for filter management buttons
+            newFilterButton.Click += (s, e) => _filterManagementService.CreateNewFilter(filterListBox);
+            copyFilterButton.Click += (s, e) => _filterManagementService.CopyFilter(filterListBox);
+            renameFilterButton.Click += (s, e) => _filterManagementService.RenameFilter(filterListBox);
+            deleteFilterButton.Click += (s, e) => _filterManagementService.DeleteFilter(filterListBox);
+            saveFilterButton.Click += (s, e) => _filterManagementService.SaveFilter(filterListBox);
+            loadFilterButton.Click += (s, e) => _filterManagementService.LoadFilter(filterListBox);
             
             DebugLogger.Info("=== PopulateFiltersPanel COMPLETED ===");
         }
@@ -2636,6 +2649,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 DebugLogger.Info($"Profile {currentProfile.Name} configuration object: {(currentProfile.Configuration != null ? "NOT NULL" : "NULL")}");
                 
                 // Save profile to disk
+                DebugLogger.Info($"[SAVE_DEBUG] About to call SaveCurrentProfile for profile: {currentProfile.Name}");
+                DebugLogger.Info($"[SAVE_DEBUG] Profile configuration is null: {currentProfile.Configuration == null}");
+                if (currentProfile.Configuration?.OpeningSettings?.ClearanceSettings != null)
+                {
+                    DebugLogger.Info($"[SAVE_DEBUG] Clearance settings count: {currentProfile.Configuration.OpeningSettings.ClearanceSettings.Count}");
+                    foreach (var kvp in currentProfile.Configuration.OpeningSettings.ClearanceSettings)
+                    {
+                        DebugLogger.Info($"[SAVE_DEBUG] Clearance setting: {kvp.Key} = {kvp.Value}");
+                    }
+                }
+                
                 _appProfileService.SaveCurrentProfile();
                 
                 DebugLogger.Info($"Configuration saved for profile: {currentProfile.Name}");
@@ -2711,12 +2735,106 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 
                 var config = profile.Configuration;
                 DebugLogger.Info($"Configuration loaded: {config.SelectedReferenceFiles?.Count ?? 0} reference files, {config.SelectedMepCategories?.Count ?? 0} MEP categories");
+                
+                // Restore clearance settings if available
+                if (config.OpeningSettings?.ClearanceSettings != null && config.OpeningSettings.ClearanceSettings.Count > 0)
+                {
+                    RestoreClearanceSettings(config.OpeningSettings.ClearanceSettings);
+                    DebugLogger.Info($"Restored {config.OpeningSettings.ClearanceSettings.Count} clearance settings");
+                }
+                else
+                {
+                    DebugLogger.Info("No clearance settings found in profile - using defaults");
+                }
+                
                 DebugLogger.Info($"=== LoadConfigurationFromProfile COMPLETED for {profile.Name} ===");
             }
             catch (Exception ex)
             {
                 DebugLogger.Error($"Failed to load configuration from profile {profile.Name}: {ex.Message}");
                 // Don't throw - we can continue with defaults
+            }
+        }
+        
+        /// <summary>
+        /// Restore clearance settings from saved configuration
+        /// </summary>
+        private void RestoreClearanceSettings(Dictionary<string, double> clearanceSettings)
+        {
+            try
+            {
+                DebugLogger.Info($"[CLEARANCE_RESTORE] Restoring {clearanceSettings.Count} clearance settings");
+                
+                // Restore clearance values in clearance panel
+                if (_clearancePanel?.Controls.Count > 0)
+                {
+                    foreach (var control in _clearancePanel.Controls)
+                    {
+                        if (control is WinForms.TextBox textBox && textBox.Tag != null)
+                        {
+                            string genericKey = textBox.Tag.ToString() ?? "";
+                            
+                            // Try to find matching clearance setting by checking all possible category combinations
+                            bool restored = false;
+                            foreach (var kvp in clearanceSettings)
+                            {
+                                // Check if this clearance setting matches our generic key for any category
+                                if (kvp.Key.EndsWith($"_{genericKey}") || kvp.Key == genericKey)
+                                {
+                                    textBox.Text = kvp.Value.ToString();
+                                    DebugLogger.Info($"[CLEARANCE_RESTORE] Restored {genericKey} -> {kvp.Key} = {kvp.Value}mm");
+                                    restored = true;
+                                    break;
+                                }
+                            }
+                            
+                            if (!restored)
+                            {
+                                DebugLogger.Info($"[CLEARANCE_RESTORE] No saved value found for {genericKey}");
+                            }
+                        }
+                    }
+                }
+                
+                // Restore cable tray clearance values
+                if (_cableTrayPanel?.Controls.Count > 0)
+                {
+                    foreach (var control in _cableTrayPanel.Controls)
+                    {
+                        if (control is WinForms.TextBox textBox && textBox.Tag != null)
+                        {
+                            string key = textBox.Tag.ToString() ?? "";
+                            if (clearanceSettings.TryGetValue(key, out double value))
+                            {
+                                textBox.Text = value.ToString();
+                                DebugLogger.Info($"[CLEARANCE_RESTORE] Restored cable tray {key} = {value}mm");
+                            }
+                        }
+                    }
+                }
+                
+                // Restore damper clearance values
+                if (_damperPanel?.Controls.Count > 0)
+                {
+                    foreach (var control in _damperPanel.Controls)
+                    {
+                        if (control is WinForms.TextBox textBox && textBox.Tag != null)
+                        {
+                            string key = textBox.Tag.ToString() ?? "";
+                            if (clearanceSettings.TryGetValue(key, out double value))
+                            {
+                                textBox.Text = value.ToString();
+                                DebugLogger.Info($"[CLEARANCE_RESTORE] Restored damper {key} = {value}mm");
+                            }
+                        }
+                    }
+                }
+                
+                DebugLogger.Info($"[CLEARANCE_RESTORE] Clearance restoration completed");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[CLEARANCE_RESTORE] Failed to restore clearance settings: {ex.Message}");
             }
         }
         
@@ -3077,6 +3195,58 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                                     config.SelectedHostCategories = new List<string>();
                                 config.SelectedHostCategories.Add(value);
                                 break;
+                            case "ClearanceSettings":
+                                // Parse clearance setting in format "key=value"
+                                var clearanceParts = value.Split('=');
+                                if (clearanceParts.Length == 2)
+                                {
+                                    if (config.OpeningSettings == null)
+                                        config.OpeningSettings = new OpeningSettings();
+                                    if (config.OpeningSettings.ClearanceSettings == null)
+                                        config.OpeningSettings.ClearanceSettings = new Dictionary<string, double>();
+                                    
+                                    if (double.TryParse(clearanceParts[1], out double clearanceValue))
+                                    {
+                                        config.OpeningSettings.ClearanceSettings[clearanceParts[0]] = clearanceValue;
+                                        DebugLogger.Info($"Loaded clearance setting: {clearanceParts[0]} = {clearanceValue}");
+                                    }
+                                }
+                                break;
+                            case "ClashZoneStorage":
+                                // Parse clash zone storage metadata
+                                if (value.StartsWith("LastUpdated="))
+                                {
+                                    if (config.ClashZoneStorage == null)
+                                        config.ClashZoneStorage = new ClashZoneStorage();
+                                    
+                                    var dateStr = value.Substring("LastUpdated=".Length);
+                                    if (DateTime.TryParse(dateStr, out DateTime lastUpdated))
+                                    {
+                                        config.ClashZoneStorage.LastUpdated = lastUpdated;
+                                    }
+                                }
+                                else if (value.StartsWith("DocumentHash="))
+                                {
+                                    if (config.ClashZoneStorage == null)
+                                        config.ClashZoneStorage = new ClashZoneStorage();
+                                    
+                                    config.ClashZoneStorage.DocumentHash = value.Substring("DocumentHash=".Length);
+                                }
+                                else if (value.StartsWith("ClashZonesCount="))
+                                {
+                                    if (config.ClashZoneStorage == null)
+                                        config.ClashZoneStorage = new ClashZoneStorage();
+                                    
+                                    var countStr = value.Substring("ClashZonesCount=".Length);
+                                    if (int.TryParse(countStr, out int count))
+                                    {
+                                        if (config.ClashZoneStorage.ClashZones == null)
+                                            config.ClashZoneStorage.ClashZones = new List<ClashZone>();
+                                        
+                                        DebugLogger.Info($"Loaded clash zone storage with {count} zones");
+                                    }
+                                }
+                                break;
                         }
                     }
                 }
@@ -3180,6 +3350,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     }
                 }
                 
+                // Save clearance settings
+                var clearanceSettings = GetClearanceSettings();
+                foreach (var kvp in clearanceSettings)
+                {
+                    uiState.Add($"CLEARANCE:{kvp.Key}={kvp.Value}");
+                }
+                
+                // Save clash zones from current profile
+                var currentProfile = GetCurrentProfile();
+                if (currentProfile?.Configuration?.ClashZoneStorage?.ClashZones != null)
+                {
+                    uiState.Add($"CLASHZONES:Count={currentProfile.Configuration.ClashZoneStorage.ClashZones.Count}");
+                    uiState.Add($"CLASHZONES:LastUpdated={currentProfile.Configuration.ClashZoneStorage.LastUpdated:O}");
+                    uiState.Add($"CLASHZONES:DocumentHash={currentProfile.Configuration.ClashZoneStorage.DocumentHash}");
+                    foreach (var clashZone in currentProfile.Configuration.ClashZoneStorage.ClashZones)
+                    {
+                        uiState.Add($"CLASHZONE:MEP={clashZone.MepElementId},Structural={clashZone.StructuralElementId},Resolved={clashZone.IsResolved}");
+                    }
+                }
+                
                 // Save to simple file
                 var simpleFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
                     "JSE_MEP_Openings", "ui_state.txt");
@@ -3234,10 +3424,158 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     var value = item.Substring(8);
                     RestoreCheckedItem(_bottomRightPanel, value);
                 }
+                
+                // Restore clearance settings
+                foreach (var item in uiState.Where(x => x.StartsWith("CLEARANCE:")))
+                {
+                    var clearanceData = item.Substring(10); // Remove "CLEARANCE:" prefix
+                    var parts = clearanceData.Split('=');
+                    if (parts.Length == 2)
+                    {
+                        var key = parts[0];
+                        if (double.TryParse(parts[1], out double value))
+                        {
+                            RestoreClearanceSetting(key, value);
+                        }
+                    }
+                }
+                
+                // Restore clash zones
+                RestoreClashZonesFromUIState(uiState);
             }
             catch (Exception ex)
             {
                 DebugLogger.Error($"Failed to load UI state directly: {ex.Message}");
+            }
+        }
+        
+        private void RestoreClashZonesFromUIState(List<string> uiState)
+        {
+            try
+            {
+                DebugLogger.Info("[CLASH_RESTORE] Restoring clash zones from UI state");
+                
+                var currentProfile = GetCurrentProfile();
+                if (currentProfile?.Configuration == null)
+                {
+                    DebugLogger.Info("[CLASH_RESTORE] No current profile configuration - skipping clash zone restoration");
+                    return;
+                }
+                
+                // Find clash zone metadata
+                var countItem = uiState.FirstOrDefault(x => x.StartsWith("CLASHZONES:Count="));
+                var lastUpdatedItem = uiState.FirstOrDefault(x => x.StartsWith("CLASHZONES:LastUpdated="));
+                var documentHashItem = uiState.FirstOrDefault(x => x.StartsWith("CLASHZONES:DocumentHash="));
+                
+                if (countItem == null)
+                {
+                    DebugLogger.Info("[CLASH_RESTORE] No clash zones found in UI state");
+                    return;
+                }
+                
+                // Parse count
+                var countStr = countItem.Substring("CLASHZONES:Count=".Length);
+                if (!int.TryParse(countStr, out int count) || count == 0)
+                {
+                    DebugLogger.Info("[CLASH_RESTORE] No clash zones to restore");
+                    return;
+                }
+                
+                // Create clash zone storage
+                var clashZoneStorage = new ClashZoneStorage
+                {
+                    ClashZones = new List<ClashZone>(),
+                    LastUpdated = DateTime.Now,
+                    DocumentHash = "Unknown"
+                };
+                
+                // Parse metadata
+                if (lastUpdatedItem != null)
+                {
+                    var dateStr = lastUpdatedItem.Substring("CLASHZONES:LastUpdated=".Length);
+                    if (DateTime.TryParse(dateStr, out DateTime lastUpdated))
+                    {
+                        clashZoneStorage.LastUpdated = lastUpdated;
+                    }
+                }
+                
+                if (documentHashItem != null)
+                {
+                    clashZoneStorage.DocumentHash = documentHashItem.Substring("CLASHZONES:DocumentHash=".Length);
+                }
+                
+                // Parse individual clash zones
+                foreach (var item in uiState.Where(x => x.StartsWith("CLASHZONE:")))
+                {
+                    var clashData = item.Substring("CLASHZONE:".Length);
+                    var parts = clashData.Split(',');
+                    
+                    if (parts.Length >= 3)
+                    {
+                        var mepPart = parts[0].Split('=');
+                        var structuralPart = parts[1].Split('=');
+                        var resolvedPart = parts[2].Split('=');
+                        
+                        if (mepPart.Length == 2 && structuralPart.Length == 2 && resolvedPart.Length == 2)
+                        {
+                            if (int.TryParse(mepPart[1], out int mepId) && 
+                                int.TryParse(structuralPart[1], out int structuralId) &&
+                                bool.TryParse(resolvedPart[1], out bool isResolved))
+                            {
+                                var clashZone = new ClashZone
+                                {
+                                    MepElementId = new Autodesk.Revit.DB.ElementId(mepId),
+                                    StructuralElementId = new Autodesk.Revit.DB.ElementId(structuralId),
+                                    IsResolved = isResolved,
+                                    DetectedAt = clashZoneStorage.LastUpdated
+                                };
+                                clashZoneStorage.ClashZones.Add(clashZone);
+                            }
+                        }
+                    }
+                }
+                
+                // Save to profile configuration
+                currentProfile.Configuration.ClashZoneStorage = clashZoneStorage;
+                DebugLogger.Info($"[CLASH_RESTORE] Restored {clashZoneStorage.ClashZones.Count} clash zones to profile configuration");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[CLASH_RESTORE] Failed to restore clash zones: {ex.Message}");
+            }
+        }
+        
+        private void RestoreClearanceSetting(string key, double value)
+        {
+            try
+            {
+                DebugLogger.Info($"[CLEARANCE_RESTORE] Restoring clearance setting: {key} = {value}mm");
+                
+                // Find the appropriate text box and set its value
+                if (_clearancePanel?.Controls.Count > 0)
+                {
+                    foreach (var control in _clearancePanel.Controls)
+                    {
+                        if (control is WinForms.TextBox textBox && textBox.Tag != null)
+                        {
+                            string genericKey = textBox.Tag.ToString() ?? "";
+                            
+                            // Check if this clearance setting matches our generic key
+                            if (key.EndsWith($"_{genericKey}") || key == genericKey)
+                            {
+                                textBox.Text = value.ToString();
+                                DebugLogger.Info($"[CLEARANCE_RESTORE] Restored {genericKey} -> {key} = {value}mm");
+                                return;
+                            }
+                        }
+                    }
+                }
+                
+                DebugLogger.Info($"[CLEARANCE_RESTORE] No matching text box found for {key}");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[CLEARANCE_RESTORE] Failed to restore clearance setting {key}: {ex.Message}");
             }
         }
         
@@ -3500,26 +3838,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             
             try
             {
+                DebugLogger.Info($"[CLEARANCE_DEBUG] === GetClearanceSettings START ===");
+                DebugLogger.Info($"[CLEARANCE_DEBUG] _clearancePanel exists: {_clearancePanel != null}");
+                DebugLogger.Info($"[CLEARANCE_DEBUG] _clearancePanel.Controls.Count: {_clearancePanel?.Controls.Count ?? 0}");
+                
                 // Get clearance values from clearance panel
                 if (_clearancePanel?.Controls.Count > 0)
                 {
                     // Get current MEP category for specific key generation
                     string currentCategory = GetCurrentMepCategory();
+                    DebugLogger.Info($"[CLEARANCE_DEBUG] Current MEP category: '{currentCategory}'");
                     
                     foreach (var control in _clearancePanel.Controls)
                     {
                         if (control is WinForms.TextBox textBox && textBox.Tag != null)
                         {
+                            DebugLogger.Info($"[CLEARANCE_DEBUG] Found TextBox: Tag='{textBox.Tag}', Text='{textBox.Text}', Visible={textBox.Visible}");
+                            
                             if (double.TryParse(textBox.Text, out double value))
                             {
                                 string genericKey = textBox.Tag.ToString() ?? "";
                                 string specificKey = ConvertToSpecificClearanceKey(genericKey, currentCategory);
                                 clearances[specificKey] = value;
                                 
-                                DebugLogger.Info($"Clearance setting: {genericKey} -> {specificKey} = {value}mm");
+                                DebugLogger.Info($"[CLEARANCE_DEBUG] Clearance setting: {genericKey} -> {specificKey} = {value}mm");
+                            }
+                            else
+                            {
+                                DebugLogger.Warning($"[CLEARANCE_DEBUG] Failed to parse TextBox value: '{textBox.Text}' for Tag: '{textBox.Tag}'");
                             }
                         }
                     }
+                }
+                else
+                {
+                    DebugLogger.Warning($"[CLEARANCE_DEBUG] _clearancePanel is null or has no controls!");
                 }
                 
                 // Get cable tray specific clearance values
@@ -3543,6 +3896,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             catch (Exception ex)
             {
                 DebugLogger.Error($"Failed to collect clearance settings: {ex.Message}");
+            }
+            
+            // DEBUG: Log final clearance dictionary
+            DebugLogger.Info($"[CLEARANCE_DEBUG] Final clearance dictionary ({clearances.Count} entries):");
+            foreach (var kvp in clearances)
+            {
+                DebugLogger.Info($"  {kvp.Key} = {kvp.Value}mm");
             }
             
             return clearances;
@@ -4062,18 +4422,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 var targetFilter = filtersToProcess.FirstOrDefault(f => f.IsEnabled);
                 if (targetFilter != null)
                 {
-                    if (currentProfile?.Configuration?.ClashZoneStorage != null)
+                    // CRITICAL FIX: Save clash zones to BOTH filter AND profile configuration
+                    targetFilter.ClashZoneStorage = clashZoneStorage;
+                    targetFilter.LastModified = DateTime.Now;
+                    
+                    // Save to profile configuration for persistence
+                    if (currentProfile?.Configuration != null)
                     {
-                        targetFilter.ClashZoneStorage = currentProfile.Configuration.ClashZoneStorage;
-                        targetFilter.LastModified = DateTime.Now;
-                        DebugLogger.Info($"[CLASH_DEBUG] Saved clash zones to filter '{targetFilter.Name}'");
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] SUCCESS: Saved {total} clash zones to filter '{targetFilter.Name}'\n");
+                        currentProfile.Configuration.ClashZoneStorage = clashZoneStorage;
+                        DebugLogger.Info($"[CLASH_DEBUG] Saved clash zones to profile configuration for persistence");
                     }
-                    else
-                    {
-                        DebugLogger.Warning("[CLASH_DEBUG] currentProfile.Configuration.ClashZoneStorage is null - cannot save clash zones");
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] WARNING: currentProfile.Configuration.ClashZoneStorage is null\n");
-                    }
+                    
+                    DebugLogger.Info($"[CLASH_DEBUG] Saved clash zones to filter '{targetFilter.Name}'");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] SUCCESS: Saved {total} clash zones to filter '{targetFilter.Name}' and profile configuration\n");
                 }
                 else
                 {
@@ -4093,6 +4454,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
             DebugLogger.Info($"[CLASH_DEBUG] Clash zone refresh complete: {total} total, {unresolved} unresolved, {newZones} new");
             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] REFRESH COMPLETE: {total} total zones, {unresolved} unresolved, {newZones} new\n");
+
+            // Step 10: Update parameter dropdowns with clash zone parameters
+            _progressBar.Value = 90;
+            _statusLabel.Text = "Updating parameter dropdowns...";
+
+            try
+            {
+                UpdateParameterDropdownsFromClashZones(document, clashZoneService);
+                DebugLogger.Info("[PARAMETER_DEBUG] Parameter dropdowns updated from clash zones");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [PARAMETER_DEBUG] Parameter dropdowns updated from clash zones\n");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[PARAMETER_DEBUG] Error updating parameter dropdowns: {ex.Message}");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [PARAMETER_DEBUG] ERROR updating parameter dropdowns: {ex.Message}\n");
+            }
 
             // Hide progress bar after a short delay
             var completionTimer = new System.Windows.Forms.Timer();
@@ -4146,6 +4523,138 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
         }
 
+        /// <summary>
+        /// Updates parameter dropdowns with parameters from MEP elements in clash zones
+        /// </summary>
+        private void UpdateParameterDropdownsFromClashZones(Document document, ClashZoneService clashZoneService)
+        {
+            try
+            {
+                DebugLogger.Info("[PARAMETER_DEBUG] Starting parameter dropdown update from clash zones");
+                
+                // Get clash zones from current profile
+                var currentProfile = GetCurrentProfile();
+                if (currentProfile?.Configuration?.ClashZoneStorage?.ClashZones == null)
+                {
+                    DebugLogger.Warning("[PARAMETER_DEBUG] No clash zones found in current profile");
+                    return;
+                }
+
+                var clashZones = currentProfile.Configuration.ClashZoneStorage.ClashZones;
+                DebugLogger.Info($"[PARAMETER_DEBUG] Found {clashZones.Count} clash zones");
+
+                // Extract parameters from MEP elements in clash zones
+                var mepParameters = new HashSet<string>();
+                var openingParameters = new HashSet<string>();
+
+                foreach (var clashZone in clashZones)
+                {
+                    try
+                    {
+                        // Get MEP element parameters
+                        var mepElement = document.GetElement(clashZone.MepElementId);
+                        if (mepElement != null)
+                        {
+                            foreach (Parameter param in mepElement.Parameters)
+                            {
+                                if (!param.IsReadOnly && !string.IsNullOrEmpty(param.Definition.Name))
+                                {
+                                    mepParameters.Add(param.Definition.Name);
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLogger.Warning($"[PARAMETER_DEBUG] Error getting parameters from MEP element {clashZone.MepElementId}: {ex.Message}");
+                    }
+                }
+
+                // Get opening family parameters
+                var openingFamilies = GetOpeningFamilies(document);
+                foreach (var family in openingFamilies)
+                {
+                    foreach (Parameter param in family.Parameters)
+                    {
+                        if (!param.IsReadOnly && !string.IsNullOrEmpty(param.Definition.Name))
+                        {
+                            openingParameters.Add(param.Definition.Name);
+                        }
+                    }
+                }
+
+                DebugLogger.Info($"[PARAMETER_DEBUG] Found {mepParameters.Count} MEP parameters and {openingParameters.Count} opening parameters");
+
+                // Update parameter service dropdowns if they exist
+                if (_serviceParameterTabs?.TabPages.Count > 0)
+                {
+                    var categoryParameters = new Dictionary<string, List<Models.ParameterInfo>>();
+                    
+                    // Convert to ParameterInfo objects
+                    var mepParamInfos = mepParameters.Select(p => new Models.ParameterInfo 
+                    { 
+                        Name = p, 
+                        Type = "Text", 
+                        IsReadOnly = false 
+                    }).ToList();
+                    
+                    categoryParameters["MEP Elements"] = mepParamInfos;
+                    
+                    // Update the dropdowns
+                    UpdateParameterServiceDropdowns(categoryParameters);
+                    DebugLogger.Info("[PARAMETER_DEBUG] Updated parameter service dropdowns");
+                }
+
+                // Store parameters globally for later use
+                _allCollectedParameters["MEP Elements"] = mepParameters.Select(p => new Models.ParameterInfo 
+                { 
+                    Name = p, 
+                    Type = "Text", 
+                    IsReadOnly = false 
+                }).ToList();
+
+                DebugLogger.Info("[PARAMETER_DEBUG] Parameter dropdown update completed successfully");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[PARAMETER_DEBUG] Error in UpdateParameterDropdownsFromClashZones: {ex.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Gets opening families from the current document
+        /// </summary>
+        private List<FamilySymbol> GetOpeningFamilies(Document document)
+        {
+            var openingFamilies = new List<FamilySymbol>();
+            
+            try
+            {
+                var collector = new FilteredElementCollector(document)
+                    .OfClass(typeof(FamilySymbol))
+                    .WhereElementIsNotElementType();
+
+                foreach (Element element in collector)
+                {
+                    if (element is FamilySymbol familySymbol)
+                    {
+                        // Check if this is an opening family (you may need to adjust this criteria)
+                        var familyName = familySymbol.Family.Name.ToLower();
+                        if (familyName.Contains("opening") || familyName.Contains("sleeve") || familyName.Contains("penetration"))
+                        {
+                            openingFamilies.Add(familySymbol);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[PARAMETER_DEBUG] Error getting opening families: {ex.Message}");
+            }
+
+            return openingFamilies;
+        }
 
         private void PerformClashDetectionAndSaveToFilter(List<OpeningFilter> selectedFilters)
 {
@@ -4412,11 +4921,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] CONFIGURE BUTTON CLICKED\n");
                 _statusLabel.Text = "Opening Settings dialog...";
                 
-                // Create and show settings dialog
-                var settings = new SettingsModel(); // You can load from saved settings here
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] SettingsModel created successfully\n");
-                
-                var settingsDialog = new SettingsDialog(settings);
+                // Create and show settings dialog (it will load/save settings automatically)
+                var settingsDialog = new SettingsDialog();
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] SettingsDialog created successfully\n");
                 
                 // Show the settings dialog as modal
@@ -4424,11 +4930,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 {
                     if (settingsDialog.ShowDialog(this) == DialogResult.OK)
                     {
-                        // Settings were saved
-                        var savedSettings = settingsDialog.GetSettings();
                         _statusLabel.Text = "Settings saved successfully";
-                        
-                        // TODO: Save settings to file or profile
                         JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Settings saved successfully\n");
                     }
                     else

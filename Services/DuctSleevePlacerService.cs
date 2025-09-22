@@ -19,8 +19,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly FamilySymbol _ductWallSymbol;
         private readonly FamilySymbol _ductSlabSymbol;
         private readonly Action<string> _log;
-        private readonly ClearanceValues _clearanceValues; // Injected clearance values
-
         public int PlacedCount { get; private set; }
         public int SkippedCount { get; private set; }
         public int ErrorCount { get; private set; }
@@ -31,8 +29,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             List<(Element, Transform?)> structuralElements,
             FamilySymbol ductWallSymbol,
             FamilySymbol ductSlabSymbol,
-            Action<string> log,
-            ClearanceValues clearanceValues)
+            Action<string> log)
         {
             // Set logging context for DuctSleevePlacerService debugging
             DebugLogger.SetServiceContext("SleevePlacers");
@@ -43,9 +40,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _ductWallSymbol = ductWallSymbol;
             _ductSlabSymbol = ductSlabSymbol;
             _log = log;
-            _clearanceValues = clearanceValues ?? new ClearanceValues(); // Use defaults if null
         }
-
 
         public void PlaceAllDuctSleeves()
         {
@@ -260,10 +255,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         DebugLogger.Log($"  - Width: {w} internal units ({UnitUtils.ConvertFromInternalUnits(w, UnitTypeId.Millimeters):F1}mm)");
                         DebugLogger.Log($"  - Height: {h2} internal units ({UnitUtils.ConvertFromInternalUnits(h2, UnitTypeId.Millimeters):F1}mm)");
                         DebugLogger.Log($"  - Diameter: {diameter} internal units ({UnitUtils.ConvertFromInternalUnits(diameter, UnitTypeId.Millimeters):F1}mm)");
-                        // Use injected clearance values - no manager calls in hot path
-                        bool isInsulated = IsDuctInsulated(duct);
-                        double clearance = _clearanceValues.GetDuctClearance(isInsulated);
-                        double clearanceInInternalUnits = UnitUtils.ConvertToInternalUnits(clearance, UnitTypeId.Millimeters);
+                        double clearance = JSE_RevitAddin_MEP_OPENINGS.Helpers.SleeveClearanceHelper.GetClearance(duct);
 
                         if ((w <= 0.0 || h2 <= 0.0) && diameter > 0.0)
                         {
@@ -285,12 +277,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
 
                         // Apply per-side clearance (clearance is per-side, so add twice)
-                        w = w + 2 * clearanceInInternalUnits;
-                        h2 = h2 + 2 * clearanceInInternalUnits;
+                        w = w + 2 * clearance;
+                        h2 = h2 + 2 * clearance;
                         
                         // DEBUG: Log dimensions after clearance application
                         DebugLogger.Log($"[DUCT_SIZE_DEBUG] Duct {duct.Id} after clearance application:");
-                        DebugLogger.Log($"  - Clearance: {clearance}mm ({clearanceInInternalUnits} internal units)");
+                        DebugLogger.Log($"  - Clearance: {UnitUtils.ConvertFromInternalUnits(clearance, UnitTypeId.Millimeters):F1}mm ({clearance} internal units)");
                         DebugLogger.Log($"  - Final Width: {w} internal units ({UnitUtils.ConvertFromInternalUnits(w, UnitTypeId.Millimeters):F1}mm)");
                         DebugLogger.Log($"  - Final Height: {h2} internal units ({UnitUtils.ConvertFromInternalUnits(h2, UnitTypeId.Millimeters):F1}mm)");
                         DebugLogger.Log($"  - Opening Area: {w * h2} internal units²");
@@ -418,25 +410,5 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                      a.Max.Z < b.Min.Z || a.Min.Z > b.Max.Z);
         }
 
-        /// <summary>
-        /// Check if a duct is insulated - pure calculation, no manager calls
-        /// </summary>
-        private bool IsDuctInsulated(Duct duct)
-        {
-            try
-            {
-                // Use existing SleeveClearanceHelper logic for insulation detection
-                // This is a pure calculation, no UI dependencies
-                var baseClearance = SleeveClearanceHelper.GetClearance(duct);
-                var normalClearance = UnitUtils.ConvertToInternalUnits(_clearanceValues.DuctsNormalClearance, UnitTypeId.Millimeters);
-                
-                // If the calculated clearance is less than normal, it's likely insulated
-                return baseClearance < normalClearance;
-            }
-            catch
-            {
-                return false; // Default to non-insulated on error
-            }
-        }
     }
 }

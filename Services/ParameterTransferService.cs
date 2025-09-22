@@ -407,6 +407,148 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
+        /// Transfer standard parameters (Level, Dimensions, System/Service Type) from reference MEP elements to openings
+        /// - Ducts, Cable Trays, Duct Accessories: Height and Width
+        /// - Pipes: Outside Diameter
+        /// - Ducts, Pipes, Duct Accessories: System Type
+        /// - Cable Trays: Service Type
+        /// Targets (if present and writable): Reference_Level, Reference_Height, Reference_Width, Reference_Diameter, MEP_System_Type
+        /// </summary>
+        public ParameterTransferResult TransferStandardParametersFromReferenceElements(
+            Document doc,
+            List<ElementId> openingIds)
+        {
+            var result = new ParameterTransferResult();
+            var errors = new List<string>();
+            var warnings = new List<string>();
+            int transferred = 0;
+            int failed = 0;
+            
+            try
+            {
+                using (var transaction = new Transaction(doc, "Transfer Standard Parameters from Reference Elements"))
+                {
+                    transaction.Start();
+                    
+                    foreach (var openingId in openingIds)
+                    {
+                        try
+                        {
+                            var opening = doc.GetElement(openingId);
+                            if (opening == null)
+                            {
+                                failed++;
+                                errors.Add($"Opening {openingId} not found");
+                                continue;
+                            }
+                            
+                            // Find intersecting MEP elements
+                            var mepElements = GetMepElementsInOpening(doc, opening);
+                            if (mepElements.Count == 0)
+                            {
+                                warnings.Add($"No MEP elements found for opening {openingId}");
+                                continue;
+                            }
+                            
+                            // Use the first intersecting MEP element as the source
+                            var source = mepElements[0];
+                            
+                            bool anySet = false;
+                            
+                            // 1) Level → Reference_Level (string)
+                            var levelName = GetLevelName(doc, source);
+                            if (!string.IsNullOrEmpty(levelName))
+                            {
+                                var p = opening.LookupParameter("Reference_Level");
+                                if (SetParameterValueSafely(p, levelName)) anySet = true;
+                            }
+                            
+                            // 2) Dimensions
+                            var categoryId = source.Category?.Id.IntegerValue ?? -1;
+                            
+                            // Rectangular (Ducts, Cable Trays, Duct Accessories): Height, Width
+                            if (categoryId == (int)BuiltInCategory.OST_DuctCurves ||
+                                categoryId == (int)BuiltInCategory.OST_CableTray ||
+                                categoryId == (int)BuiltInCategory.OST_DuctAccessory)
+                            {
+                                var height = GetParamDouble(source, "Height");
+                                var width  = GetParamDouble(source, "Width");
+                                if (height.HasValue)
+                                {
+                                    var pH = opening.LookupParameter("Reference_Height");
+                                    if (SetParameterValueSafely(pH, height.Value)) anySet = true;
+                                }
+                                if (width.HasValue)
+                                {
+                                    var pW = opening.LookupParameter("Reference_Width");
+                                    if (SetParameterValueSafely(pW, width.Value)) anySet = true;
+                                }
+                            }
+                            
+                            // Circular (Pipes): Outside Diameter
+                            if (categoryId == (int)BuiltInCategory.OST_PipeCurves)
+                            {
+                                var diameter = GetParamDouble(source, "Outside Diameter", "Diameter");
+                                if (diameter.HasValue)
+                                {
+                                    var pD = opening.LookupParameter("Reference_Diameter");
+                                    if (SetParameterValueSafely(pD, diameter.Value)) anySet = true;
+                                }
+                            }
+                            
+                            // 3) System/Service Type → MEP_System_Type (string)
+                            string systemValue = null;
+                            if (categoryId == (int)BuiltInCategory.OST_CableTray)
+                            {
+                                systemValue = source.LookupParameter("Service Type")?.AsString();
+                            }
+                            else if (categoryId == (int)BuiltInCategory.OST_DuctCurves ||
+                                     categoryId == (int)BuiltInCategory.OST_PipeCurves ||
+                                     categoryId == (int)BuiltInCategory.OST_DuctAccessory)
+                            {
+                                systemValue = source.LookupParameter("System Type")?.AsString();
+                            }
+                            
+                            if (!string.IsNullOrWhiteSpace(systemValue))
+                            {
+                                var pSys = opening.LookupParameter("MEP_System_Type");
+                                if (SetParameterValueSafely(pSys, systemValue)) anySet = true;
+                                
+                                // Also write to Service_Category if present
+                                var pSvc = opening.LookupParameter("Service_Category");
+                                SetParameterValueSafely(pSvc, systemValue);
+                            }
+                            
+                            if (anySet) transferred++; else failed++;
+                        }
+                        catch (Exception exOpen)
+                        {
+                            failed++;
+                            errors.Add($"Error on opening {openingId}: {exOpen.Message}");
+                        }
+                    }
+                    
+                    transaction.Commit();
+                }
+                
+                result.Success = errors.Count == 0;
+                result.TransferredCount = transferred;
+                result.FailedCount = failed;
+                result.Errors = errors;
+                result.Warnings = warnings;
+                result.Message = $"Standard transfer complete: {transferred} updated, {failed} failed.";
+            }
+            catch (Exception ex)
+            {
+                result.Success = false;
+                result.Message = $"Standard parameter transfer failed: {ex.Message}";
+                result.Errors.Add(ex.Message);
+            }
+            
+            return result;
+        }
+        
+        /// <summary>
         /// Execute complete parameter transfer configuration
         /// </summary>
         public ParameterTransferResult ExecuteTransferConfiguration(
@@ -689,6 +831,65 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 return false;
             }
+        }
+        
+        // Helpers for standard transfer
+        private string GetLevelName(Document doc, Element element)
+        {
+            try
+            {
+                var level = doc.GetElement(element.LevelId) as Level;
+                return level?.Name ?? string.Empty;
+            }
+            catch { return string.Empty; }
+        }
+        
+        private double? GetParamDouble(Element element, params string[] names)
+        {
+            foreach (var name in names)
+            {
+                try
+                {
+                    var p = element.LookupParameter(name);
+                    if (p != null)
+                    {
+                        // Prefer AsDouble for numeric params; gracefully handle string numerics
+                        if (p.StorageType == StorageType.Double)
+                        {
+                            return p.AsDouble();
+                        }
+                        if (p.StorageType == StorageType.String)
+                        {
+                            if (double.TryParse(p.AsString(), out var d)) return d;
+                        }
+                    }
+                }
+                catch { }
+            }
+            return null;
+        }
+        
+        private bool SetParameterValueSafely(Parameter target, string value)
+        {
+            try
+            {
+                if (target == null || target.IsReadOnly) return false;
+                if (target.StorageType == StorageType.String) { target.Set(value ?? string.Empty); return true; }
+                return false;
+            }
+            catch { return false; }
+        }
+        
+        private bool SetParameterValueSafely(Parameter target, double value)
+        {
+            try
+            {
+                if (target == null || target.IsReadOnly) return false;
+                if (target.StorageType == StorageType.Double) { target.Set(value); return true; }
+                if (target.StorageType == StorageType.String) { target.Set(value.ToString()); return true; }
+                return false;
+            }
+            catch { return false; }
         }
         
         private bool IsServiceTypeParameter(string parameterName)

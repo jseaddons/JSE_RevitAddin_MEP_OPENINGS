@@ -541,12 +541,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // CRITICAL: Save configuration separately to avoid XML serialization issues
                     try
                     {
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] About to call SaveConfigurationOnly for profile: {_currentProfile.Name}\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] ProfileService.ProfileFilePath: {_profileService.ProfileFilePath}\n");
+                        
                         SaveConfigurationOnly(_currentProfile);
                         JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Configuration saved successfully to separate file\n");
                     }
                     catch (Exception ex)
                     {
                         JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Failed to save configuration: {ex.Message}\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Exception details: {ex}\n");
                     }
                     
                     // Try original method as well (in case it works)
@@ -586,6 +590,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
                 
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] SaveConfigurationOnly START for profile: {profile.Name}\n");
+                
                 if (profile.Configuration == null)
                 {
                     JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] No configuration to save for profile: {profile.Name}\n");
@@ -594,10 +600,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 // Save configuration to PROJECT-SPECIFIC directory (safer than XML)
                 var projectProfileDir = Path.GetDirectoryName(_profileService.ProfileFilePath);
-                if (!string.IsNullOrEmpty(projectProfileDir) && !Directory.Exists(projectProfileDir))
-                    Directory.CreateDirectory(projectProfileDir);
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] ProjectProfileDir: {projectProfileDir}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] ProfileService.ProfileFilePath: {_profileService.ProfileFilePath}\n");
                 
-                var configFile = Path.Combine(projectProfileDir ?? "", $"config_{profile.Name}.txt");
+                // FALLBACK: If projectProfileDir is null or empty, use the standard AppData location
+                if (string.IsNullOrEmpty(projectProfileDir))
+                {
+                    projectProfileDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Using fallback directory: {projectProfileDir}\n");
+                }
+                
+                if (!Directory.Exists(projectProfileDir))
+                {
+                    Directory.CreateDirectory(projectProfileDir);
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Created directory: {projectProfileDir}\n");
+                }
+                
+                var configFile = Path.Combine(projectProfileDir, $"config_{profile.Name}.txt");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Config file path: {configFile}\n");
                 
                 // Save as simple text format with each file on a separate line to avoid line break issues
                 using (var writer = new StreamWriter(configFile, false, System.Text.Encoding.UTF8))
@@ -632,14 +652,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         writer.WriteLine($"  {cat}");
                     }
+                    
+                    // Write clearance settings
+                    writer.WriteLine("ClearanceSettings=");
+                    if (profile.Configuration.OpeningSettings?.ClearanceSettings != null)
+                    {
+                        foreach (var kvp in profile.Configuration.OpeningSettings.ClearanceSettings)
+                        {
+                            writer.WriteLine($"  {kvp.Key}={kvp.Value}");
+                        }
+                    }
+                    
+                    // Write clash zone storage
+                    writer.WriteLine("ClashZoneStorage=");
+                    if (profile.Configuration.ClashZoneStorage?.ClashZones != null)
+                    {
+                        writer.WriteLine($"  LastUpdated={profile.Configuration.ClashZoneStorage.LastUpdated:O}");
+                        writer.WriteLine($"  DocumentHash={profile.Configuration.ClashZoneStorage.DocumentHash}");
+                        writer.WriteLine($"  ClashZonesCount={profile.Configuration.ClashZoneStorage.ClashZones.Count}");
+                        foreach (var clashZone in profile.Configuration.ClashZoneStorage.ClashZones)
+                        {
+                            writer.WriteLine($"  ClashZone: MEP={clashZone.MepElementId}, Structural={clashZone.StructuralElementId}, Resolved={clashZone.IsResolved}");
+                        }
+                    }
                 }
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Configuration saved to: {configFile}\n");
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Configuration saved successfully\n");
+                
+                // Verify file was actually created
+                if (File.Exists(configFile))
+                {
+                    var fileInfo = new FileInfo(configFile);
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] File verification: EXISTS, Size: {fileInfo.Length} bytes, Created: {fileInfo.CreationTime}\n");
+                }
+                else
+                {
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] File verification: NOT FOUND after save attempt!\n");
+                }
             }
             catch (Exception ex)
             {
                 var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] SaveConfigurationOnly failed: {ex.Message}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Exception details: {ex}\n");
                 throw;
             }
         }

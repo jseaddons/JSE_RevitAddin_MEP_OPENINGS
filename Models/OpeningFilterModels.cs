@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Xml.Serialization;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Models
 {
@@ -27,6 +28,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
     /// <summary>
     /// Represents a filter for opening creation based on MEP category and opening type
     /// </summary>
+    [XmlRoot("OpeningFilter")]
     public class OpeningFilter
     {
         /// <summary>
@@ -52,6 +54,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// <summary>
         /// Additional parameters specific to this filter
         /// </summary>
+        [XmlIgnore]
         public Dictionary<string, object> Parameters { get; set; } = new Dictionary<string, object>();
 
         /// <summary>
@@ -67,6 +70,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// <summary>
         /// Clash zone storage for this filter
         /// </summary>
+        [XmlIgnore]
         public ClashZoneStorage? ClashZoneStorage { get; set; }
 
         /// <summary>
