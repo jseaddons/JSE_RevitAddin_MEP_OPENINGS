@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Xml.Serialization;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Models
 {
     /// <summary>
     /// Represents opening-specific settings and parameters
     /// </summary>
+    [XmlRoot("OpeningSettings")]
     public class OpeningSettings
     {
         /// <summary>
@@ -21,7 +23,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// <summary>
         /// Clearance settings for different MEP types
         /// </summary>
+        [XmlIgnore]
         public Dictionary<string, double> ClearanceSettings { get; set; } = new Dictionary<string, double>();
+
+        /// <summary>
+        /// Serializable clearance settings for XML serialization
+        /// </summary>
+        [XmlArray("ClearanceSettings")]
+        [XmlArrayItem("ClearanceSetting")]
+        public ClearanceSetting[] SerializableClearanceSettings
+        {
+            get
+            {
+                var settings = new List<ClearanceSetting>();
+                foreach (var kvp in ClearanceSettings)
+                {
+                    settings.Add(new ClearanceSetting { Key = kvp.Key, Value = kvp.Value });
+                }
+                return settings.ToArray();
+            }
+            set
+            {
+                ClearanceSettings.Clear();
+                if (value != null)
+                {
+                    foreach (var setting in value)
+                    {
+                        ClearanceSettings[setting.Key] = setting.Value;
+                    }
+                }
+            }
+        }
         
         /// <summary>
         /// Default clearance value
@@ -57,5 +89,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// When these settings were last modified
         /// </summary>
         public DateTime LastModified { get; set; } = DateTime.Now;
+    }
+
+    /// <summary>
+    /// Serializable wrapper for clearance key-value pairs
+    /// </summary>
+    public class ClearanceSetting
+    {
+        [XmlAttribute("Key")]
+        public string Key { get; set; } = string.Empty;
+
+        [XmlAttribute("Value")]
+        public double Value { get; set; }
     }
 }

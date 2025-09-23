@@ -115,7 +115,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 selectedFilter.Name = newName;
                 selectedFilter.LastModified = DateTime.Now;
 
-                RefreshFilterList(filterListBox);
+                // Ensure internal list is updated
+                var existing = _filters.FirstOrDefault(f => f.Name == oldName);
+                if (existing != null)
+                {
+                    existing.Name = newName;
+                    existing.LastModified = selectedFilter.LastModified;
+                }
+                else
+                {
+                    // If item wasn't tracked, start tracking it now
+                    _filters.Add(selectedFilter);
+                }
+
+                // Update the ListBox item text to reflect the new name
+                if (filterListBox != null)
+                {
+                    var idx = filterListBox.Items.IndexOf(oldName);
+                    if (idx >= 0)
+                    {
+                        filterListBox.Items[idx] = newName;
+                        filterListBox.SelectedIndex = idx; // keep selection on renamed item
+                    }
+                    else
+                    {
+                        // Fallback: refresh the whole list if we didn't find the old item
+                        RefreshFilterList(filterListBox);
+                    }
+                }
                 
                 _log($"[FILTER_MGMT] Renamed filter '{oldName}' to '{newName}'");
                 _updateStatus($"Renamed filter to: {newName}");
@@ -124,6 +151,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 _log($"[FILTER_MGMT] Error renaming filter: {ex.Message}");
                 ShowError($"Error renaming filter: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Seeds default filters into the UI and internal storage.
+        /// </summary>
+        public void SeedDefaultFilters(ListBox filterListBox, IEnumerable<string> defaultNames)
+        {
+            if (filterListBox == null) return;
+            foreach (var name in defaultNames)
+            {
+                if (string.IsNullOrWhiteSpace(name)) continue;
+                if (_filters.Any(f => f.Name == name) || filterListBox.Items.Contains(name)) continue;
+                var filter = CreateFilterFromCurrentUIState(name);
+                AddFilterToList(filterListBox, filter);
             }
         }
 
@@ -277,14 +319,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         private OpeningFilter CreateFilterFromCurrentUIState(string filterName)
         {
+            // This service does not have access to UI; keep defaults and let caller update fields
             return new OpeningFilter
             {
                 Name = filterName,
-                Category = Models.MepCategory.Ducts, // Default category
-                OpeningType = Models.OpeningType.RectangularSleeves, // Default type
+                Category = Models.MepCategory.Ducts,
+                OpeningType = Models.OpeningType.RectangularSleeves,
                 IsEnabled = true,
                 LastModified = DateTime.Now,
-                ClashZoneStorage = null // Will be populated when clash detection is run
+                ClashZoneStorage = null
             };
         }
 

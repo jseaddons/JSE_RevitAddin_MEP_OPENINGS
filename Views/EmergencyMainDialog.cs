@@ -561,11 +561,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _filtersPanel.Controls.Add(filterListBox);
             DebugLogger.Info("Filter list box created");
             
-            // Add sample filters (like conVoid)
-            filterListBox.Items.Add("Electrical");
-            filterListBox.Items.Add("Plumbing");
-            filterListBox.Items.Add("Ventilation");
-            DebugLogger.Info("Sample filters added to list");
+            // Add sample filters (like conVoid) via service so internal list is tracked
+            _filterManagementService.SeedDefaultFilters(
+                filterListBox,
+                new System.Collections.Generic.List<string> { "Electrical", "Plumbing", "Ventilation" }
+            );
+            DebugLogger.Info("Sample filters seeded via FilterManagementService");
             
             // Button panel positioned right below the filter list box
             var buttonPanel = new WinForms.Panel
@@ -682,8 +683,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             copyFilterButton.Click += (s, e) => _filterManagementService.CopyFilter(filterListBox);
             renameFilterButton.Click += (s, e) => _filterManagementService.RenameFilter(filterListBox);
             deleteFilterButton.Click += (s, e) => _filterManagementService.DeleteFilter(filterListBox);
-            saveFilterButton.Click += (s, e) => _filterManagementService.SaveFilter(filterListBox);
+            saveFilterButton.Click += (s, e) => SaveFilterWithUIState(filterListBox);
             loadFilterButton.Click += (s, e) => _filterManagementService.LoadFilter(filterListBox);
+            
+            // Add event handler for filter selection to restore UI state
+            filterListBox.SelectedIndexChanged += (s, e) => RestoreFilterStateToUI(filterListBox);
             
             DebugLogger.Info("=== PopulateFiltersPanel COMPLETED ===");
         }
@@ -1802,7 +1806,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             
             row.Controls.Add(nameCombo);
 
-            var valueCombo = new WinForms.ComboBox
+            var openingParamCombo = new WinForms.ComboBox
             {
                 Location = new System.Drawing.Point(130, 2),
                 Size = new System.Drawing.Size(row.Width - 130 - 30, 20),
@@ -1810,14 +1814,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 DropDownStyle = WinForms.ComboBoxStyle.DropDownList
             };
             
-            // Add event handler for parameter selection changes
-            nameCombo.SelectedIndexChanged += (_, __) => {
-                valueCombo.Items.Clear();
-                valueCombo.Items.Add("<Auto Selection>");
-                valueCombo.SelectedIndex = 0;
-            };
+            // Populate with opening sleeve family parameters
+            var openingParameters = GetOpeningSleeveParameters();
+            openingParamCombo.Items.AddRange(openingParameters.ToArray());
+            openingParamCombo.Items.Insert(0, "<Select Opening Parameter>");
+            openingParamCombo.SelectedIndex = 0;
             
-            row.Controls.Add(valueCombo);
+            row.Controls.Add(openingParamCombo);
 
             var removeBtn = new WinForms.Button
             {
@@ -1967,6 +1970,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private List<string> GetAvailableParameters()
         {
             return GetAvailableParametersForCategories(null); // Get all categories
+        }
+
+        private List<string> GetOpeningSleeveParameters()
+        {
+            return new List<string>
+            {
+                "Mark",
+                "Type Mark",
+                "Assembly Code",
+                "Assembly Description",
+                "Type Comments",
+                "URL",
+                "Description",
+                "Type Image",
+                "Keynote",
+                "Manufacturer",
+                "Model",
+                "Comments",
+                "Height",
+                "Width",
+                "Diameter",
+                "Outside Diameter",
+                "Inside Diameter",
+                "Clearance",
+                "Opening Type",
+                "Service Type",
+                "Level",
+                "Host Element",
+                "Reference Element",
+                "Installation Date",
+                "Installation Notes"
+            };
         }
 
         /// <summary>
@@ -4427,10 +4462,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     targetFilter.LastModified = DateTime.Now;
                     
                     // Save to profile configuration for persistence
-                    if (currentProfile?.Configuration != null)
+                    if (currentProfile != null)
                     {
+                        // Ensure configuration exists
+                        if (currentProfile.Configuration == null)
+                        {
+                            currentProfile.Configuration = new UserConfiguration();
+                            DebugLogger.Info("[CLASH_DEBUG] Created new profile configuration during Refresh");
+                        }
+
                         currentProfile.Configuration.ClashZoneStorage = clashZoneStorage;
-                        DebugLogger.Info($"[CLASH_DEBUG] Saved clash zones to profile configuration for persistence");
+
+                        // Persist current opening conditions (e.g., clearance values) into profile configuration
+                        if (currentProfile.Configuration.OpeningSettings == null)
+                        {
+                            currentProfile.Configuration.OpeningSettings = new OpeningSettings();
+                        }
+                        currentProfile.Configuration.OpeningSettings.ClearanceSettings = GetClearanceSettings();
+
+                        DebugLogger.Info($"[CLASH_DEBUG] Saved clash zones and opening conditions to profile configuration for persistence");
+
+                        // Persist to disk immediately so Refresh round-trips data per hybrid implementation
+                        try
+                        {
+                            _appProfileService.SaveCurrentProfile();
+                            DebugLogger.Info("[CLASH_DEBUG] Profile persisted to disk after Refresh");
+                        }
+                        catch (Exception saveEx)
+                        {
+                            DebugLogger.Warning($"[CLASH_DEBUG] Warning: Failed to persist profile after Refresh: {saveEx.Message}");
+                        }
                     }
                     
                     DebugLogger.Info($"[CLASH_DEBUG] Saved clash zones to filter '{targetFilter.Name}'");
@@ -4461,9 +4522,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
             try
             {
-                UpdateParameterDropdownsFromClashZones(document, clashZoneService);
-                DebugLogger.Info("[PARAMETER_DEBUG] Parameter dropdowns updated from clash zones");
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [PARAMETER_DEBUG] Parameter dropdowns updated from clash zones\n");
+                PopulateParameterDropdowns();
+                DebugLogger.Info("[PARAMETER_SIMPLE] Parameter dropdowns updated using simple method");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [PARAMETER_SIMPLE] Parameter dropdowns updated using simple method\n");
             }
             catch (Exception ex)
             {
@@ -4524,68 +4585,342 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         }
 
         /// <summary>
-        /// Updates parameter dropdowns with parameters from MEP elements in clash zones
+        /// Updates parameter dropdowns using the existing GetParametersForCategory method
         /// </summary>
-        private void UpdateParameterDropdownsFromClashZones(Document document, ClashZoneService clashZoneService)
+        /// <summary>
+        /// SIMPLE method to populate parameter dropdowns - calls ParameterExtractionService only
+        /// </summary>
+        private void PopulateParameterDropdowns()
         {
             try
             {
-                DebugLogger.Info("[PARAMETER_DEBUG] Starting parameter dropdown update from clash zones");
+                DebugLogger.Info("[PARAMETER_SIMPLE] Starting simple parameter dropdown population");
                 
-                // Get clash zones from current profile
-                var currentProfile = GetCurrentProfile();
-                if (currentProfile?.Configuration?.ClashZoneStorage?.ClashZones == null)
+                // Get selected MEP category
+                var selectedMepCategory = GetSelectedMepCategory();
+                DebugLogger.Info($"[PARAMETER_SIMPLE] Selected MEP category: {selectedMepCategory}");
+                
+                // Get selected reference files
+                var selectedReferenceFiles = GetSelectedReferenceFiles();
+                DebugLogger.Info($"[PARAMETER_SIMPLE] Selected reference files: {string.Join(", ", selectedReferenceFiles)}");
+                
+                // Use ParameterExtractionService directly
+                var parameterService = new ParameterExtractionService();
+                
+                // Get MEP parameters from selected files
+                var mepParameters = new List<string>();
+                var openingParameters = new List<string>();
+                
+                // Process each selected reference file
+                foreach (var referenceFile in selectedReferenceFiles)
                 {
-                    DebugLogger.Warning("[PARAMETER_DEBUG] No clash zones found in current profile");
-                    return;
-                }
-
-                var clashZones = currentProfile.Configuration.ClashZoneStorage.ClashZones;
-                DebugLogger.Info($"[PARAMETER_DEBUG] Found {clashZones.Count} clash zones");
-
-                // Extract parameters from MEP elements in clash zones
-                var mepParameters = new HashSet<string>();
-                var openingParameters = new HashSet<string>();
-
-                foreach (var clashZone in clashZones)
-                {
-                    try
+                    Document targetDocument = _activeDocument;
+                    
+                    // Handle linked files
+                    if (!referenceFile.Contains("(Active Document)"))
                     {
-                        // Get MEP element parameters
-                        var mepElement = document.GetElement(clashZone.MepElementId);
-                        if (mepElement != null)
+                        var linkedDoc = GetLinkedDocument(referenceFile);
+                        if (linkedDoc != null)
                         {
-                            foreach (Parameter param in mepElement.Parameters)
+                            targetDocument = linkedDoc;
+                        }
+                    }
+                    
+                    if (targetDocument != null)
+                    {
+                        // Get MEP parameters for selected category
+                        var builtInCategory = GetBuiltInCategoryForMepCategory(selectedMepCategory.ToString());
+                        if (builtInCategory.HasValue)
+                        {
+                            var serviceParams = parameterService.GetParametersForCategory(targetDocument, builtInCategory.Value);
+                            foreach (var param in serviceParams)
                             {
-                                if (!param.IsReadOnly && !string.IsNullOrEmpty(param.Definition.Name))
+                                if (!string.IsNullOrEmpty(param.Name) && !mepParameters.Contains(param.Name))
                                 {
-                                    mepParameters.Add(param.Definition.Name);
+                                    mepParameters.Add(param.Name);
                                 }
                             }
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        DebugLogger.Warning($"[PARAMETER_DEBUG] Error getting parameters from MEP element {clashZone.MepElementId}: {ex.Message}");
-                    }
                 }
-
-                // Get opening family parameters
-                var openingFamilies = GetOpeningFamilies(document);
+                
+                // Get opening parameters (always from current document)
+                var openingFamilies = GetOpeningFamilies(_activeDocument);
                 foreach (var family in openingFamilies)
                 {
                     foreach (Parameter param in family.Parameters)
                     {
-                        if (!param.IsReadOnly && !string.IsNullOrEmpty(param.Definition.Name))
+                        if (!string.IsNullOrEmpty(param.Definition.Name) && !openingParameters.Contains(param.Definition.Name))
                         {
                             openingParameters.Add(param.Definition.Name);
                         }
                     }
                 }
+                
+                DebugLogger.Info($"[PARAMETER_SIMPLE] Found {mepParameters.Count} MEP parameters and {openingParameters.Count} opening parameters");
+                
+                // Update UI dropdowns
+                UpdateParameterDropdownsInUI(mepParameters, openingParameters);
+                
+                DebugLogger.Info("[PARAMETER_SIMPLE] Parameter dropdown population completed successfully");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[PARAMETER_SIMPLE] Error in PopulateParameterDropdowns: {ex.Message}");
+            }
+        }
 
+        /// <summary>
+        /// SIMPLE method to update UI dropdowns with parameter lists
+        /// </summary>
+        private void UpdateParameterDropdownsInUI(List<string> mepParameters, List<string> openingParameters)
+        {
+            try
+            {
+                DebugLogger.Info($"[PARAMETER_SIMPLE] Updating UI with {mepParameters.Count} MEP and {openingParameters.Count} opening parameters");
+                
+                // DEBUG: Check if _serviceParameterTabs exists
+                DebugLogger.Info($"[PARAMETER_SIMPLE] _serviceParameterTabs exists: {_serviceParameterTabs != null}");
+                if (_serviceParameterTabs != null)
+                {
+                    DebugLogger.Info($"[PARAMETER_SIMPLE] _serviceParameterTabs.TabPages.Count: {_serviceParameterTabs.TabPages.Count}");
+                }
+                
+                if (_serviceParameterTabs?.TabPages.Count > 0)
+                {
+                    foreach (WinForms.TabPage tabPage in _serviceParameterTabs.TabPages)
+                    {
+                        DebugLogger.Info($"[PARAMETER_SIMPLE] Processing tab: '{tabPage.Text}'");
+                        DebugLogger.Info($"[PARAMETER_SIMPLE] Tab has {tabPage.Controls.Count} direct controls");
+                        
+                        // DEBUG: List all control types in the tab
+                        foreach (WinForms.Control control in tabPage.Controls)
+                        {
+                            DebugLogger.Info($"[PARAMETER_SIMPLE] Tab '{tabPage.Text}' contains control: {control.GetType().Name} - '{control.Name}'");
+                        }
+                        
+                        // Find all ComboBoxes in this tab - CORRECT HIERARCHY SEARCH
+                        var allComboBoxes = new List<WinForms.ComboBox>();
+                        
+                        // Step 1: Find the servicePanel in this tab
+                        var servicePanel = tabPage.Controls.OfType<WinForms.Panel>().FirstOrDefault();
+                        DebugLogger.Info($"[PARAMETER_SIMPLE] Found servicePanel: {servicePanel != null} in tab '{tabPage.Text}'");
+                        
+                        if (servicePanel != null)
+                        {
+                            DebugLogger.Info($"[PARAMETER_SIMPLE] servicePanel has {servicePanel.Controls.Count} controls");
+                            
+                            // Step 2: Find all row panels in the servicePanel
+                            var rowPanels = servicePanel.Controls.OfType<WinForms.Panel>().ToList();
+                            DebugLogger.Info($"[PARAMETER_SIMPLE] Found {rowPanels.Count} row panels in servicePanel");
+                            
+                            // Step 3: Find ComboBoxes in each row panel
+                            foreach (var rowPanel in rowPanels)
+                            {
+                                DebugLogger.Info($"[PARAMETER_SIMPLE] Row panel has {rowPanel.Controls.Count} controls");
+                                
+                                var rowComboBoxes = rowPanel.Controls.OfType<WinForms.ComboBox>().ToList();
+                                allComboBoxes.AddRange(rowComboBoxes);
+                                DebugLogger.Info($"[PARAMETER_SIMPLE] Found {rowComboBoxes.Count} ComboBoxes in row panel");
+                                
+                                // DEBUG: List all controls in the row panel
+                                foreach (WinForms.Control control in rowPanel.Controls)
+                                {
+                                    DebugLogger.Info($"[PARAMETER_SIMPLE] Row panel contains: {control.GetType().Name} - '{control.Name}'");
+                                }
+                            }
+                        }
+                        
+                        DebugLogger.Info($"[PARAMETER_SIMPLE] TOTAL: Found {allComboBoxes.Count} ComboBoxes in tab '{tabPage.Text}'");
+                        
+                        // If no ComboBoxes found, create them dynamically
+                        if (allComboBoxes.Count == 0)
+                        {
+                            DebugLogger.Info($"[PARAMETER_SIMPLE] No ComboBoxes found in tab '{tabPage.Text}', creating them dynamically");
+                            
+                            // Find the main panel in the tab
+                            var mainPanel = tabPage.Controls.OfType<WinForms.Panel>().FirstOrDefault();
+                            if (mainPanel != null)
+                            {
+                                // Create MEP parameter ComboBox
+                                var mepComboBox = new WinForms.ComboBox
+                                {
+                                    Name = $"mepParamCombo_{tabPage.Text}",
+                                    Location = new System.Drawing.Point(10, 10),
+                                    Size = new System.Drawing.Size(200, 20),
+                                    DropDownStyle = WinForms.ComboBoxStyle.DropDownList,
+                                    Tag = "mep"
+                                };
+                                mepComboBox.Items.AddRange(mepParameters.ToArray());
+                                mainPanel.Controls.Add(mepComboBox);
+                                DebugLogger.Info($"[PARAMETER_SIMPLE] Created MEP ComboBox with {mepParameters.Count} parameters");
+                                
+                                // Create Opening parameter ComboBox
+                                var openingComboBox = new WinForms.ComboBox
+                                {
+                                    Name = $"openingParamCombo_{tabPage.Text}",
+                                    Location = new System.Drawing.Point(220, 10),
+                                    Size = new System.Drawing.Size(200, 20),
+                                    DropDownStyle = WinForms.ComboBoxStyle.DropDownList,
+                                    Tag = "opening"
+                                };
+                                openingComboBox.Items.AddRange(openingParameters.ToArray());
+                                mainPanel.Controls.Add(openingComboBox);
+                                DebugLogger.Info($"[PARAMETER_SIMPLE] Created Opening ComboBox with {openingParameters.Count} parameters");
+                            }
+                        }
+                        else
+                        {
+                            // Update existing ComboBoxes
+                            foreach (var comboBox in allComboBoxes)
+                            {
+                                DebugLogger.Info($"[PARAMETER_SIMPLE] Updating ComboBox '{comboBox.Name}' at location ({comboBox.Location.X}, {comboBox.Location.Y})");
+                                
+                                // Clear existing items
+                                comboBox.Items.Clear();
+                                
+                                // Determine which parameters to add based on ComboBox position or tag
+                                if (comboBox.Tag?.ToString()?.Contains("mep") == true || 
+                                    comboBox.Location.X < 100) // Left side = MEP parameters
+                                {
+                                    comboBox.Items.AddRange(mepParameters.ToArray());
+                                    DebugLogger.Info($"[PARAMETER_SIMPLE] Updated MEP ComboBox '{comboBox.Name}' with {mepParameters.Count} parameters");
+                                }
+                                else // Right side = Opening parameters
+                                {
+                                    comboBox.Items.AddRange(openingParameters.ToArray());
+                                    DebugLogger.Info($"[PARAMETER_SIMPLE] Updated Opening ComboBox '{comboBox.Name}' with {openingParameters.Count} parameters");
+                                }
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    DebugLogger.Warning("[PARAMETER_SIMPLE] No service parameter tabs found!");
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[PARAMETER_SIMPLE] Error updating UI dropdowns: {ex.Message}");
+                DebugLogger.Error($"[PARAMETER_SIMPLE] Stack trace: {ex.StackTrace}");
+            }
+        }
+
+        /// <summary>
+        /// Updates parameter dropdowns with parameters from MEP categories (not clash zones)
+        /// </summary>
+        private void UpdateParameterDropdownsFromMepCategories(Document document)
+        {
+            try
+            {
+                DebugLogger.Info("[PARAMETER_DEBUG] Starting parameter dropdown update using ParameterExtractionService");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [PARAMETER_DEBUG] Starting parameter dropdown update using ParameterExtractionService\n");
+                
+                var mepParameters = new HashSet<string>();
+                var openingParameters = new HashSet<string>();
+                
+                // Get currently selected MEP category from UI
+                var selectedMepCategory = GetSelectedMepCategory();
+                DebugLogger.Info($"[PARAMETER_DEBUG] Selected MEP category: {selectedMepCategory}");
+                
+                // Get currently selected reference files from UI
+                var selectedReferenceFiles = GetSelectedReferenceFiles();
+                DebugLogger.Info($"[PARAMETER_DEBUG] Selected reference files: {string.Join(", ", selectedReferenceFiles)}");
+                
+                // If no reference files selected, fall back to current document
+                if (selectedReferenceFiles.Count == 0)
+                {
+                    DebugLogger.Info("[PARAMETER_DEBUG] No reference files selected, using current document");
+                    selectedReferenceFiles.Add("Current Document");
+                }
+                
+                // Use ParameterExtractionService to collect parameters from selected linked files
+                var parameterExtractionService = new ParameterExtractionService();
+                
+                foreach (var referenceFile in selectedReferenceFiles)
+                {
+                    DebugLogger.Info($"[PARAMETER_DEBUG] Processing reference file: {referenceFile}");
+                    
+                    Document targetDocument = document;
+                    
+                    // If it's a linked file, get the linked document
+                    if (referenceFile != "Current Document")
+                    {
+                        var linkedFileService = _linkedFileService;
+                        if (linkedFileService != null)
+                        {
+                            var linkedFiles = linkedFileService.GetLinkedFiles(document);
+                            
+                            // Extract just the filename part (remove element count and parentheses)
+                            var cleanFileName = referenceFile.Split('(')[0].Trim();
+                            DebugLogger.Info($"[PARAMETER_DEBUG] Looking for linked file: '{cleanFileName}' in {linkedFiles.Count} available files");
+                            
+                            var linkedFile = linkedFiles.FirstOrDefault(lf => lf.FileName == cleanFileName);
+                            if (linkedFile?.LinkInstance?.GetLinkDocument() != null)
+                            {
+                                targetDocument = linkedFile.LinkInstance.GetLinkDocument();
+                                DebugLogger.Info($"[PARAMETER_DEBUG] Using linked document: {linkedFile.FileName}");
+                            }
+                            else
+                            {
+                                DebugLogger.Warning($"[PARAMETER_DEBUG] Could not find linked document for: '{cleanFileName}'. Available files: {string.Join(", ", linkedFiles.Select(lf => lf.FileName))}");
+                                continue;
+                            }
+                        }
+                        else
+                        {
+                            DebugLogger.Warning("[PARAMETER_DEBUG] LinkedFileService not available");
+                            continue;
+                        }
+                    }
+                    
+                    // Use ParameterExtractionService to get parameters for the selected MEP category
+                    var mepCategories = new List<Services.MepCategory> { (Services.MepCategory)selectedMepCategory };
+                    var parameterInfos = parameterExtractionService.GetParametersForMepCategories(targetDocument, mepCategories);
+                    
+                    DebugLogger.Info($"[PARAMETER_DEBUG] Found {parameterInfos.Count} parameters from {selectedMepCategory} in {referenceFile}");
+                    
+                    // Extract parameter names for dropdown
+                    foreach (var paramInfo in parameterInfos)
+                    {
+                        if (!string.IsNullOrEmpty(paramInfo.Name) && 
+                            !paramInfo.Name.StartsWith("Internal") &&
+                            !paramInfo.Name.StartsWith("Revit") &&
+                            !paramInfo.Name.StartsWith("Assembly"))
+                        {
+                            mepParameters.Add(paramInfo.Name);
+                        }
+                    }
+                }
+                
+                // Collect parameters from opening families (always from current document)
+                var openingFamilies = GetOpeningFamilies(document);
+                DebugLogger.Info($"[PARAMETER_DEBUG] Found {openingFamilies.Count} opening families");
+                
+                foreach (var family in openingFamilies)
+                {
+                    DebugLogger.Info($"[PARAMETER_DEBUG] Processing opening family: {family.Name}");
+                    
+                    foreach (Parameter param in family.Parameters)
+                    {
+                        // Include all parameters except those with empty names or truly internal parameters
+                        if (!string.IsNullOrEmpty(param.Definition.Name) && 
+                            !param.Definition.Name.StartsWith("Internal") &&
+                            !param.Definition.Name.StartsWith("Revit") &&
+                            !param.Definition.Name.StartsWith("Assembly"))
+                        {
+                            openingParameters.Add(param.Definition.Name);
+                        }
+                    }
+                }
+                
                 DebugLogger.Info($"[PARAMETER_DEBUG] Found {mepParameters.Count} MEP parameters and {openingParameters.Count} opening parameters");
 
                 // Update parameter service dropdowns if they exist
+                DebugLogger.Info($"[PARAMETER_DEBUG] Checking _serviceParameterTabs: {_serviceParameterTabs != null}, TabPages count: {_serviceParameterTabs?.TabPages.Count ?? 0}");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [PARAMETER_DEBUG] Checking _serviceParameterTabs: {_serviceParameterTabs != null}, TabPages count: {_serviceParameterTabs?.TabPages.Count ?? 0}\n");
+                
                 if (_serviceParameterTabs?.TabPages.Count > 0)
                 {
                     var categoryParameters = new Dictionary<string, List<Models.ParameterInfo>>();
@@ -4599,10 +4934,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     }).ToList();
                     
                     categoryParameters["MEP Elements"] = mepParamInfos;
+
+                    // Include Opening Sleeve Family parameters in a separate dropdown
+                    var openingParamInfos = openingParameters.Select(p => new Models.ParameterInfo
+                    {
+                        Name = p,
+                        Type = "Text",
+                        IsReadOnly = false
+                    }).ToList();
+                    categoryParameters["Opening Families"] = openingParamInfos;
+                    
+                    DebugLogger.Info($"[PARAMETER_DEBUG] About to update dropdowns with {mepParamInfos.Count} MEP params and {openingParamInfos.Count} opening params");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [PARAMETER_DEBUG] About to update dropdowns with {mepParamInfos.Count} MEP params and {openingParamInfos.Count} opening params\n");
                     
                     // Update the dropdowns
                     UpdateParameterServiceDropdowns(categoryParameters);
                     DebugLogger.Info("[PARAMETER_DEBUG] Updated parameter service dropdowns");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [PARAMETER_DEBUG] Updated parameter service dropdowns\n");
+                }
+                else
+                {
+                    DebugLogger.Warning("[PARAMETER_DEBUG] _serviceParameterTabs is null or has no tab pages - cannot update dropdowns");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [PARAMETER_DEBUG] WARNING: _serviceParameterTabs is null or has no tab pages - cannot update dropdowns\n");
                 }
 
                 // Store parameters globally for later use
@@ -4613,11 +4966,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     IsReadOnly = false 
                 }).ToList();
 
+                _allCollectedParameters["Opening Families"] = openingParameters.Select(p => new Models.ParameterInfo
+                {
+                    Name = p,
+                    Type = "Text",
+                    IsReadOnly = false
+                }).ToList();
+
                 DebugLogger.Info("[PARAMETER_DEBUG] Parameter dropdown update completed successfully");
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[PARAMETER_DEBUG] Error in UpdateParameterDropdownsFromClashZones: {ex.Message}");
+                DebugLogger.Error($"[PARAMETER_DEBUG] Error in UpdateParameterDropdownsFromMepCategories: {ex.Message}");
                 throw;
             }
         }
@@ -4631,21 +4991,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             
             try
             {
+                // FamilySymbol is an ElementType; do NOT filter with WhereElementIsNotElementType
                 var collector = new FilteredElementCollector(document)
-                    .OfClass(typeof(FamilySymbol))
-                    .WhereElementIsNotElementType();
+                    .OfClass(typeof(FamilySymbol));
 
+                int inspected = 0;
                 foreach (Element element in collector)
                 {
+                    inspected++;
                     if (element is FamilySymbol familySymbol)
                     {
-                        // Check if this is an opening family (you may need to adjust this criteria)
-                        var familyName = familySymbol.Family.Name.ToLower();
-                        if (familyName.Contains("opening") || familyName.Contains("sleeve") || familyName.Contains("penetration"))
+                        var familyNameLower = ($"{familySymbol.Family?.Name} {familySymbol.Name}").ToLower();
+                        var categoryNameLower = familySymbol.Category?.Name?.ToLower() ?? string.Empty;
+
+                        // Only include families that contain "Opening" in their name
+                        bool isOpeningFamily = familyNameLower.Contains("opening");
+                        
+                        if (isOpeningFamily)
                         {
                             openingFamilies.Add(familySymbol);
                         }
                     }
+                }
+
+                DebugLogger.Info($"[PARAMETER_DEBUG] GetOpeningFamilies inspected {inspected} FamilySymbols, matched {openingFamilies.Count} families containing 'Opening'");
+                
+                // Enhanced debugging: Log some sample family names to help diagnose
+                if (inspected > 0 && openingFamilies.Count == 0)
+                {
+                    DebugLogger.Info($"[PARAMETER_DEBUG] No families containing 'Opening' found. Sample family names in document:");
+                    var sampleCollector = new FilteredElementCollector(document)
+                        .OfClass(typeof(FamilySymbol))
+                        .Take(10); // Just get first 10 for debugging
+                    
+                    foreach (Element element in sampleCollector)
+                    {
+                        if (element is FamilySymbol familySymbol)
+                        {
+                            var familyName = $"{familySymbol.Family?.Name} {familySymbol.Name}";
+                            var categoryName = familySymbol.Category?.Name ?? "Unknown";
+                            DebugLogger.Info($"[PARAMETER_DEBUG] Sample family: '{familyName}' (Category: {categoryName})");
+                        }
+                    }
+                }
+                
+                // Fallback: If no opening families found, return empty list
+                // The UI will use the hardcoded GetOpeningSleeveParameters() method instead
+                if (openingFamilies.Count == 0)
+                {
+                    DebugLogger.Info($"[PARAMETER_DEBUG] No opening families found - UI will use hardcoded opening parameters");
                 }
             }
             catch (Exception ex)
@@ -5023,7 +5417,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 {
                     JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Getting parameters from ACTIVE DOCUMENT for {category}\n");
                     var activeDocParams = parameterService.GetParametersForCategory(_activeDocument, builtInCategory.Value);
-                    // allParameters.AddRange(activeDocParams); // Type conversion issue
+                    
+                    // Convert Services.ParameterInfo to Models.ParameterInfo
+                    foreach (var param in activeDocParams)
+                    {
+                        allParameters.Add(new Models.ParameterInfo
+                        {
+                            Name = param.Name,
+                            Type = param.Type,
+                            IsReadOnly = false
+                        });
+                    }
+                    
                     System.Diagnostics.Debug.WriteLine($"Found {activeDocParams.Count} parameters from active document for {category}");
                 }
                 
@@ -5040,7 +5445,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         if (linkedDoc != null)
                         {
                             var linkedParams = parameterService.GetParametersForCategory(linkedDoc, builtInCategory.Value);
-                            // allParameters.AddRange(linkedParams); // Type conversion issue
+                            
+                            // Convert Services.ParameterInfo to Models.ParameterInfo
+                            foreach (var param in linkedParams)
+                            {
+                                allParameters.Add(new Models.ParameterInfo
+                                {
+                                    Name = param.Name,
+                                    Type = param.Type,
+                                    IsReadOnly = false
+                                });
+                            }
+                            
                             System.Diagnostics.Debug.WriteLine($"Found {linkedParams.Count} parameters from linked file '{linkedFile}' for {category}");
                         }
                     }
@@ -5094,15 +5510,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         string tabName = tabPage.Text;
                         JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Processing tab: {tabName}\n");
                         
-                        // Find matching category parameters from ALL collected parameters (persistent)
+                        // Combine MEP and Opening Family parameters for all tabs (broader availability)
                         var matchingParameters = new List<Models.ParameterInfo>();
-                        foreach (var kvp in _allCollectedParameters) // Use _allCollectedParameters instead of categoryParameters
+                        if (_allCollectedParameters.TryGetValue("MEP Elements", out var mepParams))
                         {
-                            if (IsCategoryMatch(tabName, kvp.Key))
-                            {
-                                matchingParameters.AddRange(kvp.Value);
-                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Found {kvp.Value.Count} parameters for {kvp.Key} in tab {tabName}\n");
-                            }
+                            matchingParameters.AddRange(mepParams);
+                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Added {mepParams.Count} MEP parameters to tab {tabName}\n");
+                        }
+                        if (_allCollectedParameters.TryGetValue("Opening Families", out var openingParams))
+                        {
+                            matchingParameters.AddRange(openingParams);
+                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Added {openingParams.Count} opening parameters to tab {tabName}\n");
                         }
                         
                         // Update ALL parameter rows in this tab
@@ -5172,41 +5590,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     var groupedParameters = GroupParameters(parameters);
                     JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Grouped parameters into {groupedParameters.Count} groups\n");
                     
-                    // Update ALL ComboBoxes in this tab
-                    foreach (var nameCombo in allComboBoxes)
+                    // Separate MEP and Opening parameters
+                    var mepParameters = new List<Models.ParameterInfo>();
+                    var openingParameters = new List<Models.ParameterInfo>();
+                    
+                    if (_allCollectedParameters.ContainsKey("MEP Elements"))
                     {
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Updating ComboBox in tab {tabPage.Text}\n");
+                        mepParameters = _allCollectedParameters["MEP Elements"];
+                    }
+                    if (_allCollectedParameters.ContainsKey("Opening Families"))
+                    {
+                        openingParameters = _allCollectedParameters["Opening Families"];
+                    }
+                    
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Separated: {mepParameters.Count} MEP params, {openingParameters.Count} opening params\n");
+                    
+                    // Update ComboBoxes in pairs (left = MEP, right = Opening)
+                    for (int i = 0; i < allComboBoxes.Count; i += 2)
+                    {
+                        var nameCombo = allComboBoxes[i]; // Left ComboBox (MEP parameters)
+                        var valueCombo = (i + 1 < allComboBoxes.Count) ? allComboBoxes[i + 1] : null; // Right ComboBox (Opening parameters)
                         
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Updating ComboBox pair {i/2} in tab {tabPage.Text}\n");
+                        
+                        // Update left ComboBox with MEP parameters
                         nameCombo.Items.Clear();
-                        nameCombo.Items.Add("<Select Parameter>");
-                        
-                        foreach (var group in groupedParameters)
+                        nameCombo.Items.Add("<Select MEP Parameter>");
+                        foreach (var param in mepParameters)
                         {
-                            if (!string.IsNullOrEmpty(group.Key))
-                            {
-                                nameCombo.Items.Add($"--- {group.Key} ---");
-                            }
-                            foreach (var param in group.Value)
-                            {
-                                nameCombo.Items.Add($"{param.Name} ({param.Type})");
-                            }
+                            nameCombo.Items.Add(param.Name);
                         }
-                        
                         nameCombo.SelectedIndex = 0;
                         
-                        // Add event handler for parameter selection to populate values
-                        nameCombo.SelectedIndexChanged += (sender, e) => OnParameterSelected(sender, e, tabPage.Text);
+                        // Update right ComboBox with Opening parameters
+                        if (valueCombo != null)
+                        {
+                            valueCombo.Items.Clear();
+                            valueCombo.Items.Add("<Select Opening Parameter>");
+                            foreach (var param in openingParameters)
+                            {
+                                valueCombo.Items.Add(param.Name);
+                            }
+                            valueCombo.SelectedIndex = 0;
+                        }
                         
-                        // Add event handler for value selection to enable mapping
-                        var valueCombo = FindValueComboBox(nameCombo);
+                        // Add event handlers
+                        nameCombo.SelectedIndexChanged += (sender, e) => OnParameterSelected(sender, e, tabPage.Text);
                         if (valueCombo != null)
                         {
                             valueCombo.SelectedIndexChanged += (sender, e) => OnValueSelected(sender, e, tabPage.Text);
-                            
-                            // Initialize value ComboBox with default selection
-                            valueCombo.Items.Clear();
-                            valueCombo.Items.Add("<Select Value>");
-                            valueCombo.SelectedIndex = 0;
                         }
                     }
                     
@@ -5696,6 +6128,270 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
 
             DebugLogger.Info("=== BalanceLeftLayout COMPLETED ===");
+        }
+
+        /// <summary>
+        /// Captures current UI state and saves it to the selected filter
+        /// </summary>
+        private void SaveFilterWithUIState(WinForms.ListBox filterListBox)
+        {
+            try
+            {
+                DebugLogger.Info("[FILTER_UI] Saving filter with current UI state");
+                
+                var selectedFilter = GetSelectedFilterFromListBox(filterListBox);
+                if (selectedFilter == null)
+                {
+                    WinForms.MessageBox.Show("Please select a filter to save.", "No Selection", 
+                        WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
+                    return;
+                }
+
+                // Capture current UI state
+                CaptureCurrentUIStateToFilter(selectedFilter);
+                
+                // Save the filter
+                _filterManagementService.SaveFilter(filterListBox);
+                
+                DebugLogger.Info($"[FILTER_UI] Saved filter '{selectedFilter.Name}' with UI state");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[FILTER_UI] Error saving filter with UI state: {ex.Message}");
+                WinForms.MessageBox.Show($"Error saving filter: {ex.Message}", "Error", 
+                    WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
+            }
+        }
+
+        /// <summary>
+        /// Restores filter state to UI when a filter is selected
+        /// </summary>
+        private void RestoreFilterStateToUI(WinForms.ListBox filterListBox)
+        {
+            try
+            {
+                if (filterListBox?.SelectedItem == null) return;
+                
+                DebugLogger.Info("[FILTER_UI] Restoring filter state to UI");
+                
+                var selectedFilter = GetSelectedFilterFromListBox(filterListBox);
+                if (selectedFilter == null) return;
+
+                // Restore UI state from filter
+                RestoreUIStateFromFilter(selectedFilter);
+                
+                DebugLogger.Info($"[FILTER_UI] Restored UI state from filter '{selectedFilter.Name}'");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[FILTER_UI] Error restoring filter state to UI: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Captures current UI state and stores it in the filter
+        /// </summary>
+        private void CaptureCurrentUIStateToFilter(OpeningFilter filter)
+        {
+            try
+            {
+                DebugLogger.Info("[FILTER_UI] Capturing current UI state to filter");
+                
+                // Capture MEP category selection
+                var selectedCategory = GetSelectedMepCategory();
+                filter.Category = selectedCategory;
+                filter.SelectedMepCategoryName = selectedCategory.ToString();
+                
+                // Capture reference file selections
+                filter.SelectedReferenceFiles = GetSelectedReferenceFiles();
+                
+                // Capture opening settings (clearances, etc.)
+                filter.OpeningSettings = GetCurrentOpeningSettings();
+                
+                // Update timestamp
+                filter.LastModified = DateTime.Now;
+                
+                DebugLogger.Info($"[FILTER_UI] Captured UI state - Category: {selectedCategory}, Reference Files: {filter.SelectedReferenceFiles.Count}, Has Settings: {filter.OpeningSettings != null}");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[FILTER_UI] Error capturing UI state: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Restores UI state from the selected filter
+        /// </summary>
+        private void RestoreUIStateFromFilter(OpeningFilter filter)
+        {
+            try
+            {
+                DebugLogger.Info("[FILTER_UI] Restoring UI state from filter");
+                
+                // Restore MEP category selection
+                if (!string.IsNullOrEmpty(filter.SelectedMepCategoryName))
+                {
+                    RestoreMepCategorySelection(filter.SelectedMepCategoryName);
+                }
+                
+                // Restore reference file selections
+                if (filter.SelectedReferenceFiles?.Any() == true)
+                {
+                    RestoreReferenceFileSelections(filter.SelectedReferenceFiles);
+                }
+                
+                // Restore opening settings
+                if (filter.OpeningSettings != null)
+                {
+                    RestoreOpeningSettings(filter.OpeningSettings);
+                }
+                
+                DebugLogger.Info($"[FILTER_UI] Restored UI state from filter '{filter.Name}'");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[FILTER_UI] Error restoring UI state: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Gets the currently selected MEP category from UI
+        /// </summary>
+        private Models.MepCategory GetSelectedMepCategory()
+        {
+            try
+            {
+                // Get selected categories from the MEP Categories CheckedListBox
+                var mepCategoriesListBox = _topRightPanel?.Controls.OfType<WinForms.CheckedListBox>().FirstOrDefault();
+                
+                if (mepCategoriesListBox != null)
+                {
+                    var selectedCategories = new List<string>();
+                    for (int i = 0; i < mepCategoriesListBox.Items.Count; i++)
+                    {
+                        if (mepCategoriesListBox.GetItemChecked(i))
+                        {
+                            selectedCategories.Add(mepCategoriesListBox.Items[i].ToString());
+                        }
+                    }
+                    
+                    // Convert UI category names to enum values
+                    if (selectedCategories.Count == 1)
+                    {
+                        return ConvertCategoryNameToEnum(selectedCategories[0]);
+                    }
+                    else if (selectedCategories.Count > 1)
+                    {
+                        // Multiple categories selected - return the first one as primary
+                        return ConvertCategoryNameToEnum(selectedCategories[0]);
+                    }
+                }
+                
+                DebugLogger.Info("[FILTER_UI] No MEP categories selected, returning default Ducts");
+                return Models.MepCategory.Ducts; // Default fallback
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[FILTER_UI] Error getting selected MEP category: {ex.Message}");
+                return Models.MepCategory.Ducts;
+            }
+        }
+
+        /// <summary>
+        /// Converts UI category name to MepCategory enum
+        /// </summary>
+        private Models.MepCategory ConvertCategoryNameToEnum(string categoryName)
+        {
+            return categoryName switch
+            {
+                "Ducts" => Models.MepCategory.Ducts,
+                "Duct Accessories" => Models.MepCategory.DuctAccessories,
+                "Cable Trays" => Models.MepCategory.CableTrays,
+                "Pipes" => Models.MepCategory.Pipes,
+                _ => Models.MepCategory.Ducts
+            };
+        }
+
+        /// <summary>
+        /// Converts MepCategory enum to UI category name
+        /// </summary>
+        private string ConvertEnumToCategoryName(Models.MepCategory category)
+        {
+            return category switch
+            {
+                Models.MepCategory.Ducts => "Ducts",
+                Models.MepCategory.DuctAccessories => "Duct Accessories",
+                Models.MepCategory.CableTrays => "Cable Trays",
+                Models.MepCategory.Pipes => "Pipes",
+                _ => "Ducts"
+            };
+        }
+
+        /// <summary>
+        /// Restores MEP category selection in UI
+        /// </summary>
+        private void RestoreMepCategorySelection(string categoryName)
+        {
+            try
+            {
+                DebugLogger.Info($"[FILTER_UI] Restoring MEP category: {categoryName}");
+                
+                // Get the MEP Categories CheckedListBox
+                var mepCategoriesListBox = _topRightPanel?.Controls.OfType<WinForms.CheckedListBox>().FirstOrDefault();
+                
+                if (mepCategoriesListBox != null)
+                {
+                    // First, uncheck all items
+                    for (int i = 0; i < mepCategoriesListBox.Items.Count; i++)
+                    {
+                        mepCategoriesListBox.SetItemChecked(i, false);
+                    }
+                    
+                    // Then check the specific category
+                    for (int i = 0; i < mepCategoriesListBox.Items.Count; i++)
+                    {
+                        if (mepCategoriesListBox.Items[i].ToString() == categoryName)
+                        {
+                            mepCategoriesListBox.SetItemChecked(i, true);
+                            DebugLogger.Info($"[FILTER_UI] Successfully restored MEP category: {categoryName}");
+                            break;
+                        }
+                    }
+                    
+                    // Trigger the update to refresh the MEP type combo and clearance panels
+                    UpdateMepTypeBasedOnSelection();
+                }
+                else
+                {
+                    DebugLogger.Warning("[FILTER_UI] MEP Categories CheckedListBox not found");
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[FILTER_UI] Error restoring MEP category selection: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Gets the selected filter from the list box
+        /// </summary>
+        private OpeningFilter GetSelectedFilterFromListBox(WinForms.ListBox filterListBox)
+        {
+            if (filterListBox?.SelectedItem != null)
+            {
+                var selectedName = filterListBox.SelectedItem.ToString();
+                // This would need to be implemented to get the actual filter object
+                // For now, return a basic filter - you'll need to wire this properly
+                return new OpeningFilter
+                {
+                    Name = selectedName,
+                    Category = Models.MepCategory.Ducts,
+                    OpeningType = Models.OpeningType.RectangularSleeves,
+                    IsEnabled = true,
+                    LastModified = DateTime.Now
+                };
+            }
+            return null;
         }
 
     }

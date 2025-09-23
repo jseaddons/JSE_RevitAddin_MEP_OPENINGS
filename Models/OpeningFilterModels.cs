@@ -68,6 +68,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public DateTime LastModified { get; set; } = DateTime.Now;
 
         /// <summary>
+        /// Snapshot of opening-related settings (e.g., clearances) captured when saving the filter
+        /// </summary>
+        public OpeningSettings? OpeningSettings { get; set; }
+
+        /// <summary>
+        /// Human-readable MEP category name as selected in UI (e.g., "Ducts", "Pipes")
+        /// </summary>
+        public string SelectedMepCategoryName { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Names of selected reference/linked files associated with this filter
+        /// </summary>
+        [XmlArray("SelectedReferenceFiles")]
+        [XmlArrayItem("ReferenceFile")]
+        public List<string> SelectedReferenceFiles { get; set; } = new List<string>();
+
+        /// <summary>
         /// Clash zone storage for this filter
         /// </summary>
         [XmlIgnore]
