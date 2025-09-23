@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.IO;
 using System.Windows.Forms;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using WinForms = System.Windows.Forms;
@@ -23,6 +24,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         // Elements Section Controls
         private WinForms.CheckBox _cutOpeningWithHostsCheckBox;
         private WinForms.CheckBox _createConstraintCheckBox;
+        private WinForms.CheckBox _pipeOpeningTypeRectangularCheckBox;
         private WinForms.CheckBox _createVerticalOpeningsCheckBox;
         private WinForms.CheckBox _createHorizontalOpeningsCheckBox;
         private WinForms.CheckBox _adoptProvisionForVoidsCheckBox;
@@ -37,7 +39,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.TextBox _ignoreOpeningsSmallerThanTextBox;
         private WinForms.TextBox _roundOpeningsRectangularTextBox;
         private WinForms.TextBox _joinOpeningsDistanceTextBox;
+        private WinForms.TextBox _ignoreOpeningsAngleTextBox;
         private WinForms.CheckBox _createOpeningsWithSlopeCheckBox;
+        private WinForms.CheckBox _roundOpeningSizesToNearest5mmCheckBox;
         private WinForms.ComboBox _roundUpDimensionsComboBox;
         
         // Action Buttons
@@ -57,6 +61,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // Load settings from file
             var settingsService = new SettingsService();
             _settings = settingsService.LoadSettings();
+            
+            // Debug logging
+            System.Diagnostics.Debug.WriteLine($"[SettingsDialog] Loaded settings: ResetApprovalStatus={_settings.ResetApprovalStatus}, CutOpeningWithHosts={_settings.CutOpeningWithHosts}");
+            
+            // Also log to file
+            try
+            {
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\settings_debug.log", $"[{DateTime.Now}] [SettingsDialog] Loaded settings: ResetApprovalStatus={_settings.ResetApprovalStatus}, CutOpeningWithHosts={_settings.CutOpeningWithHosts}\n");
+            }
+            catch { }
+            
             InitializeComponent();
             LoadSettings();
         }
@@ -67,7 +82,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             
             // Form properties
             this.Text = "Settings";
-            this.Size = new Drawing.Size(650, 600); // Reduced size since we consolidated sections
+            this.Size = new Drawing.Size(650, 700); // Increased size to accommodate new checkbox
             this.StartPosition = WinForms.FormStartPosition.CenterParent; // Center on parent window
             this.FormBorderStyle = WinForms.FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
@@ -102,20 +117,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
             int yPos = 25;
 
-            // Reset approval status label - LEFT
-            var resetApprovalLabel = new WinForms.Label
+            // Reset approval status checkbox - CHECKBOX ON RIGHT, TEXT ON LEFT
+            var resetLabel = new WinForms.Label
             {
                 Text = "Reset approval status of openings when changes occur:",
                 Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(460, 20)
+                Size = new Drawing.Size(400, 20)
             };
-            manageGroupBox.Controls.Add(resetApprovalLabel);
-
-            // Reset approval status checkbox - RIGHT
+            manageGroupBox.Controls.Add(resetLabel);
+            
             _resetApprovalStatusCheckBox = new WinForms.CheckBox
             {
-                Text = "",
-                Location = new Drawing.Point(480, yPos),
+                Text = "", // No text, just checkbox
+                Location = new Drawing.Point(420, yPos), // Right side
                 Size = new Drawing.Size(20, 20),
                 Checked = true
             };
@@ -127,25 +141,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Text = "Openings won't be marked as changed if change in dimensions is less than:",
                 Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(460, 20) // Label width
+                Size = new Drawing.Size(400, 20) // Label width
             };
             manageGroupBox.Controls.Add(dimensionLabel);
 
             _dimensionChangeThresholdTextBox = new WinForms.TextBox
             {
                 Text = "1",
-                Location = new Drawing.Point(480, yPos - 2), // Right side
+                Location = new Drawing.Point(420, yPos - 2), // Right side
                 Size = new Drawing.Size(50, 20)
             };
             manageGroupBox.Controls.Add(_dimensionChangeThresholdTextBox);
-
-            var dimensionUnitLabel = new WinForms.Label
-            {
-                Text = "mm",
-                Location = new Drawing.Point(535, yPos - 2),
-                Size = new Drawing.Size(30, 20)
-            };
-            manageGroupBox.Controls.Add(dimensionUnitLabel);
             yPos += 30; // More space for 2-line text
 
             // Location change threshold - LABEL ON LEFT, INPUT ON RIGHT
@@ -153,79 +159,88 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Text = "Openings won't be marked as changed if change in location is less than:",
                 Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(460, 20) // Label width
+                Size = new Drawing.Size(400, 20) // Label width
             };
             manageGroupBox.Controls.Add(locationLabel);
 
             _locationChangeThresholdTextBox = new WinForms.TextBox
             {
                 Text = "1",
-                Location = new Drawing.Point(480, yPos - 2), // Right side
+                Location = new Drawing.Point(420, yPos - 2), // Right side
                 Size = new Drawing.Size(50, 20)
             };
             manageGroupBox.Controls.Add(_locationChangeThresholdTextBox);
-
-            var locationUnitLabel = new WinForms.Label
-            {
-                Text = "mm",
-                Location = new Drawing.Point(535, yPos - 2),
-                Size = new Drawing.Size(30, 20)
-            };
-            manageGroupBox.Controls.Add(locationUnitLabel);
         }
 
         private void CreateElementsSection()
         {
-            // Elements Section Group - ONLY 2 ITEMS (as per image)
+            // Elements Section Group - 3 ITEMS (including pipe opening type)
             var elementsGroupBox = new WinForms.GroupBox
             {
                 Text = "Elements",
                 Location = new Drawing.Point(20, 150), // Positioned after bigger Manage section
-                Size = new Drawing.Size(600, 80), // Height for 2 items
+                Size = new Drawing.Size(600, 105), // Increased height for 3 items
                 Font = new Drawing.Font("Microsoft Sans Serif", 9F, Drawing.FontStyle.Bold)
             };
             this.Controls.Add(elementsGroupBox);
 
             int yPos = 25;
 
-            // Cut opening with hosts label - LEFT
-            var cutOpeningLabel = new WinForms.Label
+            // Cut opening with hosts checkbox - CHECKBOX ON RIGHT, TEXT ON LEFT
+            var cutLabel = new WinForms.Label
             {
                 Text = "Cut opening with Hosts:",
                 Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(460, 20)
+                Size = new Drawing.Size(400, 20)
             };
-            elementsGroupBox.Controls.Add(cutOpeningLabel);
-
-            // Cut opening with hosts checkbox - RIGHT
+            elementsGroupBox.Controls.Add(cutLabel);
+            
             _cutOpeningWithHostsCheckBox = new WinForms.CheckBox
             {
-                Text = "",
-                Location = new Drawing.Point(480, yPos),
+                Text = "", // No text, just checkbox
+                Location = new Drawing.Point(420, yPos), // Right side
                 Size = new Drawing.Size(20, 20),
                 Checked = false
             };
             elementsGroupBox.Controls.Add(_cutOpeningWithHostsCheckBox);
             yPos += 25;
 
-            // Create constraint label - LEFT
-            var createConstraintLabel = new WinForms.Label
+            // Create constraint checkbox - CHECKBOX ON RIGHT, TEXT ON LEFT
+            var constraintLabel = new WinForms.Label
             {
                 Text = "Create a constraint between openings and Hosts:",
                 Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(460, 20)
+                Size = new Drawing.Size(400, 20)
             };
-            elementsGroupBox.Controls.Add(createConstraintLabel);
-
-            // Create constraint checkbox - RIGHT
+            elementsGroupBox.Controls.Add(constraintLabel);
+            
             _createConstraintCheckBox = new WinForms.CheckBox
             {
-                Text = "",
-                Location = new Drawing.Point(480, yPos),
+                Text = "", // No text, just checkbox
+                Location = new Drawing.Point(420, yPos), // Right side
                 Size = new Drawing.Size(20, 20),
                 Checked = true
             };
             elementsGroupBox.Controls.Add(_createConstraintCheckBox);
+            yPos += 25;
+
+            // Pipe Opening Type Rectangular checkbox - CHECKBOX ON RIGHT, TEXT ON LEFT
+            var pipeOpeningLabel = new WinForms.Label
+            {
+                Text = "Pipe Opening Type to be Rectangular:",
+                Location = new Drawing.Point(15, yPos),
+                Size = new Drawing.Size(400, 20)
+            };
+            elementsGroupBox.Controls.Add(pipeOpeningLabel);
+            
+            _pipeOpeningTypeRectangularCheckBox = new WinForms.CheckBox
+            {
+                Text = "", // No text, just checkbox
+                Location = new Drawing.Point(420, yPos), // Right side
+                Size = new Drawing.Size(20, 20),
+                Checked = false // Default to circular (unchecked = circular, checked = rectangular)
+            };
+            elementsGroupBox.Controls.Add(_pipeOpeningTypeRectangularCheckBox);
         }
 
         private void CreateElementFilterSection()
@@ -236,12 +251,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         private void CreateLimitsSection()
         {
-            // Limits Section Group - REMAINING ITEMS (as per image)
+            // Limits Section Group - 5 ITEMS (including rounding checkbox)
             var limitsGroupBox = new WinForms.GroupBox
             {
                 Text = "Limits",
-                Location = new Drawing.Point(20, 240), // Positioned after bigger Elements section
-                Size = new Drawing.Size(600, 120), // Height for 4 items
+                Location = new Drawing.Point(20, 265), // Positioned after bigger Elements section (150 + 105 + 10)
+                Size = new Drawing.Size(600, 145), // Increased height for 5 items
                 Font = new Drawing.Font("Microsoft Sans Serif", 9F, Drawing.FontStyle.Bold)
             };
             this.Controls.Add(limitsGroupBox);
@@ -253,25 +268,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Text = "Ignore openings smaller than:",
                 Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(460, 20) // Label width
+                Size = new Drawing.Size(400, 20) // Label width
             };
             limitsGroupBox.Controls.Add(ignoreSmallLabel);
 
             _ignoreOpeningsSmallerThanTextBox = new WinForms.TextBox
             {
                 Text = "0.1", // Updated to match image
-                Location = new Drawing.Point(480, yPos - 2), // Right side
+                Location = new Drawing.Point(420, yPos - 2), // Right side
                 Size = new Drawing.Size(50, 20)
             };
             limitsGroupBox.Controls.Add(_ignoreOpeningsSmallerThanTextBox);
-
-            var ignoreSmallUnitLabel = new WinForms.Label
-            {
-                Text = "mm",
-                Location = new Drawing.Point(535, yPos - 2),
-                Size = new Drawing.Size(30, 20)
-            };
-            limitsGroupBox.Controls.Add(ignoreSmallUnitLabel);
             yPos += 25;
 
             // Round openings rectangular
@@ -279,25 +286,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Text = "Round openings become rectangular if diameter is greater than:",
                 Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(460, 20) // Label width
+                Size = new Drawing.Size(400, 20) // Label width
             };
             limitsGroupBox.Controls.Add(roundRectLabel);
 
             _roundOpeningsRectangularTextBox = new WinForms.TextBox
             {
                 Text = "200",
-                Location = new Drawing.Point(480, yPos - 2), // Right side
+                Location = new Drawing.Point(420, yPos - 2), // Right side
                 Size = new Drawing.Size(50, 20)
             };
             limitsGroupBox.Controls.Add(_roundOpeningsRectangularTextBox);
-
-            var roundRectUnitLabel = new WinForms.Label
-            {
-                Text = "mm",
-                Location = new Drawing.Point(535, yPos - 2),
-                Size = new Drawing.Size(30, 20)
-            };
-            limitsGroupBox.Controls.Add(roundRectUnitLabel);
             yPos += 25;
 
             // Join openings distance
@@ -305,25 +304,54 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Text = "Join openings if their distance is less than:",
                 Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(460, 20) // Label width
+                Size = new Drawing.Size(400, 20) // Label width
             };
             limitsGroupBox.Controls.Add(joinDistanceLabel);
 
             _joinOpeningsDistanceTextBox = new WinForms.TextBox
             {
                 Text = "200", // Updated to match image
-                Location = new Drawing.Point(480, yPos - 2), // Right side
+                Location = new Drawing.Point(420, yPos - 2), // Right side
                 Size = new Drawing.Size(50, 20)
             };
             limitsGroupBox.Controls.Add(_joinOpeningsDistanceTextBox);
+            yPos += 25;
 
-            var joinDistanceUnitLabel = new WinForms.Label
+            // Ignore openings angle
+            var ignoreAngleLabel = new WinForms.Label
             {
-                Text = "mm",
-                Location = new Drawing.Point(535, yPos - 2),
-                Size = new Drawing.Size(30, 20)
+                Text = "Ignore openings with an angle greater than:",
+                Location = new Drawing.Point(15, yPos),
+                Size = new Drawing.Size(400, 20) // Label width
             };
-            limitsGroupBox.Controls.Add(joinDistanceUnitLabel);
+            limitsGroupBox.Controls.Add(ignoreAngleLabel);
+
+            _ignoreOpeningsAngleTextBox = new WinForms.TextBox
+            {
+                Text = "45",
+                Location = new Drawing.Point(420, yPos - 2), // Right side
+                Size = new Drawing.Size(50, 20)
+            };
+            limitsGroupBox.Controls.Add(_ignoreOpeningsAngleTextBox);
+            yPos += 25;
+
+            // Opening sizes to be rounded of to nearest 5mm if in decimals - CHECKBOX ON RIGHT, TEXT ON LEFT
+            var roundSizesLabel = new WinForms.Label
+            {
+                Text = "Opening sizes to be rounded of to nearest 5mm if in decimals:",
+                Location = new Drawing.Point(15, yPos),
+                Size = new Drawing.Size(400, 20)
+            };
+            limitsGroupBox.Controls.Add(roundSizesLabel);
+            
+            _roundOpeningSizesToNearest5mmCheckBox = new WinForms.CheckBox
+            {
+                Text = "", // No text, just checkbox
+                Location = new Drawing.Point(420, yPos), // Right side
+                Size = new Drawing.Size(20, 20),
+                Checked = false // Default to not rounding
+            };
+            limitsGroupBox.Controls.Add(_roundOpeningSizesToNearest5mmCheckBox);
         }
 
         private void CreateActionButtons()
@@ -332,7 +360,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _resetButton = new WinForms.Button
             {
                 Text = "Reset",
-                Location = new Drawing.Point(20, 380), // Positioned after bigger Limits section
+                Location = new Drawing.Point(20, 430), // Positioned after bigger Limits section (265 + 145 + 20)
                 Size = new Drawing.Size(75, 30),
                 BackColor = Drawing.Color.FromArgb(200, 200, 200),
                 FlatStyle = WinForms.FlatStyle.Flat
@@ -344,7 +372,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _okButton = new WinForms.Button
             {
                 Text = "OK",
-                Location = new Drawing.Point(450, 380), // Positioned after bigger Limits section
+                Location = new Drawing.Point(450, 430), // Positioned after bigger Limits section (265 + 145 + 20)
                 Size = new Drawing.Size(75, 30),
                 BackColor = Drawing.Color.FromArgb(0, 120, 215),
                 ForeColor = Drawing.Color.White,
@@ -357,7 +385,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _cancelButton = new WinForms.Button
             {
                 Text = "Cancel",
-                Location = new Drawing.Point(535, 380), // Positioned after bigger Limits section
+                Location = new Drawing.Point(535, 430), // Positioned after bigger Limits section (265 + 145 + 20)
                 Size = new Drawing.Size(75, 30),
                 BackColor = Drawing.Color.FromArgb(200, 200, 200),
                 FlatStyle = WinForms.FlatStyle.Flat
@@ -386,27 +414,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private void LoadSettings()
         {
             // Load settings from the model - with null checks
-            // Convert from feet (Revit internal) to mm for display
-            const double feetToMm = 304.8;
-
             if (_resetApprovalStatusCheckBox != null)
                 _resetApprovalStatusCheckBox.Checked = _settings.ResetApprovalStatus;
             if (_dimensionChangeThresholdTextBox != null)
-                _dimensionChangeThresholdTextBox.Text = (_settings.DimensionChangeThreshold * feetToMm).ToString("F1");
+                _dimensionChangeThresholdTextBox.Text = _settings.DimensionChangeThreshold.ToString();
             if (_locationChangeThresholdTextBox != null)
-                _locationChangeThresholdTextBox.Text = (_settings.LocationChangeThreshold * feetToMm).ToString("F1");
-
+                _locationChangeThresholdTextBox.Text = _settings.LocationChangeThreshold.ToString();
+            
             if (_cutOpeningWithHostsCheckBox != null)
                 _cutOpeningWithHostsCheckBox.Checked = _settings.CutOpeningWithHosts;
             if (_createConstraintCheckBox != null)
                 _createConstraintCheckBox.Checked = _settings.CreateConstraint;
+            if (_pipeOpeningTypeRectangularCheckBox != null)
+                _pipeOpeningTypeRectangularCheckBox.Checked = _settings.PipeOpeningTypeRectangular;
             if (_createVerticalOpeningsCheckBox != null)
                 _createVerticalOpeningsCheckBox.Checked = _settings.CreateVerticalOpenings;
             if (_createHorizontalOpeningsCheckBox != null)
                 _createHorizontalOpeningsCheckBox.Checked = _settings.CreateHorizontalOpenings;
             if (_adoptProvisionForVoidsCheckBox != null)
                 _adoptProvisionForVoidsCheckBox.Checked = _settings.AdoptProvisionForVoids;
-
+            
             if (_elementFilterComboBox != null)
                 _elementFilterComboBox.SelectedItem = _settings.ElementFilter;
             if (_includeHostElementsNotVisibleCheckBox != null)
@@ -415,15 +442,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 _includeReferenceElementsNotVisibleCheckBox.Checked = _settings.IncludeReferenceElementsNotVisible;
             if (_includeHostElementsDemolishedCheckBox != null)
                 _includeHostElementsDemolishedCheckBox.Checked = _settings.IncludeHostElementsDemolished;
-
+            
             if (_ignoreOpeningsSmallerThanTextBox != null)
-                _ignoreOpeningsSmallerThanTextBox.Text = (_settings.IgnoreOpeningsSmallerThan * feetToMm).ToString("F1");
+                _ignoreOpeningsSmallerThanTextBox.Text = _settings.IgnoreOpeningsSmallerThan.ToString();
             if (_roundOpeningsRectangularTextBox != null)
-                _roundOpeningsRectangularTextBox.Text = (_settings.RoundOpeningsRectangular * feetToMm).ToString("F0");
+                _roundOpeningsRectangularTextBox.Text = _settings.RoundOpeningsRectangular.ToString();
             if (_joinOpeningsDistanceTextBox != null)
-                _joinOpeningsDistanceTextBox.Text = (_settings.JoinOpeningsDistance * feetToMm).ToString("F0");
+                _joinOpeningsDistanceTextBox.Text = _settings.JoinOpeningsDistance.ToString();
+            if (_ignoreOpeningsAngleTextBox != null)
+                _ignoreOpeningsAngleTextBox.Text = _settings.IgnoreOpeningsAngle.ToString();
             if (_createOpeningsWithSlopeCheckBox != null)
                 _createOpeningsWithSlopeCheckBox.Checked = _settings.CreateOpeningsWithSlope;
+            if (_roundOpeningSizesToNearest5mmCheckBox != null)
+                _roundOpeningSizesToNearest5mmCheckBox.Checked = _settings.RoundOpeningSizesToNearest5mm;
             if (_roundUpDimensionsComboBox != null)
                 _roundUpDimensionsComboBox.SelectedItem = _settings.RoundUpDimensions;
         }
@@ -433,32 +464,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             try
             {
                 // Save settings to the model - only for fields that actually exist
-                // Convert from mm (UI) to feet (Revit internal)
-                const double mmToFeet = 1.0 / 304.8;
-
                 if (_resetApprovalStatusCheckBox != null)
                     _settings.ResetApprovalStatus = _resetApprovalStatusCheckBox.Checked;
-
+                
                 if (_dimensionChangeThresholdTextBox != null && double.TryParse(_dimensionChangeThresholdTextBox.Text, out double dimThreshold))
-                    _settings.DimensionChangeThreshold = dimThreshold * mmToFeet;
-
+                    _settings.DimensionChangeThreshold = dimThreshold;
+                
                 if (_locationChangeThresholdTextBox != null && double.TryParse(_locationChangeThresholdTextBox.Text, out double locThreshold))
-                    _settings.LocationChangeThreshold = locThreshold * mmToFeet;
-
+                    _settings.LocationChangeThreshold = locThreshold;
+                
                 if (_cutOpeningWithHostsCheckBox != null)
                     _settings.CutOpeningWithHosts = _cutOpeningWithHostsCheckBox.Checked;
-
+                
                 if (_createConstraintCheckBox != null)
                     _settings.CreateConstraint = _createConstraintCheckBox.Checked;
-
+                
+                if (_pipeOpeningTypeRectangularCheckBox != null)
+                    _settings.PipeOpeningTypeRectangular = _pipeOpeningTypeRectangularCheckBox.Checked;
+                
                 if (_ignoreOpeningsSmallerThanTextBox != null && double.TryParse(_ignoreOpeningsSmallerThanTextBox.Text, out double ignoreSmall))
-                    _settings.IgnoreOpeningsSmallerThan = ignoreSmall * mmToFeet;
-
+                    _settings.IgnoreOpeningsSmallerThan = ignoreSmall;
+                
                 if (_roundOpeningsRectangularTextBox != null && double.TryParse(_roundOpeningsRectangularTextBox.Text, out double roundRect))
-                    _settings.RoundOpeningsRectangular = roundRect * mmToFeet;
-
+                    _settings.RoundOpeningsRectangular = roundRect;
+                
                 if (_joinOpeningsDistanceTextBox != null && double.TryParse(_joinOpeningsDistanceTextBox.Text, out double joinDist))
-                    _settings.JoinOpeningsDistance = joinDist * mmToFeet;
+                    _settings.JoinOpeningsDistance = joinDist;
+                
+                if (_ignoreOpeningsAngleTextBox != null && double.TryParse(_ignoreOpeningsAngleTextBox.Text.Replace("°", ""), out double ignoreAngle))
+                    _settings.IgnoreOpeningsAngle = ignoreAngle;
+
+                if (_roundOpeningSizesToNearest5mmCheckBox != null)
+                    _settings.RoundOpeningSizesToNearest5mm = _roundOpeningSizesToNearest5mmCheckBox.Checked;
 
                 // Log successful save
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Settings saved successfully\n");
@@ -483,6 +520,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             try
             {
                 SaveSettings();
+                
+                // Debug logging
+                System.Diagnostics.Debug.WriteLine($"[SettingsDialog] Saving settings: ResetApprovalStatus={_settings.ResetApprovalStatus}, CutOpeningWithHosts={_settings.CutOpeningWithHosts}");
+                
+                // Also log to file
+                try
+                {
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\settings_debug.log", $"[{DateTime.Now}] [SettingsDialog] Saving settings: ResetApprovalStatus={_settings.ResetApprovalStatus}, CutOpeningWithHosts={_settings.CutOpeningWithHosts}\n");
+                }
+                catch { }
                 
                 // Save to file using SettingsService
                 var settingsService = new SettingsService();

@@ -964,9 +964,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     
                     // Update clearance visibility for single selection
                     UpdateClearanceVisibilityForCategory(selectedCategories[0]);
-                    
-                    // Set opening type based on MEP category
-                    SetOpeningTypeForCategory(selectedCategories[0]);
             }
             else
             {
@@ -976,59 +973,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     _mepTypeCombo.Items.Clear();
                     _mepTypeCombo.Items.AddRange(selectedCategories.ToArray());
                     _mepTypeCombo.SelectedIndex = 0;
-                    
-                    // Set opening type based on first selected category (or prioritize Pipes if selected)
-                    string categoryToUse = selectedCategories.Contains("Pipes") ? "Pipes" : selectedCategories[0];
-                    SetOpeningTypeForCategory(categoryToUse);
                 }
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error updating MEP Type based on selection: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Sets the opening type based on the selected MEP category
-        /// </summary>
-        private void SetOpeningTypeForCategory(string category)
-        {
-            try
-            {
-                // Get current profile's opening settings
-                var currentProfile = _appProfileService.GetCurrentProfile();
-                if (currentProfile?.Configuration?.OpeningSettings == null)
-                {
-                    currentProfile.Configuration.OpeningSettings = new OpeningSettings();
-                }
-                
-                // Set opening type based on MEP category
-                switch (category.ToLower())
-                {
-                    case "pipes":
-                        // Pipes should use circular openings by default
-                        currentProfile.Configuration.OpeningSettings.OpeningType = "Circular";
-                        DebugLogger.Info("[OPENING_TYPE] Set opening type to Circular for Pipes");
-                        break;
-                    case "ducts":
-                    case "duct accessories":
-                    case "cable trays":
-                        // Ducts, Duct Accessories, and Cable Trays should use rectangular openings
-                        currentProfile.Configuration.OpeningSettings.OpeningType = "Rectangular";
-                        DebugLogger.Info($"[OPENING_TYPE] Set opening type to Rectangular for {category}");
-                        break;
-                    default:
-                        // Default to rectangular for unknown categories
-                        currentProfile.Configuration.OpeningSettings.OpeningType = "Rectangular";
-                        DebugLogger.Info($"[OPENING_TYPE] Set opening type to Rectangular for unknown category: {category}");
-                        break;
-                }
-                
-                DebugLogger.Info($"[OPENING_TYPE] Opening type set to: {currentProfile.Configuration.OpeningSettings.OpeningType} for category: {category}");
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Error($"[OPENING_TYPE] Error setting opening type for category {category}: {ex.Message}");
             }
         }
 

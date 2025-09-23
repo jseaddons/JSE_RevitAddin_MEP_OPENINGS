@@ -15,6 +15,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         // Elements Section Properties
         public bool CutOpeningWithHosts { get; set; } = false;
         public bool CreateConstraint { get; set; } = true;
+        public bool PipeOpeningTypeRectangular { get; set; } = false; // Default to circular (false = circular, true = rectangular)
         public bool CreateVerticalOpenings { get; set; } = false;
         public bool CreateHorizontalOpenings { get; set; } = false;
         public bool AdoptProvisionForVoids { get; set; } = false;
@@ -31,6 +32,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public double JoinOpeningsDistance { get; set; } = 200.0;
         public double IgnoreOpeningsAngle { get; set; } = 45.0;
         public bool CreateOpeningsWithSlope { get; set; } = true;
+        public bool RoundOpeningSizesToNearest5mm { get; set; } = false; // Default to not rounding
         public string RoundUpDimensions { get; set; } = "Do not round up";
 
         public SettingsModel()
@@ -50,6 +52,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
                 LocationChangeThreshold = this.LocationChangeThreshold,
                 CutOpeningWithHosts = this.CutOpeningWithHosts,
                 CreateConstraint = this.CreateConstraint,
+                PipeOpeningTypeRectangular = this.PipeOpeningTypeRectangular,
                 CreateVerticalOpenings = this.CreateVerticalOpenings,
                 CreateHorizontalOpenings = this.CreateHorizontalOpenings,
                 AdoptProvisionForVoids = this.AdoptProvisionForVoids,
@@ -62,6 +65,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
                 JoinOpeningsDistance = this.JoinOpeningsDistance,
                 IgnoreOpeningsAngle = this.IgnoreOpeningsAngle,
                 CreateOpeningsWithSlope = this.CreateOpeningsWithSlope,
+                RoundOpeningSizesToNearest5mm = this.RoundOpeningSizesToNearest5mm,
                 RoundUpDimensions = this.RoundUpDimensions
             };
         }
