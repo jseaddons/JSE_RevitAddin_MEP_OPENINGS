@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
@@ -249,6 +250,79 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
+        /// Saves filter automatically to default location without user dialog
+        /// </summary>
+        public void SaveFilterAuto(ListBox filterListBox)
+        {
+            try
+            {
+                _log("[FILTER_MGMT] Auto-saving filter");
+                
+                var selectedFilter = GetSelectedFilter(filterListBox);
+                if (selectedFilter == null)
+                {
+                    _log("[FILTER_MGMT] No filter selected for auto-save");
+                    return;
+                }
+
+                // Get default filter directory
+                var filterDir = GetDefaultFilterDirectory();
+                if (!Directory.Exists(filterDir))
+                {
+                    Directory.CreateDirectory(filterDir);
+                }
+
+                var filePath = Path.Combine(filterDir, $"{selectedFilter.Name}.xml");
+                SaveFilterToXmlFile(selectedFilter, filePath);
+                
+                _log($"[FILTER_MGMT] Auto-saved filter '{selectedFilter.Name}' to {filePath}");
+            }
+            catch (Exception ex)
+            {
+                _log($"[FILTER_MGMT] Error auto-saving filter: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Gets the default directory for storing filters
+        /// </summary>
+        public string GetDefaultFilterDirectory()
+        {
+            var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            var filterDir = Path.Combine(appDataPath, "JSE_MEP_Openings", "Projects", "Default", "Filters");
+            return filterDir;
+        }
+
+        /// <summary>
+        /// Loads a filter automatically from default location
+        /// </summary>
+        public OpeningFilter LoadFilterAuto(string filterName)
+        {
+            try
+            {
+                _log($"[FILTER_MGMT] Auto-loading filter: {filterName}");
+                
+                var filterDir = GetDefaultFilterDirectory();
+                var filePath = Path.Combine(filterDir, $"{filterName}.xml");
+                
+                if (!File.Exists(filePath))
+                {
+                    _log($"[FILTER_MGMT] Filter file not found: {filePath}");
+                    return null;
+                }
+
+                var loadedFilter = LoadFilterFromXmlFile(filePath);
+                _log($"[FILTER_MGMT] Auto-loaded filter '{filterName}' from {filePath}");
+                return loadedFilter;
+            }
+            catch (Exception ex)
+            {
+                _log($"[FILTER_MGMT] Error auto-loading filter '{filterName}': {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
         /// Loads a filter from XML file
         /// </summary>
         public void LoadFilter(ListBox filterListBox)
@@ -257,11 +331,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 _log("[FILTER_MGMT] Loading filter");
                 
+                // Get default filter directory
+                var filterDir = GetDefaultFilterDirectory();
+                if (!Directory.Exists(filterDir))
+                {
+                    Directory.CreateDirectory(filterDir);
+                }
+                
                 var openDialog = new OpenFileDialog
                 {
                     Title = "Load Filter",
                     Filter = "XML Files (*.xml)|*.xml|All Files (*.*)|*.*",
-                    DefaultExt = "xml"
+                    DefaultExt = "xml",
+                    InitialDirectory = filterDir  // Set default directory
                 };
 
                 if (openDialog.ShowDialog() == DialogResult.OK)
@@ -378,7 +460,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
-        private void SaveFilterToXmlFile(OpeningFilter filter, string filePath)
+        /// <summary>
+        /// Saves a filter to an XML file
+        /// </summary>
+        public void SaveFilterToXmlFile(OpeningFilter filter, string filePath)
         {
             try
             {

@@ -78,11 +78,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public string SelectedMepCategoryName { get; set; } = string.Empty;
 
         /// <summary>
+        /// Selected MEP category names for UI restoration (supports multiple)
+        /// </summary>
+        [XmlArray("SelectedMepCategoryNames")]
+        [XmlArrayItem("CategoryName")]
+        public List<string> SelectedMepCategoryNames { get; set; } = new List<string>();
+
+        /// <summary>
         /// Names of selected reference/linked files associated with this filter
         /// </summary>
         [XmlArray("SelectedReferenceFiles")]
         [XmlArrayItem("ReferenceFile")]
         public List<string> SelectedReferenceFiles { get; set; } = new List<string>();
+
+        /// <summary>
+        /// Names of selected host/linked files associated with this filter
+        /// </summary>
+        [XmlArray("SelectedHostFiles")]
+        [XmlArrayItem("HostFile")]
+        public List<string> SelectedHostFiles { get; set; } = new List<string>();
 
         /// <summary>
         /// Clash zone storage for this filter
