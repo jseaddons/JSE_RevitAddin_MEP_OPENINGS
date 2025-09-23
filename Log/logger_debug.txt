@@ -46,3 +46,6 @@
 [23-09-2025 14:36:41] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-09-23_14-36-41)
 [23-09-2025 14:39:47] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-09-23_14-39-47)
 [23-09-2025 14:47:16] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-09-23_14-47-16)
+[23-09-2025 14:58:17] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-09-23_14-58-17)
+[23-09-2025 15:03:36] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-09-23_15-03-36)
+[23-09-2025 15:10:20] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-09-23_15-10-20)

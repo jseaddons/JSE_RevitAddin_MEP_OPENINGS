@@ -260,7 +260,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return categoryParameters;
                 }
                 
-                if (Enum.TryParse<MepCategory>(categoryName, out var category))
+                // Handle category name mapping for enum parsing
+                var enumCategoryName = categoryName.Replace(" ", ""); // Remove spaces
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_CATEGORY] Original category: '{categoryName}', Enum category: '{enumCategoryName}'");
+                if (Enum.TryParse<MepCategory>(enumCategoryName, out var category))
                 {
                     // Get parameters from all linked files
                     foreach (var linkedFile in linkedFiles)
@@ -358,84 +361,166 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                // EXACT COPY OF WORKING LOGIC FROM OLD METHOD
-                var allComboBoxes = new List<ComboBox>();
-                
-                // Step 1: Find the servicePanel in this tab
+                // Find the servicePanel in this tab
                 var servicePanel = tabPage.Controls.OfType<System.Windows.Forms.Panel>().FirstOrDefault();
                 
                 if (servicePanel != null)
                 {
-                    // Step 2: Find all row panels in the servicePanel
-                    var rowPanels = servicePanel.Controls.OfType<System.Windows.Forms.Panel>().ToList();
-                    
-                    // Step 3: Find ComboBoxes in each row panel
-                    foreach (var rowPanel in rowPanels)
-                    {
-                        var rowComboBoxes = rowPanel.Controls.OfType<ComboBox>().ToList();
-                        allComboBoxes.AddRange(rowComboBoxes);
-                    }
-                }
-                
-                // Check if ComboBoxes are actually populated with meaningful content
-                bool hasEmptyComboBoxes = allComboBoxes.Any(cb => cb.Items.Count == 0 || cb.SelectedItem == null);
-                
-                // If no ComboBoxes found OR there are empty ComboBoxes, create default parameter rows
-                if (allComboBoxes.Count == 0 || hasEmptyComboBoxes)
-                {
                     // Clear existing rows to prevent overlapping
-                    if (servicePanel != null)
+                    var existingRows = servicePanel.Controls.OfType<System.Windows.Forms.Panel>().ToList();
+                    foreach (var row in existingRows)
                     {
-                        var existingRows = servicePanel.Controls.OfType<System.Windows.Forms.Panel>().ToList();
-                        foreach (var row in existingRows)
-                        {
-                            servicePanel.Controls.Remove(row);
-                            row.Dispose();
-                        }
+                        servicePanel.Controls.Remove(row);
+                        row.Dispose();
                     }
                     
-                    // Skip creating default rows for now - just populate existing ComboBoxes
-                }
-                else
-                {
-                    // Update existing ComboBoxes
-                    foreach (var comboBox in allComboBoxes)
-                    {
-                        // Store current selection before clearing
-                        var currentSelection = comboBox.SelectedItem?.ToString();
-                        
-                        // Clear existing items
-                        comboBox.Items.Clear();
-                        
-                        // Determine which parameters to add based on ComboBox position or tag
-                        if (comboBox.Tag?.ToString()?.Contains("mep") == true || 
-                            comboBox.Location.X < 100) // Left side = MEP parameters
-                        {
-                            comboBox.Items.AddRange(mepParameters.ToArray());
-                            
-                            // Restore selection if it still exists
-                            if (!string.IsNullOrEmpty(currentSelection) && mepParameters.Contains(currentSelection))
-                            {
-                                comboBox.SelectedItem = currentSelection;
-                            }
-                        }
-                        else // Right side = Opening parameters
-                        {
-                            comboBox.Items.AddRange(openingParameters.ToArray());
-                            
-                            // Restore selection if it still exists
-                            if (!string.IsNullOrEmpty(currentSelection) && openingParameters.Contains(currentSelection))
-                            {
-                                comboBox.SelectedItem = currentSelection;
-                            }
-                        }
-                    }
+                    // Create automatic parameter rows with category-specific MEP parameters
+                    CreateAutomaticParameterRows(servicePanel, mepParameters, openingParameters);
                 }
             }
             catch (Exception ex)
             {
-                // Silent fail - just populate what we can
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_UI] Error updating tab parameters: {ex.Message}");
             }
+        }
+
+        private void CreateAutomaticParameterRows(System.Windows.Forms.Panel servicePanel, List<string> mepParameters, List<string> openingParameters)
+        {
+            try
+            {
+                int rowHeight = 24;
+                int top = 25;
+                
+                // Get the category name from the tab
+                var tabPage = servicePanel.Parent as System.Windows.Forms.TabPage;
+                var categoryName = tabPage?.Text ?? "";
+                
+                // Get specific parameters for this category
+                var specificParameters = GetSpecificParametersForCategory(categoryName, mepParameters);
+                
+                // Create parameter rows for each specific parameter
+                foreach (var param in specificParameters)
+                {
+                    var row = new System.Windows.Forms.Panel
+                    {
+                        Location = new System.Drawing.Point(8, top),
+                        Size = new System.Drawing.Size(servicePanel.Width - 16, rowHeight),
+                        Anchor = System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Right
+                    };
+                    servicePanel.Controls.Add(row);
+
+                    // MEP Parameter ComboBox (left side) - Pre-populated with specific parameter
+                    var mepCombo = new System.Windows.Forms.ComboBox
+                    {
+                        Location = new System.Drawing.Point(0, 2),
+                        Size = new System.Drawing.Size(120, 20),
+                        DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList,
+                        Tag = "mep"
+                    };
+                    
+                    // Add all MEP parameters and select the specific one
+                    mepCombo.Items.AddRange(mepParameters.ToArray());
+                    mepCombo.SelectedItem = param;
+                    row.Controls.Add(mepCombo);
+
+                    // Opening Parameter ComboBox (right side) - Empty for user selection
+                    var openingCombo = new System.Windows.Forms.ComboBox
+                    {
+                        Location = new System.Drawing.Point(130, 2),
+                        Size = new System.Drawing.Size(row.Width - 130 - 30, 20),
+                        Anchor = System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Right,
+                        DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList,
+                        Tag = "opening"
+                    };
+                    
+                    // Add opening parameters but leave blank for user selection
+                    openingCombo.Items.AddRange(openingParameters.ToArray());
+                    openingCombo.Items.Insert(0, "<Select Opening Parameter>");
+                    openingCombo.SelectedIndex = 0; // Leave blank
+                    row.Controls.Add(openingCombo);
+
+                    // Remove button
+                    var removeBtn = new System.Windows.Forms.Button
+                    {
+                        Text = "×",
+                        Location = new System.Drawing.Point(row.Width - 25, 1),
+                        Size = new System.Drawing.Size(20, 20),
+                        BackColor = System.Drawing.Color.FromArgb(255, 230, 230),
+                        FlatStyle = System.Windows.Forms.FlatStyle.Flat,
+                        Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Bold)
+                    };
+                    removeBtn.Click += (s, e) => {
+                        servicePanel.Controls.Remove(row);
+                        row.Dispose();
+                    };
+                    row.Controls.Add(removeBtn);
+
+                    top += rowHeight + 3;
+                }
+                
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_UI] Created {specificParameters.Count} specific parameter rows for category '{categoryName}'");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_UI] Error creating specific parameter rows: {ex.Message}");
+            }
+        }
+
+        private List<string> GetSpecificParametersForCategory(string categoryName, List<string> allMepParameters)
+        {
+            var specificParameters = new List<string>();
+            
+            try
+            {
+                // Define specific parameters for each category
+                var categoryParams = categoryName.ToLower() switch
+                {
+                    "ducts" => new[] { "Reference Level", "Width", "Height", "System Type" },
+                    "duct accessories" => new[] { "Reference Level", "Width", "Height", "System Type" },
+                    "cable trays" => new[] { "Reference Level", "Width", "Height", "Service Type" },
+                    "pipes" => new[] { "Reference Level", "Diameter", "System Type" },
+                    _ => new string[0] // Unknown category
+                };
+                
+                // Find matching parameters from the available MEP parameters
+                foreach (var requiredParam in categoryParams)
+                {
+                    // Try exact match first
+                    var exactMatch = allMepParameters.FirstOrDefault(p => 
+                        string.Equals(p, requiredParam, StringComparison.OrdinalIgnoreCase));
+                    
+                    if (exactMatch != null)
+                    {
+                        specificParameters.Add(exactMatch);
+                    }
+                    else
+                    {
+                        // Try partial match (case insensitive)
+                        var partialMatch = allMepParameters.FirstOrDefault(p => 
+                            p.Contains(requiredParam, StringComparison.OrdinalIgnoreCase) ||
+                            requiredParam.Contains(p, StringComparison.OrdinalIgnoreCase));
+                        
+                        if (partialMatch != null)
+                        {
+                            specificParameters.Add(partialMatch);
+                        }
+                        else
+                        {
+                            // If no match found, add the required parameter anyway
+                            // This ensures the UI shows the expected parameter even if not found in linked files
+                            specificParameters.Add(requiredParam);
+                        }
+                    }
+                }
+                
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_SPECIFIC] Category '{categoryName}': Found {specificParameters.Count} specific parameters");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_SPECIFIC] Error getting specific parameters for '{categoryName}': {ex.Message}");
+            }
+            
+            return specificParameters;
         }
     }
 }
