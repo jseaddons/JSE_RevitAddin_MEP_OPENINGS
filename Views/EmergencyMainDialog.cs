@@ -94,8 +94,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.Panel _parameterFilterPanel = null!;
         private List<WinForms.Panel> _parameterRows = new List<WinForms.Panel>();
         private WinForms.Button _addParameterButton = null!;
-        // Service parameter tabs
-        private WinForms.TabControl _serviceParameterTabs = null!;
+        // Master parameter tabs (Reference Elements vs Host Elements)
+        private WinForms.TabControl _masterParameterTabs = null!;
+        
+        // Reference Elements sub-tabs (MEP categories)
+        private WinForms.TabControl _referenceParameterTabs = null!;
+        
+        // Host Elements sub-tabs (Host categories)
+        private WinForms.TabControl _hostParameterTabs = null!;
 
         // constants (top of class)
         private const int InnerRightWidth = 320;  // choose 300–360
@@ -1724,27 +1730,73 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
             var title = new WinForms.Label
             {
-                Text = "Service Parameters",
+                Text = "Parameter Transfer Service",
                 Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold),
-                Location = new System.Drawing.Point(10, 8),
-                Size = new System.Drawing.Size(140, 18)
+                Location = new System.Drawing.Point(10, 5),
+                Size = new System.Drawing.Size(200, 18)
             };
             _parameterFilterPanel.Controls.Add(title);
 
-            // Create tabbed service parameters
-            _serviceParameterTabs = new WinForms.TabControl
+            // Create master tabs (Reference Elements vs Host Elements)
+            _masterParameterTabs = new WinForms.TabControl
             {
                 Location = new System.Drawing.Point(5, 25),
                 Size = new System.Drawing.Size(_parameterFilterPanel.Width - 10, _parameterFilterPanel.Height - 30),
                 Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right | WinForms.AnchorStyles.Bottom
             };
-            _parameterFilterPanel.Controls.Add(_serviceParameterTabs);
+            _parameterFilterPanel.Controls.Add(_masterParameterTabs);
 
-            // Create service tabs
+            // Create Reference Elements master tab
+            CreateReferenceElementsMasterTab();
+            
+            // Create Host Elements master tab
+            CreateHostElementsMasterTab();
+        }
+
+        /// <summary>
+        /// Creates the Reference Elements master tab with MEP category sub-tabs
+        /// </summary>
+        private void CreateReferenceElementsMasterTab()
+        {
+            var referenceTabPage = new WinForms.TabPage("Reference Elements");
+            
+            // Create sub-tabs for MEP categories
+            _referenceParameterTabs = new WinForms.TabControl
+            {
+                Dock = WinForms.DockStyle.Fill,
+                BackColor = System.Drawing.Color.White
+            };
+            referenceTabPage.Controls.Add(_referenceParameterTabs);
+
+            // Create MEP service tabs
             CreateServiceTab("Ducts", "DUCTS");
             CreateServiceTab("Duct Accessories", "DUCT_ACCESSORIES");
             CreateServiceTab("Cable Trays", "CABLE_TRAYS");
             CreateServiceTab("Pipes", "PIPES");
+
+            _masterParameterTabs.TabPages.Add(referenceTabPage);
+        }
+
+        /// <summary>
+        /// Creates the Host Elements master tab with Host category sub-tabs
+        /// </summary>
+        private void CreateHostElementsMasterTab()
+        {
+            var hostTabPage = new WinForms.TabPage("Host Elements");
+            
+            // Create sub-tabs for Host categories
+            _hostParameterTabs = new WinForms.TabControl
+            {
+                Dock = WinForms.DockStyle.Fill,
+                BackColor = System.Drawing.Color.White
+            };
+            hostTabPage.Controls.Add(_hostParameterTabs);
+
+            // Create Host element tabs using service
+            var hostParameterService = new Services.HostParameterService();
+            hostParameterService.CreateHostTabs(_hostParameterTabs);
+
+            _masterParameterTabs.TabPages.Add(hostTabPage);
         }
 
         private void CreateServiceTab(string tabName, string serviceCode)
@@ -1777,7 +1829,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             servicePanel.Controls.Add(addButton);
 
             tabPage.Controls.Add(servicePanel);
-            _serviceParameterTabs.TabPages.Add(tabPage);
+            _referenceParameterTabs.TabPages.Add(tabPage);
         }
 
         private void AddServiceParameterRow(WinForms.Panel servicePanel, string parameterName, string value)
@@ -4715,6 +4767,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 PopulateParameterDropdowns();
                 DebugLogger.Info("[PARAMETER_SERVICE] Parameter dropdowns updated using NEW service method");
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [PARAMETER_SERVICE] Parameter dropdowns updated using NEW service method\n");
+                
+                // Also populate host parameters
+                PopulateHostParameters();
+                DebugLogger.Info("[HOST_SERVICE] Host parameter dropdowns updated");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [HOST_SERVICE] Host parameter dropdowns updated\n");
             }
             catch (Exception ex)
             {
@@ -4792,13 +4849,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 
                 // Call service to handle category-specific parameter population
                 var parameterService = new Services.ParameterExtractionService();
-                parameterService.PopulateCategorySpecificParameters(_serviceParameterTabs, selectedCategories, _uiDocument?.Document);
+                parameterService.PopulateCategorySpecificParameters(_referenceParameterTabs, selectedCategories, _uiDocument?.Document);
                 
                 DebugLogger.Info("[PARAMETER_SERVICE] Category-specific parameter population completed via service");
             }
             catch (Exception ex)
             {
                 DebugLogger.Error($"[PARAMETER_SERVICE] Error in PopulateParameterDropdowns: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Populates host parameter dropdowns using HostParameterService
+        /// </summary>
+        private void PopulateHostParameters()
+        {
+            try
+            {
+                DebugLogger.Info("[HOST_SERVICE] Starting host parameter population");
+                
+                // Get selected host files
+                var selectedHostFiles = GetSelectedHostFiles();
+                DebugLogger.Info($"[HOST_SERVICE] Selected host files: {string.Join(", ", selectedHostFiles)}");
+                
+                // Call service to handle host parameter population
+                var hostParameterService = new Services.HostParameterService();
+                hostParameterService.PopulateHostParameters(_hostParameterTabs, selectedHostFiles, _uiDocument?.Document);
+                
+                DebugLogger.Info("[HOST_SERVICE] Host parameter population completed via service");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[HOST_SERVICE] Error in PopulateHostParameters: {ex.Message}");
             }
         }
 
@@ -4953,16 +5035,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 DebugLogger.Info($"[PARAMETER_SIMPLE] Updating UI with {mepParameters.Count} MEP and {openingParameters.Count} opening parameters");
                 
-                // DEBUG: Check if _serviceParameterTabs exists
-                DebugLogger.Info($"[PARAMETER_SIMPLE] _serviceParameterTabs exists: {_serviceParameterTabs != null}");
-                if (_serviceParameterTabs != null)
+                // DEBUG: Check if _referenceParameterTabs exists
+                DebugLogger.Info($"[PARAMETER_SIMPLE] _referenceParameterTabs exists: {_referenceParameterTabs != null}");
+                if (_referenceParameterTabs != null)
                 {
-                    DebugLogger.Info($"[PARAMETER_SIMPLE] _serviceParameterTabs.TabPages.Count: {_serviceParameterTabs.TabPages.Count}");
+                    DebugLogger.Info($"[PARAMETER_SIMPLE] _referenceParameterTabs.TabPages.Count: {_referenceParameterTabs.TabPages.Count}");
                 }
                 
-                if (_serviceParameterTabs?.TabPages.Count > 0)
+                if (_referenceParameterTabs?.TabPages.Count > 0)
                 {
-                    foreach (WinForms.TabPage tabPage in _serviceParameterTabs.TabPages)
+                    foreach (WinForms.TabPage tabPage in _referenceParameterTabs.TabPages)
                     {
                         DebugLogger.Info($"[PARAMETER_SIMPLE] Processing tab: '{tabPage.Text}'");
                         DebugLogger.Info($"[PARAMETER_SIMPLE] Tab has {tabPage.Controls.Count} direct controls");
@@ -5196,10 +5278,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 DebugLogger.Info($"[PARAMETER_DEBUG] Found {mepParameters.Count} MEP parameters and {openingParameters.Count} opening parameters");
 
                 // Update parameter service dropdowns if they exist
-                DebugLogger.Info($"[PARAMETER_DEBUG] Checking _serviceParameterTabs: {_serviceParameterTabs != null}, TabPages count: {_serviceParameterTabs?.TabPages.Count ?? 0}");
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [PARAMETER_DEBUG] Checking _serviceParameterTabs: {_serviceParameterTabs != null}, TabPages count: {_serviceParameterTabs?.TabPages.Count ?? 0}\n");
+                DebugLogger.Info($"[PARAMETER_DEBUG] Checking _referenceParameterTabs: {_referenceParameterTabs != null}, TabPages count: {_referenceParameterTabs?.TabPages.Count ?? 0}");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [PARAMETER_DEBUG] Checking _referenceParameterTabs: {_referenceParameterTabs != null}, TabPages count: {_referenceParameterTabs?.TabPages.Count ?? 0}\n");
                 
-                if (_serviceParameterTabs?.TabPages.Count > 0)
+                if (_referenceParameterTabs?.TabPages.Count > 0)
                 {
                     var categoryParameters = new Dictionary<string, List<Models.ParameterInfo>>();
                     
@@ -5232,8 +5314,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 }
                 else
                 {
-                    DebugLogger.Warning("[PARAMETER_DEBUG] _serviceParameterTabs is null or has no tab pages - cannot update dropdowns");
-                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [PARAMETER_DEBUG] WARNING: _serviceParameterTabs is null or has no tab pages - cannot update dropdowns\n");
+                    DebugLogger.Warning("[PARAMETER_DEBUG] _referenceParameterTabs is null or has no tab pages - cannot update dropdowns");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [PARAMETER_DEBUG] WARNING: _referenceParameterTabs is null or has no tab pages - cannot update dropdowns\n");
                 }
 
                 // Store parameters globally for later use
@@ -5780,11 +5862,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Updating parameter dropdowns\n");
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Available categories: {string.Join(", ", categoryParameters.Keys)}\n");
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] All collected categories: {string.Join(", ", _allCollectedParameters.Keys)}\n");
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Number of tabs: {_serviceParameterTabs?.TabPages.Count ?? 0}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Number of tabs: {_referenceParameterTabs?.TabPages.Count ?? 0}\n");
                 
-                if (_serviceParameterTabs?.TabPages.Count > 0)
+                if (_referenceParameterTabs?.TabPages.Count > 0)
                 {
-                    foreach (WinForms.TabPage tabPage in _serviceParameterTabs.TabPages)
+                    foreach (WinForms.TabPage tabPage in _referenceParameterTabs.TabPages)
                     {
                         string tabName = tabPage.Text;
                         JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Processing tab: {tabName}\n");
