@@ -6491,6 +6491,69 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         }
 
         /// <summary>
+        /// Clears all UI selections before restoring filter state
+        /// </summary>
+        private void ClearAllUISelections()
+        {
+            try
+            {
+                DebugLogger.Info("[FILTER_UI] Clearing all UI selections before restoring filter state");
+                
+                // Clear MEP category selections
+                var mepCategoriesListBox = _topRightPanel?.Controls.OfType<WinForms.CheckedListBox>().FirstOrDefault();
+                if (mepCategoriesListBox != null)
+                {
+                    mepCategoriesListBox.BeginUpdate();
+                    for (int i = 0; i < mepCategoriesListBox.Items.Count; i++)
+                    {
+                        mepCategoriesListBox.SetItemChecked(i, false);
+                    }
+                    mepCategoriesListBox.EndUpdate();
+                }
+                
+                // Clear reference file selections
+                if (_topLeftPanel?.Controls.Count > 0)
+                {
+                    foreach (var control in _topLeftPanel.Controls)
+                    {
+                        if (control is WinForms.CheckedListBox listBox)
+                        {
+                            listBox.BeginUpdate();
+                            for (int i = 0; i < listBox.Items.Count; i++)
+                            {
+                                listBox.SetItemChecked(i, false);
+                            }
+                            listBox.EndUpdate();
+                        }
+                    }
+                }
+                
+                // Clear host file selections
+                if (_bottomLeftPanel?.Controls.Count > 0)
+                {
+                    foreach (var control in _bottomLeftPanel.Controls)
+                    {
+                        if (control is WinForms.CheckedListBox listBox)
+                        {
+                            listBox.BeginUpdate();
+                            for (int i = 0; i < listBox.Items.Count; i++)
+                            {
+                                listBox.SetItemChecked(i, false);
+                            }
+                            listBox.EndUpdate();
+                        }
+                    }
+                }
+                
+                DebugLogger.Info("[FILTER_UI] All UI selections cleared");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[FILTER_UI] Error clearing UI selections: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Restores UI state from the selected filter
         /// </summary>
         private void RestoreUIStateFromFilter(OpeningFilter filter)
@@ -6498,6 +6561,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             try
             {
                 DebugLogger.Info("[FILTER_UI] Restoring UI state from filter");
+                
+                // CRITICAL: Clear all UI selections first to prevent state mixing
+                ClearAllUISelections();
                 
                 // Restore MEP category selection
                 if (filter.SelectedMepCategoryNames?.Any() == true)
