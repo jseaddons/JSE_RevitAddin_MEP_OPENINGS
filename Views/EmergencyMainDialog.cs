@@ -20,6 +20,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
     {
         private readonly ApplicationProfileService _appProfileService;
         private readonly FilterManagementService _filterManagementService;
+        private string _lastLoadedFilterName = string.Empty;
         private readonly Document? _document;
         private readonly UIDocument? _uiDocument;
         
@@ -3097,10 +3098,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         
         private void RestoreHostFileSelections(List<string>? selectedFiles)
         {
-            if (selectedFiles == null || selectedFiles.Count == 0) return;
-            
-            try
+            if (selectedFiles == null || selectedFiles.Count == 0) 
             {
+                DebugLogger.Info("[FILTER_HOST] No host files to restore - clearing all selections");
+                // Clear all host file selections
                 if (_bottomLeftPanel?.Controls.Count > 0)
                 {
                     foreach (var control in _bottomLeftPanel.Controls)
@@ -3108,23 +3109,60 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         if (control is WinForms.CheckedListBox listBox)
                         {
                             listBox.BeginUpdate();
+                            for (int i = 0; i < listBox.Items.Count; i++)
+                            {
+                                listBox.SetItemChecked(i, false);
+                            }
+                            listBox.EndUpdate();
+                        }
+                    }
+                }
+                return;
+            }
+            
+            try
+            {
+                DebugLogger.Info($"[FILTER_HOST] Restoring {selectedFiles.Count} host files: {string.Join(", ", selectedFiles)}");
+                
+                if (_bottomLeftPanel?.Controls.Count > 0)
+                {
+                    foreach (var control in _bottomLeftPanel.Controls)
+                    {
+                        if (control is WinForms.CheckedListBox listBox)
+                        {
+                            DebugLogger.Info($"[FILTER_HOST] Found CheckedListBox with {listBox.Items.Count} items");
                             
-                            // First uncheck ALL items
+                            // Debug: Log all items in the list box
+                            DebugLogger.Info($"[FILTER_HOST] ListBox contains {listBox.Items.Count} items:");
+                            for (int j = 0; j < listBox.Items.Count; j++)
+                            {
+                                DebugLogger.Info($"[FILTER_HOST]   Item {j}: {listBox.Items[j]}");
+                            }
+                            
+                            listBox.BeginUpdate();
+                            
+                            // CRITICAL: First uncheck ALL items
+                            DebugLogger.Info("[FILTER_HOST] Clearing all host file selections first");
                             for (int i = 0; i < listBox.Items.Count; i++)
                             {
                                 listBox.SetItemChecked(i, false);
                             }
                             
                             // Then check only the saved selections
+                            DebugLogger.Info($"[FILTER_HOST] Restoring {selectedFiles.Count} saved selections:");
+                            int restoredCount = 0;
                             for (int i = 0; i < listBox.Items.Count; i++)
                             {
                                 var item = listBox.Items[i]?.ToString();
                                 if (item != null && selectedFiles.Contains(item))
                                 {
                                     listBox.SetItemChecked(i, true);
-                                    DebugLogger.Info($"Restored host file selection: {item}");
+                                    DebugLogger.Info($"[FILTER_HOST] Restored host file selection: {item}");
+                                    restoredCount++;
                                 }
                             }
+                            
+                            DebugLogger.Info($"[FILTER_HOST] Successfully restored {restoredCount} out of {selectedFiles.Count} host file selections");
                             
                             listBox.EndUpdate();
                             listBox.Refresh();
@@ -3136,7 +3174,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"Failed to restore host file selections: {ex.Message}");
+                DebugLogger.Error($"[FILTER_HOST] Failed to restore host file selections: {ex.Message}");
             }
         }
         
@@ -6425,6 +6463,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 var selectedFilterName = filterListBox.SelectedItem.ToString();
                 DebugLogger.Info($"[FILTER_UI] Selected filter name: {selectedFilterName}");
                 
+                // Check if this is a different filter than the currently loaded one
+                var isDifferentFilter = _lastLoadedFilterName != selectedFilterName;
+                DebugLogger.Info($"[FILTER_UI] Is different filter: {isDifferentFilter} (Last: '{_lastLoadedFilterName}', Current: '{selectedFilterName}')");
+                
                 // Load the actual filter data from the saved file
                 var selectedFilter = _filterManagementService.LoadFilterAuto(selectedFilterName);
                 if (selectedFilter == null) 
@@ -6435,8 +6477,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
                 DebugLogger.Info($"[FILTER_UI] Loaded filter data - Category: {selectedFilter.SelectedMepCategoryName}, Reference Files: {selectedFilter.SelectedReferenceFiles?.Count ?? 0}");
 
-                // Restore UI state from filter
-                RestoreUIStateFromFilter(selectedFilter);
+                // Restore UI state from filter (only clear if switching to different filter)
+                RestoreUIStateFromFilter(selectedFilter, isDifferentFilter);
+                
+                // Update the last loaded filter name
+                _lastLoadedFilterName = selectedFilterName;
                 
                 DebugLogger.Info($"[FILTER_UI] Restored UI state from filter '{selectedFilter.Name}'");
             }
@@ -6556,14 +6601,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         /// <summary>
         /// Restores UI state from the selected filter
         /// </summary>
-        private void RestoreUIStateFromFilter(OpeningFilter filter)
+        private void RestoreUIStateFromFilter(OpeningFilter filter, bool shouldClear = true)
         {
             try
             {
                 DebugLogger.Info("[FILTER_UI] Restoring UI state from filter");
                 
-                // CRITICAL: Clear all UI selections first to prevent state mixing
-                ClearAllUISelections();
+                // Only clear UI selections if switching to a different filter
+                if (shouldClear)
+                {
+                    DebugLogger.Info("[FILTER_UI] Clearing UI selections before restoring filter state");
+                    ClearAllUISelections();
+                }
+                else
+                {
+                    DebugLogger.Info("[FILTER_UI] Skipping UI clearing - same filter or new filter creation");
+                }
                 
                 // Restore MEP category selection
                 if (filter.SelectedMepCategoryNames?.Any() == true)
