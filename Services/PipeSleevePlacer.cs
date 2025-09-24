@@ -203,7 +203,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[PipeSleevePlacer] DEBUG: Created instance parameters: {string.Join(", ", instanceParams)}");
 
                     // Set parameters after creation
-                    SetParameterSafely(instance, "Diameter", totalDiameter, pipeElementId);
+                    var roundedDiameter = OpeningSettingsHelper.RoundDiameterToNearest5mm(totalDiameter);
+                    SetParameterSafely(instance, "Diameter", roundedDiameter, pipeElementId);
                     SetParameterSafely(instance, "Depth", sleeveDepth, pipeElementId);
 
                     try { _doc.Regenerate(); } catch { }

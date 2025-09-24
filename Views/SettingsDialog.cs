@@ -39,7 +39,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.TextBox _ignoreOpeningsSmallerThanTextBox;
         private WinForms.TextBox _roundOpeningsRectangularTextBox;
         private WinForms.TextBox _joinOpeningsDistanceTextBox;
-        private WinForms.TextBox _ignoreOpeningsAngleTextBox;
         private WinForms.CheckBox _createOpeningsWithSlopeCheckBox;
         private WinForms.CheckBox _roundOpeningSizesToNearest5mmCheckBox;
         private WinForms.ComboBox _roundUpDimensionsComboBox;
@@ -82,7 +81,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             
             // Form properties
             this.Text = "Settings";
-            this.Size = new Drawing.Size(650, 700); // Increased size to accommodate new checkbox
+            this.Size = new Drawing.Size(800, 700); // Made wider to fix text box visibility
             this.StartPosition = WinForms.FormStartPosition.CenterParent; // Center on parent window
             this.FormBorderStyle = WinForms.FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
@@ -122,14 +121,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Text = "Reset approval status of openings when changes occur:",
                 Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(400, 20)
+                Size = new Drawing.Size(500, 20) // Match other sections
             };
             manageGroupBox.Controls.Add(resetLabel);
             
             _resetApprovalStatusCheckBox = new WinForms.CheckBox
             {
                 Text = "", // No text, just checkbox
-                Location = new Drawing.Point(420, yPos), // Right side
+                Location = new Drawing.Point(520, yPos), // Match other sections
                 Size = new Drawing.Size(20, 20),
                 Checked = true
             };
@@ -141,14 +140,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Text = "Openings won't be marked as changed if change in dimensions is less than:",
                 Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(400, 20) // Label width
+                Size = new Drawing.Size(500, 20) // Match other sections
             };
             manageGroupBox.Controls.Add(dimensionLabel);
 
             _dimensionChangeThresholdTextBox = new WinForms.TextBox
             {
-                Text = "1",
-                Location = new Drawing.Point(420, yPos - 2), // Right side
+                Text = "1mm",
+                Location = new Drawing.Point(520, yPos), // Fixed: removed the -2 offset
                 Size = new Drawing.Size(50, 20)
             };
             manageGroupBox.Controls.Add(_dimensionChangeThresholdTextBox);
@@ -159,14 +158,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Text = "Openings won't be marked as changed if change in location is less than:",
                 Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(400, 20) // Label width
+                Size = new Drawing.Size(500, 20) // Match other sections
             };
             manageGroupBox.Controls.Add(locationLabel);
 
             _locationChangeThresholdTextBox = new WinForms.TextBox
             {
-                Text = "1",
-                Location = new Drawing.Point(420, yPos - 2), // Right side
+                Text = "1mm",
+                Location = new Drawing.Point(520, yPos), // Fixed: removed the -2 offset
                 Size = new Drawing.Size(50, 20)
             };
             manageGroupBox.Controls.Add(_locationChangeThresholdTextBox);
@@ -191,14 +190,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Text = "Cut opening with Hosts:",
                 Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(400, 20)
+                Size = new Drawing.Size(500, 20) // Increased width for more text space
             };
             elementsGroupBox.Controls.Add(cutLabel);
             
             _cutOpeningWithHostsCheckBox = new WinForms.CheckBox
             {
                 Text = "", // No text, just checkbox
-                Location = new Drawing.Point(420, yPos), // Right side
+                Location = new Drawing.Point(520, yPos), // Moved further right
                 Size = new Drawing.Size(20, 20),
                 Checked = false
             };
@@ -210,14 +209,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Text = "Create a constraint between openings and Hosts:",
                 Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(400, 20)
+                Size = new Drawing.Size(500, 20) // Increased width for more text space
             };
             elementsGroupBox.Controls.Add(constraintLabel);
             
             _createConstraintCheckBox = new WinForms.CheckBox
             {
                 Text = "", // No text, just checkbox
-                Location = new Drawing.Point(420, yPos), // Right side
+                Location = new Drawing.Point(520, yPos), // Moved further right
                 Size = new Drawing.Size(20, 20),
                 Checked = true
             };
@@ -229,14 +228,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Text = "Pipe Opening Type to be Rectangular:",
                 Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(400, 20)
+                Size = new Drawing.Size(500, 20) // Increased width for more text space
             };
             elementsGroupBox.Controls.Add(pipeOpeningLabel);
             
             _pipeOpeningTypeRectangularCheckBox = new WinForms.CheckBox
             {
                 Text = "", // No text, just checkbox
-                Location = new Drawing.Point(420, yPos), // Right side
+                Location = new Drawing.Point(520, yPos), // Moved further right
                 Size = new Drawing.Size(20, 20),
                 Checked = false // Default to circular (unchecked = circular, checked = rectangular)
             };
@@ -268,14 +267,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Text = "Ignore openings smaller than:",
                 Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(400, 20) // Label width
+                Size = new Drawing.Size(500, 20) // Increased width for more text space
             };
             limitsGroupBox.Controls.Add(ignoreSmallLabel);
 
             _ignoreOpeningsSmallerThanTextBox = new WinForms.TextBox
             {
-                Text = "0.1", // Updated to match image
-                Location = new Drawing.Point(420, yPos - 2), // Right side
+                Text = "0.1mm", // Updated to match image
+                Location = new Drawing.Point(520, yPos), // Fixed: removed the -2 offset
                 Size = new Drawing.Size(50, 20)
             };
             limitsGroupBox.Controls.Add(_ignoreOpeningsSmallerThanTextBox);
@@ -286,14 +285,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Text = "Round openings become rectangular if diameter is greater than:",
                 Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(400, 20) // Label width
+                Size = new Drawing.Size(500, 20) // Increased width for more text space
             };
             limitsGroupBox.Controls.Add(roundRectLabel);
 
             _roundOpeningsRectangularTextBox = new WinForms.TextBox
             {
-                Text = "200",
-                Location = new Drawing.Point(420, yPos - 2), // Right side
+                Text = "200mm",
+                Location = new Drawing.Point(520, yPos), // Fixed: removed the -2 offset
                 Size = new Drawing.Size(50, 20)
             };
             limitsGroupBox.Controls.Add(_roundOpeningsRectangularTextBox);
@@ -304,35 +303,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Text = "Join openings if their distance is less than:",
                 Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(400, 20) // Label width
+                Size = new Drawing.Size(500, 20) // Increased width for more text space
             };
             limitsGroupBox.Controls.Add(joinDistanceLabel);
 
             _joinOpeningsDistanceTextBox = new WinForms.TextBox
             {
-                Text = "200", // Updated to match image
-                Location = new Drawing.Point(420, yPos - 2), // Right side
+                Text = "200mm", // Updated to match image
+                Location = new Drawing.Point(520, yPos), // Fixed: removed the -2 offset
                 Size = new Drawing.Size(50, 20)
             };
             limitsGroupBox.Controls.Add(_joinOpeningsDistanceTextBox);
-            yPos += 25;
-
-            // Ignore openings angle
-            var ignoreAngleLabel = new WinForms.Label
-            {
-                Text = "Ignore openings with an angle greater than:",
-                Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(400, 20) // Label width
-            };
-            limitsGroupBox.Controls.Add(ignoreAngleLabel);
-
-            _ignoreOpeningsAngleTextBox = new WinForms.TextBox
-            {
-                Text = "45",
-                Location = new Drawing.Point(420, yPos - 2), // Right side
-                Size = new Drawing.Size(50, 20)
-            };
-            limitsGroupBox.Controls.Add(_ignoreOpeningsAngleTextBox);
             yPos += 25;
 
             // Opening sizes to be rounded of to nearest 5mm if in decimals - CHECKBOX ON RIGHT, TEXT ON LEFT
@@ -340,18 +321,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Text = "Opening sizes to be rounded of to nearest 5mm if in decimals:",
                 Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(400, 20)
+                Size = new Drawing.Size(500, 20) // Increased width for more text space
             };
             limitsGroupBox.Controls.Add(roundSizesLabel);
             
             _roundOpeningSizesToNearest5mmCheckBox = new WinForms.CheckBox
             {
                 Text = "", // No text, just checkbox
-                Location = new Drawing.Point(420, yPos), // Right side
+                Location = new Drawing.Point(520, yPos), // Moved further right
                 Size = new Drawing.Size(20, 20),
                 Checked = false // Default to not rounding
             };
             limitsGroupBox.Controls.Add(_roundOpeningSizesToNearest5mmCheckBox);
+            yPos += 30;
+
+            // Footnote for all sections
+            var footnoteLabel = new WinForms.Label
+            {
+                Text = "Note: All units are in mm",
+                Location = new Drawing.Point(15, yPos),
+                Size = new Drawing.Size(500, 20),
+                Font = new Drawing.Font("Microsoft Sans Serif", 8F, Drawing.FontStyle.Italic),
+                ForeColor = Drawing.Color.FromArgb(100, 100, 100) // Gray color for footnote
+            };
+            limitsGroupBox.Controls.Add(footnoteLabel);
         }
 
         private void CreateActionButtons()
@@ -449,8 +442,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 _roundOpeningsRectangularTextBox.Text = _settings.RoundOpeningsRectangular.ToString();
             if (_joinOpeningsDistanceTextBox != null)
                 _joinOpeningsDistanceTextBox.Text = _settings.JoinOpeningsDistance.ToString();
-            if (_ignoreOpeningsAngleTextBox != null)
-                _ignoreOpeningsAngleTextBox.Text = _settings.IgnoreOpeningsAngle.ToString();
             if (_createOpeningsWithSlopeCheckBox != null)
                 _createOpeningsWithSlopeCheckBox.Checked = _settings.CreateOpeningsWithSlope;
             if (_roundOpeningSizesToNearest5mmCheckBox != null)
@@ -490,9 +481,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 
                 if (_joinOpeningsDistanceTextBox != null && double.TryParse(_joinOpeningsDistanceTextBox.Text, out double joinDist))
                     _settings.JoinOpeningsDistance = joinDist;
-                
-                if (_ignoreOpeningsAngleTextBox != null && double.TryParse(_ignoreOpeningsAngleTextBox.Text.Replace("°", ""), out double ignoreAngle))
-                    _settings.IgnoreOpeningsAngle = ignoreAngle;
 
                 if (_roundOpeningSizesToNearest5mmCheckBox != null)
                     _settings.RoundOpeningSizesToNearest5mm = _roundOpeningSizesToNearest5mmCheckBox.Checked;

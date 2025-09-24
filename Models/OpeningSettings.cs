@@ -21,6 +21,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public string OpeningType { get; set; } = "Rectangular";
         
         /// <summary>
+        /// Prefix for sleeve parameters (used by MarkParameterAddValue command)
+        /// </summary>
+        public string SleeveParameterPrefix { get; set; } = "SLEEVE_";
+        
+        /// <summary>
         /// Clearance settings for different MEP types
         /// </summary>
         [XmlIgnore]

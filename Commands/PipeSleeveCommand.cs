@@ -21,17 +21,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 UIDocument uidoc = commandData.Application.ActiveUIDocument;
                 Document doc = uidoc.Document;
 
+            // Select the appropriate pipe sleeve symbol based on user settings
+            var openingType = OpeningSettingsHelper.GetOpeningTypeForCategory("Pipes");
+            DebugLogger.Info($"[PipeSleeveCommand] Opening type determined: {openingType}");
+            
             var pipeWallSymbol = new FilteredElementCollector(doc)
                 .OfClass(typeof(FamilySymbol))
                 .Cast<FamilySymbol>()
-                .FirstOrDefault(sym => sym.Family.Name.Equals("PipeOpeningOnWall", StringComparison.OrdinalIgnoreCase));
+                .FirstOrDefault(sym => sym.Family.Name.Equals(
+                    openingType == "Rectangular" ? "PipeOpeningOnWallRect" : "PipeOpeningOnWall", 
+                    StringComparison.OrdinalIgnoreCase));
             var pipeSlabSymbol = new FilteredElementCollector(doc)
                 .OfClass(typeof(FamilySymbol))
                 .Cast<FamilySymbol>()
-                .FirstOrDefault(sym => sym.Family.Name.Equals("PipeOpeningOnSlab", StringComparison.OrdinalIgnoreCase));
+                .FirstOrDefault(sym => sym.Family.Name.Equals(
+                    openingType == "Rectangular" ? "PipeOpeningOnSlabRect" : "PipeOpeningOnSlab", 
+                    StringComparison.OrdinalIgnoreCase));
             if (pipeWallSymbol == null && pipeSlabSymbol == null)
             {
-                TaskDialog.Show("Error", "Please load both wall and slab pipe sleeve opening families (PS#).");
+                var expectedFamily = openingType == "Rectangular" ? "PipeOpeningOnWallRect/PipeOpeningOnSlabRect" : "PipeOpeningOnWall/PipeOpeningOnSlab";
+                TaskDialog.Show("Error", $"Please load the pipe sleeve opening families: {expectedFamily}");
                 return Result.Failed;
             }
             using (var txActivate = new Transaction(doc, "Activate Pipe Symbols"))
@@ -79,6 +88,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 .Where(fi =>
                     fi.Symbol.Family.Name.Equals("PipeOpeningOnWall", StringComparison.OrdinalIgnoreCase) ||
                     fi.Symbol.Family.Name.Equals("PipeOpeningOnSlab", StringComparison.OrdinalIgnoreCase) ||
+                    fi.Symbol.Family.Name.Equals("PipeOpeningOnWallRect", StringComparison.OrdinalIgnoreCase) ||
+                    fi.Symbol.Family.Name.Equals("PipeOpeningOnSlabRect", StringComparison.OrdinalIgnoreCase) ||
                     fi.Symbol.Family.Name.Equals("ClusterOpeningOnWallX", StringComparison.OrdinalIgnoreCase) ||
                     fi.Symbol.Family.Name.Equals("ClusterOpeningOnSlab", StringComparison.OrdinalIgnoreCase))
                 .ToList();

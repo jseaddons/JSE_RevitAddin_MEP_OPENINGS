@@ -85,11 +85,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private List<string> _selectedReferenceFiles = new List<string>();
         private List<string> _selectedCategories = new List<string>();
         private List<string> _selectedHostFiles = new List<string>();
-        // Opening type controls (right section)
-        private WinForms.Panel _openingTypePanel = null!;
-        private WinForms.RadioButton _rectangularRadio = null!;
-        private WinForms.RadioButton _circularRadio = null!;
-        private WinForms.CheckBox _fullPenetrationCheckBox = null!;
         // Parameter filter controls (right section)
         private WinForms.Panel _parameterFilterPanel = null!;
         private List<WinForms.Panel> _parameterRows = new List<WinForms.Panel>();
@@ -102,6 +97,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         
         // Host Elements sub-tabs (Host categories)
         private WinForms.TabControl _hostParameterTabs = null!;
+        
+        // Parameter marking configuration
+        private WinForms.TextBox _sleeveParameterPrefixTextBox = null!;
 
         // constants (top of class)
         private const int InnerRightWidth = 320;  // choose 300–360
@@ -1210,12 +1208,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Enabled = false, // Initially disabled (greyed out)
                 BackColor = System.Drawing.Color.LightGray // Grey background when disabled
             };
-            _mepTypeCombo.Items.AddRange(new[] { "Pipe", "Duct", "Duct Accessories", "Duct Fittings", "Cable Tray", "Conduit" });
+            _mepTypeCombo.Items.AddRange(new[] { "Pipe", "Duct", "Duct Accessories", "Duct Fittings", "Cable Trays", "Conduit" });
             _mepTypeCombo.SelectedIndex = 0;
+            
+            // Add event handler to update clearance visibility when MEP type changes
+            _mepTypeCombo.SelectedIndexChanged += (s, e) => UpdateClearanceVisibility();
+            
             _rightPanel.Controls.Add(_mepTypeCombo);
-
-            // Opening Type (Rectangular / Circular)
-            CreateOpeningTypePanel();
 
             // Create clearance panels
             CreateClearancePanels();
@@ -1226,70 +1225,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             UpdateClearanceVisibility();
         }
 
-        private void CreateOpeningTypePanel()
-        {
-            _openingTypePanel = new WinForms.Panel
-            {
-                Location = new System.Drawing.Point(10, 80),
-                Size = new System.Drawing.Size(_rightPanel.Width - 20, 70), // Increased height for checkbox
-                BackColor = System.Drawing.Color.FromArgb(248, 249, 250),
-                BorderStyle = WinForms.BorderStyle.FixedSingle,
-                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right
-            };
-            _rightPanel.Controls.Add(_openingTypePanel);
 
-            var typeLabel = new WinForms.Label
-            {
-                Text = "Opening Type:",
-                Location = new System.Drawing.Point(10, 8),
-                Size = new System.Drawing.Size(100, 16)
-            };
-            _openingTypePanel.Controls.Add(typeLabel);
-
-            _rectangularRadio = new WinForms.RadioButton
-            {
-                Text = "Rectangular",
-                Location = new System.Drawing.Point(120, 6),
-                AutoSize = true
-            };
-            _openingTypePanel.Controls.Add(_rectangularRadio);
-
-            _circularRadio = new WinForms.RadioButton
-            {
-                Text = "Circular",
-                Location = new System.Drawing.Point(220, 6),
-                AutoSize = true
-            };
-            _openingTypePanel.Controls.Add(_circularRadio);
-
-            // Full penetration checkbox
-            _fullPenetrationCheckBox = new WinForms.CheckBox
-            {
-                Text = "Full Penetration (fixes fitting interference)",
-                Location = new System.Drawing.Point(10, 30),
-                Size = new System.Drawing.Size(300, 20),
-                Checked = true, // Default to enabled
-                // ToolTipText = "Ensures openings fully penetrate host elements even when fittings obstruct MEP elements" // Not supported in WinForms CheckBox
-            };
-            _openingTypePanel.Controls.Add(_fullPenetrationCheckBox);
-
-            // default selection
-            _rectangularRadio.Checked = true;
-
-            // enable/disable by MEP type
-            _mepTypeCombo.SelectedIndexChanged += (_, __) => {
-                UpdateOpeningTypeAvailability();
-                UpdateClearanceVisibility();
-            };
-            UpdateOpeningTypeAvailability();
-        }
-
-        private void UpdateOpeningTypeAvailability()
-        {
-            // Both shapes remain selectable for all MEP types
-            _rectangularRadio.Enabled = true;
-            _circularRadio.Enabled = true;
-        }
 
         private void UpdateClearanceVisibility()
         {
@@ -1297,6 +1233,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             UpdateClearanceVisibilityForCategory(mep);
         }
 
+        /// <summary>
+        /// Updates clearance panel visibility based on selected MEP category
+        /// 
+        /// ⚠️ CRITICAL FEATURE - DO NOT MODIFY WITHOUT APPROVAL ⚠️
+        /// This method controls which clearance panel is visible:
+        /// - "Cable Trays" → Shows _cableTrayPanel (Top Side + Other Sides)
+        /// - "Duct Accessories" → Shows _damperPanel (MEP Connector Side + Other Sides)
+        /// - "Ducts" → Shows _clearancePanel (standard clearance)
+        /// - "Pipes" → Shows _clearancePanel (standard clearance)
+        /// 
+        /// String matching is case-insensitive and must match exactly with combo box items.
+        /// </summary>
         private void UpdateClearanceVisibilityForCategory(string category)
         {
             // Hide all
@@ -1331,12 +1279,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
         }
 
+        /// <summary>
+        /// Creates clearance panels for different MEP types
+        /// 
+        /// ⚠️ CRITICAL FEATURE - DO NOT MODIFY WITHOUT APPROVAL ⚠️
+        /// This method creates specialized clearance panels for:
+        /// - Cable Trays: Shows "Top Side" and "Other Sides" clearance rows
+        /// - Duct Accessories: Shows "MEP Connector Side" and "Other Sides" clearance rows
+        /// - Standard panels for Ducts and Pipes
+        /// 
+        /// The visibility is controlled by UpdateClearanceVisibilityForCategory() method
+        /// and the MEP type combo box SelectedIndexChanged event handler.
+        /// 
+        /// Any changes to this method may break the 2-row clearance display functionality.
+        /// </summary>
         private void CreateClearancePanels()
         {
             // Standard Clearance Panel
             _clearancePanel = new WinForms.Panel
             {
-                Location = new System.Drawing.Point(10, 135),
+                Location = new System.Drawing.Point(10, 75),
                 Size = new System.Drawing.Size(_rightPanel.Width - 20, 100),
                 BackColor = System.Drawing.Color.FromArgb(248, 249, 250),
                 BorderStyle = WinForms.BorderStyle.FixedSingle,
@@ -1423,7 +1385,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // Cable Tray Panel (initially hidden) - Top Side + Other Sides
             _cableTrayPanel = new WinForms.Panel
             {
-                Location = new System.Drawing.Point(10, 135),
+                Location = new System.Drawing.Point(10, 75),
                 Size = new System.Drawing.Size(_rightPanel.Width - 20, 110),
                 BackColor = System.Drawing.Color.FromArgb(248, 249, 250),
                 BorderStyle = WinForms.BorderStyle.FixedSingle,
@@ -1506,7 +1468,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // Damper Panel (initially hidden) - MEP Side + Other Sides
             _damperPanel = new WinForms.Panel
             {
-                Location = new System.Drawing.Point(10, 135),
+                Location = new System.Drawing.Point(10, 75),
                 Size = new System.Drawing.Size(_rightPanel.Width - 20, 110),
                 BackColor = System.Drawing.Color.FromArgb(248, 249, 250),
                 BorderStyle = WinForms.BorderStyle.FixedSingle,
@@ -1751,7 +1713,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             
             // Create Host Elements master tab
             CreateHostElementsMasterTab();
+            
+            // Add Parameter Marking Configuration section at the bottom
+            CreateParameterMarkingSection();
         }
+
+        /// <summary>
+        /// Creates the Parameter Marking Configuration section at the bottom of Parameter Service
+        /// </summary>
+        private void CreateParameterMarkingSection()
+        {
+            // Create a separate panel for marking configuration - positioned in the space between clearance and parameter service
+            var markingPanel = new WinForms.Panel
+            {
+                Location = new System.Drawing.Point(10, 190),
+                Size = new System.Drawing.Size(_rightPanel.Width - 20, 50),
+                BackColor = System.Drawing.Color.FromArgb(240, 248, 255),
+                BorderStyle = WinForms.BorderStyle.FixedSingle,
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right
+            };
+            _rightPanel.Controls.Add(markingPanel);
+
+            var prefixLabel = new WinForms.Label
+            {
+                Text = "Prefix for Opening Marks:",
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular),
+                Location = new System.Drawing.Point(10, 8),
+                Size = new System.Drawing.Size(150, 18)
+            };
+            markingPanel.Controls.Add(prefixLabel);
+
+            _sleeveParameterPrefixTextBox = new WinForms.TextBox
+            {
+                Location = new System.Drawing.Point(170, 6),
+                Size = new System.Drawing.Size(100, 20),
+                Text = "SLEEVE_",
+                Tag = "sleeve_parameter_prefix"
+            };
+            markingPanel.Controls.Add(_sleeveParameterPrefixTextBox);
+
+
+        }
+
 
         /// <summary>
         /// Creates the Reference Elements master tab with MEP category sub-tabs
@@ -2777,9 +2780,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 var clearanceSettings = GetClearanceSettings();
                 orchestrator.SetUIClearances(clearanceSettings);
                 
-                // Pass full penetration setting to orchestrator
-                bool fullPenetrationEnabled = GetFullPenetrationSetting();
-                orchestrator.SetFullPenetrationEnabled(fullPenetrationEnabled);
+                // Full penetration is now the default behavior (no UI option needed)
+                orchestrator.SetFullPenetrationEnabled(true);
                 
                 // Get clash zones from FILTER for incremental sleeve placement
                 var filterWithClashZones = selectedFilters.FirstOrDefault(f => f.ClashZoneStorage != null);
@@ -3956,29 +3958,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private List<string> GetSelectedMepCategories()
         {
             try
+        {
+            var selectedCategories = new List<string>();
+            
+            // Get selected categories from top-right panel (MEP Categories)
+            if (_topRightPanel?.Controls.Count > 0)
             {
-                var selectedCategories = new List<string>();
-                
-                // Get selected categories from top-right panel (MEP Categories)
-                if (_topRightPanel?.Controls.Count > 0)
+                foreach (var control in _topRightPanel.Controls)
                 {
-                    foreach (var control in _topRightPanel.Controls)
+                    if (control is WinForms.CheckedListBox listBox)
                     {
-                        if (control is WinForms.CheckedListBox listBox)
+                        for (int i = 0; i < listBox.Items.Count; i++)
                         {
-                            for (int i = 0; i < listBox.Items.Count; i++)
+                            if (listBox.GetItemChecked(i))
                             {
-                                if (listBox.GetItemChecked(i))
-                                {
-                                    selectedCategories.Add(listBox.Items[i].ToString() ?? "");
-                                }
+                                selectedCategories.Add(listBox.Items[i].ToString() ?? "");
                             }
                         }
                     }
                 }
-                
+            }
+            
                 DebugLogger.Info($"[FILTER_UI] GetSelectedMepCategories found {selectedCategories.Count} categories: {string.Join(", ", selectedCategories)}");
-                return selectedCategories;
+            return selectedCategories;
             }
             catch (Exception ex)
             {
@@ -4245,13 +4247,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
         }
 
-        /// <summary>
-        /// Get full penetration setting from UI
-        /// </summary>
-        public bool GetFullPenetrationSetting()
-        {
-            return _fullPenetrationCheckBox?.Checked ?? true; // Default to true if checkbox not available
-        }
 
         /// <summary>
         /// Get selected filter items from the filters panel (left column)
@@ -4439,13 +4434,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             try
             {
                 DebugLogger.Info("=== REFRESH BUTTON CLICKED ===");
-                System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] About to call Refresh() method");
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] About to call Refresh() method\n");
+                System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] About to call RefreshClashDetection() method");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] About to call RefreshClashDetection() method\n");
 
-                Refresh();
+                RefreshClashDetection();
 
-                System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] Refresh() method completed successfully");
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] Refresh() method completed successfully\n");
+                System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] RefreshClashDetection() method completed successfully");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] RefreshClashDetection() method completed successfully\n");
             }
             catch (Exception ex)
             {
@@ -4462,7 +4457,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         /// <summary>
         /// Core refresh method that implements the refresh process flowchart
         /// </summary>
-        private void Refresh()
+        private void RefreshClashDetection()
         {
             // Create timestamped refresh log file for debugging
             string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
@@ -5879,7 +5874,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Added {mepParams.Count} MEP parameters to tab {tabName}\n");
                         }
                         if (_allCollectedParameters.TryGetValue("Opening Families", out var openingParams))
-                        {
+                            {
                             matchingParameters.AddRange(openingParams);
                             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Added {openingParams.Count} opening parameters to tab {tabName}\n");
                         }

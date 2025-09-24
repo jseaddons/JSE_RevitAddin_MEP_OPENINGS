@@ -372,8 +372,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 double widthWithClearance = width + 2 * otherClearance;
                 double heightWithClearance = height + topClearance + otherClearance; // Top + bottom clearance
                 // Set parameters with validation before any rotation
-                SetParameterSafelyWithLog(instance, "Width", widthWithClearance, cableTrayId);
-                SetParameterSafelyWithLog(instance, "Height", heightWithClearance, cableTrayId);
+                var (roundedWidth, roundedHeight) = OpeningSettingsHelper.RoundDimensionsToNearest5mm(widthWithClearance, heightWithClearance);
+                SetParameterSafelyWithLog(instance, "Width", roundedWidth, cableTrayId);
+                SetParameterSafelyWithLog(instance, "Height", roundedHeight, cableTrayId);
                 SetParameterSafelyWithLog(instance, "Depth", sleeveDepth, cableTrayId);
 
                 try

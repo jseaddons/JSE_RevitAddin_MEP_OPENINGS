@@ -341,8 +341,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Log($"[DuctSleevePlacer] About to set Width: {width} (internal), {widthMM}mm; Height: {height} (internal), {heightMM}mm for duct {ductElementId}");
 
                 // Set parameters with validation before any rotation
-                SetParameterSafely(instance, "Width", width, ductElementId);
-                SetParameterSafely(instance, "Height", height, ductElementId);
+                var (roundedWidth, roundedHeight) = OpeningSettingsHelper.RoundDimensionsToNearest5mm(width, height);
+                SetParameterSafely(instance, "Width", roundedWidth, ductElementId);
+                SetParameterSafely(instance, "Height", roundedHeight, ductElementId);
                 SetParameterSafely(instance, "Depth", sleeveDepth, ductElementId); // from type param
                 
                 // Single regenerate after all parameters are set

@@ -347,28 +347,68 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             try
             {
+                DebugLogger.Info($"[ORCHESTRATOR] Executing command: {command.GetType().Name}");
+                
                 // Execute command logic directly without ExternalCommandData
                 // Commands should have ExecuteImpl methods that take UIApplication
                 if (command is DuctSleeveCommand dsc)
                 {
                     var uiClearances = ClearanceManager.Instance.GetUIClearances();
-                    DebugLogger.Info($"Passing {uiClearances.Count} UI clearances to DuctSleeveCommand");
+                    DebugLogger.Info($"[ORCHESTRATOR] Passing {uiClearances.Count} UI clearances to DuctSleeveCommand");
                     
-                    // Call the command's core logic directly
                     var commandResult = dsc.ExecuteImpl(_uiDocument.Application);
                     result.Success = commandResult == Result.Succeeded;
                     result.Message = "DuctSleeveCommand executed";
                 }
+                else if (command is FireDamperPlaceCommand fdp)
+                {
+                    DebugLogger.Info($"[ORCHESTRATOR] FireDamperPlaceCommand - ExecuteImpl not implemented yet");
+                    result.Success = false;
+                    result.ErrorMessage = "FireDamperPlaceCommand ExecuteImpl not implemented";
+                }
+                else if (command is CableTraySleeveCommand cts)
+                {
+                    DebugLogger.Info($"[ORCHESTRATOR] CableTraySleeveCommand - ExecuteImpl not implemented yet");
+                    result.Success = false;
+                    result.ErrorMessage = "CableTraySleeveCommand ExecuteImpl not implemented";
+                }
+                else if (command is PipeSleeveCommand psc)
+                {
+                    DebugLogger.Info($"[ORCHESTRATOR] PipeSleeveCommand - ExecuteImpl not implemented yet");
+                    result.Success = false;
+                    result.ErrorMessage = "PipeSleeveCommand ExecuteImpl not implemented";
+                }
+                else if (command is RectangularSleeveClusterCommandV2 rsc)
+                {
+                    DebugLogger.Info($"[ORCHESTRATOR] RectangularSleeveClusterCommandV2 - ExecuteImpl not implemented yet");
+                    result.Success = false;
+                    result.ErrorMessage = "RectangularSleeveClusterCommandV2 ExecuteImpl not implemented";
+                }
+                else if (command is PipeOpeningsRectCommand por)
+                {
+                    DebugLogger.Info($"[ORCHESTRATOR] PipeOpeningsRectCommand - ExecuteImpl not implemented yet");
+                    result.Success = false;
+                    result.ErrorMessage = "PipeOpeningsRectCommand ExecuteImpl not implemented";
+                }
+                else if (command is MarkParameterAddValue mpav)
+                {
+                    DebugLogger.Info($"[ORCHESTRATOR] MarkParameterAddValue - ExecuteImpl not implemented yet");
+                    result.Success = false;
+                    result.ErrorMessage = "MarkParameterAddValue ExecuteImpl not implemented";
+                }
                 else
                 {
                     // For other commands, we need to implement ExecuteImpl pattern
-                    DebugLogger.Warning($"Command {command.GetType().Name} does not support direct execution - skipping");
+                    DebugLogger.Warning($"[ORCHESTRATOR] Command {command.GetType().Name} does not support direct execution - skipping");
                     result.Success = false;
                     result.ErrorMessage = "Command does not support direct execution";
                 }
+                
+                DebugLogger.Info($"[ORCHESTRATOR] Command {command.GetType().Name} execution result: {(result.Success ? "SUCCESS" : "FAILED")}");
             }
             catch (Exception ex)
             {
+                DebugLogger.Error($"[ORCHESTRATOR] Command execution failed: {ex.Message}");
                 result.Success = false;
                 result.ErrorMessage = ex.Message;
             }
@@ -428,41 +468,74 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
-        /// Get command sequence for a filter
+        /// Get command sequence for a filter - processes one category at a time
         /// </summary>
         private List<IExternalCommand> GetCommandSequence(OpeningFilter filter)
         {
             var sequence = new List<IExternalCommand>();
             
+            DebugLogger.Info($"[ORCHESTRATOR] Getting command sequence for category: {filter.Category}, opening type: {filter.OpeningType}");
+            
             switch (filter.Category)
             {
                 case Models.MepCategory.Ducts:
+                    // Step 1: Place individual duct sleeves
                     sequence.Add(new DuctSleeveCommand());
-                    if (filter.OpeningType == OpeningType.RectangularClusters)
-                        sequence.Add(new RectangularSleeveClusterCommandV2());
+                    DebugLogger.Info($"[ORCHESTRATOR] Added DuctSleeveCommand for {filter.Category}");
+                    
+                    // Step 2: ALWAYS cluster sleeves for ALL categories
+                    sequence.Add(new RectangularSleeveClusterCommandV2());
+                    DebugLogger.Info($"[ORCHESTRATOR] Added RectangularSleeveClusterCommandV2 for {filter.Category}");
+                    
+                    // Step 3: Mark parameters with prefix
+                    sequence.Add(new MarkParameterAddValue());
+                    DebugLogger.Info($"[ORCHESTRATOR] Added MarkParameterAddValue for {filter.Category}");
                     break;
                     
                 case Models.MepCategory.DuctAccessories:
+                    // Step 1: Place individual damper sleeves
                     sequence.Add(new FireDamperPlaceCommand());
-                    if (filter.OpeningType == OpeningType.RectangularClusters)
-                        sequence.Add(new RectangularSleeveClusterCommandV2());
+                    DebugLogger.Info($"[ORCHESTRATOR] Added FireDamperPlaceCommand for {filter.Category}");
+                    
+                    // Step 2: ALWAYS cluster sleeves for ALL categories
+                    sequence.Add(new RectangularSleeveClusterCommandV2());
+                    DebugLogger.Info($"[ORCHESTRATOR] Added RectangularSleeveClusterCommandV2 for {filter.Category}");
+                    
+                    // Step 3: Mark parameters with prefix
+                    sequence.Add(new MarkParameterAddValue());
+                    DebugLogger.Info($"[ORCHESTRATOR] Added MarkParameterAddValue for {filter.Category}");
                     break;
                     
                 case Models.MepCategory.CableTrays:
+                    // Step 1: Place individual cable tray sleeves
                     sequence.Add(new CableTraySleeveCommand());
-                    if (filter.OpeningType == OpeningType.RectangularClusters)
-                        sequence.Add(new RectangularSleeveClusterCommandV2());
+                    DebugLogger.Info($"[ORCHESTRATOR] Added CableTraySleeveCommand for {filter.Category}");
+                    
+                    // Step 2: ALWAYS cluster sleeves for ALL categories
+                    sequence.Add(new RectangularSleeveClusterCommandV2());
+                    DebugLogger.Info($"[ORCHESTRATOR] Added RectangularSleeveClusterCommandV2 for {filter.Category}");
+                    
+                    // Step 3: Mark parameters with prefix
+                    sequence.Add(new MarkParameterAddValue());
+                    DebugLogger.Info($"[ORCHESTRATOR] Added MarkParameterAddValue for {filter.Category}");
                     break;
                     
                 case Models.MepCategory.Pipes:
+                    // Step 1: Place individual pipe sleeves
                     sequence.Add(new PipeSleeveCommand());
-                    if (filter.OpeningType == OpeningType.CircularSleeves)
-                        sequence.Add(new PipeOpeningsRectCommand());
-                    else if (filter.OpeningType == OpeningType.RectangularClusters)
-                        sequence.Add(new RectangularSleeveClusterCommandV2());
+                    DebugLogger.Info($"[ORCHESTRATOR] Added PipeSleeveCommand for {filter.Category}");
+                    
+                    // Step 2: ALWAYS cluster sleeves for pipes using PipeOpeningsRectCommand
+                    sequence.Add(new PipeOpeningsRectCommand());
+                    DebugLogger.Info($"[ORCHESTRATOR] Added PipeOpeningsRectCommand for {filter.Category}");
+                    
+                    // Step 3: Mark parameters with prefix
+                    sequence.Add(new MarkParameterAddValue());
+                    DebugLogger.Info($"[ORCHESTRATOR] Added MarkParameterAddValue for {filter.Category}");
                     break;
             }
             
+            DebugLogger.Info($"[ORCHESTRATOR] Command sequence for {filter.Category}: {sequence.Count} commands");
             return sequence;
         }
         

@@ -25,6 +25,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 return Result.Cancelled;
             }
 
+            return ExecuteWithPrefix(doc, uiDoc, prefix);
+        }
+
+        /// <summary>
+        /// Executes the mark parameter assignment with a provided prefix
+        /// </summary>
+        public Result ExecuteWithPrefix(Document doc, UIDocument uiDoc, string prefix)
+        {
+            // Initialize a custom log file for this execution
+            DebugLogger.InitCustomLogFile("MarkParameterAddValue_Debug");
+
+            if (string.IsNullOrEmpty(prefix))
+            {
+                return Result.Cancelled;
+            }
+
             using (Transaction t = new Transaction(doc, "Add Mark Parameter Values"))
             {
                 t.Start();
@@ -37,7 +53,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     .Where(fi => fi.Symbol.Family.Name.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0)
                     .ToList();
 
-                int pipeIndex = 1, ductIndex = 1, damperIndex = 1, cableTrayIndex = 1, clusterIndex = 1;
+                int pipeIndex = 1, ductIndex = 1, damperIndex = 1, cableTrayIndex = 1, clusterPipeIndex = 1, clusterDuctIndex = 1, clusterCableTrayIndex = 1;
                 foreach (var fi in allOpenings)
                 {
                     var markParam = fi.LookupParameter("Mark");
@@ -66,36 +82,66 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 
                     if (familyName.Contains("Pipe", StringComparison.OrdinalIgnoreCase))
                     {
-                        markParam.Set($"{prefix}PO-{pipeIndex:000}");
-                        DebugLogger.Info($"Assigned Mark: {prefix}PO-{pipeIndex:000}");
+                        markParam.Set($"{prefix}P{pipeIndex:000}");
+                        DebugLogger.Info($"Assigned Mark: {prefix}P{pipeIndex:000}");
                         pipeIndex++;
                     }
                     else if (familyName.Contains("Duct", StringComparison.OrdinalIgnoreCase))
                     {
-                        markParam.Set($"{prefix}DO-{ductIndex:000}");
-                        DebugLogger.Info($"Assigned Mark: {prefix}DO-{ductIndex:000}");
+                        markParam.Set($"{prefix}D{ductIndex:000}");
+                        DebugLogger.Info($"Assigned Mark: {prefix}D{ductIndex:000}");
                         ductIndex++;
                     }
                     else if (familyName.Contains("Damper", StringComparison.OrdinalIgnoreCase))
                     {
-                        markParam.Set($"{prefix}DA-{damperIndex:000}");
-                        DebugLogger.Info($"Assigned Mark: {prefix}DA-{damperIndex:000}");
+                        markParam.Set($"{prefix}D{damperIndex:000}");
+                        DebugLogger.Info($"Assigned Mark: {prefix}D{damperIndex:000}");
                         damperIndex++;
                     }
                     else if (familyName.Contains("CableTray", StringComparison.OrdinalIgnoreCase))
                     {
-                        markParam.Set($"{prefix}CT-{cableTrayIndex:000}");
-                        DebugLogger.Info($"Assigned Mark: {prefix}CT-{cableTrayIndex:000}");
+                        markParam.Set($"{prefix}C{cableTrayIndex:000}");
+                        DebugLogger.Info($"Assigned Mark: {prefix}C{cableTrayIndex:000}");
                         cableTrayIndex++;
                     }
-                    // Cluster opening sleeve families: start mark values with CO-
+                    // Cluster opening sleeve families: category-specific prefix
                     else if (familyName.StartsWith("Cluster", StringComparison.OrdinalIgnoreCase) ||
                              familyName.IndexOf("Cluster", StringComparison.OrdinalIgnoreCase) >= 0 ||
                              typeName.EndsWith("Rect", StringComparison.OrdinalIgnoreCase))
                     {
-                        markParam.Set($"{prefix}CO-{clusterIndex:000}");
-                        DebugLogger.Info($"Assigned Mark: {prefix}CO-{clusterIndex:000}");
-                        clusterIndex++;
+                        // Determine cluster category based on context or family name
+                        if (familyName.Contains("Pipe", StringComparison.OrdinalIgnoreCase) || 
+                            typeName.Contains("Pipe", StringComparison.OrdinalIgnoreCase))
+                        {
+                            markParam.Set($"{prefix}CP{clusterPipeIndex:000}");
+                            DebugLogger.Info($"Assigned Mark: {prefix}CP{clusterPipeIndex:000}");
+                            clusterPipeIndex++;
+                        }
+                        else if (familyName.Contains("Duct", StringComparison.OrdinalIgnoreCase) || 
+                                 familyName.Contains("Damper", StringComparison.OrdinalIgnoreCase) ||
+                                 typeName.Contains("Duct", StringComparison.OrdinalIgnoreCase) ||
+                                 typeName.Contains("Damper", StringComparison.OrdinalIgnoreCase))
+                        {
+                            markParam.Set($"{prefix}CD{clusterDuctIndex:000}");
+                            DebugLogger.Info($"Assigned Mark: {prefix}CD{clusterDuctIndex:000}");
+                            clusterDuctIndex++;
+                        }
+                        else if (familyName.Contains("CableTray", StringComparison.OrdinalIgnoreCase) || 
+                                 familyName.Contains("Cable", StringComparison.OrdinalIgnoreCase) ||
+                                 typeName.Contains("CableTray", StringComparison.OrdinalIgnoreCase) ||
+                                 typeName.Contains("Cable", StringComparison.OrdinalIgnoreCase))
+                        {
+                            markParam.Set($"{prefix}CC{clusterCableTrayIndex:000}");
+                            DebugLogger.Info($"Assigned Mark: {prefix}CC{clusterCableTrayIndex:000}");
+                            clusterCableTrayIndex++;
+                        }
+                        else
+                        {
+                            // Default cluster marking if category cannot be determined
+                            markParam.Set($"{prefix}CD{clusterDuctIndex:000}");
+                            DebugLogger.Info($"Assigned Mark (default cluster): {prefix}CD{clusterDuctIndex:000}");
+                            clusterDuctIndex++;
+                        }
                     }
                     else
                     {
