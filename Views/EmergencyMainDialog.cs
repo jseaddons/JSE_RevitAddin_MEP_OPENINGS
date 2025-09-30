@@ -30,6 +30,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         // Flag to prevent infinite loops during ComboBox population
         private bool _isUpdatingComboBoxes = false;
         
+        // Store filters from last refresh to reuse during opening creation
+        private List<OpeningFilter>? _lastRefreshFilters = null;
+        
         
         // Main panels - 4-section layout
         private WinForms.Panel _leftPanel = null!;
@@ -2751,7 +2754,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         {
             try
             {
-                var selectedFilters = GetSelectedFilters();
+                // CRITICAL FIX: Reuse filters from refresh instead of creating new ones
+                var selectedFilters = _lastRefreshFilters ?? GetSelectedFilters();
                 
                 // Get UIDocument from current Revit context
                 DebugLogger.Info("ExecuteSelectedFiltersWithProgress: Starting UIDocument retrieval");
@@ -2789,8 +2793,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 if (filterWithClashZones?.ClashZoneStorage != null)
                 {
                     var clashZoneService = new ClashZoneService(filterWithClashZones.ClashZoneStorage, (msg) => DebugLogger.Info(msg));
+                    
+                    // OPTIMIZATION: No cleanup needed here - clash zones were already cleaned during refresh
+                    // The cleanup during refresh ensures only valid clash zones are saved
+                    
+                    // CRITICAL FIX: Filter clash zones by current selection before processing
+                    var currentSelection = CollectCurrentUIState();
+                    var selectedReferenceFiles = currentSelection.SelectedReferenceFiles ?? new List<string>();
+                    var currentClearanceSettings = currentSelection.OpeningSettings?.ClearanceSettings ?? new Dictionary<string, double>();
+                    var currentPrefix = currentSelection.OpeningSettings?.SleeveParameterPrefix ?? "";
+                    
+                    DebugLogger.Info($"[FILTER_FIX] Filtering clash zones by current selection before processing");
+                    DebugLogger.Info($"[FILTER_FIX] Selected reference files: {string.Join(", ", selectedReferenceFiles)}");
+                    DebugLogger.Info($"[FILTER_FIX] Current clearance settings: {string.Join(", ", currentClearanceSettings.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
+                    DebugLogger.Info($"[FILTER_FIX] Current prefix: {currentPrefix}");
+                    
+                    var filteredClashZones = clashZoneService.FilterClashZonesByCurrentSelection(
+                        selectedReferenceFiles, currentClearanceSettings, currentPrefix, _document);
+                    
+                    DebugLogger.Info($"[FILTER_FIX] After filtering: {filteredClashZones.Count} clash zones match current selection");
+                    
+                    // CRITICAL FIX: Update filter's ClashZoneStorage with filtered clash zones only
+                    if (filterWithClashZones.ClashZoneStorage != null)
+                    {
+                        filterWithClashZones.ClashZoneStorage.ClashZones.Clear();
+                        filterWithClashZones.ClashZoneStorage.ClashZones.AddRange(filteredClashZones);
+                        DebugLogger.Info($"[FILTER_FIX] Updated filter's ClashZoneStorage with {filteredClashZones.Count} filtered clash zones");
+                    }
+                    
                     orchestrator.SetClashZoneService(clashZoneService);
-                    DebugLogger.Info($"ExecuteSelectedFiltersWithProgress: Using clash zones from FILTER ({filterWithClashZones.ClashZoneStorage.ClashZones.Count} zones) for incremental placement");
+                    DebugLogger.Info($"ExecuteSelectedFiltersWithProgress: Using FILTERED clash zones from FILTER ({filteredClashZones.Count} zones matching current selection) for incremental placement");
                 }
                 else
                 {
@@ -2979,6 +3011,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 {
                     DebugLogger.Info("No clearance settings found in profile - using defaults");
                 }
+                
+                // TODO: Implement restoration methods for MEP categories, reference files, and host files
+                DebugLogger.Info($"Profile configuration loaded: {config.SelectedMepCategories?.Count ?? 0} MEP categories, {config.SelectedReferenceFiles?.Count ?? 0} reference files, {config.SelectedHostFiles?.Count ?? 0} host files");
                 
                 DebugLogger.Info($"=== LoadConfigurationFromProfile COMPLETED for {profile.Name} ===");
             }
@@ -3849,6 +3884,58 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
         }
         
+        /// <summary>
+        /// Restores MEP categories from a filter to the UI controls
+        /// </summary>
+        private void RestoreMepCategoriesFromFilter(List<string> selectedCategories)
+        {
+            if (selectedCategories == null || selectedCategories.Count == 0) return;
+            
+            try
+            {
+                DebugLogger.Info($"[FILTER_UI] Restoring MEP categories to UI: {string.Join(", ", selectedCategories)}");
+                
+                if (_topRightPanel?.Controls.Count > 0)
+                {
+                    foreach (var control in _topRightPanel.Controls)
+                    {
+                        if (control is WinForms.CheckedListBox listBox)
+                        {
+                            listBox.BeginUpdate();
+                            
+                            // First, uncheck all items
+                            for (int i = 0; i < listBox.Items.Count; i++)
+                            {
+                                listBox.SetItemChecked(i, false);
+                            }
+                            
+                            // Then, check the selected categories
+                            foreach (var category in selectedCategories)
+                            {
+                                for (int i = 0; i < listBox.Items.Count; i++)
+                                {
+                                    if (listBox.Items[i]?.ToString() == category)
+                                    {
+                                        listBox.SetItemChecked(i, true);
+                                        DebugLogger.Info($"[FILTER_UI] Checked MEP category: {category}");
+                                        break;
+                                    }
+                                }
+                            }
+                            
+                            listBox.EndUpdate();
+                        }
+                    }
+                }
+                
+                DebugLogger.Info($"[FILTER_UI] MEP categories restoration completed");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[FILTER_UI] Failed to restore MEP categories: {ex.Message}");
+            }
+        }
+        
         private void RestoreCheckedItem(WinForms.Panel panel, string value)
         {
             if (panel?.Controls.Count > 0)
@@ -4294,51 +4381,54 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             
             try
             {
-                // Read actual UI selections instead of hardcoded defaults
+                // Get the actual selected filter names from the UI
+                var selectedFilterNames = GetSelectedFilterItems();
+                DebugLogger.Info($"GetSelectedFilters: UI selected filter names: {string.Join(", ", selectedFilterNames)}");
+                
+                // Get selected MEP categories from the UI
                 var selectedMepCategories = GetSelectedMepCategories();
                 DebugLogger.Info($"GetSelectedFilters: UI selected MEP categories: {string.Join(", ", selectedMepCategories)}");
                 
-                // Create filters only for selected categories
+                // Create filters using the actual user-selected filter names
+                foreach (var filterName in selectedFilterNames)
+                {
                 foreach (var categoryName in selectedMepCategories)
                 {
                     Models.MepCategory category;
-                    string disciplineName;
                     
-                    // Map UI category names to enum and discipline names
+                        // Map UI category names to enum
                     switch (categoryName.ToLower())
                     {
                         case "ducts":
                             category = Models.MepCategory.Ducts;
-                            disciplineName = "Fire Fighting";
                             break;
                         case "ductaccessories":
                         case "duct accessories":
                             category = Models.MepCategory.DuctAccessories;
-                            disciplineName = "Fire Fighting";
                             break;
                         case "pipes":
                             category = Models.MepCategory.Pipes;
-                            disciplineName = "Water Systems";
                             break;
                         case "cabletrays":
                         case "cable trays":
                             category = Models.MepCategory.CableTrays;
-                            disciplineName = "Data Devices";
                             break;
                         default:
                             DebugLogger.Warning($"GetSelectedFilters: Unknown category '{categoryName}' - skipping");
                             continue;
                     }
                     
-                    var filter = OpeningFilter.CreateDefault(category, disciplineName);
+                        // Use the actual user-selected filter name as the discipline name
+                        var filter = OpeningFilter.CreateDefault(category, filterName);
                     selectedFilters.Add(filter);
-                    DebugLogger.Info($"GetSelectedFilters: Created filter for {categoryName} -> {disciplineName}");
+                        DebugLogger.Info($"GetSelectedFilters: Created filter for {categoryName} -> {filterName}");
+                    }
                 }
 
                 DebugLogger.Info($"GetSelectedFilters: Returning {selectedFilters.Count} filters based on UI selections");
                 foreach (var filter in selectedFilters)
                 {
-                    DebugLogger.Info($"  - {filter.GetDescription()} (Category: {filter.Category})");
+                    DebugLogger.Info($"  - {filter.GetDescription()} (Category: {filter.Category}, Name: {filter.Name})");
                 }
             }
             catch (Exception ex)
@@ -4371,6 +4461,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     if (parameterTransferDialog.ShowDialog() == WinForms.DialogResult.OK)
                     {
                         var configuration = parameterTransferDialog.GetConfiguration();
+                        
+                        // ENHANCEMENT: Save the parameter transfer configuration for future use
+                        try
+                        {
+                            var parameterTransferService = new ParameterTransferService();
+                            if (parameterTransferService.SaveCurrentParameterTransferConfiguration(configuration))
+                            {
+                                DebugLogger.Info($"[PARAMETER_TRANSFER] Saved current parameter transfer configuration with {configuration.Mappings.Count} mappings");
+                            }
+                        }
+                        catch (Exception saveEx)
+                        {
+                            DebugLogger.Warning($"[PARAMETER_TRANSFER] Failed to save parameter transfer configuration: {saveEx.Message}");
+                        }
                         
                         // Get selected openings (you can implement this based on your selection logic)
                         var selectedOpeningIds = GetSelectedOpenings();
@@ -4526,6 +4630,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
 
             DebugLogger.Info($"Refresh: Processing {filtersToProcess.Count} selected filters");
+            
+            // CRITICAL FIX: Store filters for reuse during opening creation
+            _lastRefreshFilters = filtersToProcess;
 
             _statusLabel.Text = "Analyzing clash zones...";
             _progressBar.Value = 0;
@@ -4612,8 +4719,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 // Log detailed intersection info to debug file
                 foreach (var intersection in currentIntersections.Take(10))
                 {
+                    try
+                {
                     var structuralElement = intersection.Item1;
-                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Structural Element: {structuralElement.Name} (ID: {structuralElement.Id}) Category: {structuralElement.Category?.Name ?? "Unknown"}\n");
+                        var mepElement = intersection.Item2;
+                        var boundingBox = intersection.Item3;
+                        var intersectionPoint = intersection.Item4;
+                        
+                        var structuralName = structuralElement?.Name ?? "Unknown";
+                        var structuralId = structuralElement?.Id?.IntegerValue ?? -1;
+                        var structuralCategory = structuralElement?.Category?.Name ?? "Unknown";
+                        
+                        var mepName = mepElement?.Name ?? "Unknown";
+                        var mepId = mepElement?.Id?.IntegerValue ?? -1;
+                        var mepCategory = mepElement?.Category?.Name ?? "Unknown";
+                        
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] === INTERSECTION DETAILS ===\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] MEP Element: {mepName} (ID: {mepId}) Category: {mepCategory}\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Structural Element: {structuralName} (ID: {structuralId}) Category: {structuralCategory}\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Intersection Point: ({intersectionPoint?.X ?? 0}, {intersectionPoint?.Y ?? 0}, {intersectionPoint?.Z ?? 0})\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Intersection BBox: Min({boundingBox?.Min?.X ?? 0}, {boundingBox?.Min?.Y ?? 0}, {boundingBox?.Min?.Z ?? 0}) Max({boundingBox?.Max?.X ?? 0}, {boundingBox?.Max?.Y ?? 0}, {boundingBox?.Max?.Z ?? 0})\n");
+                        
+                        // Get MEP element bounding box
+                        if (mepElement != null)
+                        {
+                            var mepBBox = mepElement.get_BoundingBox(null);
+                            if (mepBBox != null)
+                            {
+                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] MEP BBox: Min({mepBBox.Min.X:F3}, {mepBBox.Min.Y:F3}, {mepBBox.Min.Z:F3}) Max({mepBBox.Max.X:F3}, {mepBBox.Max.Y:F3}, {mepBBox.Max.Z:F3})\n");
+                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] MEP Size: X={mepBBox.Max.X - mepBBox.Min.X:F3}, Y={mepBBox.Max.Y - mepBBox.Min.Y:F3}, Z={mepBBox.Max.Z - mepBBox.Min.Z:F3}\n");
+                            }
+                        }
+                        
+                        // Get structural element bounding box
+                        if (structuralElement != null)
+                        {
+                            var structBBox = structuralElement.get_BoundingBox(null);
+                            if (structBBox != null)
+                            {
+                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Structural BBox: Min({structBBox.Min.X:F3}, {structBBox.Min.Y:F3}, {structBBox.Min.Z:F3}) Max({structBBox.Max.X:F3}, {structBBox.Max.Y:F3}, {structBBox.Max.Z:F3})\n");
+                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Structural Size: X={structBBox.Max.X - structBBox.Min.X:F3}, Y={structBBox.Max.Y - structBBox.Min.Y:F3}, Z={structBBox.Max.Z - structBBox.Min.Z:F3}\n");
+                            }
+                        }
+                        
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] === END INTERSECTION DETAILS ===\n");
+                    }
+                    catch (Exception ex)
+                    {
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] ERROR logging intersection details: {ex.Message}\n");
+                    }
                 }
             }
             catch (Exception ex)
@@ -4662,7 +4816,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] {msg}\n");
             });
 
-            // Step 6: Detect new clash zones
+            // Step 6: Clean up invalid clash zones first
+            _progressBar.Value = 45;
+            _statusLabel.Text = "Cleaning up invalid clash zones...";
+
+            DebugLogger.Info("[CLASH_DEBUG] Skipping cleanup - no cleanup needed");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Skipping cleanup - no cleanup needed\n");
+
+            // Step 7: Filter existing clash zones by current selection
+            _progressBar.Value = 50;
+            _statusLabel.Text = "Filtering clash zones by current selection...";
+
+            // Get current selection parameters
+            var currentSelection = CollectCurrentUIState();
+            var selectedReferenceFiles = currentSelection.SelectedReferenceFiles ?? new List<string>();
+            var currentClearanceSettings = currentSelection.OpeningSettings?.ClearanceSettings ?? new Dictionary<string, double>();
+            var currentPrefix = currentSelection.OpeningSettings?.SleeveParameterPrefix ?? "";
+
+            DebugLogger.Info("[CLASH_DEBUG] Filtering clash zones by current selection...");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Filtering clash zones by current selection - Reference files: {selectedReferenceFiles.Count}, Clearance settings: {currentClearanceSettings.Count}\n");
+
+            var filteredClashZones = clashZoneService.FilterClashZonesByCurrentSelection(
+                selectedReferenceFiles, currentClearanceSettings, currentPrefix, document);
+
+            // Step 7: Detect new clash zones
             _progressBar.Value = 60;
             _statusLabel.Text = "Detecting new clash zones...";
 
@@ -4673,6 +4850,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
             DebugLogger.Info($"[CLASH_DEBUG] DetectNewClashZones returned {newClashZones?.Count ?? 0} new zones");
             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] DetectNewClashZones completed - {newClashZones?.Count ?? 0} new clash zones detected\n");
+
+            // DETAILED LOGGING: Log each new clash zone created
+            if (newClashZones != null && newClashZones.Count > 0)
+            {
+                DebugLogger.Info($"[CLASH_DEBUG] DETAILED NEW CLASH ZONES:");
+                for (int i = 0; i < newClashZones.Count; i++)
+                {
+                    var cz = newClashZones[i];
+                    DebugLogger.Info($"[CLASH_DEBUG]   Clash Zone {i + 1}:");
+                    DebugLogger.Info($"[CLASH_DEBUG]     ID: {cz.Id}");
+                    DebugLogger.Info($"[CLASH_DEBUG]     MEP Element ID: {cz.MepElementId?.IntegerValue ?? -1}");
+                    DebugLogger.Info($"[CLASH_DEBUG]     Structural Element ID: {cz.StructuralElementId?.IntegerValue ?? -1}");
+                    DebugLogger.Info($"[CLASH_DEBUG]     Intersection Point: ({cz.IntersectionPoint?.X ?? 0}, {cz.IntersectionPoint?.Y ?? 0}, {cz.IntersectionPoint?.Z ?? 0})");
+                    DebugLogger.Info($"[CLASH_DEBUG]     Required Clearance: {cz.RequiredClearance}");
+                    DebugLogger.Info($"[CLASH_DEBUG]     IsResolved: {cz.IsResolved}");
+                }
+            }
+            else
+            {
+                DebugLogger.Warning($"[CLASH_DEBUG] NO NEW CLASH ZONES CREATED! This is the problem!");
+            }
 
             // Step 7: Get statistics
             _progressBar.Value = 80;
@@ -4690,10 +4888,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // Save clash zones to the current filter
             if (filtersToProcess.Count > 0)
             {
-                // Use the first enabled filter to store clash zones
-                var targetFilter = filtersToProcess.FirstOrDefault(f => f.IsEnabled);
+                // Select the currently active filter (match UI-selected filter name) as primary target
+                var targetFilter = filtersToProcess
+                    .FirstOrDefault(f => string.Equals(f.Name, _lastLoadedFilterName, StringComparison.OrdinalIgnoreCase))
+                    ?? filtersToProcess.FirstOrDefault(f => f.IsEnabled)
+                    ?? filtersToProcess.FirstOrDefault();
                 if (targetFilter != null)
                 {
+                    DebugLogger.Info($"[CLASH_DEBUG] Target filter selected for save: '{targetFilter.Name}' (LastLoaded='{_lastLoadedFilterName}')");
+                    // CRITICAL FIX: Apply current UI state to the filter before saving
+                    var currentUIState = CollectCurrentUIState();
+                    
+                    // Update filter with current UI selections
+                    targetFilter.SelectedMepCategoryNames = currentUIState.SelectedMepCategories ?? new List<string>();
+                    targetFilter.SelectedReferenceFiles = currentUIState.SelectedReferenceFiles ?? new List<string>();
+                    targetFilter.SelectedHostFiles = currentUIState.SelectedHostFiles ?? new List<string>();
+                    
+                    // Update opening settings
+                    if (currentUIState.OpeningSettings != null)
+                    {
+                        targetFilter.OpeningSettings = currentUIState.OpeningSettings;
+                    }
+                    
+                    DebugLogger.Info($"[CLASH_DEBUG] Applied current UI state to filter '{targetFilter.Name}':");
+                    DebugLogger.Info($"[CLASH_DEBUG]   MEP Categories: {targetFilter.SelectedMepCategoryNames?.Count ?? 0}");
+                    DebugLogger.Info($"[CLASH_DEBUG]   Reference Files: {targetFilter.SelectedReferenceFiles?.Count ?? 0}");
+                    DebugLogger.Info($"[CLASH_DEBUG]   Host Files: {targetFilter.SelectedHostFiles?.Count ?? 0}");
+                    
                     // CRITICAL FIX: Save clash zones to BOTH filter AND profile configuration
                     targetFilter.ClashZoneStorage = clashZoneStorage;
                     targetFilter.LastModified = DateTime.Now;
@@ -4729,10 +4950,83 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         {
                             DebugLogger.Warning($"[CLASH_DEBUG] Warning: Failed to persist profile after Refresh: {saveEx.Message}");
                         }
+                        
+                // CRITICAL FIX: Set parameter transfer configuration from current settings
+                try
+                {
+                    var parameterTransferService = new ParameterTransferService();
+                    var currentConfig = parameterTransferService.GetCurrentParameterTransferConfiguration();
+                    
+                    if (currentConfig != null)
+                    {
+                        targetFilter.ParameterTransferConfig = currentConfig;
+                        DebugLogger.Info($"[CLASH_DEBUG] Retrieved current parameter transfer configuration for filter '{targetFilter.Name}' with {currentConfig.Mappings.Count} mappings");
+                    }
+                    else
+                    {
+                        // Create default configuration if no current configuration exists
+                        targetFilter.ParameterTransferConfig = new ParameterTransferConfiguration();
+                        DebugLogger.Info($"[CLASH_DEBUG] Created default parameter transfer configuration for filter '{targetFilter.Name}'");
+                    }
+                }
+                catch (Exception configEx)
+                {
+                    DebugLogger.Warning($"[CLASH_DEBUG] Failed to retrieve parameter transfer configuration: {configEx.Message} - using default");
+                    targetFilter.ParameterTransferConfig = new ParameterTransferConfiguration();
+                }
+                
+                // CRITICAL FIX: Save filter to XML file to persist clash zones
+                try
+                {
+                    var filterDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                    if (!Directory.Exists(filterDir))
+                    {
+                        Directory.CreateDirectory(filterDir);
+                    }
+                    
+                    var filePath = Path.Combine(filterDir, $"{targetFilter.Name}.xml");
+                    
+                    // DETAILED LOGGING: Log what clash zone data is being saved
+                    DebugLogger.Info($"[CLASH_DEBUG] ABOUT TO SAVE FILTER TO XML:");
+                    DebugLogger.Info($"[CLASH_DEBUG]   Filter Name: {targetFilter.Name}");
+                    DebugLogger.Info($"[CLASH_DEBUG]   ClashZoneStorage: {(targetFilter.ClashZoneStorage != null ? "EXISTS" : "NULL")}");
+                    if (targetFilter.ClashZoneStorage != null)
+                    {
+                        DebugLogger.Info($"[CLASH_DEBUG]   ClashZones Count: {targetFilter.ClashZoneStorage.ClashZones?.Count ?? 0}");
+                        if (targetFilter.ClashZoneStorage.ClashZones != null && targetFilter.ClashZoneStorage.ClashZones.Count > 0)
+                        {
+                            for (int i = 0; i < targetFilter.ClashZoneStorage.ClashZones.Count; i++)
+                            {
+                                var cz = targetFilter.ClashZoneStorage.ClashZones[i];
+                                DebugLogger.Info($"[CLASH_DEBUG]   Clash Zone {i + 1} TO BE SAVED:");
+                                DebugLogger.Info($"[CLASH_DEBUG]     ID: {cz.Id}");
+                                DebugLogger.Info($"[CLASH_DEBUG]     MEP Element ID: {cz.MepElementId?.IntegerValue ?? -1}");
+                                DebugLogger.Info($"[CLASH_DEBUG]     Structural Element ID: {cz.StructuralElementId?.IntegerValue ?? -1}");
+                                DebugLogger.Info($"[CLASH_DEBUG]     Intersection Point: ({cz.IntersectionPoint?.X ?? 0}, {cz.IntersectionPoint?.Y ?? 0}, {cz.IntersectionPoint?.Z ?? 0})");
+                                DebugLogger.Info($"[CLASH_DEBUG]     Required Clearance: {cz.RequiredClearance}");
+                                DebugLogger.Info($"[CLASH_DEBUG]     IsResolved: {cz.IsResolved}");
+                            }
+                        }
+                    }
+                    
+                    _filterManagementService.SaveFilterToXmlFile(targetFilter, filePath);
+                    
+                    DebugLogger.Info($"[CLASH_DEBUG] Persisted filter '{targetFilter.Name}' to XML file: {filePath}");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Persisted filter '{targetFilter.Name}' to XML file\n");
+                }
+                catch (Exception xmlSaveEx)
+                {
+                    DebugLogger.Error($"[CLASH_DEBUG] Failed to save filter to XML: {xmlSaveEx.Message}");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] ERROR saving filter to XML: {xmlSaveEx.Message}\n");
+                        }
                     }
                     
                     DebugLogger.Info($"[CLASH_DEBUG] Saved clash zones to filter '{targetFilter.Name}'");
                     JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] SUCCESS: Saved {total} clash zones to filter '{targetFilter.Name}' and profile configuration\n");
+                    
+                    // CRITICAL FIX: Store filters for reuse during opening creation
+                    _lastRefreshFilters = filtersToProcess;
+                    DebugLogger.Info($"[CLASH_DEBUG] Stored {filtersToProcess.Count} filters for reuse during opening creation");
                 }
                 else
                 {
@@ -5514,17 +5808,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
                 // Get MEP elements (pipes, ducts, cable trays) from host and linked files
                 var mepElements = MepElementCollectorHelper.CollectMepElementsVisibleOnly(document);
+                
+                // CRITICAL FIX: Also collect damper family instances that might not be properly categorized
+                var damperElements = MepIntersectionService.CollectDamperElementsForIntersection(document, (msg) => DebugLogger.Info(msg));
+                mepElements.AddRange(damperElements);
+                DebugLogger.Info($"GetCurrentIntersections: Added {damperElements.Count} damper elements to MEP collection");
+                
+                // SIMPLE OPTIMIZATION: Filter by selected categories only
+                var selectedCategories = GetSelectedMepCategories();
+                if (selectedCategories.Count > 0)
+                {
+                    mepElements = mepElements.Where(me => 
+                    {
+                        var categoryName = me.element.Category?.Name?.ToLower();
+                        var familyName = (me.element as FamilyInstance)?.Symbol?.Family?.Name?.ToLower();
+                        
+                        // Include dampers if "duct accessories" or "dampers" is selected
+                        bool isDamper = familyName?.Contains("damper") == true;
+                        bool includeDampers = selectedCategories.Any(selected => 
+                            selected.ToLower().Contains("duct") || 
+                            selected.ToLower().Contains("damper") ||
+                            selected.ToLower().Contains("accessory"));
+                        
+                        if (isDamper && includeDampers)
+                            return true;
+                            
+                        return selectedCategories.Any(selected => categoryName?.Contains(selected.ToLower()) == true);
+                    }).ToList();
+                    DebugLogger.Info($"GetCurrentIntersections: Filtered to {mepElements.Count} MEP elements for selected categories: {string.Join(", ", selectedCategories)}");
+                }
 
                 // Count by category for logging
-                int pipes = 0, ducts = 0, cableTrays = 0;
+                int pipes = 0, ducts = 0, cableTrays = 0, dampers = 0;
                 foreach (var (element, transform) in mepElements)
                 {
                     if (element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_PipeCurves) pipes++;
                     else if (element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctCurves) ducts++;
                     else if (element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_CableTray) cableTrays++;
+                    else if ((element as FamilyInstance)?.Symbol?.Family?.Name?.Contains("Damper") == true) dampers++;
                 }
 
-                DebugLogger.Info($"GetCurrentIntersections: Found {mepElements.Count} MEP elements ({pipes} pipes, {ducts} ducts, {cableTrays} cable trays)");
+                DebugLogger.Info($"GetCurrentIntersections: Found {mepElements.Count} MEP elements ({pipes} pipes, {ducts} ducts, {cableTrays} cable trays, {dampers} dampers)");
 
                 // Find intersections
                 var allIntersections = new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
@@ -5568,6 +5892,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     else
                     {
                         DebugLogger.Info($"GetCurrentIntersections: No intersections found for MEP element {mepElementToUse.Id} with transformation");
+                    }
+
+                    // TEST: Try ReferenceIntersector approach
+                    DebugLogger.Info($"GetCurrentIntersections: Testing ReferenceIntersector approach for MEP element {mepElementToUse.Id}");
+                    var refIntersections = ReferenceIntersectorService.FindIntersections(mepElementToUse, transformedStructuralElements, document, (msg) => DebugLogger.Info(msg));
+                    if (refIntersections != null && refIntersections.Count > 0)
+                    {
+                        DebugLogger.Info($"GetCurrentIntersections: ReferenceIntersector found {refIntersections.Count} intersections for MEP element {mepElementToUse.Id}");
+                        // Log detailed comparison
+                        for (int i = 0; i < Math.Min(intersections?.Count ?? 0, refIntersections.Count); i++)
+                        {
+                            var origIntersection = intersections[i];
+                            var refIntersection = refIntersections[i];
+                            DebugLogger.Info($"GetCurrentIntersections: Comparison {i + 1}:");
+                            DebugLogger.Info($"  Original BBox: Min({origIntersection.Item3.Min.X:F3}, {origIntersection.Item3.Min.Y:F3}, {origIntersection.Item3.Min.Z:F3}) Max({origIntersection.Item3.Max.X:F3}, {origIntersection.Item3.Max.Y:F3}, {origIntersection.Item3.Max.Z:F3})");
+                            DebugLogger.Info($"  Reference BBox: Min({refIntersection.Item3.Min.X:F3}, {refIntersection.Item3.Min.Y:F3}, {refIntersection.Item3.Min.Z:F3}) Max({refIntersection.Item3.Max.X:F3}, {refIntersection.Item3.Max.Y:F3}, {refIntersection.Item3.Max.Z:F3})");
+                        }
+                    }
+                    else
+                    {
+                        DebugLogger.Info($"GetCurrentIntersections: ReferenceIntersector found no intersections for MEP element {mepElementToUse.Id}");
                     }
                 }
 
@@ -6897,3 +7242,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
     }
 }
+        {
+            if (filterListBox?.SelectedItem != null)
+            {
+                var selectedName = filterListBox.SelectedItem.ToString();
+                // This would need to be implemented to get the actual filter object
+                // For now, return a basic filter - you'll need to wire this properly
+                return new OpeningFilter
+                {
+                    Name = selectedName,
+                    Category = Models.MepCategory.Ducts,
+                    OpeningType = Models.OpeningType.RectangularSleeves,
+                    IsEnabled = true,
+                    LastModified = DateTime.Now
+                };
+            }
+            return null;
+        }
+
+    }
+}
+
