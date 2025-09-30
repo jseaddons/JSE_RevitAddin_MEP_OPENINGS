@@ -402,6 +402,334 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             DebugLogger.Info($"[DuctSleevePlacerService] PlaceAllDuctSleeves completed: Placed={PlacedCount}, Skipped={SkippedCount}, Errors={ErrorCount}");
         }
 
+        /// <summary>
+        /// OPTIMIZED: Place duct sleeves using pre-detected clash zones (avoids re-finding intersections)
+        /// </summary>
+        public void PlaceAllDuctSleevesWithClashZones(List<ClashZone> clashZones)
+        {
+            PlacedCount = 0;
+            SkippedCount = 0;
+            ErrorCount = 0;
+            
+            DebugLogger.Info($"[DuctSleevePlacerService] Starting PlaceAllDuctSleevesWithClashZones with {_ductTuples.Count} ducts and {clashZones.Count} clash zones");
+
+            var settings = ApplicationProfileService.Instance.GetCurrentSettings();
+
+            // Collect all sleeves and filter by section box
+            var allSleeves = new FilteredElementCollector(_doc)
+                .OfClass(typeof(FamilyInstance))
+                .Cast<FamilyInstance>()
+                .Where(fi => (fi.Symbol.Family.Name.Contains("OpeningOnWall") || fi.Symbol.Family.Name.Contains("OpeningOnSlab")))
+                .ToList();
+
+            BoundingBoxXYZ? sectionBox = null;
+            try
+            {
+                if (_doc.ActiveView is View3D vb)
+                    sectionBox = SectionBoxHelper.GetSectionBoxBounds(vb);
+            }
+            catch { /* ignore */ }
+
+            if (sectionBox != null)
+            {
+                allSleeves = allSleeves.Where(s =>
+                {
+                    var bb = s.get_BoundingBox(null);
+                    return bb != null && BoundingBoxesIntersect(bb, sectionBox);
+                }).ToList();
+            }
+
+            var sleeveGrid = new SleeveSpatialGrid(allSleeves);
+
+            // OPTIMIZATION: Group clash zones by MEP element for efficient processing
+            var clashZonesByMep = clashZones
+                .GroupBy(cz => cz.MepElementId)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            DebugLogger.Info($"[DuctSleevePlacerService] Grouped clash zones by {clashZonesByMep.Count} MEP elements");
+
+            foreach (var tuple in _ductTuples)
+            {
+                var duct = tuple.Item1;
+                var transform = tuple.Item2;
+                if (duct == null) { SkippedCount++; continue; }
+
+                // OPTIMIZATION: Get clash zones for this specific duct
+                if (!clashZonesByMep.TryGetValue(duct.Id, out var ductClashZones))
+                {
+                    DebugLogger.Info($"[DuctSleevePlacerService] No clash zones found for duct {duct.Id} - skipping");
+                    SkippedCount++;
+                    continue;
+                }
+
+                DebugLogger.Info($"[DuctSleevePlacerService] Processing duct {duct.Id} with {ductClashZones.Count} clash zones");
+
+                // OPTIMIZATION: Use clash zone intersection points directly
+                foreach (var clashZone in ductClashZones)
+                {
+                    try
+                    {
+                        // OPTIMIZATION: Check if clash zone is already resolved (individual sleeve placed)
+                        if (clashZone.IsResolved)
+                        {
+                            DebugLogger.Info($"[DuctSleevePlacerService] SKIP: Clash zone {clashZone.Id} already resolved - individual sleeve already placed");
+                            SkippedCount++;
+                            continue;
+                        }
+                        
+                        // OPTIMIZATION: Check if clash zone is cluster resolved
+                        if (clashZone.IsClusterResolved)
+                        {
+                            DebugLogger.Info($"[DuctSleevePlacerService] SKIP: Clash zone {clashZone.Id} cluster resolved - cluster sleeve already placed");
+                            SkippedCount++;
+                            continue;
+                        }
+
+                        DebugLogger.Info($"[DuctSleevePlacerService] Processing clash zone {clashZone.Id}: MEP={clashZone.MepElementId}, Structural={clashZone.StructuralElementId}");
+                        
+                        var structuralElement = _doc.GetElement(clashZone.StructuralElementId);
+                        if (structuralElement == null)
+                        {
+                            DebugLogger.Warning($"[DuctSleevePlacerService] Structural element {clashZone.StructuralElementId} not found for clash zone {clashZone.Id}");
+                            ErrorCount++;
+                            continue;
+                        }
+
+                        // Use the pre-calculated intersection point from clash zone
+                        var intersectionPoint = clashZone.IntersectionPoint;
+                        var clashBoundingBox = clashZone.ClashBoundingBox;
+
+                        DebugLogger.Info($"[DuctSleevePlacerService] Using clash zone intersection point: ({intersectionPoint.X:F2}, {intersectionPoint.Y:F2}, {intersectionPoint.Z:F2})");
+
+                        // OPTIMIZATION: Place sleeve directly using clash zone data (skip intersection detection)
+                        PlaceSleeveFromClashZone(duct, structuralElement, intersectionPoint, clashBoundingBox, transform, sleeveGrid, clashZone);
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLogger.Error($"[DuctSleevePlacerService] Error processing clash zone {clashZone.Id}: {ex.Message}");
+                        ErrorCount++;
+                    }
+                }
+            }
+            
+            DebugLogger.Info($"[DuctSleevePlacerService] PlaceAllDuctSleevesWithClashZones completed: Placed={PlacedCount}, Skipped={SkippedCount}, Errors={ErrorCount}");
+        }
+
+        /// <summary>
+        /// OPTIMIZED: Place sleeve directly using clash zone data (avoids re-finding intersections)
+        /// </summary>
+        private void PlaceSleeveFromClashZone(Duct duct, Element structuralElement, XYZ intersectionPoint, BoundingBoxXYZ clashBoundingBox, Transform? transform, SleeveSpatialGrid sleeveGrid, ClashZone clashZone)
+        {
+            try
+            {
+                var settings = ApplicationProfileService.Instance.GetCurrentSettings();
+                
+                // OPTIMIZATION: Check if clash zone is already resolved (sleeve placed)
+                if (clashZone.IsResolved)
+                {
+                    DebugLogger.Info($"[DuctSleevePlacerService] SKIP: Clash zone {clashZone.Id} already resolved - sleeve already placed");
+                    SkippedCount++;
+                    return;
+                }
+                
+                // Use intersection point directly from clash zone
+                XYZ placePtToUse = intersectionPoint;
+                
+                // OPTIMIZATION: No expensive spatial duplicate detection needed
+                // The IsResolved flag check above already prevents duplicates
+                
+                // Get duct dimensions and apply clearance
+                double w = duct.get_Parameter(BuiltInParameter.RBS_CURVE_WIDTH_PARAM)?.AsDouble() ?? 0;
+                double h2 = duct.get_Parameter(BuiltInParameter.RBS_CURVE_HEIGHT_PARAM)?.AsDouble() ?? 0;
+                double diameter = duct.get_Parameter(BuiltInParameter.RBS_CURVE_DIAMETER_PARAM)?.AsDouble() ?? 0;
+                
+                double clearance = JSE_RevitAddin_MEP_OPENINGS.Helpers.SleeveClearanceHelper.GetClearance(duct);
+                
+                // Handle round ducts
+                if ((w <= 0.0 || h2 <= 0.0) && diameter > 0.0)
+                {
+                    if (diameter > settings.RoundOpeningsRectangular)
+                    {
+                        w = diameter;
+                        h2 = diameter;
+                    }
+                    else
+                    {
+                        w = diameter;
+                        h2 = diameter;
+                    }
+                }
+                
+                // Apply clearance
+                w = w + 2 * clearance;
+                h2 = h2 + 2 * clearance;
+                
+                // Check minimum size
+                if (w * h2 < settings.IgnoreOpeningsSmallerThan)
+                {
+                    DebugLogger.Info($"[DuctSleevePlacerService] SKIP: Duct {duct.Id} opening too small");
+                    SkippedCount++;
+                    return;
+                }
+                
+                // Round up dimensions if needed
+                if (settings.RoundUpDimensions != "Do not round up")
+                {
+                    if (double.TryParse(settings.RoundUpDimensions, out double roundValue) && roundValue > 0)
+                    {
+                        w = Math.Ceiling(w / roundValue) * roundValue;
+                        h2 = Math.Ceiling(h2 / roundValue) * roundValue;
+                    }
+                }
+                
+                // Select appropriate symbol
+                FamilySymbol? symbolToUse = null;
+                if (structuralElement is Floor)
+                    symbolToUse = _ductSlabSymbol;
+                else if (structuralElement is Wall)
+                    symbolToUse = _ductWallSymbol;
+                else if (structuralElement is FamilyInstance fi && fi.StructuralType == StructuralType.Beam)
+                    symbolToUse = _ductWallSymbol;
+                else
+                    symbolToUse = _ductWallSymbol;
+                
+                if (symbolToUse == null)
+                {
+                    DebugLogger.Error($"[DuctSleevePlacerService] ERROR: No suitable family symbol found for duct {duct.Id}");
+                    ErrorCount++;
+                    return;
+                }
+                
+                // Get duct orientation
+                var ductLocation = duct.Location as LocationCurve;
+                var ductLine = ductLocation?.Curve as Line;
+                if (ductLine == null)
+                {
+                    DebugLogger.Error($"[DuctSleevePlacerService] ERROR: Duct {duct.Id} is not a line");
+                    ErrorCount++;
+                    return;
+                }
+                
+                XYZ ductWidthDirection = XYZ.BasisY;
+                try
+                {
+                    var connectorManager = duct.ConnectorManager;
+                    if (connectorManager != null)
+                    {
+                        foreach (Connector connector in connectorManager.Connectors)
+                        {
+                            if (connector.ConnectorType == ConnectorType.End)
+                            {
+                                var connectorTransform = connector.CoordinateSystem;
+                                if (connectorTransform != null)
+                                {
+                                    ductWidthDirection = connectorTransform.BasisX;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Warning($"[DuctSleevePlacerService] Error getting connector orientation: {ex.Message}");
+                    var ductFlowDirection = ductLine.Direction;
+                    if (Math.Abs(ductFlowDirection.Z) < 0.9)
+                    {
+                        ductWidthDirection = new XYZ(-ductFlowDirection.Y, ductFlowDirection.X, 0);
+                        if (ductWidthDirection.GetLength() > 0.001)
+                            ductWidthDirection = ductWidthDirection.Normalize();
+                        else
+                            ductWidthDirection = XYZ.BasisY;
+                    }
+                }
+                
+                // Place the sleeve
+                var placer = new DuctSleevePlacer(_doc);
+                double dotY = Math.Abs(ductWidthDirection.DotProduct(XYZ.BasisY));
+                double dotX = Math.Abs(ductWidthDirection.DotProduct(XYZ.BasisX));
+                
+                bool placementSuccessful = false;
+                try
+                {
+                    if (dotY > dotX)
+                    {
+                        placer.PlaceDuctSleeveWithOrientation(duct, placePtToUse, w, h2, ductLine.Direction, ductWidthDirection, symbolToUse, structuralElement);
+                    }
+                    else
+                    {
+                        placer.PlaceDuctSleeve(duct, placePtToUse, w, h2, ductLine.Direction, symbolToUse, structuralElement);
+                    }
+                    
+                    placementSuccessful = true;
+                    DebugLogger.Info($"[DuctSleevePlacerService] PLACED: Duct {duct.Id} sleeve at {placePtToUse} size=({w},{h2})");
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Error($"[DuctSleevePlacerService] FAILED: Duct {duct.Id} sleeve placement failed: {ex.Message}");
+                    placementSuccessful = false;
+                }
+                
+                // CRITICAL FIX: Only mark as resolved if placement was actually successful
+                if (placementSuccessful)
+                {
+                    clashZone.IsResolved = true;
+                    clashZone.LastUpdated = DateTime.Now;
+                    DebugLogger.Info($"[DuctSleevePlacerService] Marked clash zone {clashZone.Id} as resolved - sleeve placement successful");
+                }
+                else
+                {
+                    clashZone.IsResolved = false;
+                    clashZone.LastUpdated = DateTime.Now;
+                    DebugLogger.Warning($"[DuctSleevePlacerService] Clash zone {clashZone.Id} remains unresolved - sleeve placement failed");
+                }
+                
+                // ENHANCEMENT: Apply parameter transfer settings if available
+                try
+                {
+                    var parameterTransferService = new ParameterTransferService();
+                    var currentConfig = parameterTransferService.GetCurrentParameterTransferConfiguration();
+                    
+                    if (currentConfig != null && currentConfig.Mappings.Count > 0)
+                    {
+                        // Find the placed sleeve element (would need to be captured from the placer)
+                        // For now, we'll get it by finding the most recently placed opening at this location
+                        var recentSleeves = GetRecentSleeveElementsAtLocation(placePtToUse);
+                        
+                        if (recentSleeves.Count > 0)
+                        {
+                            var targetSleeveIds = recentSleeves.Select(s => s.Id).ToList();
+                            var transferResult = parameterTransferService.ExecuteTransferConfiguration(_doc, targetSleeveIds, currentConfig);
+                            
+                            if (transferResult.Success)
+                            {
+                                DebugLogger.Info($"[DuctSleevePlacerService] Applied parameter transfer to {targetSleeveIds.Count} sleeve(s): {transferResult.Message}");
+                            }
+                            else
+                            {
+                                DebugLogger.Warning($"[DuctSleevePlacerService] Parameter transfer failed: {transferResult.Message}");
+                            }
+                        }
+                        else
+                        {
+                            DebugLogger.Info($"[DuctSleevePlacerService] No recent sleeves found at location for parameter transfer");
+                        }
+                    }
+                }
+                catch (Exception paramEx)
+                {
+                    DebugLogger.Warning($"[DuctSleevePlacerService] Parameter transfer error: {paramEx.Message}");
+                }
+                
+                PlacedCount++;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[DuctSleevePlacerService] Error placing sleeve for duct {duct.Id}: {ex.Message}");
+                ErrorCount++;
+            }
+        }
+
         private static bool BoundingBoxesIntersect(BoundingBoxXYZ a, BoundingBoxXYZ b)
         {
             if (a == null || b == null) return false;
@@ -409,6 +737,182 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                      a.Max.Y < b.Min.Y || a.Min.Y > b.Max.Y ||
                      a.Max.Z < b.Min.Z || a.Min.Z > b.Max.Z);
         }
+
+        #region Parameter Transfer Support
+
+        /// <summary>
+        /// Gets recent sleeve elements placed at or near the specified location
+        /// </summary>
+        private List<Element> GetRecentSleeveElementsAtLocation(XYZ location)
+        {
+            try
+            {
+                var recentSleeves = new List<Element>();
+                var tolerance = 0.1; // 0.1 feet tolerance for finding sleeves
+                
+                // Create a bounding box around the location
+                var min = new XYZ(location.X - tolerance, location.Y - tolerance, location.Z - tolerance);
+                var max = new XYZ(location.X + tolerance, location.Y + tolerance, location.Z + tolerance);
+                var boundingBox = new BoundingBoxXYZ { Min = min, Max = max };
+                
+                // Create a filter for opening elements (Generic Models, typically sleeves)
+                var categoryFilter = new ElementCategoryFilter(BuiltInCategory.OST_GenericModel);
+                var boundingBoxFilter = new BoundingBoxIntersectsFilter(new Outline(min, max));
+                var combinedFilter = new LogicalAndFilter(categoryFilter, boundingBoxFilter);
+                
+                // Collect elements
+                var collector = new FilteredElementCollector(_doc)
+                    .WherePasses(combinedFilter)
+                    .WhereElementIsNotElementType()
+                    .ToElements();
+                
+                // Filter for elements that are likely sleeves (have appropriate parameters)
+                foreach (var element in collector)
+                {
+                    try
+                    {
+                        // Check if element has sleeve-like parameters (Width, Height, etc.)
+                        var hasWidthParam = element.LookupParameter("Width") != null;
+                        var hasHeightParam = element.LookupParameter("Height") != null;
+                        
+                        if (hasWidthParam || hasHeightParam)
+                        {
+                            recentSleeves.Add(element);
+                        }
+                    }
+                    catch
+                    {
+                        // Continue if parameter check fails
+                    }
+                }
+                
+                return recentSleeves;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[DuctSleevePlacerService] Error finding recent sleeves at location: {ex.Message}");
+                return new List<Element>();
+            }
+        }
+
+        #endregion
+
+    }
+}
+
+                
+                // ENHANCEMENT: Apply parameter transfer settings if available
+                try
+                {
+                    var parameterTransferService = new ParameterTransferService();
+                    var currentConfig = parameterTransferService.GetCurrentParameterTransferConfiguration();
+                    
+                    if (currentConfig != null && currentConfig.Mappings.Count > 0)
+                    {
+                        // Find the placed sleeve element (would need to be captured from the placer)
+                        // For now, we'll get it by finding the most recently placed opening at this location
+                        var recentSleeves = GetRecentSleeveElementsAtLocation(placePtToUse);
+                        
+                        if (recentSleeves.Count > 0)
+                        {
+                            var targetSleeveIds = recentSleeves.Select(s => s.Id).ToList();
+                            var transferResult = parameterTransferService.ExecuteTransferConfiguration(_doc, targetSleeveIds, currentConfig);
+                            
+                            if (transferResult.Success)
+                            {
+                                DebugLogger.Info($"[DuctSleevePlacerService] Applied parameter transfer to {targetSleeveIds.Count} sleeve(s): {transferResult.Message}");
+                            }
+                            else
+                            {
+                                DebugLogger.Warning($"[DuctSleevePlacerService] Parameter transfer failed: {transferResult.Message}");
+                            }
+                        }
+                        else
+                        {
+                            DebugLogger.Info($"[DuctSleevePlacerService] No recent sleeves found at location for parameter transfer");
+                        }
+                    }
+                }
+                catch (Exception paramEx)
+                {
+                    DebugLogger.Warning($"[DuctSleevePlacerService] Parameter transfer error: {paramEx.Message}");
+                }
+                
+                PlacedCount++;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[DuctSleevePlacerService] Error placing sleeve for duct {duct.Id}: {ex.Message}");
+                ErrorCount++;
+            }
+        }
+
+        private static bool BoundingBoxesIntersect(BoundingBoxXYZ a, BoundingBoxXYZ b)
+        {
+            if (a == null || b == null) return false;
+            return !(a.Max.X < b.Min.X || a.Min.X > b.Max.X ||
+                     a.Max.Y < b.Min.Y || a.Min.Y > b.Max.Y ||
+                     a.Max.Z < b.Min.Z || a.Min.Z > b.Max.Z);
+        }
+
+        #region Parameter Transfer Support
+
+        /// <summary>
+        /// Gets recent sleeve elements placed at or near the specified location
+        /// </summary>
+        private List<Element> GetRecentSleeveElementsAtLocation(XYZ location)
+        {
+            try
+            {
+                var recentSleeves = new List<Element>();
+                var tolerance = 0.1; // 0.1 feet tolerance for finding sleeves
+                
+                // Create a bounding box around the location
+                var min = new XYZ(location.X - tolerance, location.Y - tolerance, location.Z - tolerance);
+                var max = new XYZ(location.X + tolerance, location.Y + tolerance, location.Z + tolerance);
+                var boundingBox = new BoundingBoxXYZ { Min = min, Max = max };
+                
+                // Create a filter for opening elements (Generic Models, typically sleeves)
+                var categoryFilter = new ElementCategoryFilter(BuiltInCategory.OST_GenericModel);
+                var boundingBoxFilter = new BoundingBoxIntersectsFilter(new Outline(min, max));
+                var combinedFilter = new LogicalAndFilter(categoryFilter, boundingBoxFilter);
+                
+                // Collect elements
+                var collector = new FilteredElementCollector(_doc)
+                    .WherePasses(combinedFilter)
+                    .WhereElementIsNotElementType()
+                    .ToElements();
+                
+                // Filter for elements that are likely sleeves (have appropriate parameters)
+                foreach (var element in collector)
+                {
+                    try
+                    {
+                        // Check if element has sleeve-like parameters (Width, Height, etc.)
+                        var hasWidthParam = element.LookupParameter("Width") != null;
+                        var hasHeightParam = element.LookupParameter("Height") != null;
+                        
+                        if (hasWidthParam || hasHeightParam)
+                        {
+                            recentSleeves.Add(element);
+                        }
+                    }
+                    catch
+                    {
+                        // Continue if parameter check fails
+                    }
+                }
+                
+                return recentSleeves;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[DuctSleevePlacerService] Error finding recent sleeves at location: {ex.Message}");
+                return new List<Element>();
+            }
+        }
+
+        #endregion
 
     }
 }

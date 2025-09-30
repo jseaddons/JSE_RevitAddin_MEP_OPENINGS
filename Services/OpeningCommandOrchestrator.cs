@@ -3,11 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Diagnostics;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.DB.Mechanical;
 using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Commands;
 using JSE_RevitAddin_MEP_OPENINGS.Views;
 using JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -291,7 +293,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     try
                     {
                         DebugLogger.Info($"Executing command: {command.GetType().Name}");
-                        var commandResult = ExecuteCommandWithResourceManagement(command);
+                        // Pass the first filter that has clash zones for DuctSleeveCommand
+                        var filterWithClashZones = filters.FirstOrDefault(f => f.ClashZoneStorage?.ClashZones?.Count > 0);
+                        var commandResult = ExecuteCommandWithResourceManagement(command, filterWithClashZones);
                         if (commandResult.Success)
                         {
                             result.CommandsExecuted++;
@@ -338,10 +342,68 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return new DisciplineCommandExecutor(disciplineName);
         }
         
+        
+        /// <summary>
+        /// Converts clash zones to filtered ducts format expected by DuctSleeveCommand
+        /// </summary>
+        private List<(Duct, Transform?)>? ConvertClashZonesToFilteredDucts(List<ClashZone>? clashZones)
+        {
+            if (clashZones == null || clashZones.Count == 0)
+            {
+                DebugLogger.Info("[ORCHESTRATOR] No clash zones to convert to filtered ducts");
+                return null;
+            }
+
+            // NOTE: Section box filtering is now done in the orchestrator before calling this method
+            var filteredDucts = new List<(Duct, Transform?)>();
+            
+            foreach (var clashZone in clashZones)
+            {
+                try
+                {
+                    var mepElement = _document.GetElement(clashZone.MepElementId);
+                    if (mepElement is Duct duct)
+                    {
+                        // Get transform if the duct is from a linked file
+                        Transform? transform = null;
+                        if (duct.Document != _document)
+                        {
+                            // This is a linked duct, get its transform
+                            // For linked documents, we need to find the link instance
+                            var linkInstances = new FilteredElementCollector(_document)
+                                .OfClass(typeof(RevitLinkInstance))
+                                .Cast<RevitLinkInstance>()
+                                .Where(li => li.GetLinkDocument() == duct.Document);
+                            
+                            var linkInstance = linkInstances.FirstOrDefault();
+                            if (linkInstance != null)
+                            {
+                                transform = linkInstance.GetTotalTransform();
+                            }
+                        }
+                        
+                        filteredDucts.Add((duct, transform));
+                        DebugLogger.Info($"[ORCHESTRATOR] Converted clash zone {clashZone.Id} to filtered duct {duct.Id}");
+                    }
+                    else
+                    {
+                        DebugLogger.Warning($"[ORCHESTRATOR] Clash zone {clashZone.Id} MEP element is not a duct: {mepElement?.GetType().Name}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Error($"[ORCHESTRATOR] Error converting clash zone {clashZone.Id} to filtered duct: {ex.Message}");
+                }
+            }
+
+            DebugLogger.Info($"[ORCHESTRATOR] Converted {filteredDucts.Count} clash zones to filtered ducts");
+            return filteredDucts.Count > 0 ? filteredDucts : null;
+        }
+        
         /// <summary>
         /// Execute command with proper resource management
         /// </summary>
-        private CommandExecutionResult ExecuteCommandWithResourceManagement(IExternalCommand command)
+        private CommandExecutionResult ExecuteCommandWithResourceManagement(IExternalCommand command, OpeningFilter? filter = null)
         {
             var result = new CommandExecutionResult();
             
@@ -356,7 +418,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var uiClearances = ClearanceManager.Instance.GetUIClearances();
                     DebugLogger.Info($"[ORCHESTRATOR] Passing {uiClearances.Count} UI clearances to DuctSleeveCommand");
                     
-                    var commandResult = dsc.ExecuteImpl(_uiDocument.Application);
+                    // ORCHESTRATOR ROLE: Only trigger commands in sequence - no filtering logic
+                    var filteredDucts = ConvertClashZonesToFilteredDucts(filter?.ClashZoneStorage?.ClashZones);
+                    var clashZones = filter?.ClashZoneStorage?.ClashZones;
+                    
+                    DebugLogger.Info($"[ORCHESTRATOR] Triggering DuctSleeveCommand with {filteredDucts?.Count ?? 0} filtered ducts and {clashZones?.Count ?? 0} clash zones");
+                    
+                    var message = "";
+                    var commandResult = dsc.Execute(_uiDocument, _document, ref message, new ElementSet(), filteredDucts, clashZones);
                     result.Success = commandResult == Result.Succeeded;
                     result.Message = "DuctSleeveCommand executed";
                 }
@@ -392,9 +461,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 else if (command is MarkParameterAddValue mpav)
                 {
-                    DebugLogger.Info($"[ORCHESTRATOR] MarkParameterAddValue - ExecuteImpl not implemented yet");
-                    result.Success = false;
-                    result.ErrorMessage = "MarkParameterAddValue ExecuteImpl not implemented";
+                    DebugLogger.Info($"[ORCHESTRATOR] MarkParameterAddValue - calling ExecuteImpl with prefix from UI");
+                    string prefix = GetPrefixFromUI();
+                    result = mpav.ExecuteImpl(_document, _uiDocument, prefix);
+                    DebugLogger.Info($"[ORCHESTRATOR] MarkParameterAddValue result: {(result.Success ? "SUCCESS" : "FAILED")}");
                 }
                 else
                 {
@@ -537,6 +607,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             DebugLogger.Info($"[ORCHESTRATOR] Command sequence for {filter.Category}: {sequence.Count} commands");
             return sequence;
+        }
+        
+        /// <summary>
+        /// Gets prefix from UI textbox
+        /// </summary>
+        private string GetPrefixFromUI()
+        {
+            // For now, return default prefix - this should be passed from the main dialog
+            return "SLEEVE_";
         }
         
         /// <summary>

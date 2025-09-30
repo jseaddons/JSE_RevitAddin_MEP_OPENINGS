@@ -29,6 +29,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         }
 
         /// <summary>
+        /// ExecuteImpl method for orchestrator integration
+        /// </summary>
+        public CommandExecutionResult ExecuteImpl(Document doc, UIDocument uiDoc, string prefix)
+        {
+            var result = new CommandExecutionResult();
+            
+            try
+            {
+                DebugLogger.Info($"[MARK_PARAMETER] Using prefix from UI: {prefix}");
+                
+                var commandResult = ExecuteWithPrefix(doc, uiDoc, prefix);
+                result.Success = commandResult == Result.Succeeded;
+                result.ErrorMessage = result.Success ? null : $"MarkParameterAddValue failed with result: {commandResult}";
+                
+                return result;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[MARK_PARAMETER] ExecuteImpl failed: {ex.Message}");
+                result.Success = false;
+                result.ErrorMessage = ex.Message;
+                return result;
+            }
+        }
+
+        /// <summary>
         /// Executes the mark parameter assignment with a provided prefix
         /// </summary>
         public Result ExecuteWithPrefix(Document doc, UIDocument uiDoc, string prefix)

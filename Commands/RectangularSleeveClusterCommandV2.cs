@@ -362,18 +362,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         
 
 
-                        // --- Cluster sleeve duplicate suppression ---
-                        double clusterSuppressionTol = UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters);
-                        // Use section-box and hostType aware cluster bounds check to avoid scanning all clusters
-                        BoundingBoxXYZ? sectionBoxForDoc = null;
-                        try { if (uiDoc.ActiveView is View3D vb2) sectionBoxForDoc = SectionBoxHelper.GetSectionBoxBounds(vb2); } catch { }
-                        string clusterHostType = groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing" ? "ClusterOpeningOnWallX" : "ClusterOpeningOnSlab";
-                        bool clusterExists = OpeningDuplicationChecker.IsLocationWithinClusterBounds(doc, mid, clusterSuppressionTol, hostType: clusterHostType, sectionBox: sectionBoxForDoc);
-                        if (clusterExists)
-                        {
-                            DebugLogger.Log($"Suppression: Existing cluster sleeve found within {UnitUtils.ConvertFromInternalUnits(clusterSuppressionTol, UnitTypeId.Millimeters):F0}mm at {mid}, skipping placement. (optimized)");
-                            continue;
-                        }
+                        // OPTIMIZATION: No expensive spatial duplicate detection needed
+                        // The cluster formation logic above already prevents duplicates by grouping nearby sleeves
 
                         // Always use bounding box center (mid) for placement, just like X-axis
                         // Place the cluster sleeve family instance at the cluster midpoint

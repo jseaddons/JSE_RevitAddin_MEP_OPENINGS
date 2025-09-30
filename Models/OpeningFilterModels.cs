@@ -101,8 +101,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// <summary>
         /// Clash zone storage for this filter
         /// </summary>
-        [XmlIgnore]
         public ClashZoneStorage? ClashZoneStorage { get; set; }
+
+        /// <summary>
+        /// Parameter transfer configuration for this filter
+        /// </summary>
+        public ParameterTransferConfiguration? ParameterTransferConfig { get; set; }
 
         /// <summary>
         /// Create a default filter for a given category
@@ -159,3 +163,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         }
     }
 }
+        }
+    }
+}
+

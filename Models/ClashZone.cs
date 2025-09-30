@@ -22,16 +22,76 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public ElementId MepElementId { get; set; }
         
         /// <summary>
+        /// XML serializable MEP element ID
+        /// </summary>
+        public int MepElementIdValue
+        {
+            get => MepElementId?.IntegerValue ?? -1;
+            set => MepElementId = value > 0 ? new ElementId(value) : ElementId.InvalidElementId;
+        }
+        
+        /// <summary>
         /// The structural element involved in the clash
         /// </summary>
         [XmlIgnore]
         public ElementId StructuralElementId { get; set; }
         
         /// <summary>
+        /// XML serializable structural element ID
+        /// </summary>
+        public int StructuralElementIdValue
+        {
+            get => StructuralElementId?.IntegerValue ?? -1;
+            set => StructuralElementId = value > 0 ? new ElementId(value) : ElementId.InvalidElementId;
+        }
+        
+        /// <summary>
         /// The intersection point where the clash occurs
         /// </summary>
         [XmlIgnore]
         public XYZ IntersectionPoint { get; set; }
+        
+        /// <summary>
+        /// XML serializable intersection point X coordinate
+        /// </summary>
+        public double IntersectionPointX
+        {
+            get => IntersectionPoint?.X ?? 0.0;
+            set { 
+                if (IntersectionPoint == null) 
+                    IntersectionPoint = new XYZ(value, 0, 0); 
+                else 
+                    IntersectionPoint = new XYZ(value, IntersectionPoint.Y, IntersectionPoint.Z); 
+            }
+        }
+        
+        /// <summary>
+        /// XML serializable intersection point Y coordinate
+        /// </summary>
+        public double IntersectionPointY
+        {
+            get => IntersectionPoint?.Y ?? 0.0;
+            set { 
+                if (IntersectionPoint == null) 
+                    IntersectionPoint = new XYZ(0, value, 0); 
+                else 
+                    IntersectionPoint = new XYZ(IntersectionPoint.X, value, IntersectionPoint.Z); 
+            }
+        }
+        
+        /// <summary>
+        /// XML serializable intersection point Z coordinate
+        /// </summary>
+        public double IntersectionPointZ
+        {
+            get => IntersectionPoint?.Z ?? 0.0;
+            set { 
+                if (IntersectionPoint == null) 
+                    IntersectionPoint = new XYZ(0, 0, value); 
+                else 
+                    IntersectionPoint = new XYZ(IntersectionPoint.X, IntersectionPoint.Y, value); 
+            }
+        }
         
         /// <summary>
         /// The bounding box of the clash zone
@@ -50,15 +110,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public double RequiredClearance { get; set; }
         
         /// <summary>
-        /// Whether this clash zone has been resolved (sleeve placed)
+        /// Whether this clash zone has been resolved (individual sleeve placed)
         /// </summary>
         public bool IsResolved { get; set; } = false;
         
         /// <summary>
-        /// The sleeve element ID if resolved
+        /// Whether this clash zone has been resolved by cluster sleeve
+        /// </summary>
+        public bool IsClusterResolved { get; set; } = false;
+        
+        /// <summary>
+        /// The individual sleeve element ID if resolved
         /// </summary>
         [XmlIgnore]
         public ElementId? ResolvedSleeveId { get; set; }
+        
+        /// <summary>
+        /// The cluster sleeve element ID if cluster resolved
+        /// </summary>
+        [XmlIgnore]
+        public ElementId? ClusterSleeveId { get; set; }
         
         /// <summary>
         /// When this clash zone was first detected
@@ -135,3 +206,63 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public Dictionary<string, object> DetectionSettings { get; set; } = new Dictionary<string, object>();
     }
 }
+        /// Hash of the structural element geometry for change detection
+        /// </summary>
+        public string StructuralElementGeometryHash { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// The document path where this clash was detected
+        /// </summary>
+        public string DocumentPath { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// Additional metadata about the clash
+        /// </summary>
+        [XmlIgnore]
+        public Dictionary<string, string> Metadata { get; set; } = new Dictionary<string, string>();
+    }
+    
+    /// <summary>
+    /// Container for storing clash zones in a profile
+    /// </summary>
+    [XmlRoot("ClashZoneStorage")]
+    public class ClashZoneStorage
+    {
+        /// <summary>
+        /// List of all detected clash zones
+        /// </summary>
+        public List<ClashZone> ClashZones { get; set; } = new List<ClashZone>();
+        
+        /// <summary>
+        /// When this clash zone storage was created
+        /// </summary>
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        
+        /// <summary>
+        /// When this clash zone storage was last updated
+        /// </summary>
+        public DateTime LastUpdated { get; set; } = DateTime.Now;
+        
+        /// <summary>
+        /// The document path this storage is associated with
+        /// </summary>
+        public string DocumentPath { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// Hash of the document for change detection
+        /// </summary>
+        public string DocumentHash { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// Version of the clash detection algorithm used
+        /// </summary>
+        public string AlgorithmVersion { get; set; } = "1.0";
+        
+        /// <summary>
+        /// Settings used for clash detection
+        /// </summary>
+        [XmlIgnore]
+        public Dictionary<string, object> DetectionSettings { get; set; } = new Dictionary<string, object>();
+    }
+}
+

@@ -3,6 +3,7 @@ using Autodesk.Revit.UI;
 using System.Collections.Generic;
 using System.Linq;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
 {
@@ -41,77 +42,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
             {
                 var hostFilter = new ElementIntersectsSolidFilter(sectionBoxSolid);
                 var hostIds = hostElements.Select(e => e.Id).ToList();
-                DebugLogger.Info($"[SectionBoxDiag] Host elements count={hostElements.Count}, sampleIds={string.Join(",", hostIds.Take(6).Select(id => id.IntegerValue.ToString()))}");
+                // DebugLogger.Info($"[SectionBoxDiag] Host elements count={hostElements.Count}, sampleIds={string.Join(",", hostIds.Take(6).Select(id => id.IntegerValue.ToString()))}");
                 var passingHostIds = new FilteredElementCollector(uiDoc.Document, hostIds)
                     .WherePasses(hostFilter)
                     .ToElementIds();
                 filteredList.AddRange(hostElements.Where(e => passingHostIds.Contains(e.Id)).Select(e => (e, (Transform?)null)));
                 try
                 {
-                    DebugLogger.Info($"[SectionBoxDiag] Host section-solid volume={sectionBoxSolid.Volume}, passingHostCount={passingHostIds.Count}");
+                    // DebugLogger.Info($"[SectionBoxDiag] Host section-solid volume={sectionBoxSolid.Volume}, passingHostCount={passingHostIds.Count}");
+                    foreach (var e in hostElements.Where(e => passingHostIds.Contains(e.Id)).Take(3))
+                    {
+                        var bbox = e.get_BoundingBox(null);
+                        if (bbox != null)
+                        {
+                            // DebugLogger.Info($"[SectionBoxDiag] Host Element {e.Id} BBox Min({bbox.Min.X:F3}, {bbox.Min.Y:F3}, {bbox.Min.Z:F3}) Max({bbox.Max.X:F3}, {bbox.Max.Y:F3}, {bbox.Max.Z:F3})");
+                        }
+                    }
                 }
                 catch { }
 
-                // If no host elements passed the solid filter, attempt a conservative bounding-box overlap fallback
-                if (passingHostIds.Count == 0)
-                {
-                    try
-                    {
-                        var secBbox = GetSectionBoxBounds(view3D);
-                        if (secBbox != null)
-                        {
-                            DebugLogger.Info($"[SectionBoxDiag] No passingHostIds from solid filter; attempting bbox-overlap fallback. secBbox=Min={secBbox.Min},Max={secBbox.Max}");
-                            int added = 0;
-                            foreach (var e in hostElements)
-                            {
-                                try
-                                {
-                                    var ebbox = e.get_BoundingBox(null);
-                                    if (ebbox == null)
-                                    {
-                                        DebugLogger.Info($"[SectionBoxDiag] Element {e.Id.IntegerValue} bbox=null");
-                                        continue;
-                                    }
-                                    bool overlap = !(ebbox.Max.X < secBbox.Min.X || ebbox.Min.X > secBbox.Max.X ||
-                                                     ebbox.Max.Y < secBbox.Min.Y || ebbox.Min.Y > secBbox.Max.Y ||
-                                                     ebbox.Max.Z < secBbox.Min.Z || ebbox.Min.Z > secBbox.Max.Z);
-                                    DebugLogger.Info($"[SectionBoxDiag] Element {e.Id.IntegerValue} bboxOverlap={overlap}, bboxMin={ebbox.Min}, bboxMax={ebbox.Max}");
-                                    if (overlap)
-                                    {
-                                        filteredList.Add((e, (Transform?)null));
-                                        added++;
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    DebugLogger.Info($"[SectionBoxDiag] Exception checking bbox for element {e.Id.IntegerValue}: {ex.Message}");
-                                }
-                            }
-                            DebugLogger.Info($"[SectionBoxDiag] BBox fallback addedCount={added}");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        DebugLogger.Info($"[SectionBoxDiag] BBox fallback failed: {ex.Message}");
-                    }
-                }
+                // No fallback for host elements - if no elements pass solid filter, return empty
+                // DebugLogger.Info($"[SectionBoxDiag] Host elements: no fallback implemented");
             }
 
             // Filter linked elements
-            var allLinkInstances = new FilteredElementCollector(uiDoc.Document).OfClass(typeof(RevitLinkInstance)).Cast<RevitLinkInstance>().ToList();
+            var allLinkInstances = JSE_RevitAddin_MEP_OPENINGS.Helpers.TransformHelper.GetAllLinkInstances(uiDoc.Document);
 
             foreach (var group in linkedElementGroups)
             {
                 var linkInstance = allLinkInstances.FirstOrDefault(li => li.GetLinkDocument()?.Title == group.Key);
                 if (linkInstance == null) continue;
 
-                // Transform the section box solid into the coordinate system of the linked document
+                // Transform the section box solid using helper
                 Transform inverseTransform = linkInstance.GetTotalTransform().Inverse;
-                Solid transformedSolid = SolidUtils.CreateTransformed(sectionBoxSolid, inverseTransform);
+                Solid transformedSolid = JSE_RevitAddin_MEP_OPENINGS.Helpers.TransformHelper.TransformSolid(sectionBoxSolid, inverseTransform);
 
                 try
                 {
-                    DebugLogger.Info($"[SectionBoxDiag] Processing link='{group.Key}', TransformOrigin={linkInstance.GetTotalTransform().Origin}, TransformedSolidVol={transformedSolid.Volume}");
+                    // DebugLogger.Info($"[SectionBoxDiag] Processing link='{group.Key}', TransformOrigin={linkInstance.GetTotalTransform().Origin}, TransformedSolidVol={transformedSolid.Volume}");
                 }
                 catch { }
 
@@ -119,20 +87,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                 if (elementsInLink.Any())
                 {
                     var linkFilter = new ElementIntersectsSolidFilter(transformedSolid);
-                    var passingLinkIds = new FilteredElementCollector(linkInstance.GetLinkDocument(), elementsInLink.Select(e => e.Id).ToList())
+                    var elementIds = new List<ElementId>(elementsInLink.Select(e => e.Id));
+                    var passingLinkIds = new FilteredElementCollector(linkInstance.GetLinkDocument(), elementIds)
                         .WherePasses(linkFilter)
                         .ToElementIds();
-                    
+
                     try
                     {
-                        DebugLogger.Info($"[SectionBoxDiag] link='{group.Key}' passingCount={passingLinkIds.Count}");
-                        foreach (var id in passingLinkIds.Take(3)) DebugLogger.Info($"[SectionBoxDiag] link sample passing id={id.IntegerValue}");
+                        // DebugLogger.Info($"[SectionBoxDiag] link='{group.Key}' passingCount={passingLinkIds.Count}");
+                        foreach (var id in passingLinkIds.Take(3))
+                        {
+                            var e = elementsInLink.FirstOrDefault(el => el.Id.IntegerValue == id.IntegerValue);
+                            if (e != null)
+                            {
+                                var bbox = e.get_BoundingBox(null);
+                                if (bbox != null)
+                                {
+                                    // DebugLogger.Info($"[SectionBoxDiag] Linked Element {e.Id} BBox Min({bbox.Min.X:F3}, {bbox.Min.Y:F3}, {bbox.Min.Z:F3}) Max({bbox.Max.X:F3}, {bbox.Max.Y:F3}, {bbox.Max.Z:F3})");
+                                }
+                            }
+                        }
                     }
                     catch { }
 
-                    filteredList.AddRange(elementsInLink
-                        .Where(e => passingLinkIds.Contains(e.Id))
-                        .Select(e => (e, (Transform?)linkInstance.GetTotalTransform())));
+                    // No fallback for linked elements - if no elements pass solid filter, skip
+                    // DebugLogger.Info($"[SectionBoxDiag] Linked elements: no fallback implemented");
+                    if (passingLinkIds.Count > 0)
+                    {
+                        filteredList.AddRange(elementsInLink
+                            .Where(e => passingLinkIds.Contains(e.Id))
+                            .Select(e => (e, (Transform?)linkInstance.GetTotalTransform())));
+                    }
                 }
             }
 
@@ -196,6 +181,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
 
             Solid axisAlignedSolid = GeometryCreationUtilities.CreateExtrusionGeometry(new List<CurveLoop> { curveLoop }, XYZ.BasisZ, height);
             return SolidUtils.CreateTransformed(axisAlignedSolid, transform);
+        }
+
+        // Fast bounding box intersection test
+        private static bool BoundingBoxesIntersect(XYZ min1, XYZ max1, XYZ min2, XYZ max2)
+        {
+            return !(max1.X < min2.X || min1.X > max2.X ||
+                     max1.Y < min2.Y || min1.Y > max2.Y ||
+                     max1.Z < min2.Z || min1.Z > max2.Z);
         }
     }
 }

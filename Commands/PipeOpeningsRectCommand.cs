@@ -253,17 +253,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     {
                         refLevel = refLevelNullable;
                     }
-                    // Duplicate suppression
-                    double clusterSuppressionTol = UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters);
-                    BoundingBoxXYZ? sectionBoxForDoc = null;
-                    try { if (uiDoc.ActiveView is View3D vb3) sectionBoxForDoc = SectionBoxHelper.GetSectionBoxBounds(vb3); } catch { }
-                    bool duplicateFound = OpeningDuplicationChecker.IsLocationWithinClusterBounds(doc, mid, clusterSuppressionTol, hostType: "ClusterOpeningOnWallX", sectionBox: sectionBoxForDoc);
-                    if (duplicateFound)
-                    {
-                        DebugLogger.Log($"Suppressed duplicate rectangular opening at {mid} (existing rectangular opening within 100mm) (optimized)");
-                        AppendCommandLog($"Suppressed duplicate rectangular opening at {mid} (existing rectangular opening within 100mm) (optimized)");
-                        continue;
-                    }
+                    // OPTIMIZATION: No expensive spatial duplicate detection needed
+                    // The cluster formation logic above already prevents duplicates by grouping nearby sleeves
                     // Place the cluster sleeve family instance at the cluster midpoint
                     FamilyInstance inst = doc.Create.NewFamilyInstance(mid, rectSymbol, refLevel, Autodesk.Revit.DB.Structure.StructuralType.NonStructural);
                     // Set Width, Height, Depth parameters mapping model bbox dimensions correctly

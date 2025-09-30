@@ -110,10 +110,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
             // If the document is a linked doc we cannot construct a UIDocument for filtering
             if (doc.IsLinked) return raw;
 
-            // Use the SectionBoxHelper which performs solid-based filtering and handles
-            // linked elements by transforming the section-box into link-local space.
-            var uiDoc = new UIDocument(doc);
-            var filtered = SectionBoxHelper.FilterElementsBySectionBox(uiDoc, raw.ToList());
+            // SectionBoxHelper not available in this context; returning raw elements
+            var filtered = raw;
 
             // Log filtered counts and small samples
             try

@@ -490,6 +490,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     var filter = (OpeningFilter)serializer.Deserialize(reader);
                     _log($"[FILTER_MGMT] Loaded filter from XML: {filePath}");
+                    
+                    // ENHANCEMENT: Restore parameter transfer settings if available
+                    if (filter.ParameterTransferConfig != null && filter.ParameterTransferConfig.Mappings.Count > 0)
+                    {
+                        try
+                        {
+                            var parameterTransferService = new ParameterTransferService();
+                            if (parameterTransferService.SaveCurrentParameterTransferConfiguration(filter.ParameterTransferConfig))
+                            {
+                                _log($"[FILTER_MGMT] Restored parameter transfer configuration with {filter.ParameterTransferConfig.Mappings.Count} mappings from filter '{filter.Name}'");
+                            }
+                        }
+                        catch (Exception configEx)
+                        {
+                            _log($"[FILTER_MGMT] Warning: Failed to restore parameter transfer configuration: {configEx.Message}");
+                        }
+                    }
+                    else
+                    {
+                        _log($"[FILTER_MGMT] No parameter transfer configuration found in filter '{filter.Name}'");
+                    }
+                    
                     return filter;
                 }
             }
@@ -584,3 +606,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
     }
 }
+            };
+            Controls.Add(_okButton);
+
+            _cancelButton = new Button
+            {
+                Text = "Cancel",
+                Location = new System.Drawing.Point(297, 70),
+                Size = new System.Drawing.Size(75, 23),
+                DialogResult = DialogResult.Cancel
+            };
+            Controls.Add(_cancelButton);
+
+            AcceptButton = _okButton;
+            CancelButton = _cancelButton;
+            
+            // Ensure the dialog is properly modal and visible
+            _inputTextBox.Focus();
+            _inputTextBox.SelectAll();
+        }
+    }
+}
+

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
@@ -907,6 +908,131 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 string.Equals(param, parameterName, StringComparison.OrdinalIgnoreCase));
         }
         
+        #endregion
+
+        #region Configuration Management
+
+        /// <summary>
+        /// Gets the current parameter transfer configuration from the project/profile
+        /// </summary>
+        public ParameterTransferConfiguration? GetCurrentParameterTransferConfiguration()
+        {
+            try
+            {
+                // Try to load from project-specific configuration file
+                var configDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "ParameterTransfer");
+                var configFile = Path.Combine(configDir, "current_parameter_transfer_config.xml");
+                
+                if (File.Exists(configFile))
+                {
+                    var serializer = new System.Xml.Serialization.XmlSerializer(typeof(ParameterTransferConfiguration));
+                    using (var reader = new StreamReader(configFile))
+                    {
+                        return (ParameterTransferConfiguration?)serializer.Deserialize(reader);
+                    }
+                }
+                
+                // Return null if no configuration exists
+                return null;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"Failed to get current parameter transfer configuration: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Saves the current parameter transfer configuration to project-specific storage
+        /// </summary>
+        public bool SaveCurrentParameterTransferConfiguration(ParameterTransferConfiguration config)
+        {
+            try
+            {
+                var configDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "ParameterTransfer");
+                if (!Directory.Exists(configDir))
+                {
+                    Directory.CreateDirectory(configDir);
+                }
+                
+                var configFile = Path.Combine(configDir, "current_parameter_transfer_config.xml");
+                var serializer = new System.Xml.Serialization.XmlSerializer(typeof(ParameterTransferConfiguration));
+                
+                using (var writer = new StreamWriter(configFile))
+                {
+                    serializer.Serialize(writer, config);
+                }
+                
+                DebugLogger.Info($"Saved parameter transfer configuration to: {configFile}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"Failed to save parameter transfer configuration: {ex.Message}");
+                return false;
+            }
+        }
+
+        #endregion
+    }
+}
+        {
+            try
+            {
+                // Try to load from project-specific configuration file
+                var configDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "ParameterTransfer");
+                var configFile = Path.Combine(configDir, "current_parameter_transfer_config.xml");
+                
+                if (File.Exists(configFile))
+                {
+                    var serializer = new System.Xml.Serialization.XmlSerializer(typeof(ParameterTransferConfiguration));
+                    using (var reader = new StreamReader(configFile))
+                    {
+                        return (ParameterTransferConfiguration?)serializer.Deserialize(reader);
+                    }
+                }
+                
+                // Return null if no configuration exists
+                return null;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"Failed to get current parameter transfer configuration: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Saves the current parameter transfer configuration to project-specific storage
+        /// </summary>
+        public bool SaveCurrentParameterTransferConfiguration(ParameterTransferConfiguration config)
+        {
+            try
+            {
+                var configDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "ParameterTransfer");
+                if (!Directory.Exists(configDir))
+                {
+                    Directory.CreateDirectory(configDir);
+                }
+                
+                var configFile = Path.Combine(configDir, "current_parameter_transfer_config.xml");
+                var serializer = new System.Xml.Serialization.XmlSerializer(typeof(ParameterTransferConfiguration));
+                
+                using (var writer = new StreamWriter(configFile))
+                {
+                    serializer.Serialize(writer, config);
+                }
+                
+                DebugLogger.Info($"Saved parameter transfer configuration to: {configFile}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"Failed to save parameter transfer configuration: {ex.Message}");
+                return false;
+            }
+        }
+
         #endregion
     }
 }

@@ -46,17 +46,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 
         public Result Execute(UIDocument uidoc, Document doc, ref string message, ElementSet elements, List<(Duct, Transform?)>? filteredDucts)
         {
-            return ExecuteCore(uidoc, doc, ref message, elements, filteredDucts);
+            return ExecuteCore(uidoc, doc, ref message, elements, filteredDucts, null);
+        }
+
+        /// <summary>
+        /// Execute with clash zones for optimized sleeve placement
+        /// </summary>
+        public Result Execute(UIDocument uidoc, Document doc, ref string message, ElementSet elements, List<(Duct, Transform?)>? filteredDucts, List<ClashZone>? clashZones)
+        {
+            return ExecuteCore(uidoc, doc, ref message, elements, filteredDucts, clashZones);
         }
 
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements, List<(Duct, Transform?)>? filteredDucts)
         {
             UIDocument uidoc = commandData.Application.ActiveUIDocument;
             Document doc = uidoc.Document;
-            return ExecuteCore(uidoc, doc, ref message, elements, filteredDucts);
+            return ExecuteCore(uidoc, doc, ref message, elements, filteredDucts, null);
         }
 
-    private Result ExecuteCore(UIDocument uidoc, Document doc, ref string message, ElementSet elements, List<(Duct, Transform?)>? filteredDucts)
+    private Result ExecuteCore(UIDocument uidoc, Document doc, ref string message, ElementSet elements, List<(Duct, Transform?)>? filteredDucts, List<ClashZone>? clashZones)
     {
         // Create separate timestamped log file for DuctSleeveCommand activities
         string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
@@ -77,6 +85,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             File.AppendAllText(ductSleeveLogPath, $"[{DateTime.Now}] Document: {doc.Title}\n");
             File.AppendAllText(ductSleeveLogPath, $"[{DateTime.Now}] Active View: {doc.ActiveView?.Name ?? "Unknown"}\n");
             File.AppendAllText(ductSleeveLogPath, $"[{DateTime.Now}] Filtered ducts provided: {filteredDucts != null}\n");
+            File.AppendAllText(ductSleeveLogPath, $"[{DateTime.Now}] Clash zones provided: {clashZones != null} (Count: {clashZones?.Count ?? 0})\n");
         }
         catch (Exception ex)
         {
@@ -101,6 +110,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         LogToFile($"Document: {doc.Title}");
         LogToFile($"Active View: {doc.ActiveView?.Name ?? "Unknown"}");
         LogToFile($"Filtered ducts provided: {filteredDucts != null}");
+        LogToFile($"Clash zones provided: {clashZones != null} (Count: {clashZones?.Count ?? 0})");
 
             LogToFile("Loading duct sleeve family symbols...");
 
@@ -166,8 +176,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 return Result.Succeeded;
             }
 
-            var structuralElements = MepIntersectionService.CollectStructuralElementsForDirectIntersectionVisibleOnly(doc, m => { });
-            LogToFile($"Collected {structuralElements.Count} structural elements");
+            // OPTIMIZATION: Use clash zones if provided, otherwise collect structural elements
+            List<(Element, Transform?)> structuralElements;
+            if (clashZones != null && clashZones.Count > 0)
+            {
+                LogToFile($"OPTIMIZATION: Using {clashZones.Count} clash zones instead of re-finding intersections");
+                // Extract structural elements from clash zones
+                structuralElements = clashZones
+                    .Select(cz => (doc.GetElement(cz.StructuralElementId), (Transform?)null))
+                    .Where(tuple => tuple.Item1 != null)
+                    .GroupBy(tuple => tuple.Item1.Id)
+                    .Select(g => g.First())
+                    .ToList();
+                LogToFile($"Extracted {structuralElements.Count} unique structural elements from clash zones");
+            }
+            else
+            {
+                LogToFile("No clash zones provided - collecting structural elements (slower method)");
+                structuralElements = MepIntersectionService.CollectStructuralElementsForDirectIntersectionVisibleOnly(doc, m => { });
+                LogToFile($"Collected {structuralElements.Count} structural elements");
+            }
 
             using (var tx = new Transaction(doc, "Place Duct Sleeves"))
             {
@@ -188,7 +216,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     ductSlabSymbol!,
                     Log
                 );
-                placerService.PlaceAllDuctSleeves();
+                
+                // OPTIMIZATION: Pass clash zones to placer for direct intersection point usage
+                if (clashZones != null && clashZones.Count > 0)
+                {
+                    LogToFile($"OPTIMIZATION: Passing {clashZones.Count} clash zones to placer for direct intersection usage");
+                    placerService.PlaceAllDuctSleevesWithClashZones(clashZones);
+                }
+                else
+                {
+                    LogToFile("Using traditional intersection detection method");
+                    placerService.PlaceAllDuctSleeves();
+                }
                 tx.Commit();
 
                 string summary = $"DUCT SLEEVE SUMMARY: Placed={placerService.PlacedCount}, Skipped={placerService.SkippedCount}, Errors={placerService.ErrorCount}";
