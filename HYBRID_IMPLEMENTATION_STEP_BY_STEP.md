@@ -3,6 +3,26 @@
 ## 🎯 **Overview**
 This document provides a detailed, step-by-step implementation guide for the Hybrid Approach, where we combine UI State Manager for dynamic changes with Filter-based persistence. Each step is designed to be testable independently.
 
+## 📚 **Related Documentation**
+- **[Clash Zone & BCF Export Dependency Architecture](CLASH_ZONE_BCF_DEPENDENCY_ARCHITECTURE.md)** - Critical architectural understanding of BCF dependency and clash zone management
+- **[BCF Openings Export Implementation Plan](BCF_OPENINGS_EXPORT_IMPLEMENTATION_PLAN.md)** - Detailed BCF implementation phases
+
+## ✅ **Current Implementation Status (2025-09-24)**
+
+### **Completed Features**
+1. **✅ Duplicate Clash Detection** - Fixed issue where multiple refreshes created duplicate clash zones
+2. **✅ DuctSleeveCommand Integration** - Fixed issue where DuctSleeveCommand ignored passed clash zones
+3. **✅ 3D Section Box Filtering** - Added logic to only process clash zones visible in current 3D section box
+4. **✅ Filter Reuse Logic** - Fixed issue where filters were recreated instead of reused
+
+### **Key Architectural Understanding**
+- **BCF Dependency**: Change detection requires BCF Opening Status for persistent storage
+- **Clash Zone Purpose**: Clash zones serve as "working set" for preview and processing
+- **3D Section Box Value**: Essential for performance optimization in large projects
+
+### **Next Phase: BCF Implementation**
+The system is now ready for **Phase 3: BCF Opening Status Implementation** as outlined in the BCF Export Implementation Plan.
+
 ## 🏗️ **Architecture Overview (Three-Tier System)**
 
 ```

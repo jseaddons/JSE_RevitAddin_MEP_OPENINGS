@@ -27,25 +27,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             Action<string> log)
         {
             var results = new List<(Element, BoundingBoxXYZ, XYZ)>();
-            var locationCurve = mepElement.Location as LocationCurve;
-            if (locationCurve == null)
-            {
-                log($"ERROR: Could not get LocationCurve from element {mepElement.Id}.");
-                return results;
-            }
-
-            var line = locationCurve.Curve as Line;
-            if (line == null)
-            {
-                log($"ERROR: LocationCurve is not a Line for element {mepElement.Id}.");
-                return results;
-            }
-
-            // Get MEP element bounding box for spatial pre-filtering
             var mepBBox = mepElement.get_BoundingBox(null);
             if (mepBBox == null)
             {
                 log($"WARNING: Could not get bounding box for MEP element {mepElement.Id}.");
+                return results;
+            }
+
+            var line = GetElementLine(mepElement, mepBBox, log);
+            if (line == null)
+            {
+                log($"INFO: Falling back to damper-style processing for element {mepElement.Id}.");
+                results.AddRange(FindDamperIntersectionsInternal(mepElement, mepBBox, structuralElements, null, log));
                 return results;
             }
 
@@ -251,7 +244,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     if (solid == null) continue;
 
-                    var intersectionPoints = GetIntersectionPoints(solid, hostLine);
+                    var intersectionPoints = GetIntersectionPoints(solid, hostLine, log);
                     if (intersectionPoints.Count > 0)
                     {
                         var bbox = CreateBoundingBox(intersectionPoints);
@@ -745,6 +738,211 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             catch
             {
                 return -1.0; // Return -1 if calculation fails
+            }
+        }
+
+        public static List<(Element, BoundingBoxXYZ, XYZ)> FindDamperIntersections(
+            Element damperElement,
+            List<(Element, Transform?)> structuralElements,
+            Transform? damperLinkTransform,
+            Action<string> log)
+        {
+            var damperBBox = damperElement.get_BoundingBox(null);
+            if (damperBBox == null)
+            {
+                log($"WARNING: Could not get bounding box for damper element {damperElement.Id}.");
+                return new List<(Element, BoundingBoxXYZ, XYZ)>();
+            }
+
+            return FindDamperIntersectionsInternal(damperElement, damperBBox, structuralElements, damperLinkTransform, log);
+        }
+
+        private static List<(Element, BoundingBoxXYZ, XYZ)> FindDamperIntersectionsInternal(
+            Element damperElement,
+            BoundingBoxXYZ damperBBox,
+            List<(Element, Transform?)> structuralElements,
+            Transform? damperLinkTransform,
+            Action<string> log)
+        {
+            var results = new List<(Element, BoundingBoxXYZ, XYZ)>();
+
+            BoundingBoxXYZ hostDamperBBox = damperBBox;
+            if (damperLinkTransform != null)
+            {
+                var transformed = TransformBoundingBox(damperBBox, damperLinkTransform);
+                if (transformed != null)
+                {
+                    hostDamperBBox = transformed;
+                }
+            }
+
+            const double tolerance = 0.5; // 6 inches
+            var expandedMin = new XYZ(
+                hostDamperBBox.Min.X - tolerance,
+                hostDamperBBox.Min.Y - tolerance,
+                hostDamperBBox.Min.Z - tolerance);
+            var expandedMax = new XYZ(
+                hostDamperBBox.Max.X + tolerance,
+                hostDamperBBox.Max.Y + tolerance,
+                hostDamperBBox.Max.Z + tolerance);
+
+            log($"[DamperIntersection] Processing element {damperElement.Id} with bbox Min=({hostDamperBBox.Min.X:F2}, {hostDamperBBox.Min.Y:F2}, {hostDamperBBox.Min.Z:F2}) Max=({hostDamperBBox.Max.X:F2}, {hostDamperBBox.Max.Y:F2}, {hostDamperBBox.Max.Z:F2})");
+
+            foreach (var tuple in structuralElements)
+            {
+                Element structuralElement = tuple.Item1;
+                Transform? linkTransform = tuple.Item2;
+
+                try
+                {
+                    var structBBox = structuralElement.get_BoundingBox(null);
+                    if (structBBox == null) continue;
+
+                    if (linkTransform != null)
+                    {
+                        var transformedStruct = TransformBoundingBox(structBBox, linkTransform);
+                        if (transformedStruct != null)
+                        {
+                            structBBox = transformedStruct;
+                        }
+                    }
+
+                    if (!BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max))
+                        continue;
+
+                    log($"[DamperIntersection] Intersection candidate: damper {damperElement.Id} with structural {structuralElement.Id}");
+
+                    var intersectionMin = new XYZ(
+                        Math.Max(hostDamperBBox.Min.X, structBBox.Min.X),
+                        Math.Max(hostDamperBBox.Min.Y, structBBox.Min.Y),
+                        Math.Max(hostDamperBBox.Min.Z, structBBox.Min.Z));
+                    var intersectionMax = new XYZ(
+                        Math.Min(hostDamperBBox.Max.X, structBBox.Max.X),
+                        Math.Min(hostDamperBBox.Max.Y, structBBox.Max.Y),
+                        Math.Min(hostDamperBBox.Max.Z, structBBox.Max.Z));
+
+                    if (intersectionMin.X > intersectionMax.X ||
+                        intersectionMin.Y > intersectionMax.Y ||
+                        intersectionMin.Z > intersectionMax.Z)
+                    {
+                        continue;
+                    }
+
+                    var intersectionBBox = new BoundingBoxXYZ
+                    {
+                        Min = intersectionMin,
+                        Max = intersectionMax
+                    };
+
+                    var center = GetBoundingBoxCenter(intersectionBBox);
+                    results.Add((structuralElement, intersectionBBox, center));
+                }
+                catch (Exception ex)
+                {
+                    log($"ERROR: Failed to process damper intersection for element {structuralElement.Id}: {ex.Message}");
+                }
+            }
+
+            return results;
+        }
+
+        private static BoundingBoxXYZ? TransformBoundingBox(BoundingBoxXYZ bbox, Transform transform)
+        {
+            try
+            {
+                var pts = new[]
+                {
+                    transform.OfPoint(new XYZ(bbox.Min.X, bbox.Min.Y, bbox.Min.Z)),
+                    transform.OfPoint(new XYZ(bbox.Max.X, bbox.Min.Y, bbox.Min.Z)),
+                    transform.OfPoint(new XYZ(bbox.Min.X, bbox.Max.Y, bbox.Min.Z)),
+                    transform.OfPoint(new XYZ(bbox.Min.X, bbox.Min.Y, bbox.Max.Z)),
+                    transform.OfPoint(new XYZ(bbox.Max.X, bbox.Max.Y, bbox.Max.Z)),
+                    transform.OfPoint(new XYZ(bbox.Min.X, bbox.Max.Y, bbox.Max.Z)),
+                    transform.OfPoint(new XYZ(bbox.Max.X, bbox.Min.Y, bbox.Max.Z)),
+                    transform.OfPoint(new XYZ(bbox.Max.X, bbox.Max.Y, bbox.Min.Z))
+                };
+
+                var newMin = new XYZ(pts.Min(p => p.X), pts.Min(p => p.Y), pts.Min(p => p.Z));
+                var newMax = new XYZ(pts.Max(p => p.X), pts.Max(p => p.Y), pts.Max(p => p.Z));
+
+                return new BoundingBoxXYZ
+                {
+                    Min = newMin,
+                    Max = newMax
+                };
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static Line? GetElementLine(Element element, BoundingBoxXYZ mepBBox, Action<string> log)
+        {
+            if (element is FamilyInstance fi && fi.Symbol?.Family?.Name?.IndexOf("Damper", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                log($"[MepIntersectionService] Element {element.Id} identified as damper; using bounding-box intersection approach.");
+                return null;
+            }
+
+            if (element.Location is LocationCurve locCurve && locCurve.Curve is Line curveLine)
+            {
+                return curveLine;
+            }
+
+            if (element is MEPCurve mepCurve)
+            {
+                try
+                {
+                    var connectors = mepCurve.ConnectorManager?.Connectors?.Cast<Connector>().Where(c => c != null).ToList();
+                    if (connectors != null && connectors.Count >= 2)
+                    {
+                        var endpoints = connectors
+                            .SelectMany((c, idx) => connectors
+                                .Skip(idx + 1)
+                                .Select(other => new { First = c, Second = other, Distance = c.Origin.DistanceTo(other.Origin) }))
+                            .OrderByDescending(x => x.Distance)
+                            .FirstOrDefault();
+
+                        if (endpoints != null && endpoints.Distance > 0)
+                        {
+                            return Line.CreateBound(endpoints.First.Origin, endpoints.Second.Origin);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    log($"[MepIntersectionService] Failed deriving line from MEPCurve connectors for element {element.Id}: {ex.Message}");
+                }
+            }
+
+            try
+            {
+                var min = mepBBox.Min;
+                var max = mepBBox.Max;
+                var centerX = (min.X + max.X) * 0.5;
+                var centerY = (min.Y + max.Y) * 0.5;
+                var p1 = new XYZ(centerX, centerY, min.Z);
+                var p2 = new XYZ(centerX, centerY, max.Z);
+
+                if (p1.DistanceTo(p2) < 1e-6)
+                {
+                    p1 = new XYZ(min.X, centerY, (min.Z + max.Z) * 0.5);
+                    p2 = new XYZ(max.X, centerY, (min.Z + max.Z) * 0.5);
+                }
+
+                if (p1.DistanceTo(p2) < 1e-6)
+                {
+                    p2 = new XYZ(p1.X + 1.0, p1.Y, p1.Z);
+                }
+
+                log($"[MepIntersectionService] Fallback line derived from bounding box for element {element.Id}.");
+                return Line.CreateBound(p1, p2);
+            }
+            catch (Exception ex)
+            {
+                log($"[MepIntersectionService] Failed to derive fallback line for element {element.Id}: {ex.Message}");
+                return null;
             }
         }
     }

@@ -792,7 +792,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             _bottomLeftPanel.Controls.Add(bottomVerticalSplitter);
         }
-
         private void PopulateTopLeftSection()
         {
             // Title: "Reference Elements" 
@@ -1573,8 +1572,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 textBox.BackColor = System.Drawing.Color.LightGray;
             }
         }
-
-
         private void SetDefaultClearanceValues(string category)
         {
             try
@@ -2353,7 +2350,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 _ => null
             };
         }
-
         /// <summary>
         /// Gets available values for a specific parameter from the current model
         /// </summary>
@@ -3105,7 +3101,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 DebugLogger.Error($"[CLEARANCE_RESTORE] Failed to restore clearance settings: {ex.Message}");
             }
         }
-        
         private void RestoreReferenceFileSelections(List<string>? selectedFiles)
         {
             if (selectedFiles == null || selectedFiles.Count == 0) 
@@ -3883,7 +3878,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 DebugLogger.Error($"[CLEARANCE_RESTORE] Failed to restore clearance setting {key}: {ex.Message}");
             }
         }
-        
         /// <summary>
         /// Restores MEP categories from a filter to the UI controls
         /// </summary>
@@ -4557,7 +4551,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 DebugLogger.Error($"Error in OnRefreshClick: {ex.Message}");
             }
         }
-
         /// <summary>
         /// Core refresh method that implements the refresh process flowchart
         /// </summary>
@@ -5313,7 +5306,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 DebugLogger.Error($"[PARAMETER_DEFAULT] Error creating default parameter rows: {ex.Message}");
             }
         }
-
         /// <summary>
         /// OLD METHOD - COMMENTED OUT - REPLACED BY SERVICE
         /// SIMPLE method to update UI dropdowns with parameter lists
@@ -5766,7 +5758,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         throw;
     }
 }
-        
         /// <summary>
         /// Gets the current profile from the application
         /// </summary>
@@ -5883,11 +5874,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
                     DebugLogger.Info($"GetCurrentIntersections: Testing MEP element {mepElementToUse.Id} with coordinate transformation");
 
-                    var intersections = MepIntersectionService.FindIntersections(mepElementToUse, transformedStructuralElements, (msg) => DebugLogger.Info(msg));
+                    bool isDamperElement = (mepElementToUse as FamilyInstance)?.Symbol?.Family?.Name?.IndexOf("Damper", StringComparison.OrdinalIgnoreCase) >= 0;
+                    List<(Element, BoundingBoxXYZ, XYZ)> intersections;
+
+                    if (isDamperElement)
+                    {
+                        DebugLogger.Info($"GetCurrentIntersections: Using damper intersection path for element {mepElementToUse.Id}");
+                        intersections = MepIntersectionService.FindDamperIntersections(
+                            mepElementToUse,
+                            transformedStructuralElements,
+                            mepTransform,
+                            msg => DebugLogger.Info(msg));
+                    }
+                    else
+                    {
+                        intersections = MepIntersectionService.FindIntersections(
+                            mepElementToUse,
+                            transformedStructuralElements,
+                            msg => DebugLogger.Info(msg));
+                    }
+
                     if (intersections != null && intersections.Count > 0)
                     {
                         DebugLogger.Info($"GetCurrentIntersections: Found {intersections.Count} intersections for MEP element {mepElementToUse.Id} with transformation");
-                        allIntersections.AddRange(intersections);
+                        allIntersections.AddRange(intersections.Select(i => (mepElementToUse, i.Item1, i.Item2, i.Item3)));
                     }
                     else
                     {
@@ -6530,7 +6540,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 return null;
             }
         }
-
         private List<string> GetParameterValues(string parameterName, string tabName)
         {
             try
@@ -7242,24 +7251,3 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
     }
 }
-        {
-            if (filterListBox?.SelectedItem != null)
-            {
-                var selectedName = filterListBox.SelectedItem.ToString();
-                // This would need to be implemented to get the actual filter object
-                // For now, return a basic filter - you'll need to wire this properly
-                return new OpeningFilter
-                {
-                    Name = selectedName,
-                    Category = Models.MepCategory.Ducts,
-                    OpeningType = Models.OpeningType.RectangularSleeves,
-                    IsEnabled = true,
-                    LastModified = DateTime.Now
-                };
-            }
-            return null;
-        }
-
-    }
-}
-
