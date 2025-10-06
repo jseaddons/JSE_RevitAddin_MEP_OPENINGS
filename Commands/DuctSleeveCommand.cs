@@ -13,7 +13,7 @@ using Autodesk.Revit.DB.Structure;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 {
-    [Transaction(TransactionMode.Manual)]
+    [Transaction(TransactionMode.ReadOnly)]
     public class DuctSleeveCommand : IExternalCommand
     {
         private ClearanceValues? _uiClearances; // Cached clearance values
@@ -135,29 +135,65 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 return Result.Failed;
             }
 
-            LogToFile("Activating duct sleeve family symbols...");
-            using (var txActivate = new Transaction(doc, "Activate Duct Symbols"))
+            LogToFile("Checking duct sleeve family symbol status...");
+            try
             {
-                txActivate.Start();
-                if (ductWallSymbol != null && !ductWallSymbol.IsActive)
+                // Check if symbols are already active (no transaction needed)
+                bool wallActive = ductWallSymbol?.IsActive ?? false;
+                bool slabActive = ductSlabSymbol?.IsActive ?? false;
+                
+                LogToFile($"Wall symbol status: IsActive={wallActive}, Name={ductWallSymbol?.Name ?? "null"}");
+                LogToFile($"Slab symbol status: IsActive={slabActive}, Name={ductSlabSymbol?.Name ?? "null"}");
+                
+                // Activate symbols directly (no separate transaction needed)
+                if ((!wallActive && ductWallSymbol != null) || (!slabActive && ductSlabSymbol != null))
                 {
-                    ductWallSymbol.Activate();
-                    LogToFile($"Activated wall symbol: {ductWallSymbol.Name}");
+                    if (!wallActive && ductWallSymbol != null)
+                    {
+                        ductWallSymbol.Activate();
+                        LogToFile($"Activated wall symbol: {ductWallSymbol.Name}");
+                    }
+                    
+                    if (!slabActive && ductSlabSymbol != null)
+                    {
+                        ductSlabSymbol.Activate();
+                        LogToFile($"Activated slab symbol: {ductSlabSymbol.Name}");
+                    }
+                    
+                    LogToFile("Family symbol activation completed successfully");
                 }
-                if (ductSlabSymbol != null && !ductSlabSymbol.IsActive)
-                {
-                    ductSlabSymbol.Activate();
-                    LogToFile($"Activated slab symbol: {ductSlabSymbol.Name}");
-                }
-                txActivate.Commit();
+                
+                LogToFile("Family symbol activation check completed");
             }
-            LogToFile("Family symbol activation completed");
+            catch (Exception ex)
+            {
+                LogToFile($"ERROR: Family symbol status check failed: {ex.Message}");
+                LogToFile("Continuing with existing symbol status...");
+            }
 
             List<(Duct, Transform?)> ductTuples;
             if (filteredDucts != null)
             {
                 ductTuples = filteredDucts;
                 LogToFile($"Using filtered ducts: {ductTuples.Count}");
+            }
+            else if (clashZones != null && clashZones.Count > 0)
+            {
+                // 🎯 OPTIMIZATION: Only process ducts that have clash zones (not all ducts in document)
+                var mepElements = JSE_RevitAddin_MEP_OPENINGS.Helpers.MepElementCollectorHelper.CollectMepElementsVisibleOnly(doc);
+                var allDuctTuples = mepElements
+                    .Where(tuple => tuple.Item1 is Duct && tuple.Item1 != null)
+                    .Select(tuple => ((Duct)tuple.Item1, tuple.Item2))
+                    .ToList();
+                
+                // Filter to only ducts that have clash zones
+                var clashZoneDuctIds = clashZones.Select(cz => cz.MepElementId).ToHashSet();
+                ductTuples = allDuctTuples
+                    .Where(tuple => clashZoneDuctIds.Contains(tuple.Item1.Id))
+                    .ToList();
+                
+                LogToFile($"Collected ALL ducts from MEP elements: {allDuctTuples.Count}");
+                LogToFile($"Filtered to ducts WITH clash zones: {ductTuples.Count}");
             }
             else
             {
@@ -181,13 +217,56 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             if (clashZones != null && clashZones.Count > 0)
             {
                 LogToFile($"OPTIMIZATION: Using {clashZones.Count} clash zones instead of re-finding intersections");
-                // Extract structural elements from clash zones
-                structuralElements = clashZones
-                    .Select(cz => (doc.GetElement(cz.StructuralElementId), (Transform?)null))
-                    .Where(tuple => tuple.Item1 != null)
+                // Extract structural elements from clash zones (handle linked documents)
+                structuralElements = new List<(Element, Transform?)>();
+                
+                foreach (var cz in clashZones)
+                {
+                    var structuralElement = doc.GetElement(cz.StructuralElementId);
+                    
+                    // If element not found in host document, it might be from a linked document
+                    if (structuralElement == null && cz.StructuralElementId.IntegerValue > 0)
+                    {
+                        LogToFile($"Structural element {cz.StructuralElementId.IntegerValue} not found in host document - checking linked documents");
+                        
+                        // Try to find the element in linked documents
+                        var linkedFileService = new Services.LinkedFileService();
+                        var linkedFiles = linkedFileService.GetLinkedFiles(doc);
+                        
+                        foreach (var linkedFile in linkedFiles)
+                        {
+                            if (linkedFile.LinkInstance?.GetLinkDocument() != null)
+                            {
+                                var linkedDoc = linkedFile.LinkInstance.GetLinkDocument();
+                                var linkedElement = linkedDoc.GetElement(cz.StructuralElementId);
+                                
+                                if (linkedElement != null)
+                                {
+                                    LogToFile($"Found structural element {cz.StructuralElementId.IntegerValue} in linked document: {linkedFile.FileName}");
+                                    structuralElement = linkedElement;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (structuralElement != null)
+                    {
+                        structuralElements.Add((structuralElement, null));
+                        LogToFile($"Added structural element: {structuralElement.Name} (ID: {structuralElement.Id.IntegerValue})");
+                    }
+                    else
+                    {
+                        LogToFile($"WARNING: Could not find structural element {cz.StructuralElementId.IntegerValue} in any document");
+                    }
+                }
+                
+                // Remove duplicates by ID
+                structuralElements = structuralElements
                     .GroupBy(tuple => tuple.Item1.Id)
                     .Select(g => g.First())
                     .ToList();
+                    
                 LogToFile($"Extracted {structuralElements.Count} unique structural elements from clash zones");
             }
             else
@@ -197,18 +276,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 LogToFile($"Collected {structuralElements.Count} structural elements");
             }
 
-            using (var tx = new Transaction(doc, "Place Duct Sleeves"))
+            // Enable logging for DuctSleeveCommand debugging
+            void Log(string m) { DebugLogger.Info($"[DuctSleeveCommand] {m}"); }
+
+            // 1. Read UI clearance values once at command start
+            _uiClearances = GetUIClearanceValues();
+            Log($"UI clearances: {_uiClearances}");
+
+            // 2. Run the placer (using SleeveClearanceHelper for UI clearance values)
+            DuctSleevePlacerService placerService;
+            try
             {
-                tx.Start();
-                // Enable logging for DuctSleeveCommand debugging
-                void Log(string m) { DebugLogger.Info($"[DuctSleeveCommand] {m}"); }
-
-                // 1. Read UI clearance values once at command start
-                _uiClearances = GetUIClearanceValues();
-                Log($"UI clearances: {_uiClearances}");
-
-                // 2. Run the placer (using SleeveClearanceHelper for UI clearance values)
-                var placerService = new DuctSleevePlacerService(
+                LogToFile("Creating DuctSleevePlacerService...");
+                placerService = new DuctSleevePlacerService(
                     doc,
                     ductTuples,
                     structuralElements,
@@ -216,24 +296,53 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     ductSlabSymbol!,
                     Log
                 );
-                
-                // OPTIMIZATION: Pass clash zones to placer for direct intersection point usage
-                if (clashZones != null && clashZones.Count > 0)
-                {
-                    LogToFile($"OPTIMIZATION: Passing {clashZones.Count} clash zones to placer for direct intersection usage");
-                    placerService.PlaceAllDuctSleevesWithClashZones(clashZones);
-                }
-                else
-                {
-                    LogToFile("Using traditional intersection detection method");
-                    placerService.PlaceAllDuctSleeves();
-                }
-                tx.Commit();
-
-                string summary = $"DUCT SLEEVE SUMMARY: Placed={placerService.PlacedCount}, Skipped={placerService.SkippedCount}, Errors={placerService.ErrorCount}";
-                LogToFile($"{summary}");
-                // Removed TaskDialog.Show to avoid interrupting user workflow
+                LogToFile("DuctSleevePlacerService created successfully");
             }
+            catch (Exception placerEx)
+            {
+                LogToFile($"ERROR: Failed to create DuctSleevePlacerService: {placerEx.Message}");
+                LogToFile($"Stack trace: {placerEx.StackTrace}");
+                return Result.Failed;
+            }
+            
+            // CRITICAL FIX: Add transaction for sleeve placement (required for Revit API)
+            using (var tx = new Transaction(doc, "Place Duct Sleeves"))
+            {
+                try
+                {
+                    tx.Start();
+                    LogToFile("Transaction started for duct sleeve placement");
+                    
+                    // OPTIMIZATION: Pass clash zones to placer for direct intersection point usage
+                    if (clashZones != null && clashZones.Count > 0)
+                    {
+                        LogToFile($"OPTIMIZATION: Passing {clashZones.Count} clash zones to placer for direct intersection usage");
+                        placerService.PlaceAllDuctSleevesWithClashZones(clashZones);
+                        LogToFile("PlaceAllDuctSleevesWithClashZones completed");
+                    }
+                    else
+                    {
+                        LogToFile("Using traditional intersection detection method");
+                        placerService.PlaceAllDuctSleeves();
+                        LogToFile("PlaceAllDuctSleeves completed");
+                    }
+                    
+                    tx.Commit();
+                    LogToFile("Transaction committed successfully - sleeves placed in model");
+                }
+                catch (Exception placementEx)
+                {
+                    tx.RollBack();
+                    LogToFile($"ERROR: Failed to place duct sleeves: {placementEx.Message}");
+                    LogToFile($"Stack trace: {placementEx.StackTrace}");
+                    LogToFile("Transaction rolled back due to error");
+                    return Result.Failed;
+                }
+            }
+
+            string summary = $"DUCT SLEEVE SUMMARY: Placed={placerService.PlacedCount}, Skipped={placerService.SkippedCount}, Errors={placerService.ErrorCount}";
+            LogToFile($"{summary}");
+            // Removed TaskDialog.Show to avoid interrupting user workflow
 
             LogToFile("=== DUCT SLEEVE COMMAND COMPLETED SUCCESSFULLY ===");
             return Result.Succeeded;

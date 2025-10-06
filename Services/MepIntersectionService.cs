@@ -14,14 +14,198 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         // Geometry cache to avoid re-processing same elements
         private static readonly Dictionary<string, Solid?> _geometryCache = new Dictionary<string, Solid?>();
         
+        // PHASE 1 OPTIMIZATION 2: Category Whitelist (2x speedup)
+        private static readonly BuiltInCategory[] MEP_CATEGORY_WHITELIST = {
+            BuiltInCategory.OST_DuctCurves,
+            BuiltInCategory.OST_DuctFitting,
+            BuiltInCategory.OST_DuctAccessory,  // Includes dampers
+            BuiltInCategory.OST_DuctTerminal,
+            BuiltInCategory.OST_PipeCurves,
+            BuiltInCategory.OST_PipeFitting,
+            BuiltInCategory.OST_PipeAccessory,
+            BuiltInCategory.OST_CableTray,
+            BuiltInCategory.OST_CableTrayFitting,
+            BuiltInCategory.OST_Conduit,
+            BuiltInCategory.OST_ConduitFitting
+        };
+        
+        private static readonly BuiltInCategory[] STRUCTURAL_CATEGORY_WHITELIST = {
+            BuiltInCategory.OST_Walls,
+            BuiltInCategory.OST_Floors,
+            BuiltInCategory.OST_StructuralFraming,
+            BuiltInCategory.OST_StructuralColumns,
+            BuiltInCategory.OST_StructuralFoundation
+        };
+        
         // Clear cache method for memory management
         public static void ClearGeometryCache()
         {
             _geometryCache.Clear();
         }
         
-        // Main method to find intersections for a given MEP element - OPTIMIZED
+        // PHASE 1 OPTIMIZATION 2: Category whitelist filtering methods
+        public static bool IsMepCategoryWhitelisted(Element element)
+        {
+            if (element.Category?.Id?.IntegerValue == null) return false;
+            
+            var categoryId = (BuiltInCategory)element.Category.Id.IntegerValue;
+            return MEP_CATEGORY_WHITELIST.Contains(categoryId);
+        }
+        
+        public static bool IsStructuralCategoryWhitelisted(Element element)
+        {
+            if (element.Category?.Id?.IntegerValue == null) return false;
+            
+            var categoryId = (BuiltInCategory)element.Category.Id.IntegerValue;
+            return STRUCTURAL_CATEGORY_WHITELIST.Contains(categoryId);
+        }
+        
+        public static bool IsDamperElement(Element element)
+        {
+            if (element is FamilyInstance fi)
+            {
+                var familyName = fi.Symbol?.Family?.Name?.ToLower() ?? "";
+                return familyName.Contains("damper");
+            }
+            return false;
+        }
+        
+        // BATCH PROCESSING: Find intersections for multiple MEP elements efficiently
+        public static List<(Element, Element, BoundingBoxXYZ, XYZ)> FindIntersectionsBatch(
+            List<(Element, Transform?)> mepElements,
+            List<(Element, Transform?)> structuralElements,
+            Action<string> log)
+        {
+            var results = new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
+            log($"[BatchIntersection] Processing {mepElements.Count} MEP elements against {structuralElements.Count} structural elements");
+
+            // Pre-compute structural element bounding boxes and geometry once
+            var structuralData = new List<(Element element, Transform? transform, BoundingBoxXYZ bbox, Solid? solid)>();
+            
+            foreach (var (structElement, structTransform) in structuralElements)
+            {
+                var structBBox = structElement.get_BoundingBox(null);
+                if (structBBox == null) continue;
+
+                // Transform structural bbox to host shared coordinates
+                if (structTransform != null)
+                {
+                    var transformedMin = structTransform.OfPoint(structBBox.Min);
+                    var transformedMax = structTransform.OfPoint(structBBox.Max);
+                    structBBox = new BoundingBoxXYZ
+                    {
+                        Min = new XYZ(Math.Min(transformedMin.X, transformedMax.X), Math.Min(transformedMin.Y, transformedMax.Y), Math.Min(transformedMin.Z, transformedMax.Z)),
+                        Max = new XYZ(Math.Max(transformedMin.X, transformedMax.X), Math.Max(transformedMin.Y, transformedMax.Y), Math.Max(transformedMin.Z, transformedMax.Z))
+                    };
+                }
+
+                // Pre-compute and cache geometry
+                string cacheKey = $"{structElement.Id.IntegerValue}_{structTransform?.GetHashCode() ?? 0}";
+                Solid? solid = null;
+                
+                if (!_geometryCache.TryGetValue(cacheKey, out solid))
+                {
+                    var options = new Options();
+                    var geometry = structElement.get_Geometry(options);
+                    if (geometry != null)
+                    {
+                        solid = GetSolidFromGeometry(geometry);
+                        if (solid != null && structTransform != null)
+                        {
+                            solid = SolidUtils.CreateTransformed(solid, structTransform);
+                        }
+                    }
+                    _geometryCache[cacheKey] = solid;
+                }
+
+                structuralData.Add((structElement, structTransform, structBBox, solid));
+            }
+
+            log($"[BatchIntersection] Pre-computed {structuralData.Count} structural elements with geometry");
+
+            // Process each MEP element against pre-computed structural data
+            foreach (var (mepElement, mepTransform) in mepElements)
+            {
+                var mepBBox = mepElement.get_BoundingBox(null);
+                if (mepBBox == null) continue;
+
+                // Transform MEP bbox to host shared coordinates
+                if (mepTransform != null)
+                {
+                    var transformedMin = mepTransform.OfPoint(mepBBox.Min);
+                    var transformedMax = mepTransform.OfPoint(mepBBox.Max);
+                    mepBBox = new BoundingBoxXYZ
+                    {
+                        Min = new XYZ(Math.Min(transformedMin.X, transformedMax.X), Math.Min(transformedMin.Y, transformedMax.Y), Math.Min(transformedMin.Z, transformedMax.Z)),
+                        Max = new XYZ(Math.Max(transformedMin.X, transformedMax.X), Math.Max(transformedMin.Y, transformedMax.Y), Math.Max(transformedMin.Z, transformedMax.Z))
+                    };
+                }
+
+                var line = GetElementLine(mepElement, mepBBox, log);
+                if (line == null)
+                {
+                    // Handle damper-style elements
+                    var damperResults = FindDamperIntersectionsInternal(mepElement, mepBBox, 
+                        structuralData.Select(sd => (sd.element, sd.transform)).ToList(), null, log);
+                    results.AddRange(damperResults.Select(i => (mepElement, i.Item1, i.Item2, i.Item3)));
+                    continue;
+                }
+
+                // Quick spatial pre-filtering with tolerance
+                // TEMPORARILY REVERTED: Using original 1.0ft tolerance for intersection detection
+                const double tolerance = 1.0; // 1.0ft tolerance - original working value
+                var expandedMin = new XYZ(mepBBox.Min.X - tolerance, mepBBox.Min.Y - tolerance, mepBBox.Min.Z - tolerance);
+                var expandedMax = new XYZ(mepBBox.Max.X + tolerance, mepBBox.Max.Y + tolerance, mepBBox.Max.Z + tolerance);
+
+                int spatiallyFiltered = 0;
+                foreach (var (structElement, structTransform, structBBox, solid) in structuralData)
+                {
+                    // Quick bounding box intersection test
+                    if (!BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max))
+                    {
+                        spatiallyFiltered++;
+                        continue;
+                    }
+
+                    if (solid == null) continue;
+
+                    var intersectionPoints = GetIntersectionPoints(solid, line, log);
+                    if (intersectionPoints.Count > 0)
+                    {
+                        var bbox = CreateBoundingBox(intersectionPoints);
+                        var center = GetBoundingBoxCenter(bbox);
+                        results.Add((mepElement, structElement, bbox, center));
+                    }
+                }
+
+                if (spatiallyFiltered > 0)
+                {
+                    log($"[BatchIntersection] MEP {mepElement.Id}: spatially filtered {spatiallyFiltered}/{structuralData.Count} structural elements");
+                }
+            }
+
+            log($"[BatchIntersection] Found {results.Count} total intersections");
+            return results;
+        }
+
+        // Individual method for backwards compatibility - now delegates to batch processing
         public static List<(Element, BoundingBoxXYZ, XYZ)> FindIntersections(
+            Element mepElement,
+            List<(Element, Transform?)> structuralElements,
+            Action<string> log)
+        {
+            // Delegate to batch processing with single element
+            var batchResults = FindIntersectionsBatch(
+                new List<(Element, Transform?)> { (mepElement, null) },
+                structuralElements,
+                log);
+            
+            // Convert batch results to individual format
+            return batchResults.Select(r => (r.Item2, r.Item3, r.Item4)).ToList();
+        }
+
+        // Legacy method - kept for compatibility
+        private static List<(Element, BoundingBoxXYZ, XYZ)> FindIntersectionsLegacy(
             Element mepElement,
             List<(Element, Transform?)> structuralElements,
             Action<string> log)
@@ -44,7 +228,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             // REVERTED: Back to original 1.0 foot tolerance since coordinate transform issue is fixed
             // Both MEP and wall bounding boxes are now in host shared coordinates
-            const double tolerance = 1.0; // 1 foot tolerance - ORIGINAL
+            // TEMPORARILY REVERTED: Using original 1.0ft tolerance for intersection detection
+            const double tolerance = 1.0; // 1.0ft tolerance - original working value
             var expandedMin = new XYZ(mepBBox.Min.X - tolerance, mepBBox.Min.Y - tolerance, mepBBox.Min.Z - tolerance);
             var expandedMax = new XYZ(mepBBox.Max.X + tolerance, mepBBox.Max.Y + tolerance, mepBBox.Max.Z + tolerance);
             
@@ -53,6 +238,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             int processedCount = 0;
             int spatiallyFilteredCount = 0;
+            int lastLoggedSkipCount = 0;
 
             foreach (var tuple in structuralElements)
             {
@@ -82,9 +268,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max))
                         {
                             spatiallyFilteredCount++;
-                            // PERFORMANCE OPTIMIZATION: Reduce logging frequency
-                            if (spatiallyFilteredCount % 100 == 0) // Log every 100th skip
+                            if (spatiallyFilteredCount - lastLoggedSkipCount >= 100)
                             {
+                                lastLoggedSkipCount = spatiallyFilteredCount;
                                 var wallType = structuralElement.GetType().Name;
                                 var wallId = structuralElement.Id.IntegerValue;
                                 var distance = GetDistanceToMepElement(mepBBox, structBBox, null);
@@ -158,7 +344,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             // REVERTED: Back to original 1.0 foot tolerance since coordinate transform issue is fixed
             // Both MEP and wall bounding boxes are now in host shared coordinates
-            const double tolerance = 1.0; // 1 foot tolerance - ORIGINAL
+            // TEMPORARILY REVERTED: Using original 1.0ft tolerance for intersection detection
+            const double tolerance = 1.0; // 1.0ft tolerance - original working value
             var expandedMin = new XYZ(mepBBox.Min.X - tolerance, mepBBox.Min.Y - tolerance, mepBBox.Min.Z - tolerance);
             var expandedMax = new XYZ(mepBBox.Max.X + tolerance, mepBBox.Max.Y + tolerance, mepBBox.Max.Z + tolerance);
             
@@ -167,6 +354,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             int processedCount = 0;
             int spatiallyFilteredCount = 0;
+            int lastLoggedSkipCount = 0;
 
             foreach (var tuple in structuralElements)
             {
@@ -199,28 +387,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 linkTransform.OfPoint(new XYZ(structBBox.Max.X, structBBox.Max.Y, structBBox.Min.Z))
                             };
                             
-                            var newMin = new XYZ(pts.Min(p => p.X), pts.Min(p => p.Y), pts.Min(p => p.Z));
-                            var newMax = new XYZ(pts.Max(p => p.X), pts.Max(p => p.Y), pts.Max(p => p.Z));
-                            
-                            log($"[MepIntersectionService] 8-corner transform result: Min=({newMin.X:F2}, {newMin.Y:F2}, {newMin.Z:F2}) Max=({newMax.X:F2}, {newMax.Y:F2}, {newMax.Z:F2})");
-                            
                             structBBox = new BoundingBoxXYZ
                             {
-                                Min = newMin,
-                                Max = newMax
+                                Min = new XYZ(pts.Min(p => p.X), pts.Min(p => p.Y), pts.Min(p => p.Z)),
+                                Max = new XYZ(pts.Max(p => p.X), pts.Max(p => p.Y), pts.Max(p => p.Z))
                             };
-                            log($"[MepIntersectionService] Wall {structuralElement.Id} bbox after transform: Min=({structBBox.Min.X:F2}, {structBBox.Min.Y:F2}, {structBBox.Min.Z:F2}) Max=({structBBox.Max.X:F2}, {structBBox.Max.Y:F2}, {structBBox.Max.Z:F2})");
                         }
-                        else
-                        {
-                            log($"[MepIntersectionService] No transform needed for wall {structuralElement.Id} (host element)");
-                        }
+                        
                         if (!BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max))
                         {
                             spatiallyFilteredCount++;
-                            // PERFORMANCE OPTIMIZATION: Reduce logging frequency (overload method)
-                            if (spatiallyFilteredCount % 100 == 0) // Log every 100th skip
+                            if (spatiallyFilteredCount - lastLoggedSkipCount >= 100)
                             {
+                                lastLoggedSkipCount = spatiallyFilteredCount;
                                 var wallType = structuralElement.GetType().Name;
                                 var wallId = structuralElement.Id.IntegerValue;
                                 var distance = GetDistanceToMepElement(mepBBox, structBBox, null);

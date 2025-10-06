@@ -1,0 +1,8 @@
+Area	Original (commit 324342b)	Refactored …_BACKUP	Effect
+Filters panel	Title, list, 6 action buttons (+, ⧉, ✏, ×, ↓, ↑) arranged 2×3 with tooltips	Buttons/service wires deleted	Missing filter management controls
+Left panel layout	_topLeftPanel + _topRightPanel split by _verticalSplitter; same for bottom half	Docking & splitters removed	Right-hand sub-panels collapsed → UI shows blank center
+Panel positioning	PositionPanels computed 3-column layout (filters / left grid / right config)	Simple “split screen” logic; no filters splitter or main content positioning	Filters & main content overlap or vanish
+Main content area	Dedicated container for intersection grid with header, sizing and binding	Entire panel removed	No data presentation or refresh feedback
+Auto sizing	Resize handlers and BalanceLeftLayout retained	Balance logic simplified but relies on missing panels	Layout stays wrong even after manual resize
+Logging	Extensive DebugLogger tracing for UI state	Kept mostly intact	
+Other UI features	RestoreFilterStateToUI, PositionPanels, BalanceLeftLayout orchestrated control population	Refactor attempted to call same helpers but without required structure	Methods now run but operate on missing controls

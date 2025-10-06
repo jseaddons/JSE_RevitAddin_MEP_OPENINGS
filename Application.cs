@@ -135,17 +135,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS
 
             panel.AddSeparator(); // This adds a visual gap
 
-            // Test Profile Management Command
+            // TEST: Profile Management Command
             var button5 = panel.AddPushButton<TestProfileManagementCommand>("Profile Manager");
             button5.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
             button5.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
-
-            panel.AddSeparator(); // This adds a visual gap
-
-            // Fix Shared Coordinates Command
-            var button6 = panel.AddPushButton<FixSharedCoordinates>("Fix Coordinates");
-            button6.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
-            button6.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
 
             try
             {

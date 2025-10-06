@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Diagnostics;
+using System.IO;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Mechanical;
 using Autodesk.Revit.UI;
@@ -28,6 +29,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly List<IDisposable> _disposableResources = new List<IDisposable>();
         private readonly Dictionary<string, long> _memoryUsage = new Dictionary<string, long>();
         
+        // CRITICAL FIX: Cache linked documents to prevent recursive searching
+        private readonly Dictionary<string, Document> _linkCache = new Dictionary<string, Document>();
+        
+        // CRITICAL FIX: Cancellation token for inner loops
+        private System.Threading.CancellationToken _cancellationToken;
+        
         // UI clearance settings
         private Dictionary<string, double> _uiClearances;
         
@@ -36,15 +43,51 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         public OpeningCommandOrchestrator(Document document, UIDocument uiDocument)
         {
+            try
+            {
+                DebugLogger.Info("[OpeningCommandOrchestrator] Constructor STARTED");
+                
             _document = document ?? throw new ArgumentNullException(nameof(document));
             _uiDocument = uiDocument ?? throw new ArgumentNullException(nameof(uiDocument));
+                DebugLogger.Info("[OpeningCommandOrchestrator] Documents validated");
             
             // Set logging context for orchestrator debugging
             DebugLogger.SetServiceContext("Orchestrator");
             _disciplineExecutors = new Dictionary<string, DisciplineCommandExecutor>();
             _uiClearances = null;
-            
+                DebugLogger.Info("[OpeningCommandOrchestrator] Basic initialization completed");
+                
+                // CRITICAL FIX: Initialize link cache to prevent recursive searching
+                DebugLogger.Info("[OpeningCommandOrchestrator] Initializing link cache...");
+                InitializeLinkCache();
+                DebugLogger.Info("[OpeningCommandOrchestrator] Link cache initialized");
+                
+                DebugLogger.Info("[OpeningCommandOrchestrator] Initializing discipline executors...");
             InitializeDisciplineExecutors();
+                DebugLogger.Info("[OpeningCommandOrchestrator] Constructor COMPLETED");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[OpeningCommandOrchestrator] Constructor FAILED: {ex.Message}");
+                DebugLogger.Error($"[OpeningCommandOrchestrator] Constructor stack trace: {ex.StackTrace}");
+                throw;
+            }
+        }
+        
+        /// <summary>
+        /// Initialize link cache to prevent recursive searching
+        /// </summary>
+        private void InitializeLinkCache()
+        {
+            try
+            {
+                _linkCache.Clear();
+                DebugLogger.Info($"[OpeningCommandOrchestrator] Link cache initialized (lazy loading enabled)");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[OpeningCommandOrchestrator] Failed to initialize link cache: {ex.Message}");
+            }
         }
         
         /// <summary>
@@ -88,40 +131,247 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
-        /// Execute multiple filters with memory management and progress dialog
+        /// Execute categories - routes to individual commands based on selected MEP categories
+        /// Each command gets its own data from category-specific XML files
         /// </summary>
-        public OrchestrationResult ExecuteMultipleFilters(List<OpeningFilter> filters, bool showProgress = true)
+        public void ExecuteCategories(List<string> selectedCategories, System.Threading.CancellationToken cancellationToken = default)
         {
-            if (filters == null || filters.Count == 0)
-            {
-                return new OrchestrationResult
-                {
-                    Success = false,
-                    ErrorMessage = "No filters provided for execution"
-                };
-            }
-            
-            var result = new OrchestrationResult();
-            OpeningProgressDialog progressDialog = null;
-            
             try
             {
-                if (showProgress)
+                // CRITICAL FIX: Store cancellation token for inner loops
+                _cancellationToken = cancellationToken;
+                
+                DebugLogger.Info($"[OpeningCommandOrchestrator] ===== STARTING CATEGORY EXECUTION =====");
+                DebugLogger.Info($"[OpeningCommandOrchestrator] Categories: {string.Join(", ", selectedCategories)}");
+                
+                // Create UIApplication wrapper for commands
+                var uiApp = new UIApplication(_document.Application);
+                DebugLogger.Info("[OpeningCommandOrchestrator] Created UIApplication wrapper");
+                
+                foreach (var category in selectedCategories)
                 {
-                    progressDialog = InitializeProgressDialog(filters.Count);
+                    // CRITICAL FIX: Check for cancellation in every loop iteration
+                    cancellationToken.ThrowIfCancellationRequested();
+                    
+                    try
+                    {
+                        DebugLogger.Info($"[OpeningCommandOrchestrator] Processing category: {category}");
+                        
+                        // Read category-specific XML file
+                        var categoryClashZones = ReadCategorySpecificClashZones(category);
+                        DebugLogger.Info($"[OpeningCommandOrchestrator] Loaded {categoryClashZones.Count} clash zones for category {category}");
+                        
+                        switch (category)
+                        {
+                            case "Ducts":
+                                if (categoryClashZones.Count == 0)
+                                {
+                                    DebugLogger.Info($"[OpeningCommandOrchestrator] Skipping DuctSleeveCommand - no clash zones found for category '{category}'");
+                                    break;
+                                }
+                                DebugLogger.Info($"[OpeningCommandOrchestrator] Executing DuctSleeveCommand with {categoryClashZones.Count} clash zones");
+                                var ductCommand = new Commands.DuctSleeveCommand();
+                                var ductResult = ExecuteDuctSleeveCommand(ductCommand, uiApp, categoryClashZones);
+                                DebugLogger.Info($"[OpeningCommandOrchestrator] DuctSleeveCommand result: {ductResult}");
+                                break;
+                                
+                            case "Pipes":
+                                DebugLogger.Info($"[OpeningCommandOrchestrator] Skipping PipeSleeveCommand - not implemented yet");
+                                break;
+                                
+                            case "Cable Trays":
+                                DebugLogger.Info($"[OpeningCommandOrchestrator] Skipping CableTraySleeveCommand - not implemented yet");
+                                break;
+                                
+                            case "Duct Accessories":
+                                DebugLogger.Info($"[OpeningCommandOrchestrator] Skipping FireDamperPlaceCommand - not implemented yet");
+                                break;
+                                
+                            default:
+                                DebugLogger.Warning($"[OpeningCommandOrchestrator] Unknown category: {category}");
+                                break;
+                        }
+                        
+                        DebugLogger.Info($"[OpeningCommandOrchestrator] Completed processing category: {category}");
+                    }
+                    catch (Exception categoryEx)
+                    {
+                        DebugLogger.Error($"[OpeningCommandOrchestrator] Error executing category {category}: {categoryEx.Message}");
+                        DebugLogger.Error($"[OpeningCommandOrchestrator] Category error stack trace: {categoryEx.StackTrace}");
+                        // Continue with other categories
+                    }
                 }
                 
-                result = ExecuteWithProgress(filters, progressDialog);
+                DebugLogger.Info("[OpeningCommandOrchestrator] ===== CATEGORY EXECUTION COMPLETED =====");
             }
-            finally
+            catch (Exception ex)
             {
-                if (progressDialog != null)
+                DebugLogger.Error($"[OpeningCommandOrchestrator] CRITICAL ERROR executing categories: {ex.Message}");
+                DebugLogger.Error($"[OpeningCommandOrchestrator] Stack trace: {ex.StackTrace}");
+            }
+        }
+
+        /// <summary>
+        /// Reads category-specific clash zones from XML file
+        /// </summary>
+        private List<ClashZone> ReadCategorySpecificClashZones(string category)
+        {
+            try
+            {
+                DebugLogger.Info($"[OpeningCommandOrchestrator] Reading clash zones for category: {category}");
+                
+                // Determine the XML file name based on category
+                var categoryFileName = category.ToLower().Replace(" ", "_");
+                
+                // Get filter directory - MUST match the directory used by refresh process
+                var filterDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
+                    "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                
+                DebugLogger.Info($"[OpeningCommandOrchestrator] Looking for XML files in: {filterDir}");
+                
+                // Try to find the most recent category-specific XML file
+                var possibleFileNames = new[]
                 {
-                    progressDialog.Dispose();
+                    $"ventilation_{categoryFileName}.xml",
+                    $"plumbing_{categoryFileName}.xml", 
+                    $"electrical_{categoryFileName}.xml",
+                    $"fire_protection_{categoryFileName}.xml",
+                    $"mechanical_{categoryFileName}.xml"
+                };
+                
+                OpeningFilter categoryFilter = null;
+                string foundFilePath = null;
+                
+                foreach (var fileName in possibleFileNames)
+                {
+                    _cancellationToken.ThrowIfCancellationRequested();   // <- ADD
+                    var filePath = Path.Combine(filterDir, fileName);
+                    if (File.Exists(filePath))
+                    {
+                        try
+                        {
+                            var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
+                            using (var reader = new StreamReader(filePath))
+                            {
+                                categoryFilter = (OpeningFilter)serializer.Deserialize(reader);
+                                foundFilePath = filePath;
+                                DebugLogger.Info($"[OpeningCommandOrchestrator] Found category-specific XML file: {fileName}");
+                                break;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            DebugLogger.Warning($"[OpeningCommandOrchestrator] Error reading {fileName}: {ex.Message}");
+                        }
+                    }
+                }
+                
+                if (categoryFilter?.ClashZoneStorage?.ClashZones != null)
+                {
+                    DebugLogger.Info($"[OpeningCommandOrchestrator] Loaded {categoryFilter.ClashZoneStorage.ClashZones.Count} clash zones from {Path.GetFileName(foundFilePath)}");
+                    return categoryFilter.ClashZoneStorage.ClashZones;
+                }
+                else if (foundFilePath != null)
+                {
+                    DebugLogger.Warning($"[OpeningCommandOrchestrator] XML file found but no clash zones: {Path.GetFileName(foundFilePath)}");
+                    return new List<ClashZone>();
+                }
+                else
+                {
+                    DebugLogger.Warning($"[OpeningCommandOrchestrator] No category-specific XML files found for category '{category}'");
+                    DebugLogger.Warning($"[OpeningCommandOrchestrator] Searched files: {string.Join(", ", possibleFileNames)}");
+                    DebugLogger.Warning($"[OpeningCommandOrchestrator] Directory exists: {Directory.Exists(filterDir)}");
+                    if (Directory.Exists(filterDir))
+                    {
+                        var existingFiles = Directory.GetFiles(filterDir, "*.xml").Select(Path.GetFileName);
+                        DebugLogger.Warning($"[OpeningCommandOrchestrator] Existing XML files: {string.Join(", ", existingFiles)}");
+                    }
+                    return new List<ClashZone>();
                 }
             }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[OpeningCommandOrchestrator] Error reading category-specific clash zones: {ex.Message}");
+                return new List<ClashZone>();
+            }
+        }
+        
+        /// <summary>
+        /// Executes DuctSleeveCommand with clash zones
+        /// </summary>
+        private Autodesk.Revit.UI.Result ExecuteDuctSleeveCommand(Commands.DuctSleeveCommand command, UIApplication uiApp, List<ClashZone> clashZones)
+        {
+            try
+            {
+                UIDocument uidoc = uiApp.ActiveUIDocument;
+                Document doc = uidoc.Document;
+                string message = "";
+                ElementSet elements = new ElementSet();
+                
+                // Execute DuctSleeveCommand with clash zones
+                var result = command.Execute(uidoc, doc, ref message, elements, null, clashZones);
+                DebugLogger.Info($"[OpeningCommandOrchestrator] DuctSleeveCommand executed with {clashZones.Count} clash zones, result: {result}");
             
             return result;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[OpeningCommandOrchestrator] Error executing DuctSleeveCommand: {ex.Message}");
+                return Autodesk.Revit.UI.Result.Failed;
+            }
+        }
+
+        /// <summary>
+        /// Helper method to execute commands that require ExternalCommandData
+        /// </summary>
+        private Autodesk.Revit.UI.Result ExecuteCommandWithMockData(Autodesk.Revit.UI.IExternalCommand command, UIApplication uiApp)
+        {
+            try
+            {
+                // Skip commands that require ExternalCommandData for now
+                // These commands will be handled separately when we implement them
+                DebugLogger.Info($"[OpeningCommandOrchestrator] Skipping command {command.GetType().Name} - requires ExternalCommandData");
+                return Autodesk.Revit.UI.Result.Succeeded;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[OpeningCommandOrchestrator] Error executing command: {ex.Message}");
+                return Autodesk.Revit.UI.Result.Failed;
+            }
+        }
+
+        /// <summary>
+        /// Execute multiple filters with memory management and progress dialog
+        /// </summary>
+        public OrchestrationResult ExecuteMultipleFilters(List<OpeningFilter> filters, bool showProgress = false)
+        {
+            if (filters == null || filters.Count == 0)
+                return new OrchestrationResult{ Success = false, ErrorMessage = "No filters" };
+
+            var uiApp = new UIApplication(_document.Application);
+            int total = filters.Count;
+            int done  = 0;
+
+            foreach (var f in filters)
+            {
+                // cheap status-only feedback - use Revit's status bar
+                uiApp.Application.WriteJournalComment($"Orchestrator {++done}/{total}", true);
+                ExecuteSingleFilterNoUI(f);
+            }
+            return new OrchestrationResult{ Success = true, Message = "Done" };
+        }
+        
+        private void ExecuteSingleFilterNoUI(OpeningFilter f)
+        {
+            // same body you had in ExecuteDisciplineWithMemoryManagement
+            // but WITHOUT progressDialog calls and WITHOUT ForceGarbageCollection
+            var result = new DisciplineExecutionResult();
+            var commands = GetCommandsForDiscipline(new List<OpeningFilter>{f});
+            foreach (var cmd in commands)
+            {
+                var r = ExecuteCommandWithResourceManagement(cmd, f);
+                result.CommandsExecuted += r.Success ? 1 : 0;
+            }
         }
         
         private OpeningProgressDialog InitializeProgressDialog(int totalDisciplines)
@@ -344,6 +594,77 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         
         /// <summary>
+        /// Filters clash zones by MEP element type to route them to the correct command
+        /// </summary>
+        private List<ClashZone>? FilterClashZonesByElementType(List<ClashZone>? clashZones, Type elementType)
+        {
+            if (clashZones == null || clashZones.Count == 0)
+            {
+                DebugLogger.Info($"[ORCHESTRATOR] No clash zones to filter by element type {elementType.Name}");
+                return null;
+            }
+
+            var filteredZones = new List<ClashZone>();
+            
+            foreach (var clashZone in clashZones)
+            {
+                _cancellationToken.ThrowIfCancellationRequested();   // <- ADD
+                try
+                {
+                    // Try to get element from host document first
+                    var mepElement = _document.GetElement(clashZone.MepElementId);
+                    
+                    // If element is null, try to find it in linked documents
+                    if (mepElement == null)
+                    {
+                        var linkInstances = new FilteredElementCollector(_document)
+                            .OfClass(typeof(RevitLinkInstance))
+                            .Cast<RevitLinkInstance>();
+
+                        foreach (var linkInstance in linkInstances)
+                        {
+                            var linkDoc = linkInstance.GetLinkDocument();
+                            if (linkDoc != null)
+                            {
+                                try
+                                {
+                                    mepElement = linkDoc.GetElement(clashZone.MepElementId);
+                                    if (mepElement != null)
+                                    {
+                                        DebugLogger.Info($"[ORCHESTRATOR] Found MEP element {clashZone.MepElementId?.IntegerValue ?? -1} in linked document {linkDoc.Title}");
+                                        break;
+                                    }
+                                }
+                                catch (Exception linkEx)
+                                {
+                                    // Continue searching in other linked documents
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (mepElement != null && elementType.IsAssignableFrom(mepElement.GetType()))
+                    {
+                        filteredZones.Add(clashZone);
+                        DebugLogger.Info($"[ORCHESTRATOR] Clash zone {clashZone.Id} matches element type {elementType.Name}: {mepElement.GetType().Name}");
+                    }
+                    else
+                    {
+                        DebugLogger.Info($"[ORCHESTRATOR] Clash zone {clashZone.Id} doesn't match element type {elementType.Name}: {mepElement?.GetType().Name ?? "null"}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Error($"[ORCHESTRATOR] Error filtering clash zone {clashZone.Id} by element type: {ex.Message}");
+                }
+            }
+
+            DebugLogger.Info($"[ORCHESTRATOR] Filtered {filteredZones.Count} out of {clashZones.Count} clash zones for element type {elementType.Name}");
+            return filteredZones.Count > 0 ? filteredZones : null;
+        }
+        
+        /// <summary>
         /// Converts clash zones to filtered ducts format expected by DuctSleeveCommand
         /// </summary>
         private List<(Duct, Transform?)>? ConvertClashZonesToFilteredDucts(List<ClashZone>? clashZones)
@@ -359,6 +680,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             foreach (var clashZone in clashZones)
             {
+                _cancellationToken.ThrowIfCancellationRequested();   // <- ADD
                 try
                 {
                     var mepElement = _document.GetElement(clashZone.MepElementId);
@@ -385,9 +707,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         filteredDucts.Add((duct, transform));
                         DebugLogger.Info($"[ORCHESTRATOR] Converted clash zone {clashZone.Id} to filtered duct {duct.Id}");
                     }
+                    else if (mepElement is FamilyInstance fi)
+                    {
+                        // Handle dampers and other MEP accessories that are FamilyInstances
+                        // For FamilyInstance elements, we need to find the associated duct they're connected to
+                        DebugLogger.Info($"[ORCHESTRATOR] Clash zone {clashZone.Id} has FamilyInstance MEP element: {fi.Symbol?.Family?.Name ?? "Unknown"}");
+                        
+                        // For now, skip FamilyInstance elements as they don't directly translate to ducts
+                        // In the future, we might need to find the connected duct or handle them differently
+                        DebugLogger.Warning($"[ORCHESTRATOR] Skipping FamilyInstance clash zone {clashZone.Id} - needs special handling for dampers/accessories");
+                    }
                     else
                     {
-                        DebugLogger.Warning($"[ORCHESTRATOR] Clash zone {clashZone.Id} MEP element is not a duct: {mepElement?.GetType().Name}");
+                        DebugLogger.Warning($"[ORCHESTRATOR] Clash zone {clashZone.Id} MEP element is not a duct or FamilyInstance: {mepElement?.GetType().Name}");
                     }
                 }
                 catch (Exception ex)
@@ -398,6 +730,62 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             DebugLogger.Info($"[ORCHESTRATOR] Converted {filteredDucts.Count} clash zones to filtered ducts");
             return filteredDucts.Count > 0 ? filteredDucts : null;
+        }
+        
+        /// <summary>
+        /// Converts clash zones to filtered dampers format expected by FireDamperPlaceCommand
+        /// </summary>
+        private List<(FamilyInstance, Transform?)>? ConvertClashZonesToFilteredDampers(List<ClashZone>? clashZones)
+        {
+            if (clashZones == null || clashZones.Count == 0)
+            {
+                DebugLogger.Info("[ORCHESTRATOR] No clash zones to convert to filtered dampers");
+                return null;
+            }
+
+            var filteredDampers = new List<(FamilyInstance, Transform?)>();
+            
+            foreach (var clashZone in clashZones)
+            {
+                _cancellationToken.ThrowIfCancellationRequested();   // <- ADD
+                try
+                {
+                    var mepElement = _document.GetElement(clashZone.MepElementId);
+                    if (mepElement is FamilyInstance fi)
+                    {
+                        // Get transform if the damper is from a linked file
+                        Transform? transform = null;
+                        if (fi.Document != _document)
+                        {
+                            // This is a linked damper, get its transform
+                            var linkInstances = new FilteredElementCollector(_document)
+                                .OfClass(typeof(RevitLinkInstance))
+                                .Cast<RevitLinkInstance>()
+                                .Where(li => li.GetLinkDocument() == fi.Document);
+                            
+                            var linkInstance = linkInstances.FirstOrDefault();
+                            if (linkInstance != null)
+                            {
+                                transform = linkInstance.GetTotalTransform();
+                            }
+                        }
+                        
+                        filteredDampers.Add((fi, transform));
+                        DebugLogger.Info($"[ORCHESTRATOR] Converted clash zone {clashZone.Id} to filtered damper {fi.Id} (Family: {fi.Symbol?.Family?.Name ?? "Unknown"})");
+                    }
+                    else
+                    {
+                        DebugLogger.Warning($"[ORCHESTRATOR] Clash zone {clashZone.Id} MEP element is not a FamilyInstance: {mepElement?.GetType().Name}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Error($"[ORCHESTRATOR] Error converting clash zone {clashZone.Id} to filtered damper: {ex.Message}");
+                }
+            }
+
+            DebugLogger.Info($"[ORCHESTRATOR] Converted {filteredDampers.Count} clash zones to filtered dampers");
+            return filteredDampers.Count > 0 ? filteredDampers : null;
         }
         
         /// <summary>
@@ -418,22 +806,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var uiClearances = ClearanceManager.Instance.GetUIClearances();
                     DebugLogger.Info($"[ORCHESTRATOR] Passing {uiClearances.Count} UI clearances to DuctSleeveCommand");
                     
-                    // ORCHESTRATOR ROLE: Only trigger commands in sequence - no filtering logic
-                    var filteredDucts = ConvertClashZonesToFilteredDucts(filter?.ClashZoneStorage?.ClashZones);
-                    var clashZones = filter?.ClashZoneStorage?.ClashZones;
+                    // SMART ROUTING: Filter clash zones to only include duct intersections
+                    var totalClashZones = filter?.ClashZoneStorage?.ClashZones?.Count ?? 0;
+                    DebugLogger.Info($"[ORCHESTRATOR] Starting DuctSleeve routing with {totalClashZones} total clash zones");
                     
-                    DebugLogger.Info($"[ORCHESTRATOR] Triggering DuctSleeveCommand with {filteredDucts?.Count ?? 0} filtered ducts and {clashZones?.Count ?? 0} clash zones");
+                    var ductClashZones = FilterClashZonesByElementType(filter?.ClashZoneStorage?.ClashZones, typeof(Duct));
+                    var filteredDucts = ConvertClashZonesToFilteredDucts(ductClashZones);
+                    
+                    DebugLogger.Info($"[ORCHESTRATOR] After filtering for Duct type: {ductClashZones?.Count ?? 0} duct clash zones (filtered out {totalClashZones - (ductClashZones?.Count ?? 0)} zones)");
+                    DebugLogger.Info($"[ORCHESTRATOR] Triggering DuctSleeveCommand with {filteredDucts?.Count ?? 0} filtered ducts and {ductClashZones?.Count ?? 0} duct clash zones");
                     
                     var message = "";
-                    var commandResult = dsc.Execute(_uiDocument, _document, ref message, new ElementSet(), filteredDucts, clashZones);
+                    var commandResult = dsc.Execute(_uiDocument, _document, ref message, new ElementSet(), filteredDucts, ductClashZones);
                     result.Success = commandResult == Result.Succeeded;
                     result.Message = "DuctSleeveCommand executed";
                 }
                 else if (command is FireDamperPlaceCommand fdp)
                 {
-                    DebugLogger.Info($"[ORCHESTRATOR] FireDamperPlaceCommand - ExecuteImpl not implemented yet");
+                    var uiClearances = ClearanceManager.Instance.GetUIClearances();
+                    DebugLogger.Info($"[ORCHESTRATOR] Passing {uiClearances.Count} UI clearances to FireDamperPlaceCommand");
+                    
+                    // SMART ROUTING: Filter clash zones to only include FamilyInstance (damper) intersections
+                    var damperClashZones = FilterClashZonesByElementType(filter?.ClashZoneStorage?.ClashZones, typeof(FamilyInstance));
+                    
+                    if (damperClashZones != null && damperClashZones.Count > 0)
+                    {
+                        DebugLogger.Info($"[ORCHESTRATOR] Found {damperClashZones.Count} damper clash zones - FireDamperPlaceCommand will process them");
+                        
+                        // TODO: FireDamperPlaceCommand needs ExecuteImpl method for direct execution
+                        // For now, skip execution since ExternalCommandData cannot be constructed
+                        DebugLogger.Warning("[ORCHESTRATOR] FireDamperPlaceCommand does not support direct execution - skipping");
                     result.Success = false;
-                    result.ErrorMessage = "FireDamperPlaceCommand ExecuteImpl not implemented";
+                        result.ErrorMessage = "FireDamperPlaceCommand does not support direct execution";
+                        result.Message = "FireDamperPlaceCommand execution skipped";
+                    }
+                    else
+                    {
+                        DebugLogger.Info($"[ORCHESTRATOR] No damper clash zones found - skipping FireDamperPlaceCommand");
+                        result.Success = true;
+                        result.Message = "FireDamperPlaceCommand skipped - no damper intersections";
+                    }
                 }
                 else if (command is CableTraySleeveCommand cts)
                 {
@@ -674,15 +1086,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                // Cleanup disposable resources
-                CleanupDisciplineResources(disciplineName);
-                
-                // Force garbage collection
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                GC.Collect();
-                
-                DebugLogger.Info($"Garbage collection completed for discipline: {disciplineName}");
+                // DO NOTHING – let CLR breathe
+                DebugLogger.Info($"[GC] Skipped for {disciplineName}");
             }
             catch (Exception ex)
             {

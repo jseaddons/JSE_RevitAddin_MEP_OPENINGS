@@ -99,6 +99,7 @@
     <Compile Remove="Commands\*BKP*.cs" />
     <Compile Remove="Services\Archive\**\*.cs" />
     <Compile Remove="Archive\**\*.cs" />
+    <Compile Remove="Commands\Backup\**\*.cs" />
     <Compile Remove="Commands\ClusterMergeCommand.cs" />
     <Compile Remove="Commands\CleanCableTraySleevesCommand.cs" />
     <Compile Remove="Commands\IndividualDuctSleeveCommand.cs" />

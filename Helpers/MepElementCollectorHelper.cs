@@ -132,7 +132,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
             return filtered;
         }
 
-        /// <summary>Legacy façade – pipes, ducts, cable trays, conduits.</summary>
+        /// <summary>Legacy façade – pipes, ducts, cable trays, conduits, and accessories (including dampers).</summary>
         public static List<(Element element, Transform? transform)> CollectMepElementsVisibleOnly(Document doc)
         {
             return CollectElementsVisibleOnly(doc, new[]
@@ -140,7 +140,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                 BuiltInCategory.OST_PipeCurves,
                 BuiltInCategory.OST_DuctCurves,
                 BuiltInCategory.OST_CableTray,
-                BuiltInCategory.OST_Conduit
+                BuiltInCategory.OST_Conduit,
+                BuiltInCategory.OST_DuctAccessory,  // Includes dampers
+                BuiltInCategory.OST_PipeAccessory,
+                BuiltInCategory.OST_DuctFitting,
+                BuiltInCategory.OST_PipeFitting,
+                BuiltInCategory.OST_DuctTerminal
             });
         }
 

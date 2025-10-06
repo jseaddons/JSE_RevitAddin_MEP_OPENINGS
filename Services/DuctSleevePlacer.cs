@@ -67,6 +67,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.SetDuctLogFile();
             int ductElementId = (int)(duct?.Id?.IntegerValue ?? 0);
+            
+            // CRITICAL FIX: Declare transaction variable outside try block so it's accessible in catch
+            Transaction? localTransaction = null;
+            bool wasInTransaction = false;
+            
             try
             {
                 DebugLogger.Log($"[DuctSleevePlacer] DIAGNOSTIC: Called for ductId={ductElementId}, hostType={hostElement?.GetType().Name}, direction=({ductDirection.X:F3},{ductDirection.Y:F3},{ductDirection.Z:F3})");
@@ -234,14 +239,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Log the actual width, height, and direction being used for placement
                 DebugLogger.Log($"[DuctSleevePlacer] Placing sleeve: width={width}, height={height}, intersection=({intersection.X},{intersection.Y},{intersection.Z})");
                 DebugLogger.Log($"[DuctSleevePlacer] Duct direction: ({ductDirection.X}, {ductDirection.Y}, {ductDirection.Z})");
+                // Use conditional logging to avoid hardcoded file path issues
                 string compareLogPath = "C:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\Log\\MEP_Sleeve_Placement_Compare.log";
                 if (DebugLogger.IsEnabled)
                 {
-                    System.IO.File.AppendAllText(compareLogPath, $"[DuctSleevePlacer] Duct direction: ({ductDirection.X}, {ductDirection.Y}, {ductDirection.Z})\n");
-                    System.IO.File.AppendAllText(compareLogPath, $"[DuctSleevePlacer] Placing sleeve: width={width}, height={height}, intersection=({intersection.X},{intersection.Y},{intersection.Z})\n");
+                    try
+                    {
+                        LoggingConfiguration.ConditionalAppendAllText(compareLogPath, $"[DuctSleevePlacer] Duct direction: ({ductDirection.X}, {ductDirection.Y}, {ductDirection.Z})\n");
+                        LoggingConfiguration.ConditionalAppendAllText(compareLogPath, $"[DuctSleevePlacer] Placing sleeve: width={width}, height={height}, intersection=({intersection.X},{intersection.Y},{intersection.Z})\n");
+                    }
+                    catch (Exception logEx)
+                    {
+                        DebugLogger.Log($"[DuctSleevePlacer] Could not write to compare log: {logEx.Message}");
+                    }
                 }
+                
+                // CRITICAL FIX: Check if we're already in a transaction, if not create one
+                wasInTransaction = _doc.IsModifiable;
+                
+                if (!wasInTransaction)
+                {
+                    localTransaction = new Transaction(_doc, $"Place Duct Sleeve {ductElementId}");
+                    localTransaction.Start();
+                    DebugLogger.Log($"[DuctSleevePlacer] Created local transaction for duct {ductElementId}");
+                }
+                else
+                {
+                    DebugLogger.Log($"[DuctSleevePlacer] Using existing transaction for duct {ductElementId}");
+                }
+                
                 FamilyInstance instance = _doc.Create.NewFamilyInstance(
-                    intersection,
+                    placePoint,  // CRITICAL FIX: Use placePoint instead of intersection for proper placement
                     sleeveSymbol,
                     level,
                     StructuralType.NonStructural);
@@ -468,9 +496,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         DebugLogger.Log($"[DuctSleevePlacer] Set Schedule Level to {refLevel.Name} for duct {ductElementId}");
                     }
                 }
+                
+                // CRITICAL FIX: Commit local transaction if we created one
+                if (localTransaction != null)
+                {
+                    localTransaction.Commit();
+                    DebugLogger.Log($"[DuctSleevePlacer] Committed local transaction for duct {ductElementId}");
+                }
             }
             catch (Exception ex)
             {
+                // CRITICAL FIX: Rollback local transaction if we created one
+                if (localTransaction != null)
+                {
+                    localTransaction.RollBack();
+                    DebugLogger.Log($"[DuctSleevePlacer] Rolled back local transaction for duct {ductElementId} due to error");
+                }
+                
                 DebugLogger.Log($"[DuctSleevePlacer] Exception in PlaceDuctSleeve for duct {ductElementId}: {ex.Message}");
                 DebugLogger.Log($"[DuctSleevePlacer] Stack trace: {ex.StackTrace}");
                 DebugLogger.Error($"[DuctSleevePlacer] FAILURE: Exception during placement for duct {ductElementId}: {ex.Message}");

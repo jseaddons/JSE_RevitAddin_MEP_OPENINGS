@@ -9,7 +9,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     public static class LoggingConfiguration
     {
         // GLOBAL SWITCH: Disable ALL hardcoded file logging
-        public static bool DisableAllHardcodedLogging = true; // Set to true to disable all File.AppendAllText() calls
+        public static bool DisableAllHardcodedLogging = false; // Temporarily enabled for DuctSleeveCommand debugging
         
         // Individual log switches - set to true only for the service you want to debug
         public static bool EnableMainUI = false;           // Main UI operations

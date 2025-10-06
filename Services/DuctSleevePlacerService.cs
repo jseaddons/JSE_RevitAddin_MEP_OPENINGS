@@ -132,7 +132,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 else
                 {
                     var intersections4Tuple = MepIntersectionService.FindIntersections(duct, nearbyStructuralElements, _log ?? (_ => {}));
-                    intersections = intersections4Tuple.Select(x => (x.Item2, x.Item3, x.Item4)).ToList();
+                    intersections = intersections4Tuple.Select(x => (x.Item1, x.Item2, x.Item3)).ToList();
                 }
                 if (intersections.Count > 0)
                 {
@@ -368,6 +368,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 double dotX = Math.Abs(ductWidthDirection.DotProduct(XYZ.BasisX));
                                 string orientationStatus = dotY > dotX ? "Y-ORIENTED" : "X-ORIENTED";
 
+                                // CRITICAL FIX: Direct placement without SubTransaction for UI context
+                                try
+                                {
                                 if (orientationStatus == "Y-ORIENTED")
                                 {
                                     placer.PlaceDuctSleeveWithOrientation(duct, placePtToUse, w, h2, hostLine.Direction, ductWidthDirection, symbolToUse, hostElem);
@@ -376,8 +379,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 {
                                     placer.PlaceDuctSleeve(duct, placePtToUse, w, h2, hostLine.Direction, symbolToUse, hostElem);
                                 }
+                                    
                                 _log?.Invoke($"PLACED: Duct {duct.Id} host {hostType} {hostId} at {placePtToUse} (original={placePt}) size=({w},{h2})");
                                 PlacedCount++;
+                                }
+                                catch (Exception placementEx)
+                                {
+                                    _log?.Invoke($"FAILED: Duct {duct.Id} sleeve placement failed: {placementEx.Message}");
+                                    ErrorCount++;
+                                }
                             }
                             else
                             {
@@ -652,6 +662,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 bool placementSuccessful = false;
                 try
                 {
+                    // CRITICAL FIX: Direct placement without SubTransaction for UI context
                     if (dotY > dotX)
                     {
                         placer.PlaceDuctSleeveWithOrientation(duct, placePtToUse, w, h2, ductLine.Direction, ductWidthDirection, symbolToUse, structuralElement);
@@ -667,6 +678,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 catch (Exception ex)
                 {
                     DebugLogger.Error($"[DuctSleevePlacerService] FAILED: Duct {duct.Id} sleeve placement failed: {ex.Message}");
+                    DebugLogger.Error($"[DuctSleevePlacerService] Stack trace: {ex.StackTrace}");
                     placementSuccessful = false;
                 }
                 
@@ -740,122 +752,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         #region Parameter Transfer Support
 
-        /// <summary>
-        /// Gets recent sleeve elements placed at or near the specified location
-        /// </summary>
-        private List<Element> GetRecentSleeveElementsAtLocation(XYZ location)
+        private ParameterTransferService? _parameterTransferService;
+
+        private ParameterTransferService ParameterTransferService
         {
-            try
+            get
             {
-                var recentSleeves = new List<Element>();
-                var tolerance = 0.1; // 0.1 feet tolerance for finding sleeves
-                
-                // Create a bounding box around the location
-                var min = new XYZ(location.X - tolerance, location.Y - tolerance, location.Z - tolerance);
-                var max = new XYZ(location.X + tolerance, location.Y + tolerance, location.Z + tolerance);
-                var boundingBox = new BoundingBoxXYZ { Min = min, Max = max };
-                
-                // Create a filter for opening elements (Generic Models, typically sleeves)
-                var categoryFilter = new ElementCategoryFilter(BuiltInCategory.OST_GenericModel);
-                var boundingBoxFilter = new BoundingBoxIntersectsFilter(new Outline(min, max));
-                var combinedFilter = new LogicalAndFilter(categoryFilter, boundingBoxFilter);
-                
-                // Collect elements
-                var collector = new FilteredElementCollector(_doc)
-                    .WherePasses(combinedFilter)
-                    .WhereElementIsNotElementType()
-                    .ToElements();
-                
-                // Filter for elements that are likely sleeves (have appropriate parameters)
-                foreach (var element in collector)
-                {
-                    try
-                    {
-                        // Check if element has sleeve-like parameters (Width, Height, etc.)
-                        var hasWidthParam = element.LookupParameter("Width") != null;
-                        var hasHeightParam = element.LookupParameter("Height") != null;
-                        
-                        if (hasWidthParam || hasHeightParam)
-                        {
-                            recentSleeves.Add(element);
-                        }
-                    }
-                    catch
-                    {
-                        // Continue if parameter check fails
-                    }
-                }
-                
-                return recentSleeves;
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Warning($"[DuctSleevePlacerService] Error finding recent sleeves at location: {ex.Message}");
-                return new List<Element>();
+                if (_parameterTransferService == null)
+                    _parameterTransferService = new ParameterTransferService();
+                return _parameterTransferService;
             }
         }
-
-        #endregion
-
-    }
-}
-
-                
-                // ENHANCEMENT: Apply parameter transfer settings if available
-                try
-                {
-                    var parameterTransferService = new ParameterTransferService();
-                    var currentConfig = parameterTransferService.GetCurrentParameterTransferConfiguration();
-                    
-                    if (currentConfig != null && currentConfig.Mappings.Count > 0)
-                    {
-                        // Find the placed sleeve element (would need to be captured from the placer)
-                        // For now, we'll get it by finding the most recently placed opening at this location
-                        var recentSleeves = GetRecentSleeveElementsAtLocation(placePtToUse);
-                        
-                        if (recentSleeves.Count > 0)
-                        {
-                            var targetSleeveIds = recentSleeves.Select(s => s.Id).ToList();
-                            var transferResult = parameterTransferService.ExecuteTransferConfiguration(_doc, targetSleeveIds, currentConfig);
-                            
-                            if (transferResult.Success)
-                            {
-                                DebugLogger.Info($"[DuctSleevePlacerService] Applied parameter transfer to {targetSleeveIds.Count} sleeve(s): {transferResult.Message}");
-                            }
-                            else
-                            {
-                                DebugLogger.Warning($"[DuctSleevePlacerService] Parameter transfer failed: {transferResult.Message}");
-                            }
-                        }
-                        else
-                        {
-                            DebugLogger.Info($"[DuctSleevePlacerService] No recent sleeves found at location for parameter transfer");
-                        }
-                    }
-                }
-                catch (Exception paramEx)
-                {
-                    DebugLogger.Warning($"[DuctSleevePlacerService] Parameter transfer error: {paramEx.Message}");
-                }
-                
-                PlacedCount++;
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Error($"[DuctSleevePlacerService] Error placing sleeve for duct {duct.Id}: {ex.Message}");
-                ErrorCount++;
-            }
-        }
-
-        private static bool BoundingBoxesIntersect(BoundingBoxXYZ a, BoundingBoxXYZ b)
-        {
-            if (a == null || b == null) return false;
-            return !(a.Max.X < b.Min.X || a.Min.X > b.Max.X ||
-                     a.Max.Y < b.Min.Y || a.Min.Y > b.Max.Y ||
-                     a.Max.Z < b.Min.Z || a.Min.Z > b.Max.Z);
-        }
-
-        #region Parameter Transfer Support
 
         /// <summary>
         /// Gets recent sleeve elements placed at or near the specified location

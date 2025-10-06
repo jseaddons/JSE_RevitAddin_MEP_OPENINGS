@@ -439,7 +439,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 Element mepElement = null;
                 try
                 {
+                    // Try to get element from host document first
                     mepElement = document.GetElement(clashZone.MepElementId);
+                    
+                    // If element is null, try to find it in linked documents
+                    if (mepElement == null)
+                    {
+                        var linkInstances = new FilteredElementCollector(document)
+                            .OfClass(typeof(RevitLinkInstance))
+                            .Cast<RevitLinkInstance>();
+
+                        foreach (var linkInstance in linkInstances)
+                        {
+                            var linkDoc = linkInstance.GetLinkDocument();
+                            if (linkDoc != null)
+                            {
+                                try
+                                {
+                                    mepElement = linkDoc.GetElement(clashZone.MepElementId);
+                                    if (mepElement != null)
+                                    {
+                                        _log($"Found MEP element {clashZone.MepElementId?.IntegerValue ?? -1} in linked document {linkDoc.Title}");
+                                        break;
+                                    }
+                                }
+                                catch (Exception linkEx)
+                                {
+                                    // Continue searching in other linked documents
+                                    continue;
+                                }
+                            }
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -707,235 +738,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// This method ignores IsResolved status - invalid clash zones should always be replaced
         /// </summary>
         private ClashZone? FindInvalidClashZoneByGeometry(Element mepElement, Element structuralElement)
-        {
-            if (_clashZoneStorage?.ClashZones == null) return null;
-            
-            var mepGeometryHash = CalculateElementGeometryHash(mepElement);
-            var structuralGeometryHash = CalculateElementGeometryHash(structuralElement);
-            
-            // Also check for old hash formats that included intersection coordinates
-            var mepElementId = mepElement.Id.ToString();
-            var structuralElementId = structuralElement.Id.ToString();
-            var mepCategory = mepElement.Category?.Name ?? "Unknown";
-            var structuralCategory = structuralElement.Category?.Name ?? "Unknown";
-            
-            return _clashZoneStorage.ClashZones.FirstOrDefault(cz => 
-                (cz.MepElementId == null || cz.MepElementId == ElementId.InvalidElementId || cz.MepElementIdValue == -1) &&
-                (cz.StructuralElementId == null || cz.StructuralElementId == ElementId.InvalidElementId || cz.StructuralElementIdValue == -1) &&
-                (
-                    // Check new hash format (elementId_category)
-                    (cz.MepElementGeometryHash == mepGeometryHash && cz.StructuralElementGeometryHash == structuralGeometryHash) ||
-                    // Check old hash format (elementId_category_(x,y,z)) - for backward compatibility
-                    (cz.MepElementGeometryHash.StartsWith($"{mepElementId}_{mepCategory}_") && cz.StructuralElementGeometryHash.StartsWith($"{structuralElementId}_{structuralCategory}_"))
-                ));
-        }
-        
-        /// <summary>
-        /// Remove duplicate clash zones (same MEP + structural element) keeping the most recent one
-        /// </summary>
-        private void RemoveDuplicateClashZones()
-        {
-            var originalCount = _clashZoneStorage.ClashZones.Count;
-            
-            // Group by MEP + Structural element IDs and keep only the most recent in each group
-            var uniqueClashZones = _clashZoneStorage.ClashZones
-                .GroupBy(cz => new { cz.MepElementId, cz.StructuralElementId })
-                .Select(group => group.OrderByDescending(cz => cz.LastUpdated).First())
-                .ToList();
-            
-            _clashZoneStorage.ClashZones.Clear();
-            _clashZoneStorage.ClashZones.AddRange(uniqueClashZones);
-            
-            var removedCount = originalCount - _clashZoneStorage.ClashZones.Count;
-            if (removedCount > 0)
-            {
-                _log($"DEDUPLICATION: Removed {removedCount} duplicate clash zones. Kept {_clashZoneStorage.ClashZones.Count} unique clash zones.");
-            }
-        }
-        
-        private ClashZone CreateClashZone(Element mepElement, Element structuralElement, XYZ intersectionPoint, BoundingBoxXYZ boundingBox, Document document)
-        {
-            var mepSize = GetMepElementSize(mepElement);
-            var requiredClearance = CalculateRequiredClearance(mepSize);
-            
-            var clashZone = new ClashZone
-            {
-                MepElementId = mepElement.Id,
-                StructuralElementId = structuralElement.Id,
-                IntersectionPoint = intersectionPoint,
-                ClashBoundingBox = boundingBox,
-                MepElementSize = mepSize,
-                RequiredClearance = requiredClearance,
-                MepElementGeometryHash = CalculateElementGeometryHash(mepElement),
-                StructuralElementGeometryHash = CalculateElementGeometryHash(structuralElement),
-                DocumentPath = document.PathName,
-                DetectedAt = DateTime.Now,
-                LastUpdated = DateTime.Now
-            };
-            
-            // DEBUG: Log the intersection point being set
-            _log($"[DEBUG] Created ClashZone {clashZone.Id}:");
-            _log($"[DEBUG]   IntersectionPoint: {intersectionPoint}");
-            _log($"[DEBUG]   IntersectionPointX: {clashZone.IntersectionPointX}");
-            _log($"[DEBUG]   IntersectionPointY: {clashZone.IntersectionPointY}");
-            _log($"[DEBUG]   IntersectionPointZ: {clashZone.IntersectionPointZ}");
-            
-            return clashZone;
-        }
-        
-        private void UpdateExistingClashZone(ClashZone existingZone, Element mepElement, Element structuralElement, XYZ intersectionPoint, BoundingBoxXYZ boundingBox, Document document)
-        {
-            existingZone.IntersectionPoint = intersectionPoint;
-            existingZone.ClashBoundingBox = boundingBox;
-            existingZone.MepElementSize = GetMepElementSize(mepElement);
-            existingZone.RequiredClearance = CalculateRequiredClearance(existingZone.MepElementSize);
-            existingZone.MepElementGeometryHash = CalculateElementGeometryHash(mepElement);
-            existingZone.StructuralElementGeometryHash = CalculateElementGeometryHash(structuralElement);
-            existingZone.LastUpdated = DateTime.Now;
-        }
-        
-        private void MarkResolvedClashZones(List<(Element, Element, BoundingBoxXYZ, XYZ)> currentIntersections, Document document)
-        {
-            // Intentionally left as no-op for IsResolved. We only mark IsResolved=true after sleeve placement.
-            // Optionally, we could track a transient flag like IsCurrentlyClashing here without touching IsResolved.
-            var currentStructuralIds = currentIntersections.Select(i => i.Item2.Id).ToHashSet();
-            int noLongerIntersecting = _clashZoneStorage.ClashZones
-                .Count(cz => !cz.IsResolved && !currentStructuralIds.Contains(cz.StructuralElementId));
-            if (noLongerIntersecting > 0)
-            {
-                _log($"{noLongerIntersecting} clash zones are not present in this refresh; preserving IsResolved state (no auto-resolve).");
-            }
-        }
-        
-        private bool HasElementChanged(ElementId elementId, string storedHash, Document document)
-        {
-            try
-            {
-                var element = document.GetElement(elementId);
-                if (element == null) return true; // Element was deleted
-                
-                var currentHash = CalculateElementGeometryHash(element);
-                return currentHash != storedHash;
-            }
-            catch
-            {
-                return true; // Assume changed if we can't check
-            }
-        }
-        
-        private string CalculateDocumentHash(Document document)
-        {
-            // Simple hash based on document path and last modified time
-            return $"{document.PathName}_{DateTime.Now.Ticks}";
-        }
-        
-        /// <summary>
-        /// Checks if a bounding box represents a valid intersection (not a tangent contact)
-        /// </summary>
-        private bool IsInvalidBoundingBox(BoundingBoxXYZ boundingBox)
-        {
-            if (boundingBox == null || boundingBox.Min == null || boundingBox.Max == null)
-                return true;
-
-            // Check if any dimension has zero or negative width (tangent contact)
-            var widthX = Math.Abs(boundingBox.Max.X - boundingBox.Min.X);
-            var widthY = Math.Abs(boundingBox.Max.Y - boundingBox.Min.Y);
-            var widthZ = Math.Abs(boundingBox.Max.Z - boundingBox.Min.Z);
-
-            // If all dimensions are effectively zero, it's a tangent contact
-            const double tolerance = 1e-6; // 1 micron tolerance
-            return widthX < tolerance && widthY < tolerance && widthZ < tolerance;
-        }
-        
-        private string CalculateElementGeometryHash(Element element)
-        {
-            try
-            {
-                // Stable hash based on element ID and category - this should remain constant for the same element
-                // regardless of intersection point changes
-                return $"{element.Id}_{element.Category?.Name ?? "Unknown"}";
-            }
-            catch
-            {
-                return $"error_{element.Id}";
-            }
-        }
-        
-        private double GetMepElementSize(Element mepElement)
-        {
-            try
-            {
-                var diameterParam = mepElement.LookupParameter("Diameter");
-                if (diameterParam != null) return diameterParam.AsDouble();
-                
-                var sizeParam = mepElement.LookupParameter("Size");
-                if (sizeParam != null) return sizeParam.AsDouble();
-                
-                return 0.5; // Default 6 inches
-            }
-            catch
-            {
-                return 0.5;
-            }
-        }
-        
-        private double CalculateRequiredClearance(double mepSize)
-        {
-            // Return clearance in mm for consistency with UI
-            // TODO: Use actual clearance settings from UI instead of hardcoded value
-            return 50.0; // 50mm clearance (stored in mm, not feet)
-        }
-        
-        private double CalculateRequiredClearance(double mepSize, Dictionary<string, double> clearanceSettings, Element mepElement)
-        {
-            try
-            {
-                // Use actual clearance settings from UI
-                double clearanceInMm = 50.0; // Default fallback
-                
-                if (clearanceSettings != null && clearanceSettings.Count > 0)
-                {
-                    // Determine if duct is insulated (simplified logic for now)
-                    bool isInsulated = false;
-                    
-                    // Try to get clearance based on element type
-                    if (mepElement.Category?.Name == "Ducts")
-                    {
-                        string clearanceKey = isInsulated ? "ducts_insulated_clearance" : "ducts_normal_clearance";
-                        if (clearanceSettings.ContainsKey(clearanceKey))
-                        {
-                            clearanceInMm = clearanceSettings[clearanceKey];
-                        }
-                    }
-                    else if (mepElement.Category?.Name == "Cable Tray")
-                    {
-                        string clearanceKey = isInsulated ? "cabletray_other_insulated" : "cabletray_other_normal";
-                        if (clearanceSettings.ContainsKey(clearanceKey))
-                        {
-                            clearanceInMm = clearanceSettings[clearanceKey];
-                        }
-                    }
-                }
-                
-                // Return clearance directly in mm (UI stores values in mm)
-                // Note: mepSize is in Revit internal units (feet), but for now return in mm for consistency
-                return clearanceInMm;
-            }
-            catch (Exception ex)
-            {
-                _log($"Error calculating clearance: {ex.Message}, using default");
-                return mepSize + (50.0 / 304.8); // Fallback to 50mm
-            }
-        }
-        
-        private bool IsPointNear(XYZ point1, XYZ point2, double tolerance)
-        {
-            return point1.DistanceTo(point2) <= tolerance;
-        }
-        
-        #endregion
-    }
-}
         {
             if (_clashZoneStorage?.ClashZones == null) return null;
             

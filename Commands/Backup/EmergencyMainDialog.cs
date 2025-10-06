@@ -24,18 +24,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private readonly Document? _document;
         private readonly UIDocument? _uiDocument;
         
-        // External Event for proper UI-to-Revit API communication
-        private SleevePlacementExternalEvent _sleevePlacementHandler;
-        private ExternalEvent _sleevePlacementEvent;
-        
         // Store all collected parameters globally to persist across refreshes
         private Dictionary<string, List<Models.ParameterInfo>> _allCollectedParameters = new Dictionary<string, List<Models.ParameterInfo>>();
         
         // Flag to prevent infinite loops during ComboBox population
         private bool _isUpdatingComboBoxes = false;
-        
-        // Flag to track if user has made manual changes to UI selections
-        private bool _userHasMadeManualChanges = false;
         
         // Store filters from last refresh to reuse during opening creation
         private List<OpeningFilter>? _lastRefreshFilters = null;
@@ -91,7 +84,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.Panel _clearancePanel = null!;
         private WinForms.Panel _cableTrayPanel = null!;
         private WinForms.Panel _damperPanel = null!;
-        private WinForms.Panel _pipePanel = null!;
         private LinkedFileService? _linkedFileService;
         private List<LinkedFileInfo> _linkedFiles = new List<LinkedFileInfo>();
         private Document? _activeDocument;
@@ -210,37 +202,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 throw; // Re-throw to see the error
             }
 
-            // STEP 3: Validate required families are loaded
-            try
-            {
-                DebugLogger.Info("About to validate required families");
-                if (document != null)
-                {
-                    var familyValidationService = new FamilyValidationService(document, msg => DebugLogger.Info(msg));
-                    familyValidationService.ValidateRequiredFamilies();
-                }
-                DebugLogger.Info("Family validation completed successfully");
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Error($"Family validation failed: {ex.Message}");
-                DebugLogger.Error($"Stack trace: {ex.StackTrace}");
-                // Don't throw - just log the error and continue
-            }
-
-            // STEP 4: Initialize External Event for proper sleeve placement
-            try
-            {
-                _sleevePlacementHandler = new SleevePlacementExternalEvent();
-                _sleevePlacementEvent = ExternalEvent.Create(_sleevePlacementHandler);
-                DebugLogger.Info("External Event initialized successfully for sleeve placement");
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Error($"Failed to initialize External Event: {ex.Message}");
-            }
-
-            // STEP 4: Log completion
+            // STEP 3: Log completion
             try
             {
                 File.AppendAllText(mainUiLogPath, $"[{DateTime.Now}] EmergencyMainDialog initialization COMPLETED\n");
@@ -252,7 +214,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 this.Shown += (s, e) => LoadRealLinkedFiles(document);
             }
-
         }
 
         private void InitializeComponent()
@@ -565,10 +526,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _filtersPanel = new WinForms.Panel
             {
                 BackColor = System.Drawing.Color.FromArgb(248, 249, 250),
-                BorderStyle = WinForms.BorderStyle.FixedSingle,
-                Visible = true  // Ensure visibility for debugging
+                BorderStyle = WinForms.BorderStyle.FixedSingle
             };
-            _filtersPanel.BringToFront();  // Bring to front to ensure it's visible
             this.Controls.Add(_filtersPanel);
             DebugLogger.Info("_filtersPanel created and added to form");
             
@@ -604,12 +563,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _filtersPanel.Controls.Add(title);
             DebugLogger.Info("Filters title label created");
             
-            // ========================================================================
-            // ⚠️  CRITICAL FILTER UI - DO NOT MODIFY WITHOUT USER CONSENT  ⚠️
-            // ========================================================================
             // Filter List (like conVoid's filter list) - Enlarged height to -140
-            // DO NOT CHANGE: Size and Anchor settings are critical for proper layout
-            // ========================================================================
             var filterListBox = new WinForms.ListBox
             {
                 Location = new System.Drawing.Point(10, 40),
@@ -748,25 +702,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             loadFilterButton.Click += (s, e) => _filterManagementService.LoadFilter(filterListBox);
             
             // Add event handler for filter selection to restore UI state
-            filterListBox.SelectedIndexChanged += (s, e) => {
-                if (filterListBox.SelectedItem != null)
-                {
-                    // Reset manual changes flag when user explicitly selects a filter
-                    _userHasMadeManualChanges = false;
-                    DebugLogger.Info("[FILTER_UI] User explicitly selected filter - resetting manual changes flag");
-                    
-                    // Auto-load the selected filter instead of showing file dialog
-                    var selectedFilterName = filterListBox.SelectedItem.ToString();
-                    var loadedFilter = _filterManagementService.LoadFilterAuto(selectedFilterName);
-                    if (loadedFilter != null)
-                    {
-                        DebugLogger.Info($"[FILTER_UI] Loaded filter '{selectedFilterName}' with {loadedFilter.SelectedMepCategoryNames?.Count ?? 0} MEP categories: {string.Join(", ", loadedFilter.SelectedMepCategoryNames ?? new List<string>())}");
-                        // Pass the loaded filter directly to avoid loading it again
-                        RestoreUIStateFromFilter(loadedFilter);
-                        DebugLogger.Info($"[FILTER_UI] Auto-loaded filter: {selectedFilterName}");
-                    }
-                }
-            };
+            filterListBox.SelectedIndexChanged += (s, e) => RestoreFilterStateToUI(filterListBox);
             
             DebugLogger.Info("=== PopulateFiltersPanel COMPLETED ===");
         }
@@ -827,12 +763,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             DebugLogger.Info("=== CreateMainContentPanel COMPLETED ===");
         }
 
-        // ========================================================================
-        // ⚠️  CRITICAL UI LAYOUT - DO NOT MODIFY WITHOUT USER CONSENT  ⚠️
-        // ========================================================================
-        // This method creates the working 2x2 grid layout for the left section
-        // Any changes to this method can break the entire UI layout
-        // ========================================================================
         private void CreateFourSectionLayout()
         {
             DebugLogger.Info("=== STARTING CreateFourSectionLayout ===");
@@ -882,62 +812,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             DebugLogger.Info("=== CreateFourSectionLayout COMPLETED ===");
         }
 
-        // ========================================================================
-        // ⚠️  CRITICAL UI LAYOUT - DO NOT MODIFY WITHOUT USER CONSENT  ⚠️
-        // ========================================================================
-        // This method creates the top-right panel for MEP Categories
-        // Uses DOCK to RIGHT for proper 2x2 grid positioning
-        // ========================================================================
         private void CreateTopRightPanel()
         {
-            // Top-Right Panel: Reference Categories (MEP categories) - DOCK to RIGHT
+            // Top-Right Panel: Reference Categories (MEP categories) - ANCHOR instead of DOCK
             _topRightPanel = new WinForms.Panel
             {
-                Dock = WinForms.DockStyle.Right,
-                Width = 200,  // Fixed width for categories
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Right | WinForms.AnchorStyles.Bottom,
+                Width = 200,  // Reduced from 340 to 200
                 BackColor = System.Drawing.Color.FromArgb(250, 250, 250),
                 BorderStyle = WinForms.BorderStyle.FixedSingle
             };
             _topLeftPanel.Controls.Add(_topRightPanel);
 
-            // Vertical Splitter (between left and right in top section) - DOCK to RIGHT
+            // Vertical Splitter (between left and right in top section) - ANCHOR instead of DOCK
             _verticalSplitter = new WinForms.Splitter
             {
-                Dock = WinForms.DockStyle.Right,
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Right | WinForms.AnchorStyles.Bottom,
                 Width = 3,
                 BackColor = System.Drawing.Color.Gray
             };
             _topLeftPanel.Controls.Add(_verticalSplitter);
         }
 
-        // ========================================================================
-        // ⚠️  CRITICAL UI LAYOUT - DO NOT MODIFY WITHOUT USER CONSENT  ⚠️
-        // ========================================================================
-        // This method creates the bottom-right panel for Host Categories
-        // Uses DOCK to RIGHT for proper 2x2 grid positioning
-        // ========================================================================
         private void CreateBottomRightPanel()
         {
-            // Bottom-Right Panel: Host Categories (Revit categories) - DOCK to RIGHT
+            // Bottom-Right Panel: Host Categories (Revit categories) - ANCHOR instead of DOCK
             _bottomRightPanel = new WinForms.Panel
             {
-                Dock = WinForms.DockStyle.Right,
-                Width = 200,  // Fixed width for categories
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Right | WinForms.AnchorStyles.Bottom,
+                Width = 200,  // Reduced from 340 to 200
                 BackColor = System.Drawing.Color.FromArgb(250, 250, 250),
                 BorderStyle = WinForms.BorderStyle.FixedSingle
             };
             _bottomLeftPanel.Controls.Add(_bottomRightPanel);
 
-            // Vertical Splitter (between left and right in bottom section) - DOCK to RIGHT
+            // Vertical Splitter (between left and right in bottom section) - ANCHOR instead of DOCK
             var bottomVerticalSplitter = new WinForms.Splitter
             {
-                Dock = WinForms.DockStyle.Right,
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Right | WinForms.AnchorStyles.Bottom,
                 Width = 3,
                 BackColor = System.Drawing.Color.Gray
             };
             _bottomLeftPanel.Controls.Add(bottomVerticalSplitter);
         }
-
         private void PopulateTopLeftSection()
         {
             // Title: "Reference Elements" 
@@ -1049,10 +966,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
             // Add event handler for category selection changes
             referenceCategoriesListBox.ItemCheck += (sender, e) => {
-                // Mark that user has made manual changes
-                _userHasMadeManualChanges = true;
-                DebugLogger.Info("[FILTER_UI] User manually changed MEP category selection - marking as manual change");
-                
                 // Use a timer to delay the update to avoid issues during the check operation
                 System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
                 timer.Interval = 10;
@@ -1393,7 +1306,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         /// - "Cable Trays" → Shows _cableTrayPanel (Top Side + Other Sides)
         /// - "Duct Accessories" → Shows _damperPanel (MEP Connector Side + Other Sides)
         /// - "Ducts" → Shows _clearancePanel (standard clearance)
-        /// - "Pipes" → Shows _pipePanel (clearance + opening type selection)
+        /// - "Pipes" → Shows _clearancePanel (standard clearance)
         /// 
         /// String matching is case-insensitive and must match exactly with combo box items.
         /// </summary>
@@ -1403,7 +1316,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _clearancePanel.Visible = false;
             _cableTrayPanel.Visible = false;
             _damperPanel.Visible = false;
-            _pipePanel.Visible = false;
 
             if (category.Equals("Cable Trays", StringComparison.OrdinalIgnoreCase))
             {
@@ -1422,7 +1334,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
             else if (category.Equals("Pipes", StringComparison.OrdinalIgnoreCase))
             {
-                _pipePanel.Visible = true;
+                _clearancePanel.Visible = true;
                 SetDefaultClearanceValues("Pipes");
             }
             else
@@ -1702,143 +1614,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _damperPanel.Controls.Add(otherDInsLockBtn);
             var dInsUnit = new WinForms.Label { Text = "mm", Location = new System.Drawing.Point(400, 41), Size = new System.Drawing.Size(30, 16) };
             _damperPanel.Controls.Add(dInsUnit);
-
-            // Pipe Panel (initially hidden) - Standard clearance + Opening Type selection
-            _pipePanel = new WinForms.Panel
-            {
-                Location = new System.Drawing.Point(10, 75),
-                Size = new System.Drawing.Size(_rightPanel.Width - 20, 140),
-                BackColor = System.Drawing.Color.FromArgb(248, 249, 250),
-                BorderStyle = WinForms.BorderStyle.FixedSingle,
-                Visible = false,
-                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right
-            };
-            _rightPanel.Controls.Add(_pipePanel);
-
-            // Clearance Section
-            var pipeClearanceLabel = new WinForms.Label
-            {
-                Text = "Clearances:",
-                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold),
-                Location = new System.Drawing.Point(10, 10),
-                Size = new System.Drawing.Size(130, 18)
-            };
-            _pipePanel.Controls.Add(pipeClearanceLabel);
-
-            var pipeNormalHeader = new WinForms.Label
-            {
-                Text = "Normal (mm)",
-                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold),
-                Location = new System.Drawing.Point(170, 10),
-                Size = new System.Drawing.Size(110, 18)
-            };
-            _pipePanel.Controls.Add(pipeNormalHeader);
-
-            var pipeInsHeader = new WinForms.Label
-            {
-                Text = "Insulated (mm)",
-                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold),
-                Location = new System.Drawing.Point(300, 10),
-                Size = new System.Drawing.Size(120, 18)
-            };
-            _pipePanel.Controls.Add(pipeInsHeader);
-
-            var pipeClearanceRowLbl = new WinForms.Label
-            {
-                Text = "Clearance per Side:",
-                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular),
-                Location = new System.Drawing.Point(10, 35),
-                Size = new System.Drawing.Size(150, 18)
-            };
-            _pipePanel.Controls.Add(pipeClearanceRowLbl);
-
-            var pipeNormalText = new WinForms.TextBox
-            {
-                Location = new System.Drawing.Point(170, 33),
-                Size = new System.Drawing.Size(50, 20),
-                Text = "50",
-                Tag = "pipes_normal_clearance",
-                Enabled = false,
-                BackColor = System.Drawing.Color.LightGray
-            };
-            _pipePanel.Controls.Add(pipeNormalText);
-
-            var pipeNormalLockBtn = new WinForms.Button
-            {
-                Location = new System.Drawing.Point(225, 33),
-                Size = new System.Drawing.Size(25, 20),
-                Text = "🔒",
-                Font = new System.Drawing.Font("Segoe UI Emoji", 8F),
-                Tag = "pipes_normal_lock",
-                BackColor = System.Drawing.Color.LightGreen
-            };
-            pipeNormalLockBtn.Click += (s, e) => ToggleLock(pipeNormalLockBtn, pipeNormalText);
-            _pipePanel.Controls.Add(pipeNormalLockBtn);
-
-            var pipeInsText = new WinForms.TextBox
-            {
-                Location = new System.Drawing.Point(300, 33),
-                Size = new System.Drawing.Size(50, 20),
-                Text = "50",
-                Tag = "pipes_insulated_clearance",
-                Enabled = false,
-                BackColor = System.Drawing.Color.LightGray
-            };
-            _pipePanel.Controls.Add(pipeInsText);
-
-            var pipeInsLockBtn = new WinForms.Button
-            {
-                Location = new System.Drawing.Point(355, 33),
-                Size = new System.Drawing.Size(25, 20),
-                Text = "🔒",
-                Font = new System.Drawing.Font("Segoe UI Emoji", 8F),
-                Tag = "pipes_insulated_lock",
-                BackColor = System.Drawing.Color.LightGreen
-            };
-            pipeInsLockBtn.Click += (s, e) => ToggleLock(pipeInsLockBtn, pipeInsText);
-            _pipePanel.Controls.Add(pipeInsLockBtn);
-
-            // Opening Type Section
-            var pipeOpeningTypeLabel = new WinForms.Label
-            {
-                Text = "Opening Type:",
-                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold),
-                Location = new System.Drawing.Point(10, 70),
-                Size = new System.Drawing.Size(130, 18)
-            };
-            _pipePanel.Controls.Add(pipeOpeningTypeLabel);
-
-            var pipeCircularRadio = new WinForms.RadioButton
-            {
-                Text = "Circular",
-                Location = new System.Drawing.Point(20, 95),
-                Size = new System.Drawing.Size(80, 20),
-                Checked = true, // Default to circular
-                Tag = "pipe_opening_circular"
-            };
-            _pipePanel.Controls.Add(pipeCircularRadio);
-
-            var pipeRectangularRadio = new WinForms.RadioButton
-            {
-                Text = "Rectangular",
-                Location = new System.Drawing.Point(110, 95),
-                Size = new System.Drawing.Size(100, 20),
-                Checked = false,
-                Tag = "pipe_opening_rectangular"
-            };
-            _pipePanel.Controls.Add(pipeRectangularRadio);
-
-            // Group the radio buttons so only one can be selected
-            pipeCircularRadio.CheckedChanged += (s, e) =>
-            {
-                if (pipeCircularRadio.Checked)
-                    pipeRectangularRadio.Checked = false;
-            };
-            pipeRectangularRadio.CheckedChanged += (s, e) =>
-            {
-                if (pipeRectangularRadio.Checked)
-                    pipeCircularRadio.Checked = false;
-            };
         }
 
         private void ToggleLock(WinForms.Button lockBtn, WinForms.TextBox textBox)
@@ -1870,7 +1645,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         SetClearancePanelValues("50", "25");
                         break;
                     case "pipes":
-                        SetPipePanelValues("50", "25");
+                        SetClearancePanelValues("50", "25");
                         break;
                     case "cable trays":
                         SetCableTrayPanelValues("75", "25", "75", "25");
@@ -1964,51 +1739,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     }
                 }
             }
-        }
-
-        private void SetPipePanelValues(string normalValue, string insulatedValue)
-        {
-            if (_pipePanel?.Controls.Count > 0)
-            {
-                foreach (var control in _pipePanel.Controls)
-                {
-                    if (control is WinForms.TextBox textBox)
-                    {
-                        if (textBox.Tag?.ToString() == "pipes_normal_clearance")
-                        {
-                            textBox.Text = normalValue;
-                        }
-                        else if (textBox.Tag?.ToString() == "pipes_insulated_clearance")
-                        {
-                            textBox.Text = insulatedValue;
-                        }
-                    }
-                }
-            }
-        }
-
-        /// <summary>
-        /// Get the selected opening type for pipes (Circular or Rectangular)
-        /// </summary>
-        private string GetPipeOpeningType()
-        {
-            if (_pipePanel?.Controls.Count > 0)
-            {
-                foreach (var control in _pipePanel.Controls)
-                {
-                    if (control is WinForms.RadioButton radioButton)
-                    {
-                        if (radioButton.Checked)
-                        {
-                            if (radioButton.Tag?.ToString() == "pipe_opening_circular")
-                                return "Circular";
-                            else if (radioButton.Tag?.ToString() == "pipe_opening_rectangular")
-                                return "Rectangular";
-                        }
-                    }
-                }
-            }
-            return "Circular"; // Default to circular
         }
 
         private void CreateParameterFilterPanel()
@@ -3008,44 +2738,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         {
             try
             {
-                // 🎯 IMMEDIATE USER FEEDBACK
-                MessageBox.Show("Starting opening creation process...", "Processing", 
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-                
-                // 🎯 DEBUG: Log OK button click
-                System.IO.File.WriteAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\ok_button_debug.log", 
-                    $"OK button clicked at {System.DateTime.Now:HH:mm:ss}\r\n");
-                
                 _statusLabel.Text = "Validating configuration...";
                 
                 if (!ValidateConfiguration())
                 {
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\ok_button_debug.log", 
-                        "ValidateConfiguration returned FALSE\r\n");
                     return;
                 }
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\ok_button_debug.log", 
-                    "ValidateConfiguration passed\r\n");
-                
                 _statusLabel.Text = "Starting opening creation process...";
-                
-                // 🎯 IMMEDIATE FEEDBACK: Show progress dialog
-                ShowProgressDialog();
                 
                 // Execute with progress dialog
                 var result = ExecuteSelectedFiltersWithProgress();
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\ok_button_debug.log", 
-                    $"ExecuteSelectedFiltersWithProgress returned: Success={result.Success}, Message={result.Message}\r\n");
-                
                 if (result.Success)
                 {
-                    _statusLabel.Text = "External event raised - processing in background...";
-                    // 🎯 IMMEDIATE FEEDBACK: Show what's happening
-                    MessageBox.Show($"Processing {GetSelectedMepCategories().Count} MEP categories...\n\nCheck the log files for detailed progress.", 
-                        "Processing Started", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    DebugLogger.Info("ExecuteSelectedFiltersWithProgress: External event raised successfully");
+                    _statusLabel.Text = "Opening creation completed successfully!";
+                    MessageBox.Show("Opening creation completed successfully!", "Success", 
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 else
                 {
@@ -3056,10 +2765,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
             catch (Exception ex)
             {
-                // 🎯 DEBUG: Log exception
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\ok_button_debug.log", 
-                    $"EXCEPTION in OnOkClick: {ex.Message}\r\nStack trace: {ex.StackTrace}\r\n");
-                
                 _statusLabel.Text = $"Error: {ex.Message}";
                 MessageBox.Show($"Error: {ex.Message}", "Error", 
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -3108,43 +2813,84 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         {
             try
             {
-                // CORRECT SOLUTION: External Event is just a transaction context bridge
-                DebugLogger.Info("ExecuteSelectedFiltersWithProgress: Using External Event as transaction bridge");
+                // CRITICAL FIX: Reuse filters from refresh instead of creating new ones
+                var selectedFilters = _lastRefreshFilters ?? GetSelectedFilters();
                 
-                // Get selected MEP categories from UI
-                var selectedCategories = GetSelectedMepCategories();
+                // Get UIDocument from current Revit context
+                DebugLogger.Info("ExecuteSelectedFiltersWithProgress: Starting UIDocument retrieval");
+                DebugLogger.Info($"ExecuteSelectedFiltersWithProgress: _uiDocument from constructor: {(_uiDocument != null ? "NOT NULL" : "NULL")}");
+                DebugLogger.Info($"ExecuteSelectedFiltersWithProgress: _document from constructor: {(_document != null ? "NOT NULL" : "NULL")}");
                 
-                if (selectedCategories == null || selectedCategories.Count == 0)
+                var uiDocument = GetCurrentUIDocument();
+                DebugLogger.Info($"ExecuteSelectedFiltersWithProgress: GetCurrentUIDocument returned: {(uiDocument != null ? "NOT NULL" : "NULL")}");
+                
+                if (uiDocument == null)
                 {
-                    _statusLabel.Text = "No MEP categories selected";
-                    DebugLogger.Warning("ExecuteSelectedFiltersWithProgress: No MEP categories selected");
-                    
+                    _statusLabel.Text = "Error: No active Revit document found";
+                    DebugLogger.Error("ExecuteSelectedFiltersWithProgress: No active UIDocument found - this will cause orchestrator to fail");
                     return new OrchestrationResult
                     {
                         Success = false,
-                        ErrorMessage = "No MEP categories selected"
+                        ErrorMessage = "No active Revit document found"
                     };
                 }
                 
-                // Set selected categories for External Event to process
-                _sleevePlacementHandler.SetSelectedCategories(selectedCategories);
+                DebugLogger.Info($"ExecuteSelectedFiltersWithProgress: About to create OpeningCommandOrchestrator with UIDocument: {uiDocument.Application.ActiveUIDocument?.Document?.Title ?? "Unknown"}");
                 
-                DebugLogger.Info($"[EXTERNAL_EVENT] Passing categories to External Event: {string.Join(", ", selectedCategories)}");
+                using var orchestrator = new OpeningCommandOrchestrator(_document, uiDocument);
                 
-                // CRITICAL: Don't show success immediately - External Event is asynchronous
-                _statusLabel.Text = $"Raising external event for {selectedCategories.Count} categories...";
+                // Pass UI clearance settings to orchestrator
+                var clearanceSettings = GetClearanceSettings();
+                orchestrator.SetUIClearances(clearanceSettings);
                 
-                // Raise external event - it will call orchestrator with proper transaction context
-                _sleevePlacementEvent.Raise();
+                // Full penetration is now the default behavior (no UI option needed)
+                orchestrator.SetFullPenetrationEnabled(true);
                 
-                _statusLabel.Text = $"External event raised - processing {selectedCategories.Count} categories...";
+                // Get clash zones from FILTER for incremental sleeve placement
+                var filterWithClashZones = selectedFilters.FirstOrDefault(f => f.ClashZoneStorage != null);
                 
-                // CRITICAL: Return pending status instead of success
-                return new OrchestrationResult
+                if (filterWithClashZones?.ClashZoneStorage != null)
                 {
-                    Success = true,
-                    Message = $"External event raised to process categories: {string.Join(", ", selectedCategories)}"
-                };
+                    var clashZoneService = new ClashZoneService(filterWithClashZones.ClashZoneStorage, (msg) => DebugLogger.Info(msg));
+                    
+                    // OPTIMIZATION: No cleanup needed here - clash zones were already cleaned during refresh
+                    // The cleanup during refresh ensures only valid clash zones are saved
+                    
+                    // CRITICAL FIX: Filter clash zones by current selection before processing
+                    var currentSelection = CollectCurrentUIState();
+                    var selectedReferenceFiles = currentSelection.SelectedReferenceFiles ?? new List<string>();
+                    var currentClearanceSettings = currentSelection.OpeningSettings?.ClearanceSettings ?? new Dictionary<string, double>();
+                    var currentPrefix = currentSelection.OpeningSettings?.SleeveParameterPrefix ?? "";
+                    
+                    DebugLogger.Info($"[FILTER_FIX] Filtering clash zones by current selection before processing");
+                    DebugLogger.Info($"[FILTER_FIX] Selected reference files: {string.Join(", ", selectedReferenceFiles)}");
+                    DebugLogger.Info($"[FILTER_FIX] Current clearance settings: {string.Join(", ", currentClearanceSettings.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
+                    DebugLogger.Info($"[FILTER_FIX] Current prefix: {currentPrefix}");
+                    
+                    var filteredClashZones = clashZoneService.FilterClashZonesByCurrentSelection(
+                        selectedReferenceFiles, currentClearanceSettings, currentPrefix, _document);
+                    
+                    DebugLogger.Info($"[FILTER_FIX] After filtering: {filteredClashZones.Count} clash zones match current selection");
+                    
+                    // CRITICAL FIX: Update filter's ClashZoneStorage with filtered clash zones only
+                    if (filterWithClashZones.ClashZoneStorage != null)
+                    {
+                        filterWithClashZones.ClashZoneStorage.ClashZones.Clear();
+                        filterWithClashZones.ClashZoneStorage.ClashZones.AddRange(filteredClashZones);
+                        DebugLogger.Info($"[FILTER_FIX] Updated filter's ClashZoneStorage with {filteredClashZones.Count} filtered clash zones");
+                    }
+                    
+                    orchestrator.SetClashZoneService(clashZoneService);
+                    DebugLogger.Info($"ExecuteSelectedFiltersWithProgress: Using FILTERED clash zones from FILTER ({filteredClashZones.Count} zones matching current selection) for incremental placement");
+                }
+                else
+                {
+                    DebugLogger.Info("ExecuteSelectedFiltersWithProgress: No clash zones found in FILTER - will place sleeves for all intersections");
+                }
+                
+                var result = orchestrator.ExecuteMultipleFilters(selectedFilters, showProgress: true);
+                
+                return result;
             }
             catch (Exception ex)
             {
@@ -3154,70 +2900,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     Success = false,
                     ErrorMessage = ex.Message
                 };
-            }
-        }
-
-        private void ShowProgressDialog()
-        {
-            try
-            {
-                // Create a simple progress dialog to show what's happening
-                var progressDialog = new WinForms.Form
-                {
-                    Text = "Opening Creation Progress",
-                    Size = new System.Drawing.Size(400, 200),
-                    StartPosition = WinForms.FormStartPosition.CenterParent,
-                    FormBorderStyle = WinForms.FormBorderStyle.FixedDialog,
-                    MaximizeBox = false,
-                    MinimizeBox = false,
-                    ShowInTaskbar = false
-                };
-
-                var progressLabel = new WinForms.Label
-                {
-                    Text = "Processing opening creation...",
-                    Location = new System.Drawing.Point(20, 20),
-                    Size = new System.Drawing.Size(350, 40),
-                    Font = new System.Drawing.Font("Microsoft Sans Serif", 10F, System.Drawing.FontStyle.Bold)
-                };
-                progressDialog.Controls.Add(progressLabel);
-
-                var statusLabel = new WinForms.Label
-                {
-                    Text = "This may take several minutes. Check log files for detailed progress.",
-                    Location = new System.Drawing.Point(20, 70),
-                    Size = new System.Drawing.Size(350, 60),
-                    Font = new System.Drawing.Font("Microsoft Sans Serif", 9F)
-                };
-                progressDialog.Controls.Add(statusLabel);
-
-                var closeButton = new WinForms.Button
-                {
-                    Text = "Close",
-                    Location = new System.Drawing.Point(300, 140),
-                    Size = new System.Drawing.Size(70, 30),
-                    DialogResult = WinForms.DialogResult.OK
-                };
-                progressDialog.Controls.Add(closeButton);
-
-                // Show dialog modeless so processing can continue
-                progressDialog.Show();
-                
-                // Auto-close after 3 seconds
-                var timer = new System.Windows.Forms.Timer();
-                timer.Interval = 3000; // 3 seconds
-                timer.Tick += (s, e) => {
-                    timer.Stop();
-                    progressDialog.Close();
-                };
-                timer.Start();
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Error($"Error showing progress dialog: {ex.Message}");
-                // Fallback to simple message box
-                MessageBox.Show("Processing opening creation...", "Progress", 
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
         }
 
@@ -3645,15 +3327,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         
         private void RestoreMepCategorySelections(List<string>? selectedCategories)
         {
-            if (selectedCategories == null || selectedCategories.Count == 0) 
-            {
-                DebugLogger.Info("[FILTER_UI] RestoreMepCategorySelections: No categories to restore");
-                return;
-            }
+            if (selectedCategories == null || selectedCategories.Count == 0) return;
             
             try
             {
-                DebugLogger.Info($"[FILTER_UI] RestoreMepCategorySelections: Restoring {selectedCategories.Count} categories: {string.Join(", ", selectedCategories)}");
                 if (_topRightPanel?.Controls.Count > 0)
                 {
                     foreach (var control in _topRightPanel.Controls)
@@ -4578,40 +4255,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             return settings;
         }
         
-        private Dictionary<string, double> GetClearanceSettings(string specificCategory = null)
+        private Dictionary<string, double> GetClearanceSettings()
         {
             var clearances = new Dictionary<string, double>();
             
             try
             {
                 DebugLogger.Info($"[CLEARANCE_DEBUG] === GetClearanceSettings START ===");
-                
-                // If specific category is provided, only collect clearances for that category
-                // Otherwise, collect for all selected categories (for backward compatibility)
-                List<string> targetCategories;
-                if (!string.IsNullOrEmpty(specificCategory))
-                {
-                    targetCategories = new List<string> { specificCategory };
-                    DebugLogger.Info($"[CLEARANCE_DEBUG] Collecting clearances for specific category: '{specificCategory}'");
-                }
-                else
-                {
-                    targetCategories = GetSelectedMepCategories();
-                    DebugLogger.Info($"[CLEARANCE_DEBUG] Collecting clearances for selected categories: {string.Join(", ", targetCategories)}");
-                }
-                
-                if (targetCategories.Count == 0)
-                {
-                    DebugLogger.Warning($"[CLEARANCE_DEBUG] No target categories - returning empty clearances");
-                    return clearances;
-                }
-                
                 DebugLogger.Info($"[CLEARANCE_DEBUG] _clearancePanel exists: {_clearancePanel != null}");
                 DebugLogger.Info($"[CLEARANCE_DEBUG] _clearancePanel.Controls.Count: {_clearancePanel?.Controls.Count ?? 0}");
                 
-                // Get clearance values from clearance panel - only for target categories
+                // Get clearance values from clearance panel
                 if (_clearancePanel?.Controls.Count > 0)
                 {
+                    // Get current MEP category for specific key generation
+                    string currentCategory = GetCurrentMepCategory();
+                    DebugLogger.Info($"[CLEARANCE_DEBUG] Current MEP category: '{currentCategory}'");
+                    
                     foreach (var control in _clearancePanel.Controls)
                     {
                         if (control is WinForms.TextBox textBox && textBox.Tag != null)
@@ -4621,15 +4281,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             if (double.TryParse(textBox.Text, out double value))
                             {
                                 string genericKey = textBox.Tag.ToString() ?? "";
-                                
-                                // Generate clearance keys for target categories only
-                                foreach (var category in targetCategories)
-                                {
-                                    string specificKey = ConvertToSpecificClearanceKey(genericKey, category);
+                                string specificKey = ConvertToSpecificClearanceKey(genericKey, currentCategory);
                                 clearances[specificKey] = value;
                                 
-                                    DebugLogger.Info($"[CLEARANCE_DEBUG] Clearance setting: {genericKey} -> {specificKey} = {value}mm (for category: {category})");
-                                }
+                                DebugLogger.Info($"[CLEARANCE_DEBUG] Clearance setting: {genericKey} -> {specificKey} = {value}mm");
                             }
                             else
                             {
@@ -4643,10 +4298,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     DebugLogger.Warning($"[CLEARANCE_DEBUG] _clearancePanel is null or has no controls!");
                 }
                 
-                // Get cable tray specific clearance values - only if Cable Trays is in target categories
-                if (targetCategories.Contains("Cable Trays") && _cableTrayPanel?.Controls.Count > 0)
+                // Get cable tray specific clearance values
+                if (_cableTrayPanel?.Controls.Count > 0)
                 {
-                    DebugLogger.Info($"[CLEARANCE_DEBUG] Collecting cable tray clearances (Cable Trays is in target categories)");
                     foreach (var control in _cableTrayPanel.Controls)
                     {
                         if (control is WinForms.TextBox textBox && textBox.Tag != null)
@@ -4656,60 +4310,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                                 string key = textBox.Tag.ToString() ?? "";
                                 clearances[key] = value;
                                 
-                                DebugLogger.Info($"[CLEARANCE_DEBUG] Cable tray clearance setting: {key} = {value}mm");
+                                DebugLogger.Info($"Cable tray clearance setting: {key} = {value}mm");
                             }
                         }
                     }
-                }
-                else
-                {
-                    DebugLogger.Info($"[CLEARANCE_DEBUG] Skipping cable tray clearances - Cable Trays not in target categories or panel empty");
-                }
-
-                // Get damper specific clearance values - only if Duct Accessories is in target categories
-                if (targetCategories.Contains("Duct Accessories") && _damperPanel?.Controls.Count > 0)
-                {
-                    DebugLogger.Info($"[CLEARANCE_DEBUG] Collecting damper clearances (Duct Accessories is in target categories)");
-                    foreach (var control in _damperPanel.Controls)
-                    {
-                        if (control is WinForms.TextBox textBox && textBox.Tag != null)
-                        {
-                            if (double.TryParse(textBox.Text, out double value))
-                            {
-                                string key = textBox.Tag.ToString() ?? "";
-                                clearances[key] = value;
-                                
-                                DebugLogger.Info($"[CLEARANCE_DEBUG] Damper clearance setting: {key} = {value}mm");
-                            }
-                        }
-                    }
-                }
-                else
-                {
-                    DebugLogger.Info($"[CLEARANCE_DEBUG] Skipping damper clearances - Duct Accessories not in target categories or panel empty");
-                }
-
-                // Get pipe specific clearance values - only if Pipes is in target categories
-                if (targetCategories.Contains("Pipes") && _pipePanel?.Controls.Count > 0)
-                {
-                    DebugLogger.Info($"[CLEARANCE_DEBUG] Collecting pipe clearances (Pipes is in target categories)");
-                    foreach (var control in _pipePanel.Controls)
-                    {
-                        if (control is WinForms.TextBox textBox && textBox.Tag != null)
-                        {
-                            if (double.TryParse(textBox.Text, out double value))
-                            {
-                                string key = textBox.Tag.ToString() ?? "";
-                                clearances[key] = value;
-                                
-                                DebugLogger.Info($"[CLEARANCE_DEBUG] Pipe clearance setting: {key} = {value}mm");
-                            }
-                        }
-                    }
-                }
-                else
-                {
-                    DebugLogger.Info($"[CLEARANCE_DEBUG] Skipping pipe clearances - Pipes not in target categories or panel empty");
                 }
             }
             catch (Exception ex)
@@ -4735,15 +4339,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // Handle special cases first
             if (category.Equals("Duct Accessories", StringComparison.OrdinalIgnoreCase))
             {
-                // Duct accessories have specific keys for MEP connector side and other sides
+                // Fire dampers use special keys
                 return genericKey switch
                 {
-                    "normal_clearance" => "ductaccessories_other_normal",
-                    "insulated_clearance" => "ductaccessories_other_insulated",
-                    "ductaccessories_mep_normal" => "ductaccessories_mep_normal",
-                    "ductaccessories_mep_insulated" => "ductaccessories_mep_insulated",
-                    "ductaccessories_other_normal" => "ductaccessories_other_normal",
-                    "ductaccessories_other_insulated" => "ductaccessories_other_insulated",
+                    "normal_clearance" => "fire_damper_standard_clearance",
+                    "insulated_clearance" => "fire_damper_msfd_clearance",
                     _ => genericKey
                 };
             }
@@ -4759,20 +4359,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 };
             }
             
-            if (category.Equals("Pipes", StringComparison.OrdinalIgnoreCase))
-            {
-                // Pipes use specific keys for normal and insulated clearances
-                return genericKey switch
-                {
-                    "normal_clearance" => "pipes_normal_clearance",
-                    "insulated_clearance" => "pipes_insulated_clearance",
-                    "pipes_normal_clearance" => "pipes_normal_clearance",
-                    "pipes_insulated_clearance" => "pipes_insulated_clearance",
-                    _ => genericKey
-                };
-            }
-            
-            // Standard MEP categories (Ducts)
+            // Standard MEP categories (Ducts, Pipes)
             string categoryKey = category.ToLower().Replace(" ", "_");
             
             return genericKey switch
@@ -5008,53 +4595,546 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             try
             {
                 DebugLogger.Info("=== REFRESH BUTTON CLICKED ===");
-                System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] About to call RefreshService.ExecuteRefresh() method");
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] About to call RefreshService.ExecuteRefresh() method\n");
+                System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] About to call RefreshClashDetection() method");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] About to call RefreshClashDetection() method\n");
 
-                // Use RefreshService instead of inline method
-                var document = GetCurrentDocument();
-                if (document != null)
-                {
-                    // Get actual UI selections
-            var selectedFilterItems = GetSelectedFilterItems();
-                    var selectedMepCategories = GetSelectedMepCategories();
-                    var selectedReferenceFiles = GetSelectedReferenceFiles();
-                    var selectedHostFiles = GetSelectedHostFiles();
-                    var clearanceSettings = GetClearanceSettings();
-                    
-                    var refreshService = new Services.RefreshService(document, _uiDocument, _appProfileService);
-                    refreshService.SetUIReferences(_statusLabel, _progressBar, _refreshButton);
-                    refreshService.ExecuteRefresh(selectedFilterItems, selectedMepCategories, selectedReferenceFiles, selectedHostFiles, clearanceSettings);
-                    
-                    // Update parameter dropdowns after successful refresh
-                    System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] About to update parameter dropdowns");
-                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] About to update parameter dropdowns\n");
-                    
-                    UpdateParameterDropdownsFromMepCategories(document);
-                    
-                    System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] Parameter dropdowns updated successfully");
-                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] Parameter dropdowns updated successfully\n");
-                }
-                else
-                {
-                    _statusLabel.Text = "No active document";
-                _progressBar.Visible = false;
-                _refreshButton.Enabled = true;
-                }
+                RefreshClashDetection();
 
-                System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] RefreshService.ExecuteRefresh() method completed successfully");
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] RefreshService.ExecuteRefresh() method completed successfully\n");
-                    }
-                    catch (Exception ex)
-                    {
+                System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] RefreshClashDetection() method completed successfully");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] RefreshClashDetection() method completed successfully\n");
+            }
+            catch (Exception ex)
+            {
                 System.Diagnostics.Debug.WriteLine($"[ON_REFRESH_CLICK] ERROR: {ex.Message}");
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] ERROR in OnRefreshClick: {ex.Message}\n");
 
                 _statusLabel.Text = $"Error during refresh: {ex.Message}";
-                    _progressBar.Visible = false;
+                _progressBar.Visible = false;
                 _refreshButton.Enabled = true;
                 DebugLogger.Error($"Error in OnRefreshClick: {ex.Message}");
             }
+        }
+        /// <summary>
+        /// Core refresh method that implements the refresh process flowchart
+        /// </summary>
+        private void RefreshClashDetection()
+        {
+            // Create timestamped refresh log file for debugging
+            string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+            string refreshLogPath = $@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\Refresh_{timestamp}.log";
+
+            // IMMEDIATE CONSOLE LOGGING FOR VISIBILITY
+            System.Diagnostics.Debug.WriteLine($"[REFRESH] === REFRESH METHOD STARTED AT {DateTime.Now} ===");
+            System.Diagnostics.Debug.WriteLine($"[REFRESH] Timestamp: {timestamp}");
+            System.Diagnostics.Debug.WriteLine($"[REFRESH] Log file will be: {refreshLogPath}");
+
+            try
+            {
+                // Ensure directory exists
+                string logDir = Path.GetDirectoryName(refreshLogPath) ?? @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log";
+                if (!Directory.Exists(logDir))
+                {
+                    Directory.CreateDirectory(logDir);
+                    System.Diagnostics.Debug.WriteLine($"[REFRESH] Created log directory: {logDir}");
+                }
+
+                // Write initial log entry
+                File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] === REFRESH METHOD STARTED ===\n");
+                File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] Refresh log file: Refresh_{timestamp}.log\n");
+                File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] Current profile: {_appProfileService?.GetCurrentProfile()?.Name ?? "None"}\n");
+
+                System.Diagnostics.Debug.WriteLine($"[REFRESH] Successfully created log file: {refreshLogPath}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[REFRESH] ERROR creating log file: {ex.Message}");
+                DebugLogger.Error($"Failed to create refresh log file: {ex.Message}");
+                // Continue with refresh even if logging fails
+            }
+
+            // Also write to the hardcoded refresh_debug.log file (like OnConfigureClick does)
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] REFRESH METHOD STARTED - Log file: Refresh_{timestamp}.log\n");
+
+            // Write to the main debug logger file that user can see
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] === REFRESH STARTED === Timestamp: {timestamp}\n");
+
+            DebugLogger.Info("=== REFRESH METHOD STARTED ===");
+            System.Diagnostics.Debug.WriteLine("[REFRESH] DebugLogger.Info called");
+
+            // Step 1: Check if filters are selected first (from filters panel)
+            var selectedFilterItems = GetSelectedFilterItems();
+            DebugLogger.Info($"[CLASH_DEBUG] Selected filter items: {string.Join(", ", selectedFilterItems)}");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Selected filter items: {string.Join(", ", selectedFilterItems)}\n");
+
+            if (selectedFilterItems.Count == 0)
+            {
+                MessageBox.Show("Please select at least one filter before refreshing.", "No Filters Selected",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                DebugLogger.Warning("Refresh: No filters selected - prompting user");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] ERROR: No filters selected - cannot proceed with clash detection\n");
+                return;
+            }
+
+            // Step 1.5: Get MEP categories for processing (optional - filters are the primary requirement)
+            var filtersToProcess = GetSelectedFilters();
+            DebugLogger.Info($"[CLASH_DEBUG] Found {filtersToProcess.Count} MEP category filters for processing");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] MEP filters to process: {filtersToProcess.Count}\n");
+
+            foreach (var filter in filtersToProcess)
+            {
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Filter: {filter.Name} - Category: {filter.Category} - Enabled: {filter.IsEnabled}\n");
+            }
+
+            DebugLogger.Info($"Refresh: Processing {filtersToProcess.Count} selected filters");
+            
+            // CRITICAL FIX: Store filters for reuse during opening creation
+            _lastRefreshFilters = filtersToProcess;
+
+            _statusLabel.Text = "Analyzing clash zones...";
+            _progressBar.Value = 0;
+            _progressBar.Visible = true;
+            _refreshButton.Enabled = false;
+
+            // Step 2: Check if we have a current profile with clash zone storage
+            _progressBar.Value = 10;
+            _statusLabel.Text = "Loading profile clash zones...";
+
+            var currentProfile = GetCurrentProfile();
+            DebugLogger.Info($"[CLASH_DEBUG] Current profile: {currentProfile?.Name ?? "NULL"}");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Profile loaded: {currentProfile?.Name ?? "NULL"}\n");
+
+            if (currentProfile?.Configuration?.ClashZoneStorage == null)
+            {
+                DebugLogger.Info("[CLASH_DEBUG] No clash zone storage in profile - proceeding with direct clash detection and filter saving");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] INFO: No clash zone storage - proceeding with direct clash detection\n");
+                // Continue with clash detection instead of falling back to basic refresh
+            }
+
+            // Step 3: Get current document
+            var document = GetCurrentDocument();
+            if (document == null)
+            {
+                _statusLabel.Text = "Error: No active Revit document found";
+                _progressBar.Visible = false;
+                _refreshButton.Enabled = true;
+                DebugLogger.Error("Refresh: No active document found");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] ERROR: No active Revit document found\n");
+                return;
+            }
+
+            DebugLogger.Info($"[CLASH_DEBUG] Active document: {document.Title}");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Document: {document.Title}\n");
+
+            // Step 4: Get current intersections
+            _progressBar.Value = 25;
+            _statusLabel.Text = "Detecting current intersections...";
+
+            DebugLogger.Info("[CLASH_DEBUG] Starting intersection detection...");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Starting MEP-structural intersection detection...\n");
+
+            var currentIntersections = GetCurrentIntersections();
+            DebugLogger.Info($"[CLASH_DEBUG] Found {currentIntersections.Count} current intersections");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] INTERSECTION DETECTION COMPLETE: {currentIntersections.Count} intersections found\n");
+
+            // Log intersection details to refresh log files
+            try
+            {
+                File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] INTERSECTION DETECTION RESULTS:\n");
+                File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] Total intersections found: {currentIntersections.Count}\n");
+
+                if (currentIntersections.Count > 0)
+                {
+                    File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] Intersection details:\n");
+                    for (int i = 0; i < Math.Min(currentIntersections.Count, 20); i++) // Log first 20 for better debugging
+                    {
+                        var intersection = currentIntersections[i];
+                        var mepElement = intersection.Item1;         // MEP element that caused intersection
+                        var structuralElement = intersection.Item2;  // Structural element intersected
+                        var intersectionBBox = intersection.Item3;   // Intersection bounding box
+                        var intersectionPoint = intersection.Item4;  // Intersection center point
+
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}]   Intersection {i + 1}:\n");
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}]     MEP Element ID: {mepElement.Id}\n");
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}]     MEP Element Name: {mepElement.Name}\n");
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}]     MEP Category: {mepElement.Category?.Name ?? "Unknown"}\n");
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}]     Structural Element ID: {structuralElement.Id}\n");
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}]     Structural Element Name: {structuralElement.Name}\n");
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}]     Structural Category: {structuralElement.Category?.Name ?? "Unknown"}\n");
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}]     Intersection Point: ({intersectionPoint.X:F2}, {intersectionPoint.Y:F2}, {intersectionPoint.Z:F2})\n");
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}]     Intersection BBox: Min({intersectionBBox.Min.X:F2}, {intersectionBBox.Min.Y:F2}, {intersectionBBox.Min.Z:F2}) Max({intersectionBBox.Max.X:F2}, {intersectionBBox.Max.Y:F2}, {intersectionBBox.Max.Z:F2})\n");
+                    }
+                    if (currentIntersections.Count > 20)
+                    {
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}]   ... and {currentIntersections.Count - 20} more intersections\n");
+                    }
+                }
+
+                // Also log to the hardcoded refresh_debug.log file
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Found {currentIntersections.Count} intersections during refresh\n");
+
+                // Log detailed intersection info to debug file
+                foreach (var intersection in currentIntersections.Take(10))
+                {
+                    try
+                {
+                    var structuralElement = intersection.Item1;
+                        var mepElement = intersection.Item2;
+                        var boundingBox = intersection.Item3;
+                        var intersectionPoint = intersection.Item4;
+                        
+                        var structuralName = structuralElement?.Name ?? "Unknown";
+                        var structuralId = structuralElement?.Id?.IntegerValue ?? -1;
+                        var structuralCategory = structuralElement?.Category?.Name ?? "Unknown";
+                        
+                        var mepName = mepElement?.Name ?? "Unknown";
+                        var mepId = mepElement?.Id?.IntegerValue ?? -1;
+                        var mepCategory = mepElement?.Category?.Name ?? "Unknown";
+                        
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] === INTERSECTION DETAILS ===\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] MEP Element: {mepName} (ID: {mepId}) Category: {mepCategory}\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Structural Element: {structuralName} (ID: {structuralId}) Category: {structuralCategory}\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Intersection Point: ({intersectionPoint?.X ?? 0}, {intersectionPoint?.Y ?? 0}, {intersectionPoint?.Z ?? 0})\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Intersection BBox: Min({boundingBox?.Min?.X ?? 0}, {boundingBox?.Min?.Y ?? 0}, {boundingBox?.Min?.Z ?? 0}) Max({boundingBox?.Max?.X ?? 0}, {boundingBox?.Max?.Y ?? 0}, {boundingBox?.Max?.Z ?? 0})\n");
+                        
+                        // Get MEP element bounding box
+                        if (mepElement != null)
+                        {
+                            var mepBBox = mepElement.get_BoundingBox(null);
+                            if (mepBBox != null)
+                            {
+                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] MEP BBox: Min({mepBBox.Min.X:F3}, {mepBBox.Min.Y:F3}, {mepBBox.Min.Z:F3}) Max({mepBBox.Max.X:F3}, {mepBBox.Max.Y:F3}, {mepBBox.Max.Z:F3})\n");
+                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] MEP Size: X={mepBBox.Max.X - mepBBox.Min.X:F3}, Y={mepBBox.Max.Y - mepBBox.Min.Y:F3}, Z={mepBBox.Max.Z - mepBBox.Min.Z:F3}\n");
+                            }
+                        }
+                        
+                        // Get structural element bounding box
+                        if (structuralElement != null)
+                        {
+                            var structBBox = structuralElement.get_BoundingBox(null);
+                            if (structBBox != null)
+                            {
+                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Structural BBox: Min({structBBox.Min.X:F3}, {structBBox.Min.Y:F3}, {structBBox.Min.Z:F3}) Max({structBBox.Max.X:F3}, {structBBox.Max.Y:F3}, {structBBox.Max.Z:F3})\n");
+                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Structural Size: X={structBBox.Max.X - structBBox.Min.X:F3}, Y={structBBox.Max.Y - structBBox.Min.Y:F3}, Z={structBBox.Max.Z - structBBox.Min.Z:F3}\n");
+                            }
+                        }
+                        
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] === END INTERSECTION DETAILS ===\n");
+                    }
+                    catch (Exception ex)
+                    {
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] ERROR logging intersection details: {ex.Message}\n");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"Failed to log intersection details: {ex.Message}");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] ERROR logging intersection details: {ex.Message}\n");
+            }
+
+            if (currentIntersections.Count == 0)
+            {
+                _statusLabel.Text = "No intersections found";
+                _progressBar.Value = 100;
+                DebugLogger.Warning("Refresh: No intersections found - no clash zones to save");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] WARNING: No intersections found - clash detection returned empty results\n");
+
+                // Hide progress bar after a short delay
+                var noIntersectionsTimer = new System.Windows.Forms.Timer();
+                noIntersectionsTimer.Interval = 1500;
+                noIntersectionsTimer.Tick += (s, args) => {
+                    _progressBar.Visible = false;
+                    noIntersectionsTimer.Stop();
+                    noIntersectionsTimer.Dispose();
+                };
+                noIntersectionsTimer.Start();
+                _refreshButton.Enabled = true;
+                return;
+            }
+
+            // Step 5: Initialize clash zone service
+            _progressBar.Value = 40;
+            _statusLabel.Text = "Initializing clash zone service...";
+
+            DebugLogger.Info("[CLASH_DEBUG] Initializing ClashZoneService...");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Initializing ClashZoneService with {(currentProfile?.Configuration?.ClashZoneStorage?.ClashZones?.Count ?? 0)} existing zones\n");
+
+            // Create or use existing clash zone storage
+            var clashZoneStorage = currentProfile?.Configuration?.ClashZoneStorage ?? new ClashZoneStorage
+            {
+                ClashZones = new List<ClashZone>(),
+                LastUpdated = DateTime.Now,
+                DocumentHash = document?.PathName ?? "Unknown"
+            };
+
+            var clashZoneService = new ClashZoneService(clashZoneStorage, (msg) => {
+                DebugLogger.Info($"[CLASH_DEBUG] {msg}");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] {msg}\n");
+            });
+
+            // Step 6: Clean up invalid clash zones first
+            _progressBar.Value = 45;
+            _statusLabel.Text = "Cleaning up invalid clash zones...";
+
+            DebugLogger.Info("[CLASH_DEBUG] Skipping cleanup - no cleanup needed");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Skipping cleanup - no cleanup needed\n");
+
+            // Step 7: Filter existing clash zones by current selection
+            _progressBar.Value = 50;
+            _statusLabel.Text = "Filtering clash zones by current selection...";
+
+            // Get current selection parameters
+            var currentSelection = CollectCurrentUIState();
+            var selectedReferenceFiles = currentSelection.SelectedReferenceFiles ?? new List<string>();
+            var currentClearanceSettings = currentSelection.OpeningSettings?.ClearanceSettings ?? new Dictionary<string, double>();
+            var currentPrefix = currentSelection.OpeningSettings?.SleeveParameterPrefix ?? "";
+
+            DebugLogger.Info("[CLASH_DEBUG] Filtering clash zones by current selection...");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Filtering clash zones by current selection - Reference files: {selectedReferenceFiles.Count}, Clearance settings: {currentClearanceSettings.Count}\n");
+
+            var filteredClashZones = clashZoneService.FilterClashZonesByCurrentSelection(
+                selectedReferenceFiles, currentClearanceSettings, currentPrefix, document);
+
+            // Step 7: Detect new clash zones
+            _progressBar.Value = 60;
+            _statusLabel.Text = "Detecting new clash zones...";
+
+            DebugLogger.Info("[CLASH_DEBUG] Calling DetectNewClashZones...");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Calling DetectNewClashZones with {currentIntersections.Count} intersections...\n");
+
+            var newClashZones = clashZoneService.DetectNewClashZones(currentIntersections, document);
+
+            DebugLogger.Info($"[CLASH_DEBUG] DetectNewClashZones returned {newClashZones?.Count ?? 0} new zones");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] DetectNewClashZones completed - {newClashZones?.Count ?? 0} new clash zones detected\n");
+
+            // DETAILED LOGGING: Log each new clash zone created
+            if (newClashZones != null && newClashZones.Count > 0)
+            {
+                DebugLogger.Info($"[CLASH_DEBUG] DETAILED NEW CLASH ZONES:");
+                for (int i = 0; i < newClashZones.Count; i++)
+                {
+                    var cz = newClashZones[i];
+                    DebugLogger.Info($"[CLASH_DEBUG]   Clash Zone {i + 1}:");
+                    DebugLogger.Info($"[CLASH_DEBUG]     ID: {cz.Id}");
+                    DebugLogger.Info($"[CLASH_DEBUG]     MEP Element ID: {cz.MepElementId?.IntegerValue ?? -1}");
+                    DebugLogger.Info($"[CLASH_DEBUG]     Structural Element ID: {cz.StructuralElementId?.IntegerValue ?? -1}");
+                    DebugLogger.Info($"[CLASH_DEBUG]     Intersection Point: ({cz.IntersectionPoint?.X ?? 0}, {cz.IntersectionPoint?.Y ?? 0}, {cz.IntersectionPoint?.Z ?? 0})");
+                    DebugLogger.Info($"[CLASH_DEBUG]     Required Clearance: {cz.RequiredClearance}");
+                    DebugLogger.Info($"[CLASH_DEBUG]     IsResolved: {cz.IsResolved}");
+                }
+            }
+            else
+            {
+                DebugLogger.Warning($"[CLASH_DEBUG] NO NEW CLASH ZONES CREATED! This is the problem!");
+            }
+
+            // Step 7: Get statistics
+            _progressBar.Value = 80;
+            _statusLabel.Text = "Calculating clash zone statistics...";
+
+            var (total, resolved, unresolved, newZones) = clashZoneService.GetClashZoneStatistics();
+
+            DebugLogger.Info($"[CLASH_DEBUG] Clash zone statistics - Total: {total}, Resolved: {resolved}, Unresolved: {unresolved}, New: {newZones}");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Statistics - Total: {total}, Resolved: {resolved}, Unresolved: {unresolved}, New: {newZones}\n");
+
+            // Step 8: Save clash zones to FILTER
+            _progressBar.Value = 90;
+            _statusLabel.Text = "Saving clash zones to filter...";
+
+            // Save clash zones to the current filter
+            if (filtersToProcess.Count > 0)
+            {
+                // Select the currently active filter (match UI-selected filter name) as primary target
+                var targetFilter = filtersToProcess
+                    .FirstOrDefault(f => string.Equals(f.Name, _lastLoadedFilterName, StringComparison.OrdinalIgnoreCase))
+                    ?? filtersToProcess.FirstOrDefault(f => f.IsEnabled)
+                    ?? filtersToProcess.FirstOrDefault();
+                if (targetFilter != null)
+                {
+                    DebugLogger.Info($"[CLASH_DEBUG] Target filter selected for save: '{targetFilter.Name}' (LastLoaded='{_lastLoadedFilterName}')");
+                    // CRITICAL FIX: Apply current UI state to the filter before saving
+                    var currentUIState = CollectCurrentUIState();
+                    
+                    // Update filter with current UI selections
+                    targetFilter.SelectedMepCategoryNames = currentUIState.SelectedMepCategories ?? new List<string>();
+                    targetFilter.SelectedReferenceFiles = currentUIState.SelectedReferenceFiles ?? new List<string>();
+                    targetFilter.SelectedHostFiles = currentUIState.SelectedHostFiles ?? new List<string>();
+                    
+                    // Update opening settings
+                    if (currentUIState.OpeningSettings != null)
+                    {
+                        targetFilter.OpeningSettings = currentUIState.OpeningSettings;
+                    }
+                    
+                    DebugLogger.Info($"[CLASH_DEBUG] Applied current UI state to filter '{targetFilter.Name}':");
+                    DebugLogger.Info($"[CLASH_DEBUG]   MEP Categories: {targetFilter.SelectedMepCategoryNames?.Count ?? 0}");
+                    DebugLogger.Info($"[CLASH_DEBUG]   Reference Files: {targetFilter.SelectedReferenceFiles?.Count ?? 0}");
+                    DebugLogger.Info($"[CLASH_DEBUG]   Host Files: {targetFilter.SelectedHostFiles?.Count ?? 0}");
+                    
+                    // CRITICAL FIX: Save clash zones to BOTH filter AND profile configuration
+                    targetFilter.ClashZoneStorage = clashZoneStorage;
+                    targetFilter.LastModified = DateTime.Now;
+                    
+                    // Save to profile configuration for persistence
+                    if (currentProfile != null)
+                    {
+                        // Ensure configuration exists
+                        if (currentProfile.Configuration == null)
+                        {
+                            currentProfile.Configuration = new UserConfiguration();
+                            DebugLogger.Info("[CLASH_DEBUG] Created new profile configuration during Refresh");
+                        }
+
+                        currentProfile.Configuration.ClashZoneStorage = clashZoneStorage;
+
+                        // Persist current opening conditions (e.g., clearance values) into profile configuration
+                        if (currentProfile.Configuration.OpeningSettings == null)
+                        {
+                            currentProfile.Configuration.OpeningSettings = new OpeningSettings();
+                        }
+                        currentProfile.Configuration.OpeningSettings.ClearanceSettings = GetClearanceSettings();
+
+                        DebugLogger.Info($"[CLASH_DEBUG] Saved clash zones and opening conditions to profile configuration for persistence");
+
+                        // Persist to disk immediately so Refresh round-trips data per hybrid implementation
+                        try
+                        {
+                            _appProfileService.SaveCurrentProfile();
+                            DebugLogger.Info("[CLASH_DEBUG] Profile persisted to disk after Refresh");
+                        }
+                        catch (Exception saveEx)
+                        {
+                            DebugLogger.Warning($"[CLASH_DEBUG] Warning: Failed to persist profile after Refresh: {saveEx.Message}");
+                        }
+                        
+                // CRITICAL FIX: Set parameter transfer configuration from current settings
+                try
+                {
+                    var parameterTransferService = new ParameterTransferService();
+                    var currentConfig = parameterTransferService.GetCurrentParameterTransferConfiguration();
+                    
+                    if (currentConfig != null)
+                    {
+                        targetFilter.ParameterTransferConfig = currentConfig;
+                        DebugLogger.Info($"[CLASH_DEBUG] Retrieved current parameter transfer configuration for filter '{targetFilter.Name}' with {currentConfig.Mappings.Count} mappings");
+                    }
+                    else
+                    {
+                        // Create default configuration if no current configuration exists
+                        targetFilter.ParameterTransferConfig = new ParameterTransferConfiguration();
+                        DebugLogger.Info($"[CLASH_DEBUG] Created default parameter transfer configuration for filter '{targetFilter.Name}'");
+                    }
+                }
+                catch (Exception configEx)
+                {
+                    DebugLogger.Warning($"[CLASH_DEBUG] Failed to retrieve parameter transfer configuration: {configEx.Message} - using default");
+                    targetFilter.ParameterTransferConfig = new ParameterTransferConfiguration();
+                }
+                
+                // CRITICAL FIX: Save filter to XML file to persist clash zones
+                try
+                {
+                    var filterDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                    if (!Directory.Exists(filterDir))
+                    {
+                        Directory.CreateDirectory(filterDir);
+                    }
+                    
+                    var filePath = Path.Combine(filterDir, $"{targetFilter.Name}.xml");
+                    
+                    // DETAILED LOGGING: Log what clash zone data is being saved
+                    DebugLogger.Info($"[CLASH_DEBUG] ABOUT TO SAVE FILTER TO XML:");
+                    DebugLogger.Info($"[CLASH_DEBUG]   Filter Name: {targetFilter.Name}");
+                    DebugLogger.Info($"[CLASH_DEBUG]   ClashZoneStorage: {(targetFilter.ClashZoneStorage != null ? "EXISTS" : "NULL")}");
+                    if (targetFilter.ClashZoneStorage != null)
+                    {
+                        DebugLogger.Info($"[CLASH_DEBUG]   ClashZones Count: {targetFilter.ClashZoneStorage.ClashZones?.Count ?? 0}");
+                        if (targetFilter.ClashZoneStorage.ClashZones != null && targetFilter.ClashZoneStorage.ClashZones.Count > 0)
+                        {
+                            for (int i = 0; i < targetFilter.ClashZoneStorage.ClashZones.Count; i++)
+                            {
+                                var cz = targetFilter.ClashZoneStorage.ClashZones[i];
+                                DebugLogger.Info($"[CLASH_DEBUG]   Clash Zone {i + 1} TO BE SAVED:");
+                                DebugLogger.Info($"[CLASH_DEBUG]     ID: {cz.Id}");
+                                DebugLogger.Info($"[CLASH_DEBUG]     MEP Element ID: {cz.MepElementId?.IntegerValue ?? -1}");
+                                DebugLogger.Info($"[CLASH_DEBUG]     Structural Element ID: {cz.StructuralElementId?.IntegerValue ?? -1}");
+                                DebugLogger.Info($"[CLASH_DEBUG]     Intersection Point: ({cz.IntersectionPoint?.X ?? 0}, {cz.IntersectionPoint?.Y ?? 0}, {cz.IntersectionPoint?.Z ?? 0})");
+                                DebugLogger.Info($"[CLASH_DEBUG]     Required Clearance: {cz.RequiredClearance}");
+                                DebugLogger.Info($"[CLASH_DEBUG]     IsResolved: {cz.IsResolved}");
+                            }
+                        }
+                    }
+                    
+                    _filterManagementService.SaveFilterToXmlFile(targetFilter, filePath);
+                    
+                    DebugLogger.Info($"[CLASH_DEBUG] Persisted filter '{targetFilter.Name}' to XML file: {filePath}");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Persisted filter '{targetFilter.Name}' to XML file\n");
+                }
+                catch (Exception xmlSaveEx)
+                {
+                    DebugLogger.Error($"[CLASH_DEBUG] Failed to save filter to XML: {xmlSaveEx.Message}");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] ERROR saving filter to XML: {xmlSaveEx.Message}\n");
+                        }
+                    }
+                    
+                    DebugLogger.Info($"[CLASH_DEBUG] Saved clash zones to filter '{targetFilter.Name}'");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] SUCCESS: Saved {total} clash zones to filter '{targetFilter.Name}' and profile configuration\n");
+                    
+                    // CRITICAL FIX: Store filters for reuse during opening creation
+                    _lastRefreshFilters = filtersToProcess;
+                    DebugLogger.Info($"[CLASH_DEBUG] Stored {filtersToProcess.Count} filters for reuse during opening creation");
+                }
+                else
+                {
+                    DebugLogger.Warning("[CLASH_DEBUG] No enabled filter found to save clash zones");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] WARNING: No enabled filter found to save clash zones\n");
+                }
+            }
+            else
+            {
+                DebugLogger.Warning("[CLASH_DEBUG] No filters to process - cannot save clash zones");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] WARNING: No filters to process - cannot save clash zones\n");
+            }
+
+            // Step 9: Update UI with results
+            _progressBar.Value = 100;
+            _statusLabel.Text = $"Clash zones: {total} total, {unresolved} unresolved, {newZones} new";
+
+            DebugLogger.Info($"[CLASH_DEBUG] Clash zone refresh complete: {total} total, {unresolved} unresolved, {newZones} new");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] REFRESH COMPLETE: {total} total zones, {unresolved} unresolved, {newZones} new\n");
+
+            // Step 10: Update parameter dropdowns with clash zone parameters
+            _progressBar.Value = 90;
+            _statusLabel.Text = "Updating parameter dropdowns...";
+
+            try
+            {
+                PopulateParameterDropdowns();
+                DebugLogger.Info("[PARAMETER_SERVICE] Parameter dropdowns updated using NEW service method");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [PARAMETER_SERVICE] Parameter dropdowns updated using NEW service method\n");
+                
+                // Also populate host parameters
+                PopulateHostParameters();
+                DebugLogger.Info("[HOST_SERVICE] Host parameter dropdowns updated");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [HOST_SERVICE] Host parameter dropdowns updated\n");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[PARAMETER_SERVICE] Error updating parameter dropdowns: {ex.Message}");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [PARAMETER_SERVICE] ERROR updating parameter dropdowns: {ex.Message}\n");
+            }
+
+            // Hide progress bar after a short delay
+            var completionTimer = new System.Windows.Forms.Timer();
+            completionTimer.Interval = 2000; // 2 seconds to show results
+            completionTimer.Tick += (s, args) => {
+                _progressBar.Visible = false;
+                completionTimer.Stop();
+                completionTimer.Dispose();
+            };
+            completionTimer.Start();
+
+            _refreshButton.Enabled = true;
         }
         
         private void PerformBasicRefresh()
@@ -5111,16 +5191,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 // Get ALL selected MEP categories
                 var selectedCategories = GetSelectedMepCategories();
                 DebugLogger.Info($"[PARAMETER_SERVICE] Selected MEP categories: {string.Join(", ", selectedCategories)}");
-                
-                // DEBUG: List available tab names
-                if (_referenceParameterTabs?.TabPages.Count > 0)
-                {
-                    DebugLogger.Info("[PARAMETER_SERVICE] Available tab names:");
-                    foreach (WinForms.TabPage tab in _referenceParameterTabs.TabPages)
-                    {
-                        DebugLogger.Info($"[PARAMETER_SERVICE]   Tab: '{tab.Text}'");
-                    }
-                }
                 
                 // Call service to handle category-specific parameter population
                 var parameterService = new Services.ParameterExtractionService();
@@ -5617,165 +5687,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         }
 
         /// <summary>
-        /// Filters clash zones by MEP element category
-        /// </summary>
-        private List<ClashZone> FilterClashZonesByCategory(List<ClashZone> clashZones, string category, Document document)
-        {
-            var filteredZones = new List<ClashZone>();
-            
-            try
-            {
-                DebugLogger.Info($"[CLASH_DEBUG] Filtering {clashZones.Count} clash zones for category: {category}");
-                
-                foreach (var clashZone in clashZones)
-                {
-                    try
-                    {
-                        // Get MEP element from document or linked documents
-                        var mepElement = GetElementFromDocumentOrLinked(document, clashZone.MepElementId);
-                        
-                        if (mepElement != null)
-                        {
-                            // Determine element category
-                            var elementCategory = GetElementCategory(mepElement);
-                            
-                            // Check if element belongs to the requested category
-                            if (IsElementInCategory(elementCategory, category))
-                            {
-                                filteredZones.Add(clashZone);
-                                DebugLogger.Info($"[CLASH_DEBUG] Clash zone {clashZone.Id} matches category '{category}' - element category: {elementCategory}");
-                            }
-                        }
-                        else
-                        {
-                            DebugLogger.Warning($"[CLASH_DEBUG] MEP element {clashZone.MepElementId} not found for clash zone {clashZone.Id}");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        DebugLogger.Error($"[CLASH_DEBUG] Error filtering clash zone {clashZone.Id}: {ex.Message}");
-                    }
-                }
-                
-                DebugLogger.Info($"[CLASH_DEBUG] Filtered {filteredZones.Count} clash zones for category '{category}'");
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Error($"[CLASH_DEBUG] Error in FilterClashZonesByCategory: {ex.Message}");
-            }
-            
-            return filteredZones;
-        }
-        
-        /// <summary>
-        /// Gets element from document or linked documents
-        /// </summary>
-        private Element GetElementFromDocumentOrLinked(Document document, ElementId elementId)
-        {
-            try
-            {
-                // First try host document
-                var element = document.GetElement(elementId);
-                if (element != null)
-                {
-                    return element;
-                }
-                
-                // If not found, search linked documents
-                var linkInstances = new FilteredElementCollector(document)
-                    .OfClass(typeof(RevitLinkInstance))
-                    .Cast<RevitLinkInstance>();
-                
-                foreach (var link in linkInstances)
-                {
-                    var linkDoc = link.GetLinkDocument();
-                    if (linkDoc != null)
-                    {
-                        element = linkDoc.GetElement(elementId);
-                        if (element != null)
-                        {
-                            return element;
-                        }
-                    }
-                }
-                
-                return null;
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Error($"[CLASH_DEBUG] Error getting element {elementId}: {ex.Message}");
-                return null;
-            }
-        }
-        
-        /// <summary>
-        /// Gets the category name of an element
-        /// </summary>
-        private string GetElementCategory(Element element)
-        {
-            try
-            {
-                if (element?.Category != null)
-                {
-                    return element.Category.Name;
-                }
-                return "Unknown";
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Error($"[CLASH_DEBUG] Error getting element category: {ex.Message}");
-                return "Unknown";
-            }
-        }
-        
-        /// <summary>
-        /// Checks if element category matches the requested category
-        /// </summary>
-        private bool IsElementInCategory(string elementCategory, string requestedCategory)
-        {
-            try
-            {
-                // Convert both to lowercase for case-insensitive comparison
-                var elementCatLower = elementCategory?.ToLower() ?? "";
-                var requestedCatLower = requestedCategory?.ToLower() ?? "";
-                
-                DebugLogger.Info($"[CLASH_DEBUG] Checking if element category '{elementCategory}' matches requested '{requestedCategory}'");
-                
-                switch (requestedCatLower)
-                {
-                    case "ducts":
-                        // Match: Duct Curves, Duct Fitting, Duct Terminal (but not Duct Accessory)
-                        return (elementCatLower.Contains("duct") && elementCatLower.Contains("curve")) ||
-                               (elementCatLower.Contains("duct") && elementCatLower.Contains("fitting")) ||
-                               (elementCatLower.Contains("duct") && elementCatLower.Contains("terminal"));
-                               
-                    case "duct accessories":
-                        // Match: Duct Accessory
-                        return elementCatLower.Contains("duct") && elementCatLower.Contains("accessory");
-                        
-                    case "pipes":
-                        // Match: Pipe Curves, Pipe Fitting, Pipe Terminal
-                        return (elementCatLower.Contains("pipe") && elementCatLower.Contains("curve")) ||
-                               (elementCatLower.Contains("pipe") && elementCatLower.Contains("fitting")) ||
-                               (elementCatLower.Contains("pipe") && elementCatLower.Contains("terminal"));
-                        
-                    case "cable trays":
-                        // Match: Cable Tray, Cable Tray Fitting
-                        return (elementCatLower.Contains("cable") && elementCatLower.Contains("tray"));
-                               
-                    default:
-                        DebugLogger.Warning($"[CLASH_DEBUG] Unknown requested category: '{requestedCategory}'");
-                        return false;
-                }
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Error($"[CLASH_DEBUG] Error checking category match: {ex.Message}");
-                return false;
-            }
-        }
-
-        /// <summary>
         /// Gets opening families from the current document
         /// </summary>
         private List<FamilySymbol> GetOpeningFamilies(Document document)
@@ -5952,10 +5863,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
                 DebugLogger.Info("GetCurrentIntersections: Starting intersection detection using TestMepIntersection service...");
 
-                // Use the proven TestMepIntersection service with current UI selections
-                var selectedCategories = GetSelectedMepCategories();
+                // Use the proven TestMepIntersection service
                 var intersectionService = new IntersectionDetectionService(msg => DebugLogger.Info(msg));
-                var intersections = intersectionService.FindIntersections(document, view3D, selectedCategories);
+                var intersections = intersectionService.FindIntersections(document, view3D);
 
                 DebugLogger.Info($"GetCurrentIntersections: Found {intersections.Count} total intersections using TestMepIntersection service");
                 return intersections;
@@ -6061,9 +5971,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                     _filtersPanel.Location = new System.Drawing.Point(0, headerHeight);
                     _filtersPanel.Size = new System.Drawing.Size(filtersWidth, availableHeight);
-                    _filtersPanel.Visible = true;  // Ensure visibility
-                    _filtersPanel.BringToFront();  // Bring to front
-                DebugLogger.Info($"_filtersPanel positioned: Location={_filtersPanel.Location}, Size={_filtersPanel.Size}, Visible={_filtersPanel.Visible}");
+                DebugLogger.Info($"_filtersPanel positioned: Location={_filtersPanel.Location}, Size={_filtersPanel.Size}");
             }
 
                 // Position filters splitter
@@ -6106,12 +6014,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
         }
 
-        // ========================================================================
-        // ⚠️  CRITICAL UI LAYOUT - DO NOT MODIFY WITHOUT USER CONSENT  ⚠️
-        // ========================================================================
-        // This method provides manual positioning for the 2x2 grid layout
-        // DO NOT CHANGE: This manual positioning is essential for proper layout
-        // ========================================================================
         private void BalanceLeftLayout()
         {
             try
@@ -6136,26 +6038,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             try
             {
                 DebugLogger.Info("SaveFilterWithUIState called");
-                
-                // Save the filter with current UI state
+                // TODO: Implement filter saving with UI state
                 _filterManagementService.SaveFilter(filterListBox);
-                
-                // Also save the current UI selections to the filter
-                if (filterListBox.SelectedItem != null)
-                {
-                    var selectedFilterName = filterListBox.SelectedItem.ToString();
-                    var currentFilter = _filterManagementService.LoadFilterAuto(selectedFilterName);
-                    
-                    if (currentFilter != null)
-                    {
-                        // Update the filter with current UI state
-                        UpdateFilterWithCurrentUIState(currentFilter);
-                        var filterDir = _filterManagementService.GetDefaultFilterDirectory();
-                        var filePath = System.IO.Path.Combine(filterDir, $"{selectedFilterName}.xml");
-                        _filterManagementService.SaveFilterToXmlFile(currentFilter, filePath);
-                        DebugLogger.Info($"Updated filter '{selectedFilterName}' with current UI state");
-                    }
-                }
             }
             catch (Exception ex)
             {
@@ -6168,116 +6052,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             try
             {
                 DebugLogger.Info("RestoreFilterStateToUI called");
-                
-                if (filterListBox.SelectedItem != null)
-                {
-                    var selectedFilterName = filterListBox.SelectedItem.ToString();
-                    var loadedFilter = _filterManagementService.LoadFilterAuto(selectedFilterName);
-                    
-                    if (loadedFilter != null)
-                    {
-                        // Restore UI state from the loaded filter
-                        RestoreUIStateFromFilter(loadedFilter);
-                        DebugLogger.Info($"Restored UI state from filter: {selectedFilterName}");
-                    }
-                }
+                // TODO: Implement filter state restoration to UI
+                _filterManagementService.LoadFilter(filterListBox);
             }
             catch (Exception ex)
             {
                 DebugLogger.Error($"RestoreFilterStateToUI failed: {ex.Message}");
             }
         }
-
-        private void UpdateFilterWithCurrentUIState(OpeningFilter filter)
-        {
-            try
-            {
-                DebugLogger.Info("UpdateFilterWithCurrentUIState called");
-                
-                // Update filter with current UI selections
-                if (filter != null)
-                {
-                    // Get current selected MEP categories
-                    var selectedMepCategories = GetSelectedMepCategories();
-                    filter.SelectedMepCategoryNames = selectedMepCategories;
-                    DebugLogger.Info($"Updated filter with {selectedMepCategories?.Count ?? 0} MEP categories");
-                    
-                    // Get current selected reference files
-                    var selectedReferenceFiles = GetSelectedReferenceFiles();
-                    filter.SelectedReferenceFiles = selectedReferenceFiles;
-                    DebugLogger.Info($"Updated filter with {selectedReferenceFiles?.Count ?? 0} reference files");
-                    
-                    // Get current selected host files
-                    var selectedHostFiles = GetSelectedHostFiles();
-                    filter.SelectedHostFiles = selectedHostFiles;
-                    DebugLogger.Info($"Updated filter with {selectedHostFiles?.Count ?? 0} host files");
-                    
-                    // Get current clearance settings and store in OpeningSettings
-                    var clearanceSettings = GetClearanceSettings();
-                    if (filter.OpeningSettings == null)
-                    {
-                        filter.OpeningSettings = new OpeningSettings();
-                    }
-                    filter.OpeningSettings.ClearanceSettings = clearanceSettings;
-                    DebugLogger.Info($"Updated filter with clearance settings");
-                }
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Error($"UpdateFilterWithCurrentUIState failed: {ex.Message}");
-            }
-        }
-
-        private void RestoreUIStateFromFilter(OpeningFilter filter)
-        {
-            try
-            {
-                DebugLogger.Info("RestoreUIStateFromFilter called");
-                
-                // Check if user has made manual changes - if so, don't restore filter state
-                if (_userHasMadeManualChanges)
-                {
-                    DebugLogger.Info("[FILTER_UI] User has made manual changes - skipping filter state restoration to preserve user selections");
-                return;
-            }
-
-                if (filter != null)
-                {
-                    // Restore MEP category selections
-                    if (filter.SelectedMepCategoryNames != null && filter.SelectedMepCategoryNames.Any())
-                    {
-                        RestoreMepCategorySelections(filter.SelectedMepCategoryNames);
-                        DebugLogger.Info($"Restored {filter.SelectedMepCategoryNames.Count} MEP category selections");
-                    }
-                    
-                    // Restore reference file selections
-                    if (filter.SelectedReferenceFiles != null && filter.SelectedReferenceFiles.Any())
-                    {
-                        RestoreReferenceFileSelections(filter.SelectedReferenceFiles);
-                        DebugLogger.Info($"Restored {filter.SelectedReferenceFiles.Count} reference file selections");
-                    }
-                    
-                    // Restore host file selections
-                    if (filter.SelectedHostFiles != null && filter.SelectedHostFiles.Any())
-                    {
-                        RestoreHostFileSelections(filter.SelectedHostFiles);
-                        DebugLogger.Info($"Restored {filter.SelectedHostFiles.Count} host file selections");
-                    }
-                    
-                    // Restore clearance settings
-                    if (filter.OpeningSettings?.ClearanceSettings != null && filter.OpeningSettings.ClearanceSettings.Any())
-                    {
-                        RestoreClearanceSettings(filter.OpeningSettings.ClearanceSettings);
-                        DebugLogger.Info("Restored clearance settings");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Error($"RestoreUIStateFromFilter failed: {ex.Message}");
-            }
-        }
-
 
         private bool IsFileAvailableForReference(LinkedFileType fileType)
         {
@@ -6300,9 +6082,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         {
             try
             {
-                // Only show structural files (AR, ARC, ST, STR) in the main "Host Elements" section
-                // MEP files (Electrical, Mechanical, Plumbing, FireProtection) should go to "Other Files" section
-                return Services.LinkedFileDetectionService.IsHostOpeningFile(fileType);
+                // Check if file type is suitable for host
+                // For now, assume all linked file types can be used as host
+                // This should be enhanced based on actual requirements
+                return true;
             }
             catch (Exception ex)
             {
@@ -6331,11 +6114,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             try
             {
                 DebugLogger.Info($"UpdateParameterServiceDropdowns called with {categoryParameters.Count} categories");
-                
-                // Use the working PopulateParameterDropdowns method instead of placeholder
-                PopulateParameterDropdowns();
-                
-                DebugLogger.Info("[PARAMETER_SERVICE] UpdateParameterServiceDropdowns completed successfully");
+                // TODO: Implement parameter service dropdown updates
+                // This should update the UI dropdowns with the provided parameters
             }
             catch (Exception ex)
             {
@@ -6344,4 +6124,3 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         }
     }
 }
-

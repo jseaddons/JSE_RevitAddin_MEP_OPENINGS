@@ -151,8 +151,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (transform == null)
                 {
                     // Use regular intersection logic (full penetration method removed in working version)
-                    var intersections4Tuple = MepIntersectionService.FindIntersections(pipe, nearbyStructuralElements, _log);
-                    intersections = intersections4Tuple.Select(x => (x.Item2, x.Item3, x.Item4)).ToList();
+                    var intersections4Tuple = MepIntersectionService.FindIntersections(pipe, nearbyStructuralElements, _log ?? (_ => {}));
+                    intersections = intersections4Tuple.Select(x => (x.Item1, x.Item2, x.Item3)).ToList();
                 }
                 else
                 {

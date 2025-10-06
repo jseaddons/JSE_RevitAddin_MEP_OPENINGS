@@ -66,16 +66,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
             }
 
             // Filter linked elements
-            var allLinkInstances = JSE_RevitAddin_MEP_OPENINGS.Helpers.TransformHelper.GetAllLinkInstances(uiDoc.Document);
+            var allLinkInstances = new FilteredElementCollector(uiDoc.Document)
+                .OfClass(typeof(RevitLinkInstance))
+                .Cast<RevitLinkInstance>()
+                .ToList();
 
             foreach (var group in linkedElementGroups)
             {
                 var linkInstance = allLinkInstances.FirstOrDefault(li => li.GetLinkDocument()?.Title == group.Key);
                 if (linkInstance == null) continue;
 
-                // Transform the section box solid using helper
                 Transform inverseTransform = linkInstance.GetTotalTransform().Inverse;
-                Solid transformedSolid = JSE_RevitAddin_MEP_OPENINGS.Helpers.TransformHelper.TransformSolid(sectionBoxSolid, inverseTransform);
+                Solid transformedSolid = SolidUtils.CreateTransformed(sectionBoxSolid, inverseTransform);
 
                 try
                 {

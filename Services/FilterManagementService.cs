@@ -606,25 +606,4 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
     }
 }
-            };
-            Controls.Add(_okButton);
-
-            _cancelButton = new Button
-            {
-                Text = "Cancel",
-                Location = new System.Drawing.Point(297, 70),
-                Size = new System.Drawing.Size(75, 23),
-                DialogResult = DialogResult.Cancel
-            };
-            Controls.Add(_cancelButton);
-
-            AcceptButton = _okButton;
-            CancelButton = _cancelButton;
-            
-            // Ensure the dialog is properly modal and visible
-            _inputTextBox.Focus();
-            _inputTextBox.SelectAll();
-        }
-    }
-}
 

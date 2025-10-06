@@ -164,10 +164,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         {
             try
             {
-                // Show modeless to avoid blocking Revit UI (freeze) and allow interaction
+                // Show modal to ensure dialog is visible and blocks until user closes it
                 var mainDialog = new Views.EmergencyMainDialog(appProfileService, doc, uiDoc);
-                mainDialog.Show();
-                File.AppendAllText(logPath, $"[{DateTime.Now}] Main dialog shown modeless.\n");
+                var dialogResult = mainDialog.ShowDialog();
+                File.AppendAllText(logPath, $"[{DateTime.Now}] Main dialog shown modal with result: {dialogResult}\n");
             }
             catch (Exception ex)
             {
