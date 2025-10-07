@@ -47,6 +47,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return;
                 }
 
+                // ⚠️ CRITICAL: Load cluster configuration from filter settings BEFORE executing commands
+                LoadClusterConfigurationFromFilters();
+
                 // Log immediate feedback (non-blocking)
                 DebugLogger.Info($"[SleevePlacementExternalEvent] Processing {_selectedCategories.Count} categories: {string.Join(", ", _selectedCategories)}");
 
@@ -83,6 +86,91 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Error($"[SleevePlacementExternalEvent] Exception: {ex.Message}");
                 DebugLogger.Error($"[SleevePlacementExternalEvent] Stack trace: {ex.StackTrace}");
                 TaskDialog.Show("Error", $"Failed to start sleeve placement: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// ⚠️ CRITICAL: Load cluster configuration from filter settings
+        /// This must be called BEFORE executing any sleeve placement commands
+        /// to ensure cluster command respects user's JoinOpeningsDistance setting
+        /// </summary>
+        private void LoadClusterConfigurationFromFilters()
+        {
+            try
+            {
+                DebugLogger.Info("[SleevePlacementExternalEvent] Loading cluster configuration from filters...");
+                
+                var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                
+                // Search for any filter XML file to extract advanced settings
+                var xmlFiles = Directory.GetFiles(filtersDirectory, "*.xml");
+                
+                if (xmlFiles.Length > 0)
+                {
+                    // Use the most recently modified file
+                    var xmlFile = xmlFiles
+                        .OrderByDescending(f => File.GetLastWriteTime(f))
+                        .First();
+                    
+                    DebugLogger.Info($"[SleevePlacementExternalEvent] Reading configuration from: {Path.GetFileName(xmlFile)}");
+                    
+                    // Try to load as UserConfiguration first (which contains AdvancedSettings)
+                    try
+                    {
+                        var userConfigSerializer = new System.Xml.Serialization.XmlSerializer(typeof(Models.UserConfiguration));
+                        using (var reader = new StreamReader(xmlFile))
+                        {
+                            var userConfig = (Models.UserConfiguration)userConfigSerializer.Deserialize(reader);
+                            
+                            if (userConfig?.AdvancedSettings != null)
+                            {
+                                var joinDistance = userConfig.AdvancedSettings.JoinOpeningsDistance;
+                                
+                                // Set cluster configuration manager
+                                ClusterConfigurationManager.Instance.SetJoinOpeningsDistance(
+                                    joinDistance, 
+                                    $"UserConfiguration: {xmlFile}");
+                                
+                                DebugLogger.Info($"[SleevePlacementExternalEvent] ✓ Cluster configuration loaded from UserConfiguration: JoinOpeningsDistance = {joinDistance}mm");
+                                return; // Success - exit method
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Not a UserConfiguration file, try OpeningFilter format
+                    }
+                    
+                    // Fallback: Try OpeningFilter format
+                    try
+                    {
+                        var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
+                        using (var reader = new StreamReader(xmlFile))
+                        {
+                            var filter = (OpeningFilter)serializer.Deserialize(reader);
+                            DebugLogger.Info($"[SleevePlacementExternalEvent] Loaded filter: {filter?.Name}, using default cluster configuration (200mm)");
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore deserialization errors
+                    }
+                    
+                    // No advanced settings found - use default
+                    DebugLogger.Warning("[SleevePlacementExternalEvent] No AdvancedSettings found in XML files - using default cluster configuration (200mm)");
+                    ClusterConfigurationManager.Instance.SetJoinOpeningsDistance(200.0, "Default (no settings in filter)");
+                }
+                else
+                {
+                    DebugLogger.Warning($"[SleevePlacementExternalEvent] No filter XML files found in {filtersDirectory} - using default cluster configuration (200mm)");
+                    ClusterConfigurationManager.Instance.SetJoinOpeningsDistance(200.0, "Default (no filters found)");
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[SleevePlacementExternalEvent] Error loading cluster configuration: {ex.Message}");
+                DebugLogger.Error($"[SleevePlacementExternalEvent] Using default cluster configuration (200mm)");
+                ClusterConfigurationManager.Instance.SetJoinOpeningsDistance(200.0, "Default (error loading from filter)");
             }
         }
 

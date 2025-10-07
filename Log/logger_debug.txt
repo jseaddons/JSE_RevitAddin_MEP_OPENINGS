@@ -603,3 +603,35 @@
 [07-10-2025 14:36:08] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
 [07-10-2025 14:36:08] Parameter dropdowns updated successfully
 [07-10-2025 14:36:08] RefreshService.ExecuteRefresh() method completed successfully
+[07-10-2025 14:44:13] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-07_14-44-13)
+[07-10-2025 14:44:13] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[07-10-2025 14:44:19] === ON_REFRESH_CLICK STARTED ===
+[07-10-2025 14:44:19] About to call RefreshService.ExecuteRefresh() method
+[07-10-2025 14:44:19] === REFRESH STARTED === Timestamp: 2025-10-07_14-44-19
+[07-10-2025 14:44:22] About to update parameter dropdowns
+[07-10-2025 14:44:23] [PARAMETER_SERVICE] Starting category-specific population for 4 categories
+[07-10-2025 14:44:23] [PARAMETER_SERVICE] Found 23 opening parameters
+[07-10-2025 14:44:23] [PARAMETER_SERVICE] Found 2 linked files
+[07-10-2025 14:44:23] [PARAMETER_SERVICE] Updating tab 'Ducts' for category 'Ducts'
+[07-10-2025 14:44:24] [PARAMETER_SERVICE] Found 90 parameters for category 'Ducts' from linked files
+[07-10-2025 14:44:25] [PARAMETER_SERVICE] Updating tab 'Duct Accessories' for category 'Duct Accessories'
+[07-10-2025 14:44:25] [PARAMETER_SERVICE] Found 109 parameters for category 'Duct Accessories' from linked files
+[07-10-2025 14:44:25] [PARAMETER_SERVICE] Updating tab 'Cable Trays' for category 'Cable Trays'
+[07-10-2025 14:44:25] [PARAMETER_SERVICE] Found 0 parameters for category 'Cable Trays' from linked files
+[07-10-2025 14:44:25] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[07-10-2025 14:44:25] [PARAMETER_SERVICE] Found 164 parameters for category 'Pipes' from linked files
+[07-10-2025 14:44:25] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[07-10-2025 14:44:25] Parameter dropdowns updated successfully
+[07-10-2025 14:44:25] RefreshService.ExecuteRefresh() method completed successfully
+[07-10-2025 14:44:29] === ON_REFRESH_CLICK STARTED ===
+[07-10-2025 14:44:29] About to call RefreshService.ExecuteRefresh() method
+[07-10-2025 14:44:29] === REFRESH STARTED === Timestamp: 2025-10-07_14-44-29
+[07-10-2025 14:45:19] About to update parameter dropdowns
+[07-10-2025 14:45:19] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[07-10-2025 14:45:19] [PARAMETER_SERVICE] Found 23 opening parameters
+[07-10-2025 14:45:20] [PARAMETER_SERVICE] Found 2 linked files
+[07-10-2025 14:45:20] [PARAMETER_SERVICE] Updating tab 'Ducts' for category 'Ducts'
+[07-10-2025 14:45:20] [PARAMETER_SERVICE] Found 90 parameters for category 'Ducts' from linked files
+[07-10-2025 14:45:21] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[07-10-2025 14:45:21] Parameter dropdowns updated successfully
+[07-10-2025 14:45:21] RefreshService.ExecuteRefresh() method completed successfully

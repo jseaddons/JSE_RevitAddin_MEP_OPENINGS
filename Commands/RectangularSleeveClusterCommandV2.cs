@@ -53,8 +53,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             int placedCount = 0;
             int deletedCount = 0;
 
-            double toleranceDist = UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters);
-            double toleranceMm = UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters);
+            // ⚠️ CRITICAL: Use cluster configuration from ClusterConfigurationManager (set by orchestrator)
+            double toleranceMm = ClusterConfigurationManager.Instance.JoinOpeningsDistance;
+            double toleranceDist = UnitUtils.ConvertToInternalUnits(toleranceMm, UnitTypeId.Millimeters);
+            
+            DebugLogger.Log($"[RectangularCluster] ⚠️ Using JoinOpeningsDistance: {toleranceMm}mm (from {ClusterConfigurationManager.Instance.ConfigurationSource})");
+            DebugLogger.Log($"[RectangularCluster] Internal units: {toleranceDist:F6} feet");
+            DebugLogger.Log($"[RectangularCluster] Configuration: {ClusterConfigurationManager.Instance.GetConfigurationSummary()}");
 
             // Collect all placed rectangular sleeves (PS Rectangular family instances)
             var rawSleeves = new FilteredElementCollector(doc)
