@@ -12,12 +12,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// </summary>
     public class RefreshService
     {
+        // ⚠️ CRASH-SAFE LIMITS ⚠️
+        private const int MAX_ELEMENTS_TO_PROCESS = 10000;
+        private const int WARNING_THRESHOLD = 5000;
+        private const int TIMEOUT_CHECK_INTERVAL = 100; // Check timeout every N elements
+        
         private readonly Document _document;
         private readonly UIDocument _uiDocument;
         private readonly ApplicationProfileService _appProfileService;
         private readonly FilterManagementService _filterManagementService;
-        private readonly ClashZoneService _clashZoneService;
+        private ClashZoneService _clashZoneService; // Not readonly - reinitialized during refresh with existing zones
         private readonly IntersectionDetectionService _intersectionService;
+        private readonly CrashSafeExecutor _crashSafeExecutor; // ⚠️ CRITICAL: Provides timeout and crash protection
 
         // UI References (passed from main dialog)
         private System.Windows.Forms.Label _statusLabel;
@@ -30,8 +36,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _uiDocument = uiDocument ?? throw new ArgumentNullException(nameof(uiDocument));
             _appProfileService = appProfileService ?? throw new ArgumentNullException(nameof(appProfileService));
             _filterManagementService = new FilterManagementService(msg => DebugLogger.Info(msg), msg => DebugLogger.Error(msg));
+            
+            // ⚠️ CRITICAL FIX: Initialize with EMPTY storage in constructor ⚠️
+            // The existing clash zones will be loaded during ExecuteRefresh from the current profile
             _clashZoneService = new ClashZoneService(new Models.ClashZoneStorage(), msg => DebugLogger.Info(msg));
             _intersectionService = new IntersectionDetectionService(msg => DebugLogger.Info(msg));
+            
+            // Initialize crash-safe executor for timeout protection
+            _crashSafeExecutor = new CrashSafeExecutor();
         }
 
         /// <summary>
@@ -42,6 +54,172 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _statusLabel = statusLabel;
             _progressBar = progressBar;
             _refreshButton = refreshButton;
+        }
+
+        /// <summary>
+        /// Validates that dampers in the selected linked mechanical file have required Standard and MSFD parameters
+        /// </summary>
+        private bool ValidateDamperParameters(List<string> selectedReferenceFiles, string refreshLogPath)
+        {
+            try
+            {
+                DebugLogger.Info("[DUCT_ACCESSORIES] Starting damper parameter validation");
+                File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DUCT_ACCESSORIES] Starting damper parameter validation\n");
+
+                if (selectedReferenceFiles == null || selectedReferenceFiles.Count == 0)
+                {
+                    var result = System.Windows.Forms.MessageBox.Show(
+                        "No linked mechanical files selected. Please select a linked mechanical file to validate damper parameters.",
+                        "No Linked Files Selected",
+                        System.Windows.Forms.MessageBoxButtons.OK,
+                        System.Windows.Forms.MessageBoxIcon.Warning);
+                    
+                    DebugLogger.Warning("[DUCT_ACCESSORIES] No linked files selected for damper validation");
+                    File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DUCT_ACCESSORIES] WARNING: No linked files selected for damper validation\n");
+                    return false;
+                }
+
+                // Find linked mechanical file
+                Document linkedMechanicalDoc = null;
+                foreach (var linkInstance in new FilteredElementCollector(_document)
+                    .OfClass(typeof(RevitLinkInstance))
+                    .Cast<RevitLinkInstance>())
+                {
+                    var linkDoc = linkInstance.GetLinkDocument();
+                    if (linkDoc != null && selectedReferenceFiles.Any(file => linkDoc.Title.Contains(file) || file.Contains(linkDoc.Title)))
+                    {
+                        // Check if this looks like a mechanical file (contains duct accessories)
+                        var ductAccessories = new FilteredElementCollector(linkDoc)
+                            .OfCategory(BuiltInCategory.OST_DuctAccessory)
+                            .WhereElementIsNotElementType()
+                            .ToElements();
+
+                        if (ductAccessories.Count > 0)
+                        {
+                            linkedMechanicalDoc = linkDoc;
+                            DebugLogger.Info($"[DUCT_ACCESSORIES] Found linked mechanical file: {linkDoc.Title}");
+                            File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DUCT_ACCESSORIES] Found linked mechanical file: {linkDoc.Title}\n");
+                            break;
+                        }
+                    }
+                }
+
+                if (linkedMechanicalDoc == null)
+                {
+                    var result = System.Windows.Forms.MessageBox.Show(
+                        "No linked mechanical file found with duct accessories. Please ensure a mechanical file is linked and selected.",
+                        "No Mechanical File Found",
+                        System.Windows.Forms.MessageBoxButtons.OK,
+                        System.Windows.Forms.MessageBoxIcon.Warning);
+                    
+                    DebugLogger.Warning("[DUCT_ACCESSORIES] No linked mechanical file found with duct accessories");
+                    File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DUCT_ACCESSORIES] WARNING: No linked mechanical file found with duct accessories\n");
+                    return false;
+                }
+
+                // Get all duct accessories (dampers) from the linked mechanical file
+                var dampers = new FilteredElementCollector(linkedMechanicalDoc)
+                    .OfCategory(BuiltInCategory.OST_DuctAccessory)
+                    .WhereElementIsNotElementType()
+                    .ToElements();
+
+                DebugLogger.Info($"[DUCT_ACCESSORIES] Found {dampers.Count} dampers in linked mechanical file");
+                File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DUCT_ACCESSORIES] Found {dampers.Count} dampers in linked mechanical file\n");
+
+                if (dampers.Count == 0)
+                {
+                    var result = System.Windows.Forms.MessageBox.Show(
+                        "No dampers found in the linked mechanical file. Please ensure the mechanical file contains duct accessories (dampers).",
+                        "No Dampers Found",
+                        System.Windows.Forms.MessageBoxButtons.OK,
+                        System.Windows.Forms.MessageBoxIcon.Warning);
+                    
+                    DebugLogger.Warning("[DUCT_ACCESSORIES] No dampers found in linked mechanical file");
+                    File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DUCT_ACCESSORIES] WARNING: No dampers found in linked mechanical file\n");
+                    return false;
+                }
+
+                // Check each damper for required parameters
+                var missingStandard = new List<Element>();
+                var missingMSFD = new List<Element>();
+
+                foreach (var damper in dampers)
+                {
+                    var standardParam = damper.LookupParameter("Standard");
+                    var msfdParam = damper.LookupParameter("MSFD");
+
+                    if (standardParam == null || string.IsNullOrWhiteSpace(standardParam.AsString()))
+                    {
+                        missingStandard.Add(damper);
+                    }
+
+                    if (msfdParam == null || string.IsNullOrWhiteSpace(msfdParam.AsString()))
+                    {
+                        missingMSFD.Add(damper);
+                    }
+                }
+
+                // Report results
+                if (missingStandard.Count > 0 || missingMSFD.Count > 0)
+                {
+                    var message = "The following damper parameter validation issues were found:\n\n";
+                    
+                    if (missingStandard.Count > 0)
+                    {
+                        message += $"• {missingStandard.Count} dampers missing 'Standard' parameter\n";
+                        DebugLogger.Warning($"[DUCT_ACCESSORIES] {missingStandard.Count} dampers missing 'Standard' parameter");
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DUCT_ACCESSORIES] WARNING: {missingStandard.Count} dampers missing 'Standard' parameter\n");
+                    }
+                    
+                    if (missingMSFD.Count > 0)
+                    {
+                        message += $"• {missingMSFD.Count} dampers missing 'MSFD' parameter\n";
+                        DebugLogger.Warning($"[DUCT_ACCESSORIES] {missingMSFD.Count} dampers missing 'MSFD' parameter");
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DUCT_ACCESSORIES] WARNING: {missingMSFD.Count} dampers missing 'MSFD' parameter\n");
+                    }
+
+                    message += "\nPlease add the missing parameters to the dampers in the linked mechanical file before proceeding with intersection detection.";
+                    message += "\n\nDo you want to continue anyway?";
+
+                    var result = System.Windows.Forms.MessageBox.Show(
+                        message,
+                        "Damper Parameter Validation Failed",
+                        System.Windows.Forms.MessageBoxButtons.YesNo,
+                        System.Windows.Forms.MessageBoxIcon.Warning);
+
+                    if (result == System.Windows.Forms.DialogResult.No)
+                    {
+                        DebugLogger.Info("[DUCT_ACCESSORIES] User chose to abort due to missing damper parameters");
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DUCT_ACCESSORIES] User chose to abort due to missing damper parameters\n");
+                        return false;
+                    }
+                    else
+                    {
+                        DebugLogger.Info("[DUCT_ACCESSORIES] User chose to continue despite missing damper parameters");
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DUCT_ACCESSORIES] User chose to continue despite missing damper parameters\n");
+                    }
+                }
+                else
+                {
+                    DebugLogger.Info("[DUCT_ACCESSORIES] All dampers have required Standard and MSFD parameters");
+                    File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DUCT_ACCESSORIES] All dampers have required Standard and MSFD parameters\n");
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[DUCT_ACCESSORIES] Error during damper parameter validation: {ex.Message}");
+                File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DUCT_ACCESSORIES] ERROR: {ex.Message}\n");
+                
+                var result = System.Windows.Forms.MessageBox.Show(
+                    $"Error during damper parameter validation: {ex.Message}\n\nDo you want to continue anyway?",
+                    "Validation Error",
+                    System.Windows.Forms.MessageBoxButtons.YesNo,
+                    System.Windows.Forms.MessageBoxIcon.Error);
+
+                return result == System.Windows.Forms.DialogResult.Yes;
+            }
         }
 
         /// <summary>
@@ -95,14 +273,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             DebugLogger.Info($"[CLASH_DEBUG] Selected filter items: {string.Join(", ", selectedFilterItems)}");
             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Selected filter items: {string.Join(", ", selectedFilterItems)}\n");
 
-            // CRITICAL FIX: Don't require filter selection - work with current UI selections directly
+            // ⚠️ CRITICAL: Require filter selection - don't proceed without a filter ⚠️
             if (selectedFilterItems.Count == 0)
             {
-                DebugLogger.Info("[CLASH_DEBUG] No filters selected - proceeding with current UI selections directly");
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] INFO: No filters selected - proceeding with current UI selections directly\n");
+                DebugLogger.Error("[CLASH_DEBUG] ERROR: No filters selected - cannot proceed with refresh");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ERROR: No filters selected - cannot proceed with refresh\n");
                 
-                // Create a default filter name for saving results
-                selectedFilterItems = new List<string> { "Default_Refresh" };
+                // Prompt user to select a filter
+                System.Windows.Forms.MessageBox.Show(
+                    "Please select at least one filter before running Refresh.\n\nFilters are listed in the left panel.",
+                    "No Filter Selected",
+                    System.Windows.Forms.MessageBoxButtons.OK,
+                    System.Windows.Forms.MessageBoxIcon.Warning);
+                
+                _statusLabel.Text = "Refresh cancelled - No filter selected";
+                _progressBar.Value = 0;
+                return; // STOP - don't proceed without a filter
             }
 
             // Step 2: Process filters and detect intersections
@@ -177,10 +363,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             DebugLogger.Info($"[CLASH_DEBUG] Document: {_document.Title}");
             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Document: {_document.Title}\n");
 
-            // Step 5: Perform intersection detection
+            // Step 5: Check for Duct Accessories specific validation
+            if (selectedMepCategories != null && selectedMepCategories.Count == 1 && selectedMepCategories.Contains("Duct Accessories"))
+            {
+                _statusLabel.Text = "Validating damper parameters...";
+                _progressBar.Visible = true;
+                _progressBar.Value = 10;
+
+                DebugLogger.Info("[DUCT_ACCESSORIES] Only Duct Accessories selected - validating damper parameters");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [DUCT_ACCESSORIES] Only Duct Accessories selected - validating damper parameters\n");
+
+                // Validate damper parameters in selected linked mechanical file
+                if (!ValidateDamperParameters(selectedReferenceFiles, refreshLogPath))
+                {
+                    // Validation failed - user was prompted, exit refresh
+                    _statusLabel.Text = "Damper parameter validation failed";
+                    _progressBar.Visible = false;
+                    _refreshButton.Enabled = true;
+                    return;
+                }
+            }
+
+            // Step 6: Perform intersection detection
             _statusLabel.Text = "Detecting intersections...";
             _progressBar.Visible = true;
-            _progressBar.Value = 10;
+            _progressBar.Value = 20;
 
             DebugLogger.Info("[CLASH_DEBUG] Starting MEP-structural intersection detection...");
             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Starting MEP-structural intersection detection...\n");
@@ -228,15 +435,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             // Step 6: Process clash zones
-            _progressBar.Value = 30;
+            _progressBar.Value = 40;
             _statusLabel.Text = "Processing clash zones...";
 
-            DebugLogger.Info($"[CLASH_DEBUG] Initializing ClashZoneService with {(currentProfile?.Configuration?.ClashZoneStorage?.ClashZones?.Count ?? 0)} existing zones");
-            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Initializing ClashZoneService with {(currentProfile?.Configuration?.ClashZoneStorage?.ClashZones?.Count ?? 0)} existing zones\n");
-
-            // Note: ClashZoneService is already initialized with ClashZoneStorage in constructor
-            DebugLogger.Info($"[CLASH_DEBUG] ClashZoneService initialized with {(currentProfile?.Configuration?.ClashZoneStorage?.ClashZones?.Count ?? 0)} existing zones");
-            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ClashZoneService initialized with {(currentProfile?.Configuration?.ClashZoneStorage?.ClashZones?.Count ?? 0)} existing zones\n");
+            // ⚠️ CRITICAL FIX: Reinitialize ClashZoneService with existing clash zones from profile ⚠️
+            // This allows ResetResolvedFlagForDeletedSleeves to detect manually deleted sleeves
+            var existingClashZones = currentProfile?.Configuration?.ClashZoneStorage ?? new Models.ClashZoneStorage();
+            var existingCount = existingClashZones?.ClashZones?.Count ?? 0;
+            
+            DebugLogger.Info($"[CLASH_DEBUG] Reinitializing ClashZoneService with {existingCount} existing zones from profile");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Reinitializing ClashZoneService with {existingCount} existing zones from profile\n");
+            
+            // Reinitialize with existing clash zones
+            _clashZoneService = new ClashZoneService(existingClashZones, msg => DebugLogger.Info(msg));
+            
+            DebugLogger.Info($"[CLASH_DEBUG] ClashZoneService reinitialized with {existingCount} existing zones");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ClashZoneService reinitialized with {existingCount} existing zones\n");
 
             // Step 7: Filter and detect new clash zones
             _progressBar.Value = 50;
@@ -261,7 +475,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             DebugLogger.Info($"[CLASH_DEBUG] Intersection breakdown by category: {string.Join(", ", intersectionBreakdown.Select(kv => $"{kv.Key}={kv.Value}"))}");
             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Intersection breakdown by category: {string.Join(", ", intersectionBreakdown.Select(kv => $"{kv.Key}={kv.Value}"))}\n");
 
-            var newClashZones = _clashZoneService.DetectNewClashZones(currentIntersections, _document);
+            var newClashZones = _clashZoneService.DetectNewClashZones(currentIntersections, _document, clearanceSettings);
 
             DebugLogger.Info($"[CLASH_DEBUG] DetectNewClashZones completed - {newClashZones?.Count ?? 0} new clash zones detected");
             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] DetectNewClashZones completed - {newClashZones?.Count ?? 0} new clash zones detected\n");
@@ -572,34 +786,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     try
                     {
-                        // Get MEP element from document or linked documents
-                        var mepElement = GetElementFromDocumentOrLinked(document, clashZone.MepElementId);
+                        // ⚠️ CRITICAL FIX: Use cached category from ClashZone instead of re-detecting ⚠️
+                        // Re-detection fails for linked elements, but cached value is always correct
+                        var elementCategory = clashZone.MepElementCategory ?? "Unknown";
 
-                        if (mepElement != null)
+                        DebugLogger.Info($"[CLASH_DEBUG] Clash zone {clashZone.Id} - MEP element {clashZone.MepElementId}: category='{elementCategory}' (from ClashZone), checking against requested category='{category}'");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Clash zone {clashZone.Id} - MEP element {clashZone.MepElementId}: category='{elementCategory}' (from ClashZone), checking against requested category='{category}'\n");
+
+                        // Check if element belongs to the requested category
+                        if (IsElementInCategory(elementCategory, category))
                         {
-                            // Determine element category using improved logic
-                            var elementCategory = GetElementCategoryWithFallback(mepElement, clashZone.MepElementId, document, refreshLogPath);
-
-                            DebugLogger.Info($"[CLASH_DEBUG] Clash zone {clashZone.Id} - MEP element {clashZone.MepElementId}: category='{elementCategory}', checking against requested category='{category}'");
-                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Clash zone {clashZone.Id} - MEP element {clashZone.MepElementId}: category='{elementCategory}', checking against requested category='{category}'\n");
-
-                            // Check if element belongs to the requested category
-                            if (IsElementInCategory(elementCategory, category))
-                            {
-                                filteredZones.Add(clashZone);
-                                DebugLogger.Info($"[CLASH_DEBUG] ✓ Clash zone {clashZone.Id} MATCHES category '{category}' - element category: {elementCategory}");
-                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ✓ Clash zone {clashZone.Id} MATCHES category '{category}' - element category: {elementCategory}\n");
-                            }
-                            else
-                            {
-                                DebugLogger.Info($"[CLASH_DEBUG] ✗ Clash zone {clashZone.Id} does NOT match category '{category}' - element category: {elementCategory}");
-                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ✗ Clash zone {clashZone.Id} does NOT match category '{category}' - element category: {elementCategory}\n");
-                            }
+                            filteredZones.Add(clashZone);
+                            DebugLogger.Info($"[CLASH_DEBUG] ✓ Clash zone {clashZone.Id} MATCHES category '{category}' - element category: {elementCategory}");
+                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ✓ Clash zone {clashZone.Id} MATCHES category '{category}' - element category: {elementCategory}\n");
                         }
                         else
                         {
-                            DebugLogger.Warning($"[CLASH_DEBUG] MEP element {clashZone.MepElementId} not found for clash zone {clashZone.Id}");
-                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] MEP element {clashZone.MepElementId} not found for clash zone {clashZone.Id}\n");
+                            DebugLogger.Info($"[CLASH_DEBUG] ✗ Clash zone {clashZone.Id} does NOT match category '{category}' - element category: {elementCategory}");
+                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ✗ Clash zone {clashZone.Id} does NOT match category '{category}' - element category: {elementCategory}\n");
                         }
                     }
                     catch (Exception ex)

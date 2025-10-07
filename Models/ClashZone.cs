@@ -152,9 +152,170 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public string StructuralElementGeometryHash { get; set; } = string.Empty;
         
         /// <summary>
+        /// ⚠️ CRITICAL PROPERTY - DO NOT REMOVE ⚠️
+        /// The category of the MEP element (e.g., "Ducts", "Pipes", "Cable Trays", "Duct Accessories")
+        /// This is essential for category-specific processing and validation
+        /// Each placement service validates this to ensure it only processes its own category
+        /// </summary>
+        public string MepElementCategory { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// ⚠️ CRITICAL PROPERTY - DO NOT REMOVE ⚠️
+        /// The shape of the duct (e.g., "Round", "Rectangular") - extracted from duct family name
+        /// Only applicable for Ducts category
+        /// Determines which sleeve family to use (DuctOpeningOnWall vs DuctOpeningOnWallround)
+        /// </summary>
+        public string DuctShape { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// ⚠️ CRITICAL PROPERTY - DO NOT REMOVE ⚠️
+        /// The insulation type of the MEP element (e.g., "Normal", "Insulated")
+        /// Used to determine which clearance value to apply (normal vs insulated)
+        /// </summary>
+        public string InsulationType { get; set; } = "Normal";
+        
+        /// <summary>
         /// The document path where this clash was detected
         /// </summary>
         public string DocumentPath { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// The document title where the structural element is located (for linked elements)
+        /// </summary>
+        public string StructuralElementDocumentTitle { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// The type of structural element (Wall, Structural Framing, Floor)
+        /// </summary>
+        public string StructuralElementType { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// The thickness of the structural element (for depth calculation)
+        /// </summary>
+        public double StructuralElementThickness { get; set; } = 0.0;
+        
+        // NEW: Pre-calculated placement data (calculated during refresh, used during placement)
+        
+        /// <summary>
+        /// Pre-calculated final placement point for the sleeve (no calculation needed during placement)
+        /// </summary>
+        [XmlIgnore]
+        public XYZ SleevePlacementPoint { get; set; }
+        
+        /// <summary>
+        /// XML serializable sleeve placement point X coordinate
+        /// </summary>
+        public double SleevePlacementPointX
+        {
+            get => SleevePlacementPoint?.X ?? 0.0;
+            set { 
+                if (SleevePlacementPoint == null) 
+                    SleevePlacementPoint = new XYZ(value, 0, 0); 
+                else 
+                    SleevePlacementPoint = new XYZ(value, SleevePlacementPoint.Y, SleevePlacementPoint.Z); 
+            }
+        }
+        
+        /// <summary>
+        /// XML serializable sleeve placement point Y coordinate
+        /// </summary>
+        public double SleevePlacementPointY
+        {
+            get => SleevePlacementPoint?.Y ?? 0.0;
+            set { 
+                if (SleevePlacementPoint == null) 
+                    SleevePlacementPoint = new XYZ(0, value, 0); 
+                else 
+                    SleevePlacementPoint = new XYZ(SleevePlacementPoint.X, value, SleevePlacementPoint.Z); 
+            }
+        }
+        
+        /// <summary>
+        /// XML serializable sleeve placement point Z coordinate
+        /// </summary>
+        public double SleevePlacementPointZ
+        {
+            get => SleevePlacementPoint?.Z ?? 0.0;
+            set { 
+                if (SleevePlacementPoint == null) 
+                    SleevePlacementPoint = new XYZ(0, 0, value); 
+                else 
+                    SleevePlacementPoint = new XYZ(SleevePlacementPoint.X, SleevePlacementPoint.Y, value); 
+            }
+        }
+        
+        /// <summary>
+        /// Pre-calculated MEP element width including clearance (no linked file access needed during placement)
+        /// </summary>
+        public double MepElementWidth { get; set; }
+        
+        /// <summary>
+        /// Pre-calculated MEP element height including clearance (no linked file access needed during placement)
+        /// </summary>
+        public double MepElementHeight { get; set; }
+        
+        /// <summary>
+        /// Pre-calculated MEP element orientation vector (no linked file access needed during placement)
+        /// </summary>
+        [XmlIgnore]
+        public XYZ MepElementOrientation { get; set; }
+        
+        /// <summary>
+        /// XML serializable MEP element orientation X component
+        /// </summary>
+        public double MepElementOrientationX
+        {
+            get => MepElementOrientation?.X ?? 0.0;
+            set { 
+                if (MepElementOrientation == null) 
+                    MepElementOrientation = new XYZ(value, 0, 0); 
+                else 
+                    MepElementOrientation = new XYZ(value, MepElementOrientation.Y, MepElementOrientation.Z); 
+            }
+        }
+        
+        /// <summary>
+        /// XML serializable MEP element orientation Y component
+        /// </summary>
+        public double MepElementOrientationY
+        {
+            get => MepElementOrientation?.Y ?? 0.0;
+            set { 
+                if (MepElementOrientation == null) 
+                    MepElementOrientation = new XYZ(0, value, 0); 
+                else 
+                    MepElementOrientation = new XYZ(MepElementOrientation.X, value, MepElementOrientation.Z); 
+            }
+        }
+        
+        /// <summary>
+        /// XML serializable MEP element orientation Z component
+        /// </summary>
+        public double MepElementOrientationZ
+        {
+            get => MepElementOrientation?.Z ?? 0.0;
+            set { 
+                if (MepElementOrientation == null) 
+                    MepElementOrientation = new XYZ(0, 0, value); 
+                else 
+                    MepElementOrientation = new XYZ(MepElementOrientation.X, MepElementOrientation.Y, value); 
+            }
+        }
+        
+        /// <summary>
+        /// Pipe opening type for family selection ("Circular" or "Rectangular", empty for non-pipes)
+        /// </summary>
+        public string PipeOpeningType { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// Pre-calculated MEP element level name (no linked file access needed during placement)
+        /// </summary>
+        public string MepElementLevelName { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// Pre-calculated MEP element level elevation (no linked file access needed during placement)
+        /// </summary>
+        public double MepElementLevelElevation { get; set; } = 0.0;
         
         /// <summary>
         /// Additional metadata about the clash

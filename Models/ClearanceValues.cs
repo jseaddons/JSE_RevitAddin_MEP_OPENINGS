@@ -133,6 +133,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
             return isMsfd ? FireDamperMsfdClearance : FireDamperStandardClearance;
         }
 
+        /// <summary>
+        /// Get clearance for cable tray based on side
+        /// </summary>
+        public double GetCableTrayClearance(bool isTopSide = false)
+        {
+            return isTopSide ? CableTrayTopClearance : CableTrayOtherClearance;
+        }
+
         public override string ToString()
         {
             return $"ClearanceValues(Ducts: {DuctsNormalClearance}/{DuctsInsulatedClearance}mm, " +

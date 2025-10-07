@@ -264,25 +264,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     var mepLink = links.FirstOrDefault(link => link.GetLinkDocument()?.Title == mep.Document.Title);
                     Transform? mepTransform = mepLink?.GetTotalTransform();
-                    if (mepLink != null)
-                    {
-                        _logger($"DEBUG: Found MEP link: {mepLink.Name} -> {mep.Document.Title}");
-                        if (mepTransform != null)
-                        {
-                            _logger($"DEBUG: MEP link transform origin: ({mepTransform.Origin.X:F2}, {mepTransform.Origin.Y:F2}, {mepTransform.Origin.Z:F2})");
-                        }
-                    }
+                    // MEP link and transform found
 
                     var structuralElements = new List<(Element, Transform?)>();
                     foreach (var wall in wallElements)
                     {
-                        _logger($"DEBUG: Wall {wall.Id} is from document: {wall.Document.Title}");
                         var wallLink = links.FirstOrDefault(link => link.GetLinkDocument()?.Title == wall.Document.Title);
                         if (wallLink != null)
                         {
                             var wallTransform = wallLink.GetTotalTransform();
-                            _logger($"DEBUG: Found wall link: {wallLink.Name} -> {wall.Document.Title}");
-                            _logger($"DEBUG: Wall {wall.Id} transform: Origin=({wallTransform.Origin.X:F2}, {wallTransform.Origin.Y:F2}, {wallTransform.Origin.Z:F2})");
                             structuralElements.Add((wall, wallTransform));
                         }
                         else
@@ -384,7 +374,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     else
                     {
-                        _logger($"DEBUG: MEP element {mep.Id} has no valid location curve or is not a line");
+                        // MEP element has no valid location curve or is not a line - skipping
                     }
                 }
                 catch (Exception ex)

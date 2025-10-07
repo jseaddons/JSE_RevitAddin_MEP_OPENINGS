@@ -367,12 +367,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (structBBox != null)
                     {
                         // CRITICAL FIX: Transform structural bbox to host shared coordinates for distance check
-                        log($"[MepIntersectionService] Wall {structuralElement.Id} bbox before transform: Min=({structBBox.Min.X:F2}, {structBBox.Min.Y:F2}, {structBBox.Min.Z:F2}) Max=({structBBox.Max.X:F2}, {structBBox.Max.Y:F2}, {structBBox.Max.Z:F2})");
-                        log($"[MepIntersectionService] Wall {structuralElement.Id} linkTransform is {(linkTransform != null ? "NOT NULL" : "NULL")}");
                         if (linkTransform != null)
                         {
-                            log($"[MepIntersectionService] Transform matrix: Origin=({linkTransform.Origin.X:F2}, {linkTransform.Origin.Y:F2}, {linkTransform.Origin.Z:F2})");
-                            log($"[MepIntersectionService] Applying 8-corner transform to wall {structuralElement.Id}");
+                            // Apply 8-corner transform to wall bounding box
                             
                             // Transform all 8 corners of the bounding box to shared coordinates
                             var pts = new[]

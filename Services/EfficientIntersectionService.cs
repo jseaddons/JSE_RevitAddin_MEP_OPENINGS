@@ -47,8 +47,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 var sb = sectionBox;
-                DebugLogger.Log($"[EfficientIntersectionService] DIAG SectionBox: {(sb == null ? "<null>" : $"Min={FormatXYZ(sb.Min)}, Max={FormatXYZ(sb.Max)}")}");
-                DebugLogger.Log($"[EfficientIntersectionService] DIAG MEP BBox: Min={FormatXYZ(mepBBox.Min)}, Max={FormatXYZ(mepBBox.Max)}");
+                // DebugLogger.Log($"[EfficientIntersectionService] DIAG SectionBox: {(sb == null ? "<null>" : $"Min={FormatXYZ(sb.Min)}, Max={FormatXYZ(sb.Max)}")}");
+                // DebugLogger.Log($"[EfficientIntersectionService] DIAG MEP BBox: Min={FormatXYZ(mepBBox.Min)}, Max={FormatXYZ(mepBBox.Max)}");
             }
             catch (Exception ex)
             {

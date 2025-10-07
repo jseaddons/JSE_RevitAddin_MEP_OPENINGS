@@ -50,7 +50,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Check for fire damper families
             if (!ValidateFireDamperFamilies())
             {
-                missingFamilies.Add("Fire Damper Families (FireDamper, MSFD)");
+                missingFamilies.Add("Fire Damper Families (Standard, MSFD)");
             }
             
             if (missingFamilies.Count > 0)
@@ -139,18 +139,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         private bool ValidateFireDamperFamilies()
         {
-            _logAction("Checking fire damper families...");
+            _logAction("Checking fire damper families within Duct Accessories category...");
             
             var fireDamperSymbol = new FilteredElementCollector(_document)
+                .OfCategory(BuiltInCategory.OST_DuctAccessory) // Restrict to Duct Accessories category
                 .OfClass(typeof(FamilySymbol))
                 .Cast<FamilySymbol>()
-                .FirstOrDefault(sym => sym.Family.Name.Contains("FireDamper") || 
-                                      sym.Family.Name.Contains("MSFD") ||
-                                      sym.Name.Contains("STANDARD", StringComparison.OrdinalIgnoreCase));
+                .FirstOrDefault(sym => sym.Family.Name.Contains("Standard", StringComparison.OrdinalIgnoreCase) || 
+                                      sym.Family.Name.Contains("MSFD", StringComparison.OrdinalIgnoreCase) ||
+                                      sym.Name.Contains("Standard", StringComparison.OrdinalIgnoreCase) ||
+                                      sym.Name.Contains("MSFD", StringComparison.OrdinalIgnoreCase));
             
             bool found = fireDamperSymbol != null;
             
             _logAction($"Fire damper symbol found: {found} (ID: {fireDamperSymbol?.Id.IntegerValue ?? 0})");
+            if (found)
+            {
+                _logAction($"Found fire damper family: {fireDamperSymbol.Family.Name} - {fireDamperSymbol.Name}");
+                _logAction($"Family category: {fireDamperSymbol.Category?.Name ?? "Unknown"}");
+            }
+            else
+            {
+                _logAction("No fire damper families found in Duct Accessories category containing 'Standard' or 'MSFD'");
+            }
             
             return found;
         }

@@ -13,23 +13,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
         if (host == null) return null;
         
         int hostId = host.Id.IntegerValue;
-        JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Starting GetHostReferenceLevel for host {hostId} (Document: '{host.Document.Title}', IsLinked: {host.Document.IsLinked})");
+        // JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Starting GetHostReferenceLevel for host {hostId} (Document: '{host.Document.Title}', IsLinked: {host.Document.IsLinked})");
         
         // FIXED: Always try to get the level from the linked document first for consistency
         if (host.Document.IsLinked)
         {
             try
             {
-                JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Processing linked document level lookup");
+                // JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Processing linked document level lookup");
                 
                 // Get the level from the linked document
                 Parameter linkedRefLevelParam = host.LookupParameter("Reference Level") ?? host.LookupParameter("Level");
-                JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Found linked param: {linkedRefLevelParam?.Definition.Name}, StorageType: {linkedRefLevelParam?.StorageType}");
+                // JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Found linked param: {linkedRefLevelParam?.Definition.Name}, StorageType: {linkedRefLevelParam?.StorageType}");
                 
                 if (linkedRefLevelParam != null && linkedRefLevelParam.StorageType == StorageType.ElementId)
                 {
                     ElementId linkedLevelId = linkedRefLevelParam.AsElementId();
-                    JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Linked level ElementId: {linkedLevelId.IntegerValue} (Valid: {linkedLevelId != ElementId.InvalidElementId})");
+                    // JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Linked level ElementId: {linkedLevelId.IntegerValue} (Valid: {linkedLevelId != ElementId.InvalidElementId})");
                     
                     if (linkedLevelId != ElementId.InvalidElementId)
                     {
@@ -37,7 +37,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                         Level? linkedLevel = host.Document.GetElement(linkedLevelId) as Level;
                         if (linkedLevel != null)
                         {
-                            JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Found level in linked doc: '{linkedLevel.Name}' (ID: {linkedLevel.Id.IntegerValue})");
+                            // JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Found level in linked doc: '{linkedLevel.Name}' (ID: {linkedLevel.Id.IntegerValue})");
                             
                             // Find a matching level in the active document by name
                             var matchingLevel = new FilteredElementCollector(doc)
@@ -52,11 +52,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                             }
                             else
                             {
-                                JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - NO matching level found in active doc for '{linkedLevel.Name}'");
+                                // JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - NO matching level found in active doc for '{linkedLevel.Name}'");
                                 
                                 // Log all available levels in active document for debugging
                                 var allLevels = new FilteredElementCollector(doc).OfClass(typeof(Level)).Cast<Level>().ToList();
-                                JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Available levels in active doc: {string.Join(", ", allLevels.Select(l => $"'{l.Name}' (ID: {l.Id.IntegerValue})"))}");
+                                // JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Available levels in active doc: {string.Join(", ", allLevels.Select(l => $"'{l.Name}' (ID: {l.Id.IntegerValue})"))}");
                             }
                         }
                         else

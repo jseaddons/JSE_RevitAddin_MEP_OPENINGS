@@ -13,7 +13,7 @@ using Autodesk.Revit.DB.Structure;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 {
-    [Transaction(TransactionMode.ReadOnly)]
+    [Transaction(TransactionMode.Manual)]
     public class DuctSleeveCommand : IExternalCommand
     {
         private ClearanceValues? _uiClearances; // Cached clearance values
@@ -149,16 +149,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 if ((!wallActive && ductWallSymbol != null) || (!slabActive && ductSlabSymbol != null))
                 {
                     if (!wallActive && ductWallSymbol != null)
-                    {
-                        ductWallSymbol.Activate();
-                        LogToFile($"Activated wall symbol: {ductWallSymbol.Name}");
-                    }
+                {
+                    ductWallSymbol.Activate();
+                    LogToFile($"Activated wall symbol: {ductWallSymbol.Name}");
+                }
                     
                     if (!slabActive && ductSlabSymbol != null)
-                    {
-                        ductSlabSymbol.Activate();
-                        LogToFile($"Activated slab symbol: {ductSlabSymbol.Name}");
-                    }
+                {
+                    ductSlabSymbol.Activate();
+                    LogToFile($"Activated slab symbol: {ductSlabSymbol.Name}");
+                }
                     
                     LogToFile("Family symbol activation completed successfully");
                 }
@@ -276,27 +276,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 LogToFile($"Collected {structuralElements.Count} structural elements");
             }
 
-            // Enable logging for DuctSleeveCommand debugging
-            void Log(string m) { DebugLogger.Info($"[DuctSleeveCommand] {m}"); }
+                // Enable logging for DuctSleeveCommand debugging
+                void Log(string m) { DebugLogger.Info($"[DuctSleeveCommand] {m}"); }
 
-            // 1. Read UI clearance values once at command start
-            _uiClearances = GetUIClearanceValues();
-            Log($"UI clearances: {_uiClearances}");
+                // 1. Read UI clearance values once at command start
+                _uiClearances = GetUIClearanceValues();
+                Log($"UI clearances: {_uiClearances}");
 
-            // 2. Run the placer (using SleeveClearanceHelper for UI clearance values)
+                // 2. Run the placer (using SleeveClearanceHelper for UI clearance values)
             DuctSleevePlacerService placerService;
             try
             {
-                LogToFile("Creating DuctSleevePlacerService...");
-                placerService = new DuctSleevePlacerService(
-                    doc,
-                    ductTuples,
-                    structuralElements,
-                    ductWallSymbol!,
-                    ductSlabSymbol!,
-                    Log
-                );
-                LogToFile("DuctSleevePlacerService created successfully");
+                LogToFile("Creating OPTIMIZED DuctSleevePlacerService...");
+                // Conditions will be loaded from XML by the service
+                placerService = new DuctSleevePlacerService(doc, null);
+                LogToFile($"OPTIMIZED DuctSleevePlacerService created successfully");
             }
             catch (Exception placerEx)
             {
@@ -313,18 +307,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     tx.Start();
                     LogToFile("Transaction started for duct sleeve placement");
                     
-                    // OPTIMIZATION: Pass clash zones to placer for direct intersection point usage
+                    // OPTIMIZATION: Use pre-calculated data for maximum performance
                     if (clashZones != null && clashZones.Count > 0)
                     {
-                        LogToFile($"OPTIMIZATION: Passing {clashZones.Count} clash zones to placer for direct intersection usage");
-                        placerService.PlaceAllDuctSleevesWithClashZones(clashZones);
-                        LogToFile("PlaceAllDuctSleevesWithClashZones completed");
+                        LogToFile($"OPTIMIZATION: Using pre-calculated data from {clashZones.Count} clash zones");
+                        
+                        // Get ducts that have corresponding clash zones
+                        var ducts = placerService.CollectDuctsWithClashZones(clashZones);
+                        LogToFile($"Collected {ducts.Count} ducts with clash zones");
+                        
+                        // Get duct opening type from UI
+                        var ductOpeningType = GetDuctOpeningType();
+                        LogToFile($"Using duct opening type: {ductOpeningType}");
+
+                        // Use the optimized placement method
+                        var placedCount = placerService.PlaceAllSleevesOptimized(ducts, tx, clashZones, ductOpeningType);
+                        LogToFile($"OPTIMIZED: Placed {placedCount} sleeves using pre-calculated data");
+                        
+                        // Update the service counters
+                        placerService.PlacedCount = placedCount;
                     }
                     else
                     {
-                        LogToFile("Using traditional intersection detection method");
-                        placerService.PlaceAllDuctSleeves();
-                        LogToFile("PlaceAllDuctSleeves completed");
+                        LogToFile("ERROR: No clash zones provided - optimized service requires pre-calculated clash zones");
+                        LogToFile("Cannot proceed without clash zones");
+                        tx.RollBack();
+                        return Result.Failed;
                     }
                     
                     tx.Commit();
@@ -340,12 +348,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 }
             }
 
-            string summary = $"DUCT SLEEVE SUMMARY: Placed={placerService.PlacedCount}, Skipped={placerService.SkippedCount}, Errors={placerService.ErrorCount}";
-            LogToFile($"{summary}");
-            // Removed TaskDialog.Show to avoid interrupting user workflow
+                string summary = $"DUCT SLEEVE SUMMARY: Placed={placerService.PlacedCount}, Skipped={placerService.SkippedCount}, Errors={placerService.ErrorCount}";
+                LogToFile($"{summary}");
+                // Removed TaskDialog.Show to avoid interrupting user workflow
 
             LogToFile("=== DUCT SLEEVE COMMAND COMPLETED SUCCESSFULLY ===");
             return Result.Succeeded;
+        }
+        
+        /// <summary>
+        /// Get duct opening type from UI (Circular or Rectangular) - for round ducts only
+        /// </summary>
+        private string GetDuctOpeningType()
+        {
+            try
+            {
+                // Get the duct opening type from the EmergencyMainDialog UI
+                var mainDialog = System.Windows.Forms.Application.OpenForms.OfType<Views.EmergencyMainDialog>().FirstOrDefault();
+                if (mainDialog != null)
+                {
+                    var openingType = mainDialog.GetDuctOpeningType();
+                    DebugLogger.Info($"[DuctSleeveCommand] Retrieved duct opening type from UI: {openingType}");
+                    return openingType;
+                }
+                else
+                {
+                    DebugLogger.Warning($"[DuctSleeveCommand] Could not find EmergencyMainDialog instance, using default: Circular");
+                    return "Circular"; // Default fallback
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[DuctSleeveCommand] Error getting duct opening type from UI: {ex.Message}");
+                return "Circular"; // Default fallback
+            }
         }
         
         /// <summary>

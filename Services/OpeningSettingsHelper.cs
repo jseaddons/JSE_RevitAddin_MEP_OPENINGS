@@ -21,7 +21,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 var settings = ApplicationProfileService.Instance.GetCurrentSettings();
                 
-                // Default logic: All categories are rectangular except pipes (circular by default)
                 if (mepCategory.Equals("Pipes", StringComparison.OrdinalIgnoreCase))
                 {
                     // Check if user has overridden pipes to be rectangular
@@ -36,9 +35,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         return "Circular";
                     }
                 }
+                else if (mepCategory.Equals("Ducts", StringComparison.OrdinalIgnoreCase))
+                {
+                    // For ducts, we need to get the opening type from the UI (EmergencyMainDialog)
+                    // This will be handled by the DuctSleeveCommand which reads from the UI directly
+                    // For now, return a placeholder that will be overridden by the command
+                    DebugLogger.Info($"[OPENING_SETTINGS] Duct opening type will be determined by UI selection for round ducts");
+                    return "Circular"; // Default, will be overridden by UI selection
+                }
                 else
                 {
-                    // All other categories (Ducts, Duct Accessories, Cable Trays) are always rectangular
+                    // All other categories (Duct Accessories, Cable Trays) are always rectangular
                     DebugLogger.Info($"[OPENING_SETTINGS] {mepCategory} opening type set to Rectangular (default for non-pipe categories)");
                     return "Rectangular";
                 }

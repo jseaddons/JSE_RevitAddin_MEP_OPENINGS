@@ -31,8 +31,150 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
+        /// FIXED: Place duct sleeve with explicit level reference (like your reference code)
+        /// </summary>
+        public void PlaceDuctSleeveOptimized(Duct duct, XYZ placementPoint, double finalWidth, double finalHeight, 
+            XYZ mepOrientation, FamilySymbol sleeveSymbol, string structuralElementType, double structuralElementThickness, string levelName, double levelElevation)
+        {
+            int ductElementId = (int)(duct?.Id?.IntegerValue ?? 0);
+            try
+            {
+                DebugLogger.Log($"[DuctSleevePlacer] FIXED: Placing sleeve for duct {ductElementId}");
+                DebugLogger.Log($"[DuctSleevePlacer] FIXED: Placement point: {placementPoint}");
+                DebugLogger.Log($"[DuctSleevePlacer] FIXED: Dimensions: {finalWidth} x {finalHeight}");
+                DebugLogger.Log($"[DuctSleevePlacer] FIXED: Orientation: {mepOrientation}");
+                
+                if (duct == null || sleeveSymbol == null)
+                {
+                    DebugLogger.Log($"[DuctSleevePlacer] ERROR: Null parameters provided for duct {ductElementId}");
+                    return;
+                }
+
+                // CRITICAL: Find nearest level for explicit placement (like your reference)
+                Level nearestLevel = FindNearestLevel(placementPoint);
+                if (nearestLevel == null)
+                {
+                    DebugLogger.Error($"[DuctSleevePlacer] ERROR: Could not find nearest level for placement point {placementPoint}");
+                    return;
+                }
+                DebugLogger.Log($"[DuctSleevePlacer] FIXED: Using nearest level '{nearestLevel.Name}' (elevation: {nearestLevel.Elevation:F2}) for placement at Z={placementPoint.Z:F2}");
+
+                // Activate the family symbol if not already active
+                if (!sleeveSymbol.IsActive)
+                {
+                    sleeveSymbol.Activate();
+                }
+
+                // CRITICAL: Place with explicit level reference (like your reference code)
+                FamilyInstance sleeveInstance = null;
+                
+                // Place without host element (freestanding) - using pre-calculated thickness for depth
+                sleeveInstance = _doc.Create.NewFamilyInstance(
+                    placementPoint,
+                    sleeveSymbol,
+                    nearestLevel,  // ← EXPLICIT LEVEL
+                    Autodesk.Revit.DB.Structure.StructuralType.NonStructural);
+                    
+                DebugLogger.Log($"[DuctSleevePlacer] FIXED: Placed freestanding");
+
+                if (sleeveInstance == null)
+                {
+                    DebugLogger.Error($"[DuctSleevePlacer] ERROR: Failed to create sleeve instance for duct {ductElementId}");
+                    return;
+                }
+
+                // Set sleeve parameters using pre-calculated dimensions
+                // Check if this is a round (circular) sleeve family - uses Diameter parameter
+                var diameterParam = sleeveInstance.LookupParameter("Diameter");
+                if (diameterParam != null && !diameterParam.IsReadOnly)
+                {
+                    // Round sleeve - set diameter
+                    diameterParam.Set(finalWidth); // finalWidth = diameter for round ducts
+                    DebugLogger.Log($"[DuctSleevePlacer] FIXED: Set diameter to {finalWidth:F2} (round sleeve)");
+                }
+                else
+                {
+                    // Rectangular sleeve - set width and height
+                    var widthParam = sleeveInstance.LookupParameter("Width");
+                    if (widthParam != null && !widthParam.IsReadOnly)
+                    {
+                        widthParam.Set(finalWidth);
+                        DebugLogger.Log($"[DuctSleevePlacer] FIXED: Set width to {finalWidth:F2}");
+                    }
+
+                    var heightParam = sleeveInstance.LookupParameter("Height");
+                    if (heightParam != null && !heightParam.IsReadOnly)
+                    {
+                        heightParam.Set(finalHeight);
+                        DebugLogger.Log($"[DuctSleevePlacer] FIXED: Set height to {finalHeight:F2}");
+                    }
+                }
+
+                // Set depth parameter using pre-calculated thickness
+                DebugLogger.Log($"[DuctSleevePlacer] FIXED: About to set depth for structural element type: {structuralElementType}, thickness: {structuralElementThickness:F3}");
+                
+                if (structuralElementThickness > 0)
+                {
+                    var depthParam = sleeveInstance.LookupParameter("Depth") ?? sleeveInstance.LookupParameter("d");
+                    if (depthParam != null && !depthParam.IsReadOnly)
+                    {
+                        depthParam.Set(structuralElementThickness);
+                        var depthMm = UnitUtils.ConvertFromInternalUnits(structuralElementThickness, UnitTypeId.Millimeters);
+                        DebugLogger.Log($"[DuctSleevePlacer] FIXED: Set depth to {depthMm:F1}mm ({structuralElementThickness:F3} internal) for element type: {structuralElementType}");
+                    }
+                    else
+                    {
+                        DebugLogger.Warning($"[DuctSleevePlacer] FIXED: Depth parameter not found or read-only for sleeve instance {sleeveInstance.Id}");
+                    }
+                }
+                else
+                {
+                    DebugLogger.Warning($"[DuctSleevePlacer] FIXED: Structural element thickness is 0 for type {structuralElementType}");
+                }
+
+                // CRITICAL: Apply proper orientation using MEP element direction
+                if (mepOrientation != null)
+                {
+                    DebugLogger.Log($"[DuctSleevePlacer] FIXED: Applying orientation: {mepOrientation}");
+                    
+                    // Get the sleeve instance's location point for rotation
+                    var locationPoint = sleeveInstance.Location as LocationPoint;
+                    if (locationPoint != null)
+                    {
+                        // Calculate rotation angle from MEP orientation
+                        double rotationAngle = Math.Atan2(mepOrientation.Y, mepOrientation.X);
+                        double rotationAngleDegrees = rotationAngle * 180 / Math.PI;
+                        
+                        DebugLogger.Log($"[DuctSleevePlacer] FIXED: Rotation angle: {rotationAngleDegrees:F1} degrees");
+                        
+                        // CRITICAL FIX: Rotate around the placement point, not the sleeve center
+                        // This prevents the sleeve from moving away from the wall center
+                        var rotationAxis = XYZ.BasisZ; // Rotate around Z-axis
+                        var rotationLine = Line.CreateUnbound(placementPoint, rotationAxis);
+                        locationPoint.Rotate(rotationLine, rotationAngle);
+                        
+                        DebugLogger.Log($"[DuctSleevePlacer] FIXED: Sleeve rotated around placement point to match MEP orientation");
+                    }
+                    else
+                    {
+                        DebugLogger.Warning($"[DuctSleevePlacer] FIXED: Cannot rotate sleeve - LocationPoint not available");
+                    }
+                }
+
+                DebugLogger.Log($"[DuctSleevePlacer] FIXED: Successfully placed sleeve {sleeveInstance.Id} for duct {ductElementId}");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[DuctSleevePlacer] ERROR: Exception placing sleeve for duct {ductElementId}: {ex.Message}");
+                DebugLogger.Error($"[DuctSleevePlacer] Stack trace: {ex.StackTrace}");
+            }
+        }
+
+        /// <summary>
+        /// REDUNDANT METHOD - Replaced by PlaceDuctSleeveOptimized
         /// Places a duct sleeve with pre-calculated orientation to avoid timing bugs
         /// </summary>
+        /*
         public void PlaceDuctSleeveWithOrientation(Duct duct, XYZ intersection, double width, double height, 
             XYZ ductDirection, XYZ preCalculatedOrientation, FamilySymbol sleeveSymbol, Element hostElement, XYZ? faceNormal = null)
         {
@@ -58,10 +200,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     throw; // Re-throw to ensure error is not silently ignored
                 }
         }
+        */
 
         /// <summary>
+        /// REDUNDANT METHOD - Replaced by PlaceDuctSleeveOptimized
         /// Places a duct sleeve at the intersection point with robust positioning
         /// </summary>
+        /*
         public void PlaceDuctSleeve(Duct duct, XYZ intersection, double width, double height, 
             XYZ ductDirection, FamilySymbol sleeveSymbol, Element hostElement, XYZ? faceNormal = null, XYZ? preCalculatedOrientation = null)
         {
@@ -108,7 +253,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     double wallThickness = wall.get_Parameter(BuiltInParameter.WALL_ATTR_WIDTH_PARAM)?.AsDouble() ?? wall.Width;
                     n = (faceNormal != null) ? faceNormal.Normalize() : GetWallNormal(wall, intersection).Normalize();
                     XYZ wallVector = n.Multiply(-wallThickness);
-                    placePoint = intersection + wallVector.Multiply(0.5); // wall centerline
+                    placePoint = intersection + wallVector.Multiply(0.0); // wall face (intersection point)
                     sleeveDepth = wallThickness;
                     // Wall stub filter: skip if duct stops before 1/4 wall depth
                     double ductEndDist = double.MaxValue;
@@ -519,17 +664,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 throw; // Re-throw to ensure error is not silently ignored
             }
         }
+        */
 
         /// <summary>
+        /// REDUNDANT METHOD - Replaced by PlaceDuctSleeveOptimized
         /// Static helper method for compatibility
         /// DO NOT change this signature or logic unless you are updating ALL callers.
         /// </summary>
+        /*
         public static void PlaceDuctSleeveStatic(Document doc, Duct duct, XYZ intersection, double width, double height, 
             XYZ ductDirection, FamilySymbol sleeveSymbol, Wall hostWall, XYZ? faceNormal = null)
         {
             var placer = new DuctSleevePlacer(doc);
             placer.PlaceDuctSleeve(duct, intersection, width, height, ductDirection, sleeveSymbol, hostWall, faceNormal);
-        }        private void SetParameterSafely(FamilyInstance instance, string paramName, double value, int ductElementId)
+        }
+        */
+
+        private void SetParameterSafely(FamilyInstance instance, string paramName, double value, int ductElementId)
         {
             // DO NOT REMOVE: This ensures robust parameter setting and logging for all placements.
             try
@@ -632,12 +783,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// Checks if a damper is present at the intersection point in the linked wall
+        /// REDUNDANT METHOD - Only used by old PlaceDuctSleeve method
+        /// Checks if a damper is present at the intersection point (active document only - no linked document access)
         /// </summary>
+        /*
         private bool IsDamperAtIntersection(Document doc, XYZ intersection, Wall linkedWall, int ductElementId)
         {
             double searchRadius = 0.2; // 200mm for broader catch
-            var collector = new FilteredElementCollector(doc)
+            // OPTIMIZATION: Only search in active document, not linked documents
+            var collector = new FilteredElementCollector(_doc) // Use _doc (active document) instead of doc parameter
                 .OfClass(typeof(FamilyInstance))
                 .OfCategory(BuiltInCategory.OST_DuctAccessory);
 
@@ -661,6 +815,180 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             
             return false;
+        }
+        */
+
+    /// <summary>
+    /// Find nearest level for explicit placement (like your reference code)
+    /// </summary>
+    private Level FindNearestLevel(XYZ point)
+    {
+        try
+        {
+            // First, log all available levels for debugging
+            var allLevels = new FilteredElementCollector(_doc)
+                .OfClass(typeof(Level))
+                .Cast<Level>()
+                .ToList();
+            
+            DebugLogger.Log($"[DuctSleevePlacer] Host document has {allLevels.Count} levels:");
+            foreach (var level in allLevels)
+            {
+                DebugLogger.Log($"  - {level.Name} at elevation {level.Elevation:F2}");
+            }
+            
+            DebugLogger.Log($"[DuctSleevePlacer] Placement point Z = {point.Z:F2}");
+            
+            if (allLevels.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "No levels found in host document. Cannot place sleeve without level reference.");
+            }
+
+            // Find the nearest level by elevation
+            var nearestLevel = allLevels
+                .OrderBy(lvl => Math.Abs(lvl.Elevation - point.Z))
+                .FirstOrDefault();
+            
+            if (nearestLevel == null)
+            {
+                throw new InvalidOperationException(
+                    "Could not determine nearest level for sleeve placement.");
+            }
+            
+            DebugLogger.Log($"[DuctSleevePlacer] Using nearest level: {nearestLevel.Name} (elevation: {nearestLevel.Elevation:F2})");
+            return nearestLevel;
+        }
+        catch (Exception ex)
+        {
+            DebugLogger.Error($"[DuctSleevePlacer] Error finding nearest level: {ex.Message}");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Get or create the appropriate level using LevelMonitoringService for proper level association
+    /// </summary>
+    private Level GetOrCreateLevelInActiveDocument(string levelName, double levelElevation)
+    {
+        try
+        {
+            // Use LevelMonitoringService to get or create the appropriate level
+            var levelMonitoringService = new LevelMonitoringService(_doc);
+            
+            // Try to get level by elevation first (this will find closest or create new if needed)
+            var level = levelMonitoringService.GetLevelForElevation(levelElevation, levelName);
+            
+            if (level != null)
+            {
+                DebugLogger.Log($"[DuctSleevePlacer] Using level '{level.Name}' (elevation: {level.Elevation:F2}) for placement at Z={levelElevation:F2}");
+                return level;
+            }
+
+            // Fallback: find closest existing level
+            var allLevels = new FilteredElementCollector(_doc)
+                .OfClass(typeof(Level))
+                .Cast<Level>()
+                .ToList();
+
+            if (allLevels.Count > 0)
+            {
+                var closestLevel = allLevels.OrderBy(l => Math.Abs(l.Elevation - levelElevation)).First();
+                DebugLogger.Warning($"[DuctSleevePlacer] LevelMonitoringService failed, using closest level '{closestLevel.Name}' (elevation: {closestLevel.Elevation:F2}) for placement at Z={levelElevation:F2}");
+                return closestLevel;
+            }
+
+            DebugLogger.Error($"[DuctSleevePlacer] No levels found in active document and LevelMonitoringService failed");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            DebugLogger.Error($"[DuctSleevePlacer] Error getting level for placement Z={levelElevation:F2}: {ex.Message}");
+            return null;
+        }
+    }
+
+        /// <summary>
+        /// Calculate element depth based on structural element type
+        /// </summary>
+        private double CalculateElementDepth(Element structuralElement)
+        {
+            try
+            {
+                if (structuralElement == null)
+                {
+                    DebugLogger.Warning($"[DuctSleevePlacer] CalculateElementDepth: structuralElement is null");
+                    return 0.0;
+                }
+
+                DebugLogger.Log($"[DuctSleevePlacer] CalculateElementDepth: Processing element {structuralElement.Id.IntegerValue} of type {structuralElement.GetType().Name}");
+
+                if (structuralElement is Wall wall)
+                {
+                    // For walls: Get wall thickness parameter
+                    var thicknessParam = wall.get_Parameter(BuiltInParameter.WALL_ATTR_WIDTH_PARAM);
+                    var thickness = thicknessParam?.AsDouble() ?? 0.0;
+                    
+                    if (thickness > 0)
+                    {
+                        var thicknessMm = UnitUtils.ConvertFromInternalUnits(thickness, UnitTypeId.Millimeters);
+                        DebugLogger.Log($"[DuctSleevePlacer] CalculateElementDepth: Wall {wall.Id.IntegerValue} thickness = {thicknessMm:F1}mm");
+                        return thickness;
+                    }
+                    else
+                    {
+                        DebugLogger.Warning($"[DuctSleevePlacer] CalculateElementDepth: Wall {wall.Id.IntegerValue} thickness parameter not found or zero");
+                        return 0.0;
+                    }
+                }
+                else if (structuralElement is Floor floor)
+                {
+                    // For floors: Get floor thickness parameter
+                    var floorType = floor.FloorType;
+                    var thicknessParam = floorType.get_Parameter(BuiltInParameter.FLOOR_ATTR_THICKNESS_PARAM);
+                    var thickness = thicknessParam?.AsDouble() ?? 0.0;
+                    
+                    if (thickness > 0)
+                    {
+                        var thicknessMm = UnitUtils.ConvertFromInternalUnits(thickness, UnitTypeId.Millimeters);
+                        DebugLogger.Log($"[DuctSleevePlacer] CalculateElementDepth: Floor {floor.Id.IntegerValue} thickness = {thicknessMm:F1}mm");
+                        return thickness;
+                    }
+                    else
+                    {
+                        DebugLogger.Warning($"[DuctSleevePlacer] CalculateElementDepth: Floor {floor.Id.IntegerValue} thickness parameter not found or zero");
+                        return 0.0;
+                    }
+                }
+                else if (structuralElement is FamilyInstance famInst && 
+                         famInst.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+                {
+                    // For structural framing: Try common parameter names
+                    var widthParam = famInst.LookupParameter("Width") ?? 
+                                   famInst.LookupParameter("b") ?? 
+                                   famInst.LookupParameter("Depth") ??
+                                   famInst.LookupParameter("Thickness");
+                    
+                    if (widthParam != null && widthParam.AsDouble() > 0)
+                    {
+                        var thickness = widthParam.AsDouble();
+                        var thicknessMm = UnitUtils.ConvertFromInternalUnits(thickness, UnitTypeId.Millimeters);
+                        DebugLogger.Log($"[DuctSleevePlacer] CalculateElementDepth: Structural framing {famInst.Id.IntegerValue} thickness = {thicknessMm:F1}mm");
+                        return thickness;
+                    }
+                        
+                    DebugLogger.Warning($"[DuctSleevePlacer] CalculateElementDepth: Cannot determine structural framing depth: no suitable parameter found for element ID {famInst.Id}");
+                    return 0.0;
+                }
+                
+                DebugLogger.Warning($"[DuctSleevePlacer] CalculateElementDepth: Unsupported structural element type: {structuralElement.GetType().Name}");
+                return 0.0;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[DuctSleevePlacer] CalculateElementDepth: Error calculating element depth: {ex.Message}");
+                return 0.0;
+            }
         }
     }
 }

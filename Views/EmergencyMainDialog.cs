@@ -210,16 +210,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 throw; // Re-throw to see the error
             }
 
-            // STEP 3: Validate required families are loaded
+            // STEP 3: Validate required families are loaded - DISABLED
+            // Family validation is now handled only for Duct Accessories in linked mechanical files
+            // during refresh when Duct Accessories category is selected
             try
             {
-                DebugLogger.Info("About to validate required families");
-                if (document != null)
-                {
-                    var familyValidationService = new FamilyValidationService(document, msg => DebugLogger.Info(msg));
-                    familyValidationService.ValidateRequiredFamilies();
-                }
-                DebugLogger.Info("Family validation completed successfully");
+                DebugLogger.Info("Family validation disabled - only checking damper parameters in linked mechanical files for Duct Accessories");
+                // var familyValidationService = new FamilyValidationService(document, msg => DebugLogger.Info(msg));
+                // familyValidationService.ValidateRequiredFamilies();
             }
             catch (Exception ex)
             {
@@ -513,7 +511,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     Dock = WinForms.DockStyle.None  // Panels can have Dock=None
                 };
                 this.Controls.Add(_mainSplitter);
-                DebugLogger.Info($"_mainSplitter (Panel) created: Width={_mainSplitter.Width}, Dock={_mainSplitter.Dock}");
+                // DebugLogger.Info($"_mainSplitter (Panel) created: Width={_mainSplitter.Width}, Dock={_mainSplitter.Dock}");
             }
             catch (Exception ex)
             {
@@ -529,7 +527,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Width = 460  // Restored to original width
             };
             this.Controls.Add(_rightPanel);
-            DebugLogger.Info($"_rightPanel created: Width={_rightPanel.Width}, Location={_rightPanel.Location}, Dock={_rightPanel.Dock}");
+            // DebugLogger.Info($"_rightPanel created: Width={_rightPanel.Width}, Location={_rightPanel.Location}, Dock={_rightPanel.Dock}");
 
             // Add content to panels
             InitializePanelContent();
@@ -559,7 +557,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         private void CreateFiltersPanel()
         {
-            DebugLogger.Info("=== STARTING CreateFiltersPanel ===");
+            // DebugLogger.Info("=== STARTING CreateFiltersPanel ===");
             
             // Create filters panel
             _filtersPanel = new WinForms.Panel
@@ -570,7 +568,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             _filtersPanel.BringToFront();  // Bring to front to ensure it's visible
             this.Controls.Add(_filtersPanel);
-            DebugLogger.Info("_filtersPanel created and added to form");
+            // DebugLogger.Info("_filtersPanel created and added to form");
             
             // Create filters splitter
             _filtersSplitter = new WinForms.Splitter
@@ -584,12 +582,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // Populate filters content
             PopulateFiltersPanel();
             
-            DebugLogger.Info("=== CreateFiltersPanel COMPLETED ===");
+            // DebugLogger.Info("=== CreateFiltersPanel COMPLETED ===");
         }
 
         private void PopulateFiltersPanel()
         {
-            DebugLogger.Info("=== STARTING PopulateFiltersPanel ===");
+            // DebugLogger.Info("=== STARTING PopulateFiltersPanel ===");
             
             // Title
             var title = new WinForms.Label
@@ -602,7 +600,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 AutoSize = false
             };
             _filtersPanel.Controls.Add(title);
-            DebugLogger.Info("Filters title label created");
+                // DebugLogger.Info("Filters title label created");
             
             // ========================================================================
             // ⚠️  CRITICAL FILTER UI - DO NOT MODIFY WITHOUT USER CONSENT  ⚠️
@@ -620,14 +618,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Bottom | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right
             };
             _filtersPanel.Controls.Add(filterListBox);
-            DebugLogger.Info("Filter list box created");
+                // DebugLogger.Info("Filter list box created");
             
             // Add sample filters (like conVoid) via service so internal list is tracked
             _filterManagementService.SeedDefaultFilters(
                 filterListBox,
                 new System.Collections.Generic.List<string> { "Electrical", "Plumbing", "Ventilation" }
             );
-            DebugLogger.Info("Sample filters seeded via FilterManagementService");
+            // DebugLogger.Info("Sample filters seeded via FilterManagementService");
             
             // Button panel positioned right below the filter list box
             var buttonPanel = new WinForms.Panel
@@ -652,7 +650,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             newFilterButton.FlatAppearance.BorderSize = 1;
             newFilterButton.FlatAppearance.BorderColor = System.Drawing.Color.FromArgb(200, 200, 200);
             buttonPanel.Controls.Add(newFilterButton);
-            DebugLogger.Info("New filter button created");
+                // DebugLogger.Info("New filter button created");
             
             var copyFilterButton = new WinForms.Button
             {
@@ -667,7 +665,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             copyFilterButton.FlatAppearance.BorderSize = 1;
             copyFilterButton.FlatAppearance.BorderColor = System.Drawing.Color.FromArgb(200, 200, 200);
             buttonPanel.Controls.Add(copyFilterButton);
-            DebugLogger.Info("Copy filter button created");
+                // DebugLogger.Info("Copy filter button created");
             
             var renameFilterButton = new WinForms.Button
             {
@@ -682,7 +680,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             renameFilterButton.FlatAppearance.BorderSize = 1;
             renameFilterButton.FlatAppearance.BorderColor = System.Drawing.Color.FromArgb(200, 200, 200);
             buttonPanel.Controls.Add(renameFilterButton);
-            DebugLogger.Info("Rename filter button created");
+                // DebugLogger.Info("Rename filter button created");
             
             // Row 2: Delete, Save, Load buttons (3 columns) - Simple text symbols, wider buttons
             var deleteFilterButton = new WinForms.Button
@@ -698,7 +696,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             deleteFilterButton.FlatAppearance.BorderSize = 1;
             deleteFilterButton.FlatAppearance.BorderColor = System.Drawing.Color.FromArgb(200, 200, 200);
             buttonPanel.Controls.Add(deleteFilterButton);
-            DebugLogger.Info("Delete filter button created");
+                // DebugLogger.Info("Delete filter button created");
             
             var saveFilterButton = new WinForms.Button
             {
@@ -713,7 +711,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             saveFilterButton.FlatAppearance.BorderSize = 1;
             saveFilterButton.FlatAppearance.BorderColor = System.Drawing.Color.FromArgb(200, 200, 200);
             buttonPanel.Controls.Add(saveFilterButton);
-            DebugLogger.Info("Save filter button created");
+                // DebugLogger.Info("Save filter button created");
             
             var loadFilterButton = new WinForms.Button
             {
@@ -728,7 +726,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             loadFilterButton.FlatAppearance.BorderSize = 1;
             loadFilterButton.FlatAppearance.BorderColor = System.Drawing.Color.FromArgb(200, 200, 200);
             buttonPanel.Controls.Add(loadFilterButton);
-            DebugLogger.Info("Load filter button created");
+                // DebugLogger.Info("Load filter button created");
             
             // Add tooltips for better UX
             var toolTip = new WinForms.ToolTip();
@@ -768,12 +766,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 }
             };
             
-            DebugLogger.Info("=== PopulateFiltersPanel COMPLETED ===");
+            // DebugLogger.Info("=== PopulateFiltersPanel COMPLETED ===");
         }
 
         private void CreateMainContentPanel()
         {
-            DebugLogger.Info("=== STARTING CreateMainContentPanel ===");
+            // DebugLogger.Info("=== STARTING CreateMainContentPanel ===");
             
             // Create main content panel (center area)
             _mainContentPanel = new WinForms.Panel
@@ -824,7 +822,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             
             _mainContentPanel.Controls.Add(_intersectionDataGrid);
             
-            DebugLogger.Info("=== CreateMainContentPanel COMPLETED ===");
+            // DebugLogger.Info("=== CreateMainContentPanel COMPLETED ===");
         }
 
         // ========================================================================
@@ -835,7 +833,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         // ========================================================================
         private void CreateFourSectionLayout()
         {
-            DebugLogger.Info("=== STARTING CreateFourSectionLayout ===");
+            // DebugLogger.Info("=== STARTING CreateFourSectionLayout ===");
             DebugLogger.Info($"_leftPanel size: {_leftPanel.Width}x{_leftPanel.Height}");
 
             // Top-Left Panel: Reference Elements (linked files)
@@ -846,7 +844,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 BorderStyle = WinForms.BorderStyle.FixedSingle
             };
             _leftPanel.Controls.Add(_topLeftPanel);
-            DebugLogger.Info("_topLeftPanel created and added");
+                // DebugLogger.Info("_topLeftPanel created and added");
 
             // Horizontal Splitter (between top and bottom)
             _horizontalSplitter = new WinForms.Splitter
@@ -856,7 +854,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 BackColor = System.Drawing.Color.Gray
             };
             _leftPanel.Controls.Add(_horizontalSplitter);
-            DebugLogger.Info("_horizontalSplitter created and added");
+                // DebugLogger.Info("_horizontalSplitter created and added");
 
             // Bottom-Left Panel: Host Elements (linked files)
             _bottomLeftPanel = new WinForms.Panel
@@ -867,7 +865,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 BorderStyle = WinForms.BorderStyle.FixedSingle
             };
             _leftPanel.Controls.Add(_bottomLeftPanel);
-            DebugLogger.Info("_bottomLeftPanel created and added");
+                // DebugLogger.Info("_bottomLeftPanel created and added");
 
             // Now create the right side panels within the top and bottom panels
             CreateTopRightPanel();
@@ -879,7 +877,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             PopulateBottomLeftSection();   // Host Elements (linked files)
             PopulateBottomRightSection();  // Host Categories (Revit categories)
 
-            DebugLogger.Info("=== CreateFourSectionLayout COMPLETED ===");
+            // DebugLogger.Info("=== CreateFourSectionLayout COMPLETED ===");
         }
 
         // ========================================================================
@@ -1448,11 +1446,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         /// </summary>
         private void CreateClearancePanels()
         {
-            // Standard Clearance Panel
+            // Standard Clearance Panel (for Ducts) - Same size as other panels
             _clearancePanel = new WinForms.Panel
             {
                 Location = new System.Drawing.Point(10, 75),
-                Size = new System.Drawing.Size(_rightPanel.Width - 20, 100),
+                Size = new System.Drawing.Size(_rightPanel.Width - 20, 110), // Same height as cable tray and damper panels
                 BackColor = System.Drawing.Color.FromArgb(248, 249, 250),
                 BorderStyle = WinForms.BorderStyle.FixedSingle,
                 Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right
@@ -1534,6 +1532,105 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             insulatedLockBtn.Click += (s, e) => ToggleLock(insulatedLockBtn, insulatedText);
             _clearancePanel.Controls.Add(insulatedLockBtn);
+
+            // Duct Opening Type Selection (for round ducts only) - Row 2 (COMPACT)
+            var ductOpeningTypeLabel = new WinForms.Label
+            {
+                Text = "Opening Type for Round Ducts:",
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular),
+                Location = new System.Drawing.Point(10, 60), // Row 2 - COMPACT spacing (was 105)
+                Size = new System.Drawing.Size(200, 16)
+            };
+            _clearancePanel.Controls.Add(ductOpeningTypeLabel);
+
+            var ductCircularRadio = new WinForms.RadioButton
+            {
+                Text = "Circular",
+                Location = new System.Drawing.Point(220, 58),
+                Size = new System.Drawing.Size(80, 20),
+                Checked = true,
+                Tag = "duct_opening_circular"
+            };
+            _clearancePanel.Controls.Add(ductCircularRadio);
+
+            var ductRectangularRadio = new WinForms.RadioButton
+            {
+                Text = "Rectangular",
+                Location = new System.Drawing.Point(310, 58),
+                Size = new System.Drawing.Size(100, 20),
+                Checked = false,
+                Tag = "duct_opening_rectangular"
+            };
+            _clearancePanel.Controls.Add(ductRectangularRadio);
+
+            ductCircularRadio.CheckedChanged += (s, e) =>
+            {
+                if (ductCircularRadio.Checked)
+                    ductRectangularRadio.Checked = false;
+            };
+            ductRectangularRadio.CheckedChanged += (s, e) =>
+            {
+                if (ductRectangularRadio.Checked)
+                    ductCircularRadio.Checked = false;
+            };
+
+            // Round Duct Clearance Section - Row 3 (IDENTICAL to Row 1 - same X positions)
+            var roundDuctLabel = new WinForms.Label
+            {
+                Text = "Round Duct:",
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular),
+                Location = new System.Drawing.Point(10, 85),
+                Size = new System.Drawing.Size(120, 18)
+            };
+            _clearancePanel.Controls.Add(roundDuctLabel);
+
+            // Normal clearance input (aligned with Row 1)
+            var roundDuctNormalText = new WinForms.TextBox
+            {
+                Location = new System.Drawing.Point(170, 85), // Same X as Row 1 normal input (was 140)
+                Size = new System.Drawing.Size(50, 20),
+                Text = "50",
+                Tag = "round_duct_normal_clearance",
+                Enabled = false,
+                BackColor = System.Drawing.Color.LightGray
+            };
+            _clearancePanel.Controls.Add(roundDuctNormalText);
+
+            var roundDuctNormalLockBtn = new WinForms.Button
+            {
+                Location = new System.Drawing.Point(225, 85), // Same X as Row 1 normal lock (was 195)
+                Size = new System.Drawing.Size(25, 20),
+                Text = "🔒",
+                Font = new System.Drawing.Font("Segoe UI Emoji", 8F),
+                Tag = "round_duct_normal_lock",
+                BackColor = System.Drawing.Color.LightGreen
+            };
+            roundDuctNormalLockBtn.Click += (s, e) => ToggleLock(roundDuctNormalLockBtn, roundDuctNormalText);
+            _clearancePanel.Controls.Add(roundDuctNormalLockBtn);
+
+            // Insulated clearance input (aligned with Row 1)
+            var roundDuctInsulatedText = new WinForms.TextBox
+            {
+                Location = new System.Drawing.Point(300, 85), // Same X as Row 1 insulated input (was 270)
+                Size = new System.Drawing.Size(50, 20),
+                Text = "50",
+                Tag = "round_duct_insulated_clearance",
+                Enabled = false,
+                BackColor = System.Drawing.Color.LightGray
+            };
+            _clearancePanel.Controls.Add(roundDuctInsulatedText);
+
+            var roundDuctInsulatedLockBtn = new WinForms.Button
+            {
+                Location = new System.Drawing.Point(355, 85), // Same X as Row 1 insulated lock (was 325)
+                Size = new System.Drawing.Size(25, 20),
+                Text = "🔒",
+                Font = new System.Drawing.Font("Segoe UI Emoji", 8F),
+                Tag = "round_duct_insulated_lock",
+                BackColor = System.Drawing.Color.LightGreen
+            };
+            roundDuctInsulatedLockBtn.Click += (s, e) => ToggleLock(roundDuctInsulatedLockBtn, roundDuctInsulatedText);
+            _clearancePanel.Controls.Add(roundDuctInsulatedLockBtn);
 
             // Cable Tray Panel (initially hidden) - Top Side + Other Sides
             _cableTrayPanel = new WinForms.Panel
@@ -1707,7 +1804,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _pipePanel = new WinForms.Panel
             {
                 Location = new System.Drawing.Point(10, 75),
-                Size = new System.Drawing.Size(_rightPanel.Width - 20, 140),
+                Size = new System.Drawing.Size(_rightPanel.Width - 20, 110),
                 BackColor = System.Drawing.Color.FromArgb(248, 249, 250),
                 BorderStyle = WinForms.BorderStyle.FixedSingle,
                 Visible = false,
@@ -1798,12 +1895,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             pipeInsLockBtn.Click += (s, e) => ToggleLock(pipeInsLockBtn, pipeInsText);
             _pipePanel.Controls.Add(pipeInsLockBtn);
 
-            // Opening Type Section
+            // Opening Type Section - Aligned with clearance buttons on the right
             var pipeOpeningTypeLabel = new WinForms.Label
             {
                 Text = "Opening Type:",
                 Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold),
-                Location = new System.Drawing.Point(10, 70),
+                Location = new System.Drawing.Point(400, 10),
                 Size = new System.Drawing.Size(130, 18)
             };
             _pipePanel.Controls.Add(pipeOpeningTypeLabel);
@@ -1811,7 +1908,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             var pipeCircularRadio = new WinForms.RadioButton
             {
                 Text = "Circular",
-                Location = new System.Drawing.Point(20, 95),
+                Location = new System.Drawing.Point(400, 33),
                 Size = new System.Drawing.Size(80, 20),
                 Checked = true, // Default to circular
                 Tag = "pipe_opening_circular"
@@ -1821,7 +1918,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             var pipeRectangularRadio = new WinForms.RadioButton
             {
                 Text = "Rectangular",
-                Location = new System.Drawing.Point(110, 95),
+                Location = new System.Drawing.Point(490, 33),
                 Size = new System.Drawing.Size(100, 20),
                 Checked = false,
                 Tag = "pipe_opening_rectangular"
@@ -2003,6 +2100,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             if (radioButton.Tag?.ToString() == "pipe_opening_circular")
                                 return "Circular";
                             else if (radioButton.Tag?.ToString() == "pipe_opening_rectangular")
+                                return "Rectangular";
+                        }
+                    }
+                }
+            }
+            return "Circular"; // Default to circular
+        }
+
+        /// <summary>
+        /// Get the selected opening type for ducts (Circular or Rectangular)
+        /// </summary>
+        public string GetDuctOpeningType()
+        {
+            if (_clearancePanel?.Controls.Count > 0)
+            {
+                foreach (var control in _clearancePanel.Controls)
+                {
+                    if (control is WinForms.RadioButton radioButton)
+                    {
+                        if (radioButton.Checked)
+                        {
+                            if (radioButton.Tag?.ToString() == "duct_opening_circular")
+                                return "Circular";
+                            else if (radioButton.Tag?.ToString() == "duct_opening_rectangular")
                                 return "Rectangular";
                         }
                     }
@@ -3004,64 +3125,184 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         }
 
         // Event handlers
-        private void OnOkClick(object? sender, EventArgs e)
+        
+        /// <summary>
+        /// ⚠️ CRITICAL METHOD - DO NOT REMOVE ⚠️
+        /// Save opening conditions to XML for each selected category/filter
+        /// This implements proper architecture separation: CONDITIONS (XML) vs UI (static)
+        /// </summary>
+        private void SaveConditionsToXml(List<string> selectedCategories)
         {
             try
             {
-                // 🎯 IMMEDIATE USER FEEDBACK
-                MessageBox.Show("Starting opening creation process...", "Processing", 
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                var conditionsService = new ConditionsService(msg => DebugLogger.Info(msg));
                 
-                // 🎯 DEBUG: Log OK button click
-                System.IO.File.WriteAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\ok_button_debug.log", 
-                    $"OK button clicked at {System.DateTime.Now:HH:mm:ss}\r\n");
+                // Get selected filters
+                var selectedFilters = GetSelectedFilters();
                 
-                _statusLabel.Text = "Validating configuration...";
-                
-                if (!ValidateConfiguration())
+                foreach (var filter in selectedFilters)
                 {
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\ok_button_debug.log", 
-                        "ValidateConfiguration returned FALSE\r\n");
-                    return;
-                }
-                
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\ok_button_debug.log", 
-                    "ValidateConfiguration passed\r\n");
-                
-                _statusLabel.Text = "Starting opening creation process...";
-                
-                // 🎯 IMMEDIATE FEEDBACK: Show progress dialog
-                ShowProgressDialog();
-                
-                // Execute with progress dialog
-                var result = ExecuteSelectedFiltersWithProgress();
-                
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\ok_button_debug.log", 
-                    $"ExecuteSelectedFiltersWithProgress returned: Success={result.Success}, Message={result.Message}\r\n");
-                
-                if (result.Success)
-                {
-                    _statusLabel.Text = "External event raised - processing in background...";
-                    // 🎯 IMMEDIATE FEEDBACK: Show what's happening
-                    MessageBox.Show($"Processing {GetSelectedMepCategories().Count} MEP categories...\n\nCheck the log files for detailed progress.", 
-                        "Processing Started", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    DebugLogger.Info("ExecuteSelectedFiltersWithProgress: External event raised successfully");
-                }
-                else
-                {
-                    _statusLabel.Text = $"Opening creation failed: {result.ErrorMessage}";
-                    MessageBox.Show($"Opening creation failed: {result.ErrorMessage}", "Error", 
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    // Create conditions object from UI values
+                    var conditions = new OpeningConditions
+                    {
+                        FilterName = filter.Name,
+                        Category = filter.Category.ToString(), // Convert enum to string
+                        ClearanceSettings = ReadClearanceSettingsFromUI(),
+                        OpeningTypePreferences = ReadOpeningTypePreferencesFromUI()
+                    };
+                    
+                    // Save to XML
+                    bool saved = conditionsService.SaveConditions(conditions);
+                    if (saved)
+                    {
+                        DebugLogger.Info($"[SaveConditionsToXml] Saved conditions for filter '{filter.Name}'");
+                    }
+                    else
+                    {
+                        DebugLogger.Warning($"[SaveConditionsToXml] Failed to save conditions for filter '{filter.Name}'");
+                    }
                 }
             }
             catch (Exception ex)
             {
-                // 🎯 DEBUG: Log exception
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\ok_button_debug.log", 
-                    $"EXCEPTION in OnOkClick: {ex.Message}\r\nStack trace: {ex.StackTrace}\r\n");
+                DebugLogger.Error($"[SaveConditionsToXml] Error: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Read clearance settings from UI textboxes
+        /// </summary>
+        private ClearanceSettings ReadClearanceSettingsFromUI()
+        {
+            var settings = new ClearanceSettings();
+            
+            try
+            {
+                if (_clearancePanel != null)
+                {
+                    var allTextBoxes = _clearancePanel.Controls.OfType<WinForms.TextBox>();
+                    
+                    // Rectangular duct clearances
+                    var normalTb = allTextBoxes.FirstOrDefault(tb => tb.Tag?.ToString() == "normal_clearance");
+                    if (normalTb != null && double.TryParse(normalTb.Text, out double normalVal))
+                    {
+                        settings.RectangularNormal = normalVal;
+                    }
+                    
+                    var insulatedTb = allTextBoxes.FirstOrDefault(tb => tb.Tag?.ToString() == "insulated_clearance");
+                    if (insulatedTb != null && double.TryParse(insulatedTb.Text, out double insulatedVal))
+                    {
+                        settings.RectangularInsulated = insulatedVal;
+                    }
+                    
+                    // Round duct clearances
+                    var roundNormalTb = allTextBoxes.FirstOrDefault(tb => tb.Tag?.ToString() == "round_duct_normal_clearance");
+                    if (roundNormalTb != null && double.TryParse(roundNormalTb.Text, out double roundNormalVal))
+                    {
+                        settings.RoundNormal = roundNormalVal;
+                        DebugLogger.Info($"[ReadClearanceSettingsFromUI] Round Normal: TextBox.Text='{roundNormalTb.Text}' → Parsed={roundNormalVal}mm");
+                    }
+                    else
+                    {
+                        DebugLogger.Warning($"[ReadClearanceSettingsFromUI] Round Normal textbox not found or parse failed");
+                    }
+                    
+                    var roundInsulatedTb = allTextBoxes.FirstOrDefault(tb => tb.Tag?.ToString() == "round_duct_insulated_clearance");
+                    if (roundInsulatedTb != null && double.TryParse(roundInsulatedTb.Text, out double roundInsulatedVal))
+                    {
+                        settings.RoundInsulated = roundInsulatedVal;
+                        DebugLogger.Info($"[ReadClearanceSettingsFromUI] Round Insulated: TextBox.Text='{roundInsulatedTb.Text}' → Parsed={roundInsulatedVal}mm");
+                    }
+                    else
+                    {
+                        DebugLogger.Warning($"[ReadClearanceSettingsFromUI] Round Insulated textbox not found or parse failed");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[ReadClearanceSettingsFromUI] Error: {ex.Message}");
+            }
+            
+            return settings;
+        }
+        
+        /// <summary>
+        /// Read opening type preferences from UI radio buttons
+        /// </summary>
+        private OpeningTypePreferences ReadOpeningTypePreferencesFromUI()
+        {
+            var preferences = new OpeningTypePreferences();
+            
+            try
+            {
+                // Get duct opening type selection
+                var ductOpeningType = GetDuctOpeningType();
+                if (!string.IsNullOrEmpty(ductOpeningType))
+                {
+                    preferences.RoundDucts = ductOpeningType;
+                }
                 
-                _statusLabel.Text = $"Error: {ex.Message}";
-                MessageBox.Show($"Error: {ex.Message}", "Error", 
+                // Get pipe opening type selection (if pipe panel exists)
+                var pipeOpeningType = GetPipeOpeningType();
+                if (!string.IsNullOrEmpty(pipeOpeningType))
+                {
+                    preferences.Pipes = pipeOpeningType;
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[ReadOpeningTypePreferencesFromUI] Error: {ex.Message}");
+            }
+            
+            return preferences;
+        }
+        
+        private void OnOkClick(object? sender, EventArgs e)
+        {
+            try
+            {
+                // Get selected categories
+                var selectedCategories = GetSelectedMepCategories();
+                if (selectedCategories.Count == 0)
+                {
+                    MessageBox.Show("Please select at least one MEP category.", "No Categories Selected", 
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                
+                // ⚠️ CRITICAL: Save CONDITIONS.xml before raising external event ⚠️
+                // This implements proper architecture: Conditions saved to XML, not in static properties
+                SaveConditionsToXml(selectedCategories);
+                
+                // Show immediate feedback via status label (non-blocking)
+                _statusLabel.Text = $"Processing {selectedCategories.Count} categories...";
+                DebugLogger.Info($"[OnOkClick] Starting sleeve placement for categories: {string.Join(", ", selectedCategories)}");
+
+                // Initialize RevitTask if not already done
+                if (!RevitTask.IsInitialized())
+                {
+                    var handler = new RevitTask.Handler();
+                    var exEvent = ExternalEvent.Create(handler);
+                    RevitTask.Init(exEvent);
+                }
+
+                // Set selected categories in external event
+                _sleevePlacementHandler.SetSelectedCategories(selectedCategories);
+
+                // Raise external event (non-blocking)
+                _sleevePlacementEvent.Raise();
+
+                DebugLogger.Info($"[EmergencyMainDialog] External event raised for categories: {string.Join(", ", selectedCategories)}");
+                
+                // ⚠️ CRITICAL: Close dialog to free Revit main thread ⚠️
+                // ExternalEvent can only execute when the main thread is not blocked by a modal dialog
+                this.Hide(); // Hide instead of Close to keep dialog in memory for status updates
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[EmergencyMainDialog] Exception in OnOkClick: {ex.Message}");
+                MessageBox.Show($"Error starting sleeve placement: {ex.Message}", "Error", 
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }

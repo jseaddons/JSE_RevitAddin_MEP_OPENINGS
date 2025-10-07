@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.DB.Mechanical;
+using Autodesk.Revit.DB.Plumbing;
+using Autodesk.Revit.DB.Electrical;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
@@ -149,7 +152,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public List<ClashZone> DetectNewClashZones(
             List<(Element, Element, BoundingBoxXYZ, XYZ)> currentIntersections,
-            Document document)
+            Document document,
+            Dictionary<string, double> clearanceSettings = null)
         {
             if (_clashZoneStorage == null)
             {
@@ -258,7 +262,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         _log($"Replacing invalid clash zone {invalidClashZone.Id} with valid ElementIds");
                         _clashZoneStorage.ClashZones.Remove(invalidClashZone);
                         
-                        var newClashZone = CreateClashZone(mepElement, structuralElement, intersectionPoint, boundingBox, document);
+                        var newClashZone = CreateClashZone(mepElement, structuralElement, intersectionPoint, boundingBox, document, clearanceSettings);
                         newClashZones.Add(newClashZone);
                         _clashZoneStorage.ClashZones.Add(newClashZone);
                         _log($"Replaced invalid clash zone: MEP={mepElement.Id}, Structural={structuralElement.Id}");
@@ -266,7 +270,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     else
                 {
                     // Create new clash zone
-                    var newClashZone = CreateClashZone(mepElement, structuralElement, intersectionPoint, boundingBox, document);
+                    var newClashZone = CreateClashZone(mepElement, structuralElement, intersectionPoint, boundingBox, document, clearanceSettings);
                     newClashZones.Add(newClashZone);
                     _clashZoneStorage.ClashZones.Add(newClashZone);
                     _log($"New clash zone detected: MEP={mepElement.Id}, Structural={structuralElement.Id}");
@@ -285,8 +289,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
             
-            // Do NOT change IsResolved during refresh. Resolved state is set only after successful placement
-            //MarkResolvedClashZones(currentIntersections, document);
+            // CRITICAL: Check for existing sleeves and reset IsResolved flag if sleeves were deleted
+            // This allows re-placement of sleeves after manual deletion
+            ResetResolvedFlagForDeletedSleeves(document);
             
             // CRITICAL FIX: Remove duplicate clash zones (same MEP + structural element)
             RemoveDuplicateClashZones();
@@ -762,6 +767,59 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
+        /// ⚠️ CRITICAL METHOD - DO NOT REMOVE ⚠️
+        /// Reset IsResolved flag for clash zones where sleeves no longer exist
+        /// This allows re-placement of sleeves after manual deletion
+        /// Called during refresh to detect deleted sleeves
+        /// </summary>
+        private void ResetResolvedFlagForDeletedSleeves(Document document)
+        {
+            try
+            {
+                int resetCount = 0;
+                
+                foreach (var clashZone in _clashZoneStorage.ClashZones)
+                {
+                    if (clashZone.IsResolved)
+                    {
+                        // Validate placement point exists
+                        if (clashZone.SleevePlacementPoint == null)
+                        {
+                            _log($"[ResetResolvedFlag] WARNING: ClashZone {clashZone.Id} has null SleevePlacementPoint - skipping");
+                            continue;
+                        }
+                        
+                        // Check if sleeve actually exists at the placement point
+                        bool sleeveExists = CheckForExistingSleeve(clashZone.SleevePlacementPoint, document);
+                        
+                        _log($"[ResetResolvedFlag] Checking clash zone {clashZone.Id}: sleeveExists={sleeveExists}, IsResolved={clashZone.IsResolved}");
+                        
+                        if (!sleeveExists)
+                        {
+                            clashZone.IsResolved = false;
+                            clashZone.LastUpdated = DateTime.Now;
+                            resetCount++;
+                            _log($"[ResetResolvedFlag] ✓ Reset IsResolved to FALSE for clash zone {clashZone.Id} - sleeve no longer exists");
+                        }
+                        else
+                        {
+                            _log($"[ResetResolvedFlag] Sleeve still exists at {clashZone.SleevePlacementPoint} - keeping IsResolved=true");
+                        }
+                    }
+                }
+                
+                if (resetCount > 0)
+                {
+                    _log($"[ResetResolvedFlag] Reset IsResolved flag for {resetCount} clash zones where sleeves were deleted");
+                }
+            }
+            catch (Exception ex)
+            {
+                _log($"[ResetResolvedFlag] Error resetting IsResolved flags: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Remove duplicate clash zones (same MEP + structural element) keeping the most recent one
         /// </summary>
         private void RemoveDuplicateClashZones()
@@ -784,10 +842,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
         
-        private ClashZone CreateClashZone(Element mepElement, Element structuralElement, XYZ intersectionPoint, BoundingBoxXYZ boundingBox, Document document)
+        private ClashZone CreateClashZone(Element mepElement, Element structuralElement, XYZ intersectionPoint, BoundingBoxXYZ boundingBox, Document document, Dictionary<string, double> clearanceSettings = null)
         {
             var mepSize = GetMepElementSize(mepElement);
-            var requiredClearance = CalculateRequiredClearance(mepSize);
+            
+            // IMPORTANT: The intersection point is already at the wall center (mid-plane)
+            // The MepIntersectionService finds intersections with wall faces and CreateBoundingBox()
+            // averages entry/exit points, giving us the wall center automatically.
+            // No additional offset needed since family insertion point is at middle.
+            
+            // DEBUG: Log placement point calculation
+            _log($"[DEBUG] Placement Point Calculation for {structuralElement.Id}:");
+            _log($"[DEBUG]   Intersection Point: {intersectionPoint} (already at wall center - using as placement point)");
+            
+            // OPTIMIZATION: Store structural element type and thickness for depth calculation
+            var structuralElementType = GetStructuralElementType(structuralElement);
+            
+            // OPTIMIZATION: Calculate MEP element dimensions and orientation during refresh
+            var (mepWidth, mepHeight) = GetMepElementDimensions(mepElement);
+            var mepOrientation = GetMepElementOrientation(mepElement);
+            
+            // Store raw MEP dimensions (clearance will be applied by DuctSleevePlacerService)
+            var finalWidth = mepWidth;
+            var finalHeight = mepHeight;
+            
+            // Get pipe opening type if applicable
+            var pipeOpeningType = GetPipeOpeningType(mepElement);
+            
+            // OPTIMIZATION: Get MEP element level information during refresh (no linked file access needed during placement)
+            var (levelName, levelElevation) = GetMepElementLevelInfo(mepElement);
+            
+            // Check for existing sleeve at intersection point (which is the placement point)
+            var hasExistingSleeve = CheckForExistingSleeve(intersectionPoint, document);
+            
+            // ⚠️ CRITICAL: Get MEP element category for category-specific processing ⚠️
+            // DO NOT REMOVE: This is essential for each placement service to validate its category
+            var mepCategory = GetElementCategoryName(mepElement);
+            
+            // ⚠️ CRITICAL: Get duct shape from family name (Round or Rectangular) ⚠️
+            // DO NOT REMOVE: This determines correct sleeve family selection for round vs rectangular ducts
+            var ductShape = GetDuctShape(mepElement);
+            
+            // ⚠️ CRITICAL: Detect insulation type (Normal or Insulated) ⚠️
+            // DO NOT REMOVE: This determines which clearance value to use (normal vs insulated)
+            var insulationType = GetInsulationType(mepElement);
             
             var clashZone = new ClashZone
             {
@@ -796,22 +894,461 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 IntersectionPoint = intersectionPoint,
                 ClashBoundingBox = boundingBox,
                 MepElementSize = mepSize,
-                RequiredClearance = requiredClearance,
+                RequiredClearance = 0.0, // Clearance will be calculated during placement
                 MepElementGeometryHash = CalculateElementGeometryHash(mepElement),
                 StructuralElementGeometryHash = CalculateElementGeometryHash(structuralElement),
+                MepElementCategory = mepCategory, // Store category for validation in placement services
+                DuctShape = ductShape, // Store duct shape (Round/Rectangular) from family name
+                InsulationType = insulationType, // Store insulation type (Normal/Insulated) for clearance selection
                 DocumentPath = document.PathName,
+                StructuralElementDocumentTitle = structuralElement.Document.Title,
+                StructuralElementType = structuralElementType,
+                StructuralElementThickness = GetElementThickness(structuralElement),
+                
+                // NEW: Pre-calculated placement data (calculated during refresh, used during placement)
+                SleevePlacementPoint = intersectionPoint, // Intersection point is already at wall center
+                MepElementWidth = finalWidth,
+                MepElementHeight = finalHeight,
+                MepElementOrientation = mepOrientation,
+                PipeOpeningType = pipeOpeningType,
+                MepElementLevelName = levelName,
+                MepElementLevelElevation = levelElevation,
+                IsResolved = hasExistingSleeve,
+                
                 DetectedAt = DateTime.Now,
                 LastUpdated = DateTime.Now
             };
             
-            // DEBUG: Log the intersection point being set
+            // DEBUG: Log the pre-calculated data
             _log($"[DEBUG] Created ClashZone {clashZone.Id}:");
-            _log($"[DEBUG]   IntersectionPoint: {intersectionPoint}");
-            _log($"[DEBUG]   IntersectionPointX: {clashZone.IntersectionPointX}");
-            _log($"[DEBUG]   IntersectionPointY: {clashZone.IntersectionPointY}");
-            _log($"[DEBUG]   IntersectionPointZ: {clashZone.IntersectionPointZ}");
+            _log($"[DEBUG]   IntersectionPoint: {intersectionPoint} (used as placement point)");
+            _log($"[DEBUG]   SleevePlacementPoint: {intersectionPoint} (same as intersection point)");
+            _log($"[DEBUG]   MepElementWidth: {finalWidth}, MepElementHeight: {finalHeight}");
+            _log($"[DEBUG]   MepElementOrientation: {mepOrientation}");
+            _log($"[DEBUG]   PipeOpeningType: {pipeOpeningType}");
+            _log($"[DEBUG]   IsResolved: {hasExistingSleeve}");
             
             return clashZone;
+        }
+        
+        /// <summary>
+        /// Get structural element type name for depth calculation
+        /// </summary>
+        private string GetStructuralElementType(Element element)
+        {
+            if (element is Wall)
+                return "Wall";
+            else if (element is Floor)
+                return "Floor";
+            else if (element is FamilyInstance famInst && 
+                     famInst.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+                return "Structural Framing";
+            else
+                return "Unknown";
+        }
+        
+        /// <summary>
+        /// ⚠️ CRITICAL METHOD - DO NOT REMOVE ⚠️
+        /// Get MEP element category name for category-specific processing
+        /// This is essential for validating that each placement service only processes its own category
+        /// Prevents cross-category contamination (e.g., pipes in duct service)
+        /// </summary>
+        private string GetElementCategoryName(Element element)
+        {
+            try
+            {
+                // Get category name from element (primary method)
+                var categoryName = element?.Category?.Name;
+                if (!string.IsNullOrEmpty(categoryName))
+                {
+                    return categoryName;
+                }
+                
+                // Fallback: Determine from element type
+                if (element is Autodesk.Revit.DB.Mechanical.Duct) return "Ducts";
+                if (element is Autodesk.Revit.DB.Plumbing.Pipe) return "Pipes";
+                if (element is Autodesk.Revit.DB.Electrical.CableTray) return "Cable Trays";
+                
+                // Check by category ID for Duct Accessories
+                if (element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
+                    return "Duct Accessories";
+                
+                return "Unknown";
+            }
+            catch (Exception ex)
+            {
+                _log($"Error getting element category name: {ex.Message}");
+                return "Unknown";
+            }
+        }
+        
+        /// <summary>
+        /// ⚠️ CRITICAL METHOD - DO NOT REMOVE ⚠️
+        /// Detect if MEP element is insulated (checks InsulationThickness parameter)
+        /// Returns "Insulated" or "Normal" - used to select appropriate clearance
+        /// </summary>
+        private string GetInsulationType(Element element)
+        {
+            try
+            {
+                // Check for InsulationThickness parameter (common for ducts and pipes)
+                var insulationParam = element.LookupParameter("InsulationThickness") ?? 
+                                     element.LookupParameter("Insulation Thickness") ??
+                                     element.LookupParameter("Insulation");
+                
+                if (insulationParam != null && insulationParam.AsDouble() > 0.0)
+                {
+                    double insulationMm = UnitUtils.ConvertFromInternalUnits(insulationParam.AsDouble(), UnitTypeId.Millimeters);
+                    _log($"[DEBUG] Element {element.Id} has insulation: {insulationMm:F1}mm");
+                    return "Insulated";
+                }
+                
+                return "Normal";
+            }
+            catch (Exception ex)
+            {
+                _log($"Error detecting insulation type: {ex.Message}");
+                return "Normal"; // Safe default
+            }
+        }
+        
+        /// <summary>
+        /// ⚠️ CRITICAL METHOD - DO NOT REMOVE ⚠️
+        /// Get duct shape from family name (Round or Rectangular)
+        /// This is essential for determining correct sleeve family (DuctOpeningOnWall vs DuctOpeningOnWallround)
+        /// Round ducts use UI selection, Rectangular ducts always use rectangular sleeves
+        /// </summary>
+        private string GetDuctShape(Element element)
+        {
+            try
+            {
+                if (!(element is Autodesk.Revit.DB.Mechanical.Duct))
+                    return string.Empty; // Not a duct
+                
+                // Get duct type family name
+                var duct = element as Autodesk.Revit.DB.Mechanical.Duct;
+                var ductType = duct?.DuctType;
+                var familyName = ductType?.FamilyName ?? string.Empty;
+                
+                _log($"[DEBUG] Duct {element.Id} family name: {familyName}");
+                
+                // Check family name for shape indicators
+                if (familyName.Contains("Round", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "Round";
+                }
+                else if (familyName.Contains("Rectangular", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "Rectangular";
+                }
+                
+                // Fallback: Check by dimensions (if width ≈ height, likely round)
+                var (width, height) = GetMepElementDimensions(element);
+                double widthMm = UnitUtils.ConvertFromInternalUnits(width, UnitTypeId.Millimeters);
+                double heightMm = UnitUtils.ConvertFromInternalUnits(height, UnitTypeId.Millimeters);
+                bool isRoundByDimensions = Math.Abs(widthMm - heightMm) < 10.0;
+                
+                return isRoundByDimensions ? "Round" : "Rectangular";
+            }
+            catch (Exception ex)
+            {
+                _log($"Error getting duct shape: {ex.Message}");
+                return "Rectangular"; // Safe default
+            }
+        }
+        
+        /// <summary>
+        /// ⚠️ CRITICAL METHOD - DO NOT REMOVE ⚠️
+        /// Check if a sleeve exists at the given placement point (within 50mm tolerance)
+        /// This is essential for refresh to detect deleted sleeves and reset IsResolved flag
+        /// Without this, deleted sleeves cannot be re-placed (duplication suppressor prevents it)
+        /// </summary>
+        private bool CheckForExistingSleeve(XYZ placementPoint, Document document, double tolerance = 0.164042) // 50mm in feet
+        {
+            try
+            {
+                var openingFamilies = new FilteredElementCollector(document)
+                    .OfClass(typeof(FamilyInstance))
+                    .Cast<FamilyInstance>()
+                    .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                    .ToList();
+
+                foreach (var opening in openingFamilies)
+                {
+                    if (opening.Location is LocationPoint locationPoint)
+                    {
+                        double distance = locationPoint.Point.DistanceTo(placementPoint);
+                        if (distance <= tolerance)
+                        {
+                            _log($"[CheckExistingSleeve] Found existing sleeve {opening.Id} at distance {distance:F3}ft from placement point");
+                            return true;
+                        }
+                    }
+                }
+                
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _log($"[CheckExistingSleeve] Error: {ex.Message}");
+                return false; // Assume no sleeve if error
+            }
+        }
+        
+        /// <summary>
+        /// Get element thickness for walls, floors, and structural framing
+        /// </summary>
+        private double GetElementThickness(Element element)
+        {
+            try
+            {
+                if (element is Wall wall)
+                {
+                    return wall.Width;
+                }
+                else if (element is Floor floor)
+                {
+                    return floor.get_Parameter(BuiltInParameter.FLOOR_ATTR_THICKNESS_PARAM)?.AsDouble() ?? 0.1;
+                }
+                else if (element is FamilyInstance famInst && 
+                         famInst.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+                {
+                    // For structural framing, try to get thickness parameter
+                    var thicknessParam = famInst.LookupParameter("Width") ?? 
+                                       famInst.LookupParameter("Thickness") ?? 
+                                       famInst.LookupParameter("Depth");
+                    return thicknessParam?.AsDouble() ?? 0.1;
+                }
+                return 0.1; // Default fallback
+            }
+            catch
+            {
+                return 0.1; // Default fallback
+            }
+        }
+        
+        /// <summary>
+        /// Get element normal vector for walls, floors, and structural framing
+        /// </summary>
+        private XYZ GetElementNormal(Element element)
+        {
+            try
+            {
+                if (element is Wall wall)
+                {
+                    if (wall.Location is LocationCurve curve)
+                    {
+                        var line = curve.Curve as Line;
+                        if (line != null)
+                        {
+                            var wallDirection = line.Direction;
+                            // Wall normal is perpendicular to wall curve direction in horizontal plane
+                            return new XYZ(-wallDirection.Y, wallDirection.X, 0).Normalize();
+                        }
+                    }
+                    return XYZ.BasisX; // Default fallback
+                }
+                else if (element is Floor)
+                {
+                    // For floors, normal is typically upward (Z direction)
+                    return XYZ.BasisZ;
+                }
+                else if (element is FamilyInstance famInst && 
+                         famInst.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+                {
+                    // For structural framing, use default upward direction
+                    return XYZ.BasisZ;
+                }
+                return XYZ.BasisX; // Default fallback
+            }
+            catch
+            {
+                return XYZ.BasisX; // Default fallback
+            }
+        }
+        
+        /// <summary>
+        /// Get MEP element dimensions (width and height)
+        /// </summary>
+        private (double width, double height) GetMepElementDimensions(Element mepElement)
+        {
+            try
+            {
+                if (mepElement is Duct duct)
+                {
+                    var width = duct.get_Parameter(BuiltInParameter.RBS_CURVE_WIDTH_PARAM)?.AsDouble() ?? 0;
+                    var height = duct.get_Parameter(BuiltInParameter.RBS_CURVE_HEIGHT_PARAM)?.AsDouble() ?? 0;
+                    
+                    // Handle round ducts
+                    var diameter = duct.get_Parameter(BuiltInParameter.RBS_CURVE_DIAMETER_PARAM)?.AsDouble() ?? 0;
+                    if ((width <= 0.0 || height <= 0.0) && diameter > 0.0)
+                    {
+                        width = diameter;
+                        height = diameter;
+                    }
+                    
+                    return (width, height);
+                }
+                else if (mepElement is Pipe pipe)
+                {
+                    var diameter = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_OUTER_DIAMETER)?.AsDouble() ?? 0;
+                    return (diameter, diameter); // Pipes are round
+                }
+                else if (mepElement is Conduit conduit)
+                {
+                    var width = conduit.get_Parameter(BuiltInParameter.RBS_CABLETRAY_WIDTH_PARAM)?.AsDouble() ?? 0;
+                    var height = conduit.get_Parameter(BuiltInParameter.RBS_CABLETRAY_HEIGHT_PARAM)?.AsDouble() ?? 0;
+                    return (width, height);
+                }
+                
+                return (0.1, 0.1); // Default fallback
+            }
+            catch
+            {
+                return (0.1, 0.1); // Default fallback
+            }
+        }
+        
+        /// <summary>
+        /// Get MEP element orientation vector
+        /// </summary>
+        private XYZ GetMepElementOrientation(Element mepElement)
+        {
+            try
+            {
+                if (mepElement is Duct duct && duct.Location is LocationCurve curve)
+                {
+                    var line = curve.Curve as Line;
+                    if (line != null)
+                    {
+                        return line.Direction;
+                    }
+                }
+                else if (mepElement is Pipe pipe && pipe.Location is LocationCurve pipeCurve)
+                {
+                    var line = pipeCurve.Curve as Line;
+                    if (line != null)
+                    {
+                        return line.Direction;
+                    }
+                }
+                else if (mepElement is Conduit conduit && conduit.Location is LocationCurve conduitCurve)
+                {
+                    var line = conduitCurve.Curve as Line;
+                    if (line != null)
+                    {
+                        return line.Direction;
+                    }
+                }
+                
+                return XYZ.BasisX; // Default fallback
+            }
+            catch
+            {
+                return XYZ.BasisX; // Default fallback
+            }
+        }
+        
+        /// <summary>
+        /// Get pipe opening type (Circular or Rectangular)
+        /// </summary>
+        private string GetPipeOpeningType(Element mepElement)
+        {
+            try
+            {
+                if (mepElement is Pipe)
+                {
+                    // TODO: Get from UI settings or element properties
+                    // For now, default to Circular
+                    return "Circular";
+                }
+                return string.Empty; // Not a pipe
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+        
+        /// <summary>
+        /// Get MEP element level information for sleeve placement
+        /// </summary>
+        private (string levelName, double levelElevation) GetMepElementLevelInfo(Element mepElement)
+        {
+            try
+            {
+                // Try to get level from MEP element's LevelId
+                if (mepElement.LevelId != ElementId.InvalidElementId)
+                {
+                    var level = mepElement.Document.GetElement(mepElement.LevelId) as Level;
+                    if (level != null)
+                    {
+                        return (level.Name, level.Elevation);
+                    }
+                }
+                
+                // Fallback: try to get level from location
+                if (mepElement.Location is LocationPoint locationPoint)
+                {
+                    var elevation = locationPoint.Point.Z;
+                    return ($"Auto-Level-{elevation:F2}", elevation);
+                }
+                else if (mepElement.Location is LocationCurve locationCurve)
+                {
+                    var startPoint = locationCurve.Curve.GetEndPoint(0);
+                    var elevation = startPoint.Z;
+                    return ($"Auto-Level-{elevation:F2}", elevation);
+                }
+                
+                // Final fallback
+                return ("Level 1", 0.0);
+            }
+            catch (Exception ex)
+            {
+                _log($"[ClashZoneService] Error getting MEP element level info: {ex.Message}");
+                return ("Level 1", 0.0);
+            }
+        }
+        
+        /// <summary>
+        /// Check for existing sleeve at placement point
+        /// </summary>
+        private bool CheckForExistingSleeveAtPlacementPoint(XYZ placementPoint, Document document, double tolerance = 0.05) // 50mm tolerance
+        {
+            try
+            {
+                // ACTUAL CHECK: Look for existing sleeves near the placement point
+                // This prevents the IsResolved flag from staying true when sleeves are deleted
+                
+                // Get all opening families in the document
+                var openingFamilies = new FilteredElementCollector(document)
+                    .OfClass(typeof(FamilyInstance))
+                    .Cast<FamilyInstance>()
+                    .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                    .ToList();
+                
+                // Check if any opening exists within tolerance of the placement point
+                foreach (var opening in openingFamilies)
+                {
+                    if (opening.Location is LocationPoint locationPoint)
+                    {
+                        double distance = locationPoint.Point.DistanceTo(placementPoint);
+                        if (distance <= tolerance)
+                        {
+                            _log($"[CheckForExistingSleeve] Found existing opening at distance {distance:F3} from placement point");
+                            return true;
+                        }
+                    }
+                }
+                
+                _log($"[CheckForExistingSleeve] No existing sleeve found at placement point {placementPoint}");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _log($"[CheckForExistingSleeve] Error checking for existing sleeve: {ex.Message}");
+                return false;
+            }
         }
         
         private void UpdateExistingClashZone(ClashZone existingZone, Element mepElement, Element structuralElement, XYZ intersectionPoint, BoundingBoxXYZ boundingBox, Document document)
