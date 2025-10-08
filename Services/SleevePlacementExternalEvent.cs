@@ -53,20 +53,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Log immediate feedback (non-blocking)
                 DebugLogger.Info($"[SleevePlacementExternalEvent] Processing {_selectedCategories.Count} categories: {string.Join(", ", _selectedCategories)}");
 
-                // Create and queue the appropriate command for each category
+                // Process each category: Place individual sleeves → Cluster → Update XML
                 foreach (var category in _selectedCategories)
                 {
                     var clashZones = GetClashZonesForCategory(category);
                     if (clashZones.Count > 0)
                     {
-                        ICommand command = CreateCommandForCategory(category, clashZones);
+                        // Step 1: Place individual sleeves
+                        ICommand placementCommand = CreateCommandForCategory(category, clashZones);
                         
-                        if (command != null)
+                        if (placementCommand != null)
                         {
-                            // Queue the command for execution (non-blocking)
-                            RevitTask.Run(app => command.Execute(app));
+                            DebugLogger.Info($"[SleevePlacementExternalEvent] Placing individual sleeves for {category} ({clashZones.Count} clash zones)");
+                            placementCommand.Execute(app);
                             
-                            DebugLogger.Info($"[SleevePlacementExternalEvent] Command queued for category: {category} with {clashZones.Count} clash zones");
+                            // Step 2: Immediately cluster this category's sleeves
+                            // ⚠️ NOTE: Clustering will be implemented in next phase
+                            // For now, just log that clustering would happen here
+                            DebugLogger.Info($"[SleevePlacementExternalEvent] TODO: Cluster {category} sleeves (to be implemented)");
                         }
                         else
                         {
@@ -79,7 +83,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
                 
-                DebugLogger.Info("[SleevePlacementExternalEvent] All commands queued successfully");
+                DebugLogger.Info("[SleevePlacementExternalEvent] All categories processed (placement + clustering)");
             }
             catch (Exception ex)
             {

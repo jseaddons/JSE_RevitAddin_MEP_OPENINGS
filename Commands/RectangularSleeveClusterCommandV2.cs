@@ -14,6 +14,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
     [Transaction(TransactionMode.Manual)]
     public class RectangularSleeveClusterCommandV2 : IExternalCommand
     {
+        private readonly string _targetCategory;
+        
+        // Parameterless constructor for direct execution
+        public RectangularSleeveClusterCommandV2() : this(null)
+        {
+        }
+        
+        // Constructor with category filter (for use by SleevePlacementExternalEvent)
+        public RectangularSleeveClusterCommandV2(string targetCategory)
+        {
+            _targetCategory = targetCategory; // "Ducts", "Pipes", "Duct Accessories", "Cable Trays", or null for all
+        }
+        
         // Helper struct for grouping key
         struct SleeveGroupKey
         {
@@ -61,13 +74,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             DebugLogger.Log($"[RectangularCluster] Internal units: {toleranceDist:F6} feet");
             DebugLogger.Log($"[RectangularCluster] Configuration: {ClusterConfigurationManager.Instance.GetConfigurationSummary()}");
 
-            // Collect all placed rectangular sleeves (PS Rectangular family instances)
-            var rawSleeves = new FilteredElementCollector(doc)
+            // Collect all sleeves using the 4 universal families
+            var allSleeves = new FilteredElementCollector(doc)
                 .OfClass(typeof(FamilyInstance))
                 .Cast<FamilyInstance>()
-                .Where(fi => fi.Symbol.Family.Name.EndsWith("OpeningOnWall", StringComparison.OrdinalIgnoreCase)
-                          || fi.Symbol.Family.Name.EndsWith("OpeningOnSlab", StringComparison.OrdinalIgnoreCase))
+                .Where(fi => 
+                {
+                    var famName = fi.Symbol?.Family?.Name ?? string.Empty;
+                    // Match ONLY the 4 universal family names
+                    return famName == "RectangularOpeningOnWall" ||
+                           famName == "CircularOpeningOnWall" ||
+                           famName == "RectangularOpeningOnSlab" ||
+                           famName == "CircularOpeningOnSlab";
+                })
                 .ToList();
+            
+            DebugLogger.Log($"[RectangularCluster] Found {allSleeves.Count} total sleeves (all categories)");
+            
+            // Filter by MEP_Category parameter if targetCategory is specified
+            var rawSleeves = string.IsNullOrEmpty(_targetCategory)
+                ? allSleeves
+                : allSleeves.Where(sleeve => 
+                {
+                    var categoryParam = sleeve.LookupParameter("MEP_Category");
+                    string sleeveCategory = categoryParam?.AsString() ?? "";
+                    return sleeveCategory == _targetCategory;
+                }).ToList();
+            
+            DebugLogger.Log($"[RectangularCluster] Filtered to {rawSleeves.Count} sleeves" + 
+                           (string.IsNullOrEmpty(_targetCategory) ? " (all categories)" : $" for category '{_targetCategory}'"));
 
             // Use SectionBoxHelper to reduce to only elements visible in the active 3D section box
             List<FamilyInstance> sleeves;
@@ -103,14 +138,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     // Use HostOrientation parameter only
                     var hostOrientationParam = sleeve.LookupParameter("HostOrientation");
                     string effectiveOrientation = hostOrientationParam != null ? hostOrientationParam.AsString() : "";
-                    // HostType from family name
+                    // HostType from family name (universal families)
                     var famName = sleeve.Symbol.Family.Name.ToLower();
-                    string hostType = famName.Contains("wall") ? "Wall" : (famName.Contains("slab") || famName.Contains("floor") ? "Floor" : "Unknown");
-                    // SystemType from family name (now includes pipe)
-                    string systemType = famName.Contains("duct") ? "Duct" 
-                                        : famName.Contains("cabletray") ? "CableTray" 
-                                        : famName.Contains("pipe") ? "Pipe"
-                                        : "Unknown";
+                    string hostType = famName.Contains("onwall") ? "Wall" : (famName.Contains("onslab") || famName.Contains("onfloor") ? "Floor" : "Unknown");
+                    // SystemType from MEP_Category parameter (CRITICAL for preventing cross-category clustering)
+                    var categoryParam = sleeve.LookupParameter("MEP_Category");
+                    string systemType = categoryParam?.AsString() ?? "Unknown";
                     return new SleeveGroupKey(hostType, systemType, effectiveOrientation);
                 });
 
@@ -312,33 +345,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             }
                             catch { }
 
-                        // Skip pipe clusters on Wall or Structural Framing only (let PipeOpeningsRectCommand handle them)
-                        if (groupKey.systemType == "Pipe" && (groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing"))
-                            continue;
+                        // ⚠️ No longer skip any category - clustering is now category-specific via targetCategory filter
                     
                     
                         if (cluster.Count <= 1) continue; // Skip individual sleeves and empty clusters
                         
-                        string familyName = "";
-                        // Always use ClusterOpeningOnWallX family for Wall and Structural Framing clusters
-                        if ((groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing"))
+                        // Determine if cluster is circular or rectangular
+                        // Check the family name of sleeves in the cluster
+                        bool isCircular = cluster.All(s => 
                         {
-                            familyName = "ClusterOpeningOnWallX";
+                            var fam = s.Symbol?.Family?.Name ?? "";
+                            return fam.Contains("Circular");
+                        });
+                        
+                        // Select universal family based on host type and shape
+                        string familyName = "";
+                        if (groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing")
+                        {
+                            familyName = isCircular ? "CircularOpeningOnWall" : "RectangularOpeningOnWall";
                         }
                         else if (groupKey.hostType == "Floor")
                         {
-                            familyName = "ClusterOpeningOnSlab";
+                            familyName = isCircular ? "CircularOpeningOnSlab" : "RectangularOpeningOnSlab";
                         }
                         else
                         {
-                            DebugLogger.Log($"Unknown host/orientation for cluster group, skipping. HostType={groupKey.hostType}, Orientation={groupKey.orientation}");
+                            DebugLogger.Log($"Unknown host type for cluster group, skipping. HostType={groupKey.hostType}");
                             continue;
                         }
 
-                        // Detect if this is a pipe cluster (all sleeves are pipe system)
-                        bool isPipeCluster = groupKey.systemType == "Pipe";
+                        DebugLogger.Log($"[ClusterCommand] Creating {groupKey.systemType} cluster using family '{familyName}' (shape: {(isCircular ? "Circular" : "Rectangular")})");
 
-                        // Find a FamilySymbol for this system type and host type
+                        // Find FamilySymbol for the universal family
                         var allClusterSymbols = new FilteredElementCollector(doc)
                             .OfClass(typeof(FamilySymbol))
                             .Cast<FamilySymbol>()
@@ -442,6 +480,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             if (heightParam != null && !heightParam.IsReadOnly) heightParam.Set(height);
                             if (depthParam != null && !depthParam.IsReadOnly) depthParam.Set(depth);
                         }
+                        
+                        // ⚠️ NOTE: MEP_Category, Mark, and other parameters are set later by Parameter Transfer Service
+                        // Cluster command ONLY sets size parameters (Width, Height, Depth)
+                        
                         placedCount++;
                         // Debug logging for cluster placement
                         var placementPoints = cluster.Select(s => (s.Location as LocationPoint)?.Point ?? s.GetTransform().Origin).ToList();
