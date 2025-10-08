@@ -39,8 +39,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     
                     DebugLogger.Info($"[UniversalClusterCommand] ✓ Clustering complete for {_targetCategory}: {placedCount} clusters placed, {deletedCount} individual sleeves deleted");
                     
-                    // Optional: Show user feedback for manual testing
-                    // TaskDialog.Show("Clustering Complete", $"{_targetCategory}: {placedCount} clusters placed, {deletedCount} sleeves deleted");
+                    // Show user feedback
+                    if (placedCount > 0 || deletedCount > 0)
+                    {
+                        TaskDialog.Show("Clustering Complete", 
+                            $"Category: {_targetCategory}\n\n" +
+                            $"✓ {placedCount} cluster sleeve(s) created\n" +
+                            $"✓ {deletedCount} individual sleeve(s) replaced\n\n" +
+                            $"Join distance: {ClusterConfigurationManager.Instance.JoinOpeningsDistance}mm");
+                    }
                 }
             }
             catch (Exception ex)

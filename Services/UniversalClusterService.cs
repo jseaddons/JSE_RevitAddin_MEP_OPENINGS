@@ -82,26 +82,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 DebugLogger.Log($"[UniversalClusterService] Found {allSleeves.Count} total sleeves (all categories)");
                 
-                // ✅ CRITICAL FIX: Filter by ClashZone XML instead of sleeve parameter
-                // Load ClashZone XML files to get sleeve ID → category mapping
-                var sleeveToCategory = LoadSleeveCategoryMapping(targetCategory);
+                // ⚠️ TEMPORARY FIX: Don't filter by category for now
+                // Clustering will group by systemType from MEP_Category parameter OR all together if parameter missing
+                // This allows clustering to work even without MEP_Category parameter in families
+                var rawSleeves = allSleeves;
                 
-                var rawSleeves = string.IsNullOrEmpty(targetCategory)
-                    ? allSleeves
-                    : allSleeves.Where(sleeve => 
-                    {
-                        int sleeveId = sleeve.Id.IntegerValue;
-                        bool matches = sleeveToCategory.ContainsKey(sleeveId) && 
-                                      sleeveToCategory[sleeveId] == targetCategory;
-                        if (!matches && sleeveToCategory.ContainsKey(sleeveId))
-                        {
-                            DebugLogger.Log($"[UniversalClusterService] Sleeve {sleeveId} belongs to '{sleeveToCategory[sleeveId]}', not '{targetCategory}' - skipping");
-                        }
-                        return matches;
-                    }).ToList();
-                
-                DebugLogger.Log($"[UniversalClusterService] Filtered to {rawSleeves.Count} sleeves" + 
-                               (string.IsNullOrEmpty(targetCategory) ? " (all categories)" : $" for category '{targetCategory}'"));
+                DebugLogger.Log($"[UniversalClusterService] Processing {rawSleeves.Count} sleeves" + 
+                               (string.IsNullOrEmpty(targetCategory) ? " (all categories)" : $" (filtering will happen during grouping)"));
 
                 // Use SectionBoxHelper to reduce to only elements visible in the active 3D section box (if UIDocument provided)
                 List<FamilyInstance> sleeves;
