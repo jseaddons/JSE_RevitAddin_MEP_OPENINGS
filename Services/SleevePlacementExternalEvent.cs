@@ -64,13 +64,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         if (placementCommand != null)
                         {
+                            // Step 1: Place individual sleeves
                             DebugLogger.Info($"[SleevePlacementExternalEvent] Placing individual sleeves for {category} ({clashZones.Count} clash zones)");
                             placementCommand.Execute(app);
                             
                             // Step 2: Immediately cluster this category's sleeves
-                            // ⚠️ NOTE: Clustering will be implemented in next phase
-                            // For now, just log that clustering would happen here
-                            DebugLogger.Info($"[SleevePlacementExternalEvent] TODO: Cluster {category} sleeves (to be implemented)");
+                            DebugLogger.Info($"[SleevePlacementExternalEvent] Clustering {category} sleeves...");
+                            var clusterCommand = new Commands.UniversalClusterCommand(category);
+                            clusterCommand.Execute(app);
+                            
+                            DebugLogger.Info($"[SleevePlacementExternalEvent] ✓ Completed placement and clustering for {category}");
                         }
                         else
                         {
