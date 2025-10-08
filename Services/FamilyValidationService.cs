@@ -70,17 +70,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             _logAction("Checking duct sleeve families...");
             
-            var wallSymbol = new FilteredElementCollector(_document)
-                .OfClass(typeof(FamilySymbol))
-                .Cast<FamilySymbol>()
-                .FirstOrDefault(sym => sym.Family.Name.Contains("OpeningOnWall")
-                    && sym.Name.Replace(" ", "").StartsWith("DS#", StringComparison.OrdinalIgnoreCase));
+            var wallSymbol = FindFamilySymbolInDocumentAndLinks(_document, sym => 
+                sym.Family.Name.Contains("OpeningOnWall") && 
+                sym.Name.Replace(" ", "").StartsWith("DS#", StringComparison.OrdinalIgnoreCase));
             
-            var slabSymbol = new FilteredElementCollector(_document)
-                .OfClass(typeof(FamilySymbol))
-                .Cast<FamilySymbol>()
-                .FirstOrDefault(sym => sym.Family.Name.Contains("OpeningOnSlab")
-                    && sym.Name.Replace(" ", "").StartsWith("DS#", StringComparison.OrdinalIgnoreCase));
+            var slabSymbol = FindFamilySymbolInDocumentAndLinks(_document, sym => 
+                sym.Family.Name.Contains("OpeningOnSlab") && 
+                sym.Name.Replace(" ", "").StartsWith("DS#", StringComparison.OrdinalIgnoreCase));
             
             bool wallFound = wallSymbol != null;
             bool slabFound = slabSymbol != null;
@@ -95,15 +91,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             _logAction("Checking pipe sleeve families...");
             
-            var wallSymbol = new FilteredElementCollector(_document)
-                .OfClass(typeof(FamilySymbol))
-                .Cast<FamilySymbol>()
-                .FirstOrDefault(sym => sym.Family.Name.Contains("PipeOpeningOnWall"));
+            var wallSymbol = FindFamilySymbolInDocumentAndLinks(_document, sym => 
+                sym.Family.Name.Contains("PipeOpeningOnWall"));
             
-            var slabSymbol = new FilteredElementCollector(_document)
-                .OfClass(typeof(FamilySymbol))
-                .Cast<FamilySymbol>()
-                .FirstOrDefault(sym => sym.Family.Name.Contains("PipeOpeningOnSlab"));
+            var slabSymbol = FindFamilySymbolInDocumentAndLinks(_document, sym => 
+                sym.Family.Name.Contains("PipeOpeningOnSlab"));
             
             bool wallFound = wallSymbol != null;
             bool slabFound = slabSymbol != null;
@@ -118,15 +110,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             _logAction("Checking cable tray sleeve families...");
             
-            var wallSymbol = new FilteredElementCollector(_document)
-                .OfClass(typeof(FamilySymbol))
-                .Cast<FamilySymbol>()
-                .FirstOrDefault(sym => string.Equals(sym.Family.Name, "CableTrayOpeningOnWall", StringComparison.OrdinalIgnoreCase));
+            var wallSymbol = FindFamilySymbolInDocumentAndLinks(_document, sym => 
+                string.Equals(sym.Family.Name, "CableTrayOpeningOnWall", StringComparison.OrdinalIgnoreCase));
             
-            var slabSymbol = new FilteredElementCollector(_document)
-                .OfClass(typeof(FamilySymbol))
-                .Cast<FamilySymbol>()
-                .FirstOrDefault(sym => string.Equals(sym.Family.Name, "CableTrayOpeningOnSlab", StringComparison.OrdinalIgnoreCase));
+            var slabSymbol = FindFamilySymbolInDocumentAndLinks(_document, sym => 
+                string.Equals(sym.Family.Name, "CableTrayOpeningOnSlab", StringComparison.OrdinalIgnoreCase));
             
             bool wallFound = wallSymbol != null;
             bool slabFound = slabSymbol != null;
@@ -141,6 +129,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             _logAction("Checking fire damper families within Duct Accessories category...");
             
+            // Check active document first
             var fireDamperSymbol = new FilteredElementCollector(_document)
                 .OfCategory(BuiltInCategory.OST_DuctAccessory) // Restrict to Duct Accessories category
                 .OfClass(typeof(FamilySymbol))
@@ -151,8 +140,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                       sym.Name.Contains("MSFD", StringComparison.OrdinalIgnoreCase));
             
             bool found = fireDamperSymbol != null;
+            string searchLocation = "active document";
             
-            _logAction($"Fire damper symbol found: {found} (ID: {fireDamperSymbol?.Id.IntegerValue ?? 0})");
+            // If not found in active document, check linked documents
+            if (!found)
+            {
+                _logAction("Fire damper families not found in active document, checking linked documents...");
+                
+                var linkedDocuments = new FilteredElementCollector(_document)
+                    .OfClass(typeof(RevitLinkInstance))
+                    .Cast<RevitLinkInstance>()
+                    .Where(link => link.IsValidObject)
+                    .ToList();
+                
+                foreach (var linkInstance in linkedDocuments)
+                {
+                    try
+                    {
+                        var linkDoc = linkInstance.GetLinkDocument();
+                        if (linkDoc != null)
+                        {
+                            var linkedFireDamperSymbol = new FilteredElementCollector(linkDoc)
+                                .OfCategory(BuiltInCategory.OST_DuctAccessory)
+                                .OfClass(typeof(FamilySymbol))
+                                .Cast<FamilySymbol>()
+                                .FirstOrDefault(sym => sym.Family.Name.Contains("Standard", StringComparison.OrdinalIgnoreCase) || 
+                                                      sym.Family.Name.Contains("MSFD", StringComparison.OrdinalIgnoreCase) ||
+                                                      sym.Name.Contains("Standard", StringComparison.OrdinalIgnoreCase) ||
+                                                      sym.Name.Contains("MSFD", StringComparison.OrdinalIgnoreCase));
+                            
+                            if (linkedFireDamperSymbol != null)
+                            {
+                                fireDamperSymbol = linkedFireDamperSymbol;
+                                found = true;
+                                searchLocation = $"linked document: {linkInstance.Name}";
+                                break;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logAction($"Error checking linked document {linkInstance.Name}: {ex.Message}");
+                    }
+                }
+            }
+            
+            _logAction($"Fire damper symbol found: {found} (ID: {fireDamperSymbol?.Id.IntegerValue ?? 0}) in {searchLocation}");
             if (found)
             {
                 _logAction($"Found fire damper family: {fireDamperSymbol.Family.Name} - {fireDamperSymbol.Name}");
@@ -160,10 +193,60 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             else
             {
-                _logAction("No fire damper families found in Duct Accessories category containing 'Standard' or 'MSFD'");
+                _logAction("No fire damper families found in Duct Accessories category containing 'Standard' or 'MSFD' in active or linked documents");
             }
             
             return found;
+        }
+
+        /// <summary>
+        /// Helper method to search for family symbols in both active document and linked documents
+        /// </summary>
+        private FamilySymbol FindFamilySymbolInDocumentAndLinks(Document document, Func<FamilySymbol, bool> predicate)
+        {
+            // Check active document first
+            var symbol = new FilteredElementCollector(document)
+                .OfClass(typeof(FamilySymbol))
+                .Cast<FamilySymbol>()
+                .FirstOrDefault(predicate);
+            
+            if (symbol != null)
+            {
+                return symbol;
+            }
+            
+            // If not found in active document, check linked documents
+            var linkedDocuments = new FilteredElementCollector(document)
+                .OfClass(typeof(RevitLinkInstance))
+                .Cast<RevitLinkInstance>()
+                .Where(link => link.IsValidObject)
+                .ToList();
+            
+            foreach (var linkInstance in linkedDocuments)
+            {
+                try
+                {
+                    var linkDoc = linkInstance.GetLinkDocument();
+                    if (linkDoc != null)
+                    {
+                        var linkedSymbol = new FilteredElementCollector(linkDoc)
+                            .OfClass(typeof(FamilySymbol))
+                            .Cast<FamilySymbol>()
+                            .FirstOrDefault(predicate);
+                        
+                        if (linkedSymbol != null)
+                        {
+                            return linkedSymbol;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logAction($"Error checking linked document {linkInstance.Name}: {ex.Message}");
+                }
+            }
+            
+            return null;
         }
 
         private void ShowMissingFamiliesDialog(List<string> missingFamilies)

@@ -31,6 +31,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         }
         
         /// <summary>
+        /// The MEP element unique ID for robust tracking across sessions
+        /// Pre-calculated during refresh to avoid linked file access during placement
+        /// </summary>
+        public string MepElementUniqueId { get; set; } = string.Empty;
+        
+        /// <summary>
         /// The structural element involved in the clash
         /// </summary>
         [XmlIgnore]
@@ -120,6 +126,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public bool IsClusterResolved { get; set; } = false;
         
         /// <summary>
+        /// Whether this clash zone is part of a cluster (used by clustering algorithm)
+        /// </summary>
+        public bool IsClustered { get; set; } = false;
+        
+        /// <summary>
         /// The individual sleeve element ID if resolved
         /// </summary>
         [XmlIgnore]
@@ -130,6 +141,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// </summary>
         [XmlIgnore]
         public ElementId? ClusterSleeveId { get; set; }
+        
+        /// <summary>
+        /// The placed sleeve instance ID (integer value for serialization and tracking)
+        /// </summary>
+        public int SleeveInstanceId { get; set; } = -1;
+        
+        /// <summary>
+        /// The family name of the placed sleeve (e.g., "RectangularOpeningOnWall")
+        /// </summary>
+        public string SleeveFamilyName { get; set; } = string.Empty;
         
         /// <summary>
         /// When this clash zone was first detected
@@ -175,6 +196,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public string InsulationType { get; set; } = "Normal";
         
         /// <summary>
+        /// The formatted size of the MEP element (e.g., "600x300", "Ø200")
+        /// Pre-calculated during refresh to avoid linked file access during placement
+        /// </summary>
+        public string MepElementFormattedSize { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// The system abbreviation of the MEP element (e.g., "SA", "RA", "EX")
+        /// Pre-calculated during refresh to avoid linked file access during placement
+        /// </summary>
+        public string MepElementSystemAbbreviation { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// For fire dampers: connector side direction ("Left", "Right", "Top", "Bottom")
+        /// Used to determine offset direction for MSFD dampers
+        /// </summary>
+        public string DamperConnectorSide { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// For fire dampers: whether this is an MSFD (multi-smoke fire damper) type
+        /// MSFD dampers require offset placement toward connector side
+        /// </summary>
+        public bool IsMSFDDamper { get; set; } = false;
+        
+        /// <summary>
         /// The document path where this clash was detected
         /// </summary>
         public string DocumentPath { get; set; } = string.Empty;
@@ -193,6 +238,57 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// The thickness of the structural element (for depth calculation)
         /// </summary>
         public double StructuralElementThickness { get; set; } = 0.0;
+        
+        /// <summary>
+        /// Pre-calculated structural element normal/direction for orientation calculation
+        /// For walls: wall normal vector
+        /// For floors: not needed (use MEP orientation)
+        /// For framing: framing direction vector
+        /// </summary>
+        [XmlIgnore]
+        public XYZ StructuralElementNormal { get; set; }
+        
+        /// <summary>
+        /// XML serializable structural element normal X coordinate
+        /// </summary>
+        public double StructuralElementNormalX
+        {
+            get => StructuralElementNormal?.X ?? 0.0;
+            set { 
+                if (StructuralElementNormal == null) 
+                    StructuralElementNormal = new XYZ(value, 0, 0); 
+                else 
+                    StructuralElementNormal = new XYZ(value, StructuralElementNormal.Y, StructuralElementNormal.Z); 
+            }
+        }
+        
+        /// <summary>
+        /// XML serializable structural element normal Y coordinate
+        /// </summary>
+        public double StructuralElementNormalY
+        {
+            get => StructuralElementNormal?.Y ?? 0.0;
+            set { 
+                if (StructuralElementNormal == null) 
+                    StructuralElementNormal = new XYZ(0, value, 0); 
+                else 
+                    StructuralElementNormal = new XYZ(StructuralElementNormal.X, value, StructuralElementNormal.Z); 
+            }
+        }
+        
+        /// <summary>
+        /// XML serializable structural element normal Z coordinate
+        /// </summary>
+        public double StructuralElementNormalZ
+        {
+            get => StructuralElementNormal?.Z ?? 0.0;
+            set { 
+                if (StructuralElementNormal == null) 
+                    StructuralElementNormal = new XYZ(0, 0, value); 
+                else 
+                    StructuralElementNormal = new XYZ(StructuralElementNormal.X, StructuralElementNormal.Y, value); 
+            }
+        }
         
         // NEW: Pre-calculated placement data (calculated during refresh, used during placement)
         

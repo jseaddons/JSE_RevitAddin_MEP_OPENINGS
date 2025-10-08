@@ -394,6 +394,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
+        /// Resets all resolved flags to allow re-placement of sleeves
+        /// This is useful when user wants to place sleeves again after refresh
+        /// </summary>
+        public void ResetAllResolvedFlags()
+        {
+            int resetCount = 0;
+            foreach (var clashZone in _clashZoneStorage.ClashZones)
+            {
+                if (clashZone.IsResolved || clashZone.IsClusterResolved)
+                {
+                    clashZone.IsResolved = false;
+                    clashZone.IsClusterResolved = false;
+                    clashZone.ResolvedSleeveId = null;
+                    clashZone.ClusterSleeveId = null;
+                    clashZone.SleeveInstanceId = -1;
+                    clashZone.SleeveFamilyName = string.Empty;
+                    clashZone.LastUpdated = DateTime.Now;
+                    resetCount++;
+                }
+            }
+            
+            if (resetCount > 0)
+            {
+                _clashZoneStorage.LastUpdated = DateTime.Now;
+                _log($"Reset resolved flags for {resetCount} clash zones to allow re-placement");
+            }
+            else
+            {
+                _log("No resolved clash zones found to reset");
+            }
+        }
+        
+        /// <summary>
         /// Gets statistics about clash zones
         /// </summary>
         public (int total, int resolved, int unresolved, int newZones) GetClashZoneStatistics()
@@ -844,8 +877,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         private ClashZone CreateClashZone(Element mepElement, Element structuralElement, XYZ intersectionPoint, BoundingBoxXYZ boundingBox, Document document, Dictionary<string, double> clearanceSettings = null)
         {
-            var mepSize = GetMepElementSize(mepElement);
-            
             // IMPORTANT: The intersection point is already at the wall center (mid-plane)
             // The MepIntersectionService finds intersections with wall faces and CreateBoundingBox()
             // averages entry/exit points, giving us the wall center automatically.
@@ -862,7 +893,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var (mepWidth, mepHeight) = GetMepElementDimensions(mepElement);
             var mepOrientation = GetMepElementOrientation(mepElement);
             
-            // Store raw MEP dimensions (clearance will be applied by DuctSleevePlacerService)
+            // Store raw MEP dimensions (clearance will be applied by placement service)
             var finalWidth = mepWidth;
             var finalHeight = mepHeight;
             
@@ -887,13 +918,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // DO NOT REMOVE: This determines which clearance value to use (normal vs insulated)
             var insulationType = GetInsulationType(mepElement);
             
+            // Pre-calculate formatted size and system abbreviation to eliminate linked file access during placement
+            var formattedSize = FormatMepElementSize(mepElement, mepWidth, mepHeight, ductShape);
+            var systemAbbreviation = GetMepSystemAbbreviation(mepElement);
+            
+            // For fire dampers: detect MSFD type and connector side
+            var (isMSFD, connectorSide) = GetDamperConnectorInfo(mepElement, mepCategory);
+            
             var clashZone = new ClashZone
             {
                 MepElementId = mepElement.Id,
                 StructuralElementId = structuralElement.Id,
                 IntersectionPoint = intersectionPoint,
                 ClashBoundingBox = boundingBox,
-                MepElementSize = mepSize,
+                MepElementSize = 0.0, // Legacy field, not used
                 RequiredClearance = 0.0, // Clearance will be calculated during placement
                 MepElementGeometryHash = CalculateElementGeometryHash(mepElement),
                 StructuralElementGeometryHash = CalculateElementGeometryHash(structuralElement),
@@ -904,6 +942,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 StructuralElementDocumentTitle = structuralElement.Document.Title,
                 StructuralElementType = structuralElementType,
                 StructuralElementThickness = GetElementThickness(structuralElement),
+                StructuralElementNormal = GetStructuralElementNormal(structuralElement), // Pre-calculate normal/direction for orientation
                 
                 // NEW: Pre-calculated placement data (calculated during refresh, used during placement)
                 SleevePlacementPoint = intersectionPoint, // Intersection point is already at wall center
@@ -913,6 +952,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 PipeOpeningType = pipeOpeningType,
                 MepElementLevelName = levelName,
                 MepElementLevelElevation = levelElevation,
+                MepElementUniqueId = mepElement?.UniqueId ?? string.Empty, // Pre-calculated unique ID for robust tracking
+                MepElementFormattedSize = formattedSize, // Pre-calculated formatted size (e.g., "600x300", "Ø200")
+                MepElementSystemAbbreviation = systemAbbreviation, // Pre-calculated system abbreviation (e.g., "SA", "RA")
+                DamperConnectorSide = connectorSide, // Pre-calculated connector side for MSFD dampers ("Left", "Right", "Top", "Bottom")
+                IsMSFDDamper = isMSFD, // Pre-calculated MSFD flag for offset calculation during placement
                 IsResolved = hasExistingSleeve,
                 
                 DetectedAt = DateTime.Now,
@@ -1128,6 +1172,160 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
+        /// Format MEP element size as string (e.g., "600x300", "Ø200")
+        /// </summary>
+        private string FormatMepElementSize(Element mepElement, double width, double height, string shape)
+        {
+            try
+            {
+                if (shape == "Round" || shape == "Circular")
+                {
+                    // Convert from feet to mm and format as "Ø200"
+                    double diameterMm = UnitUtils.ConvertFromInternalUnits(width, UnitTypeId.Millimeters);
+                    return $"Ø{Math.Round(diameterMm, 0)}";
+                }
+                else
+                {
+                    // Convert from feet to mm and format as "600x300"
+                    double widthMm = UnitUtils.ConvertFromInternalUnits(width, UnitTypeId.Millimeters);
+                    double heightMm = UnitUtils.ConvertFromInternalUnits(height, UnitTypeId.Millimeters);
+                    return $"{Math.Round(widthMm, 0)}x{Math.Round(heightMm, 0)}";
+                }
+            }
+            catch
+            {
+                return "Unknown";
+            }
+        }
+        
+        /// <summary>
+        /// Get MEP system abbreviation (e.g., "SA", "RA", "EX")
+        /// </summary>
+        private string GetMepSystemAbbreviation(Element mepElement)
+        {
+            try
+            {
+                // Try to get system abbreviation parameter
+                var abbrevParam = mepElement.LookupParameter("System Abbreviation");
+                if (abbrevParam != null && abbrevParam.StorageType == StorageType.String)
+                {
+                    return abbrevParam.AsString() ?? string.Empty;
+                }
+                
+                // Fallback: try to get system name and abbreviate it
+                var systemNameParam = mepElement.LookupParameter("System Name");
+                if (systemNameParam != null && systemNameParam.StorageType == StorageType.String)
+                {
+                    var systemName = systemNameParam.AsString();
+                    if (!string.IsNullOrEmpty(systemName))
+                    {
+                        // Take first 2-3 characters as abbreviation
+                        return systemName.Length > 3 ? systemName.Substring(0, 3).ToUpper() : systemName.ToUpper();
+                    }
+                }
+                
+                return string.Empty;
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+        
+        /// <summary>
+        /// Get damper connector info (MSFD type and connector side)
+        /// Returns (isMSFD, connectorSide) where connectorSide is "Left", "Right", "Top", "Bottom", or empty string
+        /// </summary>
+        private (bool isMSFD, string connectorSide) GetDamperConnectorInfo(Element mepElement, string mepCategory)
+        {
+            try
+            {
+                // Only process duct accessories (dampers)
+                if (mepCategory != "Duct Accessories")
+                {
+                    return (false, string.Empty);
+                }
+                
+                var damper = mepElement as FamilyInstance;
+                if (damper == null)
+                {
+                    return (false, string.Empty);
+                }
+                
+                // Check if MSFD type by checking family type name
+                string familyTypeName = damper.Symbol?.Name ?? "";
+                bool isMSFD = familyTypeName.Trim().ToUpperInvariant().Contains("MSFD");
+                
+                // Get connector side using FireDamperSleevePlacerService logic
+                string connectorSide = string.Empty;
+                if (isMSFD)
+                {
+                    connectorSide = FireDamperSleevePlacerService.GetConnectorSideWorld(damper, out _);
+                    _log($"[DEBUG] MSFD Damper {damper.Id}: Connector side = {connectorSide}");
+                }
+                
+                return (isMSFD, connectorSide);
+            }
+            catch (Exception ex)
+            {
+                _log($"[DEBUG] Error getting damper connector info: {ex.Message}");
+                return (false, string.Empty);
+            }
+        }
+        
+        /// <summary>
+        /// Get structural element normal/direction vector for orientation calculation
+        /// For walls: returns wall normal (perpendicular to wall direction)
+        /// For floors: returns null (use MEP orientation instead)
+        /// For framing: returns framing direction
+        /// </summary>
+        private XYZ GetStructuralElementNormal(Element element)
+        {
+            try
+            {
+                if (element is Wall wall)
+                {
+                    // Get wall normal (perpendicular to wall direction)
+                    var locationCurve = wall.Location as LocationCurve;
+                    if (locationCurve != null)
+                    {
+                        var curve = locationCurve.Curve as Line;
+                        if (curve != null)
+                        {
+                            var wallDirection = curve.Direction;
+                            var wallNormal = new XYZ(-wallDirection.Y, wallDirection.X, 0).Normalize();
+                            return wallNormal;
+                        }
+                    }
+                }
+                else if (element is Floor)
+                {
+                    // For floors, we don't need the normal - we use MEP orientation instead
+                    return null;
+                }
+                else if (element is FamilyInstance famInst && 
+                         famInst.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+                {
+                    // For framing, get direction vector
+                    var locationCurve = famInst.Location as LocationCurve;
+                    if (locationCurve != null)
+                    {
+                        var curve = locationCurve.Curve as Line;
+                        if (curve != null)
+                        {
+                            return curve.Direction;
+                        }
+                    }
+                }
+                return null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+        
+        /// <summary>
         /// Get element normal vector for walls, floors, and structural framing
         /// </summary>
         private XYZ GetElementNormal(Element element)
@@ -1198,6 +1396,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     var width = conduit.get_Parameter(BuiltInParameter.RBS_CABLETRAY_WIDTH_PARAM)?.AsDouble() ?? 0;
                     var height = conduit.get_Parameter(BuiltInParameter.RBS_CABLETRAY_HEIGHT_PARAM)?.AsDouble() ?? 0;
+                    return (width, height);
+                }
+                else if (mepElement is FamilyInstance famInst)
+                {
+                    // Handle duct accessories (dampers), cable trays, etc.
+                    // Try damper-specific parameters first
+                    var widthParam = famInst.LookupParameter("Damper Width") ?? 
+                                    famInst.LookupParameter("Width") ?? 
+                                    famInst.LookupParameter("width");
+                    var heightParam = famInst.LookupParameter("Damper Height") ?? 
+                                     famInst.LookupParameter("Height") ?? 
+                                     famInst.LookupParameter("height");
+                    
+                    double width = widthParam?.AsDouble() ?? 0.1;
+                    double height = heightParam?.AsDouble() ?? 0.1;
+                    
                     return (width, height);
                 }
                 

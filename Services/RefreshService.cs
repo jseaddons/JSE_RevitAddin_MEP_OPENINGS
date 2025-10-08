@@ -297,22 +297,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Try to load actual filters first
             foreach (var filterName in selectedFilterItems)
             {
+                DebugLogger.Info($"[CLASH_DEBUG] Attempting to load filter: '{filterName}'");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Attempting to load filter: '{filterName}'\n");
+                
                 var filter = _filterManagementService.LoadFilterAuto(filterName);
+                
                 if (filter != null)
                 {
+                    DebugLogger.Info($"[CLASH_DEBUG] ✓ Successfully loaded filter: '{filterName}'");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ✓ Successfully loaded filter: '{filterName}'\n");
                     filtersToProcess.Add(filter);
+                }
+                else
+                {
+                    DebugLogger.Warning($"[CLASH_DEBUG] ✗ Failed to load filter: '{filterName}' - file may not exist or deserialization failed");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ✗ Failed to load filter: '{filterName}' - file may not exist or deserialization failed\n");
                 }
             }
             
-            // CRITICAL FIX: If no filters found, create a default filter for saving results
+            // CRITICAL FIX: If no filters found, create a filter using the selected filter name from UI
             if (filtersToProcess.Count == 0)
             {
-                DebugLogger.Info("[CLASH_DEBUG] No existing filters found - creating default filter for saving results");
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] No existing filters found - creating default filter for saving results\n");
+                // Use the first selected filter name from UI (e.g., "Ventilation"), not hardcoded "Default_Refresh"
+                string selectedFilterName = selectedFilterItems.FirstOrDefault() ?? "Default_Refresh";
+                DebugLogger.Info($"[CLASH_DEBUG] No existing filter XML found - creating new filter with name '{selectedFilterName}' for saving results");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] No existing filter XML found - creating new filter with name '{selectedFilterName}' for saving results\n");
                 
                 var defaultFilter = new Models.OpeningFilter
                 {
-                    Name = "Default_Refresh",
+                    Name = selectedFilterName,
                     Category = Models.MepCategory.Ducts, // Use enum instead of string
                     OpeningType = Models.OpeningType.RectangularSleeves, // Use enum instead of string
                     IsEnabled = true,

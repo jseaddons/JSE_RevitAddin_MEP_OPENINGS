@@ -34,7 +34,9 @@ public class ClashZone
     
     // NEW: Only essential pre-calculated data
     public XYZ SleevePlacementPoint { get; set; }        // Final placement point
-    public bool IsResolved { get; set; }                 // Resolution status
+    public bool IsResolved { get; set; }                 // Resolution status (reset before placement)
+    public bool IsClustered { get; set; }                // Cluster status (reset before placement)
+    public bool IsClusterResolved { get; set; }          // Cluster resolution status (reset before placement)
     public string PipeOpeningType { get; set; }          // "Circular" or "Rectangular" (empty for non-pipes)
     
     // NEW: Pre-calculated MEP element data (no linked file access needed during placement)
@@ -121,6 +123,22 @@ clashZone.IsResolved = hasExistingSleeve;               // Store resolution stat
 During sleeve placement:
 
 ```csharp
+// ⚠️ CRITICAL: Reset all resolved flags to allow re-placement
+// This ensures sleeves can be placed again after deletion
+foreach (var clashZone in clashZones)
+{
+    if (clashZone.IsResolved || clashZone.IsClustered)
+    {
+        clashZone.IsResolved = false;
+        clashZone.IsClustered = false;
+        clashZone.IsClusterResolved = false;
+        clashZone.ResolvedSleeveId = null;
+        clashZone.ClusterSleeveId = null;
+        clashZone.SleeveInstanceId = -1;
+        clashZone.SleeveFamilyName = string.Empty;
+    }
+}
+
 // Filter only unresolved clash zones
 var unresolvedClashZones = clashZones.Where(cz => !cz.IsResolved).ToList();
 
@@ -1608,8 +1626,62 @@ XML → Read Raw Sizes → Calculate Clearance → Apply to Final Dimensions
     [Raw: 600x300mm] → [Clearance: 50mm] → [Final: 700x400mm]
 ```
 
+## Critical Fix: Resolved Flags Reset
+
+### Problem
+When sleeves were deleted and users attempted to place them again:
+- 4 out of 22 clash zones were skipped with message "already resolved or clustered"
+- The `IsResolved`, `IsClustered`, and `IsClusterResolved` flags persisted from previous placements
+- Even though XML files had these flags as `false`, they were set to `true` in memory during placement
+- Subsequent placement attempts in the same session would skip these clash zones
+
+### Root Cause
+1. Clash zones are loaded from XML at the start of placement
+2. During placement, flags are set: `clashZone.IsResolved = true`
+3. These flags persist in memory even after sleeves are deleted
+4. Next placement attempt loads the same clash zones but checks in-memory flags
+5. The check `if (clashZone.IsResolved || clashZone.IsClustered)` causes skipping
+
+### Solution
+**Reset all resolved flags at the beginning of `PlaceAllSleevesInTransaction`:**
+
+```csharp
+// ⚠️ CRITICAL: Reset all resolved flags to allow re-placement
+// This ensures sleeves can be placed again after deletion
+foreach (var clashZone in clashZones)
+{
+    if (clashZone.IsResolved || clashZone.IsClustered)
+    {
+        DebugLogger.Info($"[UniversalSleevePlacer] Resetting resolved flags for ClashZone {clashZone.Id}");
+        clashZone.IsResolved = false;
+        clashZone.IsClustered = false;
+        clashZone.IsClusterResolved = false;
+        clashZone.ResolvedSleeveId = null;
+        clashZone.ClusterSleeveId = null;
+        clashZone.SleeveInstanceId = -1;
+        clashZone.SleeveFamilyName = string.Empty;
+    }
+}
+```
+
+### Why This Works
+- **Operates on actual clash zones**: Resets flags on the clash zones being processed, not a separate instance
+- **Allows re-placement**: Users can delete sleeves and place them again without refresh
+- **Preserves clustering**: Cluster metadata is preserved in separate files and reloaded when needed
+- **No side effects**: Only affects the current placement session
+
+### Key Learning
+The initial approach of creating a new `ClashZoneService` instance and calling `ResetAllResolvedFlags()` was incorrect because:
+- It operated on a different set of clash zones (ClashZoneService's internal storage)
+- The clash zones being processed for placement were loaded directly from XML
+- These are two separate instances in memory
+
+The correct approach is to reset flags on the **actual clash zones** being passed to the placement method.
+
 ## Conclusion
 
 This optimized approach eliminates the complex and expensive duplicate suppressor system while providing better performance, reliability, and consistency. By calculating placement data once during refresh and reusing it throughout the process, we achieve significant cost savings and improved user experience.
 
 The intelligent clearance calculation system ensures that sleeve dimensions are appropriate for the specific MEP element size and type, while maintaining the simplicity and efficiency of category-specific clearance management.
+
+The resolved flags reset fix ensures that users can delete sleeves and place them again without encountering "already resolved" errors, providing a smooth and reliable workflow.

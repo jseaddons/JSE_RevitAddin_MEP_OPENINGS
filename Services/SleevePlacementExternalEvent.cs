@@ -239,29 +239,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
+                // ✅ ALL categories now use UniversalSleevePlacementCommand
+                // with category-specific strategies for the 10% differences
                 switch (category.ToLower())
                 {
                     case "ducts":
                     case "duct":
-                        return new DuctSleevePlacementCommand(_document, clashZones);
+                        DebugLogger.Info($"[SleevePlacementExternalEvent] Creating UniversalSleevePlacementCommand for Ducts with {clashZones.Count} clash zones");
+                        return new UniversalSleevePlacementCommand(_document, clashZones, "Ducts");
                     
                     case "pipes":
                     case "pipe":
-                        // TODO: Create PipeSleevePlacementCommand when available
-                        DebugLogger.Warning($"[SleevePlacementExternalEvent] PipeSleevePlacementCommand not yet implemented for {clashZones.Count} clash zones");
-                        return null;
+                        DebugLogger.Info($"[SleevePlacementExternalEvent] Creating UniversalSleevePlacementCommand for Pipes with {clashZones.Count} clash zones");
+                        return new UniversalSleevePlacementCommand(_document, clashZones, "Pipes");
                     
                     case "cable trays":
                     case "cable tray":
-                        // TODO: Create CableTraySleevePlacementCommand when available
-                        DebugLogger.Warning($"[SleevePlacementExternalEvent] CableTraySleevePlacementCommand not yet implemented for {clashZones.Count} clash zones");
-                        return null;
+                        DebugLogger.Info($"[SleevePlacementExternalEvent] Creating UniversalSleevePlacementCommand for Cable Trays with {clashZones.Count} clash zones");
+                        return new UniversalSleevePlacementCommand(_document, clashZones, "Cable Trays");
                     
                     case "duct accessories":
                     case "duct accessory":
-                        // TODO: Create DuctAccessorySleevePlacementCommand when available
-                        DebugLogger.Warning($"[SleevePlacementExternalEvent] DuctAccessorySleevePlacementCommand not yet implemented for {clashZones.Count} clash zones");
-                        return null;
+                        DebugLogger.Info($"[SleevePlacementExternalEvent] Creating UniversalSleevePlacementCommand for Duct Accessories with {clashZones.Count} clash zones");
+                        return new UniversalSleevePlacementCommand(_document, clashZones, "Duct Accessories");
                     
                     default:
                         DebugLogger.Warning($"[SleevePlacementExternalEvent] Unknown category: {category}");
