@@ -3218,6 +3218,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         DebugLogger.Warning($"[ReadClearanceSettingsFromUI] Round Insulated textbox not found or parse failed");
                     }
                 }
+                
+                // Read damper clearances
+                if (_damperPanel != null)
+                {
+                    var damperTextBoxes = _damperPanel.Controls.OfType<WinForms.TextBox>();
+                    
+                    var damperMepTb = damperTextBoxes.FirstOrDefault(tb => tb.Tag?.ToString() == "ductaccessories_mep_normal");
+                    if (damperMepTb != null && double.TryParse(damperMepTb.Text, out double damperMepVal))
+                    {
+                        settings.DuctAccessoryMepNormal = damperMepVal;
+                        DebugLogger.Info($"[ReadClearanceSettingsFromUI] Damper MEP: {damperMepVal}mm");
+                    }
+                    
+                    var damperOtherTb = damperTextBoxes.FirstOrDefault(tb => tb.Tag?.ToString() == "ductaccessories_other_normal");
+                    if (damperOtherTb != null && double.TryParse(damperOtherTb.Text, out double damperOtherVal))
+                    {
+                        settings.DuctAccessoryOtherNormal = damperOtherVal;
+                        DebugLogger.Info($"[ReadClearanceSettingsFromUI] Damper Other: {damperOtherVal}mm");
+                    }
+                }
+                
+                // Read cable tray clearances
+                if (_cableTrayPanel != null)
+                {
+                    var cableTrayTextBoxes = _cableTrayPanel.Controls.OfType<WinForms.TextBox>();
+                    
+                    var cableTrayTopTb = cableTrayTextBoxes.FirstOrDefault(tb => tb.Tag?.ToString() == "cabletray_top_clearance");
+                    if (cableTrayTopTb != null && double.TryParse(cableTrayTopTb.Text, out double cableTrayTopVal))
+                    {
+                        settings.CableTrayTop = cableTrayTopVal;
+                        DebugLogger.Info($"[ReadClearanceSettingsFromUI] Cable Tray Top: {cableTrayTopVal}mm");
+                    }
+                    
+                    var cableTrayOtherTb = cableTrayTextBoxes.FirstOrDefault(tb => tb.Tag?.ToString() == "cabletray_other_clearance");
+                    if (cableTrayOtherTb != null && double.TryParse(cableTrayOtherTb.Text, out double cableTrayOtherVal))
+                    {
+                        settings.CableTrayOther = cableTrayOtherVal;
+                        DebugLogger.Info($"[ReadClearanceSettingsFromUI] Cable Tray Other: {cableTrayOtherVal}mm");
+                    }
+                }
+                
+                // Read pipe clearances (if you have a pipe panel - for now use duct values as fallback)
+                settings.PipesNormal = settings.RectangularNormal; // Default to duct normal
+                settings.PipesInsulated = settings.RectangularInsulated; // Default to duct insulated
             }
             catch (Exception ex)
             {

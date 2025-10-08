@@ -71,10 +71,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                 double trayWidth = clashZone.MepElementWidth;
                 double trayHeight = clashZone.MepElementHeight;
                 
-                // Cable trays: top clearance is typically larger, other 3 sides smaller
-                double baseClearance = UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters); // 50mm default
-                double topClearance = baseClearance * 2.0; // Top side gets 2x clearance (100mm default)
-                double otherClearance = baseClearance; // Other 3 sides get base clearance (50mm default)
+                // Get clearance from OpeningConditions (loaded from UI via CONDITIONS XML)
+                double topClearanceMm = conditions.ClearanceSettings.CableTrayTop;
+                double otherClearanceMm = conditions.ClearanceSettings.CableTrayOther;
+                
+                double topClearance = UnitUtils.ConvertToInternalUnits(topClearanceMm, UnitTypeId.Millimeters);
+                double otherClearance = UnitUtils.ConvertToInternalUnits(otherClearanceMm, UnitTypeId.Millimeters);
+                
+                DebugLogger.Info($"[CableTrayStrategy] Clearances from conditions: Top={topClearanceMm}mm, Other={otherClearanceMm}mm");
                 
                 // Calculate offset upward (always toward top)
                 double offsetAmount = (topClearance - otherClearance) / 2.0;

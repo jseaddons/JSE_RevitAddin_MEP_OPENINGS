@@ -113,32 +113,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 return (0, 0);
             }
             
-            // ⚠️ CRITICAL: Reset resolved flags on ALL clash zones being processed
-            // This allows re-placement after sleeves are deleted
-            int resetCount = 0;
-            foreach (var clashZone in clashZones)
-            {
-                bool wasResolved = clashZone.IsResolved;
-                bool wasClustered = clashZone.IsClustered;
-                bool wasClusterResolved = clashZone.IsClusterResolved;
-                
-                // ALWAYS reset flags, regardless of current state
-                clashZone.IsResolved = false;
-                clashZone.IsClustered = false;
-                clashZone.IsClusterResolved = false;
-                clashZone.ResolvedSleeveId = null;
-                clashZone.ClusterSleeveId = null;
-                clashZone.SleeveInstanceId = -1;
-                clashZone.SleeveFamilyName = string.Empty;
-                
-                if (wasResolved || wasClustered || wasClusterResolved)
-                {
-                    DebugLogger.Info($"[UniversalSleevePlacer] Reset flags for ClashZone {clashZone.Id} (was: Resolved={wasResolved}, Clustered={wasClustered}, ClusterResolved={wasClusterResolved})");
-                    resetCount++;
-                }
-            }
-            
-            DebugLogger.Info($"[UniversalSleevePlacer] Processing {clashZones.Count} clash zones (zero linked file access), reset {resetCount} resolved/clustered flags");
+            // ⚠️ DON'T reset resolved flags during placement!
+            // Flags are managed by refresh - it checks if sleeves exist and resets flags if deleted
+            // If we reset here, we'll place duplicate sleeves for existing ones
+            DebugLogger.Info($"[UniversalSleevePlacer] Processing {clashZones.Count} clash zones (zero linked file access), trusting IsResolved flags from refresh");
             
             try
             {
@@ -369,6 +347,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
+                // ⚠️ Apply rounding to nearest 5mm if setting is enabled
+                var (roundedWidth, roundedHeight) = OpeningSettingsHelper.RoundDimensionsToNearest5mm(finalWidth, finalHeight);
+                var roundedDiameter = OpeningSettingsHelper.RoundDiameterToNearest5mm(finalDiameter);
+                
                 // Set size parameters
                 if (mepSize.Shape == "Round" || mepSize.Shape == "Circular")
                 {
@@ -376,20 +358,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var diamParam = sleeveInstance.LookupParameter("Diameter");
                     if (diamParam != null && !diamParam.IsReadOnly)
                     {
-                        diamParam.Set(finalDiameter);
+                        diamParam.Set(roundedDiameter);
                     }
                     else
                     {
                         // Fallback to Width/Height for circular
-                        sleeveInstance.LookupParameter("Width")?.Set(finalDiameter);
-                        sleeveInstance.LookupParameter("Height")?.Set(finalDiameter);
+                        sleeveInstance.LookupParameter("Width")?.Set(roundedDiameter);
+                        sleeveInstance.LookupParameter("Height")?.Set(roundedDiameter);
                     }
                 }
                 else
                 {
                     // Rectangular
-                    sleeveInstance.LookupParameter("Width")?.Set(finalWidth);
-                    sleeveInstance.LookupParameter("Height")?.Set(finalHeight);
+                    sleeveInstance.LookupParameter("Width")?.Set(roundedWidth);
+                    sleeveInstance.LookupParameter("Height")?.Set(roundedHeight);
                 }
                 
                 // ⚠️ CRITICAL: Set Depth parameter to structural element thickness

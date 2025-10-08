@@ -57,6 +57,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
     /// </summary>
     public class ClearanceSettings
     {
+        // Duct clearances
         /// <summary>
         /// Clearance for rectangular ducts (normal/non-insulated)
         /// </summary>
@@ -76,6 +77,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// Clearance for round ducts (insulated)
         /// </summary>
         public double RoundInsulated { get; set; } = 50.0;
+        
+        // Pipe clearances
+        /// <summary>
+        /// Clearance for pipes (normal/non-insulated)
+        /// </summary>
+        public double PipesNormal { get; set; } = 50.0;
+        
+        /// <summary>
+        /// Clearance for pipes (insulated)
+        /// </summary>
+        public double PipesInsulated { get; set; } = 25.0;
+        
+        // Cable Tray clearances
+        /// <summary>
+        /// Clearance for cable tray top side
+        /// </summary>
+        public double CableTrayTop { get; set; } = 100.0;
+        
+        /// <summary>
+        /// Clearance for cable tray other sides (left, right, bottom)
+        /// </summary>
+        public double CableTrayOther { get; set; } = 50.0;
+        
+        // Duct Accessory (Damper) clearances
+        /// <summary>
+        /// Clearance for duct accessories MEP side (for MSFD dampers - connector side)
+        /// </summary>
+        public double DuctAccessoryMepNormal { get; set; } = 100.0;
+        
+        /// <summary>
+        /// Clearance for duct accessories other sides (for Standard and MSFD non-connector sides)
+        /// </summary>
+        public double DuctAccessoryOtherNormal { get; set; } = 50.0;
     }
     
     /// <summary>

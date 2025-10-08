@@ -98,16 +98,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                 double damperWidth = clashZone.MepElementWidth;
                 double damperHeight = clashZone.MepElementHeight;
                 
-                // Get clearance from ClearanceManager (reads from UI, same as old FireDamperPlaceCommand)
-                // We can't access the actual damper element, so use a default clearance approach
-                // The clearance values should be in the UI clearance dictionary passed through conditions
-                double baseClearance = UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters); // 50mm default
+                // Get clearance from OpeningConditions (loaded from UI via CONDITIONS XML)
+                double otherClearanceMm = conditions.ClearanceSettings.DuctAccessoryOtherNormal;
+                double mepClearanceMm = conditions.ClearanceSettings.DuctAccessoryMepNormal;
+                
+                double baseClearance = UnitUtils.ConvertToInternalUnits(otherClearanceMm, UnitTypeId.Millimeters);
+                
+                DebugLogger.Info($"[DamperStrategy] Clearances from conditions: MEP={mepClearanceMm}mm, Other={otherClearanceMm}mm");
                 
                 if (clashZone.IsMSFDDamper && !string.IsNullOrEmpty(clashZone.DamperConnectorSide))
                 {
                     // MSFD Damper: Asymmetric clearance
-                    // MEP side (connector) = 2x base clearance, other sides = base clearance
-                    double mepSideClearance = baseClearance * 2.0;
+                    double mepSideClearance = UnitUtils.ConvertToInternalUnits(mepClearanceMm, UnitTypeId.Millimeters);
                     double otherSideClearance = baseClearance;
                     
                     // Calculate offset toward connector side
