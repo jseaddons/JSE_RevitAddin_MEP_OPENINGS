@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Xml.Serialization;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
+using JSE_RevitAddin_MEP_OPENINGS.Models;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -79,14 +82,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 DebugLogger.Log($"[UniversalClusterService] Found {allSleeves.Count} total sleeves (all categories)");
                 
-                // Filter by MEP_Category parameter if targetCategory is specified
+                // ✅ CRITICAL FIX: Filter by ClashZone XML instead of sleeve parameter
+                // Load ClashZone XML files to get sleeve ID → category mapping
+                var sleeveToCategory = LoadSleeveCategoryMapping(targetCategory);
+                
                 var rawSleeves = string.IsNullOrEmpty(targetCategory)
                     ? allSleeves
                     : allSleeves.Where(sleeve => 
                     {
-                        var categoryParam = sleeve.LookupParameter("MEP_Category");
-                        string sleeveCategory = categoryParam?.AsString() ?? "";
-                        return sleeveCategory == targetCategory;
+                        int sleeveId = sleeve.Id.IntegerValue;
+                        bool matches = sleeveToCategory.ContainsKey(sleeveId) && 
+                                      sleeveToCategory[sleeveId] == targetCategory;
+                        if (!matches && sleeveToCategory.ContainsKey(sleeveId))
+                        {
+                            DebugLogger.Log($"[UniversalClusterService] Sleeve {sleeveId} belongs to '{sleeveToCategory[sleeveId]}', not '{targetCategory}' - skipping");
+                        }
+                        return matches;
                     }).ToList();
                 
                 DebugLogger.Log($"[UniversalClusterService] Filtered to {rawSleeves.Count} sleeves" + 
@@ -543,6 +554,87 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (heightParam != null && !heightParam.IsReadOnly) heightParam.Set(height);
                 if (depthParam != null && !depthParam.IsReadOnly) depthParam.Set(depth);
             }
+        }
+
+        /// <summary>
+        /// Load sleeve ID to category mapping from ClashZone XML files
+        /// </summary>
+        private Dictionary<int, string> LoadSleeveCategoryMapping(string targetCategory)
+        {
+            var mapping = new Dictionary<int, string>();
+            
+            try
+            {
+                var filtersDirectory = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                
+                if (!Directory.Exists(filtersDirectory))
+                {
+                    DebugLogger.Warning($"[UniversalClusterService] Filters directory not found: {filtersDirectory}");
+                    return mapping;
+                }
+                
+                // Load XML files for the target category (or all if null)
+                var searchPattern = string.IsNullOrEmpty(targetCategory) 
+                    ? "*.xml" 
+                    : $"*_{GetCategoryXmlSuffix(targetCategory)}.xml";
+                
+                var xmlFiles = Directory.GetFiles(filtersDirectory, searchPattern);
+                
+                DebugLogger.Log($"[UniversalClusterService] Loading sleeve mapping from {xmlFiles.Length} XML files (pattern: {searchPattern})");
+                
+                foreach (var xmlFile in xmlFiles)
+                {
+                    try
+                    {
+                        var serializer = new XmlSerializer(typeof(OpeningFilter));
+                        using (var reader = new StreamReader(xmlFile))
+                        {
+                            var filter = (OpeningFilter)serializer.Deserialize(reader);
+                            if (filter?.ClashZoneStorage?.ClashZones != null)
+                            {
+                                foreach (var clashZone in filter.ClashZoneStorage.ClashZones)
+                                {
+                                    // Map SleeveInstanceId to category
+                                    if (clashZone.SleeveInstanceId > 0)
+                                    {
+                                        mapping[clashZone.SleeveInstanceId] = clashZone.MepElementCategory;
+                                    }
+                                    
+                                    // Also map ClusterSleeveId if exists
+                                    if (clashZone.ClusterSleeveId != null && clashZone.ClusterSleeveId.IntegerValue > 0)
+                                    {
+                                        mapping[clashZone.ClusterSleeveId.IntegerValue] = clashZone.MepElementCategory;
+                                    }
+                                }
+                                
+                                DebugLogger.Log($"[UniversalClusterService] Loaded {filter.ClashZoneStorage.ClashZones.Count} clash zones from {Path.GetFileName(xmlFile)}");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLogger.Warning($"[UniversalClusterService] Error loading {Path.GetFileName(xmlFile)}: {ex.Message}");
+                    }
+                }
+                
+                DebugLogger.Log($"[UniversalClusterService] Total sleeve-to-category mappings loaded: {mapping.Count}");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[UniversalClusterService] Error loading sleeve category mapping: {ex.Message}");
+            }
+            
+            return mapping;
+        }
+        
+        /// <summary>
+        /// Get XML file suffix for category (e.g., "Ducts" → "ducts")
+        /// </summary>
+        private string GetCategoryXmlSuffix(string category)
+        {
+            return MepCategoryConstants.GetXmlSuffix(category);
         }
     }
 }

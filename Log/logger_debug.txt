@@ -927,3 +927,35 @@
 [08-10-2025 16:48:07] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
 [08-10-2025 16:48:07] Parameter dropdowns updated successfully
 [08-10-2025 16:48:07] RefreshService.ExecuteRefresh() method completed successfully
+[08-10-2025 18:12:37] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-08_18-12-37)
+[08-10-2025 18:12:37] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[08-10-2025 18:12:41] === ON_REFRESH_CLICK STARTED ===
+[08-10-2025 18:12:41] About to call RefreshService.ExecuteRefresh() method
+[08-10-2025 18:12:41] === REFRESH STARTED === Timestamp: 2025-10-08_18-12-41
+[08-10-2025 18:12:47] About to update parameter dropdowns
+[08-10-2025 18:12:48] [PARAMETER_SERVICE] Starting category-specific population for 2 categories
+[08-10-2025 18:12:48] [PARAMETER_SERVICE] Found 23 opening parameters
+[08-10-2025 18:12:49] [PARAMETER_SERVICE] Found 2 linked files
+[08-10-2025 18:12:49] [PARAMETER_SERVICE] Updating tab 'Ducts' for category 'Ducts'
+[08-10-2025 18:12:49] [PARAMETER_SERVICE] Found 90 parameters for category 'Ducts' from linked files
+[08-10-2025 18:12:51] [PARAMETER_SERVICE] Updating tab 'Duct Accessories' for category 'Duct Accessories'
+[08-10-2025 18:12:51] [PARAMETER_SERVICE] Found 109 parameters for category 'Duct Accessories' from linked files
+[08-10-2025 18:12:51] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[08-10-2025 18:12:51] Parameter dropdowns updated successfully
+[08-10-2025 18:12:51] RefreshService.ExecuteRefresh() method completed successfully
+[08-10-2025 18:17:16] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-08_18-17-16)
+[08-10-2025 18:17:16] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[08-10-2025 18:17:22] === ON_REFRESH_CLICK STARTED ===
+[08-10-2025 18:17:22] About to call RefreshService.ExecuteRefresh() method
+[08-10-2025 18:17:22] === REFRESH STARTED === Timestamp: 2025-10-08_18-17-22
+[08-10-2025 18:17:27] About to update parameter dropdowns
+[08-10-2025 18:17:28] [PARAMETER_SERVICE] Starting category-specific population for 2 categories
+[08-10-2025 18:17:28] [PARAMETER_SERVICE] Found 23 opening parameters
+[08-10-2025 18:17:29] [PARAMETER_SERVICE] Found 2 linked files
+[08-10-2025 18:17:29] [PARAMETER_SERVICE] Updating tab 'Ducts' for category 'Ducts'
+[08-10-2025 18:17:29] [PARAMETER_SERVICE] Found 90 parameters for category 'Ducts' from linked files
+[08-10-2025 18:17:30] [PARAMETER_SERVICE] Updating tab 'Duct Accessories' for category 'Duct Accessories'
+[08-10-2025 18:17:30] [PARAMETER_SERVICE] Found 109 parameters for category 'Duct Accessories' from linked files
+[08-10-2025 18:17:30] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[08-10-2025 18:17:30] Parameter dropdowns updated successfully
+[08-10-2025 18:17:30] RefreshService.ExecuteRefresh() method completed successfully

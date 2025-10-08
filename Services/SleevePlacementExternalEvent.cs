@@ -6,6 +6,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Commands;
+using static JSE_RevitAddin_MEP_OPENINGS.Models.MepCategoryConstants;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -247,33 +248,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 // ✅ ALL categories now use UniversalSleevePlacementCommand
-                // with category-specific strategies for the 10% differences
-                switch (category.ToLower())
-                {
-                    case "ducts":
-                    case "duct":
-                        DebugLogger.Info($"[SleevePlacementExternalEvent] Creating UniversalSleevePlacementCommand for Ducts with {clashZones.Count} clash zones");
-                        return new UniversalSleevePlacementCommand(_document, clashZones, "Ducts");
-                    
-                    case "pipes":
-                    case "pipe":
-                        DebugLogger.Info($"[SleevePlacementExternalEvent] Creating UniversalSleevePlacementCommand for Pipes with {clashZones.Count} clash zones");
-                        return new UniversalSleevePlacementCommand(_document, clashZones, "Pipes");
-                    
-                    case "cable trays":
-                    case "cable tray":
-                        DebugLogger.Info($"[SleevePlacementExternalEvent] Creating UniversalSleevePlacementCommand for Cable Trays with {clashZones.Count} clash zones");
-                        return new UniversalSleevePlacementCommand(_document, clashZones, "Cable Trays");
-                    
-                    case "duct accessories":
-                    case "duct accessory":
-                        DebugLogger.Info($"[SleevePlacementExternalEvent] Creating UniversalSleevePlacementCommand for Duct Accessories with {clashZones.Count} clash zones");
-                        return new UniversalSleevePlacementCommand(_document, clashZones, "Duct Accessories");
-                    
-                    default:
-                        DebugLogger.Warning($"[SleevePlacementExternalEvent] Unknown category: {category}");
-                        return null;
-                }
+                // Normalize category names to Revit API standard (prevent Duct/Ducts confusion)
+                string normalizedCategory = MepCategoryConstants.Normalize(category);
+                
+                DebugLogger.Info($"[SleevePlacementExternalEvent] Category '{category}' normalized to '{normalizedCategory}'");
+                DebugLogger.Info($"[SleevePlacementExternalEvent] Creating UniversalSleevePlacementCommand for {normalizedCategory} with {clashZones.Count} clash zones");
+                
+                return new UniversalSleevePlacementCommand(_document, clashZones, normalizedCategory);
             }
             catch (Exception ex)
             {

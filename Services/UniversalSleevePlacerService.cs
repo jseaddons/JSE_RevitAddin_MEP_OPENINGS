@@ -180,7 +180,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         else
                         {
                             // Ducts/Pipes: symmetric clearance, no offset
-                            var clearance = _strategy.GetClearance(mepSize, _conditions);
+                        var clearance = _strategy.GetClearance(mepSize, _conditions);
                             finalWidth = mepSize.Width + (2 * clearance);
                             finalHeight = mepSize.Height + (2 * clearance);
                             finalDiameter = mepSize.Diameter + (2 * clearance);
@@ -399,7 +399,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 
                 // ⚠️ ZERO LINKED FILE ACCESS - all data pre-calculated during refresh!
-                sleeveInstance.LookupParameter("MEP_Category")?.Set(clashZone.MepElementCategory);
+                var categoryParam = sleeveInstance.LookupParameter("MEP_Category");
+                if (categoryParam != null && !categoryParam.IsReadOnly)
+                {
+                    categoryParam.Set(clashZone.MepElementCategory);
+                    DebugLogger.Info($"[UniversalSleevePlacer] Set MEP_Category = '{clashZone.MepElementCategory}' on sleeve {sleeveInstance.Id}");
+                }
+                else
+                {
+                    DebugLogger.Warning($"[UniversalSleevePlacer] MEP_Category parameter not found or read-only on sleeve {sleeveInstance.Id}");
+                }
+                
                 sleeveInstance.LookupParameter("MEP_ElementId")?.Set(clashZone.MepElementId.IntegerValue);
                 sleeveInstance.LookupParameter("MEP_UniqueId")?.Set(clashZone.MepElementUniqueId);
                 sleeveInstance.LookupParameter("MEP_Size")?.Set(clashZone.MepElementFormattedSize);

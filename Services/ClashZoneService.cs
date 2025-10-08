@@ -6,6 +6,7 @@ using Autodesk.Revit.DB.Mechanical;
 using Autodesk.Revit.DB.Plumbing;
 using Autodesk.Revit.DB.Electrical;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using static JSE_RevitAddin_MEP_OPENINGS.Models.MepCategoryConstants;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -935,7 +936,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 RequiredClearance = 0.0, // Clearance will be calculated during placement
                 MepElementGeometryHash = CalculateElementGeometryHash(mepElement),
                 StructuralElementGeometryHash = CalculateElementGeometryHash(structuralElement),
-                MepElementCategory = mepCategory, // Store category for validation in placement services
+                MepElementCategory = MepCategoryConstants.Normalize(mepCategory), // Store STANDARDIZED category name
                 DuctShape = ductShape, // Store duct shape (Round/Rectangular) from family name
                 InsulationType = insulationType, // Store insulation type (Normal/Insulated) for clearance selection
                 DocumentPath = document.PathName,
