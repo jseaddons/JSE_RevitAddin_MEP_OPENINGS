@@ -6,13 +6,8 @@ using JSE_RevitAddin_MEP_OPENINGS.Services;
 namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 {
     /// <summary>
-    /// Universal cluster command wrapper - triggers RectangularSleeveClusterCommandV2 manually
-    /// 
-    /// ⚠️ WORKAROUND: Cannot construct ExternalCommandData from IExternalEventHandler
-    /// Solution: User must manually trigger cluster command from Revit ribbon
-    /// OR: Extract clustering logic to a service class (future enhancement)
-    /// 
-    /// For now: This is a placeholder that logs that clustering should happen
+    /// Universal cluster command wrapper - now uses UniversalClusterService
+    /// Can be called from any context (ICommand, ExternalEvent, etc.)
     /// </summary>
     public class UniversalClusterCommand : ICommand
     {
@@ -27,17 +22,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         {
             try
             {
-                DebugLogger.Info($"[UniversalClusterCommand] ⚠️ Clustering for {_targetCategory} - MANUAL TRIGGER REQUIRED");
-                DebugLogger.Info($"[UniversalClusterCommand] Please run 'Rectangular Cluster Command V2' from Revit ribbon to cluster {_targetCategory} sleeves");
-                DebugLogger.Info($"[UniversalClusterCommand] Automated clustering will be available in next update");
+                DebugLogger.Info($"[UniversalClusterCommand] Starting clustering for {_targetCategory}");
                 
-                // TODO: Extract clustering logic from RectangularSleeveClusterCommandV2 into a service
-                // Then call: var service = new UniversalClusterService();
-                //           service.ClusterSleeves(app.ActiveUIDocument.Document, _targetCategory);
+                var doc = app.ActiveUIDocument.Document;
+                var uiDoc = app.ActiveUIDocument;
+                
+                // ⚠️ CRITICAL: Transaction is required by UniversalClusterService
+                using (var tx = new Transaction(doc, $"Cluster {_targetCategory} Openings"))
+                {
+                    tx.Start();
+                    
+                    var clusterService = new UniversalClusterService();
+                    var (placedCount, deletedCount) = clusterService.ClusterSleeves(doc, _targetCategory, uiDoc);
+                    
+                    tx.Commit();
+                    
+                    DebugLogger.Info($"[UniversalClusterCommand] ✓ Clustering complete for {_targetCategory}: {placedCount} clusters placed, {deletedCount} individual sleeves deleted");
+                    
+                    // Optional: Show user feedback for manual testing
+                    // TaskDialog.Show("Clustering Complete", $"{_targetCategory}: {placedCount} clusters placed, {deletedCount} sleeves deleted");
+                }
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[UniversalClusterCommand] Error: {ex.Message}");
+                DebugLogger.Error($"[UniversalClusterCommand] Error clustering {_targetCategory}: {ex.Message}");
+                DebugLogger.Error($"[UniversalClusterCommand] Stack trace: {ex.StackTrace}");
+                // Don't show TaskDialog here - let orchestrator handle errors
+                throw; // Re-throw to let caller handle
             }
         }
     }
