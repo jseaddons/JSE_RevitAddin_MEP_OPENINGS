@@ -315,30 +315,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
             
-            // CRITICAL FIX: If no filters found, create a filter using the selected filter name from UI
+            // ✅ FIX: If no filters found, ERROR - don't auto-create fallback files
             if (filtersToProcess.Count == 0)
             {
-                // Use the first selected filter name from UI (e.g., "Ventilation"), not hardcoded "Default_Refresh"
-                string selectedFilterName = selectedFilterItems.FirstOrDefault() ?? "Default_Refresh";
-                DebugLogger.Info($"[CLASH_DEBUG] No existing filter XML found - creating new filter with name '{selectedFilterName}' for saving results");
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] No existing filter XML found - creating new filter with name '{selectedFilterName}' for saving results\n");
+                string errorMessage = "No filter found. Please create a filter first before running Refresh.";
+                DebugLogger.Error($"[CLASH_DEBUG] {errorMessage}");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ERROR: {errorMessage}\n");
                 
-                var defaultFilter = new Models.OpeningFilter
-                {
-                    Name = selectedFilterName,
-                    Category = Models.MepCategory.Ducts, // Use enum instead of string
-                    OpeningType = Models.OpeningType.RectangularSleeves, // Use enum instead of string
-                    IsEnabled = true,
-                    LastModified = DateTime.Now,
-                    SelectedMepCategoryNames = selectedMepCategories,
-                    SelectedReferenceFiles = selectedReferenceFiles,
-                    SelectedHostFiles = selectedHostFiles,
-                    OpeningSettings = new Models.OpeningSettings
-                    {
-                        ClearanceSettings = clearanceSettings
-                    }
-                };
-                filtersToProcess.Add(defaultFilter);
+                TaskDialog.Show("Filter Required", 
+                    "No filter found!\n\n" +
+                    "Please create a filter in the Filter Management section before running Refresh.\n\n" +
+                    "Filters define which MEP categories and reference files to process.");
+                
+                return; // Stop refresh - don't proceed without a filter
             }
             
             DebugLogger.Info($"[CLASH_DEBUG] MEP filters to process: {filtersToProcess.Count}");
@@ -451,19 +440,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _progressBar.Value = 40;
             _statusLabel.Text = "Processing clash zones...";
 
-            // ⚠️ CRITICAL FIX: Reinitialize ClashZoneService with existing clash zones from profile ⚠️
-            // This allows ResetResolvedFlagForDeletedSleeves to detect manually deleted sleeves
-            var existingClashZones = currentProfile?.Configuration?.ClashZoneStorage ?? new Models.ClashZoneStorage();
+            // ✅ FIX: Load existing clash zones from Filter XML files (NOT profile)
+            // This preserves IsResolved and IsClusterResolved flags from previous placement/clustering
+            var existingClashZones = LoadExistingClashZonesFromFilterXml(selectedFilterItems, selectedMepCategories);
             var existingCount = existingClashZones?.ClashZones?.Count ?? 0;
             
-            DebugLogger.Info($"[CLASH_DEBUG] Reinitializing ClashZoneService with {existingCount} existing zones from profile");
-            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Reinitializing ClashZoneService with {existingCount} existing zones from profile\n");
+            DebugLogger.Info($"[CLASH_DEBUG] Loaded {existingCount} existing clash zones from Filter XML files");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Loaded {existingCount} existing clash zones from Filter XML files (selected filter + categories)\n");
             
             // Reinitialize with existing clash zones
             _clashZoneService = new ClashZoneService(existingClashZones, msg => DebugLogger.Info(msg));
             
-            DebugLogger.Info($"[CLASH_DEBUG] ClashZoneService reinitialized with {existingCount} existing zones");
-            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ClashZoneService reinitialized with {existingCount} existing zones\n");
+            DebugLogger.Info($"[CLASH_DEBUG] ClashZoneService reinitialized with {existingCount} existing zones from XML");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ClashZoneService reinitialized with {existingCount} existing zones from XML\n");
 
             // Step 7: Filter and detect new clash zones
             _progressBar.Value = 50;
@@ -515,10 +504,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (enabledFilter != null)
             {
                 var targetFilter = enabledFilter;
-                // Create clash zone storage from new clash zones
+                // ✅ FIX: Save ALL clash zones (existing + new), not just new ones
+                // This preserves flags (IsResolved, IsClusterResolved) from previous runs
+                var allClashZones = existingClashZones?.ClashZones ?? new List<Models.ClashZone>(); // Use existing loaded clash zones
                 var clashZoneStorage = new Models.ClashZoneStorage
                 {
-                    ClashZones = newClashZones ?? new List<Models.ClashZone>(),
+                    ClashZones = allClashZones ?? new List<Models.ClashZone>(),
                     CreatedAt = DateTime.Now,
                     LastUpdated = DateTime.Now,
                     DocumentPath = _document.PathName,
@@ -1116,6 +1107,69 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Error($"[CLASH_DEBUG] Error checking category match: {ex.Message}");
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Load existing clash zones from Filter XML files (selected filter + categories)
+        /// This preserves flags (IsResolved, IsClusterResolved) from previous runs
+        /// </summary>
+        private Models.ClashZoneStorage LoadExistingClashZonesFromFilterXml(List<string> selectedFilterNames, List<string> selectedCategories)
+        {
+            var mergedStorage = new Models.ClashZoneStorage
+            {
+                ClashZones = new List<Models.ClashZone>(),
+                LastUpdated = DateTime.Now
+            };
+
+            try
+            {
+                var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                
+                if (!Directory.Exists(filtersDirectory))
+                    return mergedStorage;
+
+                // Load clash zones from each category-specific XML file
+                foreach (var filterName in selectedFilterNames)
+                {
+                    foreach (var category in selectedCategories)
+                    {
+                        var pattern = $"{filterName}_{category.ToLower().Replace(" ", "_")}.xml";
+                        var matchingFiles = Directory.GetFiles(filtersDirectory, pattern);
+                        
+                        if (matchingFiles.Length > 0)
+                        {
+                            var xmlFile = matchingFiles.First();
+                            DebugLogger.Info($"[LoadExistingClashZones] Loading from {Path.GetFileName(xmlFile)}");
+                            
+                            try
+                            {
+                                var serializer = new System.Xml.Serialization.XmlSerializer(typeof(Models.OpeningFilter));
+                                using (var reader = new StreamReader(xmlFile))
+                                {
+                                    var filter = (Models.OpeningFilter)serializer.Deserialize(reader);
+                                    if (filter?.ClashZoneStorage?.ClashZones != null)
+                                    {
+                                        mergedStorage.ClashZones.AddRange(filter.ClashZoneStorage.ClashZones);
+                                        DebugLogger.Info($"[LoadExistingClashZones] Loaded {filter.ClashZoneStorage.ClashZones.Count} clash zones from {Path.GetFileName(xmlFile)}");
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                DebugLogger.Error($"[LoadExistingClashZones] Error loading {Path.GetFileName(xmlFile)}: {ex.Message}");
+                            }
+                        }
+                    }
+                }
+                
+                DebugLogger.Info($"[LoadExistingClashZones] Total clash zones loaded: {mergedStorage.ClashZones.Count}");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[LoadExistingClashZones] Error: {ex.Message}");
+            }
+
+            return mergedStorage;
         }
 
         #endregion

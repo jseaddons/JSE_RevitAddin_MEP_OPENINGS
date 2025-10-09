@@ -100,6 +100,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.Panel _markPrefixPanel = null!;
         private WinForms.TextBox _projectPrefixTextBox = null!;
         private WinForms.TextBox _disciplinePrefixTextBox = null!;
+        private WinForms.CheckBox _remarkAllCheckBox = null!;
         
         // In-memory storage for category-specific discipline prefixes
         // Synced when user switches MEP Type dropdown
@@ -1921,20 +1922,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             pipeInsLockBtn.Click += (s, e) => ToggleLock(pipeInsLockBtn, pipeInsText);
             _pipePanel.Controls.Add(pipeInsLockBtn);
 
-            // Opening Type Section - Aligned with clearance buttons on the right
+            // ✅ Opening Type Section - FIXED: Move to Row 2 (like Round Duct layout)
             var pipeOpeningTypeLabel = new WinForms.Label
             {
-                Text = "Opening Type:",
-                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold),
-                Location = new System.Drawing.Point(400, 10),
-                Size = new System.Drawing.Size(130, 18)
+                Text = "Opening Type for Pipes:",
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular),
+                Location = new System.Drawing.Point(10, 60), // Row 2 (same as Round Duct)
+                Size = new System.Drawing.Size(200, 16)
             };
             _pipePanel.Controls.Add(pipeOpeningTypeLabel);
 
             var pipeCircularRadio = new WinForms.RadioButton
             {
                 Text = "Circular",
-                Location = new System.Drawing.Point(400, 33),
+                Location = new System.Drawing.Point(220, 58), // Row 2 (same as Round Duct)
                 Size = new System.Drawing.Size(80, 20),
                 Checked = true, // Default to circular
                 Tag = "pipe_opening_circular"
@@ -1944,7 +1945,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             var pipeRectangularRadio = new WinForms.RadioButton
             {
                 Text = "Rectangular",
-                Location = new System.Drawing.Point(490, 33),
+                Location = new System.Drawing.Point(310, 58), // Row 2 (same as Round Duct)
                 Size = new System.Drawing.Size(100, 20),
                 Checked = false,
                 Tag = "pipe_opening_rectangular"
@@ -2248,11 +2249,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Location = new System.Drawing.Point(95, 33),
                 Size = new System.Drawing.Size(70, 20),
                 Text = "D", // ⚠️ DEFAULT: Will be updated when MEP Type dropdown changes
-                ReadOnly = true, // ⚠️ READ-ONLY: Auto-updates based on dropdown selection
-                BackColor = System.Drawing.Color.FromArgb(245, 245, 245), // ⚠️ VISUAL: Indicates it's auto-generated
+                ReadOnly = false, // ✅ EDITABLE: User can override auto-generated prefix
+                BackColor = System.Drawing.SystemColors.Window, // ✅ VISUAL: Normal textbox appearance
                 Tag = "discipline_prefix"
             };
             markingPanel.Controls.Add(_disciplinePrefixTextBox);
+            
+            // ✅ NEW: Re-mark all checkbox (compact, to the right of textboxes)
+            _remarkAllCheckBox = new WinForms.CheckBox
+            {
+                Location = new System.Drawing.Point(170, 6),
+                Size = new System.Drawing.Size(110, 20),
+                Text = "Re-mark all",
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Regular),
+                Checked = false, // Default: only mark new sleeves
+                Tag = "remark_all"
+            };
+            markingPanel.Controls.Add(_remarkAllCheckBox);
 
             // ⚠️ LEGACY: Keep existing _sleeveParameterPrefixTextBox for backward compatibility (hidden)
             _sleeveParameterPrefixTextBox = new WinForms.TextBox
@@ -3396,8 +3409,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     markPrefixes.CableTrayPrefix = "ELE";
                     markPrefixes.DamperPrefix = "DAM";
                 }
+                
+                // ✅ NEW: Read "Re-mark all" checkbox state
+                markPrefixes.RemarkAll = _remarkAllCheckBox?.Checked ?? false;
 
-                DebugLogger.Info($"[ReadMarkPrefixesFromUI] Project Prefix: '{markPrefixes.ProjectPrefix}', Discipline Prefix: '{_disciplinePrefixTextBox?.Text ?? "null"}'");
+                DebugLogger.Info($"[ReadMarkPrefixesFromUI] Project Prefix: '{markPrefixes.ProjectPrefix}', Discipline Prefix: '{_disciplinePrefixTextBox?.Text ?? "null"}', Re-mark all: {markPrefixes.RemarkAll}");
             }
             catch (Exception ex)
             {
@@ -6438,12 +6454,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         {
             try
             {
-                DebugLogger.Info("Configure button clicked");
-                // TODO: Implement configure functionality
+                DebugLogger.Info("Configure button clicked - opening SettingsDialog");
+                
+                // Load current settings
+                var settingsService = new SettingsService();
+                var currentSettings = settingsService.LoadSettings();
+                
+                // Show settings dialog
+                var settingsDialog = new SettingsDialog(currentSettings);
+                var result = settingsDialog.ShowDialog(this);
+                
+                if (result == WinForms.DialogResult.OK)
+                {
+                    DebugLogger.Info("Settings dialog closed with OK - settings saved");
+                    _statusLabel.Text = "Configuration updated successfully";
+                }
+                else
+                {
+                    DebugLogger.Info("Settings dialog closed with Cancel");
+                }
             }
             catch (Exception ex)
             {
                 DebugLogger.Error($"OnConfigureClick failed: {ex.Message}");
+                _statusLabel.Text = $"Failed to open settings: {ex.Message}";
             }
         }
 

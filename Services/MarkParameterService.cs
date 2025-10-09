@@ -77,7 +77,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         public (int processedCount, int errorCount) ApplyMepMarkToClusters(
-            Document doc, string category, string projectPrefix, string disciplinePrefix)
+            Document doc, string category, string projectPrefix, string disciplinePrefix, bool remarkAll = false)
         {
             int processedCount = 0;
             int errorCount = 0;
@@ -120,17 +120,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 File.AppendAllText(mepmarkLogPath, $"Starting mark numbering at: {startIndex} (based on existing marks)\n");
                 
                 // Apply MEPMARK to each sleeve (both cluster and individual)
+                int actualIndex = startIndex;
                 for (int i = 0; i < allSleeves.Count; i++)
                 {
                     try
                     {
                         var sleeve = allSleeves[i];
-                        int markNumber = startIndex + i;
-                        string markValue = GenerateMarkValue(disciplinePrefix, markNumber);
+                        
+                        // ✅ FIX: Skip sleeves that already have MEPMARK value (unless RemarkAll is true)
+                        var existingMark = sleeve.LookupParameter("MEP Mark")?.AsString() ?? 
+                                          sleeve.LookupParameter("Mark")?.AsString();
+                        
+                        if (!remarkAll && !string.IsNullOrEmpty(existingMark))
+                        {
+                            File.AppendAllText(mepmarkLogPath, $"SKIP sleeve {sleeve.Id}: already has mark '{existingMark}' (RemarkAll=false)\n");
+                            continue; // Skip - already marked
+                        }
+                        
+                        if (remarkAll && !string.IsNullOrEmpty(existingMark))
+                        {
+                            File.AppendAllText(mepmarkLogPath, $"OVERWRITE sleeve {sleeve.Id}: changing '{existingMark}' → (RemarkAll=true)\n");
+                        }
+                        
+                        string markValue = GenerateMarkValue(disciplinePrefix, actualIndex);
                         string fullMarkValue = $"{projectPrefix}{markValue}";
                         
                         SetMarkParameter(sleeve, fullMarkValue);
                         processedCount++;
+                        actualIndex++;
                         
                         DebugLogger.Info($"[MarkParameterService] Applied MEPMARK '{fullMarkValue}' to sleeve {sleeve.Id.IntegerValue}");
                         File.AppendAllText(mepmarkLogPath, $"Applied MEPMARK '{fullMarkValue}' to sleeve {sleeve.Id.IntegerValue}\n");

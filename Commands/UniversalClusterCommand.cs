@@ -12,10 +12,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
     public class UniversalClusterCommand : ICommand
     {
         private readonly string _targetCategory;
-        
-        public UniversalClusterCommand(string targetCategory)
+        private readonly string _xmlFilePath;
+
+        public UniversalClusterCommand(string targetCategory, string xmlFilePath = null)
         {
             _targetCategory = targetCategory ?? throw new ArgumentNullException(nameof(targetCategory));
+            _xmlFilePath = xmlFilePath; // Optional - if null, searches all XML files (backward compatibility)
         }
         
         public void Execute(UIApplication app)
@@ -33,7 +35,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     tx.Start();
                     
                     var clusterService = new UniversalClusterService();
-                    var (placedCount, deletedCount) = clusterService.ClusterSleeves(doc, _targetCategory, uiDoc);
+                    var (placedCount, deletedCount) = clusterService.ClusterSleeves(doc, _targetCategory, uiDoc, _xmlFilePath);
                     
                     tx.Commit();
                     

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
@@ -129,13 +130,66 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         DebugLogger.Info($"[UniversalSleevePlacer] Processing ClashZone {clashZone.Id}: MEP={clashZone.MepElementId.IntegerValue}, Structural={clashZone.StructuralElementId.IntegerValue}");
                         
-                        // ⚠️ LAYER 1: Trust flags completely (1,000,000x faster than Layer 2)
-                        if (clashZone.IsResolved || clashZone.IsClustered)
+                        // ⚠️ CRITICAL: Hierarchical flag check - cluster takes precedence
+                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
+                            $"[HIER-CHECK] ClashZone {clashZone.Id}: IsClusterResolved={clashZone.IsClusterResolved}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}\n");
+                        
+                        // STEP 1: Check if this clash zone is part of a cluster
+                        if (clashZone.IsClusterResolved && clashZone.ClusterSleeveInstanceId > 0)
                         {
-                            DebugLogger.Info($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} already resolved or clustered (IsResolved={clashZone.IsResolved}, IsClustered={clashZone.IsClustered}, IsClusterResolved={clashZone.IsClusterResolved})");
-                            SkippedCount++;
-                            continue;
+                            // Check if cluster sleeve still exists in Revit
+                            var clusterSleeveId = new ElementId(clashZone.ClusterSleeveInstanceId);
+                            var clusterSleeve = _doc.GetElement(clusterSleeveId);
+                            
+                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
+                                $"[HIER-CHECK] ClashZone {clashZone.Id}: Checking cluster sleeve {clashZone.ClusterSleeveInstanceId}, exists={clusterSleeve != null}\n");
+                            
+                            if (clusterSleeve != null)
+                            {
+                                // Cluster sleeve exists - SKIP this clash zone (cluster handles it)
+                                DebugLogger.Info($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} is part of cluster sleeve {clashZone.ClusterSleeveInstanceId}");
+                                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
+                                    $"✓ SKIP ClashZone {clashZone.Id}: cluster sleeve {clashZone.ClusterSleeveInstanceId} exists\n");
+                                SkippedCount++;
+                                continue;
+                            }
+                            else
+                            {
+                                // Cluster sleeve was deleted - reset BOTH flags and place individual sleeve
+                                DebugLogger.Info($"[UniversalSleevePlacer] Cluster sleeve {clashZone.ClusterSleeveInstanceId} was deleted - resetting flags and placing individual sleeve");
+                                clashZone.IsClusterResolved = false;
+                                clashZone.ClusterSleeveInstanceId = -1;
+                                clashZone.IsResolved = false; // ⚠️ CRITICAL: Also reset individual flag
+                                clashZone.SleeveInstanceId = -1;
+                                // Continue to place individual sleeve below
+                            }
                         }
+                        
+                        // STEP 2: Check if individual sleeve already exists (only if NOT cluster-resolved)
+                        if (clashZone.IsResolved && clashZone.SleeveInstanceId > 0)
+                        {
+                            // Check if individual sleeve still exists in Revit
+                            var individualSleeveId = new ElementId(clashZone.SleeveInstanceId);
+                            var individualSleeve = _doc.GetElement(individualSleeveId);
+                            
+                            if (individualSleeve != null)
+                            {
+                                // Individual sleeve exists - skip
+                                DebugLogger.Info($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} already has individual sleeve {clashZone.SleeveInstanceId}");
+                                SkippedCount++;
+                                continue;
+                            }
+                            else
+                            {
+                                // Individual sleeve was deleted - reset flag and place new one
+                                DebugLogger.Info($"[UniversalSleevePlacer] Individual sleeve {clashZone.SleeveInstanceId} was deleted - resetting flag and placing new sleeve");
+                                clashZone.IsResolved = false;
+                                clashZone.SleeveInstanceId = -1;
+                                // Continue to place individual sleeve below
+                            }
+                        }
+                        
+                        // STEP 3: If we reach here, place individual sleeve (fresh or replacement)
                         
                         // Validate category match
                         if (!string.IsNullOrEmpty(clashZone.MepElementCategory) && 

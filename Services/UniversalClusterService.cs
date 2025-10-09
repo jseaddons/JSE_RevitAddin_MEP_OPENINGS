@@ -52,7 +52,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <param name="targetCategory">Category to cluster (e.g., "Ducts", "Pipes") or null for all</param>
         /// <param name="uiDoc">Optional UIDocument for section box filtering</param>
         /// <returns>Tuple of (placedCount, deletedCount)</returns>
-        public (int placedCount, int deletedCount) ClusterSleeves(Document doc, string targetCategory, UIDocument uiDoc = null)
+        public (int placedCount, int deletedCount) ClusterSleeves(Document doc, string targetCategory, UIDocument uiDoc = null, string xmlFilePath = null)
         {
             int placedCount = 0;
             int deletedCount = 0;
@@ -65,7 +65,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 File.AppendAllText(clusterLogPath, $"Target Category: {targetCategory ?? "ALL"}\n");
                 
                 // ⚠️ CRITICAL: Reset cluster flags for deleted cluster sleeves
-                ResetClusterFlagsForDeletedSleeves(doc);
+                ResetClusterFlagsForDeletedSleeves(doc, xmlFilePath);
                 
                 // Get cluster configuration
                 double toleranceMm = ClusterConfigurationManager.Instance.JoinOpeningsDistance;
@@ -196,7 +196,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
 
                             // Place cluster sleeve
-                            PlaceClusterSleeve(doc, cluster, groupKey, out int placed1, out int deleted1);
+                            PlaceClusterSleeve(doc, cluster, groupKey, out int placed1, out int deleted1, xmlFilePath);
                             placedCount += placed1;
                             deletedCount += deleted1;
                             
@@ -336,7 +336,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Mark clash zones as cluster-resolved with the actual cluster sleeve ID
         /// </summary>
-        private void MarkClashZonesAsClusterResolvedWithSleeveId(List<FamilyInstance> cluster, ElementId clusterSleeveId)
+        private void MarkClashZonesAsClusterResolvedWithSleeveId(List<FamilyInstance> cluster, ElementId clusterSleeveId, string xmlFilePath = null)
         {
             try
             {
@@ -345,7 +345,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!Directory.Exists(filtersDirectory))
                     return;
 
-                var xmlFiles = Directory.GetFiles(filtersDirectory, "*.xml");
+                // ✅ FIX: Only process specific XML file if provided (ONE SOURCE OF TRUTH)
+                var xmlFiles = string.IsNullOrEmpty(xmlFilePath) 
+                    ? Directory.GetFiles(filtersDirectory, "*.xml")  // Backward compatibility
+                    : new[] { xmlFilePath };  // Only the specific file
+                    
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                    $"[MarkClusterResolved] Updating cluster flags in {xmlFiles.Length} XML file(s): {(string.IsNullOrEmpty(xmlFilePath) ? "ALL" : Path.GetFileName(xmlFilePath))} for cluster sleeve {clusterSleeveId.IntegerValue}\n");
+                
                 int markedCount = 0;
 
                 foreach (var xmlFile in xmlFiles)
@@ -418,7 +425,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Reset cluster flags for deleted cluster sleeves
         /// </summary>
-        private void ResetClusterFlagsForDeletedSleeves(Document doc)
+        private void ResetClusterFlagsForDeletedSleeves(Document doc, string xmlFilePath = null)
         {
             try
             {
@@ -427,7 +434,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!Directory.Exists(filtersDirectory))
                     return;
 
-                var xmlFiles = Directory.GetFiles(filtersDirectory, "*.xml");
+                // ✅ FIX: Only process specific XML file if provided (ONE SOURCE OF TRUTH)
+                var xmlFiles = string.IsNullOrEmpty(xmlFilePath) 
+                    ? Directory.GetFiles(filtersDirectory, "*.xml")  // Backward compatibility
+                    : new[] { xmlFilePath };  // Only the specific file
+                    
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                    $"[ResetFlags] Processing {xmlFiles.Length} XML file(s): {(string.IsNullOrEmpty(xmlFilePath) ? "ALL" : Path.GetFileName(xmlFilePath))}\n");
+                
                 int resetCount = 0;
 
                 foreach (var xmlFile in xmlFiles)
@@ -514,7 +528,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Get clash zone by MEP element ID from XML files
         /// </summary>
-        private ClashZone GetClashZoneByMepElementId(long mepElementId)
+        private ClashZone GetClashZoneByMepElementId(long mepElementId, string xmlFilePath = null)
         {
             try
             {
@@ -523,7 +537,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!Directory.Exists(filtersDirectory))
                     return null;
 
-                var xmlFiles = Directory.GetFiles(filtersDirectory, "*.xml");
+                // ✅ FIX: Only search specific XML file if provided (ONE SOURCE OF TRUTH)
+                var xmlFiles = string.IsNullOrEmpty(xmlFilePath) 
+                    ? Directory.GetFiles(filtersDirectory, "*.xml")  // Backward compatibility
+                    : new[] { xmlFilePath };  // Only the specific file
 
                 foreach (var xmlFile in xmlFiles)
                 {
@@ -805,7 +822,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             List<FamilyInstance> cluster,
             SleeveGroupKey groupKey,
             out int placed,
-            out int deleted)
+            out int deleted,
+            string xmlFilePath = null)
         {
             placed = 0;
             deleted = 0;
@@ -951,7 +969,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             placed++;
 
             // ⚠️ CRITICAL: Mark clash zones as cluster-resolved with the actual cluster sleeve ID
-            MarkClashZonesAsClusterResolvedWithSleeveId(cluster, inst.Id);
+            MarkClashZonesAsClusterResolvedWithSleeveId(cluster, inst.Id, xmlFilePath);
 
             // Delete originals
             foreach (var s in cluster)

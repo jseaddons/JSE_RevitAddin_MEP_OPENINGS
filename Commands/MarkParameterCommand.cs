@@ -16,12 +16,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         private readonly string _targetCategory;
         private readonly string _projectPrefix;
         private readonly string _disciplinePrefix;
+        private readonly bool _remarkAll;
         
-        public MarkParameterCommand(string targetCategory, string projectPrefix, string disciplinePrefix)
+        public MarkParameterCommand(string targetCategory, string projectPrefix, string disciplinePrefix, bool remarkAll = false)
         {
             _targetCategory = targetCategory ?? throw new ArgumentNullException(nameof(targetCategory));
             _projectPrefix = projectPrefix ?? throw new ArgumentNullException(nameof(projectPrefix));
             _disciplinePrefix = disciplinePrefix ?? throw new ArgumentNullException(nameof(disciplinePrefix));
+            _remarkAll = remarkAll;
         }
         
         public void Execute(UIApplication app)
@@ -41,7 +43,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     
                     var markService = new MarkParameterService();
                     var (processedCount, errorCount) = markService.ApplyMepMarkToClusters(
-                        doc, _targetCategory, _projectPrefix, _disciplinePrefix);
+                        doc, _targetCategory, _projectPrefix, _disciplinePrefix, _remarkAll);
                     
                     tx.Commit();
                     

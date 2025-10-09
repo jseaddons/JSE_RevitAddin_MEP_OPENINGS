@@ -23,7 +23,7 @@ This document outlines the complete methodology for sleeve placement in MEP open
 
 ## New Optimized Methodology
 
-### 1. Enhanced ClashZone Model
+### 1. Enhanced ClashZone Model with Hierarchical Flag Management
 ```csharp
 public class ClashZone
 {
@@ -34,9 +34,14 @@ public class ClashZone
     
     // NEW: Only essential pre-calculated data
     public XYZ SleevePlacementPoint { get; set; }        // Final placement point
-    public bool IsResolved { get; set; }                 // Resolution status (reset before placement)
-    public bool IsClustered { get; set; }                // Cluster status (reset before placement)
-    public bool IsClusterResolved { get; set; }          // Cluster resolution status (reset before placement)
+    
+    // ⚠️ CRITICAL: Hierarchical flag management (cluster takes precedence over individual)
+    public bool IsResolved { get; set; }                 // Individual sleeve placed
+    public bool IsClusterResolved { get; set; }          // Cluster sleeve placed (TAKES PRECEDENCE)
+    public int SleeveInstanceId { get; set; }            // Individual sleeve ElementId (serialized to XML)
+    public int ClusterSleeveInstanceId { get; set; }     // Cluster sleeve ElementId (serialized to XML)
+    
+    public bool IsClustered { get; set; }                // Legacy cluster status
     public string PipeOpeningType { get; set; }          // "Circular" or "Rectangular" (empty for non-pipes)
     
     // NEW: Pre-calculated MEP element data (no linked file access needed during placement)
@@ -46,6 +51,57 @@ public class ClashZone
     
     // WallThickness and WallNormal are NOT stored - only used for calculation
     // Existing properties continue...
+}
+```
+
+## Hierarchical Flag Management - The Critical Rule
+
+**CLUSTER FLAGS TAKE PRECEDENCE OVER INDIVIDUAL FLAGS**
+
+When checking if a sleeve should be placed:
+1. **FIRST** check `IsClusterResolved` - if true, this clash zone is handled by a cluster
+2. **ONLY IF** cluster is not resolved, then check `IsResolved` for individual sleeve
+
+**Why this matters:**
+- Individual sleeves that become part of a cluster are DELETED
+- Their ClashZone still has `IsResolved = true` (from original placement)
+- But now also has `IsClusterResolved = true` (from clustering)
+- If we check individual flag first → we try to re-place the deleted individual sleeve → creates duplicate INSIDE the cluster! ❌
+
+**The correct hierarchy:**
+```
+if (IsClusterResolved == true && ClusterSleeveInstanceId > 0)
+{
+    // This clash zone is part of a cluster - ONLY check cluster sleeve
+    Check if cluster sleeve exists in Revit
+    
+    if (cluster sleeve MISSING)
+    {
+        // Cluster was deleted - reset BOTH flags
+        IsClusterResolved = false
+        IsResolved = false  // ⚠️ CRITICAL: Also reset individual flag
+        
+        // Place individual sleeve (needed for re-clustering)
+    }
+    else
+    {
+        // Cluster exists - SKIP individual sleeve check entirely
+    }
+}
+else if (IsResolved == true && SleeveInstanceId > 0)
+{
+    // No cluster - check individual sleeve only
+    Check if individual sleeve exists in Revit
+    
+    if (individual sleeve MISSING)
+    {
+        IsResolved = false
+        Place new individual sleeve
+    }
+}
+else
+{
+    // Fresh clash zone - place individual sleeve
 }
 ```
 

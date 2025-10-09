@@ -76,7 +76,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Process each category: Place individual sleeves → Cluster → Update XML
                 foreach (var category in _selectedCategories)
                 {
-                    var clashZones = GetClashZonesForCategory(category);
+                    var (clashZones, xmlFilePath) = GetClashZonesForCategory(category);
                     if (clashZones.Count > 0)
                     {
                         // Step 1: Place individual sleeves
@@ -88,10 +88,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             DebugLogger.Info($"[SleevePlacementExternalEvent] Placing individual sleeves for {category} ({clashZones.Count} clash zones)");
                             placementCommand.Execute(app);
                             
-                            // Step 2: Immediately cluster this category's sleeves
-                            DebugLogger.Info($"[SleevePlacementExternalEvent] Clustering {category} sleeves...");
-                            var clusterCommand = new Commands.UniversalClusterCommand(category);
-                            clusterCommand.Execute(app);
+                        // Step 2: Immediately cluster this category's sleeves
+                        DebugLogger.Info($"[SleevePlacementExternalEvent] Clustering {category} sleeves...");
+                        var clusterCommand = new Commands.UniversalClusterCommand(category, xmlFilePath);
+                        clusterCommand.Execute(app);
                             
                             // ✅ NEW: Step 3: Apply MEPMARK to clusters using stored prefixes
                             DebugLogger.Info($"[SleevePlacementExternalEvent] Applying MEPMARK to {category} clusters...");
@@ -99,8 +99,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // ✅ CORRECTED: Use instance variable (safe after null check)
                             string projectPrefix = _markPrefixes.ProjectPrefix;
                             string disciplinePrefix = _markPrefixes.GetDisciplinePrefix(category);
+                            bool remarkAll = _markPrefixes.RemarkAll;
                             
-                            var markCommand = new Commands.MarkParameterCommand(category, projectPrefix, disciplinePrefix);
+                            var markCommand = new Commands.MarkParameterCommand(category, projectPrefix, disciplinePrefix, remarkAll);
                             markCommand.Execute(app);
                             
                             DebugLogger.Info($"[SleevePlacementExternalEvent] ✓ Completed placement, clustering, and MEPMARK for {category}");
@@ -211,11 +212,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
-        private List<ClashZone> GetClashZonesForCategory(string category)
+        private (List<ClashZone> clashZones, string xmlFilePath) GetClashZonesForCategory(string category)
         {
             // Implementation to read category-specific XML files
-            // and return relevant clash zones
+            // and return relevant clash zones WITH the source XML file path
             var clashZones = new List<ClashZone>();
+            string xmlFilePath = string.Empty;
             
             try
             {
@@ -228,19 +230,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (matchingFiles.Length > 0)
                 {
                     // Use the most recently modified file to get the latest clash zones
-                    var xmlFile = matchingFiles
+                    xmlFilePath = matchingFiles
                         .OrderByDescending(f => File.GetLastWriteTime(f))
                         .First();
-                    DebugLogger.Info($"[SleevePlacementExternalEvent] Found matching XML file: {xmlFile}");
+                    DebugLogger.Info($"[SleevePlacementExternalEvent] Found matching XML file: {xmlFilePath}");
                     
                     var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
-                    using (var reader = new StreamReader(xmlFile))
+                    using (var reader = new StreamReader(xmlFilePath))
                     {
                         var filter = (OpeningFilter)serializer.Deserialize(reader);
                         if (filter?.ClashZoneStorage?.ClashZones != null)
                         {
                             clashZones.AddRange(filter.ClashZoneStorage.ClashZones);
-                            DebugLogger.Info($"[SleevePlacementExternalEvent] Loaded {filter.ClashZoneStorage.ClashZones.Count} clash zones from {xmlFile}");
+                            DebugLogger.Info($"[SleevePlacementExternalEvent] Loaded {filter.ClashZoneStorage.ClashZones.Count} clash zones from {Path.GetFileName(xmlFilePath)}");
                             
                             // Debug: Check if document titles are populated
                             var clashZonesWithDocTitle = clashZones.Count(cz => !string.IsNullOrEmpty(cz.StructuralElementDocumentTitle));
@@ -258,7 +260,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Error($"[SleevePlacementExternalEvent] Error loading clash zones for {category}: {ex.Message}");
             }
             
-            return clashZones;
+            return (clashZones, xmlFilePath);
         }
 
         public string GetName()

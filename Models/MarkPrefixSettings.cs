@@ -33,6 +33,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public string DamperPrefix { get; set; } = "DMP";
         
         /// <summary>
+        /// If true, re-apply marks to all sleeves (overwrite existing marks with new prefix)
+        /// If false, only mark sleeves that don't have a mark yet (default behavior)
+        /// </summary>
+        public bool RemarkAll { get; set; } = false;
+        
+        /// <summary>
         /// Get discipline prefix for a specific category
         /// </summary>
         public string GetDisciplinePrefix(string category)
