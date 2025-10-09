@@ -151,7 +151,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public List<Models.ParameterInfo> GetOpeningParameters(Document doc)
         {
             var parameters = new List<Models.ParameterInfo>();
-            
+
             try
             {
                 // Get opening categories
@@ -162,13 +162,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     BuiltInCategory.OST_FloorOpening,  // Floor openings
                     BuiltInCategory.OST_CeilingOpening // Ceiling openings
                 };
-                
+
                 foreach (var category in openingCategories)
                 {
                     var categoryParams = GetAvailableParameters(doc, category);
                     parameters.AddRange(categoryParams);
                 }
-                
+
                 // Remove duplicates
                 parameters = parameters
                     .GroupBy(p => p.Name)
@@ -180,7 +180,115 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 System.Diagnostics.Debug.WriteLine($"Error getting opening parameters: {ex.Message}");
             }
-            
+
+            return parameters;
+        }
+
+        /// <summary>
+        /// Get available parameters from specific opening families
+        /// </summary>
+        public List<Models.ParameterInfo> GetOpeningParametersFromSpecificFamilies(Document doc)
+        {
+            var parameters = new List<Models.ParameterInfo>();
+
+            try
+            {
+                // Specific opening family names to filter by
+                var targetFamilyNames = new List<string>
+                {
+                    "RectangularOpeningOnWall",
+                    "RectangularOpeningOnSlab",
+                    "CircularOpeningOnWall",
+                    "CircularOpeningOnSlab"
+                };
+
+                // Get all family symbols (FamilySymbol is an ElementType, so don't filter with WhereElementIsNotElementType)
+                var collector = new FilteredElementCollector(doc)
+                    .OfClass(typeof(FamilySymbol));
+
+                int inspected = 0;
+                int matched = 0;
+
+                foreach (Element element in collector)
+                {
+                    inspected++;
+                    if (element is FamilySymbol familySymbol)
+                    {
+                        var familyName = familySymbol.Family?.Name ?? "";
+                        var symbolName = familySymbol.Name ?? "";
+
+                        // Check if this family matches our target families
+                        bool isTargetFamily = targetFamilyNames.Any(targetName =>
+                            familyName.Contains(targetName) ||
+                            symbolName.Contains(targetName) ||
+                            $"{familyName} {symbolName}".Contains(targetName));
+
+                        if (isTargetFamily)
+                        {
+                            matched++;
+                            System.Diagnostics.Debug.WriteLine($"[OPENING_FAMILIES] Found target family: '{familyName}' - Symbol: '{symbolName}'");
+
+                            // Get parameters from this family symbol
+                            var paramSet = familySymbol.Parameters;
+                            int paramCount = 0;
+                            foreach (Parameter param in paramSet)
+                            {
+                                if (param.Definition != null)
+                                {
+                                    paramCount++;
+                                    var paramInfo = new Models.ParameterInfo
+                                    {
+                                        Name = param.Definition.Name,
+                                        Type = "Unknown", // ParameterType not available in this Revit version
+                                        IsReadOnly = param.IsReadOnly,
+                                        Category = BuiltInCategory.OST_GenericModel, // Assume generic model for openings
+                                        Description = param.Definition.Name,
+                                        IsShared = param.Definition is ExternalDefinition
+                                    };
+
+                                    // Only add if not already present
+                                    if (!parameters.Any(p => p.Name == paramInfo.Name))
+                                    {
+                                        parameters.Add(paramInfo);
+                                        System.Diagnostics.Debug.WriteLine($"[OPENING_FAMILIES] Added parameter: '{paramInfo.Name}' (Shared: {paramInfo.IsShared})");
+                                    }
+                                }
+                            }
+                            System.Diagnostics.Debug.WriteLine($"[OPENING_FAMILIES] Family '{familyName}' has {paramCount} total parameters, added {parameters.Count} unique parameters so far");
+                        }
+                    }
+                }
+
+                // Order by name
+                parameters = parameters.OrderBy(p => p.Name).ToList();
+
+                System.Diagnostics.Debug.WriteLine($"[OPENING_FAMILIES] Inspected {inspected} FamilySymbols, matched {matched} target families, found {parameters.Count} unique parameters from families: {string.Join(", ", targetFamilyNames)}");
+
+                // If no parameters found, log some sample families for debugging
+                if (parameters.Count == 0 && inspected > 0)
+                {
+                    System.Diagnostics.Debug.WriteLine("[OPENING_FAMILIES] No parameters found. Sample families in document:");
+                    var sampleCollector = new FilteredElementCollector(doc)
+                        .OfClass(typeof(FamilySymbol))
+                        .Take(5);
+
+                    foreach (Element sampleElement in sampleCollector)
+                    {
+                        if (sampleElement is FamilySymbol sampleSymbol)
+                        {
+                            var sampleFamilyName = sampleSymbol.Family?.Name ?? "";
+                            var sampleSymbolName = sampleSymbol.Name ?? "";
+                            System.Diagnostics.Debug.WriteLine($"[OPENING_FAMILIES] Sample family: '{sampleFamilyName}' - Symbol: '{sampleSymbolName}'");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[OPENING_FAMILIES] Error getting opening parameters from specific families: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[OPENING_FAMILIES] Stack trace: {ex.StackTrace}");
+            }
+
             return parameters;
         }
         

@@ -564,37 +564,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         {
             try
             {
-                // Load MEP parameters
-                var mepParams = _mappingService.GetMepElementParameters(_document);
-                foreach (var param in mepParams)
-                {
-                    _referenceSourceComboBox.Items.Add(param.Name);
-                }
-                
-                // Load host parameters
-                var hostParams = _mappingService.GetHostElementParameters(_document);
-                foreach (var param in hostParams)
-                {
-                    _hostSourceComboBox.Items.Add(param.Name);
-                }
-                
-                // Load level parameters
-                var levelParams = _mappingService.GetLevelParameters(_document);
-                foreach (var param in levelParams)
-                {
-                    _levelSourceComboBox.Items.Add(param.Name);
-                }
-                
-                // Load opening parameters
-                var openingParams = _mappingService.GetOpeningParameters(_document);
-                foreach (var param in openingParams)
-                {
-                    _referenceTargetComboBox.Items.Add(param.Name);
-                    _hostTargetComboBox.Items.Add(param.Name);
-                    _levelTargetComboBox.Items.Add(param.Name);
-                    _modelTargetComboBox.Items.Add(param.Name);
-                }
-                
+                // Use the same working parameter extraction logic as EmergencyMainDialog
+                LoadMepParameters();
+                LoadHostParameters();
+                LoadLevelParameters();
+                LoadOpeningParameters();
+
                 // Set default selections
                 if (_referenceSourceComboBox.Items.Count > 0)
                     _referenceSourceComboBox.SelectedIndex = 0;
@@ -615,6 +590,288 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 MessageBox.Show($"Error loading parameter data: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        /// <summary>
+        /// Load MEP parameters using the same logic as EmergencyMainDialog
+        /// </summary>
+        private void LoadMepParameters()
+        {
+            try
+            {
+                // Get selected MEP categories (for now, get all common categories)
+                var selectedCategories = new List<string> { "Ducts", "Pipes", "Cable Trays", "Duct Accessories" };
+
+                // Use ParameterExtractionService to get parameters from linked files (same as EmergencyMainDialog)
+                var parameterService = new Services.ParameterExtractionService();
+                var linkedFileService = new Services.LinkedFileService();
+                var linkedFiles = linkedFileService.GetLinkedFiles(_document);
+
+                var mepParameters = new HashSet<string>();
+
+                if (linkedFiles.Count > 0)
+                {
+                    // Get parameters from linked files
+                    foreach (var linkedFile in linkedFiles)
+                    {
+                        try
+                        {
+                            var linkedDoc = linkedFile.LinkInstance?.GetLinkDocument();
+                            if (linkedDoc != null)
+                            {
+                                // Convert string categories to enum
+                                var mepCategories = selectedCategories
+                                    .Select(cat => GetMepCategoryFromName(cat))
+                                    .Where(cat => cat.HasValue)
+                                    .Select(cat => cat.Value)
+                                    .Cast<Services.MepCategory>()
+                                    .ToList();
+
+                                var parameters = parameterService.GetParametersForMepCategories(linkedDoc, mepCategories);
+                                var parameterNames = parameters.Select(p => p.Name).ToList();
+
+                                // Add unique parameters
+                                foreach (var paramName in parameterNames)
+                                {
+                                    if (!string.IsNullOrEmpty(paramName))
+                                    {
+                                        mepParameters.Add(paramName);
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Error getting parameters from linked file '{linkedFile.FileName}': {ex.Message}");
+                        }
+                    }
+                }
+                else
+                {
+                    // Fallback to current document if no linked files
+                    var mepCategories = selectedCategories
+                        .Select(cat => GetMepCategoryFromName(cat))
+                        .Where(cat => cat.HasValue)
+                        .Select(cat => cat.Value)
+                        .Cast<Services.MepCategory>()
+                        .ToList();
+
+                    var parameters = parameterService.GetParametersForMepCategories(_document, mepCategories);
+                    var parameterNames = parameters.Select(p => p.Name).ToList();
+
+                    foreach (var paramName in parameterNames)
+                    {
+                        if (!string.IsNullOrEmpty(paramName))
+                        {
+                            mepParameters.Add(paramName);
+                        }
+                    }
+                }
+
+                // Add to comboboxes
+                foreach (var param in mepParameters.OrderBy(p => p))
+                {
+                    _referenceSourceComboBox.Items.Add(param);
+                }
+
+                System.Diagnostics.Debug.WriteLine($"Loaded {mepParameters.Count} MEP parameters for parameter transfer");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error loading MEP parameters: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Load host parameters using the same logic as EmergencyMainDialog
+        /// </summary>
+        private void LoadHostParameters()
+        {
+            try
+            {
+                var hostParameters = new HashSet<string>();
+
+                // Use the same logic as EmergencyMainDialog - check linked files first
+                var linkedFileService = new Services.LinkedFileService();
+                var linkedFiles = linkedFileService.GetLinkedFiles(_document);
+
+                if (linkedFiles.Count > 0)
+                {
+                    // Get parameters from linked files (same as EmergencyMainDialog)
+                    foreach (var linkedFile in linkedFiles)
+                    {
+                        try
+                        {
+                            var linkedDoc = linkedFile.LinkInstance?.GetLinkDocument();
+                            if (linkedDoc != null)
+                            {
+                                // Get host parameters from linked document
+                                var hostParams = _mappingService.GetHostElementParameters(linkedDoc);
+                                foreach (var param in hostParams)
+                                {
+                                    if (!string.IsNullOrEmpty(param.Name))
+                                    {
+                                        hostParameters.Add(param.Name);
+                                    }
+                                }
+                                System.Diagnostics.Debug.WriteLine($"Got {hostParams.Count} host parameters from linked file '{linkedFile.FileName}'");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Error getting host parameters from linked file '{linkedFile.FileName}': {ex.Message}");
+                        }
+                    }
+                }
+                else
+                {
+                    // Fallback to current document if no linked files
+                    var hostParams = _mappingService.GetHostElementParameters(_document);
+                    foreach (var param in hostParams)
+                    {
+                        if (!string.IsNullOrEmpty(param.Name))
+                        {
+                            hostParameters.Add(param.Name);
+                        }
+                    }
+                    System.Diagnostics.Debug.WriteLine($"Got {hostParams.Count} host parameters from current document");
+                }
+
+                // If still no parameters found, add common host parameters as fallback
+                if (hostParameters.Count == 0)
+                {
+                    var fallbackParams = new List<string>
+                    {
+                        "Fire Rating",
+                        "Material",
+                        "Wall Type",
+                        "Floor Type",
+                        "Ceiling Type",
+                        "Thickness",
+                        "Width",
+                        "Height",
+                        "Area",
+                        "Volume",
+                        "Comments",
+                        "Mark",
+                        "Type Name",
+                        "Family Name"
+                    };
+
+                    foreach (var param in fallbackParams)
+                    {
+                        hostParameters.Add(param);
+                    }
+
+                    System.Diagnostics.Debug.WriteLine("No host parameters found from documents - using fallback parameter list");
+                }
+
+                // Add to combobox
+                foreach (var param in hostParameters.OrderBy(p => p))
+                {
+                    _hostSourceComboBox.Items.Add(param);
+                }
+
+                System.Diagnostics.Debug.WriteLine($"Loaded {hostParameters.Count} host parameters for parameter transfer from {linkedFiles.Count} linked files");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error loading host parameters: {ex.Message}");
+
+                // Ultimate fallback - add basic parameters
+                var basicParams = new List<string> { "Fire Rating", "Material", "Wall Type", "Comments", "Mark" };
+                foreach (var param in basicParams)
+                {
+                    _hostSourceComboBox.Items.Add(param);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Load level parameters
+        /// </summary>
+        private void LoadLevelParameters()
+        {
+            try
+            {
+                var levelParams = _mappingService.GetLevelParameters(_document);
+                foreach (var param in levelParams)
+                {
+                    _levelSourceComboBox.Items.Add(param.Name);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error loading level parameters: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Load opening parameters from the 4 specific opening families only
+        /// </summary>
+        private void LoadOpeningParameters()
+        {
+            try
+            {
+                var openingParameters = new HashSet<string>();
+
+                // Use the specific method to get parameters from the 4 opening families only
+                var openingParams = _mappingService.GetOpeningParametersFromSpecificFamilies(_document);
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] GetOpeningParametersFromSpecificFamilies returned {openingParams.Count} parameters");
+
+                foreach (var param in openingParams)
+                {
+                    if (!string.IsNullOrEmpty(param.Name))
+                    {
+                        openingParameters.Add(param.Name);
+                        System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Added opening parameter: '{param.Name}' (Shared: {param.IsShared})");
+                    }
+                }
+
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Total unique opening parameters: {openingParameters.Count}");
+
+                // Add to all target comboboxes
+                foreach (var param in openingParameters.OrderBy(p => p))
+                {
+                    _referenceTargetComboBox.Items.Add(param);
+                    _hostTargetComboBox.Items.Add(param);
+                    _levelTargetComboBox.Items.Add(param);
+                    _modelTargetComboBox.Items.Add(param);
+                    System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Added to target comboboxes: '{param}'");
+                }
+
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Loaded {openingParameters.Count} opening parameters from the 4 specific opening families for parameter transfer");
+
+                // Log all parameters for debugging
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Opening parameters list: {string.Join(", ", openingParameters.OrderBy(p => p))}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Error loading opening parameters: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Stack trace: {ex.StackTrace}");
+
+                // No fallback - only use the 4 specific families
+                System.Diagnostics.Debug.WriteLine("[PARAMETER_TRANSFER_DEBUG] No opening parameters loaded - the 4 specific opening families may not be present in the document");
+            }
+        }
+
+
+
+        /// <summary>
+        /// Convert category name string to MepCategory enum
+        /// </summary>
+        private Models.MepCategory? GetMepCategoryFromName(string categoryName)
+        {
+            return categoryName.ToLower() switch
+            {
+                "pipes" or "pipe" => Models.MepCategory.Pipes,
+                "ducts" or "duct" => Models.MepCategory.Ducts,
+                "cable trays" or "cable tray" => Models.MepCategory.CableTrays,
+                "conduits" or "conduit" => Models.MepCategory.CableTrays, // Conduits not available, use CableTrays instead
+                "duct accessories" or "duct accessory" => Models.MepCategory.DuctAccessories,
+                "duct fittings" or "duct fitting" => Models.MepCategory.DuctAccessories, // DuctFittings not available, use DuctAccessories instead
+                _ => null
+            };
         }
         
         private void LoadPredefinedMappings()

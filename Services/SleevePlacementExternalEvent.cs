@@ -20,11 +20,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private List<string> _selectedCategories;
         private Document _document;
         private UIDocument _uiDocument;
+        private MarkPrefixSettings _markPrefixes; // ✅ NEW: Instance variable for mark prefixes
+
+        /// <summary>
+        /// ✅ NEW: Set context for sleeve placement operation
+        /// Pass both categories AND mark prefixes from UI
+        /// </summary>
+        public void SetContext(List<string> categories, MarkPrefixSettings markPrefixes)
+        {
+            _selectedCategories = categories ?? throw new ArgumentNullException(nameof(categories));
+            _markPrefixes = markPrefixes ?? throw new ArgumentNullException(nameof(markPrefixes));
+            DebugLogger.Info($"[SleevePlacementExternalEvent] SetContext called - Categories: {string.Join(", ", categories)}");
+        }
 
         public void Execute(UIApplication app)
         {
             try
             {
+                // ✅ CORRECTED: Defensive null check with fallback
+                if (_markPrefixes == null)
+                {
+                    DebugLogger.Warning("[SleevePlacementExternalEvent] Mark prefixes not set, using defaults");
+                    _markPrefixes = new MarkPrefixSettings();
+                }
+                
                 DebugLogger.Info("[SleevePlacementExternalEvent] Starting sleeve placement process");
                 
                 _uiDocument = app.ActiveUIDocument;
@@ -74,7 +93,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var clusterCommand = new Commands.UniversalClusterCommand(category);
                             clusterCommand.Execute(app);
                             
-                            DebugLogger.Info($"[SleevePlacementExternalEvent] ✓ Completed placement and clustering for {category}");
+                            // ✅ NEW: Step 3: Apply MEPMARK to clusters using stored prefixes
+                            DebugLogger.Info($"[SleevePlacementExternalEvent] Applying MEPMARK to {category} clusters...");
+                            
+                            // ✅ CORRECTED: Use instance variable (safe after null check)
+                            string projectPrefix = _markPrefixes.ProjectPrefix;
+                            string disciplinePrefix = _markPrefixes.GetDisciplinePrefix(category);
+                            
+                            var markCommand = new Commands.MarkParameterCommand(category, projectPrefix, disciplinePrefix);
+                            markCommand.Execute(app);
+                            
+                            DebugLogger.Info($"[SleevePlacementExternalEvent] ✓ Completed placement, clustering, and MEPMARK for {category}");
                         }
                         else
                         {
@@ -87,13 +116,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
                 
-                DebugLogger.Info("[SleevePlacementExternalEvent] All categories processed (placement + clustering)");
+                DebugLogger.Info("[SleevePlacementExternalEvent] All categories processed (placement + clustering + MEPMARK)");
             }
             catch (Exception ex)
             {
                 DebugLogger.Error($"[SleevePlacementExternalEvent] Exception: {ex.Message}");
                 DebugLogger.Error($"[SleevePlacementExternalEvent] Stack trace: {ex.StackTrace}");
-                TaskDialog.Show("Error", $"Failed to start sleeve placement: {ex.Message}");
+                TaskDialog.Show("Error", $"Failed to complete sleeve placement: {ex.Message}");
             }
         }
 

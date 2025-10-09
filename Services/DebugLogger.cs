@@ -46,12 +46,83 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
     /// <summary>
+    /// Maximum log file size before rotation (10MB)
+    /// </summary>
+    private const long MaxLogFileSize = 10 * 1024 * 1024;
+
+    /// <summary>
     /// Check if logging is enabled for the current service
     /// </summary>
     private static bool IsLoggingEnabledForCurrentService()
     {
         if (!IsEnabled) return false;
         return LoggingConfiguration.IsLoggingEnabled(CurrentService);
+    }
+
+    /// <summary>
+    /// Check if log file needs rotation and rotate if necessary
+    /// </summary>
+    private static void CheckAndRotateLogFile()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(LogFilePath) || !File.Exists(LogFilePath))
+                return;
+
+            var fileInfo = new FileInfo(LogFilePath);
+            if (fileInfo.Length > MaxLogFileSize)
+            {
+                // Close current writer
+                lock (_writerLock)
+                {
+                    try
+                    {
+                        if (_writer != null)
+                        {
+                            _writer.Flush();
+                            _writer.Close();
+                            _writer.Dispose();
+                        }
+                    }
+                    catch { }
+                    _writer = null;
+                }
+
+                // Rotate the file
+                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                string rotatedPath = Path.Combine(
+                    Path.GetDirectoryName(LogFilePath) ?? LogDir,
+                    $"{Path.GetFileNameWithoutExtension(LogFilePath)}_rotated_{timestamp}.log"
+                );
+
+                try
+                {
+                    File.Move(LogFilePath, rotatedPath);
+                }
+                catch (Exception ex)
+                {
+                    // If rotation fails, try to delete the old file
+                    try { File.Delete(LogFilePath); } catch { }
+                }
+
+                // Create new log file
+                var buildTimestamp = File.GetLastWriteTime(_cachedAssemblyPath).ToString("o");
+                string header =
+                    $"===== NEW LOG SESSION STARTED {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n" +
+                    $"JSE_RevitAddin_MEP_OPENINGS Debug Log: {Path.GetFileName(LogFilePath)}\n" +
+                    $"Build Version: {_cachedVersion}\n" +
+                    $"Build Timestamp: {buildTimestamp}\n" +
+                    $"Wrote: {_cachedAssemblyPath}\n" +
+                    $"Previous log rotated to: {rotatedPath}\n" +
+                    $"====================================================\n";
+
+                EnsureWriterInitialized(LogFilePath, header);
+            }
+        }
+        catch
+        {
+            // Log rotation should not break logging
+        }
     }
     
     /// <summary>
@@ -284,7 +355,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
 
                     var fileMode = overwrite ? FileMode.Create : FileMode.Append;
-                    var fsNew = new FileStream(path, fileMode, FileAccess.Write, FileShare.Read);
+                    var fsNew = new FileStream(path, fileMode, FileAccess.Write, FileShare.ReadWrite);
                     _writer = new StreamWriter(fsNew) { AutoFlush = true };
                     if (!overwrite)
                         _writer.Write(header);
@@ -334,6 +405,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (!IsLoggingEnabledForCurrentService()) return;
             try
             {
+                // Check if log rotation is needed before writing
+                CheckAndRotateLogFile();
+
                 // Get the class name from the source file path
                 string className = Path.GetFileNameWithoutExtension(sourceFile);
                 // Format the log entry with timestamp, version, level, class and line
@@ -414,7 +488,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                using (FileStream fs = new FileStream(LogFilePath, FileMode.Append, FileAccess.Write))
+                using (FileStream fs = new FileStream(LogFilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite))
                 {
                     return fs.CanWrite;
                 }
@@ -422,6 +496,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             catch
             {
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// Clean up old log files (keep only last 10 files per type)
+        /// </summary>
+        public static void CleanupOldLogs()
+        {
+            try
+            {
+                if (!Directory.Exists(LogDir))
+                    return;
+
+                var logFiles = Directory.GetFiles(LogDir, "*.log")
+                    .Select(f => new FileInfo(f))
+                    .OrderByDescending(f => f.LastWriteTime)
+                    .ToList();
+
+                // Keep only the 10 most recent files
+                var filesToDelete = logFiles.Skip(10).ToList();
+
+                foreach (var file in filesToDelete)
+                {
+                    try
+                    {
+                        file.Delete();
+                    }
+                    catch (Exception ex)
+                    {
+                        // Log deletion failure but continue
+                        System.Diagnostics.Debug.WriteLine($"Failed to delete old log file {file.Name}: {ex.Message}");
+                    }
+                }
+
+                if (filesToDelete.Any())
+                {
+                    System.Diagnostics.Debug.WriteLine($"Cleaned up {filesToDelete.Count} old log files");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error during log cleanup: {ex.Message}");
             }
         }
     }

@@ -1455,11 +1455,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         return line.Direction;
                     }
                 }
-                
+                else if (mepElement.Category?.Id.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
+                {
+                    // ✅ FIX: Handle dampers (FamilyInstance) - get orientation from transform
+                    var damper = mepElement as FamilyInstance;
+                    if (damper != null)
+                    {
+                        var transform = damper.GetTotalTransform();
+                        // Use BasisX as the "flow direction" (similar to ducts/pipes)
+                        var damperDirection = transform.BasisX;
+                        DebugLogger.Info($"[GetMepElementOrientation] Damper {mepElement.Id}: Direction=({damperDirection.X:F3}, {damperDirection.Y:F3}, {damperDirection.Z:F3})");
+                        return damperDirection;
+                    }
+                }
+
                 return XYZ.BasisX; // Default fallback
             }
-            catch
+            catch (Exception ex)
             {
+                DebugLogger.Warning($"[GetMepElementOrientation] Error getting orientation for element {mepElement?.Id}: {ex.Message}");
                 return XYZ.BasisX; // Default fallback
             }
         }

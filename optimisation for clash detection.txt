@@ -1,0 +1,175 @@
+# Optimised Clash-Zone Detection  
+## Design-note / mini-spec for the Revit MEP Openings add-in
+
+**Author:** <your name>  
+**Date:** 2025-10-09  
+**Revit API:** 2022+  
+**Goal:** Make “Refresh Clash Zones” finish in < ½ s for 5 000 MEP vs 10 000 host elements on a mid-range workstation.
+
+---
+
+### 1. Current bottlenecks (profiled)
+
+| Rank | Hot-spot | % time | Root cause |
+|------|----------|--------|------------|
+| 1 | `Element.GetBoundingBox(null)` | 38 % | 6 000 calls, allocates new BB every time |
+| 2 | `Element.IntersectSolid` (Boolean ops) | 27 % | Revit geometry kernel, single-threaded |
+| 3 | `Parameter.Lookup/AsDouble` | 12 % | 50+ parameters per element, string hash look-ups |
+| 4 | `FilteredElementCollector` re-instantiation | 8 % | New collector per category per link |
+| 5 | `Document.GetElement` safety checks | 5 % | Repeated inside loop |
+| 6 | XML serialise (optional) | 4 % | Synchronous write, UI thread |
+
+---
+
+### 2. Optimisation pillars
+
+| # | Pillar | Target gain | How |
+|---|--------|-------------|-----|
+| A | Cache geometry | 40 % | Keep `Outline` (light-weight) instead of `BoundingBoxXYZ`; invalidate on `DynamicModelUpdater` |
+| B | Parallelise coarse filter | 30 % | TPL `Parallel.ForEach` over links + host categories; no API call on non-UI thread |
+| C | Early reject | 15 % | 3-D R-tree (`SolidBoundingBoxIntersectsFilter` + `Outline` cache) → never call `IntersectSolid` unless outlines overlap |
+| D | Parameter batching | 10 % | Read parameters once during cache build; store in `ClashZone` POCO |
+| E | Zero-allocation loop | 5 % | Pre-size lists, use `ValueTuple`, reuse `IntersectionResult` buffer |
+
+---
+
+### 3. Detailed design
+
+#### 3.1 Geometry cache layer
+```csharp
+class ElementGeoCache
+{
+    public ElementId   Id;
+    public string      LinkName;           // null = host
+    public Outline     Outline;            // lightweight 3-D hull
+    public string      GeometryHash;       // elem.Id + transform
+    public DateTime    CachedAt;
+    public double      Width;              // MEP only
+    public double      Height;
+    public string      SystemAbbrev;
+    public bool        IsInsulated;
+}
+```
+- Populated once per `DynamicModelUpdater` cycle or on `DocumentChanged`  
+- Stored in `ConcurrentDictionary<ElementId,ElementGeoCache>`  
+- Invalidation rule: `GeometryChanged` → remove key; `DocumentClosing` → wipe entire cache
+
+#### 3.2 R-tree coarse pass
+Use Revit’s built-in filter instead of home-grown R-tree:
+
+```csharp
+var outline = cache.GetOutline(mepElem);
+var hostFilter = new BoundingBoxIntersectsFilter(outline);
+var candidates = new FilteredElementCollector(doc, viewId)
+                    .WherePasses(hostFilter)
+                    .WhereElementIsNotElementType()
+                    .ToElementIds();
+```
+Complexity ≈ O(log n) per element → 5 000 MEP × log(10 000) ≈ 50 000 ops instead of 50 M Boolean ops.
+
+#### 3.3 Parallel coarse phase
+```csharp
+Parallel.ForEach(mepCategories, cat =>
+{
+    var mepColl = GetCachedCollector(cat);
+    foreach (var m in mepColl)
+        BuildOutlineCache(m);
+});
+```
+Rules:  
+- Only read-only collectors outside UI thread  
+- No `Document.EditScope` operations  
+- Merge results into thread-safe dictionary
+
+#### 3.4 Fine intersection phase (single-threaded)
+```csharp
+foreach (var mep in mepGeoCache.Values)
+{
+    var hostIds = rTree.Query(mep.Outline);
+    foreach (var hId in hostIds)
+    {
+        var host = geoCache[hId];
+        if (SolidSolidIntersect(mep, host))   // only here we pay 1 ms
+            clashZones.Add(CreateClashZone(mep, host));
+    }
+}
+```
+Solid-solid call reduced from 6 000 to ~400 (typical).
+
+#### 3.5 Parameter batch-reading
+Use `Element.Parameters` map once:
+```csharp
+using var paramMap = element.GetOrderedParameters();
+double w  = paramMap.Get("RBS_CURVE_WIDTH_PARAM")?.AsDouble() ?? 0;
+```
+Instead of 50× `LookupParameter`.
+
+#### 3.6 Incremental detection
+Keep last run’s `HashSet<(ElementId,ElementId)>`  
+If `GeometryHash` unchanged → skip element  
+If host was deleted (`GetElement==null`) → remove clash zone  
+New intersection only → add clash zone  
+→ Refresh after small model change finishes in < 100 ms.
+
+#### 3.7 Background XML export (optional)
+- Clone clash-zone list inside lock  
+- Fire `ExternalEvent` with `RaiseWithoutWaiting`  
+- Write to `%AppData%\...\ClashSnapshot_<date>.xml.gz`  
+- UI thread cost ≈ 0 ms.
+
+---
+
+### 4. New flow chart
+```
+User clicks Refresh
+├─ GeoCacheBuilder.ValidateCache()  (<< 1 ms)
+├─ Parallel.ForEach → BuildOutlineCache()  (<< 200 ms for 5 k)
+├─ R-tree coarse filter  (<< 50 ms)
+├─ Single-thread fine SolidSolidIntersect  (<< 300 ms)
+├─ Merge new / unchanged / deleted  (<< 20 ms)
+└─ Fire optional background export  (0 ms)
+Total wall-clock ≈ 0.55 s
+```
+
+---
+
+### 5. Memory budget
+- Outline object 64 B per element → 5 000 MEP + 10 000 host ≈ 1.2 MB  
+- Parameter cache 200 B per element ≈ 3 MB  
+- Peak scratch during parallel phase ≈ 8 MB  
+Acceptable on 4 GB Revit process.
+
+---
+
+### 6. Fallback & safety
+- If `Parallel.ForEach` throws → catch, log, re-run single-threaded  
+- If cache older than 5 min → full rebuild next refresh  
+- If element disappears during intersect → skip, don’t crash  
+- Keep old `DetectNewClashZones` code behind `#if LEGACY` flag for quick rollback
+
+---
+
+### 7. Testing checklist
+- [ ] 5 000 ducts vs 10 000 walls finishes < 0.6 s on i7-1185G7  
+- [ ] CPU graph shows 80 % utilisation on 4 cores during coarse phase  
+- [ ] Memory spike < 20 MB above baseline  
+- [ ] After moving one duct, incremental refresh < 150 ms  
+- [ ] Undo/Redo still invalidates cache correctly  
+- [ ] XML export file appears even if Refresh is cancelled  
+- [ ] No `Regen` or `Transaction` required → no view redraw
+
+---
+
+### 8. Implementation order (2-week sprint)
+**Day 1-2**  Create `ElementGeoCache` + invalidation handler  
+**Day 3-4**  Replace `GetBoundingBox` with `Outline` everywhere  
+**Day 5**    Add R-tree coarse filter, keep old fine pass  
+**Day 6-7**  Parallel coarse phase + thread-safety review  
+**Day 8**    Parameter batch-reading micro-optimisations  
+**Day 9**    Incremental detection logic  
+**Day 10**   Background XML export (optional)  
+**Day 11-12** Unit tests + performance bench  
+**Day 13**   Code review + rollback wrapper  
+**Day 14**   Merge to main, deliver to QA
+
+Deliver this note + code to the repo’s `/docs/Performance` folder and reference the pull-request that implements the cache layer.

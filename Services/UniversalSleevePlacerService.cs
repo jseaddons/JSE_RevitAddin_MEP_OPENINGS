@@ -399,23 +399,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 
                 // ⚠️ ZERO LINKED FILE ACCESS - all data pre-calculated during refresh!
-                var categoryParam = sleeveInstance.LookupParameter("MEP_Category");
-                if (categoryParam != null && !categoryParam.IsReadOnly)
+                var mepElementIdParam = sleeveInstance.LookupParameter("MEP_ElementId");
+                if (mepElementIdParam != null && !mepElementIdParam.IsReadOnly)
                 {
-                    categoryParam.Set(clashZone.MepElementCategory);
-                    DebugLogger.Info($"[UniversalSleevePlacer] Set MEP_Category = '{clashZone.MepElementCategory}' on sleeve {sleeveInstance.Id}");
+                    mepElementIdParam.Set(clashZone.MepElementId.IntegerValue);
+                    DebugLogger.Info($"[UniversalSleevePlacer] Set MEP_ElementId = {clashZone.MepElementId.IntegerValue} on sleeve {sleeveInstance.Id}");
                 }
                 else
                 {
-                    DebugLogger.Warning($"[UniversalSleevePlacer] MEP_Category parameter not found or read-only on sleeve {sleeveInstance.Id}");
+                    DebugLogger.Warning($"[UniversalSleevePlacer] MEP_ElementId parameter not found or read-only on sleeve {sleeveInstance.Id}");
                 }
-                
-                sleeveInstance.LookupParameter("MEP_ElementId")?.Set(clashZone.MepElementId.IntegerValue);
+
                 sleeveInstance.LookupParameter("MEP_UniqueId")?.Set(clashZone.MepElementUniqueId);
                 sleeveInstance.LookupParameter("MEP_Size")?.Set(clashZone.MepElementFormattedSize);
                 sleeveInstance.LookupParameter("System_Abbreviation")?.Set(clashZone.MepElementSystemAbbreviation);
                 sleeveInstance.LookupParameter("MEP_Count")?.Set(1);  // Individual sleeve
-                
+
                 DebugLogger.Info($"[UniversalSleevePlacer] Set parameters for sleeve {sleeveInstance.Id}");
             }
             catch (Exception ex)

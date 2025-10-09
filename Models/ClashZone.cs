@@ -143,6 +143,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public ElementId? ClusterSleeveId { get; set; }
         
         /// <summary>
+        /// The cluster sleeve element ID as integer (for XML serialization)
+        /// </summary>
+        public int ClusterSleeveInstanceId { get; set; } = -1;
+
+        /// <summary>
         /// The placed sleeve instance ID (integer value for serialization and tracking)
         /// </summary>
         public int SleeveInstanceId { get; set; } = -1;

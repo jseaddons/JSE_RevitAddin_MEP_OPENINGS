@@ -55,10 +55,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     return;
                 }
 
-                // ---- 2. VALIDATION: Check required families (NO transaction) ----
-                DebugLogger.Info($"{_logPrefix} Validating required universal families...");
-                var familyValidationService = new FamilyValidationService(app.ActiveUIDocument.Document, msg => DebugLogger.Info(msg));
-                familyValidationService.ValidateRequiredFamilies();
+                // ---- 2. VALIDATION: Family validation removed per user request ----
+                // Old families no longer needed - using universal opening families only
                 
                 // ---- 3. SINGLE TRANSACTION: All sleeve placement ----
                 // NO MEP element collection needed - all data is in ClashZone from refresh!

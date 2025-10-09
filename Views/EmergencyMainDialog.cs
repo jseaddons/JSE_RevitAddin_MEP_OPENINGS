@@ -92,6 +92,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.Panel _cableTrayPanel = null!;
         private WinForms.Panel _damperPanel = null!;
         private WinForms.Panel _pipePanel = null!;
+        
+        // ═══════════════════════════════════════════════════════════════
+        // ✨ NEW: Mark Prefix Panel Controls (MEPMARK Implementation)
+        // Added: 2025-10-08 for custom discipline-specific mark generation
+        // ═══════════════════════════════════════════════════════════════
+        private WinForms.Panel _markPrefixPanel = null!;
+        private WinForms.TextBox _projectPrefixTextBox = null!;
+        private WinForms.TextBox _disciplinePrefixTextBox = null!;
+        
+        // In-memory storage for category-specific discipline prefixes
+        // Synced when user switches MEP Type dropdown
+        private Dictionary<string, string> _categoryPrefixes = new Dictionary<string, string>
+        {
+            { MepCategoryConstants.DUCTS, "DCT" },
+            { MepCategoryConstants.PIPES, "PLU" },
+            { MepCategoryConstants.CABLE_TRAYS, "ELE" },
+            { MepCategoryConstants.DUCT_ACCESSORIES, "DMP" }
+        };
+        // ═══════════════════════════════════════════════════════════════
+        
         private LinkedFileService? _linkedFileService;
         private List<LinkedFileInfo> _linkedFiles = new List<LinkedFileInfo>();
         private Document? _activeDocument;
@@ -131,38 +151,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // Set logging context for OK button debugging
             DebugLogger.SetServiceContext("OKButton");
             
-            // STEP 1: IMMEDIATE LOG - Create timestamped log file to avoid overwriting
-            string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-            string mainUiLogPath = $@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\MainUi_{timestamp}.log";
-            try
-            {
-                // Ensure directory exists
-                string logDir = Path.GetDirectoryName(mainUiLogPath) ?? @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log";
-                if (!Directory.Exists(logDir))
-                {
-                    Directory.CreateDirectory(logDir);
-                }
+            // STEP 1: IMMEDIATE LOG - Use rolling log system for main UI
+            // Clean up old logs first to prevent accumulation
+            DebugLogger.CleanupOldLogs();
 
-                // BUILD TIMESTAMP - Write current build time to identify version
-                string buildTimestamp = "2025-09-05 12:30:00"; // LATEST BUILD WITH TIMESTAMPED LOGS
-                File.AppendAllText(mainUiLogPath, $"[{DateTime.Now}] BUILD TIMESTAMP: {buildTimestamp}\n");
-                File.AppendAllText(mainUiLogPath, $"[{DateTime.Now}] EMERGENCY MAIN DIALOG CONSTRUCTOR STARTED\n");
-                File.AppendAllText(mainUiLogPath, $"[{DateTime.Now}] Log file: MainUi_{timestamp}.log\n");
-                File.AppendAllText(mainUiLogPath, $"[{DateTime.Now}] ApplicationProfileService: {appProfileService != null}\n");
-                File.AppendAllText(mainUiLogPath, $"[{DateTime.Now}] Document: {document?.Title ?? "null"}\n");
-            }
-            catch (Exception ex)
-            {
-                // If MainUi.log fails, try a timestamped fallback debug file
-                try
-                {
-                    string fallbackTimestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-                    File.AppendAllText($@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\emergency_debug_{fallbackTimestamp}.txt",
-                        $"[{DateTime.Now}] EmergencyMainDialog constructor failed to create MainUi.log: {ex.Message}\n");
-                }
-                catch { }
-                return; // Exit if we can't even create basic logs
-            }
+            // Set logging context for main UI
+            DebugLogger.SetServiceContext("MainUI");
+            // Initialize DebugLogger for main UI session
+            DebugLogger.InitCustomLogFileOverwrite("MainUi");
+            DebugLogger.Info($"Emergency Main Dialog Constructor Started");
+            DebugLogger.Info($"ApplicationProfileService: {appProfileService != null}");
+            DebugLogger.Info($"Document: {document?.Title ?? "null"}");
+            // DebugLogger handles its own error handling - no need for catch block
 
             // STEP 2: Continue with normal initialization
             _appProfileService = appProfileService ?? throw new ArgumentNullException(nameof(appProfileService));
@@ -174,15 +174,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _activeDocument = document;
 
             // Log successful initialization
-            try
-            {
-                File.AppendAllText(mainUiLogPath, $"[{DateTime.Now}] Services initialized successfully\n");
-            }
-            catch { }
+            DebugLogger.Info("Services initialized successfully");
 
-            // Initialize DebugLogger to use the timestamped MainUi log file for all subsequent logging
-            DebugLogger.InitCustomLogFileOverwrite("MainUi");
-            DebugLogger.Info($"DebugLogger initialized to use timestamped MainUi log file: {Path.GetFileName(mainUiLogPath)}");
+            // DebugLogger already initialized above - no need to reinitialize
 
             try
             {
@@ -216,8 +210,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             try
             {
                 DebugLogger.Info("Family validation disabled - only checking damper parameters in linked mechanical files for Duct Accessories");
-                // var familyValidationService = new FamilyValidationService(document, msg => DebugLogger.Info(msg));
-                // familyValidationService.ValidateRequiredFamilies();
+                // Family validation removed - using universal opening families only
             }
             catch (Exception ex)
             {
@@ -239,11 +232,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
 
             // STEP 4: Log completion
-            try
-            {
-                File.AppendAllText(mainUiLogPath, $"[{DateTime.Now}] EmergencyMainDialog initialization COMPLETED\n");
-            }
-            catch { }
+            DebugLogger.Info("EmergencyMainDialog initialization COMPLETED");
 
             // Load real linked files if document is provided (after UI is initialized)
             if (document != null)
@@ -1362,7 +1351,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _mepTypeCombo.SelectedIndex = 0;
             
             // Add event handler to update clearance visibility when MEP type changes
-            _mepTypeCombo.SelectedIndexChanged += (s, e) => UpdateClearanceVisibility();
+            _mepTypeCombo.SelectedIndexChanged += (s, e) => 
+            {
+                UpdateClearanceVisibility();
+                UpdateDisciplinePrefix(); // ⚠️ NEW: Update discipline prefix when MEP Type changes
+            };
             
             _rightPanel.Controls.Add(_mepTypeCombo);
 
@@ -1373,6 +1366,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             CreateParameterFilterPanel();
             // Ensure correct panel visible at startup
             UpdateClearanceVisibility();
+            // Initialize discipline prefix based on default MEP Type selection
+            UpdateDisciplinePrefix(); // ⚠️ NEW: Set initial discipline prefix
         }
 
 
@@ -1427,6 +1422,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 _clearancePanel.Visible = true; // default
                 SetDefaultClearanceValues("Default");
+            }
+        }
+
+        /// <summary>
+        /// Updates the discipline prefix textbox based on the selected MEP Type dropdown
+        /// ⚠️ NEW METHOD - Updates discipline prefix dynamically when MEP Type changes
+        /// </summary>
+        private void UpdateDisciplinePrefix()
+        {
+            try
+            {
+                if (_disciplinePrefixTextBox == null) return;
+
+                var selectedMepType = _mepTypeCombo?.SelectedItem?.ToString() ?? string.Empty;
+                
+                // Map MEP Type dropdown values to discipline prefixes
+                string disciplinePrefix = selectedMepType switch
+                {
+                    "Ducts" => _categoryPrefixes[MepCategoryConstants.DUCTS], // "DCT"
+                    "Pipes" => _categoryPrefixes[MepCategoryConstants.PIPES], // "PLU"
+                    "Cable Trays" => _categoryPrefixes[MepCategoryConstants.CABLE_TRAYS], // "ELE"
+                    "Duct Accessories" => _categoryPrefixes[MepCategoryConstants.DUCT_ACCESSORIES], // "DAM"
+                    _ => "D" // Default fallback
+                };
+
+                _disciplinePrefixTextBox.Text = disciplinePrefix;
+                DebugLogger.Info($"[UpdateDisciplinePrefix] Updated discipline prefix to '{disciplinePrefix}' for MEP Type '{selectedMepType}'");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[UpdateDisciplinePrefix] Error updating discipline prefix: {ex.Message}");
             }
         }
 
@@ -2136,8 +2162,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         {
             _parameterFilterPanel = new WinForms.Panel
             {
-                Location = new System.Drawing.Point(10, 250),
-                Size = new System.Drawing.Size(_rightPanel.Width - 20, _rightPanel.Height - 260),
+                Location = new System.Drawing.Point(10, 270), // ⚠️ MOVED DOWN: 250 → 270 (20px down due to expanded Mark Prefix panel)
+                Size = new System.Drawing.Size(_rightPanel.Width - 20, _rightPanel.Height - 280), // ⚠️ ADJUSTED HEIGHT: 260 → 280 to maintain bottom anchor
                 BackColor = System.Drawing.Color.FromArgb(248, 249, 250),
                 BorderStyle = WinForms.BorderStyle.FixedSingle,
                 Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right | WinForms.AnchorStyles.Bottom
@@ -2181,32 +2207,63 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             var markingPanel = new WinForms.Panel
             {
                 Location = new System.Drawing.Point(10, 190),
-                Size = new System.Drawing.Size(_rightPanel.Width - 20, 50),
+                Size = new System.Drawing.Size(_rightPanel.Width - 20, 70), // ⚠️ INCREASED HEIGHT: 50 → 70 for 2 rows
                 BackColor = System.Drawing.Color.FromArgb(240, 248, 255),
                 BorderStyle = WinForms.BorderStyle.FixedSingle,
                 Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right
             };
             _rightPanel.Controls.Add(markingPanel);
 
-            var prefixLabel = new WinForms.Label
+            // ⚠️ ROW 1: Project Prefix (existing SLEEVE_ prefix moved here)
+            var projectPrefixLabel = new WinForms.Label
             {
-                Text = "Prefix for Opening Marks:",
+                Text = "Project Prefix:",
                 Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular),
                 Location = new System.Drawing.Point(10, 8),
-                Size = new System.Drawing.Size(150, 18)
+                Size = new System.Drawing.Size(80, 18)
             };
-            markingPanel.Controls.Add(prefixLabel);
+            markingPanel.Controls.Add(projectPrefixLabel);
 
+            _projectPrefixTextBox = new WinForms.TextBox
+            {
+                Location = new System.Drawing.Point(95, 6),
+                Size = new System.Drawing.Size(70, 20),
+                Text = "SLEEVE_", // ⚠️ MOVED: Original SLEEVE_ prefix is now Project Prefix
+                Tag = "project_prefix"
+            };
+            markingPanel.Controls.Add(_projectPrefixTextBox);
+
+            // ⚠️ ROW 2: Discipline Prefix (NEW - dynamically updates based on MEP Type dropdown)
+            var disciplinePrefixLabel = new WinForms.Label
+            {
+                Text = "Discipline Prefix:",
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular),
+                Location = new System.Drawing.Point(10, 35),
+                Size = new System.Drawing.Size(80, 18)
+            };
+            markingPanel.Controls.Add(disciplinePrefixLabel);
+
+            _disciplinePrefixTextBox = new WinForms.TextBox
+            {
+                Location = new System.Drawing.Point(95, 33),
+                Size = new System.Drawing.Size(70, 20),
+                Text = "D", // ⚠️ DEFAULT: Will be updated when MEP Type dropdown changes
+                ReadOnly = true, // ⚠️ READ-ONLY: Auto-updates based on dropdown selection
+                BackColor = System.Drawing.Color.FromArgb(245, 245, 245), // ⚠️ VISUAL: Indicates it's auto-generated
+                Tag = "discipline_prefix"
+            };
+            markingPanel.Controls.Add(_disciplinePrefixTextBox);
+
+            // ⚠️ LEGACY: Keep existing _sleeveParameterPrefixTextBox for backward compatibility (hidden)
             _sleeveParameterPrefixTextBox = new WinForms.TextBox
             {
-                Location = new System.Drawing.Point(170, 6),
-                Size = new System.Drawing.Size(100, 20),
+                Location = new System.Drawing.Point(0, 0),
+                Size = new System.Drawing.Size(1, 1),
+                Visible = false, // ⚠️ HIDDEN: Maintained for existing code that references it
                 Text = "SLEEVE_",
                 Tag = "sleeve_parameter_prefix"
             };
             markingPanel.Controls.Add(_sleeveParameterPrefixTextBox);
-
-
         }
 
 
@@ -3149,6 +3206,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         Category = filter.Category.ToString(), // Convert enum to string
                         ClearanceSettings = ReadClearanceSettingsFromUI(),
                         OpeningTypePreferences = ReadOpeningTypePreferencesFromUI()
+                        // ⚠️ NOTE: MarkPrefixes are UI state, not opening conditions - handled separately
                     };
                     
                     // Save to XML
@@ -3301,6 +3359,59 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             
             return preferences;
         }
+
+        /// <summary>
+        /// Read mark prefix settings from UI textboxes
+        /// ⚠️ UI STATE METHOD - Reads Project Prefix and Discipline Prefix from UI for mark parameter command
+        /// </summary>
+        private MarkPrefixSettings ReadMarkPrefixesFromUI()
+        {
+            var markPrefixes = new MarkPrefixSettings();
+            
+            try
+            {
+                // Read Project Prefix from UI
+                if (_projectPrefixTextBox != null && !string.IsNullOrWhiteSpace(_projectPrefixTextBox.Text))
+                {
+                    markPrefixes.ProjectPrefix = _projectPrefixTextBox.Text.Trim();
+                }
+                else
+                {
+                    markPrefixes.ProjectPrefix = "SLEEVE_"; // Default fallback
+                }
+
+                // Read Discipline Prefix from UI (this is auto-updated by dropdown)
+                if (_disciplinePrefixTextBox != null && !string.IsNullOrWhiteSpace(_disciplinePrefixTextBox.Text))
+                {
+                    markPrefixes.DuctPrefix = _disciplinePrefixTextBox.Text.Trim();
+                    markPrefixes.PipePrefix = _disciplinePrefixTextBox.Text.Trim();
+                    markPrefixes.CableTrayPrefix = _disciplinePrefixTextBox.Text.Trim();
+                    markPrefixes.DamperPrefix = _disciplinePrefixTextBox.Text.Trim();
+                }
+                else
+                {
+                    // Default fallbacks
+                    markPrefixes.DuctPrefix = "DCT";
+                    markPrefixes.PipePrefix = "PLU";
+                    markPrefixes.CableTrayPrefix = "ELE";
+                    markPrefixes.DamperPrefix = "DAM";
+                }
+
+                DebugLogger.Info($"[ReadMarkPrefixesFromUI] Project Prefix: '{markPrefixes.ProjectPrefix}', Discipline Prefix: '{_disciplinePrefixTextBox?.Text ?? "null"}'");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[ReadMarkPrefixesFromUI] Error: {ex.Message}");
+                // Return defaults on error
+                markPrefixes.ProjectPrefix = "SLEEVE_";
+                markPrefixes.DuctPrefix = "DCT";
+                markPrefixes.PipePrefix = "PLU";
+                markPrefixes.CableTrayPrefix = "ELE";
+                markPrefixes.DamperPrefix = "DAM";
+            }
+            
+            return markPrefixes;
+        }
         
         private void OnOkClick(object? sender, EventArgs e)
         {
@@ -3314,6 +3425,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
+                
+                // ✅ NEW: Read mark prefixes from UI
+                var markPrefixes = ReadMarkPrefixesFromUI();
                 
                 // ⚠️ CRITICAL: Save CONDITIONS.xml before raising external event ⚠️
                 // This implements proper architecture: Conditions saved to XML, not in static properties
@@ -3331,8 +3445,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     RevitTask.Init(exEvent);
                 }
 
-                // Set selected categories in external event
-                _sleevePlacementHandler.SetSelectedCategories(selectedCategories);
+                // ✅ CORRECTED: Use SetContext instead of SetSelectedCategories
+                // Pass both categories AND mark prefixes to external event handler
+                _sleevePlacementHandler.SetContext(selectedCategories, markPrefixes);
 
                 // Raise external event (non-blocking)
                 _sleevePlacementEvent.Raise();
@@ -5816,20 +5931,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 // Collect parameters from opening families (always from current document)
                 var openingFamilies = GetOpeningFamilies(document);
                 DebugLogger.Info($"[PARAMETER_DEBUG] Found {openingFamilies.Count} opening families");
-                
+
                 foreach (var family in openingFamilies)
                 {
                     DebugLogger.Info($"[PARAMETER_DEBUG] Processing opening family: {family.Name}");
-                    
+
                     foreach (Parameter param in family.Parameters)
                     {
                         // Include all parameters except those with empty names or truly internal parameters
-                        if (!string.IsNullOrEmpty(param.Definition.Name) && 
-                            !param.Definition.Name.StartsWith("Internal") &&
-                            !param.Definition.Name.StartsWith("Revit") &&
-                            !param.Definition.Name.StartsWith("Assembly"))
+                        // Removed overly restrictive filtering - include all valid parameters
+                        if (!string.IsNullOrEmpty(param.Definition.Name))
                         {
                             openingParameters.Add(param.Definition.Name);
+                            DebugLogger.Info($"[PARAMETER_DEBUG] Added parameter: {param.Definition.Name}");
                         }
                     }
                 }
@@ -6066,9 +6180,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private List<FamilySymbol> GetOpeningFamilies(Document document)
         {
             var openingFamilies = new List<FamilySymbol>();
-            
+
             try
             {
+                // Specific opening family names to filter by
+                var targetFamilyNames = new List<string>
+                {
+                    "RectangularOpeningOnWall",
+                    "RectangularOpeningOnSlab",
+                    "CircularOpeningOnWall",
+                    "CircularOpeningOnSlab"
+                };
+
                 // FamilySymbol is an ElementType; do NOT filter with WhereElementIsNotElementType
                 var collector = new FilteredElementCollector(document)
                     .OfClass(typeof(FamilySymbol));
@@ -6079,29 +6202,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     inspected++;
                     if (element is FamilySymbol familySymbol)
                     {
-                        var familyNameLower = ($"{familySymbol.Family?.Name} {familySymbol.Name}").ToLower();
-                        var categoryNameLower = familySymbol.Category?.Name?.ToLower() ?? string.Empty;
+                        var familyName = familySymbol.Family?.Name ?? "";
+                        var symbolName = familySymbol.Name ?? "";
 
-                        // Only include families that contain "Opening" in their name
-                        bool isOpeningFamily = familyNameLower.Contains("opening");
-                        
-                        if (isOpeningFamily)
+                        // Check if this family matches our target families
+                        bool isTargetFamily = targetFamilyNames.Any(targetName =>
+                            familyName.Contains(targetName) ||
+                            symbolName.Contains(targetName) ||
+                            $"{familyName} {symbolName}".Contains(targetName));
+
+                        if (isTargetFamily)
                         {
                             openingFamilies.Add(familySymbol);
                         }
                     }
                 }
 
-                DebugLogger.Info($"[PARAMETER_DEBUG] GetOpeningFamilies inspected {inspected} FamilySymbols, matched {openingFamilies.Count} families containing 'Opening'");
-                
+                DebugLogger.Info($"[PARAMETER_DEBUG] GetOpeningFamilies inspected {inspected} FamilySymbols, matched {openingFamilies.Count} families from specific opening families: {string.Join(", ", targetFamilyNames)}");
+
                 // Enhanced debugging: Log some sample family names to help diagnose
                 if (inspected > 0 && openingFamilies.Count == 0)
                 {
-                    DebugLogger.Info($"[PARAMETER_DEBUG] No families containing 'Opening' found. Sample family names in document:");
+                    DebugLogger.Info($"[PARAMETER_DEBUG] No specific opening families found. Sample family names in document:");
                     var sampleCollector = new FilteredElementCollector(document)
                         .OfClass(typeof(FamilySymbol))
                         .Take(10); // Just get first 10 for debugging
-                    
+
                     foreach (Element element in sampleCollector)
                     {
                         if (element is FamilySymbol familySymbol)
@@ -6112,12 +6238,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         }
                     }
                 }
-                
+
                 // Fallback: If no opening families found, return empty list
                 // The UI will use the hardcoded GetOpeningSleeveParameters() method instead
                 if (openingFamilies.Count == 0)
                 {
-                    DebugLogger.Info($"[PARAMETER_DEBUG] No opening families found - UI will use hardcoded opening parameters");
+                    DebugLogger.Info($"[PARAMETER_DEBUG] No specific opening families found - UI will use hardcoded opening parameters");
                 }
             }
             catch (Exception ex)
@@ -6629,4 +6755,3 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         }
     }
 }
-

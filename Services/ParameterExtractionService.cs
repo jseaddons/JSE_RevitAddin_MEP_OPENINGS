@@ -339,21 +339,51 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private List<FamilySymbol> GetOpeningFamilies(Document document)
         {
             var openingFamilies = new List<FamilySymbol>();
-            
+
             try
             {
+                // Specific opening family names to filter by (only the 4 current families)
+                var targetFamilyNames = new List<string>
+                {
+                    "RectangularOpeningOnWall",
+                    "RectangularOpeningOnSlab",
+                    "CircularOpeningOnWall",
+                    "CircularOpeningOnSlab"
+                };
+
+                // FamilySymbol is an ElementType; do NOT filter with WhereElementIsNotElementType
                 var collector = new FilteredElementCollector(document)
-                    .OfClass(typeof(FamilySymbol))
-                    .Cast<FamilySymbol>()
-                    .Where(fs => fs.Family.Name.Contains("Opening", StringComparison.OrdinalIgnoreCase));
-                
-                openingFamilies = collector.ToList();
+                    .OfClass(typeof(FamilySymbol));
+
+                int inspected = 0;
+                foreach (Element element in collector)
+                {
+                    inspected++;
+                    if (element is FamilySymbol familySymbol)
+                    {
+                        var familyName = familySymbol.Family?.Name ?? "";
+                        var symbolName = familySymbol.Name ?? "";
+
+                        // Check if this family matches our target families
+                        bool isTargetFamily = targetFamilyNames.Any(targetName =>
+                            familyName.Contains(targetName) ||
+                            symbolName.Contains(targetName) ||
+                            $"{familyName} {symbolName}".Contains(targetName));
+
+                        if (isTargetFamily)
+                        {
+                            openingFamilies.Add(familySymbol);
+                        }
+                    }
+                }
+
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_OPENING] GetOpeningFamilies inspected {inspected} FamilySymbols, matched {openingFamilies.Count} families from the 4 specific opening families: {string.Join(", ", targetFamilyNames)}");
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[PARAMETER_OPENING] Error getting opening families: {ex.Message}");
             }
-            
+
             return openingFamilies;
         }
 
