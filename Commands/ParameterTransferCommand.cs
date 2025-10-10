@@ -53,9 +53,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             return Result.Cancelled;
                         }
                         
-                        // Execute parameter transfer
+                        // Execute parameter transfer using command-owned transaction (preferred)
                         var transferService = new ParameterTransferService();
-                        var result = transferService.ExecuteTransferConfiguration(doc, selectedOpeningIds, configuration);
+                        ParameterTransferResult result;
+
+                        using (var tx = new Transaction(doc, "Execute Parameter Transfer Configuration"))
+                        {
+                            tx.Start();
+
+                            // If a WarningSwallower or failures preprocessor helper is available in the project,
+                            // it should be set here. We try to find and use it reflectively to avoid hard dependency.
+                            try
+                            {
+                                var fpType = typeof(Autodesk.Revit.DB.IFailuresPreprocessor);
+                                // Project-specific WarningSwallower is optional - ignored if not present
+                                var wsType = System.Type.GetType("JSE_RevitAddin_MEP_OPENINGS.Services.WarningSwallower, JSE_RevitAddin_MEP_OPENINGS");
+                                if (wsType != null && fpType.IsAssignableFrom(wsType))
+                                {
+                                    var wsInstance = Activator.CreateInstance(wsType) as IFailuresPreprocessor;
+                                    if (wsInstance != null)
+                                    {
+                                        // Failure handling options are set on the Transaction, not the Document
+                                        var fho = tx.GetFailureHandlingOptions();
+                                        fho.SetFailuresPreprocessor(wsInstance);
+                                        tx.SetFailureHandlingOptions(fho);
+                                    }
+                                }
+                            }
+                            catch { /* ignore if not present */ }
+
+                            // Call the in-transaction implementation
+                            result = transferService.ExecuteTransferConfigurationInTransaction(doc, selectedOpeningIds, configuration);
+
+                            tx.Commit();
+                        }
                         
                         // Show result
                         if (result.Success)

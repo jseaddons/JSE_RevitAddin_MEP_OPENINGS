@@ -2180,6 +2180,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             _parameterFilterPanel.Controls.Add(title);
 
+			// Add a single right-aligned "Transfer All" button in the Parameter Service header row
+			var transferAllHeaderBtn = new WinForms.Button
+			{
+				Text = "Transfer All →",
+				Size = new System.Drawing.Size(110, 24),
+				Location = new System.Drawing.Point(_parameterFilterPanel.Width - 120, 2), // slightly left so it's inside the header
+				Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Right,
+				BackColor = System.Drawing.Color.FromArgb(100, 150, 200),
+				ForeColor = System.Drawing.Color.White,
+				FlatStyle = WinForms.FlatStyle.Flat
+			};
+			transferAllHeaderBtn.Click += (_, __) =>
+			{
+				var activeMasterTab = _masterParameterTabs?.SelectedTab;
+				if (activeMasterTab == null) return;
+				var subTabs = activeMasterTab.Controls.OfType<WinForms.TabControl>().FirstOrDefault();
+				var activeServiceTab = subTabs?.SelectedTab;
+				var servicePanel = activeServiceTab?.Controls.OfType<WinForms.Panel>().FirstOrDefault();
+				if (servicePanel != null)
+				{
+					TransferAllMappingsFromPanel(servicePanel);
+				}
+			};
+			_parameterFilterPanel.Controls.Add(transferAllHeaderBtn);
+			_parameterFilterPanel.Resize += (_, __) =>
+			{
+				transferAllHeaderBtn.Location = new System.Drawing.Point(_parameterFilterPanel.Width - transferAllHeaderBtn.Width - 10, 2);
+			};
+
             // Create master tabs (Reference Elements vs Host Elements)
             _masterParameterTabs = new WinForms.TabControl
             {
@@ -2355,20 +2384,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             addButton.Click += (_, __) => AddServiceParameterRow(servicePanel, "<Select>", "");
             servicePanel.Controls.Add(addButton);
 
-            // Add Transfer All button to header of this service panel (copies left->right for all rows)
-            var transferAllBtn = new WinForms.Button
-            {
-                Text = "Transfer All →",
-                Location = new System.Drawing.Point(servicePanel.Width - 140, 6),
-                Size = new System.Drawing.Size(100, 24),
-                BackColor = System.Drawing.Color.FromArgb(100, 150, 200),
-                ForeColor = System.Drawing.Color.White,
-                FlatStyle = WinForms.FlatStyle.Flat,
-                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Right,
-                Tag = serviceCode
-            };
-            transferAllBtn.Click += (_, __) => TransferAllMappingsFromPanel(servicePanel);
-            servicePanel.Controls.Add(transferAllBtn);
 
             tabPage.Controls.Add(servicePanel);
             _referenceParameterTabs.TabPages.Add(tabPage);
