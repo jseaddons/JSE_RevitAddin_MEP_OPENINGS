@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
@@ -344,31 +345,86 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// Gets opening parameters from the current document
+        /// Gets opening parameters from the current document (same logic as ParameterExtractionService)
         /// </summary>
         private List<string> GetOpeningParameters(Document document)
         {
             var openingParameters = new List<string>();
-            
+
             try
             {
-                var collector = new FilteredElementCollector(document)
-                    .OfClass(typeof(FamilySymbol))
-                    .Cast<FamilySymbol>()
-                    .Where(fs => fs.Family.Name.Contains("Opening", StringComparison.OrdinalIgnoreCase));
+                DebugLogger.Info($"[HOST_SERVICE] Getting opening parameters from document");
 
-                foreach (var family in collector)
+                // Method 1: Get parameters from FamilySymbol (Type Parameters)
+                var openingFamilySymbols = GetOpeningFamilies(document);
+                foreach (var familySymbol in openingFamilySymbols)
                 {
-                    foreach (Parameter param in family.Parameters)
+                    foreach (Parameter param in familySymbol.Parameters)
                     {
-                        if (!string.IsNullOrEmpty(param.Definition.Name) && !openingParameters.Contains(param.Definition.Name))
+                        if (!string.IsNullOrEmpty(param.Definition?.Name) && !openingParameters.Contains(param.Definition.Name))
                         {
                             openingParameters.Add(param.Definition.Name);
                         }
                     }
                 }
+                DebugLogger.Info($"[HOST_SERVICE] Found {openingParameters.Count} parameters from FamilySymbols (type parameters)");
 
-                DebugLogger.Info($"[HOST_SERVICE] Found {openingParameters.Count} opening parameters");
+                // Method 2: Get parameters from PLACED INSTANCES (Instance Parameters)
+                var targetFamilyNames = new List<string>
+                {
+                    "RectangularOpeningOnWall",
+                    "RectangularOpeningOnSlab",
+                    "CircularOpeningOnWall",
+                    "CircularOpeningOnSlab"
+                };
+
+                var instanceCollector = new FilteredElementCollector(document)
+                    .OfClass(typeof(FamilyInstance))
+                    .WhereElementIsNotElementType();
+
+                int instanceCount = 0;
+                foreach (Element element in instanceCollector)
+                {
+                    if (element is FamilyInstance famInst)
+                    {
+                        var familyName = famInst.Symbol?.Family?.Name ?? "";
+
+                        // Check if this is one of our opening families
+                        bool isTargetFamily = targetFamilyNames.Any(targetName =>
+                            familyName.Contains(targetName));
+
+                        if (isTargetFamily)
+                        {
+                            instanceCount++;
+
+                            // Get INSTANCE parameters
+                            foreach (Parameter param in famInst.Parameters)
+                            {
+                                if (!string.IsNullOrEmpty(param.Definition?.Name) && !openingParameters.Contains(param.Definition.Name))
+                                {
+                                    openingParameters.Add(param.Definition.Name);
+                                }
+                            }
+
+                            // Only need to check a few instances
+                            if (instanceCount >= 5) break;
+                        }
+                    }
+                }
+
+                DebugLogger.Info($"[HOST_SERVICE] Checked {instanceCount} placed opening instances");
+                DebugLogger.Info($"[HOST_SERVICE] Total unique opening parameters found: {openingParameters.Count}");
+
+                // If no parameters found from families, use fallback from shared parameter file
+                if (openingParameters.Count == 0)
+                {
+                    DebugLogger.Info("[HOST_SERVICE] No parameters found from families - using fallback from shared parameter file");
+
+                    var fallbackParameters = GetOpeningParametersFromSharedFile();
+                    openingParameters = fallbackParameters;
+
+                    DebugLogger.Info($"[HOST_SERVICE] Using {openingParameters.Count} parameters from shared parameter file as fallback");
+                }
             }
             catch (Exception ex)
             {
@@ -376,6 +432,110 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             return openingParameters;
+        }
+
+        /// <summary>
+        /// Gets opening families from the current document (same as ParameterExtractionService)
+        /// </summary>
+        private List<FamilySymbol> GetOpeningFamilies(Document document)
+        {
+            var openingFamilies = new List<FamilySymbol>();
+
+            try
+            {
+                // Specific opening family names to filter by (only the 4 current families)
+                var targetFamilyNames = new List<string>
+                {
+                    "RectangularOpeningOnWall",
+                    "RectangularOpeningOnSlab",
+                    "CircularOpeningOnWall",
+                    "CircularOpeningOnSlab"
+                };
+
+                // FamilySymbol is an ElementType; do NOT filter with WhereElementIsNotElementType
+                var collector = new FilteredElementCollector(document)
+                    .OfClass(typeof(FamilySymbol));
+
+                int inspected = 0;
+                foreach (Element element in collector)
+                {
+                    inspected++;
+                    if (element is FamilySymbol familySymbol)
+                    {
+                        var familyName = familySymbol.Family?.Name ?? "";
+                        var symbolName = familySymbol.Name ?? "";
+
+                        // Check if this family matches our target families
+                        bool isTargetFamily = targetFamilyNames.Any(targetName =>
+                            familyName.Contains(targetName) ||
+                            symbolName.Contains(targetName) ||
+                            $"{familyName} {symbolName}".Contains(targetName));
+
+                        if (isTargetFamily)
+                        {
+                            openingFamilies.Add(familySymbol);
+                        }
+                    }
+                }
+
+                DebugLogger.Info($"[HOST_SERVICE] GetOpeningFamilies inspected {inspected} FamilySymbols, matched {openingFamilies.Count} families from the 4 specific opening families: {string.Join(", ", targetFamilyNames)}");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[HOST_SERVICE] Error getting opening families: {ex.Message}");
+            }
+
+            return openingFamilies;
+        }
+
+        /// <summary>
+        /// Get opening parameters directly from the shared parameter file as fallback
+        /// </summary>
+        private List<string> GetOpeningParametersFromSharedFile()
+        {
+            var parameters = new List<string>();
+
+            try
+            {
+                // Path to shared parameter file
+                string sharedParamFile = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Resources\Opening family shared parameter.txt";
+
+                if (!System.IO.File.Exists(sharedParamFile))
+                {
+                    DebugLogger.Warning($"[HOST_SERVICE] Shared parameter file not found: {sharedParamFile}");
+                    return parameters;
+                }
+
+                // Read all lines from the shared parameter file
+                var lines = File.ReadAllLines(sharedParamFile);
+
+                foreach (var line in lines)
+                {
+                    // Look for parameter definition lines (start with "PARAM")
+                    if (line.StartsWith("PARAM"))
+                    {
+                        var parts = line.Split('\t');
+                        if (parts.Length >= 3)
+                        {
+                            // The parameter name is the 3rd field (index 2)
+                            string paramName = parts[2];
+                            if (!string.IsNullOrEmpty(paramName) && !parameters.Contains(paramName))
+                            {
+                                parameters.Add(paramName);
+                                DebugLogger.Info($"[HOST_SERVICE] Added fallback parameter from shared file: '{paramName}'");
+                            }
+                        }
+                    }
+                }
+
+                DebugLogger.Info($"[HOST_SERVICE] Loaded {parameters.Count} parameters from shared parameter file");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[HOST_SERVICE] Error reading shared parameter file: {ex.Message}");
+            }
+
+            return parameters;
         }
 
         /// <summary>

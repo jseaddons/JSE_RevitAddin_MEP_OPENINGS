@@ -5447,7 +5447,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] About to update parameter dropdowns\n");
                     
                     UpdateParameterDropdownsFromMepCategories(document);
-                    
+
+                    // Also update host parameters for the Host to Opening tab
+                    System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] About to update host parameters");
+                    PopulateHostParameters();
+
                     System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] Parameter dropdowns updated successfully");
                     JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] Parameter dropdowns updated successfully\n");
                 }

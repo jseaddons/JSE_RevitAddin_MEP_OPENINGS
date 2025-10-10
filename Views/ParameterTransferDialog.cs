@@ -564,10 +564,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         {
             try
             {
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Starting LoadParameterData()");
+
                 // Use the same working parameter extraction logic as EmergencyMainDialog
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Calling LoadMepParameters()");
                 LoadMepParameters();
+
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Calling LoadHostParameters()");
                 LoadHostParameters();
+
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Calling LoadLevelParameters()");
                 LoadLevelParameters();
+
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Calling LoadOpeningParameters()");
                 LoadOpeningParameters();
 
                 // Set default selections
@@ -585,9 +594,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     _levelTargetComboBox.SelectedIndex = 0;
                 if (_modelTargetComboBox.Items.Count > 0)
                     _modelTargetComboBox.SelectedIndex = 0;
+
+                // Final debug: Check all combobox item counts
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] FINAL: Reference source: {_referenceSourceComboBox.Items.Count} items");
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] FINAL: Reference target: {_referenceTargetComboBox.Items.Count} items");
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] FINAL: Host source: {_hostSourceComboBox.Items.Count} items");
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] FINAL: Host target: {_hostTargetComboBox.Items.Count} items");
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] FINAL: Level source: {_levelSourceComboBox.Items.Count} items");
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] FINAL: Level target: {_levelTargetComboBox.Items.Count} items");
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] FINAL: Model target: {_modelTargetComboBox.Items.Count} items");
+
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] LoadParameterData() completed successfully");
             }
             catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Error in LoadParameterData(): {ex.Message}");
                 MessageBox.Show($"Error loading parameter data: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
@@ -808,7 +829,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         /// <summary>
         /// Load opening parameters from the 4 specific opening families only
-        /// Uses the same logic as EmergencyMainDialog for consistency
         /// </summary>
         private void LoadOpeningParameters()
         {
@@ -816,23 +836,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 var openingParameters = new HashSet<string>();
 
-                // Use the same logic as EmergencyMainDialog - get opening families and extract parameters
-                var openingFamilies = GetOpeningFamilies(_document);
-                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Found {openingFamilies.Count} opening families");
+                // Use the specific method to get parameters from the 4 opening families only
+                var openingParams = _mappingService.GetOpeningParametersFromSpecificFamilies(_document);
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] GetOpeningParametersFromSpecificFamilies returned {openingParams.Count} parameters");
 
-                foreach (var family in openingFamilies)
+                foreach (var param in openingParams)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Processing opening family: {family.Name}");
-
-                    foreach (Parameter param in family.Parameters)
+                    if (!string.IsNullOrEmpty(param.Name))
                     {
-                        // Include all parameters except those with empty names or truly internal parameters
-                        // Removed overly restrictive filtering - include all valid parameters
-                        if (!string.IsNullOrEmpty(param.Definition.Name))
-                        {
-                            openingParameters.Add(param.Definition.Name);
-                            System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Added parameter: {param.Definition.Name}");
-                        }
+                        openingParameters.Add(param.Name);
+                        System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Added opening parameter: '{param.Name}' (Shared: {param.IsShared})");
                     }
                 }
 
@@ -845,8 +858,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     _hostTargetComboBox.Items.Add(param);
                     _levelTargetComboBox.Items.Add(param);
                     _modelTargetComboBox.Items.Add(param);
-                    System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Added to target comboboxes: '{param}'");
+                    System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Added '{param}' to all target comboboxes");
                 }
+
+                // Debug: Check if comboboxes have items
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Reference target combobox has {_referenceTargetComboBox.Items.Count} items");
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Host target combobox has {_hostTargetComboBox.Items.Count} items");
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Level target combobox has {_levelTargetComboBox.Items.Count} items");
+                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Model target combobox has {_modelTargetComboBox.Items.Count} items");
 
                 System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Loaded {openingParameters.Count} opening parameters from the 4 specific opening families for parameter transfer");
 
@@ -861,87 +880,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 // No fallback - only use the 4 specific families
                 System.Diagnostics.Debug.WriteLine("[PARAMETER_TRANSFER_DEBUG] No opening parameters loaded - the 4 specific opening families may not be present in the document");
             }
-        }
-
-        /// <summary>
-        /// Gets opening families from the current document
-        /// Uses the same logic as EmergencyMainDialog
-        /// </summary>
-        private List<Autodesk.Revit.DB.FamilySymbol> GetOpeningFamilies(Autodesk.Revit.DB.Document document)
-        {
-            var openingFamilies = new List<Autodesk.Revit.DB.FamilySymbol>();
-
-            try
-            {
-                // Specific opening family names to filter by
-                var targetFamilyNames = new List<string>
-                {
-                    "RectangularOpeningOnWall",
-                    "RectangularOpeningOnSlab",
-                    "CircularOpeningOnWall",
-                    "CircularOpeningOnSlab"
-                };
-
-                // FamilySymbol is an ElementType; do NOT filter with WhereElementIsNotElementType
-                var collector = new FilteredElementCollector(document)
-                    .OfClass(typeof(Autodesk.Revit.DB.FamilySymbol));
-
-                int inspected = 0;
-                foreach (Autodesk.Revit.DB.Element element in collector)
-                {
-                    inspected++;
-                    if (element is Autodesk.Revit.DB.FamilySymbol familySymbol)
-                    {
-                        var familyName = familySymbol.Family?.Name ?? "";
-                        var symbolName = familySymbol.Name ?? "";
-
-                        // Check if this family matches our target families
-                        bool isTargetFamily = targetFamilyNames.Any(targetName =>
-                            familyName.Contains(targetName) ||
-                            symbolName.Contains(targetName) ||
-                            $"{familyName} {symbolName}".Contains(targetName));
-
-                        if (isTargetFamily)
-                        {
-                            openingFamilies.Add(familySymbol);
-                        }
-                    }
-                }
-
-                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] GetOpeningFamilies inspected {inspected} FamilySymbols, matched {openingFamilies.Count} families from specific opening families: {string.Join(", ", targetFamilyNames)}");
-
-                // Enhanced debugging: Log some sample family names to help diagnose
-                if (inspected > 0 && openingFamilies.Count == 0)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] No specific opening families found. Sample family names in document:");
-                    var sampleCollector = new FilteredElementCollector(document)
-                        .OfClass(typeof(Autodesk.Revit.DB.FamilySymbol))
-                        .Take(10); // Just get first 10 for debugging
-
-                    foreach (Autodesk.Revit.DB.Element element in sampleCollector)
-                    {
-                        if (element is Autodesk.Revit.DB.FamilySymbol familySymbol)
-                        {
-                            var familyName = $"{familySymbol.Family?.Name} {familySymbol.Name}";
-                            var categoryName = familySymbol.Category?.Name ?? "Unknown";
-                            System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Sample family: '{familyName}' (Category: {categoryName})");
-                        }
-                    }
-                }
-
-                // Fallback: If no opening families found, return empty list
-                // The UI will use the hardcoded GetOpeningSleeveParameters() method instead
-                if (openingFamilies.Count == 0)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] No specific opening families found - UI will use hardcoded opening parameters");
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[PARAMETER_TRANSFER_DEBUG] Error getting opening families: {ex.Message}");
-            }
-
-            return openingFamilies;
         }
 
 
