@@ -16,6 +16,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     {
         private readonly LinkedFileService _linkedFileService;
         private readonly ParameterExtractionService _parameterExtractionService;
+        private Document _document; // Store document reference for row creation
 
         public HostParameterService()
         {
@@ -61,7 +62,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 };
 
                 // Add one empty parameter row initially (same as Reference Elements)
-                AddHostParameterRow(hostPanel, hostCode);
+                AddHostParameterRow(hostPanel, hostCode, _document);
 
                 // Add button (plus) for adding new parameter rows - positioned at right like Reference Elements
                 var addButton = new WinForms.Button
@@ -74,7 +75,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     FlatStyle = WinForms.FlatStyle.Flat,
                     Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Right // Same anchor as Reference Elements
                 };
-                addButton.Click += (_, __) => AddHostParameterRow(hostPanel, hostCode);
+                addButton.Click += (_, __) =>
+                {
+                    // Create a new row - parameters will be populated by PopulateHostParameters
+                    // Use stored document reference for opening parameter population
+                    AddHostParameterRow(hostPanel, hostCode, _document);
+                };
                 hostPanel.Controls.Add(addButton);
 
                 tabPage.Controls.Add(hostPanel);
@@ -89,13 +95,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// Adds a new parameter row to the host panel (empty dropdowns for user selection)
+        /// Adds a new parameter row to the host panel with populated dropdowns
         /// Same layout as Reference Elements
         /// </summary>
-        private void AddHostParameterRow(WinForms.Panel hostPanel, string hostCode)
+        private void AddHostParameterRow(WinForms.Panel hostPanel, string hostCode, Document document)
         {
             try
             {
+                // =====  DIAGNOSTIC – DO NOT DELETE  =====
+                if (document != null)
+                {
+                    var liveOpeningParams = _parameterExtractionService.GetCurrentOpeningParameters(document);
+                    DebugLogger.Info($"[LIVE-DIAG] {nameof(AddHostParameterRow)} about to fill Opening combo with {liveOpeningParams.Count} items");
+                }
+                // =======================================
+
                 int rowHeight = 24;
                 
                 // Count only parameter rows (panels with Tag = "parameterRow")
@@ -123,7 +137,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 hostCombo.SelectedIndex = 0;
                 row.Controls.Add(hostCombo);
 
-                // Opening Parameter ComboBox (right side) - Empty for user selection
+                // Opening Parameter ComboBox (right side) - Populate with cached opening parameters
                 var openingCombo = new WinForms.ComboBox
                 {
                     Location = new System.Drawing.Point(130, 2),
@@ -132,7 +146,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DropDownStyle = WinForms.ComboBoxStyle.DropDownList,
                     Tag = "opening"
                 };
-                openingCombo.Items.Add("<Select Opening Parameter>");
+
+                // Populate with live opening parameters using bootstrap routine - always fresh
+                if (document != null)
+                {
+                    var liveOpeningParams = _parameterExtractionService.GetCurrentOpeningParameters(document);
+                    openingCombo.Items.AddRange(liveOpeningParams.Cast<object>().ToArray());
+
+                    // =====  DIAGNOSTIC – DO NOT DELETE  =====
+                    LoggingConfiguration.ConditionalAppendAllText(
+                        @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt",
+                        $"[HOST-CHECK] Opening combo now contains {openingCombo.Items.Count} items (after AddRange){Environment.NewLine}");
+                    // =======================================
+
+                    // Force dropdown to show all items with scrolling (fix UI truncation)
+                    openingCombo.IntegralHeight = false; // Allow partial items for better scrolling
+                    openingCombo.MaxDropDownItems = 20; // Show 20 items at a time with scroll bar
+                }
+                openingCombo.Items.Insert(0, "<Select Opening Parameter>");
                 openingCombo.SelectedIndex = 0;
                 row.Controls.Add(openingCombo);
 
@@ -189,8 +220,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
+                // Store document reference for row creation
+                _document = document;
+
                 DebugLogger.Info($"[HOST_SERVICE] Populating host parameters for {selectedHostFiles.Count} selected host files");
-                
+
                 if (selectedHostFiles == null || selectedHostFiles.Count == 0)
                 {
                     DebugLogger.Info("[HOST_SERVICE] No host files selected - skipping parameter population");
@@ -369,7 +403,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 DebugLogger.Info($"[HOST_SERVICE] Found {openingParameters.Count} parameters from FamilySymbols (type parameters)");
 
-                // Method 2: Get parameters from PLACED INSTANCES (Instance Parameters)
+                // Method 2: Get parameters from FamilySymbol (Type Parameters) - works even without instances
                 var targetFamilyNames = new List<string>
                 {
                     "RectangularOpeningOnWall",
@@ -378,41 +412,45 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     "CircularOpeningOnSlab"
                 };
 
-                var instanceCollector = new FilteredElementCollector(document)
-                    .OfClass(typeof(FamilyInstance))
-                    .WhereElementIsNotElementType();
+                var symbolCollector = new FilteredElementCollector(document)
+                    .OfClass(typeof(FamilySymbol))
+                    .WhereElementIsElementType();
 
-                int instanceCount = 0;
-                foreach (Element element in instanceCollector)
+                int symbolCount = 0;
+                foreach (Element element in symbolCollector)
                 {
-                    if (element is FamilyInstance famInst)
+                    if (element is FamilySymbol familySymbol)
                     {
-                        var familyName = famInst.Symbol?.Family?.Name ?? "";
+                        var familyName = familySymbol.Family?.Name ?? "";
+                        var symbolName = familySymbol.Name ?? "";
 
                         // Check if this is one of our opening families
                         bool isTargetFamily = targetFamilyNames.Any(targetName =>
-                            familyName.Contains(targetName));
+                            familyName.Contains(targetName) ||
+                            symbolName.Contains(targetName) ||
+                            $"{familyName} {symbolName}".Contains(targetName));
 
                         if (isTargetFamily)
                         {
-                            instanceCount++;
+                            symbolCount++;
 
-                            // Get INSTANCE parameters
-                            foreach (Parameter param in famInst.Parameters)
+                            // Get TYPE parameters from FamilySymbol
+                            foreach (Parameter param in familySymbol.Parameters)
                             {
                                 if (!string.IsNullOrEmpty(param.Definition?.Name) && !openingParameters.Contains(param.Definition.Name))
                                 {
                                     openingParameters.Add(param.Definition.Name);
+                                    DebugLogger.Info($"[HOST_SERVICE] Added type parameter from FamilySymbol: '{param.Definition.Name}'");
                                 }
                             }
 
-                            // Only need to check a few instances
-                            if (instanceCount >= 5) break;
+                            // Only need to check a few symbols
+                            if (symbolCount >= 10) break;
                         }
                     }
                 }
 
-                DebugLogger.Info($"[HOST_SERVICE] Checked {instanceCount} placed opening instances");
+                DebugLogger.Info($"[HOST_SERVICE] Checked {symbolCount} opening family symbols for type parameters");
                 DebugLogger.Info($"[HOST_SERVICE] Total unique opening parameters found: {openingParameters.Count}");
 
                 // If no parameters found from families, use fallback from shared parameter file

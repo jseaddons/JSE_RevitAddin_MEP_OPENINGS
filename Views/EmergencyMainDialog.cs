@@ -2355,6 +2355,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             addButton.Click += (_, __) => AddServiceParameterRow(servicePanel, "<Select>", "");
             servicePanel.Controls.Add(addButton);
 
+            // Add Transfer All button to header of this service panel (copies left->right for all rows)
+            var transferAllBtn = new WinForms.Button
+            {
+                Text = "Transfer All →",
+                Location = new System.Drawing.Point(servicePanel.Width - 140, 6),
+                Size = new System.Drawing.Size(100, 24),
+                BackColor = System.Drawing.Color.FromArgb(100, 150, 200),
+                ForeColor = System.Drawing.Color.White,
+                FlatStyle = WinForms.FlatStyle.Flat,
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Right,
+                Tag = serviceCode
+            };
+            transferAllBtn.Click += (_, __) => TransferAllMappingsFromPanel(servicePanel);
+            servicePanel.Controls.Add(transferAllBtn);
+
             tabPage.Controls.Add(servicePanel);
             _referenceParameterTabs.TabPages.Add(tabPage);
         }
@@ -2367,7 +2382,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             var row = new WinForms.Panel
             {
                 Location = new System.Drawing.Point(8, top),
-                Size = new System.Drawing.Size(servicePanel.Width - 16, rowHeight),
+                Size = new System.Drawing.Size(servicePanel.Width - 16, rowHeight + 10), // Increased height by 10px to accommodate taller combo boxes
                 Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right
             };
             servicePanel.Controls.Add(row);
@@ -2379,28 +2394,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 DropDownStyle = WinForms.ComboBoxStyle.DropDownList
             };
             
-            // Get current MEP parameters from the latest refresh
-            var mepParameters = GetCurrentMepParameters();
+            // Get current MEP parameters using live harvest
+            var parameterService = new Services.ParameterExtractionService();
+            var mepParameters = GetMepParametersForTab(servicePanel);
             nameCombo.Items.AddRange(mepParameters.ToArray());
             nameCombo.SelectedItem = parameterName;
-            
+
+            DebugLogger.Info($"[ADD_ROW] MEP combo populated with {nameCombo.Items.Count} items");
+
             row.Controls.Add(nameCombo);
 
             var openingParamCombo = new WinForms.ComboBox
             {
                 Location = new System.Drawing.Point(130, 2),
-                Size = new System.Drawing.Size(row.Width - 130 - 30, 20),
+                Size = new System.Drawing.Size(row.Width - 130 - 60, 30), // Reduced width to make room for transfer button
                 Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right,
                 DropDownStyle = WinForms.ComboBoxStyle.DropDownList
             };
-            
-            // Get current opening parameters from the latest refresh
-            var openingParameters = GetCurrentOpeningParameters();
-            openingParamCombo.Items.AddRange(openingParameters.ToArray());
+
+            // CRITICAL FIX: Use live bootstrap routine instead of cached parameters
+            var openingParameters = parameterService.GetCurrentOpeningParameters(_uiDocument?.Document);
+            openingParamCombo.Items.AddRange(openingParameters.Cast<object>().ToArray());
             openingParamCombo.Items.Insert(0, "<Select Opening Parameter>");
             openingParamCombo.SelectedIndex = 0;
-            
+
+            DebugLogger.Info($"[ADD_ROW] Opening combo populated with {openingParamCombo.Items.Count} items");
+
+            // Force dropdown to show all items with scrolling (fix UI truncation)
+            openingParamCombo.IntegralHeight = false; // Allow partial items for better scrolling
+            openingParamCombo.MaxDropDownItems = 100; // Show 100 items at a time with scroll bar
+            openingParamCombo.DropDownHeight = 400; // Set explicit dropdown height for better visibility
+            openingParamCombo.MaxLength = 0; // Remove any length restrictions
+
             row.Controls.Add(openingParamCombo);
+
+            // NOTE: Per-row transfer button removed. Use the tab-level "Transfer All" control
+            // to copy the selected MEP parameter into the opening parameter for every row.
 
             var removeBtn = new WinForms.Button
             {
@@ -2508,6 +2537,51 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 DebugLogger.Error($"[PARAMETER_CURRENT] Error getting current MEP parameters: {ex.Message}");
                 return new List<string>();
+            }
+        }
+
+        /// <summary>
+        /// Transfer all mappings in the given service panel: for each row, copy the selected
+        /// item from the combo tagged "mep" into the combo tagged "opening" (if possible).
+        /// This implements the tab-level "Transfer All" behavior requested by UX.
+        /// </summary>
+        private void TransferAllMappingsFromPanel(WinForms.Panel servicePanel)
+        {
+            try
+            {
+                foreach (var row in servicePanel.Controls.OfType<WinForms.Panel>())
+                {
+                    var mepCombo = row.Controls.OfType<WinForms.ComboBox>().FirstOrDefault(c => (c.Tag as string) == "mep");
+                    var openingCombo = row.Controls.OfType<WinForms.ComboBox>().FirstOrDefault(c => (c.Tag as string) == "opening");
+
+                    if (mepCombo == null || openingCombo == null)
+                        continue;
+
+                    // If there's a selected item on the left, try to set the right combobox to the same text
+                    var selected = mepCombo.SelectedItem?.ToString();
+                    if (string.IsNullOrWhiteSpace(selected))
+                        continue;
+
+                    // If the opening combo already contains this item, select it. Otherwise, add it then select.
+                    var found = openingCombo.Items.Cast<object>().FirstOrDefault(i => i?.ToString() == selected);
+                    if (found != null)
+                    {
+                        openingCombo.SelectedItem = found;
+                    }
+                    else
+                    {
+                        // Insert before the '<Select Opening Parameter>' if present (index 0)
+                        int insertIndex = 0;
+                        if (openingCombo.Items.Count > 0 && openingCombo.Items[0]?.ToString()?.StartsWith("<Select") == true)
+                            insertIndex = 1;
+                        openingCombo.Items.Insert(insertIndex, selected);
+                        openingCombo.SelectedIndex = insertIndex;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"TransferAllMappingsFromPanel failed: {ex.Message}");
             }
         }
         
@@ -5542,7 +5616,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     }
                 }
                 
-                // Call service to handle category-specific parameter population
+                // FORCE cache to be built by creating ParameterTransferDialog first (even if not shown)
+                // This ensures LoadParameterData() runs and populates the cache with MEP parameters
+                using var dummyDialog = new Views.ParameterTransferDialog(_uiDocument?.Document);
+                dummyDialog.Dispose(); // Dialog never shown, but cache is now ready
+
+                // Now safe to call service - cache will be populated
                 var parameterService = new Services.ParameterExtractionService();
                 parameterService.PopulateCategorySpecificParameters(_referenceParameterTabs, selectedCategories, _uiDocument?.Document);
                 
@@ -5562,20 +5641,63 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             try
             {
                 DebugLogger.Info("[HOST_SERVICE] Starting host parameter population");
-                
+
                 // Get selected host files
                 var selectedHostFiles = GetSelectedHostFiles();
                 DebugLogger.Info($"[HOST_SERVICE] Selected host files: {string.Join(", ", selectedHostFiles)}");
-                
+
                 // Call service to handle host parameter population
                 var hostParameterService = new Services.HostParameterService();
                 hostParameterService.PopulateHostParameters(_hostParameterTabs, selectedHostFiles, _uiDocument?.Document);
-                
+
                 DebugLogger.Info("[HOST_SERVICE] Host parameter population completed via service");
             }
             catch (Exception ex)
             {
                 DebugLogger.Error($"[HOST_SERVICE] Error in PopulateHostParameters: {ex.Message}");
+            }
+        }
+
+
+        /// <summary>
+        /// Gets MEP parameters for the current tab context
+        /// </summary>
+        private List<string> GetMepParametersForTab(WinForms.Panel servicePanel)
+        {
+            try
+            {
+                // Get the category name from the tab
+                var tabPage = servicePanel.Parent as WinForms.TabPage;
+                var categoryName = tabPage?.Text ?? "";
+
+                if (categoryName.Contains("Reference", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Reference tab - harvest MEP parameters
+                    var parameterService = new Services.ParameterExtractionService();
+                    return parameterService.HarvestMepParametersFromDocument(_uiDocument?.Document);
+                }
+                else if (categoryName.Contains("Host", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Host tab - get host element parameters
+                    var linkedFileService = new Services.LinkedFileService();
+                    var allLinkedFiles = linkedFileService.GetLinkedFiles(_uiDocument?.Document);
+                    var hostLinkedFiles = linkedFileService.GetHostElementFiles(allLinkedFiles);
+                    var parameterService = new Services.ParameterExtractionService();
+                    return parameterService.GetHostElementParametersFromLinkedFiles(hostLinkedFiles);
+                }
+                else
+                {
+                    // Category-specific tab (Ducts, Pipes, etc.)
+                    var linkedFileService = new Services.LinkedFileService();
+                    var allLinkedFiles = linkedFileService.GetLinkedFiles(_uiDocument?.Document);
+                    var parameterService = new Services.ParameterExtractionService();
+                    return parameterService.GetParametersForSpecificCategoryFromLinkedFiles(categoryName, allLinkedFiles);
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"Error getting MEP parameters for tab: {ex.Message}");
+                return new List<string>();
             }
         }
 
@@ -5615,7 +5737,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 "Diameter",
                 "Clearance",
                 "Opening Type",
-                "Service Type"
+                "Size",
             };
         }
 
@@ -6780,15 +6902,68 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             try
             {
                 DebugLogger.Info($"UpdateParameterServiceDropdowns called with {categoryParameters.Count} categories");
-                
+
                 // Use the working PopulateParameterDropdowns method instead of placeholder
                 PopulateParameterDropdowns();
-                
+
                 DebugLogger.Info("[PARAMETER_SERVICE] UpdateParameterServiceDropdowns completed successfully");
             }
             catch (Exception ex)
             {
                 DebugLogger.Error($"UpdateParameterServiceDropdowns failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Transfers parameter value from opening parameter dropdown to MEP parameter dropdown
+        /// This implements the parameter transfer functionality that matches the dropdowns in parameter service
+        /// </summary>
+        private void TransferParameterValue(WinForms.ComboBox mepParamCombo, WinForms.ComboBox openingParamCombo)
+        {
+            try
+            {
+                DebugLogger.Info("[PARAMETER_TRANSFER] Starting parameter value transfer");
+
+                // Get the selected opening parameter value
+                var selectedOpeningParam = openingParamCombo?.SelectedItem?.ToString();
+                if (string.IsNullOrEmpty(selectedOpeningParam) || selectedOpeningParam == "<Select Opening Parameter>")
+                {
+                    DebugLogger.Warning("[PARAMETER_TRANSFER] No valid opening parameter selected");
+                    _statusLabel.Text = "Please select an opening parameter to transfer";
+                    return;
+                }
+
+                // Check if the MEP parameter dropdown contains this parameter
+                if (mepParamCombo?.Items.Contains(selectedOpeningParam) == true)
+                {
+                    // Set the MEP parameter dropdown to the selected opening parameter
+                    mepParamCombo.SelectedItem = selectedOpeningParam;
+                    DebugLogger.Info($"[PARAMETER_TRANSFER] Successfully transferred parameter: '{selectedOpeningParam}' from opening to MEP dropdown");
+                    _statusLabel.Text = $"Parameter '{selectedOpeningParam}' transferred to MEP parameter";
+                }
+                else
+                {
+                    // Parameter not found in MEP dropdown - add it if possible
+                    if (mepParamCombo != null && !mepParamCombo.Items.Contains(selectedOpeningParam))
+                    {
+                        mepParamCombo.Items.Add(selectedOpeningParam);
+                        mepParamCombo.SelectedItem = selectedOpeningParam;
+                        DebugLogger.Info($"[PARAMETER_TRANSFER] Added and selected parameter: '{selectedOpeningParam}' in MEP dropdown");
+                        _statusLabel.Text = $"Parameter '{selectedOpeningParam}' added and transferred to MEP parameter";
+                    }
+                    else
+                    {
+                        DebugLogger.Warning($"[PARAMETER_TRANSFER] Parameter '{selectedOpeningParam}' not found in MEP parameter list");
+                        _statusLabel.Text = $"Parameter '{selectedOpeningParam}' not available in MEP parameters";
+                    }
+                }
+
+                DebugLogger.Info("[PARAMETER_TRANSFER] Parameter transfer completed");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[PARAMETER_TRANSFER] Error during parameter transfer: {ex.Message}");
+                _statusLabel.Text = $"Error transferring parameter: {ex.Message}";
             }
         }
     }
