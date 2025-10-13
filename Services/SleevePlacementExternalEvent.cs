@@ -17,6 +17,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// </summary>
     public class SleevePlacementExternalEvent : IExternalEventHandler
     {
+        public event Action PlacementCompleted;
         private List<string> _selectedCategories;
         private Document _document;
         private UIDocument _uiDocument;
@@ -124,6 +125,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Error($"[SleevePlacementExternalEvent] Exception: {ex.Message}");
                 DebugLogger.Error($"[SleevePlacementExternalEvent] Stack trace: {ex.StackTrace}");
                 TaskDialog.Show("Error", $"Failed to complete sleeve placement: {ex.Message}");
+            }
+            finally
+            {
+                try { PlacementCompleted?.Invoke(); } catch { }
             }
         }
 

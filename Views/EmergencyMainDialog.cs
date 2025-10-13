@@ -140,6 +140,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         // constants (top of class)
         private const int InnerRightWidth = 320;  // choose 300–360
 
+        private Services.HostParameterService _hostParameterService;
+
+        private WinForms.Button _transferAllHeaderBtn;
+
         public EmergencyMainDialog(ApplicationProfileService appProfileService, Document? document = null, UIDocument? uiDocument = null)
         {
             _appProfileService = appProfileService;
@@ -224,6 +228,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             try
             {
                 _sleevePlacementHandler = new SleevePlacementExternalEvent();
+                _sleevePlacementHandler.PlacementCompleted += () =>
+                {
+                    try
+                    {
+                        this.Show();
+                        this.Activate();
+                        _parameterTransferButton.Enabled = true;
+                        if (_transferAllHeaderBtn != null) _transferAllHeaderBtn.Enabled = true;
+                    }
+                    catch { }
+                };
                 _sleevePlacementEvent = ExternalEvent.Create(_sleevePlacementHandler);
                 DebugLogger.Info("External Event initialized successfully for sleeve placement");
             }
@@ -326,7 +341,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 BackColor = System.Drawing.Color.FromArgb(0, 122, 204),
                 ForeColor = System.Drawing.Color.White,
                 FlatStyle = WinForms.FlatStyle.Flat,
-                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Bold)
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Bold),
+                Enabled = false // Enable only after Refresh completes
             };
             _okButton.Click += OnOkClick;
             _headerPanel.Controls.Add(_okButton);
@@ -379,7 +395,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 BackColor = System.Drawing.Color.FromArgb(111, 66, 193), // Purple color for parameter transfer
                 ForeColor = System.Drawing.Color.White,
                 FlatStyle = WinForms.FlatStyle.Flat,
-                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Bold)
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Bold),
+                Enabled = false // Enable only after OK clicked
             };
             _parameterTransferButton.Click += OnParameterTransferClick;
             _headerPanel.Controls.Add(_parameterTransferButton);
@@ -758,7 +775,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             
             // DebugLogger.Info("=== PopulateFiltersPanel COMPLETED ===");
         }
-
         private void CreateMainContentPanel()
         {
             // DebugLogger.Info("=== STARTING CreateMainContentPanel ===");
@@ -1456,7 +1472,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 DebugLogger.Error($"[UpdateDisciplinePrefix] Error updating discipline prefix: {ex.Message}");
             }
         }
-
         /// <summary>
         /// Creates clearance panels for different MEP types
         /// 
@@ -2181,7 +2196,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _parameterFilterPanel.Controls.Add(title);
 
 			// Add a single right-aligned "Transfer All" button in the Parameter Service header row
-			var transferAllHeaderBtn = new WinForms.Button
+			_transferAllHeaderBtn = new WinForms.Button
 			{
 				Text = "Transfer All →",
 				Size = new System.Drawing.Size(110, 24),
@@ -2189,9 +2204,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 				Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Right,
 				BackColor = System.Drawing.Color.FromArgb(100, 150, 200),
 				ForeColor = System.Drawing.Color.White,
-				FlatStyle = WinForms.FlatStyle.Flat
+				FlatStyle = WinForms.FlatStyle.Flat,
+				Enabled = false // gated: enabled only after OK/placement completes
 			};
-			transferAllHeaderBtn.Click += (_, __) =>
+			_transferAllHeaderBtn.Click += (_, __) =>
 			{
 				var activeMasterTab = _masterParameterTabs?.SelectedTab;
 				if (activeMasterTab == null) return;
@@ -2203,12 +2219,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 					TransferAllMappingsFromPanel(servicePanel);
 				}
 			};
-			_parameterFilterPanel.Controls.Add(transferAllHeaderBtn);
+			_parameterFilterPanel.Controls.Add(_transferAllHeaderBtn);
 			_parameterFilterPanel.Resize += (_, __) =>
 			{
-				transferAllHeaderBtn.Location = new System.Drawing.Point(_parameterFilterPanel.Width - transferAllHeaderBtn.Width - 10, 2);
+				_transferAllHeaderBtn.Location = new System.Drawing.Point(_parameterFilterPanel.Width - _transferAllHeaderBtn.Width - 10, 2);
 			};
-
             // Create master tabs (Reference Elements vs Host Elements)
             _masterParameterTabs = new WinForms.TabControl
             {
@@ -2348,9 +2363,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             hostTabPage.Controls.Add(_hostParameterTabs);
 
-            // Create Host element tabs using service
-            var hostParameterService = new Services.HostParameterService();
-            hostParameterService.CreateHostTabs(_hostParameterTabs);
+            // Create Host element tabs using a shared service instance
+            if (_hostParameterService == null)
+            {
+                _hostParameterService = new Services.HostParameterService();
+            }
+            _hostParameterService.CreateHostTabs(_hostParameterTabs);
 
             _masterParameterTabs.TabPages.Add(hostTabPage);
         }
@@ -2367,8 +2385,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
 
             // Add default parameter rows for this service
-            AddServiceParameterRow(servicePanel, "Reference Level", "A_GARDEN LEVEL");
-            AddServiceParameterRow(servicePanel, "Size", "100x100");
+            // Include level-related defaults so users can map levels immediately
+            AddServiceParameterRow(servicePanel, "Reference Level", "");
+            AddServiceParameterRow(servicePanel, "Level", "");
+            AddServiceParameterRow(servicePanel, "Schedule Level", "");
+            AddServiceParameterRow(servicePanel, "Reference Level Elevation", "");
+            AddServiceParameterRow(servicePanel, "Size", "");
 
             // Add button (plus) for this service
             var addButton = new WinForms.Button
@@ -2406,7 +2428,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Location = new System.Drawing.Point(0, 2),
                 Size = new System.Drawing.Size(120, 20),
-                DropDownStyle = WinForms.ComboBoxStyle.DropDownList
+                DropDownStyle = WinForms.ComboBoxStyle.DropDownList,
+                Tag = "mep"
             };
             
             // Get current MEP parameters using live harvest
@@ -2424,7 +2447,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Location = new System.Drawing.Point(130, 2),
                 Size = new System.Drawing.Size(row.Width - 130 - 60, 30), // Reduced width to make room for transfer button
                 Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right,
-                DropDownStyle = WinForms.ComboBoxStyle.DropDownList
+                DropDownStyle = WinForms.ComboBoxStyle.DropDownList,
+                Tag = "opening"
             };
 
             // CRITICAL FIX: Use live bootstrap routine instead of cached parameters
@@ -2432,6 +2456,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             openingParamCombo.Items.AddRange(openingParameters.Cast<object>().ToArray());
             openingParamCombo.Items.Insert(0, "<Select Opening Parameter>");
             openingParamCombo.SelectedIndex = 0;
+
+            // If the left parameter is a known level-related name (or any name present), preselect the same opening parameter when available
+            if (!string.IsNullOrWhiteSpace(parameterName) && parameterName != "<Select>")
+            {
+                var matchIndex = openingParamCombo.FindStringExact(parameterName);
+                if (matchIndex >= 0)
+                {
+                    openingParamCombo.SelectedIndex = matchIndex;
+                }
+            }
 
             DebugLogger.Info($"[ADD_ROW] Opening combo populated with {openingParamCombo.Items.Count} items");
 
@@ -2564,40 +2598,97 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         {
             try
             {
+                // Determine transfer type based on active master tab
+                var activeMasterTab = _masterParameterTabs?.SelectedTab;
+                var isHost = activeMasterTab != null && activeMasterTab.Text.IndexOf("Host", StringComparison.OrdinalIgnoreCase) >= 0;
+                var transferType = isHost ? Models.TransferType.HostToOpening : Models.TransferType.ReferenceToOpening;
+                var leftTag = isHost ? "host" : "mep";
+
+                // Build configuration from rows
+                var config = new Models.ParameterTransferConfiguration();
                 foreach (var row in servicePanel.Controls.OfType<WinForms.Panel>())
                 {
-                    var mepCombo = row.Controls.OfType<WinForms.ComboBox>().FirstOrDefault(c => (c.Tag as string) == "mep");
-                    var openingCombo = row.Controls.OfType<WinForms.ComboBox>().FirstOrDefault(c => (c.Tag as string) == "opening");
+                    var leftCombo = row.Controls.OfType<WinForms.ComboBox>().FirstOrDefault(c => (c.Tag as string) == leftTag);
+                    var rightCombo = row.Controls.OfType<WinForms.ComboBox>().FirstOrDefault(c => (c.Tag as string) == "opening");
+                    if (leftCombo == null || rightCombo == null) continue;
 
-                    if (mepCombo == null || openingCombo == null)
-                        continue;
+                    var sourceParam = leftCombo.SelectedItem?.ToString();
+                    var targetParam = rightCombo.SelectedItem?.ToString();
+                    if (string.IsNullOrWhiteSpace(sourceParam) || string.IsNullOrWhiteSpace(targetParam)) continue;
+                    if (sourceParam.StartsWith("<Select") || targetParam.StartsWith("<Select")) continue;
 
-                    // If there's a selected item on the left, try to set the right combobox to the same text
-                    var selected = mepCombo.SelectedItem?.ToString();
-                    if (string.IsNullOrWhiteSpace(selected))
-                        continue;
+                    config.Mappings.Add(new Models.ParameterMapping(sourceParam, targetParam, transferType));
+                }
 
-                    // If the opening combo already contains this item, select it. Otherwise, add it then select.
-                    var found = openingCombo.Items.Cast<object>().FirstOrDefault(i => i?.ToString() == selected);
-                    if (found != null)
-                    {
-                        openingCombo.SelectedItem = found;
-                    }
-                    else
-                    {
-                        // Insert before the '<Select Opening Parameter>' if present (index 0)
-                        int insertIndex = 0;
-                        if (openingCombo.Items.Count > 0 && openingCombo.Items[0]?.ToString()?.StartsWith("<Select") == true)
-                            insertIndex = 1;
-                        openingCombo.Items.Insert(insertIndex, selected);
-                        openingCombo.SelectedIndex = insertIndex;
-                    }
+                if (config.Mappings.Count == 0)
+                {
+                    DebugLogger.Warning("[TRANSFER_ALL] No valid mappings found in the current service tab.");
+                    return;
+                }
+
+                // Collect all opening instance IDs (placed sleeves)
+                var doc = _uiDocument?.Document;
+                if (doc == null)
+                {
+                    DebugLogger.Error("[TRANSFER_ALL] No active document.");
+                    return;
+                }
+                var openingIds = GetAllOpeningInstanceIds(doc);
+                if (openingIds.Count == 0)
+                {
+                    DebugLogger.Warning("[TRANSFER_ALL] No opening instances found to transfer to.");
+                    return;
+                }
+
+                // Execute transfer configuration (wrapper manages the transaction)
+                var transferService = new Services.ParameterTransferService();
+                var result = transferService.ExecuteTransferConfiguration(doc, openingIds, config);
+
+                DebugLogger.Info($"[TRANSFER_ALL] {result.Message}");
+                if (!result.Success)
+                {
+                    DebugLogger.Error($"[TRANSFER_ALL] Errors: {string.Join("; ", result.Errors)}");
                 }
             }
             catch (Exception ex)
             {
                 DebugLogger.Error($"TransferAllMappingsFromPanel failed: {ex.Message}");
             }
+        }
+
+        private List<ElementId> GetAllOpeningInstanceIds(Autodesk.Revit.DB.Document doc)
+        {
+            var ids = new List<ElementId>();
+            try
+            {
+                // Target opening families used throughout the app
+                var targetFamilyNames = new List<string>
+                {
+                    "RectangularOpeningOnWall",
+                    "RectangularOpeningOnSlab",
+                    "CircularOpeningOnWall",
+                    "CircularOpeningOnSlab"
+                };
+
+                var instances = new FilteredElementCollector(doc)
+                    .OfClass(typeof(FamilyInstance))
+                    .WhereElementIsNotElementType()
+                    .Cast<FamilyInstance>();
+
+                foreach (var fi in instances)
+                {
+                    var famName = fi.Symbol?.Family?.Name ?? string.Empty;
+                    if (targetFamilyNames.Any(n => famName.IndexOf(n, StringComparison.OrdinalIgnoreCase) >= 0))
+                    {
+                        ids.Add(fi.Id);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[TRANSFER_ALL] Error collecting opening instance ids: {ex.Message}");
+            }
+            return ids;
         }
         
         /// <summary>
@@ -3522,6 +3613,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         {
             try
             {
+                // Disable Parameter Transfer button until placement completes
+                _parameterTransferButton.Enabled = false;
+
                 // Get selected categories
                 var selectedCategories = GetSelectedMepCategories();
                 if (selectedCategories.Count == 0)
@@ -3554,13 +3648,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 // Pass both categories AND mark prefixes to external event handler
                 _sleevePlacementHandler.SetContext(selectedCategories, markPrefixes);
 
+                // Hide UI while processing to show prompts clearly
+                this.Hide();
+
                 // Raise external event (non-blocking)
                 _sleevePlacementEvent.Raise();
 
                 DebugLogger.Info($"[EmergencyMainDialog] External event raised for categories: {string.Join(", ", selectedCategories)}");
-                
-                // ⚠️ CRITICAL: Close dialog to free Revit main thread ⚠️
-                // ExternalEvent can only execute when the main thread is not blocked by a modal dialog
+
+                // UI will be restored by PlacementCompleted callback
                 this.Hide(); // Hide instead of Close to keep dialog in memory for status updates
             }
             catch (Exception ex)
@@ -3725,7 +3821,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
         }
-
         private void OnSaveClick(object? sender, EventArgs e)
         {
             try
@@ -4462,7 +4557,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 DebugLogger.Error($"Failed to load configuration from text file: {ex.Message}");
             }
         }
-        
         private void SaveUIStateDirectly()
         {
             try
@@ -5231,7 +5325,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             
             return clearances;
         }
-
         /// <summary>
         /// Convert generic clearance key to category-specific key
         /// </summary>
@@ -5543,6 +5636,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
                     System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] Parameter dropdowns updated successfully");
                     JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] Parameter dropdowns updated successfully\n");
+
+                    // Gate: Enable OK only after a successful Refresh completes. Do NOT enable Transfer All here.
+                    _okButton.Enabled = true;
                 }
                 else
                 {
@@ -5661,9 +5757,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 var selectedHostFiles = GetSelectedHostFiles();
                 DebugLogger.Info($"[HOST_SERVICE] Selected host files: {string.Join(", ", selectedHostFiles)}");
 
-                // Call service to handle host parameter population
-                var hostParameterService = new Services.HostParameterService();
-                hostParameterService.PopulateHostParameters(_hostParameterTabs, selectedHostFiles, _uiDocument?.Document);
+                // Call shared service to handle host parameter population
+                if (_hostParameterService == null)
+                {
+                    _hostParameterService = new Services.HostParameterService();
+                }
+                _hostParameterService.PopulateHostParameters(_hostParameterTabs, selectedHostFiles, _uiDocument?.Document);
 
                 DebugLogger.Info("[HOST_SERVICE] Host parameter population completed via service");
             }
@@ -5997,7 +6096,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 DebugLogger.Error($"[PARAMETER_SIMPLE] Stack trace: {ex.StackTrace}");
             }
         }*/
-
         /// <summary>
         /// Updates parameter dropdowns with parameters from MEP categories (not clash zones)
         /// </summary>

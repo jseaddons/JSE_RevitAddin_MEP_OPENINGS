@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Utils;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Views
 {
@@ -227,7 +228,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 var abbreviations = GetFilteredAbbreviations();
                 foreach (var abbreviation in abbreviations)
                 {
-                    _abbreviationDataGridView.Rows.Add(
+                    _abbreviationDataGridView.AddRow(
                         abbreviation.ServiceType,
                         abbreviation.Abbreviation,
                         abbreviation.ParameterName,
@@ -240,6 +241,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 MessageBox.Show($"Error refreshing data grid: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
+
+        // ...existing code...
         
         private List<ServiceTypeAbbreviation> GetFilteredAbbreviations()
         {

@@ -94,15 +94,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             return fileType switch
             {
-                LinkedFileType.Architectural => new List<HostCategory> 
-                { 
-                    HostCategory.Walls, 
-                    HostCategory.Ceilings 
+                LinkedFileType.Architectural => new List<HostCategory>
+                {
+                    HostCategory.Walls,
+                    HostCategory.Ceilings,
+                    HostCategory.Floors  // ✅ ADDED: Enable Floors for architectural linked files
                 },
-                LinkedFileType.Structural => new List<HostCategory> 
-                { 
-                    HostCategory.StructuralFraming, 
-                    HostCategory.Floors 
+                LinkedFileType.Structural => new List<HostCategory>
+                {
+                    HostCategory.StructuralFraming,
+                    HostCategory.Floors
                 },
                 _ => new List<HostCategory>()
             };

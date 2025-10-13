@@ -59,7 +59,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 CollectElements(document, modelMin, modelMax, ref mepElements, ref wallElements, selectedMepCategories);
 
-                _logger($"Found {mepElements.Count} MEP elements and {wallElements.Count} walls in section box");
+                _logger($"Found {mepElements.Count} MEP elements and {wallElements.Count} structural elements (walls/floors/framing) in section box");
 
                 if (mepElements.Count == 0)
                 {
@@ -69,7 +69,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (wallElements.Count == 0)
                 {
-                    _logger("No walls found in section box.");
+                    _logger("No structural elements (walls/floors/framing) found in section box.");
                     return new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
                 }
 
@@ -176,6 +176,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     .ToElements()
             );
 
+            // ✅ CRITICAL FIX: Also collect floors for intersection detection
+            wallElements.AddRange(
+                new FilteredElementCollector(doc)
+                    .OfCategory(BuiltInCategory.OST_Floors)
+                    .WhereElementIsNotElementType()
+                    .WherePasses(new BoundingBoxIntersectsFilter(hostOutline))
+                    .ToElements()
+            );
+
+            // ✅ CRITICAL FIX: Also collect structural framing for intersection detection
+            wallElements.AddRange(
+                new FilteredElementCollector(doc)
+                    .OfCategory(BuiltInCategory.OST_StructuralFraming)
+                    .WhereElementIsNotElementType()
+                    .WherePasses(new BoundingBoxIntersectsFilter(hostOutline))
+                    .ToElements()
+            );
+
             // Collect from links
             var links = new FilteredElementCollector(doc)
                 .OfClass(typeof(RevitLinkInstance))
@@ -224,6 +242,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 wallElements.AddRange(
                     new FilteredElementCollector(linkDoc)
                         .OfCategory(BuiltInCategory.OST_Walls)
+                        .WhereElementIsNotElementType()
+                        .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
+                        .ToElements()
+                );
+
+                // ✅ CRITICAL FIX: Also collect floors from linked documents for intersection detection
+                wallElements.AddRange(
+                    new FilteredElementCollector(linkDoc)
+                        .OfCategory(BuiltInCategory.OST_Floors)
+                        .WhereElementIsNotElementType()
+                        .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
+                        .ToElements()
+                );
+
+                // ✅ CRITICAL FIX: Also collect structural framing from linked documents for intersection detection
+                wallElements.AddRange(
+                    new FilteredElementCollector(linkDoc)
+                        .OfCategory(BuiltInCategory.OST_StructuralFraming)
                         .WhereElementIsNotElementType()
                         .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
                         .ToElements()

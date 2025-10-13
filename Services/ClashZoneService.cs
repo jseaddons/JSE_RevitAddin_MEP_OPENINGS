@@ -1393,6 +1393,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var diameter = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_OUTER_DIAMETER)?.AsDouble() ?? 0;
                     return (diameter, diameter); // Pipes are round
                 }
+                else if (mepElement is Autodesk.Revit.DB.Electrical.CableTray cableTray)
+                {
+                    var width = cableTray.get_Parameter(BuiltInParameter.RBS_CABLETRAY_WIDTH_PARAM)?.AsDouble() ?? 0;
+                    var height = cableTray.get_Parameter(BuiltInParameter.RBS_CABLETRAY_HEIGHT_PARAM)?.AsDouble() ?? 0;
+                    return (width, height);
+                }
                 else if (mepElement is Conduit conduit)
                 {
                     var width = conduit.get_Parameter(BuiltInParameter.RBS_CABLETRAY_WIDTH_PARAM)?.AsDouble() ?? 0;

@@ -17,6 +17,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly LinkedFileService _linkedFileService;
         private readonly ParameterExtractionService _parameterExtractionService;
         private Document _document; // Store document reference for row creation
+        private List<string> _cachedHostParameters = new List<string>();
+        private List<string> _cachedOpeningParameters = new List<string>();
 
         public HostParameterService()
         {
@@ -61,8 +63,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     Padding = new WinForms.Padding(3)
                 };
 
-                // Add one empty parameter row initially (same as Reference Elements)
-                AddHostParameterRow(hostPanel, hostCode, _document);
+                // Add default parameter rows (mimic Reference defaults for Host):
+                // 1) Fire Rating → opening Fire Rating (if exists)
+                AddHostParameterRow(hostPanel, hostCode, _document, "Fire Rating", "Fire Rating");
+                // 2) Nearby Grids → opening Grid Names (try common names)
+                AddHostParameterRow(hostPanel, hostCode, _document, "Grid", "Grid Names");
 
                 // Add button (plus) for adding new parameter rows - positioned at right like Reference Elements
                 var addButton = new WinForms.Button
@@ -98,7 +103,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Adds a new parameter row to the host panel with populated dropdowns
         /// Same layout as Reference Elements
         /// </summary>
-        private void AddHostParameterRow(WinForms.Panel hostPanel, string hostCode, Document document)
+        private void AddHostParameterRow(WinForms.Panel hostPanel, string hostCode, Document document, string preselectHostParam = null, string preselectOpeningParam = null)
         {
             try
             {
@@ -134,6 +139,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     Tag = "host"
                 };
                 hostCombo.Items.Add("<Select Host Parameter>");
+                // Populate left combo from cached host parameters if available (ensures + rows get data)
+                if (_cachedHostParameters != null && _cachedHostParameters.Count > 0)
+                {
+                    hostCombo.Items.AddRange(_cachedHostParameters.Cast<object>().ToArray());
+                }
                 hostCombo.SelectedIndex = 0;
                 row.Controls.Add(hostCombo);
 
@@ -141,17 +151,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var openingCombo = new WinForms.ComboBox
                 {
                     Location = new System.Drawing.Point(130, 2),
-                    Size = new System.Drawing.Size(row.Width - 130 - 30, 20),
+                    Size = new System.Drawing.Size(row.Width - 130 - 30, 24),
                     Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right,
                     DropDownStyle = WinForms.ComboBoxStyle.DropDownList,
                     Tag = "opening"
                 };
 
-                // Populate with live opening parameters using bootstrap routine - always fresh
+                // Populate with live opening parameters using bootstrap routine - always fresh (same as Reference)
                 if (document != null)
                 {
-                    var liveOpeningParams = _parameterExtractionService.GetCurrentOpeningParameters(document);
-                    openingCombo.Items.AddRange(liveOpeningParams.Cast<object>().ToArray());
+                    var openingList = (_cachedOpeningParameters != null && _cachedOpeningParameters.Count > 0)
+                        ? _cachedOpeningParameters
+                        : _parameterExtractionService.GetCurrentOpeningParameters(document);
+                    openingCombo.Items.AddRange(openingList.Cast<object>().ToArray());
 
                     // =====  DIAGNOSTIC – DO NOT DELETE  =====
                     LoggingConfiguration.ConditionalAppendAllText(
@@ -159,9 +171,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         $"[HOST-CHECK] Opening combo now contains {openingCombo.Items.Count} items (after AddRange){Environment.NewLine}");
                     // =======================================
 
-                    // Force dropdown to show all items with scrolling (fix UI truncation)
+                    // Force dropdown to show all items with scrolling (match Reference tab behavior)
                     openingCombo.IntegralHeight = false; // Allow partial items for better scrolling
-                    openingCombo.MaxDropDownItems = 20; // Show 20 items at a time with scroll bar
+                    openingCombo.MaxDropDownItems = 100; // Align with Reference tab
+                    openingCombo.DropDownHeight = 400;
                 }
                 openingCombo.Items.Insert(0, "<Select Opening Parameter>");
                 openingCombo.SelectedIndex = 0;
@@ -184,6 +197,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     RelayoutParameterRows(hostPanel);
                 };
                 row.Controls.Add(removeBtn);
+
+                // Apply pre-selections if provided
+                if (!string.IsNullOrWhiteSpace(preselectHostParam))
+                {
+                    var idx = hostCombo.FindStringExact(preselectHostParam);
+                    if (idx >= 0) hostCombo.SelectedIndex = idx; // only if exists
+                }
+                if (!string.IsNullOrWhiteSpace(preselectOpeningParam))
+                {
+                    var idx2 = openingCombo.FindStringExact(preselectOpeningParam);
+                    if (idx2 >= 0) openingCombo.SelectedIndex = idx2; // only if exists
+                }
 
                 DebugLogger.Info($"[HOST_SERVICE] Added parameter row for {hostCode}");
             }
@@ -235,9 +260,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var hostParameters = GetHostParametersFromLinkedFiles(selectedHostFiles, document);
                 DebugLogger.Info($"[HOST_SERVICE] Found {hostParameters.Count} host parameters from linked files");
 
-                // Get opening parameters
-                var openingParameters = GetOpeningParameters(document);
+                // Get opening parameters (use the same live opening family parameter list as Reference tabs)
+                var openingParameters = _parameterExtractionService.GetCurrentOpeningParameters(document);
                 DebugLogger.Info($"[HOST_SERVICE] Found {openingParameters.Count} opening parameters");
+
+                // Cache for add-row usage
+                _cachedHostParameters = hostParameters ?? new List<string>();
+                _cachedOpeningParameters = openingParameters ?? new List<string>();
 
                 // Update each host tab with parameters
                 foreach (WinForms.TabPage tabPage in hostParameterTabs.TabPages)

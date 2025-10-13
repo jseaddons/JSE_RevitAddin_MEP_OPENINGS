@@ -57,6 +57,60 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
+        /// Ensure shared parameters are loaded into the project
+        /// </summary>
+        private void EnsureSharedParametersLoaded(Document doc)
+        {
+            try
+            {
+                DebugLogger.Info("[SHARED_PARAMS] Ensuring shared parameters are loaded into project");
+
+                // Path to shared parameter file
+                string sharedParamFile = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Resources\Opening family shared parameter.txt";
+
+                if (!File.Exists(sharedParamFile))
+                {
+                    DebugLogger.Warning($"[SHARED_PARAMS] Shared parameter file not found: {sharedParamFile}");
+                    return;
+                }
+
+                // Check if shared parameter file is already loaded
+                var currentSharedParams = doc.Application.SharedParametersFilename;
+                if (!string.IsNullOrEmpty(currentSharedParams) && currentSharedParams.Contains("Opening family shared parameter.txt"))
+                {
+                    DebugLogger.Info($"[SHARED_PARAMS] Shared parameters already loaded: {currentSharedParams}");
+                    return;
+                }
+
+                // Load the shared parameter file
+                doc.Application.SharedParametersFilename = sharedParamFile;
+                DebugLogger.Info($"[SHARED_PARAMS] Loaded shared parameter file: {sharedParamFile}");
+
+                // Create a group for the parameters if it doesn't exist
+                var groupName = "Openings";
+                var sharedParams = doc.Application.OpenSharedParameterFile();
+
+                if (sharedParams != null)
+                {
+                    var group = sharedParams.Groups.get_Item(groupName);
+                    if (group == null)
+                    {
+                        // Create the group if it doesn't exist
+                        group = sharedParams.Groups.Create(groupName);
+                        DebugLogger.Info($"[SHARED_PARAMS] Created shared parameter group: {groupName}");
+                    }
+                }
+
+                DebugLogger.Info("[SHARED_PARAMS] Shared parameters loaded successfully");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[SHARED_PARAMS] Error loading shared parameters: {ex.Message}");
+                // Continue anyway - parameters might already be loaded
+            }
+        }
+
+        /// <summary>
         /// Validates that dampers in the selected linked mechanical file have required Standard and MSFD parameters
         /// </summary>
         private bool ValidateDamperParameters(List<string> selectedReferenceFiles, string refreshLogPath)
@@ -329,7 +383,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 return; // Stop refresh - don't proceed without a filter
             }
-            
+
+            // ⚠️ CRITICAL: Ensure shared parameters are loaded into the project before any parameter operations
+            DebugLogger.Info("[SHARED_PARAMS] Ensuring shared parameters are loaded into project before refresh operations");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [SHARED_PARAMS] Ensuring shared parameters are loaded into project\n");
+            EnsureSharedParametersLoaded(_document);
+
             DebugLogger.Info($"[CLASH_DEBUG] MEP filters to process: {filtersToProcess.Count}");
             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] MEP filters to process: {filtersToProcess.Count}\n");
 
@@ -478,6 +537,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Intersection breakdown by category: {string.Join(", ", intersectionBreakdown.Select(kv => $"{kv.Key}={kv.Value}"))}\n");
 
             var newClashZones = _clashZoneService.DetectNewClashZones(currentIntersections, _document, clearanceSettings);
+
+            // === Parameter Snapshot (whitelist-based) ===
+            try
+            {
+                var snapshotService = new ParameterSnapshotService();
+
+                // Build whitelist from existing storage + curated keys
+                var tempStorage = existingClashZones ?? new Models.ClashZoneStorage();
+                var whitelist = snapshotService.BuildWhitelist(tempStorage, currentIntersections.Select(t => (t.Item1, t.Item2)));
+
+                // Cache per element to avoid repeat lookups
+                var cache = new Dictionary<(string docKey, int id), List<Models.SerializableKeyValue>>();
+
+                foreach (var cz in newClashZones ?? new List<Models.ClashZone>())
+                {
+                    // Resolve elements from document or links
+                    var mep = GetElementFromDocumentOrLinked(_document, cz.MepElementId);
+                    var host = GetElementFromDocumentOrLinked(_document, cz.StructuralElementId);
+                    if (mep == null || host == null) continue;
+
+                    var mepKey = (snapshotService.GetDocKey(mep), cz.MepElementId?.IntegerValue ?? -1);
+                    var hostKey = (snapshotService.GetDocKey(host), cz.StructuralElementId?.IntegerValue ?? -1);
+
+                    if (!cache.TryGetValue(mepKey, out var mepBag))
+                    {
+                        mepBag = snapshotService.CaptureParams(mep, whitelist);
+                        cache[mepKey] = mepBag;
+                    }
+                    if (!cache.TryGetValue(hostKey, out var hostBag))
+                    {
+                        hostBag = snapshotService.CaptureParams(host, whitelist);
+                        cache[hostKey] = hostBag;
+                    }
+
+                    cz.SourceDocKey = mepKey.Item1;
+                    cz.HostDocKey = hostKey.Item1;
+                    cz.MepParameterValues = mepBag;
+                    cz.HostParameterValues = hostBag;
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[PARAM_SNAPSHOT] Non-fatal: {ex.Message}");
+            }
 
             DebugLogger.Info($"[CLASH_DEBUG] DetectNewClashZones completed - {newClashZones?.Count ?? 0} new clash zones detected");
             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] DetectNewClashZones completed - {newClashZones?.Count ?? 0} new clash zones detected\n");

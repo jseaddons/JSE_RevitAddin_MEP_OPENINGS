@@ -26,15 +26,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
-        /// Transfer parameters from MEP elements (references) to openings
+        /// Transaction-scoped transfer from reference elements. This method assumes an active transaction
+        /// is already started by the caller (command/orchestrator). It will not start/commit transactions.
         /// </summary>
-        public ParameterTransferResult TransferFromReferenceElements(
-            Document doc, 
-            List<ElementId> openingIds, 
+        public ParameterTransferResult TransferFromReferenceElementsInTransaction(
+            Document doc,
+            List<ElementId> openingIds,
             ParameterMapping mapping)
         {
             var result = new ParameterTransferResult();
-            
+
             try
             {
                 if (!mapping.IsEnabled)
@@ -43,50 +44,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     result.Message = "Mapping is disabled, skipping transfer.";
                     return result;
                 }
-                
+
                 var transferredCount = 0;
                 var failedCount = 0;
                 var errors = new List<string>();
-                
-                using (var transaction = new Transaction(doc, "Transfer Parameters from Reference Elements"))
+
+                foreach (var openingId in openingIds)
                 {
-                    transaction.Start();
-                    
-                    foreach (var openingId in openingIds)
+                    try
                     {
-                        try
+                        var opening = doc.GetElement(openingId);
+                        if (opening == null) continue;
+
+                        // Get MEP elements that intersect with this opening
+                        var mepElements = GetMepElementsInOpening(doc, opening);
+
+                        if (mepElements.Count == 0)
                         {
-                            var opening = doc.GetElement(openingId);
-                            if (opening == null) continue;
-                            
-                            // Get MEP elements that intersect with this opening
-                            var mepElements = GetMepElementsInOpening(doc, opening);
-                            
-                            if (mepElements.Count == 0)
-                            {
-                                result.Warnings.Add($"No MEP elements found for opening {openingId}");
-                                continue;
-                            }
-                            
-                            // Transfer parameter from first MEP element (or combine if multiple)
-                            var transferSuccess = TransferParameterFromElements(
-                                doc, opening, mepElements, mapping);
-                            
-                            if (transferSuccess)
-                                transferredCount++;
-                            else
-                                failedCount++;
+                            result.Warnings.Add($"No MEP elements found for opening {openingId}");
+                            continue;
                         }
-                        catch (Exception ex)
-                        {
+
+                        // Transfer parameter from first MEP element (or combine if multiple)
+                        var transferSuccess = TransferParameterFromElements(
+                            doc, opening, mepElements, mapping);
+
+                        if (transferSuccess)
+                            transferredCount++;
+                        else
                             failedCount++;
-                            errors.Add($"Error transferring to opening {openingId}: {ex.Message}");
-                        }
                     }
-                    
-                    transaction.Commit();
+                    catch (Exception ex)
+                    {
+                        failedCount++;
+                        errors.Add($"Error transferring to opening {openingId}: {ex.Message}");
+                    }
                 }
-                
+
                 result.Success = true;
                 result.TransferredCount = transferredCount;
                 result.FailedCount = failedCount;
@@ -99,8 +93,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 result.Message = $"Transfer failed: {ex.Message}";
                 result.Errors.Add(ex.Message);
             }
-            
+
             return result;
+        }
+
+        /// <summary>
+        /// Backward-compatible wrapper that keeps the older behavior (service-owned transaction).
+        /// Prefer using TransferFromReferenceElementsInTransaction by callers that own the transaction.
+        /// </summary>
+        [Obsolete("Use TransferFromReferenceElementsInTransaction and own the transaction at the command level.")]
+        public ParameterTransferResult TransferFromReferenceElements(
+            Document doc,
+            List<ElementId> openingIds,
+            ParameterMapping mapping)
+        {
+            using (var t = new Transaction(doc, "Transfer Parameters from Reference Elements (wrapper)"))
+            {
+                t.Start();
+                var r = TransferFromReferenceElementsInTransaction(doc, openingIds, mapping);
+                t.Commit();
+                return r;
+            }
         }
         
         /// <summary>
@@ -111,8 +124,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             List<ElementId> openingIds, 
             ParameterMapping mapping)
         {
+            // backward-compatible wrapper
+            using (var t = new Transaction(doc, "Transfer Parameters from Host Elements (wrapper)"))
+            {
+                t.Start();
+                var r = TransferFromHostElementsInTransaction(doc, openingIds, mapping);
+                t.Commit();
+                return r;
+            }
+        }
+
+        public ParameterTransferResult TransferFromHostElementsInTransaction(
+            Document doc,
+            List<ElementId> openingIds,
+            ParameterMapping mapping)
+        {
             var result = new ParameterTransferResult();
-            
+
             try
             {
                 if (!mapping.IsEnabled)
@@ -121,50 +149,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     result.Message = "Mapping is disabled, skipping transfer.";
                     return result;
                 }
-                
+
                 var transferredCount = 0;
                 var failedCount = 0;
                 var errors = new List<string>();
-                
-                using (var transaction = new Transaction(doc, "Transfer Parameters from Host Elements"))
+
+                foreach (var openingId in openingIds)
                 {
-                    transaction.Start();
-                    
-                    foreach (var openingId in openingIds)
+                    try
                     {
-                        try
+                        var opening = doc.GetElement(openingId);
+                        if (opening == null) continue;
+
+                        // Get host elements (walls, floors, ceilings) that contain this opening
+                        var hostElements = GetHostElementsForOpening(doc, opening);
+
+                        if (hostElements.Count == 0)
                         {
-                            var opening = doc.GetElement(openingId);
-                            if (opening == null) continue;
-                            
-                            // Get host elements (walls, floors, ceilings) that contain this opening
-                            var hostElements = GetHostElementsForOpening(doc, opening);
-                            
-                            if (hostElements.Count == 0)
-                            {
-                                result.Warnings.Add($"No host elements found for opening {openingId}");
-                                continue;
-                            }
-                            
-                            // Transfer parameter from host elements
-                            var transferSuccess = TransferParameterFromElements(
-                                doc, opening, hostElements, mapping);
-                            
-                            if (transferSuccess)
-                                transferredCount++;
-                            else
-                                failedCount++;
+                            result.Warnings.Add($"No host elements found for opening {openingId}");
+                            continue;
                         }
-                        catch (Exception ex)
-                        {
+
+                        // Transfer parameter from host elements
+                        var transferSuccess = TransferParameterFromElements(
+                            doc, opening, hostElements, mapping);
+
+                        if (transferSuccess)
+                            transferredCount++;
+                        else
                             failedCount++;
-                            errors.Add($"Error transferring to opening {openingId}: {ex.Message}");
-                        }
                     }
-                    
-                    transaction.Commit();
+                    catch (Exception ex)
+                    {
+                        failedCount++;
+                        errors.Add($"Error transferring to opening {openingId}: {ex.Message}");
+                    }
                 }
-                
+
                 result.Success = true;
                 result.TransferredCount = transferredCount;
                 result.FailedCount = failedCount;
@@ -177,7 +198,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 result.Message = $"Transfer failed: {ex.Message}";
                 result.Errors.Add(ex.Message);
             }
-            
+
             return result;
         }
         
@@ -189,8 +210,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             List<ElementId> openingIds, 
             ParameterMapping mapping)
         {
+            // Non-transactional service method: perform transfer logic without starting/committing transactions.
+            // Caller (command/orchestrator) is expected to own the transaction when required.
+            return TransferFromLevelsInTransaction(doc, openingIds, mapping);
+        }
+
+        public ParameterTransferResult TransferFromLevelsInTransaction(
+            Document doc,
+            List<ElementId> openingIds,
+            ParameterMapping mapping)
+        {
             var result = new ParameterTransferResult();
-            
+
             try
             {
                 if (!mapping.IsEnabled)
@@ -199,50 +230,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     result.Message = "Mapping is disabled, skipping transfer.";
                     return result;
                 }
-                
+
                 var transferredCount = 0;
                 var failedCount = 0;
                 var errors = new List<string>();
-                
-                using (var transaction = new Transaction(doc, "Transfer Parameters from Levels"))
+
+                foreach (var openingId in openingIds)
                 {
-                    transaction.Start();
-                    
-                    foreach (var openingId in openingIds)
+                    try
                     {
-                        try
+                        var opening = doc.GetElement(openingId);
+                        if (opening == null) continue;
+
+                        // Get level for this opening
+                        var level = GetLevelForOpening(doc, opening);
+
+                        if (level == null)
                         {
-                            var opening = doc.GetElement(openingId);
-                            if (opening == null) continue;
-                            
-                            // Get level for this opening
-                            var level = GetLevelForOpening(doc, opening);
-                            
-                            if (level == null)
-                            {
-                                result.Warnings.Add($"No level found for opening {openingId}");
-                                continue;
-                            }
-                            
-                            // Transfer parameter from level
-                            var transferSuccess = TransferParameterFromElement(
-                                doc, opening, level, mapping);
-                            
-                            if (transferSuccess)
-                                transferredCount++;
-                            else
-                                failedCount++;
+                            result.Warnings.Add($"No level found for opening {openingId}");
+                            continue;
                         }
-                        catch (Exception ex)
-                        {
+
+                        // Transfer parameter from level
+                        var transferSuccess = TransferParameterFromElement(
+                            doc, opening, level, mapping);
+
+                        if (transferSuccess)
+                            transferredCount++;
+                        else
                             failedCount++;
-                            errors.Add($"Error transferring to opening {openingId}: {ex.Message}");
-                        }
                     }
-                    
-                    transaction.Commit();
+                    catch (Exception ex)
+                    {
+                        failedCount++;
+                        errors.Add($"Error transferring to opening {openingId}: {ex.Message}");
+                    }
                 }
-                
+
                 result.Success = true;
                 result.TransferredCount = transferredCount;
                 result.FailedCount = failedCount;
@@ -255,7 +279,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 result.Message = $"Transfer failed: {ex.Message}";
                 result.Errors.Add(ex.Message);
             }
-            
+
             return result;
         }
         
@@ -268,60 +292,63 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             string targetParameter,
             double clearance = 50.0)
         {
+            // Non-transactional service method: do the transfers; caller must manage transactions.
+            return TransferServiceSizeCalculationsInTransaction(doc, openingIds, targetParameter, clearance);
+        }
+
+        public ParameterTransferResult TransferServiceSizeCalculationsInTransaction(
+            Document doc,
+            List<ElementId> openingIds,
+            string targetParameter,
+            double clearance = 50.0)
+        {
             var result = new ParameterTransferResult();
-            
+
             try
             {
                 var transferredCount = 0;
                 var failedCount = 0;
                 var errors = new List<string>();
-                
-                using (var transaction = new Transaction(doc, "Transfer Service Size Calculations"))
+
+                foreach (var openingId in openingIds)
                 {
-                    transaction.Start();
-                    
-                    foreach (var openingId in openingIds)
+                    try
                     {
-                        try
+                        var opening = doc.GetElement(openingId);
+                        if (opening == null) continue;
+
+                        // Get MEP elements that intersect with this opening
+                        var mepElements = GetMepElementsInOpening(doc, opening);
+
+                        if (mepElements.Count == 0)
                         {
-                            var opening = doc.GetElement(openingId);
-                            if (opening == null) continue;
-                            
-                            // Get MEP elements that intersect with this opening
-                            var mepElements = GetMepElementsInOpening(doc, opening);
-                            
-                            if (mepElements.Count == 0)
-                            {
-                                result.Warnings.Add($"No MEP elements found for opening {openingId}");
-                                continue;
-                            }
-                            
-                            // Calculate service size with clearance
-                            var serviceSizeCalculation = _mepAnalysisService.CalculateServiceSize(mepElements, clearance);
-                            
-                            // Set parameter value
-                            var param = opening.LookupParameter(targetParameter);
-                            if (param != null && !param.IsReadOnly)
-                            {
-                                param.Set(serviceSizeCalculation.CalculationString);
-                                transferredCount++;
-                            }
-                            else
-                            {
-                                failedCount++;
-                                errors.Add($"Cannot set parameter {targetParameter} on opening {openingId}");
-                            }
+                            result.Warnings.Add($"No MEP elements found for opening {openingId}");
+                            continue;
                         }
-                        catch (Exception ex)
+
+                        // Calculate service size with clearance
+                        var serviceSizeCalculation = _mepAnalysisService.CalculateServiceSize(mepElements, clearance);
+
+                        // Set parameter value
+                        var param = opening.LookupParameter(targetParameter);
+                        if (param != null && !param.IsReadOnly)
+                        {
+                            param.Set(serviceSizeCalculation.CalculationString);
+                            transferredCount++;
+                        }
+                        else
                         {
                             failedCount++;
-                            errors.Add($"Error transferring service size calculation to opening {openingId}: {ex.Message}");
+                            errors.Add($"Cannot set parameter {targetParameter} on opening {openingId}");
                         }
                     }
-                    
-                    transaction.Commit();
+                    catch (Exception ex)
+                    {
+                        failedCount++;
+                        errors.Add($"Error transferring service size calculation to opening {openingId}: {ex.Message}");
+                    }
                 }
-                
+
                 result.Success = true;
                 result.TransferredCount = transferredCount;
                 result.FailedCount = failedCount;
@@ -334,7 +361,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 result.Message = $"Service size calculation transfer failed: {ex.Message}";
                 result.Errors.Add(ex.Message);
             }
-            
+
             return result;
         }
         
@@ -346,51 +373,53 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             List<ElementId> openingIds, 
             string targetParameter)
         {
+            // Non-transactional service method: perform model name writes; caller must own the transaction.
+            return TransferModelNamesInTransaction(doc, openingIds, targetParameter);
+        }
+
+        public ParameterTransferResult TransferModelNamesInTransaction(
+            Document doc,
+            List<ElementId> openingIds,
+            string targetParameter)
+        {
             var result = new ParameterTransferResult();
-            
+
             try
             {
                 var transferredCount = 0;
                 var failedCount = 0;
                 var errors = new List<string>();
-                
-                using (var transaction = new Transaction(doc, "Transfer Model Names"))
+
+                foreach (var openingId in openingIds)
                 {
-                    transaction.Start();
-                    
-                    foreach (var openingId in openingIds)
+                    try
                     {
-                        try
+                        var opening = doc.GetElement(openingId);
+                        if (opening == null) continue;
+
+                        // Get model name
+                        var modelName = doc.Title;
+
+                        // Set parameter value
+                        var param = opening.LookupParameter(targetParameter);
+                        if (param != null && !param.IsReadOnly)
                         {
-                            var opening = doc.GetElement(openingId);
-                            if (opening == null) continue;
-                            
-                            // Get model name
-                            var modelName = doc.Title;
-                            
-                            // Set parameter value
-                            var param = opening.LookupParameter(targetParameter);
-                            if (param != null && !param.IsReadOnly)
-                            {
-                                param.Set(modelName);
-                                transferredCount++;
-                            }
-                            else
-                            {
-                                failedCount++;
-                                errors.Add($"Cannot set parameter {targetParameter} on opening {openingId}");
-                            }
+                            param.Set(modelName);
+                            transferredCount++;
                         }
-                        catch (Exception ex)
+                        else
                         {
                             failedCount++;
-                            errors.Add($"Error transferring model name to opening {openingId}: {ex.Message}");
+                            errors.Add($"Cannot set parameter {targetParameter} on opening {openingId}");
                         }
                     }
-                    
-                    transaction.Commit();
+                    catch (Exception ex)
+                    {
+                        failedCount++;
+                        errors.Add($"Error transferring model name to opening {openingId}: {ex.Message}");
+                    }
                 }
-                
+
                 result.Success = true;
                 result.TransferredCount = transferredCount;
                 result.FailedCount = failedCount;
@@ -403,7 +432,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 result.Message = $"Transfer failed: {ex.Message}";
                 result.Errors.Add(ex.Message);
             }
-            
+
             return result;
         }
         
@@ -425,113 +454,126 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             int transferred = 0;
             int failed = 0;
             
+            // Wrapper
+            using (var t = new Transaction(doc, "Transfer Standard Parameters from Reference Elements (wrapper)"))
+            {
+                t.Start();
+                var r = TransferStandardParametersFromReferenceElementsInTransaction(doc, openingIds);
+                t.Commit();
+                return r;
+            }
+        }
+
+        public ParameterTransferResult TransferStandardParametersFromReferenceElementsInTransaction(
+            Document doc,
+            List<ElementId> openingIds)
+        {
+            var result = new ParameterTransferResult();
+            var errors = new List<string>();
+            var warnings = new List<string>();
+            int transferred = 0;
+            int failed = 0;
+
             try
             {
-                using (var transaction = new Transaction(doc, "Transfer Standard Parameters from Reference Elements"))
+                foreach (var openingId in openingIds)
                 {
-                    transaction.Start();
-                    
-                    foreach (var openingId in openingIds)
+                    try
                     {
-                        try
-                        {
-                            var opening = doc.GetElement(openingId);
-                            if (opening == null)
-                            {
-                                failed++;
-                                errors.Add($"Opening {openingId} not found");
-                                continue;
-                            }
-                            
-                            // Find intersecting MEP elements
-                            var mepElements = GetMepElementsInOpening(doc, opening);
-                            if (mepElements.Count == 0)
-                            {
-                                warnings.Add($"No MEP elements found for opening {openingId}");
-                                continue;
-                            }
-                            
-                            // Use the first intersecting MEP element as the source
-                            var source = mepElements[0];
-                            
-                            bool anySet = false;
-                            
-                            // 1) Level → Reference_Level (string)
-                            var levelName = GetLevelName(doc, source);
-                            if (!string.IsNullOrEmpty(levelName))
-                            {
-                                var p = opening.LookupParameter("Reference_Level");
-                                if (SetParameterValueSafely(p, levelName)) anySet = true;
-                            }
-                            
-                            // 2) Dimensions
-                            var categoryId = source.Category?.Id.IntegerValue ?? -1;
-                            
-                            // Rectangular (Ducts, Cable Trays, Duct Accessories): Height, Width
-                            if (categoryId == (int)BuiltInCategory.OST_DuctCurves ||
-                                categoryId == (int)BuiltInCategory.OST_CableTray ||
-                                categoryId == (int)BuiltInCategory.OST_DuctAccessory)
-                            {
-                                var height = GetParamDouble(source, "Height");
-                                var width  = GetParamDouble(source, "Width");
-                                if (height.HasValue)
-                                {
-                                    var pH = opening.LookupParameter("Reference_Height");
-                                    if (SetParameterValueSafely(pH, height.Value)) anySet = true;
-                                }
-                                if (width.HasValue)
-                                {
-                                    var pW = opening.LookupParameter("Reference_Width");
-                                    if (SetParameterValueSafely(pW, width.Value)) anySet = true;
-                                }
-                            }
-                            
-                            // Circular (Pipes): Outside Diameter
-                            if (categoryId == (int)BuiltInCategory.OST_PipeCurves)
-                            {
-                                var diameter = GetParamDouble(source, "Outside Diameter", "Diameter");
-                                if (diameter.HasValue)
-                                {
-                                    var pD = opening.LookupParameter("Reference_Diameter");
-                                    if (SetParameterValueSafely(pD, diameter.Value)) anySet = true;
-                                }
-                            }
-                            
-                            // 3) System/Service Type → MEP_System_Type (string)
-                            string systemValue = null;
-                            if (categoryId == (int)BuiltInCategory.OST_CableTray)
-                            {
-                                systemValue = source.LookupParameter("Service Type")?.AsString();
-                            }
-                            else if (categoryId == (int)BuiltInCategory.OST_DuctCurves ||
-                                     categoryId == (int)BuiltInCategory.OST_PipeCurves ||
-                                     categoryId == (int)BuiltInCategory.OST_DuctAccessory)
-                            {
-                                systemValue = source.LookupParameter("System Type")?.AsString();
-                            }
-                            
-                            if (!string.IsNullOrWhiteSpace(systemValue))
-                            {
-                                var pSys = opening.LookupParameter("MEP_System_Type");
-                                if (SetParameterValueSafely(pSys, systemValue)) anySet = true;
-                                
-                                // Also write to Service_Category if present
-                                var pSvc = opening.LookupParameter("Service_Category");
-                                SetParameterValueSafely(pSvc, systemValue);
-                            }
-                            
-                            if (anySet) transferred++; else failed++;
-                        }
-                        catch (Exception exOpen)
+                        var opening = doc.GetElement(openingId);
+                        if (opening == null)
                         {
                             failed++;
-                            errors.Add($"Error on opening {openingId}: {exOpen.Message}");
+                            errors.Add($"Opening {openingId} not found");
+                            continue;
                         }
+
+                        // Find intersecting MEP elements
+                        var mepElements = GetMepElementsInOpening(doc, opening);
+                        if (mepElements.Count == 0)
+                        {
+                            warnings.Add($"No MEP elements found for opening {openingId}");
+                            continue;
+                        }
+
+                        // Use the first intersecting MEP element as the source
+                        var source = mepElements[0];
+
+                        bool anySet = false;
+
+                        // 1) Level → Reference_Level (string)
+                        var levelName = GetLevelName(doc, source);
+                        if (!string.IsNullOrEmpty(levelName))
+                        {
+                            var p = opening.LookupParameter("Reference_Level");
+                            if (SetParameterValueSafely(p, levelName)) anySet = true;
+                        }
+
+                        // 2) Dimensions
+                        var categoryId = source.Category?.Id.IntegerValue ?? -1;
+
+                        // Rectangular (Ducts, Cable Trays, Duct Accessories): Height, Width
+                        if (categoryId == (int)BuiltInCategory.OST_DuctCurves ||
+                            categoryId == (int)BuiltInCategory.OST_CableTray ||
+                            categoryId == (int)BuiltInCategory.OST_DuctAccessory)
+                        {
+                            var height = GetParamDouble(source, "Height");
+                            var width = GetParamDouble(source, "Width");
+                            if (height.HasValue)
+                            {
+                                var pH = opening.LookupParameter("Reference_Height");
+                                if (SetParameterValueSafely(pH, height.Value)) anySet = true;
+                            }
+                            if (width.HasValue)
+                            {
+                                var pW = opening.LookupParameter("Reference_Width");
+                                if (SetParameterValueSafely(pW, width.Value)) anySet = true;
+                            }
+                        }
+
+                        // Circular (Pipes): Outside Diameter
+                        if (categoryId == (int)BuiltInCategory.OST_PipeCurves)
+                        {
+                            var diameter = GetParamDouble(source, "Outside Diameter", "Diameter");
+                            if (diameter.HasValue)
+                            {
+                                var pD = opening.LookupParameter("Reference_Diameter");
+                                if (SetParameterValueSafely(pD, diameter.Value)) anySet = true;
+                            }
+                        }
+
+                        // 3) System/Service Type → MEP_System_Type (string)
+                        string systemValue = null;
+                        if (categoryId == (int)BuiltInCategory.OST_CableTray)
+                        {
+                            systemValue = source.LookupParameter("Service Type")?.AsString();
+                        }
+                        else if (categoryId == (int)BuiltInCategory.OST_DuctCurves ||
+                                 categoryId == (int)BuiltInCategory.OST_PipeCurves ||
+                                 categoryId == (int)BuiltInCategory.OST_DuctAccessory)
+                        {
+                            systemValue = source.LookupParameter("System Type")?.AsString();
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(systemValue))
+                        {
+                            var pSys = opening.LookupParameter("MEP_System_Type");
+                            if (SetParameterValueSafely(pSys, systemValue)) anySet = true;
+
+                            // Also write to Service_Category if present
+                            var pSvc = opening.LookupParameter("Service_Category");
+                            SetParameterValueSafely(pSvc, systemValue);
+                        }
+
+                        if (anySet) transferred++; else failed++;
                     }
-                    
-                    transaction.Commit();
+                    catch (Exception exOpen)
+                    {
+                        failed++;
+                        errors.Add($"Error on opening {openingId}: {exOpen.Message}");
+                    }
                 }
-                
+
                 result.Success = errors.Count == 0;
                 result.TransferredCount = transferred;
                 result.FailedCount = failed;
@@ -545,7 +587,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 result.Message = $"Standard parameter transfer failed: {ex.Message}";
                 result.Errors.Add(ex.Message);
             }
-            
+
             return result;
         }
         
@@ -560,48 +602,70 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var result = new ParameterTransferResult();
             var allResults = new List<ParameterTransferResult>();
             
+            // Backward-compatible wrapper which creates a transaction and calls the in-transaction implementation
+            using (var t = new Transaction(doc, "Execute Parameter Transfer Configuration (wrapper)"))
+            {
+                t.Start();
+                var r = ExecuteTransferConfigurationInTransaction(doc, openingIds, config);
+                t.Commit();
+                return r;
+            }
+        }
+
+        /// <summary>
+        /// Execute the whole transfer configuration assuming the caller owns the transaction.
+        /// This method performs all transfers by calling the InTransaction variants.
+        /// </summary>
+        public ParameterTransferResult ExecuteTransferConfigurationInTransaction(
+            Document doc,
+            List<ElementId> openingIds,
+            ParameterTransferConfiguration config)
+        {
+            var result = new ParameterTransferResult();
+            var allResults = new List<ParameterTransferResult>();
+
             try
             {
                 // Execute each mapping
                 foreach (var mapping in config.Mappings)
                 {
                     ParameterTransferResult mappingResult = null;
-                    
+
                     switch (mapping.TransferType)
                     {
                         case TransferType.ReferenceToOpening:
-                            mappingResult = TransferFromReferenceElements(doc, openingIds, mapping);
+                            mappingResult = TransferFromReferenceElementsInTransaction(doc, openingIds, mapping);
                             break;
                         case TransferType.HostToOpening:
-                            mappingResult = TransferFromHostElements(doc, openingIds, mapping);
+                            mappingResult = TransferFromHostElementsInTransaction(doc, openingIds, mapping);
                             break;
                         case TransferType.LevelToOpening:
-                            mappingResult = TransferFromLevels(doc, openingIds, mapping);
+                            mappingResult = TransferFromLevelsInTransaction(doc, openingIds, mapping);
                             break;
                     }
-                    
+
                     if (mappingResult != null)
                         allResults.Add(mappingResult);
                 }
-                
+
                 // Transfer model names if enabled
                 if (config.TransferModelNames)
                 {
-                    var modelResult = TransferModelNames(doc, openingIds, config.ModelNameParameter);
+                    var modelResult = TransferModelNamesInTransaction(doc, openingIds, config.ModelNameParameter);
                     allResults.Add(modelResult);
                 }
-                
+
                 // Transfer service size calculations if enabled
                 if (config.TransferServiceSizeCalculations)
                 {
                     // Set clearance parameters
                     _mepAnalysisService.SetClearanceParameters(config.DefaultClearance, config.ClearanceSuffix);
-                    
-                    var serviceSizeResult = TransferServiceSizeCalculations(
+
+                    var serviceSizeResult = TransferServiceSizeCalculationsInTransaction(
                         doc, openingIds, config.ServiceSizeCalculationParameter, config.DefaultClearance);
                     allResults.Add(serviceSizeResult);
                 }
-                
+
                 // Combine results
                 result.Success = allResults.All(r => r.Success);
                 result.TransferredCount = allResults.Sum(r => r.TransferredCount);
@@ -616,7 +680,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 result.Message = $"Configuration transfer failed: {ex.Message}";
                 result.Errors.Add(ex.Message);
             }
-            
+
             return result;
         }
         
@@ -753,6 +817,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 
                 targetParam.Set(value);
+
+                // Record learned key so it will be snapshotted next Refresh
+                ParameterSnapshotService.AddLearnedKey(mapping.SourceParameter);
                 return true;
             }
             catch (Exception ex)
@@ -801,6 +868,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 var combinedValue = string.Join(mapping.Separator, values.Distinct());
                 targetParam.Set(combinedValue);
+                // Record learned key so it will be snapshotted next Refresh
+                ParameterSnapshotService.AddLearnedKey(mapping.SourceParameter);
                 return true;
             }
             catch (Exception ex)

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Windows.Forms;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Utils;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Views
 {
@@ -248,7 +249,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 var conditions = GetFilteredConditions();
                 foreach (var condition in conditions)
                 {
-                    _renamingDataGridView.Rows.Add(
+                    _renamingDataGridView.AddRow(
                         condition.OriginalValue,
                         condition.NewValue,
                         condition.ParameterName,
@@ -261,6 +262,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 MessageBox.Show($"Error refreshing data grid: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
+
+        // ...existing code...
         
         private List<RenamingCondition> GetFilteredConditions()
         {

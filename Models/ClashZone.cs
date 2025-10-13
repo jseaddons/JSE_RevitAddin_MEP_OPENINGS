@@ -423,6 +423,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// </summary>
         [XmlIgnore]
         public Dictionary<string, string> Metadata { get; set; } = new Dictionary<string, string>();
+
+        /// <summary>
+        /// Snapshot of selected MEP parameter values at Refresh time (whitelisted keys)
+        /// </summary>
+        [XmlArray("MepParameterValues")]
+        [XmlArrayItem("Param")]
+        public List<SerializableKeyValue> MepParameterValues { get; set; } = new List<SerializableKeyValue>();
+
+        /// <summary>
+        /// Snapshot of selected Host parameter values at Refresh time (whitelisted keys)
+        /// </summary>
+        [XmlArray("HostParameterValues")]
+        [XmlArrayItem("Param")]
+        public List<SerializableKeyValue> HostParameterValues { get; set; } = new List<SerializableKeyValue>();
+
+        /// <summary>
+        /// Document key for MEP element (distinguishes active vs linked docs)
+        /// </summary>
+        public string SourceDocKey { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Document key for Host element (distinguishes active vs linked docs)
+        /// </summary>
+        public string HostDocKey { get; set; } = string.Empty;
     }
     
     /// <summary>
@@ -466,6 +490,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// </summary>
         [XmlIgnore]
         public Dictionary<string, object> DetectionSettings { get; set; } = new Dictionary<string, object>();
+
+        /// <summary>
+        /// Whitelisted parameter keys to snapshot (persisted once per file)
+        /// </summary>
+        [XmlArray("ParameterKeyWhitelist")]
+        [XmlArrayItem("Key")]
+        public List<string> ParameterKeyWhitelist { get; set; } = new List<string>();
+
+        /// <summary>
+        /// Additional keys learned on-demand during mapping, merged into whitelist next run
+        /// </summary>
+        [XmlArray("LearnedParameterKeys")]
+        [XmlArrayItem("Key")]
+        public List<string> LearnedParameterKeys { get; set; } = new List<string>();
     }
 }
 
