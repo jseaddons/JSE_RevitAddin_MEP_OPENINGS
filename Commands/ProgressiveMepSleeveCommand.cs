@@ -49,39 +49,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 
                 Log($"3D view confirmed. Section box active: {view3D.IsSectionBoxActive}");
 
-                using (var tx = new Transaction(doc, "Progressive MEP Sleeve Placement"))
-                {
-                    tx.Start();
-                    
-                    try
-                    {
-                        var progressiveService = new ProgressiveMepSleeveService(doc, Log);
-                        progressiveService.ProcessAllMepTypes();
-                        
-                        tx.Commit();
-                        
-                        // Show completion dialog
-                        string summary = $"MEP Sleeve Placement Complete!\n\n" +
-                                       $"Total Placed: {progressiveService.TotalPlaced}\n" +
-                                       $"Total Skipped: {progressiveService.TotalSkipped}\n" +
-                                       $"Total Errors: {progressiveService.TotalErrors}\n\n" +
-                                       $"Check log file for details:\n{absoluteLogPath}";
-                        
-                        TaskDialog.Show("Success", summary);
-                        
-                        Log("=== PROGRESSIVE MEP SLEEVE PLACEMENT COMPLETED ===");
-                        return Result.Succeeded;
-                    }
-                    catch (Exception ex)
-                    {
-                        tx.RollBack();
-                        Log($"CRITICAL ERROR: {ex.Message}");
-                        Log($"Stack trace: {ex.StackTrace}");
-                        
-                        TaskDialog.Show("Error", $"An error occurred during processing:\n\n{ex.Message}\n\nCheck the log file for details.");
-                        return Result.Failed;
-                    }
-                }
+                TaskDialog.Show("Info", "ProgressiveMepSleeveCommand is deprecated. Use the Parameter Service (universal placer) workflow.");
+                return Result.Succeeded;
             }
             catch (Exception ex)
             {

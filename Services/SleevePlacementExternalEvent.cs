@@ -74,7 +74,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Log immediate feedback (non-blocking)
                 DebugLogger.Info($"[SleevePlacementExternalEvent] Processing {_selectedCategories.Count} categories: {string.Join(", ", _selectedCategories)}");
 
-                // Process each category: Place individual sleeves → Cluster → Update XML
+                // Process each category: Place individual sleeves → Cluster → Apply MEPMARK → Persist updated zones
                 foreach (var category in _selectedCategories)
                 {
                     var (clashZones, xmlFilePath) = GetClashZonesForCategory(category);
@@ -95,6 +95,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         clusterCommand.Execute(app);
                             
                             // ✅ NEW: Step 3: Apply MEPMARK to clusters using stored prefixes
+                            // Ensure Revit finalizes new elements before marking
+                            try
+                            {
+                                _uiDocument?.Document?.Regenerate();
+                                DebugLogger.Info($"[SleevePlacementExternalEvent] Document regenerated after placement/clustering before marking");
+                            }
+                            catch (Exception regenEx)
+                            {
+                                DebugLogger.Warning($"[SleevePlacementExternalEvent] Regenerate before marking failed: {regenEx.Message}");
+                            }
                             DebugLogger.Info($"[SleevePlacementExternalEvent] Applying MEPMARK to {category} clusters...");
                             
                             // ✅ CORRECTED: Use instance variable (safe after null check)
@@ -106,6 +116,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             markCommand.Execute(app);
                             
                             DebugLogger.Info($"[SleevePlacementExternalEvent] ✓ Completed placement, clustering, and MEPMARK for {category}");
+
+                            // Persist updated clash zones including SleeveInstanceId to the category XML
+                            try
+                            {
+                                if (!string.IsNullOrWhiteSpace(xmlFilePath))
+                                {
+                                    DebugLogger.Info($"[SleevePlacementExternalEvent] Persisting updated clash zones to: {xmlFilePath}");
+                                    var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
+                                    OpeningFilter filter;
+                                    using (var reader = new StreamReader(xmlFilePath))
+                                    {
+                                        filter = (OpeningFilter)serializer.Deserialize(reader);
+                                    }
+                                    if (filter?.ClashZoneStorage == null)
+                                    {
+                                        filter = filter ?? new OpeningFilter();
+                                        filter.ClashZoneStorage = new ClashZoneStorage();
+                                    }
+                                    filter.ClashZoneStorage.ClashZones = clashZones;
+                                    filter.ClashZoneStorage.LastUpdated = DateTime.Now;
+                                    // Save back
+                                    using (var writer = new StreamWriter(xmlFilePath))
+                                    {
+                                        serializer.Serialize(writer, filter);
+                                    }
+                                    DebugLogger.Info($"[SleevePlacementExternalEvent] ✓ Saved updated zones ({clashZones.Count}) to {xmlFilePath}");
+                                }
+                                else
+                                {
+                                    DebugLogger.Warning($"[SleevePlacementExternalEvent] No xmlFilePath found for category '{category}', cannot persist updated SleeveInstanceId");
+                                }
+                            }
+                            catch (Exception saveEx)
+                            {
+                                DebugLogger.Error($"[SleevePlacementExternalEvent] Error saving updated zones for '{category}': {saveEx.Message}");
+                            }
                         }
                         else
                         {

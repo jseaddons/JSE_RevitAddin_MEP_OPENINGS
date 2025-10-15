@@ -16,7 +16,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     {
         private readonly ISet<string> _commonMepKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "Size","Diameter","Nominal Diameter","Width","Height",
+            "Size","Diameter","Nominal Diameter","Outside Diameter","Width","Height",
             "Reference Level","Level","Schedule Level","Reference Level Elevation",
             "System Type","System Classification","Service Type","System Abbreviation"
         };
@@ -62,9 +62,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             foreach (var key in whitelist)
             {
                 var p = LookupParam(element, key);
+                // Special fallback for System Type when not found by name
+                if (p == null && key.Equals("System Type", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Try built-in parameters for ducts/pipes
+                    p = element.get_Parameter(BuiltInParameter.RBS_DUCT_SYSTEM_TYPE_PARAM) ??
+                        element.get_Parameter(BuiltInParameter.RBS_PIPING_SYSTEM_TYPE_PARAM) ??
+                        element.get_Parameter(BuiltInParameter.RBS_SYSTEM_CLASSIFICATION_PARAM);
+                }
                 if (p == null) continue;
 
-                var value = ConvertParameterToString(p);
+                var value = ConvertParameterToString(element, p);
                 if (string.IsNullOrWhiteSpace(value)) continue;
 
                 result.Add(new SerializableKeyValue { Key = key, Value = value });
@@ -76,7 +84,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Convert a parameter value to a robust invariant string.
         /// </summary>
-        private string ConvertParameterToString(Parameter p)
+        private string ConvertParameterToString(Element owner, Parameter p)
         {
             if (p == null) return string.Empty;
 
@@ -93,7 +101,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 case StorageType.Double:
                     return p.AsDouble().ToString(CultureInfo.InvariantCulture);
                 case StorageType.ElementId:
-                    return p.AsElementId()?.IntegerValue.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+                    try
+                    {
+                        var id = p.AsElementId();
+                        if (id == null) return string.Empty;
+                        // Prefer referenced element name for readability if available
+                        var e = owner?.Document?.GetElement(id);
+                        var name = e?.Name;
+                        if (!string.IsNullOrWhiteSpace(name)) return name;
+                        return id.IntegerValue.ToString(CultureInfo.InvariantCulture);
+                    }
+                    catch { return string.Empty; }
                 default:
                     return string.Empty;
             }

@@ -1,18 +1,227 @@
-[10-10-2025 16:58:14] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-10_16-58-14)
-[10-10-2025 16:58:14] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[10-10-2025 17:33:24] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-10_17-33-24)
-[10-10-2025 17:33:24] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[10-10-2025 17:33:36] === ON_REFRESH_CLICK STARTED ===
-[10-10-2025 17:33:36] About to call RefreshService.ExecuteRefresh() method
-[10-10-2025 17:33:36] === REFRESH STARTED === Timestamp: 2025-10-10_17-33-36
-[10-10-2025 17:33:43] About to update parameter dropdowns
-[10-10-2025 17:33:46] [PARAMETER_SERVICE] Starting category-specific population for 2 categories
-[10-10-2025 17:33:46] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
-[10-10-2025 17:33:47] [PARAMETER_SERVICE] Found 2 total linked files, 1 host element files
-[10-10-2025 17:33:48] [PARAMETER_SERVICE] Found 107 host element parameters from linked files
-[10-10-2025 17:33:48] [PARAMETER_SERVICE] Combined total: 124 unique parameters
-[10-10-2025 17:33:48] [PARAMETER_SERVICE] Updating tab 'Ducts' for category 'Ducts'
-[10-10-2025 17:33:48] [PARAMETER_SERVICE] Found 90 parameters for category 'Ducts' from linked files
+[14-10-2025 15:31:33] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_15-31-33)
+[14-10-2025 15:31:33] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 15:31:42] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 15:31:42] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 15:31:42] === REFRESH STARTED === Timestamp: 2025-10-14_15-31-42
+[14-10-2025 15:31:43] About to update parameter dropdowns
+[14-10-2025 15:31:43] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 15:31:43] [PARAMETER_SERVICE] Using cached opening parameters: 52 parameters
+[14-10-2025 15:31:43] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 15:31:44] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 15:31:44] [PARAMETER_SERVICE] Combined total: 98 unique parameters
+[14-10-2025 15:31:44] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 15:31:44] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 52 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 52 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 52
+[REF-CHECK] Opening combo now contains 52 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 52
+[REF-CHECK] Opening combo now contains 52 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 52
+[REF-FINAL] Method completed - bootstrap returns 52 opening parameters
+[14-10-2025 15:31:44] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 15:31:44] Parameter dropdowns updated successfully
+[14-10-2025 15:31:44] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 15:36:54] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_15-36-54)
+[14-10-2025 15:36:54] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 15:37:06] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 15:37:06] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 15:37:06] === REFRESH STARTED === Timestamp: 2025-10-14_15-37-06
+[14-10-2025 15:37:07] About to update parameter dropdowns
+[14-10-2025 15:37:08] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 15:37:08] [PARAMETER_SERVICE] Using cached opening parameters: 52 parameters
+[14-10-2025 15:37:08] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 15:37:08] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 15:37:08] [PARAMETER_SERVICE] Combined total: 98 unique parameters
+[14-10-2025 15:37:08] [PARAMETER_SERVICE] Updating tab 'Cable Trays' for category 'Cable Trays'
+[14-10-2025 15:37:08] [PARAMETER_SERVICE] Found 62 parameters for category 'Cable Trays' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 52 items
+[ROW-CHECK] About to create 3 rows for category 'Cable Trays'
+[REF-CHECK] Opening combo now contains 52 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 52
+[REF-CHECK] Opening combo now contains 52 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 52
+[REF-CHECK] Opening combo now contains 52 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 52
+[REF-FINAL] Method completed - bootstrap returns 52 opening parameters
+[14-10-2025 15:37:08] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 15:37:09] Parameter dropdowns updated successfully
+[14-10-2025 15:37:09] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 15:37:12] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 15:37:12] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 15:37:12] === REFRESH STARTED === Timestamp: 2025-10-14_15-37-12
+[14-10-2025 15:37:13] About to update parameter dropdowns
+[14-10-2025 15:37:13] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 15:37:13] [PARAMETER_SERVICE] Using cached opening parameters: 52 parameters
+[14-10-2025 15:37:13] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 15:37:13] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 15:37:13] [PARAMETER_SERVICE] Combined total: 98 unique parameters
+[14-10-2025 15:37:13] [PARAMETER_SERVICE] Updating tab 'Cable Trays' for category 'Cable Trays'
+[14-10-2025 15:37:13] [PARAMETER_SERVICE] Found 62 parameters for category 'Cable Trays' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 52 items
+[ROW-CHECK] About to create 3 rows for category 'Cable Trays'
+[REF-CHECK] Opening combo now contains 52 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 52
+[REF-CHECK] Opening combo now contains 52 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 52
+[REF-CHECK] Opening combo now contains 52 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 52
+[REF-FINAL] Method completed - bootstrap returns 52 opening parameters
+[14-10-2025 15:37:14] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 15:37:14] Parameter dropdowns updated successfully
+[14-10-2025 15:37:14] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 15:37:22] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 15:37:22] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 15:37:22] === REFRESH STARTED === Timestamp: 2025-10-14_15-37-22
+[14-10-2025 15:37:22] About to update parameter dropdowns
+[14-10-2025 15:37:23] [PARAMETER_SERVICE] Starting category-specific population for 2 categories
+[14-10-2025 15:37:23] [PARAMETER_SERVICE] Using cached opening parameters: 52 parameters
+[14-10-2025 15:37:23] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 15:37:23] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 15:37:23] [PARAMETER_SERVICE] Combined total: 98 unique parameters
+[14-10-2025 15:37:23] [PARAMETER_SERVICE] Updating tab 'Ducts' for category 'Ducts'
+[14-10-2025 15:37:23] [PARAMETER_SERVICE] Found 87 parameters for category 'Ducts' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 52 items
+[ROW-CHECK] About to create 3 rows for category 'Ducts'
+[REF-CHECK] Opening combo now contains 52 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 52
+[REF-CHECK] Opening combo now contains 52 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 52
+[REF-CHECK] Opening combo now contains 52 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 52
+[REF-FINAL] Method completed - bootstrap returns 52 opening parameters
+[14-10-2025 15:37:24] [PARAMETER_SERVICE] Updating tab 'Duct Accessories' for category 'Duct Accessories'
+[14-10-2025 15:37:24] [PARAMETER_SERVICE] Found 152 parameters for category 'Duct Accessories' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 52 items
+[ROW-CHECK] About to create 3 rows for category 'Duct Accessories'
+[REF-CHECK] Opening combo now contains 52 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 52
+[REF-CHECK] Opening combo now contains 52 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 52
+[REF-CHECK] Opening combo now contains 52 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 52
+[REF-FINAL] Method completed - bootstrap returns 52 opening parameters
+[14-10-2025 15:37:24] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 15:37:25] Parameter dropdowns updated successfully
+[14-10-2025 15:37:25] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 15:41:50] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_15-41-50)
+[14-10-2025 15:41:50] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 15:42:02] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 15:42:02] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 15:42:02] === REFRESH STARTED === Timestamp: 2025-10-14_15-42-02
+[14-10-2025 15:42:03] About to update parameter dropdowns
+[14-10-2025 15:42:04] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 15:42:04] [PARAMETER_SERVICE] Using cached opening parameters: 52 parameters
+[14-10-2025 15:42:04] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 15:42:04] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 15:42:04] [PARAMETER_SERVICE] Combined total: 98 unique parameters
+[14-10-2025 15:42:04] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 15:42:04] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 52 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 52 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 52
+[REF-CHECK] Opening combo now contains 52 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 52
+[REF-CHECK] Opening combo now contains 52 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 52
+[REF-FINAL] Method completed - bootstrap returns 52 opening parameters
+[14-10-2025 15:42:04] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 15:42:05] Parameter dropdowns updated successfully
+[14-10-2025 15:42:05] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 15:42:16] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 15:42:16] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 15:42:16] === REFRESH STARTED === Timestamp: 2025-10-14_15-42-16
+[14-10-2025 15:42:16] About to update parameter dropdowns
+[14-10-2025 15:42:50] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 15:42:50] [PARAMETER_SERVICE] Error in PopulateCategorySpecificParameters: Starting a transaction from an external application running outside of API context is not allowed.
+[14-10-2025 15:42:50] Parameter dropdowns updated successfully
+[14-10-2025 15:42:50] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 15:53:53] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_15-53-53)
+[14-10-2025 15:53:53] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 15:54:04] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 15:54:04] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 15:54:05] === REFRESH STARTED === Timestamp: 2025-10-14_15-54-04
+[14-10-2025 15:54:05] About to update parameter dropdowns
+[14-10-2025 15:54:06] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 15:54:06] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 15:54:06] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 15:54:06] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 15:54:06] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 15:54:06] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 15:54:06] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 15:54:07] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 15:54:07] Parameter dropdowns updated successfully
+[14-10-2025 15:54:07] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 15:59:29] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_15-59-29)
+[14-10-2025 15:59:29] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 15:59:38] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 15:59:38] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 15:59:38] === REFRESH STARTED === Timestamp: 2025-10-14_15-59-38
+[14-10-2025 15:59:39] About to update parameter dropdowns
+[14-10-2025 15:59:39] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 15:59:39] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 15:59:40] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 15:59:40] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 15:59:40] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 15:59:40] [PARAMETER_SERVICE] Updating tab 'Cable Trays' for category 'Cable Trays'
+[14-10-2025 15:59:40] [PARAMETER_SERVICE] Found 62 parameters for category 'Cable Trays' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Cable Trays'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 15:59:40] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 15:59:40] Parameter dropdowns updated successfully
+[14-10-2025 15:59:40] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 15:59:49] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 15:59:50] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 15:59:50] === REFRESH STARTED === Timestamp: 2025-10-14_15-59-50
+[14-10-2025 15:59:50] About to update parameter dropdowns
+[14-10-2025 15:59:51] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 15:59:51] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 15:59:51] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 15:59:51] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 15:59:51] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 15:59:51] [PARAMETER_SERVICE] Updating tab 'Cable Trays' for category 'Cable Trays'
+[14-10-2025 15:59:51] [PARAMETER_SERVICE] Found 62 parameters for category 'Cable Trays' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Cable Trays'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 15:59:52] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 15:59:52] Parameter dropdowns updated successfully
+[14-10-2025 15:59:52] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 15:59:55] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 15:59:55] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 15:59:55] === REFRESH STARTED === Timestamp: 2025-10-14_15-59-55
+[14-10-2025 15:59:55] About to update parameter dropdowns
+[14-10-2025 15:59:56] [PARAMETER_SERVICE] Starting category-specific population for 2 categories
+[14-10-2025 15:59:56] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 15:59:56] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 15:59:56] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 15:59:56] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 15:59:56] [PARAMETER_SERVICE] Updating tab 'Ducts' for category 'Ducts'
+[14-10-2025 15:59:56] [PARAMETER_SERVICE] Found 87 parameters for category 'Ducts' from linked files
 [LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
 [ROW-CHECK] About to create 3 rows for category 'Ducts'
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
@@ -22,8 +231,8 @@
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-FINAL] Method completed - bootstrap returns 53 opening parameters
-[10-10-2025 17:33:48] [PARAMETER_SERVICE] Updating tab 'Duct Accessories' for category 'Duct Accessories'
-[10-10-2025 17:33:49] [PARAMETER_SERVICE] Found 109 parameters for category 'Duct Accessories' from linked files
+[14-10-2025 15:59:57] [PARAMETER_SERVICE] Updating tab 'Duct Accessories' for category 'Duct Accessories'
+[14-10-2025 15:59:57] [PARAMETER_SERVICE] Found 152 parameters for category 'Duct Accessories' from linked files
 [LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
 [ROW-CHECK] About to create 3 rows for category 'Duct Accessories'
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
@@ -33,24 +242,22 @@
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-FINAL] Method completed - bootstrap returns 53 opening parameters
-[10-10-2025 17:33:49] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
-[10-10-2025 17:33:50] Parameter dropdowns updated successfully
-[10-10-2025 17:33:50] RefreshService.ExecuteRefresh() method completed successfully
-[10-10-2025 17:44:19] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-10_17-44-19)
-[10-10-2025 17:44:19] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[10-10-2025 17:44:30] === ON_REFRESH_CLICK STARTED ===
-[10-10-2025 17:44:30] About to call RefreshService.ExecuteRefresh() method
-[10-10-2025 17:44:30] === REFRESH STARTED === Timestamp: 2025-10-10_17-44-30
-[10-10-2025 17:44:36] About to update parameter dropdowns
-[10-10-2025 17:44:39] [PARAMETER_SERVICE] Starting category-specific population for 2 categories
-[10-10-2025 17:44:40] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
-[10-10-2025 17:44:40] [PARAMETER_SERVICE] Found 2 total linked files, 1 host element files
-[10-10-2025 17:44:40] [PARAMETER_SERVICE] Found 107 host element parameters from linked files
-[10-10-2025 17:44:40] [PARAMETER_SERVICE] Combined total: 124 unique parameters
-[10-10-2025 17:44:40] [PARAMETER_SERVICE] Updating tab 'Ducts' for category 'Ducts'
-[10-10-2025 17:44:41] [PARAMETER_SERVICE] Found 90 parameters for category 'Ducts' from linked files
+[14-10-2025 15:59:57] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 15:59:58] Parameter dropdowns updated successfully
+[14-10-2025 15:59:58] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 16:00:03] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 16:00:03] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 16:00:03] === REFRESH STARTED === Timestamp: 2025-10-14_16-00-03
+[14-10-2025 16:00:04] About to update parameter dropdowns
+[14-10-2025 16:00:04] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 16:00:05] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 16:00:05] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 16:00:05] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 16:00:05] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 16:00:05] [PARAMETER_SERVICE] Updating tab 'Cable Trays' for category 'Cable Trays'
+[14-10-2025 16:00:05] [PARAMETER_SERVICE] Found 62 parameters for category 'Cable Trays' from linked files
 [LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
-[ROW-CHECK] About to create 3 rows for category 'Ducts'
+[ROW-CHECK] About to create 3 rows for category 'Cable Trays'
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
@@ -58,10 +265,22 @@
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-FINAL] Method completed - bootstrap returns 53 opening parameters
-[10-10-2025 17:44:41] [PARAMETER_SERVICE] Updating tab 'Duct Accessories' for category 'Duct Accessories'
-[10-10-2025 17:44:42] [PARAMETER_SERVICE] Found 109 parameters for category 'Duct Accessories' from linked files
+[14-10-2025 16:00:05] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 16:00:05] Parameter dropdowns updated successfully
+[14-10-2025 16:00:05] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 16:00:07] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 16:00:07] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 16:00:07] === REFRESH STARTED === Timestamp: 2025-10-14_16-00-07
+[14-10-2025 16:00:08] About to update parameter dropdowns
+[14-10-2025 16:00:08] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 16:00:08] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 16:00:08] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 16:00:08] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 16:00:08] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 16:00:08] [PARAMETER_SERVICE] Updating tab 'Cable Trays' for category 'Cable Trays'
+[14-10-2025 16:00:08] [PARAMETER_SERVICE] Found 62 parameters for category 'Cable Trays' from linked files
 [LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
-[ROW-CHECK] About to create 3 rows for category 'Duct Accessories'
+[ROW-CHECK] About to create 3 rows for category 'Cable Trays'
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
@@ -69,24 +288,27 @@
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-FINAL] Method completed - bootstrap returns 53 opening parameters
-[10-10-2025 17:44:42] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
-[10-10-2025 17:44:43] Parameter dropdowns updated successfully
-[10-10-2025 17:44:43] RefreshService.ExecuteRefresh() method completed successfully
-[10-10-2025 18:17:33] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-10_18-17-33)
-[10-10-2025 18:17:33] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[10-10-2025 18:18:01] === ON_REFRESH_CLICK STARTED ===
-[10-10-2025 18:18:01] About to call RefreshService.ExecuteRefresh() method
-[10-10-2025 18:18:01] === REFRESH STARTED === Timestamp: 2025-10-10_18-18-01
-[10-10-2025 18:18:09] About to update parameter dropdowns
-[10-10-2025 18:18:12] [PARAMETER_SERVICE] Starting category-specific population for 2 categories
-[10-10-2025 18:18:12] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
-[10-10-2025 18:18:12] [PARAMETER_SERVICE] Found 2 total linked files, 1 host element files
-[10-10-2025 18:18:13] [PARAMETER_SERVICE] Found 107 host element parameters from linked files
-[10-10-2025 18:18:13] [PARAMETER_SERVICE] Combined total: 124 unique parameters
-[10-10-2025 18:18:13] [PARAMETER_SERVICE] Updating tab 'Ducts' for category 'Ducts'
-[10-10-2025 18:18:13] [PARAMETER_SERVICE] Found 90 parameters for category 'Ducts' from linked files
+[14-10-2025 16:00:09] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 16:00:09] Parameter dropdowns updated successfully
+[14-10-2025 16:00:09] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 16:03:08] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_16-03-08)
+[14-10-2025 16:03:08] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 16:03:34] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 16:03:34] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 16:03:35] === REFRESH STARTED === Timestamp: 2025-10-14_16-03-35
+[14-10-2025 16:03:37] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 16:03:37] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 16:03:37] === REFRESH STARTED === Timestamp: 2025-10-14_16-03-37
+[14-10-2025 16:03:40] About to update parameter dropdowns
+[14-10-2025 16:03:41] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 16:03:41] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 16:03:41] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 16:03:41] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 16:03:41] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 16:03:41] [PARAMETER_SERVICE] Updating tab 'Cable Trays' for category 'Cable Trays'
+[14-10-2025 16:03:41] [PARAMETER_SERVICE] Found 62 parameters for category 'Cable Trays' from linked files
 [LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
-[ROW-CHECK] About to create 3 rows for category 'Ducts'
+[ROW-CHECK] About to create 3 rows for category 'Cable Trays'
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
@@ -94,10 +316,22 @@
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-FINAL] Method completed - bootstrap returns 53 opening parameters
-[10-10-2025 18:18:13] [PARAMETER_SERVICE] Updating tab 'Duct Accessories' for category 'Duct Accessories'
-[10-10-2025 18:18:14] [PARAMETER_SERVICE] Found 109 parameters for category 'Duct Accessories' from linked files
+[14-10-2025 16:03:42] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 16:03:42] Parameter dropdowns updated successfully
+[14-10-2025 16:03:42] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 16:03:49] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 16:03:49] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 16:03:49] === REFRESH STARTED === Timestamp: 2025-10-14_16-03-49
+[14-10-2025 16:03:50] About to update parameter dropdowns
+[14-10-2025 16:03:50] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 16:03:51] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 16:03:51] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 16:03:51] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 16:03:51] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 16:03:51] [PARAMETER_SERVICE] Updating tab 'Cable Trays' for category 'Cable Trays'
+[14-10-2025 16:03:51] [PARAMETER_SERVICE] Found 62 parameters for category 'Cable Trays' from linked files
 [LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
-[ROW-CHECK] About to create 3 rows for category 'Duct Accessories'
+[ROW-CHECK] About to create 3 rows for category 'Cable Trays'
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
@@ -105,24 +339,22 @@
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-FINAL] Method completed - bootstrap returns 53 opening parameters
-[10-10-2025 18:18:14] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
-[10-10-2025 18:18:15] Parameter dropdowns updated successfully
-[10-10-2025 18:18:15] RefreshService.ExecuteRefresh() method completed successfully
-[10-10-2025 18:43:07] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-10_18-43-07)
-[10-10-2025 18:43:07] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[10-10-2025 18:43:28] === ON_REFRESH_CLICK STARTED ===
-[10-10-2025 18:43:28] About to call RefreshService.ExecuteRefresh() method
-[10-10-2025 18:43:28] === REFRESH STARTED === Timestamp: 2025-10-10_18-43-28
-[10-10-2025 18:43:35] About to update parameter dropdowns
-[10-10-2025 18:43:38] [PARAMETER_SERVICE] Starting category-specific population for 2 categories
-[10-10-2025 18:43:38] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
-[10-10-2025 18:43:38] [PARAMETER_SERVICE] Found 2 total linked files, 1 host element files
-[10-10-2025 18:43:39] [PARAMETER_SERVICE] Found 107 host element parameters from linked files
-[10-10-2025 18:43:39] [PARAMETER_SERVICE] Combined total: 124 unique parameters
-[10-10-2025 18:43:39] [PARAMETER_SERVICE] Updating tab 'Ducts' for category 'Ducts'
-[10-10-2025 18:43:39] [PARAMETER_SERVICE] Found 90 parameters for category 'Ducts' from linked files
+[14-10-2025 16:03:51] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 16:03:51] Parameter dropdowns updated successfully
+[14-10-2025 16:03:51] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 16:03:54] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 16:03:54] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 16:03:54] === REFRESH STARTED === Timestamp: 2025-10-14_16-03-54
+[14-10-2025 16:03:55] About to update parameter dropdowns
+[14-10-2025 16:03:56] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 16:03:56] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 16:03:56] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 16:03:56] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 16:03:56] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 16:03:56] [PARAMETER_SERVICE] Updating tab 'Cable Trays' for category 'Cable Trays'
+[14-10-2025 16:03:56] [PARAMETER_SERVICE] Found 62 parameters for category 'Cable Trays' from linked files
 [LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
-[ROW-CHECK] About to create 3 rows for category 'Ducts'
+[ROW-CHECK] About to create 3 rows for category 'Cable Trays'
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
@@ -130,10 +362,22 @@
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-FINAL] Method completed - bootstrap returns 53 opening parameters
-[10-10-2025 18:43:39] [PARAMETER_SERVICE] Updating tab 'Duct Accessories' for category 'Duct Accessories'
-[10-10-2025 18:43:40] [PARAMETER_SERVICE] Found 109 parameters for category 'Duct Accessories' from linked files
+[14-10-2025 16:03:56] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 16:03:56] Parameter dropdowns updated successfully
+[14-10-2025 16:03:56] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 16:04:24] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 16:04:24] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 16:04:24] === REFRESH STARTED === Timestamp: 2025-10-14_16-04-24
+[14-10-2025 16:04:25] About to update parameter dropdowns
+[14-10-2025 16:04:26] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 16:04:26] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 16:04:26] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 16:04:26] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 16:04:26] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 16:04:26] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 16:04:26] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
 [LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
-[ROW-CHECK] About to create 3 rows for category 'Duct Accessories'
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
@@ -141,24 +385,19 @@
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-FINAL] Method completed - bootstrap returns 53 opening parameters
-[10-10-2025 18:43:40] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
-[10-10-2025 18:43:41] Parameter dropdowns updated successfully
-[10-10-2025 18:43:41] RefreshService.ExecuteRefresh() method completed successfully
-[13-10-2025 10:04:44] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-13_10-04-44)
-[13-10-2025 10:04:44] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[13-10-2025 10:05:06] === ON_REFRESH_CLICK STARTED ===
-[13-10-2025 10:05:06] About to call RefreshService.ExecuteRefresh() method
-[13-10-2025 10:05:06] === REFRESH STARTED === Timestamp: 2025-10-13_10-05-06
-[13-10-2025 10:05:28] About to update parameter dropdowns
-[13-10-2025 10:05:32] [PARAMETER_SERVICE] Starting category-specific population for 2 categories
-[13-10-2025 10:05:32] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
-[13-10-2025 10:05:33] [PARAMETER_SERVICE] Found 2 total linked files, 1 host element files
-[13-10-2025 10:05:33] [PARAMETER_SERVICE] Found 107 host element parameters from linked files
-[13-10-2025 10:05:33] [PARAMETER_SERVICE] Combined total: 124 unique parameters
-[13-10-2025 10:05:33] [PARAMETER_SERVICE] Updating tab 'Ducts' for category 'Ducts'
-[13-10-2025 10:05:34] [PARAMETER_SERVICE] Found 90 parameters for category 'Ducts' from linked files
+[14-10-2025 16:04:26] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 16:04:27] Parameter dropdowns updated successfully
+[14-10-2025 16:04:27] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 16:04:30] About to update parameter dropdowns
+[14-10-2025 16:04:31] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 16:04:31] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 16:04:31] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 16:04:31] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 16:04:31] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 16:04:31] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 16:04:31] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
 [LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
-[ROW-CHECK] About to create 3 rows for category 'Ducts'
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
@@ -166,10 +405,24 @@
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-FINAL] Method completed - bootstrap returns 53 opening parameters
-[13-10-2025 10:05:34] [PARAMETER_SERVICE] Updating tab 'Duct Accessories' for category 'Duct Accessories'
-[13-10-2025 10:05:34] [PARAMETER_SERVICE] Found 109 parameters for category 'Duct Accessories' from linked files
+[14-10-2025 16:04:32] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 16:04:32] Parameter dropdowns updated successfully
+[14-10-2025 16:04:32] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 16:14:45] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_16-14-45)
+[14-10-2025 16:14:45] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 16:14:54] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 16:14:54] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 16:14:54] === REFRESH STARTED === Timestamp: 2025-10-14_16-14-54
+[14-10-2025 16:14:55] About to update parameter dropdowns
+[14-10-2025 16:14:56] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 16:14:56] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 16:14:56] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 16:14:56] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 16:14:56] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 16:14:56] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 16:14:57] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
 [LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
-[ROW-CHECK] About to create 3 rows for category 'Duct Accessories'
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
@@ -177,24 +430,24 @@
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-FINAL] Method completed - bootstrap returns 53 opening parameters
-[13-10-2025 10:05:35] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
-[13-10-2025 10:05:35] Parameter dropdowns updated successfully
-[13-10-2025 10:05:35] RefreshService.ExecuteRefresh() method completed successfully
-[13-10-2025 10:31:22] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-13_10-31-22)
-[13-10-2025 10:31:22] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[13-10-2025 10:31:51] === ON_REFRESH_CLICK STARTED ===
-[13-10-2025 10:31:51] About to call RefreshService.ExecuteRefresh() method
-[13-10-2025 10:31:51] === REFRESH STARTED === Timestamp: 2025-10-13_10-31-51
-[13-10-2025 10:32:16] About to update parameter dropdowns
-[13-10-2025 10:32:18] [PARAMETER_SERVICE] Starting category-specific population for 2 categories
-[13-10-2025 10:32:18] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
-[13-10-2025 10:32:19] [PARAMETER_SERVICE] Found 2 total linked files, 1 host element files
-[13-10-2025 10:32:19] [PARAMETER_SERVICE] Found 107 host element parameters from linked files
-[13-10-2025 10:32:19] [PARAMETER_SERVICE] Combined total: 124 unique parameters
-[13-10-2025 10:32:19] [PARAMETER_SERVICE] Updating tab 'Ducts' for category 'Ducts'
-[13-10-2025 10:32:19] [PARAMETER_SERVICE] Found 90 parameters for category 'Ducts' from linked files
+[14-10-2025 16:14:57] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 16:14:57] Parameter dropdowns updated successfully
+[14-10-2025 16:14:57] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 16:34:52] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_16-34-52)
+[14-10-2025 16:34:52] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 16:35:00] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 16:35:00] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 16:35:00] === REFRESH STARTED === Timestamp: 2025-10-14_16-35-00
+[14-10-2025 16:35:01] About to update parameter dropdowns
+[14-10-2025 16:35:02] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 16:35:02] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 16:35:02] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 16:35:02] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 16:35:02] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 16:35:02] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 16:35:02] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
 [LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
-[ROW-CHECK] About to create 3 rows for category 'Ducts'
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
@@ -202,10 +455,24 @@
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-FINAL] Method completed - bootstrap returns 53 opening parameters
-[13-10-2025 10:32:20] [PARAMETER_SERVICE] Updating tab 'Duct Accessories' for category 'Duct Accessories'
-[13-10-2025 10:32:20] [PARAMETER_SERVICE] Found 109 parameters for category 'Duct Accessories' from linked files
+[14-10-2025 16:35:03] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 16:35:03] Parameter dropdowns updated successfully
+[14-10-2025 16:35:03] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 16:35:46] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_16-35-46)
+[14-10-2025 16:35:46] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 16:36:10] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 16:36:10] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 16:36:10] === REFRESH STARTED === Timestamp: 2025-10-14_16-36-10
+[14-10-2025 16:36:11] About to update parameter dropdowns
+[14-10-2025 16:36:12] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 16:36:12] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 16:36:12] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 16:36:12] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 16:36:12] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 16:36:12] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 16:36:12] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
 [LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
-[ROW-CHECK] About to create 3 rows for category 'Duct Accessories'
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
@@ -213,25 +480,24 @@
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-FINAL] Method completed - bootstrap returns 53 opening parameters
-[13-10-2025 10:32:20] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
-[13-10-2025 10:32:21] Parameter dropdowns updated successfully
-[13-10-2025 10:32:21] RefreshService.ExecuteRefresh() method completed successfully
-[HOST-CHECK] Opening combo now contains 53 items (after AddRange)
-[13-10-2025 10:42:44] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-13_10-42-44)
-[13-10-2025 10:42:44] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[13-10-2025 10:43:08] === ON_REFRESH_CLICK STARTED ===
-[13-10-2025 10:43:08] About to call RefreshService.ExecuteRefresh() method
-[13-10-2025 10:43:08] === REFRESH STARTED === Timestamp: 2025-10-13_10-43-08
-[13-10-2025 10:43:27] About to update parameter dropdowns
-[13-10-2025 10:43:29] [PARAMETER_SERVICE] Starting category-specific population for 2 categories
-[13-10-2025 10:43:29] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
-[13-10-2025 10:43:30] [PARAMETER_SERVICE] Found 2 total linked files, 1 host element files
-[13-10-2025 10:43:30] [PARAMETER_SERVICE] Found 107 host element parameters from linked files
-[13-10-2025 10:43:30] [PARAMETER_SERVICE] Combined total: 124 unique parameters
-[13-10-2025 10:43:30] [PARAMETER_SERVICE] Updating tab 'Ducts' for category 'Ducts'
-[13-10-2025 10:43:30] [PARAMETER_SERVICE] Found 90 parameters for category 'Ducts' from linked files
+[14-10-2025 16:36:12] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 16:36:13] Parameter dropdowns updated successfully
+[14-10-2025 16:36:13] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 16:40:16] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_16-40-16)
+[14-10-2025 16:40:16] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 16:40:39] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 16:40:39] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 16:40:39] === REFRESH STARTED === Timestamp: 2025-10-14_16-40-39
+[14-10-2025 16:40:41] About to update parameter dropdowns
+[14-10-2025 16:40:42] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 16:40:42] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 16:40:42] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 16:40:42] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 16:40:42] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 16:40:42] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 16:40:42] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
 [LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
-[ROW-CHECK] About to create 3 rows for category 'Ducts'
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
@@ -239,10 +505,24 @@
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-FINAL] Method completed - bootstrap returns 53 opening parameters
-[13-10-2025 10:43:31] [PARAMETER_SERVICE] Updating tab 'Duct Accessories' for category 'Duct Accessories'
-[13-10-2025 10:43:31] [PARAMETER_SERVICE] Found 109 parameters for category 'Duct Accessories' from linked files
+[14-10-2025 16:40:43] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 16:40:43] Parameter dropdowns updated successfully
+[14-10-2025 16:40:43] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 16:40:59] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_16-40-59)
+[14-10-2025 16:40:59] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 16:41:13] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 16:41:13] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 16:41:14] === REFRESH STARTED === Timestamp: 2025-10-14_16-41-14
+[14-10-2025 16:41:15] About to update parameter dropdowns
+[14-10-2025 16:41:16] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 16:41:16] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 16:41:16] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 16:41:16] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 16:41:16] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 16:41:16] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 16:41:16] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
 [LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
-[ROW-CHECK] About to create 3 rows for category 'Duct Accessories'
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
@@ -250,24 +530,24 @@
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-FINAL] Method completed - bootstrap returns 53 opening parameters
-[13-10-2025 10:43:31] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
-[13-10-2025 10:43:32] Parameter dropdowns updated successfully
-[13-10-2025 10:43:32] RefreshService.ExecuteRefresh() method completed successfully
-[13-10-2025 10:52:42] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-13_10-52-42)
-[13-10-2025 10:52:42] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[13-10-2025 10:53:13] === ON_REFRESH_CLICK STARTED ===
-[13-10-2025 10:53:13] About to call RefreshService.ExecuteRefresh() method
-[13-10-2025 10:53:13] === REFRESH STARTED === Timestamp: 2025-10-13_10-53-13
-[13-10-2025 10:53:37] About to update parameter dropdowns
-[13-10-2025 10:53:39] [PARAMETER_SERVICE] Starting category-specific population for 2 categories
-[13-10-2025 10:53:40] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
-[13-10-2025 10:53:40] [PARAMETER_SERVICE] Found 2 total linked files, 1 host element files
-[13-10-2025 10:53:41] [PARAMETER_SERVICE] Found 107 host element parameters from linked files
-[13-10-2025 10:53:41] [PARAMETER_SERVICE] Combined total: 124 unique parameters
-[13-10-2025 10:53:41] [PARAMETER_SERVICE] Updating tab 'Ducts' for category 'Ducts'
-[13-10-2025 10:53:41] [PARAMETER_SERVICE] Found 90 parameters for category 'Ducts' from linked files
+[14-10-2025 16:41:17] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 16:41:17] Parameter dropdowns updated successfully
+[14-10-2025 16:41:17] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 16:41:31] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_16-41-31)
+[14-10-2025 16:41:31] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 16:41:43] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 16:41:43] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 16:41:43] === REFRESH STARTED === Timestamp: 2025-10-14_16-41-43
+[14-10-2025 16:41:45] About to update parameter dropdowns
+[14-10-2025 16:41:46] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 16:41:46] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 16:41:46] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 16:41:46] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 16:41:46] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 16:41:46] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 16:41:46] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
 [LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
-[ROW-CHECK] About to create 3 rows for category 'Ducts'
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
@@ -275,10 +555,22 @@
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-FINAL] Method completed - bootstrap returns 53 opening parameters
-[13-10-2025 10:53:41] [PARAMETER_SERVICE] Updating tab 'Duct Accessories' for category 'Duct Accessories'
-[13-10-2025 10:53:41] [PARAMETER_SERVICE] Found 109 parameters for category 'Duct Accessories' from linked files
+[14-10-2025 16:41:46] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 16:41:47] Parameter dropdowns updated successfully
+[14-10-2025 16:41:47] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 16:41:55] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 16:41:55] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 16:41:55] === REFRESH STARTED === Timestamp: 2025-10-14_16-41-55
+[14-10-2025 16:41:56] About to update parameter dropdowns
+[14-10-2025 16:41:57] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 16:41:57] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 16:41:57] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 16:41:57] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 16:41:57] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 16:41:57] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 16:41:58] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
 [LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
-[ROW-CHECK] About to create 3 rows for category 'Duct Accessories'
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
@@ -286,25 +578,28 @@
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-FINAL] Method completed - bootstrap returns 53 opening parameters
-[13-10-2025 10:53:42] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
-[13-10-2025 10:53:43] Parameter dropdowns updated successfully
-[13-10-2025 10:53:43] RefreshService.ExecuteRefresh() method completed successfully
-[HOST-CHECK] Opening combo now contains 53 items (after AddRange)
-[13-10-2025 11:00:55] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-13_11-00-55)
-[13-10-2025 11:00:55] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[13-10-2025 11:01:28] === ON_REFRESH_CLICK STARTED ===
-[13-10-2025 11:01:28] About to call RefreshService.ExecuteRefresh() method
-[13-10-2025 11:01:28] === REFRESH STARTED === Timestamp: 2025-10-13_11-01-28
-[13-10-2025 11:01:47] About to update parameter dropdowns
-[13-10-2025 11:01:50] [PARAMETER_SERVICE] Starting category-specific population for 2 categories
-[13-10-2025 11:01:50] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
-[13-10-2025 11:01:50] [PARAMETER_SERVICE] Found 2 total linked files, 1 host element files
-[13-10-2025 11:01:50] [PARAMETER_SERVICE] Found 107 host element parameters from linked files
-[13-10-2025 11:01:50] [PARAMETER_SERVICE] Combined total: 124 unique parameters
-[13-10-2025 11:01:50] [PARAMETER_SERVICE] Updating tab 'Ducts' for category 'Ducts'
-[13-10-2025 11:01:51] [PARAMETER_SERVICE] Found 90 parameters for category 'Ducts' from linked files
+[14-10-2025 16:41:58] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 16:41:58] Parameter dropdowns updated successfully
+[14-10-2025 16:41:58] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 16:42:12] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_16-42-12)
+[14-10-2025 16:42:12] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 16:42:34] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_16-42-34)
+[14-10-2025 16:42:34] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 16:42:56] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_16-42-56)
+[14-10-2025 16:42:56] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 16:43:07] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 16:43:07] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 16:43:07] === REFRESH STARTED === Timestamp: 2025-10-14_16-43-07
+[14-10-2025 16:43:09] About to update parameter dropdowns
+[14-10-2025 16:43:10] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 16:43:10] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 16:43:10] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 16:43:10] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 16:43:10] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 16:43:10] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 16:43:10] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
 [LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
-[ROW-CHECK] About to create 3 rows for category 'Ducts'
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
@@ -312,10 +607,24 @@
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-FINAL] Method completed - bootstrap returns 53 opening parameters
-[13-10-2025 11:01:51] [PARAMETER_SERVICE] Updating tab 'Duct Accessories' for category 'Duct Accessories'
-[13-10-2025 11:01:51] [PARAMETER_SERVICE] Found 109 parameters for category 'Duct Accessories' from linked files
+[14-10-2025 16:43:10] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 16:43:11] Parameter dropdowns updated successfully
+[14-10-2025 16:43:11] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 16:43:36] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_16-43-36)
+[14-10-2025 16:43:36] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 16:43:53] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 16:43:53] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 16:43:53] === REFRESH STARTED === Timestamp: 2025-10-14_16-43-53
+[14-10-2025 16:43:55] About to update parameter dropdowns
+[14-10-2025 16:43:56] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 16:43:56] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 16:43:56] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 16:43:56] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 16:43:56] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 16:43:56] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 16:43:56] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
 [LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
-[ROW-CHECK] About to create 3 rows for category 'Duct Accessories'
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
@@ -323,25 +632,27 @@
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-FINAL] Method completed - bootstrap returns 53 opening parameters
-[13-10-2025 11:01:52] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
-[13-10-2025 11:01:52] Parameter dropdowns updated successfully
-[13-10-2025 11:01:52] RefreshService.ExecuteRefresh() method completed successfully
-[HOST-CHECK] Opening combo now contains 53 items (after AddRange)
-[13-10-2025 11:36:10] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-13_11-36-10)
-[13-10-2025 11:36:10] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[13-10-2025 11:36:29] === ON_REFRESH_CLICK STARTED ===
-[13-10-2025 11:36:29] About to call RefreshService.ExecuteRefresh() method
-[13-10-2025 11:36:29] === REFRESH STARTED === Timestamp: 2025-10-13_11-36-29
-[13-10-2025 11:36:53] About to update parameter dropdowns
-[13-10-2025 11:36:56] [PARAMETER_SERVICE] Starting category-specific population for 2 categories
-[13-10-2025 11:36:56] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
-[13-10-2025 11:36:56] [PARAMETER_SERVICE] Found 2 total linked files, 1 host element files
-[13-10-2025 11:36:57] [PARAMETER_SERVICE] Found 107 host element parameters from linked files
-[13-10-2025 11:36:57] [PARAMETER_SERVICE] Combined total: 124 unique parameters
-[13-10-2025 11:36:57] [PARAMETER_SERVICE] Updating tab 'Ducts' for category 'Ducts'
-[13-10-2025 11:36:57] [PARAMETER_SERVICE] Found 90 parameters for category 'Ducts' from linked files
+[14-10-2025 16:43:57] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 16:43:57] Parameter dropdowns updated successfully
+[14-10-2025 16:43:57] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 17:31:46] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_17-31-46)
+[14-10-2025 17:31:46] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 17:31:59] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 17:31:59] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 17:31:59] === REFRESH STARTED === Timestamp: 2025-10-14_17-31-59
+[14-10-2025 17:32:11] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 17:32:11] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 17:32:11] === REFRESH STARTED === Timestamp: 2025-10-14_17-32-11
+[14-10-2025 17:32:12] About to update parameter dropdowns
+[14-10-2025 17:32:13] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 17:32:13] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 17:32:13] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 17:32:13] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 17:32:13] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 17:32:13] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 17:32:13] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
 [LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
-[ROW-CHECK] About to create 3 rows for category 'Ducts'
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
@@ -349,10 +660,19 @@
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-FINAL] Method completed - bootstrap returns 53 opening parameters
-[13-10-2025 11:36:57] [PARAMETER_SERVICE] Updating tab 'Duct Accessories' for category 'Duct Accessories'
-[13-10-2025 11:36:57] [PARAMETER_SERVICE] Found 109 parameters for category 'Duct Accessories' from linked files
+[14-10-2025 17:32:14] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 17:32:14] Parameter dropdowns updated successfully
+[14-10-2025 17:32:14] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 17:32:18] About to update parameter dropdowns
+[14-10-2025 17:32:19] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 17:32:19] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 17:32:19] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 17:32:19] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 17:32:19] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 17:32:19] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 17:32:19] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
 [LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
-[ROW-CHECK] About to create 3 rows for category 'Duct Accessories'
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
@@ -360,6 +680,776 @@
 [REF-CHECK] Opening combo now contains 53 items (after AddRange)
 [UI-TRUTH] Added-row combo count = 53
 [REF-FINAL] Method completed - bootstrap returns 53 opening parameters
-[13-10-2025 11:36:58] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
-[13-10-2025 11:36:59] Parameter dropdowns updated successfully
-[13-10-2025 11:36:59] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 17:32:19] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 17:32:20] Parameter dropdowns updated successfully
+[14-10-2025 17:32:20] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 17:34:14] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_17-34-14)
+[14-10-2025 17:34:14] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 17:34:30] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 17:34:30] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 17:34:31] === REFRESH STARTED === Timestamp: 2025-10-14_17-34-31
+[14-10-2025 17:34:32] About to update parameter dropdowns
+[14-10-2025 17:34:33] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 17:34:33] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 17:34:33] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 17:34:33] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 17:34:33] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 17:34:33] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 17:34:33] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 17:34:34] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 17:34:34] Parameter dropdowns updated successfully
+[14-10-2025 17:34:34] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 17:39:50] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_17-39-50)
+[14-10-2025 17:39:50] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 17:40:04] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 17:40:04] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 17:40:05] === REFRESH STARTED === Timestamp: 2025-10-14_17-40-05
+[14-10-2025 17:40:06] About to update parameter dropdowns
+[14-10-2025 17:40:07] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 17:40:07] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 17:40:07] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 17:40:07] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 17:40:07] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 17:40:07] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 17:40:07] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 17:40:08] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 17:40:08] Parameter dropdowns updated successfully
+[14-10-2025 17:40:08] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 17:45:06] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_17-45-06)
+[14-10-2025 17:45:06] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 17:45:15] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 17:45:15] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 17:45:15] === REFRESH STARTED === Timestamp: 2025-10-14_17-45-15
+[14-10-2025 17:45:17] About to update parameter dropdowns
+[14-10-2025 17:45:18] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 17:45:18] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 17:45:18] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 17:45:18] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 17:45:18] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 17:45:18] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 17:45:18] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 17:45:18] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 17:45:19] Parameter dropdowns updated successfully
+[14-10-2025 17:45:19] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 17:45:56] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_17-45-56)
+[14-10-2025 17:45:56] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 17:46:03] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 17:46:03] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 17:46:03] === REFRESH STARTED === Timestamp: 2025-10-14_17-46-03
+[14-10-2025 17:46:05] About to update parameter dropdowns
+[14-10-2025 17:46:06] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 17:46:06] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 17:46:06] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 17:46:06] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 17:46:06] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 17:46:06] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 17:46:06] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 17:46:07] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 17:46:07] Parameter dropdowns updated successfully
+[14-10-2025 17:46:07] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 17:57:51] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_17-57-51)
+[14-10-2025 17:57:51] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 17:58:13] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 17:58:13] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 17:58:13] === REFRESH STARTED === Timestamp: 2025-10-14_17-58-13
+[14-10-2025 17:58:15] About to update parameter dropdowns
+[14-10-2025 17:58:15] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 17:58:16] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 17:58:16] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 17:58:16] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 17:58:16] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 17:58:16] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 17:58:16] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 17:58:16] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 17:58:16] Parameter dropdowns updated successfully
+[14-10-2025 17:58:16] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 17:58:21] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 17:58:21] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 17:58:21] === REFRESH STARTED === Timestamp: 2025-10-14_17-58-21
+[14-10-2025 17:58:23] About to update parameter dropdowns
+[14-10-2025 17:58:23] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 17:58:23] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 17:58:23] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 17:58:23] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 17:58:23] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 17:58:23] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 17:58:24] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 17:58:24] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 17:58:24] Parameter dropdowns updated successfully
+[14-10-2025 17:58:24] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 17:58:28] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 17:58:28] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 17:58:28] === REFRESH STARTED === Timestamp: 2025-10-14_17-58-28
+[14-10-2025 17:58:29] About to update parameter dropdowns
+[14-10-2025 17:58:30] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 17:58:30] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 17:58:30] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 17:58:30] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 17:58:30] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 17:58:30] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 17:58:30] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 17:58:31] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 17:58:31] Parameter dropdowns updated successfully
+[14-10-2025 17:58:31] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 17:58:39] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 17:58:39] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 17:58:39] === REFRESH STARTED === Timestamp: 2025-10-14_17-58-39
+[14-10-2025 17:58:41] About to update parameter dropdowns
+[14-10-2025 17:58:41] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 17:58:42] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 17:58:42] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 17:58:42] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 17:58:42] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 17:58:42] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 17:58:42] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 17:58:42] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 17:58:43] Parameter dropdowns updated successfully
+[14-10-2025 17:58:43] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 17:58:44] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 17:58:44] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 17:58:44] === REFRESH STARTED === Timestamp: 2025-10-14_17-58-44
+[14-10-2025 17:58:46] About to update parameter dropdowns
+[14-10-2025 17:58:46] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 17:58:46] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 17:58:46] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 17:58:46] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 17:58:46] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 17:58:46] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 17:58:47] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 17:58:47] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 17:58:47] Parameter dropdowns updated successfully
+[14-10-2025 17:58:47] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 17:58:57] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 17:58:57] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 17:58:57] === REFRESH STARTED === Timestamp: 2025-10-14_17-58-57
+[14-10-2025 17:58:58] About to update parameter dropdowns
+[14-10-2025 17:58:59] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 17:58:59] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 17:58:59] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 17:58:59] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 17:58:59] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 17:58:59] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 17:58:59] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 17:59:00] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 17:59:00] Parameter dropdowns updated successfully
+[14-10-2025 17:59:00] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 18:05:32] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_18-05-32)
+[14-10-2025 18:05:32] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 18:05:42] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 18:05:42] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 18:05:42] === REFRESH STARTED === Timestamp: 2025-10-14_18-05-42
+[14-10-2025 18:05:44] About to update parameter dropdowns
+[14-10-2025 18:05:45] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 18:05:45] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 18:05:45] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 18:05:45] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 18:05:45] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 18:05:45] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 18:05:45] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 18:05:46] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 18:05:46] Parameter dropdowns updated successfully
+[14-10-2025 18:05:46] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 18:11:18] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_18-11-18)
+[14-10-2025 18:11:18] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 18:11:28] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 18:11:28] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 18:11:28] === REFRESH STARTED === Timestamp: 2025-10-14_18-11-28
+[14-10-2025 18:11:30] About to update parameter dropdowns
+[14-10-2025 18:11:31] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 18:11:31] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 18:11:31] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 18:11:31] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 18:11:31] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 18:11:31] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 18:11:32] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 18:11:32] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 18:11:32] Parameter dropdowns updated successfully
+[14-10-2025 18:11:32] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 18:16:01] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_18-16-01)
+[14-10-2025 18:16:01] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 18:16:10] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 18:16:10] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 18:16:10] === REFRESH STARTED === Timestamp: 2025-10-14_18-16-10
+[14-10-2025 18:16:12] About to update parameter dropdowns
+[14-10-2025 18:16:12] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 18:16:12] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 18:16:12] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 18:16:13] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 18:16:13] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 18:16:13] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 18:16:13] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 18:16:13] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 18:16:13] Parameter dropdowns updated successfully
+[14-10-2025 18:16:13] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 18:17:11] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_18-17-11)
+[14-10-2025 18:17:11] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 18:20:16] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_18-20-16)
+[14-10-2025 18:20:16] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 18:20:23] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 18:20:23] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 18:20:23] === REFRESH STARTED === Timestamp: 2025-10-14_18-20-23
+[14-10-2025 18:20:25] About to update parameter dropdowns
+[14-10-2025 18:20:26] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 18:20:26] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 18:20:26] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 18:20:26] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 18:20:26] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 18:20:26] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 18:20:26] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 18:20:27] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 18:20:27] Parameter dropdowns updated successfully
+[14-10-2025 18:20:27] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 19:01:17] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_19-01-17)
+[14-10-2025 19:01:17] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 19:01:36] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 19:01:36] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 19:01:36] === REFRESH STARTED === Timestamp: 2025-10-14_19-01-36
+[14-10-2025 19:01:38] About to update parameter dropdowns
+[14-10-2025 19:01:38] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 19:01:39] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 19:01:39] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 19:01:39] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 19:01:39] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 19:01:39] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 19:01:39] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 19:01:39] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 19:01:39] Parameter dropdowns updated successfully
+[14-10-2025 19:01:39] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 19:01:42] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 19:01:42] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 19:01:42] === REFRESH STARTED === Timestamp: 2025-10-14_19-01-42
+[14-10-2025 19:01:43] About to update parameter dropdowns
+[14-10-2025 19:01:43] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 19:01:43] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 19:01:43] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 19:01:43] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 19:01:43] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 19:01:43] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 19:01:43] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 19:01:44] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 19:01:44] Parameter dropdowns updated successfully
+[14-10-2025 19:01:44] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 19:06:49] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_19-06-49)
+[14-10-2025 19:06:49] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 19:06:58] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 19:06:58] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 19:06:58] === REFRESH STARTED === Timestamp: 2025-10-14_19-06-58
+[14-10-2025 19:06:59] About to update parameter dropdowns
+[14-10-2025 19:07:00] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 19:07:00] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 19:07:00] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 19:07:00] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 19:07:00] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 19:07:00] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 19:07:00] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 19:07:00] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 19:07:01] Parameter dropdowns updated successfully
+[14-10-2025 19:07:01] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 19:10:10] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_19-10-10)
+[14-10-2025 19:10:10] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 19:10:18] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 19:10:18] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 19:10:18] === REFRESH STARTED === Timestamp: 2025-10-14_19-10-18
+[14-10-2025 19:10:20] About to update parameter dropdowns
+[14-10-2025 19:10:20] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 19:10:20] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 19:10:20] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 19:10:20] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 19:10:20] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 19:10:20] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 19:10:20] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 19:10:21] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 19:10:21] Parameter dropdowns updated successfully
+[14-10-2025 19:10:21] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 19:22:41] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_19-22-41)
+[14-10-2025 19:22:41] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 19:22:56] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 19:22:56] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 19:22:56] === REFRESH STARTED === Timestamp: 2025-10-14_19-22-56
+[14-10-2025 19:22:57] About to update parameter dropdowns
+[14-10-2025 19:22:58] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 19:22:58] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 19:22:58] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 19:22:58] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 19:22:58] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 19:22:58] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 19:22:58] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 19:22:58] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 19:22:58] Parameter dropdowns updated successfully
+[14-10-2025 19:22:58] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[14-10-2025 19:22:58] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 19:26:02] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_19-26-02)
+[14-10-2025 19:26:02] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 19:26:10] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 19:26:10] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 19:26:10] === REFRESH STARTED === Timestamp: 2025-10-14_19-26-10
+[14-10-2025 19:26:12] About to update parameter dropdowns
+[14-10-2025 19:26:12] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 19:26:12] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 19:26:12] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 19:26:12] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 19:26:12] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 19:26:12] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 19:26:12] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 19:26:13] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 19:26:13] Parameter dropdowns updated successfully
+[14-10-2025 19:26:13] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[14-10-2025 19:26:13] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[14-10-2025 19:26:13] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[14-10-2025 19:26:13] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 19:28:20] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_19-28-20)
+[14-10-2025 19:28:20] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 19:28:26] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 19:28:26] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 19:28:26] === REFRESH STARTED === Timestamp: 2025-10-14_19-28-26
+[14-10-2025 19:28:28] About to update parameter dropdowns
+[14-10-2025 19:28:28] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 19:28:28] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 19:28:28] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 19:28:28] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 19:28:28] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 19:28:28] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 19:28:28] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 19:28:29] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 19:28:29] Parameter dropdowns updated successfully
+[14-10-2025 19:28:29] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[14-10-2025 19:28:29] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[14-10-2025 19:28:29] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[14-10-2025 19:28:29] [OK_BUTTON_DEBUG] About to extract zones
+[14-10-2025 19:28:29] [OK_BUTTON_DEBUG] Zones extracted: 44
+[14-10-2025 19:28:29] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 19:30:54] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_19-30-54)
+[14-10-2025 19:30:54] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 19:31:01] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 19:31:01] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 19:31:01] === REFRESH STARTED === Timestamp: 2025-10-14_19-31-01
+[14-10-2025 19:31:02] About to update parameter dropdowns
+[14-10-2025 19:31:03] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 19:31:03] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 19:31:03] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 19:31:03] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 19:31:03] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 19:31:03] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 19:31:03] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 19:31:03] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 19:31:03] Parameter dropdowns updated successfully
+[14-10-2025 19:31:03] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[14-10-2025 19:31:03] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[14-10-2025 19:31:03] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[14-10-2025 19:31:03] [OK_BUTTON_DEBUG] About to extract zones
+[14-10-2025 19:31:03] [OK_BUTTON_DEBUG] Zones extracted: 44
+[14-10-2025 19:31:03] [OK_BUTTON_DEBUG] Total zones loaded: 44
+[14-10-2025 19:31:03] [OK_BUTTON_DEBUG] Unresolved zones: 44
+[14-10-2025 19:31:03] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
+[14-10-2025 19:31:03] [OK_BUTTON_DEBUG] After host type filter: 44 -> 0
+[14-10-2025 19:31:03] [OK_BUTTON_DEBUG] Final unresolved count: 0
+[14-10-2025 19:31:03] [OK_BUTTON_DEBUG] OK button enabled: False
+[14-10-2025 19:31:03] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 19:33:00] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_19-33-00)
+[14-10-2025 19:33:00] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 19:33:07] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 19:33:07] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 19:33:07] === REFRESH STARTED === Timestamp: 2025-10-14_19-33-07
+[14-10-2025 19:33:08] About to update parameter dropdowns
+[14-10-2025 19:33:09] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 19:33:09] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 19:33:09] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 19:33:09] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 19:33:09] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 19:33:09] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 19:33:09] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 19:33:10] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 19:33:10] Parameter dropdowns updated successfully
+[14-10-2025 19:33:10] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[14-10-2025 19:33:10] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[14-10-2025 19:33:10] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[14-10-2025 19:33:10] [OK_BUTTON_DEBUG] About to extract zones
+[14-10-2025 19:33:10] [OK_BUTTON_DEBUG] Zones extracted: 44
+[14-10-2025 19:33:10] [OK_BUTTON_DEBUG] Total zones loaded: 44
+[14-10-2025 19:33:10] [OK_BUTTON_DEBUG] Unresolved zones: 44
+[14-10-2025 19:33:10] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
+[14-10-2025 19:33:10] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[14-10-2025 19:33:10] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=False, Resolved=False
+[14-10-2025 19:33:10] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=False, Resolved=False
+[14-10-2025 19:33:10] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=False, Resolved=False
+[14-10-2025 19:33:10] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=False, Resolved=False
+[14-10-2025 19:33:10] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=False, Resolved=False
+[14-10-2025 19:33:10] [OK_BUTTON_DEBUG] After host type filter: 44 -> 0
+[14-10-2025 19:33:10] [OK_BUTTON_DEBUG] Final unresolved count: 0
+[14-10-2025 19:33:10] [OK_BUTTON_DEBUG] OK button enabled: False
+[14-10-2025 19:33:10] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 19:36:01] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_19-36-01)
+[14-10-2025 19:36:01] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 19:36:15] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 19:36:15] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 19:36:15] === REFRESH STARTED === Timestamp: 2025-10-14_19-36-15
+[14-10-2025 19:36:16] About to update parameter dropdowns
+[14-10-2025 19:36:17] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 19:36:17] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 19:36:17] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 19:36:17] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 19:36:17] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 19:36:17] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 19:36:17] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 19:36:17] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 19:36:17] Parameter dropdowns updated successfully
+[14-10-2025 19:36:17] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[14-10-2025 19:36:17] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[14-10-2025 19:36:17] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[14-10-2025 19:36:17] [OK_BUTTON_DEBUG] About to extract zones
+[14-10-2025 19:36:17] [OK_BUTTON_DEBUG] Zones extracted: 44
+[14-10-2025 19:36:17] [OK_BUTTON_DEBUG] Total zones loaded: 44
+[14-10-2025 19:36:17] [OK_BUTTON_DEBUG] Unresolved zones: 44
+[14-10-2025 19:36:17] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
+[14-10-2025 19:36:17] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[14-10-2025 19:36:17] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[14-10-2025 19:36:18] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[14-10-2025 19:36:18] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[14-10-2025 19:36:18] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[14-10-2025 19:36:18] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[14-10-2025 19:36:18] [OK_BUTTON_DEBUG] After host type filter: 44 -> 30
+[14-10-2025 19:36:18] [OK_BUTTON_DEBUG] Final unresolved count: 30
+[14-10-2025 19:36:18] [OK_BUTTON_DEBUG] OK button enabled: True
+[14-10-2025 19:36:18] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 19:51:08] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_19-51-08)
+[14-10-2025 19:51:08] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 19:51:16] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 19:51:16] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 19:51:16] === REFRESH STARTED === Timestamp: 2025-10-14_19-51-16
+[14-10-2025 19:51:17] About to update parameter dropdowns
+[14-10-2025 19:51:18] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 19:51:18] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 19:51:18] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 19:51:18] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 19:51:18] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 19:51:18] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 19:51:18] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 19:51:19] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 19:51:19] Parameter dropdowns updated successfully
+[14-10-2025 19:51:19] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[14-10-2025 19:51:19] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[14-10-2025 19:51:19] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[14-10-2025 19:51:19] [OK_BUTTON_DEBUG] About to extract zones
+[14-10-2025 19:51:19] [OK_BUTTON_DEBUG] Zones extracted: 66
+[14-10-2025 19:51:19] [OK_BUTTON_DEBUG] Total zones loaded: 66
+[14-10-2025 19:51:19] [OK_BUTTON_DEBUG] Unresolved zones: 66
+[14-10-2025 19:51:19] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
+[14-10-2025 19:51:19] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[14-10-2025 19:51:19] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[14-10-2025 19:51:19] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[14-10-2025 19:51:19] [OK_BUTTON_DEBUG]   - Type='Structural Framing', IsEligible=True, Resolved=False
+[14-10-2025 19:51:19] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[14-10-2025 19:51:19] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[14-10-2025 19:51:19] [OK_BUTTON_DEBUG] After host type filter: 66 -> 52
+[14-10-2025 19:51:19] [OK_BUTTON_DEBUG] Final unresolved count: 52
+[14-10-2025 19:51:19] [OK_BUTTON_DEBUG] OK button enabled: True
+[14-10-2025 19:51:19] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 19:58:48] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_19-58-48)
+[14-10-2025 19:58:48] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 19:58:56] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 19:58:56] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 19:58:56] === REFRESH STARTED === Timestamp: 2025-10-14_19-58-56
+[14-10-2025 19:58:58] About to update parameter dropdowns
+[14-10-2025 19:58:59] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 19:58:59] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 19:58:59] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 19:58:59] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 19:58:59] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 19:58:59] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[14-10-2025 19:58:59] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 19:58:59] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 19:59:00] Parameter dropdowns updated successfully
+[14-10-2025 19:59:00] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[14-10-2025 19:59:00] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[14-10-2025 19:59:00] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[14-10-2025 19:59:00] [OK_BUTTON_DEBUG] About to extract zones
+[14-10-2025 19:59:00] [OK_BUTTON_DEBUG] Zones extracted: 66
+[14-10-2025 19:59:00] [OK_BUTTON_DEBUG] Total zones loaded: 66
+[14-10-2025 19:59:00] [OK_BUTTON_DEBUG] Unresolved zones: 66
+[14-10-2025 19:59:00] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
+[14-10-2025 19:59:00] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[14-10-2025 19:59:00] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[14-10-2025 19:59:00] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[14-10-2025 19:59:00] [OK_BUTTON_DEBUG]   - Type='Structural Framing', IsEligible=True, Resolved=False
+[14-10-2025 19:59:00] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[14-10-2025 19:59:00] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[14-10-2025 19:59:00] [OK_BUTTON_DEBUG] After host type filter: 66 -> 52
+[14-10-2025 19:59:00] [OK_BUTTON_DEBUG] Final unresolved count: 52
+[14-10-2025 19:59:00] [OK_BUTTON_DEBUG] OK button enabled: True
+[14-10-2025 19:59:00] RefreshService.ExecuteRefresh() method completed successfully
+[14-10-2025 20:05:41] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-14_20-05-41)
+[14-10-2025 20:05:41] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[14-10-2025 20:06:20] === ON_REFRESH_CLICK STARTED ===
+[14-10-2025 20:06:20] About to call RefreshService.ExecuteRefresh() method
+[14-10-2025 20:06:20] === REFRESH STARTED === Timestamp: 2025-10-14_20-06-20
+[14-10-2025 20:06:21] About to update parameter dropdowns
+[14-10-2025 20:06:21] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[14-10-2025 20:06:21] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[14-10-2025 20:06:21] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[14-10-2025 20:06:22] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[14-10-2025 20:06:22] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[14-10-2025 20:06:22] [PARAMETER_SERVICE] Updating tab 'Cable Trays' for category 'Cable Trays'
+[14-10-2025 20:06:22] [PARAMETER_SERVICE] Found 62 parameters for category 'Cable Trays' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Cable Trays'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[14-10-2025 20:06:22] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[14-10-2025 20:06:22] Parameter dropdowns updated successfully
+[14-10-2025 20:06:22] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[14-10-2025 20:06:22] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[14-10-2025 20:06:22] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[14-10-2025 20:06:22] [OK_BUTTON_DEBUG] About to extract zones
+[14-10-2025 20:06:22] [OK_BUTTON_DEBUG] Zones extracted: 43
+[14-10-2025 20:06:22] [OK_BUTTON_DEBUG] Total zones loaded: 43
+[14-10-2025 20:06:22] [OK_BUTTON_DEBUG] Unresolved zones: 43
+[14-10-2025 20:06:22] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing, Floors]
+[14-10-2025 20:06:22] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[14-10-2025 20:06:22] [OK_BUTTON_DEBUG]   - Type='Structural Framing', IsEligible=True, Resolved=False
+[14-10-2025 20:06:22] [OK_BUTTON_DEBUG]   - Type='Structural Framing', IsEligible=True, Resolved=False
+[14-10-2025 20:06:22] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[14-10-2025 20:06:22] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[14-10-2025 20:06:22] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[14-10-2025 20:06:22] [OK_BUTTON_DEBUG] After host type filter: 43 -> 43
+[14-10-2025 20:06:22] [OK_BUTTON_DEBUG] Final unresolved count: 43
+[14-10-2025 20:06:22] [OK_BUTTON_DEBUG] OK button enabled: True
+[14-10-2025 20:06:22] RefreshService.ExecuteRefresh() method completed successfully

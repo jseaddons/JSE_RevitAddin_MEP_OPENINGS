@@ -467,14 +467,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 foreach (var element in sleeveElements)
                 {
-                    // Try "MEP Mark" first, then fallback to "Mark"
-                    var markParam = element.LookupParameter("MEP Mark") ?? element.LookupParameter("Mark");
+                    // Resolve mark parameter case/space/underscore-insensitively
+                    var markParam = ResolveMarkParameter(element);
                     if (markParam != null)
                     {
                         string markValue = markParam.AsString() ?? "";
 
                         // Check if this mark matches our pattern: ProjectPrefix + DisciplinePrefix + Number
-                        if (markValue.StartsWith(expectedPrefix))
+                        if (markValue.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase))
                         {
                             // Extract the number part
                             string numberPart = markValue.Substring(expectedPrefix.Length);
@@ -509,44 +509,85 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         private void SetMarkParameter(Element element, string markValue)
         {
-            // Try "MEP Mark" first (shared parameter), then fallback to "Mark"
-            var markParam = element.LookupParameter("MEP Mark");
-            var markParamFallback = element.LookupParameter("Mark");
+            // Resolve parameter name case/space/underscore-insensitively
+            var markParam = ResolveMarkParameter(element);
 
             File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", 
-                $"[SET-DEBUG] Element {element.Id}: MEP_Mark={markParam != null}, Mark={markParamFallback != null}, Value='{markValue}', Doc.IsModifiable={element.Document.IsModifiable}\n");
+                $"[SET-DEBUG] Element {element.Id}: ResolvedParam='{markParam?.Definition?.Name}', Value='{markValue}', Doc.IsModifiable={element.Document.IsModifiable}\n");
 
-            if (markParam != null && !markParam.IsReadOnly)
+            if (markParam != null && !markParam.IsReadOnly && markParam.StorageType == StorageType.String)
             {
                 markParam.Set(markValue);
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", 
-                    $"[SET-SUCCESS] Applied '{markValue}' to element {element.Id}\n");
-            }
-            else if (markParamFallback != null && !markParamFallback.IsReadOnly)
-            {
-                markParamFallback.Set(markValue);
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", 
-                    $"[SET-SUCCESS-FALLBACK] Applied '{markValue}' to element {element.Id} using Mark parameter\n");
+                // Verify write stuck
+                try { element.Document.Regenerate(); } catch {}
+                var readBack = markParam.AsString();
+                if (!string.Equals(readBack, markValue, StringComparison.Ordinal))
+                {
+                    // Retry once
+                    try { element.Document.Regenerate(); } catch {}
+                    markParam.Set(markValue);
+                    try { element.Document.Regenerate(); } catch {}
+                    readBack = markParam.AsString();
+                }
+                if (string.Equals(readBack, markValue, StringComparison.Ordinal))
+                {
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", 
+                        $"[SET-SUCCESS] Applied '{markValue}' to element {element.Id} using '{markParam.Definition?.Name}'\n");
+                }
+                else
+                {
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", 
+                        $"[SET-VERIFY-FAIL] Element {element.Id}: attempted '{markValue}', read-back='{readBack ?? "<null>"}'\n");
+                    throw new InvalidOperationException($"MEP Mark write did not persist on element {element.Id.IntegerValue}");
+                }
             }
             else
             {
+                var readonlyInfo = markParam != null ? $"Param='{markParam.Definition?.Name}', Readonly={markParam.IsReadOnly}, Type={markParam.StorageType}" : "Param=null";
                 File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", 
-                    $"[SET-FAIL] Element {element.Id}: MEP_Mark readonly={markParam?.IsReadOnly}, Mark readonly={markParamFallback?.IsReadOnly}\n");
-                if (markParam == null && markParamFallback == null)
-                {
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", 
-                        $"[SET-FAIL] Both 'MEP Mark' and 'Mark' parameters are null on element {element.Id}\n");
-                }
-                else if (markParam?.IsReadOnly == true)
-                {
-                    DebugLogger.Error($"[MarkParameterService] 'MEP Mark' parameter is read-only");
-                }
-                else if (markParamFallback?.IsReadOnly == true)
-                {
-                    DebugLogger.Error($"[MarkParameterService] 'Mark' parameter is read-only");
-                }
-                throw new InvalidOperationException($"Cannot set MEP Mark parameter on element {element.Id.IntegerValue}: parameters are null or read-only");
+                    $"[SET-FAIL] Element {element.Id}: {readonlyInfo}\n");
+                throw new InvalidOperationException($"Cannot set MEP Mark parameter on element {element.Id.IntegerValue}: parameter missing or not writable");
             }
+        }
+
+        private Parameter ResolveMarkParameter(Element element)
+        {
+            // Accept: "MEP Mark", "MEP_Mark", "mep mark", "mep_mark" (case-insensitive), or fallback "Mark"
+            var preferredNames = new[] { "mepmark", "mep_mark", "mep mark" };
+            var fallbackNames = new[] { "mark" };
+
+            try
+            {
+                // Search all instance parameters case/space/underscore-insensitively
+                foreach (Parameter p in element.Parameters)
+                {
+                    var defName = p.Definition?.Name ?? string.Empty;
+                    var norm = NormalizeName(defName);
+                    if (preferredNames.Any(n => NormalizeName(n) == norm))
+                    {
+                        return p;
+                    }
+                }
+                // Fallback to simple "Mark"
+                foreach (Parameter p in element.Parameters)
+                {
+                    var defName = p.Definition?.Name ?? string.Empty;
+                    var norm = NormalizeName(defName);
+                    if (fallbackNames.Any(n => NormalizeName(n) == norm))
+                    {
+                        return p;
+                    }
+                }
+            }
+            catch { }
+            
+            // Final fallback: direct lookups (in case)
+            return element.LookupParameter("MEP Mark") ?? element.LookupParameter("MEP_Mark") ?? element.LookupParameter("Mark");
+        }
+
+        private string NormalizeName(string s)
+        {
+            return (s ?? string.Empty).ToLowerInvariant().Replace(" ", string.Empty).Replace("_", string.Empty).Trim();
         }
     }
 }

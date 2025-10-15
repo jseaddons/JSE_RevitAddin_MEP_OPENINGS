@@ -3,6 +3,107 @@
 ## Overview
 This document outlines the complete methodology for sleeve placement in MEP openings, including the elimination of the duplicate suppressor system in favor of a more efficient and reliable approach.
 
+## ⚠️ CRITICAL: Plural/Singular Category Mismatch Fix (Oct 14, 2025)
+
+### Problem
+**UI selections use plural forms** ("Walls", "Floors") while **Revit API returns singular forms** ("Wall", "Floor"), causing:
+- ❌ All clash zones marked as `IsEligibleByCurrentUi = false`
+- ❌ OK button never enabled (zones filtered out)
+- ❌ Placement fails silently
+
+### Root Cause
+```csharp
+// ❌ WRONG: Direct comparison fails due to plural/singular mismatch
+cz.IsEligibleByCurrentUi = allowedHostTypesUI.Contains(cz.StructuralElementType);
+// UI has "Walls", zone has "Wall" → false!
+```
+
+### Solution
+**Normalize both sides with plural/singular tolerance:**
+```csharp
+// ✅ CORRECT: Handle plural/singular mismatch
+bool isEligible = allowedHostTypesUI.Contains(cz.StructuralElementType) ||
+                 allowedHostTypesUI.Contains(cz.StructuralElementType + "s") ||
+                 allowedHostTypesUI.Any(t => t.TrimEnd('s').Equals(cz.StructuralElementType, StringComparison.OrdinalIgnoreCase));
+cz.IsEligibleByCurrentUi = isEligible;
+```
+
+### Implementation Locations
+1. **RefreshService.cs** (line 786-790): Sets `IsEligibleByCurrentUi` during clash detection
+2. **EmergencyMainDialog.cs** (line 5750-5755): Filters zones for OK button enabling
+3. **All category/host type comparisons** must use this pattern
+
+### Affected Files & Line Numbers
+| File | Location | Fixed | Purpose |
+|------|----------|-------|---------|
+| `Services/RefreshService.cs` | Lines 786-790 | ✅ | Sets `IsEligibleByCurrentUi` for new clash zones |
+| `Services/RefreshService.cs` | Lines 698-702 | ✅ | Filters existing clash zones by UI host type |
+| `Views/EmergencyMainDialog.cs` | Lines 5750-5755 | ✅ | OK button enabling logic |
+
+### Known UI vs Revit Mappings
+| UI Selection (Plural) | Revit API Value (Singular) | Status |
+|----------------------|---------------------------|--------|
+| "Walls" | "Wall" | ✅ Fixed |
+| "Floors" | "Floor" | ✅ Fixed |
+| "Structural Framing" | "Structural Framing" | ✅ Fixed (no 's') |
+| "Ceilings" | "Ceiling" | ✅ Fixed |
+
+### MEP Categories (Already Normalized)
+MEP categories are automatically normalized by `MepCategoryConstants.Normalize()`:
+- "Duct" → "Ducts" ✅
+- "Pipe" → "Pipes" ✅
+- "Cable Tray" → "Cable Trays" ✅
+- "Duct Accessory" → "Duct Accessories" ✅
+
+**No fix needed for MEP categories** - already handled.
+
+### Code Reference: Complete Fix Pattern
+
+```csharp
+// ✅ STEP 1: During Refresh - Set IsEligibleByCurrentUi (RefreshService.cs:786-790)
+var allowedHostTypesUI_NewZones = new HashSet<string>(
+    FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>(),
+    StringComparer.OrdinalIgnoreCase);
+    
+if (allowedHostTypesUI_NewZones.Count > 0 && newClashZones != null)
+{
+    foreach (var cz in newClashZones)
+    {
+        // Handle plural/singular mismatch: "Walls" (UI) vs "Wall" (Revit)
+        bool isEligible = allowedHostTypesUI_NewZones.Contains(cz.StructuralElementType) ||
+                         allowedHostTypesUI_NewZones.Contains(cz.StructuralElementType + "s") ||
+                         allowedHostTypesUI_NewZones.Any(t => t.TrimEnd('s').Equals(cz.StructuralElementType, StringComparison.OrdinalIgnoreCase));
+        cz.IsEligibleByCurrentUi = isEligible;
+    }
+}
+
+// ✅ STEP 2: Filter Existing Zones (RefreshService.cs:698-702)
+bool hostTypeMatch = allowedHostTypes.Count == 0 || 
+                    allowedHostTypes.Contains(cz.StructuralElementType) ||
+                    allowedHostTypes.Contains(cz.StructuralElementType + "s") ||
+                    allowedHostTypes.Any(t => t.TrimEnd('s').Equals(cz.StructuralElementType, StringComparison.OrdinalIgnoreCase));
+
+// ✅ STEP 3: OK Button Filter (EmergencyMainDialog.cs:5750-5755)
+zones = zones.Where(cz => 
+    (allowedHostTypesUI.Contains(cz.StructuralElementType) ||
+     allowedHostTypesUI.Contains(cz.StructuralElementType + "s") ||
+     allowedHostTypesUI.Any(t => t.TrimEnd('s').Equals(cz.StructuralElementType, StringComparison.OrdinalIgnoreCase))) &&
+    cz.IsEligibleByCurrentUi).ToList();
+```
+
+### Testing Checklist
+- [x] "Walls" (UI) matches "Wall" (Revit) ✅
+- [x] "Floors" (UI) matches "Floor" (Revit) ✅
+- [x] "Structural Framing" (UI) matches "Structural Framing" (Revit - no 's') ✅
+- [x] Case-insensitive matching works ✅
+- [x] `IsEligibleByCurrentUi` set correctly during refresh ✅
+- [x] OK button enables when unresolved zones exist ✅
+
+### Future Prevention
+**⚠️ IMPORTANT**: When adding new host type or category filters, always use the plural/singular tolerance pattern above. Never use direct `.Contains()` for UI-to-Revit comparisons.
+
+---
+
 ## Core Principle
 **Calculate once during refresh, use many times during placement** - eliminating redundant calculations and ensuring perfect consistency between detection and placement.
 
@@ -107,30 +208,63 @@ else
 
 ### 2. Refresh Phase - Calculate Once
 
-#### Critical Discovery: Intersection Point is Already at Wall Center
+#### Critical Discovery: Intersection Point Calculation and Placement Point Strategy
 
-**IMPORTANT**: The intersection point from `MepIntersectionService` is already at the wall center (mid-plane), not at the wall face.
+**CRITICAL UNDERSTANDING**: The intersection point calculation method determines sleeve placement accuracy.
 
-**Why this happens:**
-- `MepIntersectionService` finds intersections with both wall faces (entry and exit points)
-- `CreateBoundingBox()` collects all intersection points and `GetBoundingBoxCenter()` averages them
-- This averaging automatically gives us the wall center position
-- No additional offset calculation needed
+### **How MepIntersectionService Calculates Intersection Points**
+
+**For FULL Penetrations (MEP element crosses completely through host):**
+1. `GetIntersectionPoints()` finds intersections with host solid faces
+2. Typically finds **2 intersection points**: entry face + exit face
+3. `CreateBoundingBox()` creates a bounding box around all intersection points
+4. `GetBoundingBoxCenter(bbox)` returns the **CENTER** of that bounding box
+5. **Result**: Intersection point is at **MID-DEPTH** of host (the center) ✅
+
+**Mathematical proof:**
+```
+Entry point (face 1): (80.929, 60.677, 10.465)
+Exit point (face 2):  (80.929, 62.302, 10.465)
+Bounding box center = ((entry + exit) / 2) = (80.929, 61.489, 10.465)
+This equals the mid-depth of the host element ✅
+```
+
+**For PARTIAL Penetrations (MEP element penetrates >20% but doesn't exit):**
+1. `GetIntersectionPoints()` finds only **1 intersection point** (entry face only)
+2. `CreateBoundingBox()` creates a bounding box with Min = Max = single point
+3. `GetBoundingBoxCenter(bbox)` returns that **SINGLE POINT**
+4. **Result**: Intersection point is at **FACE** (not center) ❌
+
+**The 20% Penetration Filter:**
+```csharp
+const double MinPenetrationRatio = 0.20;
+if (penetrationRatio < MinPenetrationRatio)
+{
+    _log($"SKIP: Insufficient penetration (ratio={penetrationRatio:F3} < 0.20)");
+    continue;  // ← No clash zone created for shallow penetrations
+}
+```
+
+**Current Behavior:**
+- **<20% penetration**: Clash zone not created (filtered out)
+- **>20% partial**: Clash zone created, but intersection point is at FACE (not center)
+- **100% full penetration**: Clash zone created, intersection point is at CENTER ✅
+
+**Correct placement logic (current implementation):**
+```csharp
+// Intersection point is ALREADY at host center for full penetrations
+// MepIntersectionService.GetBoundingBoxCenter() averages entry/exit points
+XYZ placementPoint = intersectionPoint;  // ✅ Correct for full penetrations
+
+// NOTE: For partial penetrations (>20% but <100%), this places sleeve at FACE
+// Future enhancement: Detect partial penetrations and offset to center
+```
 
 **Evidence from logs:**
 ```
-Wall BBox: Min(112.964, 52.090, 23.130) Max(113.620, 59.144, 51.017)
-Wall center X: (112.964 + 113.620) / 2 = 113.292
-Intersection Point X: 113.291892... (matches wall center)
-```
-
-**Correct placement logic:**
-```csharp
-// WRONG: Adding half-thickness offset pushes to far face
-var sleevePlacementPoint = intersectionPoint + (wallNormal * wallThickness * 0.5);
-
-// CORRECT: Use intersection point directly (already at wall center)
-var sleevePlacementPoint = intersectionPoint;
+[Intersect] Found 2 intersection point(s). First: (80.929, 60.677, 10.465)  ← Entry face
+[Intersect] Found 2 intersection point(s). Second: (80.929, 62.302, 10.465) ← Exit face
+Bounding box center: (80.929, 61.489, 10.465) ← Mid-depth (CENTER) ✅
 ```
 
 ### 3. Refresh Phase - Calculate Once
@@ -1734,6 +1868,223 @@ The initial approach of creating a new `ClashZoneService` instance and calling `
 
 The correct approach is to reset flags on the **actual clash zones** being passed to the placement method.
 
+## 🔧 **CRITICAL DEBUGGING JOURNEY: Structural Framing Depth and Pipe Sizing**
+
+### **Problem 1: Structural Framing Depth Always 30.5mm (0.1ft)**
+
+**Symptom:**
+- Pipe sleeves on structural framing always had depth of 30.5mm
+- Actual beam breadth was 800mm
+- `clashZone.StructuralElementThickness` persistently showed 0.1ft in XML
+
+**Initial Attempts (All Failed):**
+1. ❌ Read `BuiltInParameter.STRUCTURAL_FRAME_WIDTH` → Not found
+2. ❌ Read instance parameter 'b' → Returned null
+3. ❌ Read type parameter 'b' → Still got 0.1ft
+4. ❌ Added multiple fallbacks (h, Width, Height, Depth) → No improvement
+
+**Root Cause Discovery:**
+The element passed to `GetElementThickness()` was a **`RevitLinkInstance` wrapper**, not the actual `FamilyInstance` from the linked document!
+
+**The Fix:**
+```csharp
+// Robust type resolution for linked FamilyInstance elements
+if (famInst.Symbol == null)  // Symbol is null for linked instances
+{
+    // Fetch the actual type element via GetTypeId()
+    var typeId = famInst.GetTypeId();
+    if (typeId != null && typeId != ElementId.InvalidElementId)
+    {
+        var typeElem = famInst.Document.GetElement(typeId);
+        if (typeElem != null)
+        {
+            // Try 'b' parameter case-insensitively from the TYPE element
+            foreach (Parameter p in typeElem.Parameters)
+            {
+                if (p.Definition?.Name != null && 
+                    string.Equals(p.Definition.Name, "b", StringComparison.OrdinalIgnoreCase))
+                {
+                    var val = p.AsDouble();
+                    if (val > 0)
+                    {
+                        _log($"[FRAMING-THICKNESS] Found 'b' = {val}ft via GetTypeId() type resolution");
+                        return val;
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+**Key Learnings:**
+- Linked `FamilyInstance` elements have `Symbol = null`
+- Must use `GetTypeId()` to fetch the actual type element
+- Type parameters must be read from the resolved type element, not the instance
+- Case-insensitive parameter name matching is critical
+
+**Diagnostic Logs Added:**
+```
+[FRAMING-THICKNESS] Element 432580, Category=Structural Framing
+[FRAMING-THICKNESS-PARAMS] Checking TYPE parameters for linked FamilyInstance
+[FRAMING-THICKNESS] Found 'b' = 2.624ft via GetTypeId() type resolution
+[CLASH-THICKNESS-ASSIGN] Setting StructuralElementThickness = 2.624ft for zone XXX
+```
+
+---
+
+### **Problem 2: Pipe Sleeve Diameter Always 400mm**
+
+**Symptom:**
+- All pipe sleeves placed with standard 400mm diameter
+- UI clearance settings ignored
+- Actual pipe OD + insulation + clearance not applied
+
+**Root Cause:**
+The pipe sizing logic was **inside an `else` block** that was only executed when the host was NOT damper and NOT cable-tray. For **Structural Framing** hosts, a different code path was taken that never reached the pipe-specific sizing logic.
+
+**The Problematic Code:**
+```csharp
+if (_strategy is DamperPlacementStrategy)
+{
+    // Damper logic
+}
+else if (_strategy is CableTrayPlacementStrategy)
+{
+    // Cable tray logic
+}
+else  // ← This is executed for ducts/pipes on walls/floors
+{
+    // Pipe sizing logic was HERE
+    // But for framing, a DIFFERENT strategy was injected
+    // So this block was NEVER reached for framing+pipes!
+}
+```
+
+**The Fix:**
+```csharp
+// ✅ CRITICAL FIX: Pipe sizing BEFORE category-specific logic (host-agnostic)
+bool isPipesCategory = string.Equals(clashZone.MepElementCategory, "Pipes", 
+                                     StringComparison.OrdinalIgnoreCase);
+if (isPipesCategory)
+{
+    // Parse Outside Diameter from snapshot (handles "Ø200", "200 mm", etc.)
+    var baseOd = GetPipeOutsideDiameterFromClashZone(clashZone);
+    var ins = TryGetSnapshotDouble(clashZone, "Insulation Thickness") ?? 0.0;
+    var clearance = _strategy.GetClearance(mepSize, _conditions);
+    
+    // Final diameter = OD + 2*insulation + 2*clearance
+    finalDiameter = baseOd + (2 * ins) + (2 * clearance);
+    
+    DebugLogger.Info($"[PIPE-SIZE] CZ={clashZone.Id} OD={baseOd:F6}ft, " +
+                     $"ins={ins:F6}ft, clr={clearance:F6}ft, finalDia={finalDiameter:F6}ft");
+}
+// THEN category-specific logic for dampers/cable trays...
+```
+
+**Outside Diameter Parsing Robustness:**
+```csharp
+private double? TryGetSnapshotDouble(ClashZone cz, string key)
+{
+    var raw = cz.MepParameterValues?.FirstOrDefault(kv => kv.Key == key)?.Value;
+    if (string.IsNullOrWhiteSpace(raw)) return null;
+    
+    // Handle various formats: "Ø200", "200 mm", "0.656 ft", etc.
+    var clean = raw.ToLowerInvariant()
+        .Replace("ø", "")
+        .Replace("mm", "")
+        .Replace("ft", "")
+        .Trim();
+    
+    if (double.TryParse(clean, out var val))
+    {
+        // Convert mm to feet if value is large (> 10)
+        if (val > 10.0) val = val / 304.8;
+        return val;
+    }
+    return null;
+}
+```
+
+**Pipe Diameter Parameter Write Robustness:**
+```csharp
+// Try multiple diameter parameter names (family-dependent)
+var diamCandidates = new[] { 
+    "Opening Outside Diameter", 
+    "Opening_Diameter", 
+    "Outside Diameter", 
+    "Diameter", 
+    "Width" 
+};
+
+foreach (var candName in diamCandidates)
+{
+    var p = sleeveInstance.LookupParameter(candName);
+    if (p != null && !p.IsReadOnly && p.StorageType == StorageType.Double)
+    {
+        p.Set(finalDiameter);
+        DebugLogger.Info($"[PARAM-SUCCESS] Sleeve {sleeveInstance.Id}: Set '{candName}' = {roundedDiaMm}mm");
+        break;
+    }
+}
+```
+
+**Key Learnings:**
+- Pipe sizing must be host-agnostic (execute before host-specific logic)
+- OD parameter values come in multiple formats (Ø, mm, ft suffixes)
+- Different families use different diameter parameter names
+- Must try multiple parameter names until finding a writable one
+
+---
+
+### **Problem 3: Pipe Depth Not Set for Structural Framing**
+
+**Symptom:**
+- Pipe sleeves on framing had correct diameter but zero or incorrect depth
+- Depth parameter not being written
+
+**Root Cause:**
+The depth write logic was only executed for walls/floors, not for framing.
+
+**The Fix:**
+```csharp
+// ✅ Explicitly set Depth parameter for pipes (especially on framing)
+if (isPipesCategory && hasDepth && !depthRo)
+{
+    depthParam.Set(clashZone.StructuralElementThickness);
+    DebugLogger.Info($"[DEPTH-SET] Sleeve {sleeveInstance.Id}: PIPE - Set Depth = {thickMm}mm");
+}
+```
+
+---
+
+### **Problem 4: Incorrect Placement Point After "Fix"**
+
+**Symptom (After incorrect "optimization"):**
+- Sleeves placing half in/half out of hosts
+- Placement point at host FACE instead of CENTER
+
+**What Went Wrong:**
+Changed `MepIntersectionService` to use `intersectionPoints[0]` (first intersection point) instead of `GetBoundingBoxCenter(bbox)`, thinking it would be more "accurate". This gave us the FACE point, not the CENTER.
+
+**The Revert:**
+```csharp
+// ❌ WRONG: First intersection point is at FACE
+var placementPoint = intersectionPoints[0];
+
+// ✅ CORRECT: Bounding box center is at MID-DEPTH
+var center = GetBoundingBoxCenter(bbox);
+results.Add((mepElement, structElement, bbox, center));
+```
+
+**Why GetBoundingBoxCenter() Works:**
+- For full penetrations: Averages entry + exit → gives mid-depth ✅
+- Simple, elegant, mathematically correct
+- No need for complex normal/thickness calculations
+- Works universally for all host types (walls, floors, framing)
+
+---
+
 ## Conclusion
 
 This optimized approach eliminates the complex and expensive duplicate suppressor system while providing better performance, reliability, and consistency. By calculating placement data once during refresh and reusing it throughout the process, we achieve significant cost savings and improved user experience.
@@ -1741,3 +2092,12 @@ This optimized approach eliminates the complex and expensive duplicate suppresso
 The intelligent clearance calculation system ensures that sleeve dimensions are appropriate for the specific MEP element size and type, while maintaining the simplicity and efficiency of category-specific clearance management.
 
 The resolved flags reset fix ensures that users can delete sleeves and place them again without encountering "already resolved" errors, providing a smooth and reliable workflow.
+
+### **Key Debugging Lessons Learned:**
+
+1. ✅ **Linked elements require robust type resolution** - use `GetTypeId()` for type parameters
+2. ✅ **Parameter parsing must handle multiple formats** - OD values come with units/symbols
+3. ✅ **Category-specific logic must be host-agnostic** - pipes are pipes regardless of host
+4. ✅ **"Optimizations" can break working code** - GetBoundingBoxCenter() was already optimal
+5. ✅ **Simple solutions are often correct** - averaging entry/exit points naturally gives center
+6. ✅ **Test thoroughly before "improving"** - the working code had good reasons for its approach

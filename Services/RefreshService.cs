@@ -453,8 +453,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             DebugLogger.Info("[CLASH_DEBUG] Starting MEP-structural intersection detection...");
             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Starting MEP-structural intersection detection...\n");
 
-            // Use passed MEP categories from UI
-            var currentIntersections = _intersectionService.FindIntersections(_document, _document.ActiveView as View3D, selectedMepCategories);
+            // Build allowed host types from current UI (UI PRECEDENCE)
+            var allowedHostTypesUI = new HashSet<string>(
+                FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>(),
+                StringComparer.OrdinalIgnoreCase);
+            DebugLogger.Info($"[CLASH_DEBUG] UI Selected MEP categories: {string.Join(", ", selectedMepCategories ?? new List<string>())}");
+            DebugLogger.Info($"[CLASH_DEBUG] UI Selected Host types: {string.Join(", ", allowedHostTypesUI)}");
+            DebugLogger.Info($"[CLASH_DEBUG] UI Selected Host files: {string.Join(", ", selectedHostFiles ?? new List<string>())}");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] UI Selected MEP categories: {string.Join(", ", selectedMepCategories ?? new List<string>())}\n");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] UI Selected Host types: {string.Join(", ", allowedHostTypesUI)}\n");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] UI Selected Host files: {string.Join(", ", selectedHostFiles ?? new List<string>())}\n");
+
+            // Route intersection logs into both debug and refresh log files
+            var intersectionService = new IntersectionDetectionService(msg =>
+            {
+                DebugLogger.Info(msg);
+                try { JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] {msg}\n"); } catch { }
+            });
+
+            // Use passed MEP categories, reference files, and host filters from UI (UI PRECEDENCE)
+            var currentIntersections = intersectionService.FindIntersections(
+                _document,
+                _document.ActiveView as View3D,
+                selectedMepCategories,
+                selectedReferenceFiles,
+                selectedHostFiles,
+                allowedHostTypesUI.ToList());
 
             DebugLogger.Info($"[CLASH_DEBUG] INTERSECTION DETECTION COMPLETE: {currentIntersections.Count} intersections found");
             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] INTERSECTION DETECTION COMPLETE: {currentIntersections.Count} intersections found\n");
@@ -508,6 +532,112 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Loaded {existingCount} existing clash zones from Filter XML files (selected filter + categories)\n");
             
             // Reinitialize with existing clash zones
+            // If a 3D view with section box is active, pre-filter existing zones to the oriented box
+            if (_document.ActiveView is View3D secView && secView != null)
+            {
+                try
+                {
+                    var secBox = secView.GetSectionBox();
+                    var inv = secBox.Transform.Inverse;
+                    var kept = new List<Models.ClashZone>();
+                    foreach (var cz in existingClashZones?.ClashZones ?? new List<Models.ClashZone>())
+                    {
+                        var pt = new XYZ(cz.IntersectionPointX, cz.IntersectionPointY, cz.IntersectionPointZ);
+                        var local = inv.OfPoint(pt);
+                        bool inside = local.X >= secBox.Min.X && local.X <= secBox.Max.X &&
+                                      local.Y >= secBox.Min.Y && local.Y <= secBox.Max.Y &&
+                                      local.Z >= secBox.Min.Z && local.Z <= secBox.Max.Z;
+                        if (inside) kept.Add(cz);
+                    }
+                    existingClashZones.ClashZones = kept;
+                    DebugLogger.Info($"[CLASH_DEBUG] Section-box filtered existing zones: {kept.Count}");
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Warning($"[CLASH_DEBUG] Section-box prefilter failed: {ex.Message}");
+                }
+            }
+
+            // ✅ FIX: Recalculate intersection points for existing clash zones to use corrected intersection logic
+            if (existingClashZones?.ClashZones != null && existingClashZones.ClashZones.Count > 0)
+            {
+                DebugLogger.Info($"[CLASH_DEBUG] ===== RECALCULATING INTERSECTION POINTS FOR {existingClashZones.ClashZones.Count} EXISTING CLASH ZONES =====");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ===== RECALCULATING INTERSECTION POINTS FOR {existingClashZones.ClashZones.Count} EXISTING CLASH ZONES =====\n");
+                
+                int updatedCount = 0;
+                int skippedCount = 0;
+                int errorCount = 0;
+                
+                // Recalculate intersection points for existing clash zones
+                foreach (var existingZone in existingClashZones.ClashZones)
+                {
+                    try
+                    {
+                        // Get the MEP and structural elements
+                        var mepElement = GetElementFromDocumentOrLinked(_document, existingZone.MepElementId);
+                        var structuralElement = GetElementFromDocumentOrLinked(_document, existingZone.StructuralElementId);
+                        
+                        if (mepElement == null)
+                        {
+                            DebugLogger.Warning($"[CLASH_DEBUG] Zone {existingZone.Id}: MEP element {existingZone.MepElementId} not found");
+                            skippedCount++;
+                            continue;
+                        }
+                        
+                        if (structuralElement == null)
+                        {
+                            DebugLogger.Warning($"[CLASH_DEBUG] Zone {existingZone.Id}: Structural element {existingZone.StructuralElementId} not found");
+                            skippedCount++;
+                            continue;
+                        }
+                        
+                        // Recalculate intersection point using corrected logic
+                        var newIntersectionPoint = CalculateIntersectionPoint(mepElement, structuralElement);
+                        if (newIntersectionPoint != null)
+                        {
+                            // Update the intersection point if it differs significantly
+                            var existingPoint = new XYZ(existingZone.IntersectionPointX, existingZone.IntersectionPointY, existingZone.IntersectionPointZ);
+                            var distance = existingPoint.DistanceTo(newIntersectionPoint);
+                            
+                            if (distance > 0.001) // If points differ by more than 1mm
+                            {
+                                existingZone.IntersectionPointX = newIntersectionPoint.X;
+                                existingZone.IntersectionPointY = newIntersectionPoint.Y;
+                                existingZone.IntersectionPointZ = newIntersectionPoint.Z;
+                                
+                                // Also update the sleeve placement point
+                                existingZone.SleevePlacementPointX = newIntersectionPoint.X;
+                                existingZone.SleevePlacementPointY = newIntersectionPoint.Y;
+                                existingZone.SleevePlacementPointZ = newIntersectionPoint.Z;
+                                
+                                DebugLogger.Info($"[CLASH_DEBUG] ✅ Zone {existingZone.Id}: Updated from {existingPoint} -> {newIntersectionPoint} (Δ={distance:F3}ft)");
+                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ✅ Zone {existingZone.Id}: Updated from ({existingPoint.X:F2}, {existingPoint.Y:F2}, {existingPoint.Z:F2}) -> ({newIntersectionPoint.X:F2}, {newIntersectionPoint.Y:F2}, {newIntersectionPoint.Z:F2}) (Δ={distance:F3}ft)\n");
+                                updatedCount++;
+                            }
+                            else
+                            {
+                                DebugLogger.Info($"[CLASH_DEBUG] Zone {existingZone.Id}: No update needed (distance={distance:F6}ft)");
+                                skippedCount++;
+                            }
+                        }
+                        else
+                        {
+                            DebugLogger.Warning($"[CLASH_DEBUG] Zone {existingZone.Id}: Could not calculate new intersection point");
+                            skippedCount++;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLogger.Warning($"[CLASH_DEBUG] ❌ Zone {existingZone.Id}: Error recalculating - {ex.Message}");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ❌ Zone {existingZone.Id}: Error - {ex.Message}\n");
+                        errorCount++;
+                    }
+                }
+                
+                DebugLogger.Info($"[CLASH_DEBUG] Recalculation summary: Updated={updatedCount}, Skipped={skippedCount}, Errors={errorCount}");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Recalculation summary: Updated={updatedCount}, Skipped={skippedCount}, Errors={errorCount}\n");
+            }
+
             _clashZoneService = new ClashZoneService(existingClashZones, msg => DebugLogger.Info(msg));
             
             DebugLogger.Info($"[CLASH_DEBUG] ClashZoneService reinitialized with {existingCount} existing zones from XML");
@@ -526,6 +656,69 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Filtering clash zones by current selection - Reference files: {selectedReferenceFiles.Count}, Clearance settings: {clearanceSettings.Count}\n");
 
             var filteredClashZones = _clashZoneService.FilterClashZonesByCurrentSelection(selectedReferenceFiles, clearanceSettings, "Refresh", _document);
+
+            // ✅ CRITICAL: Filter existing zones by CURRENT UI selections (categories, host types, reference files, host files)
+            // This ensures when user changes UI selections, only matching clash zones are processed
+            try
+            {
+                var allowedMepCats = new HashSet<string>(selectedMepCategories ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
+                var allowedHostTypes = new HashSet<string>(
+                    FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>(),
+                    StringComparer.OrdinalIgnoreCase);
+                
+                // Normalize file names for comparison
+                Func<string, string> norm = s =>
+                {
+                    if (string.IsNullOrWhiteSpace(s)) return string.Empty;
+                    var trimmed = s;
+                    var idxParen = trimmed.IndexOf('(');
+                    if (idxParen >= 0) trimmed = trimmed.Substring(0, idxParen);
+                    trimmed = System.IO.Path.GetFileNameWithoutExtension(trimmed);
+                    trimmed = trimmed.ToLowerInvariant().Replace("_detached", "");
+                    trimmed = trimmed.Replace('_', ' ').Replace('-', ' ');
+                    trimmed = System.Text.RegularExpressions.Regex.Replace(trimmed, "\\s+", " ");
+                    return trimmed.Trim();
+                };
+                
+                var allowedRefFiles = new HashSet<string>(
+                    (selectedReferenceFiles ?? new List<string>()).Select(f => norm(f)),
+                    StringComparer.OrdinalIgnoreCase);
+                var allowedHostFiles = new HashSet<string>(
+                    (selectedHostFiles ?? new List<string>()).Select(f => norm(f)),
+                    StringComparer.OrdinalIgnoreCase);
+
+                if (existingClashZones?.ClashZones != null)
+                {
+                    var before = existingClashZones.ClashZones.Count;
+                    existingClashZones.ClashZones = existingClashZones.ClashZones.Where(cz =>
+                    {
+                        // Filter by MEP category
+                        bool categoryMatch = allowedMepCats.Count == 0 || allowedMepCats.Contains(cz.MepElementCategory);
+                        
+                        // Filter by host type - Handle plural/singular mismatch: "Walls" (UI) vs "Wall" (Revit)
+                        bool hostTypeMatch = allowedHostTypes.Count == 0 || 
+                                           allowedHostTypes.Contains(cz.StructuralElementType) ||
+                                           allowedHostTypes.Contains(cz.StructuralElementType + "s") ||
+                                           allowedHostTypes.Any(t => t.TrimEnd('s').Equals(cz.StructuralElementType, StringComparison.OrdinalIgnoreCase));
+                        
+                        // Filter by reference file (MEP source) - only if reference files are specified
+                        bool refFileMatch = allowedRefFiles.Count == 0 || allowedRefFiles.Contains(norm(cz.SourceDocKey ?? ""));
+                        
+                        // Filter by host file (structural source) - only if host files are specified
+                        bool hostFileMatch = allowedHostFiles.Count == 0 || allowedHostFiles.Contains(norm(cz.StructuralElementDocumentTitle ?? ""));
+                        
+                        return categoryMatch && hostTypeMatch && refFileMatch && hostFileMatch;
+                    }).ToList();
+                    
+                    DebugLogger.Info($"[CLASH_DEBUG] Current UI filter: MEP cats={allowedMepCats.Count}, Host types={allowedHostTypes.Count}, Ref files={allowedRefFiles.Count}, Host files={allowedHostFiles.Count}");
+                    DebugLogger.Info($"[CLASH_DEBUG] Filtered existing zones by current UI: {before} -> {existingClashZones.ClashZones.Count}");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Filtered existing zones by current UI: {before} -> {existingClashZones.ClashZones.Count}\n");
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[CLASH_DEBUG] Current-selection filter failed: {ex.Message}");
+            }
 
             DebugLogger.Info($"[CLASH_DEBUG] Calling DetectNewClashZones with {currentIntersections.Count} intersections...");
             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Calling DetectNewClashZones with {currentIntersections.Count} intersections...\n");
@@ -583,6 +776,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             DebugLogger.Info($"[CLASH_DEBUG] DetectNewClashZones completed - {newClashZones?.Count ?? 0} new clash zones detected");
+            // Enforce UI host-type filter on new clashes
+            try
+            {
+                var allowedHostTypesUI_NewZones = new HashSet<string>(
+                    FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>(),
+                    StringComparer.OrdinalIgnoreCase);
+                if (allowedHostTypesUI_NewZones.Count > 0 && newClashZones != null)
+                {
+                    foreach (var cz in newClashZones)
+                    {
+                        // Handle plural/singular mismatch: "Walls" (UI) vs "Wall" (Revit)
+                        bool isEligible = allowedHostTypesUI_NewZones.Contains(cz.StructuralElementType) ||
+                                         allowedHostTypesUI_NewZones.Contains(cz.StructuralElementType + "s") ||
+                                         allowedHostTypesUI_NewZones.Any(t => t.TrimEnd('s').Equals(cz.StructuralElementType, StringComparison.OrdinalIgnoreCase));
+                        cz.IsEligibleByCurrentUi = isEligible;
+                    }
+                    var eligible = newClashZones.Count(cz => cz.IsEligibleByCurrentUi);
+                    DebugLogger.Info($"[CLASH_DEBUG] UI host filter marked NEW zones eligible: {eligible}/{newClashZones.Count}");
+                }
+            }
+            catch { }
             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] DetectNewClashZones completed - {newClashZones?.Count ?? 0} new clash zones detected\n");
 
             // Step 8: Save results
@@ -610,9 +824,45 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ FIX: Save ALL clash zones (existing + new), not just new ones
                 // This preserves flags (IsResolved, IsClusterResolved) from previous runs
                 var allClashZones = existingClashZones?.ClashZones ?? new List<Models.ClashZone>(); // Use existing loaded clash zones
+                // Merge existing + new zones (avoid duplicates by Id) BEFORE saving, so snapshot bags persist to XML
+                var mergedZones = new List<Models.ClashZone>();
+                var existingById = new Dictionary<Guid, Models.ClashZone>();
+                foreach (var z in allClashZones)
+                {
+                    if (!existingById.ContainsKey(z.Id))
+                    {
+                        existingById[z.Id] = z;
+                        mergedZones.Add(z);
+                    }
+                }
+                foreach (var nz in newClashZones ?? new List<Models.ClashZone>())
+                {
+                    if (!existingById.ContainsKey(nz.Id))
+                    {
+                        existingById[nz.Id] = nz;
+                        mergedZones.Add(nz);
+                    }
+                    else
+                    {
+                        // Update existing entry with any newly computed snapshot fields
+                        var ez = existingById[nz.Id];
+                        ez.SourceDocKey = nz.SourceDocKey;
+                        ez.HostDocKey = nz.HostDocKey;
+                        ez.MepParameterValues = nz.MepParameterValues;
+                        ez.HostParameterValues = nz.HostParameterValues;
+                        // Overwrite critical geometry/thickness fields from the latest refresh
+                        if (nz.StructuralElementThickness > 0)
+                            ez.StructuralElementThickness = nz.StructuralElementThickness;
+                        if (nz.StructuralElementNormal != null)
+                            ez.StructuralElementNormal = nz.StructuralElementNormal;
+                    }
+                }
+
+                DebugLogger.Info($"[PARAM_SNAPSHOT] Persisting {mergedZones.Count} zones (new={newClashZones?.Count ?? 0}, existing={allClashZones?.Count ?? 0}) with snapshot bags where available");
+
                 var clashZoneStorage = new Models.ClashZoneStorage
                 {
-                    ClashZones = allClashZones ?? new List<Models.ClashZone>(),
+                    ClashZones = mergedZones,
                     CreatedAt = DateTime.Now,
                     LastUpdated = DateTime.Now,
                     DocumentPath = _document.PathName,
@@ -625,8 +875,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 targetFilter.LastModified = DateTime.Now;
                 // CRITICAL FIX: Set the selected MEP categories from UI selections
                 targetFilter.SelectedMepCategoryNames = selectedMepCategories;
+                // Persist reference and host files from UI selections
+                targetFilter.SelectedReferenceFiles = selectedReferenceFiles;
+                targetFilter.SelectedHostFiles = selectedHostFiles;
+                // Also persist host element types selected in UI
+                try { targetFilter.SelectedHostElementTypes = FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>(); } catch { }
                 DebugLogger.Info($"[CLASH_DEBUG] Set targetFilter.SelectedMepCategoryNames to: {string.Join(", ", selectedMepCategories)}");
+                DebugLogger.Info($"[CLASH_DEBUG] Set targetFilter.SelectedReferenceFiles to: {string.Join(", ", selectedReferenceFiles)}");
+                DebugLogger.Info($"[CLASH_DEBUG] Set targetFilter.SelectedHostFiles to: {string.Join(", ", selectedHostFiles)}");
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Set targetFilter.SelectedMepCategoryNames to: {string.Join(", ", selectedMepCategories)}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Set targetFilter.SelectedReferenceFiles to: {string.Join(", ", selectedReferenceFiles)}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Set targetFilter.SelectedHostFiles to: {string.Join(", ", selectedHostFiles)}\n");
 
                 // Save to profile configuration for persistence
                 if (currentProfile.Configuration == null)
@@ -1213,6 +1472,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
+        /// Loads the most recently saved OpeningFilter XML from any project Filters folder under AppData.
+        /// Used to read saved host element types when filtering existing zones.
+        /// </summary>
+        private Models.OpeningFilter LoadLatestOpeningFilter()
+        {
+            try
+            {
+                var projectsRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects");
+                if (!Directory.Exists(projectsRoot)) return null;
+
+                string latestFile = null;
+                DateTime latestWrite = DateTime.MinValue;
+
+                foreach (var projectDir in Directory.GetDirectories(projectsRoot))
+                {
+                    var filtersDir = Path.Combine(projectDir, "Filters");
+                    if (!Directory.Exists(filtersDir)) continue;
+
+                    foreach (var xml in Directory.GetFiles(filtersDir, "*.xml"))
+                    {
+                        var t = File.GetLastWriteTime(xml);
+                        if (t > latestWrite)
+                        {
+                            latestWrite = t;
+                            latestFile = xml;
+                        }
+                    }
+                }
+
+                if (string.IsNullOrEmpty(latestFile)) return null;
+
+                var serializer = new System.Xml.Serialization.XmlSerializer(typeof(Models.OpeningFilter));
+                using (var reader = new StreamReader(latestFile))
+                {
+                    return (Models.OpeningFilter)serializer.Deserialize(reader);
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
         /// Load existing clash zones from Filter XML files (selected filter + categories)
         /// This preserves flags (IsResolved, IsClusterResolved) from previous runs
         /// </summary>
@@ -1276,5 +1579,70 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         #endregion
+
+        /// <summary>
+        /// Helper method to calculate intersection point between MEP and structural elements
+        /// </summary>
+        private XYZ CalculateIntersectionPoint(Element mepElement, Element structuralElement)
+        {
+            try
+            {
+                // Get geometry from both elements
+                var mepGeometry = mepElement.get_Geometry(new Options());
+                var structuralGeometry = structuralElement.get_Geometry(new Options());
+
+                if (mepGeometry == null || structuralGeometry == null) return null;
+
+                // Find intersection points using the same logic as MepIntersectionService
+                var intersectionPoints = new List<XYZ>();
+                
+                // Get MEP element line (same as MepIntersectionService)
+                Line? line = null;
+                foreach (GeometryObject geo in mepGeometry)
+                {
+                    if (geo is Curve curve)
+                    {
+                        line = curve as Line;
+                        if (line != null) break;
+                    }
+                }
+
+                if (line == null) return null;
+
+                // Get structural element solid and find intersections
+                foreach (GeometryObject structGeo in structuralGeometry)
+                {
+                    if (structGeo is Solid structSolid)
+                    {
+                        // Use the same intersection logic as MepIntersectionService
+                        foreach (Face face in structSolid.Faces)
+                        {
+                            if (face == null) continue;
+                            IntersectionResultArray? ira;
+                            var res = face.Intersect(line, out ira);
+                            if (res == SetComparisonResult.Overlap && ira != null)
+                            {
+                                foreach (IntersectionResult ir in ira)
+                                {
+                                    intersectionPoints.Add(ir.XYZPoint);
+                                }
+                                if (intersectionPoints.Count > 0)
+                                {
+                                    // Early exit after finding first intersection (same as MepIntersectionService)
+                                    return intersectionPoints[0];
+                                }
+                            }
+                        }
+                    }
+                }
+
+                return null;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[CLASH_DEBUG] Failed to calculate intersection point: {ex.Message}");
+                return null;
+            }
+        }
     }
 }

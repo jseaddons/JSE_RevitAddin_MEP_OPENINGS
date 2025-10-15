@@ -173,6 +173,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (intersectionPoints.Count > 0)
                     {
                         var bbox = CreateBoundingBox(intersectionPoints);
+                        // Use bounding box center (average of entry/exit points) to get mid-depth of host
                         var center = GetBoundingBoxCenter(bbox);
                         results.Add((mepElement, structElement, bbox, center));
                     }
@@ -306,6 +307,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (intersectionPoints.Count > 0)
                     {
                         var bbox = CreateBoundingBox(intersectionPoints);
+                        // Use bounding box center (average of entry/exit points) to get mid-depth of host
                         var center = GetBoundingBoxCenter(bbox);
                         results.Add((structuralElement, bbox, center));
                     }
@@ -424,6 +426,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (intersectionPoints.Count > 0)
                     {
                         var bbox = CreateBoundingBox(intersectionPoints);
+                        // Use bounding box center (average of entry/exit points) to get mid-depth of host
                         var center = GetBoundingBoxCenter(bbox);
                         results.Add((structuralElement, bbox, center));
                     }

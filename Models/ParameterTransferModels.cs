@@ -108,6 +108,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public string ModelNameParameter { get; set; } = "Model_Name";
         public bool ValidateBeforeTransfer { get; set; } = true;
         public bool CreateMissingParameters { get; set; } = false;
+        public string SourceCategoryName { get; set; } = string.Empty; // e.g., "Ducts", "Duct Accessories"
         
         // Service size calculation settings
         public bool TransferServiceSizeCalculations { get; set; } = false;

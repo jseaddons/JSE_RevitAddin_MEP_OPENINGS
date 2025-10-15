@@ -69,6 +69,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 // Get cluster configuration
                 double toleranceMm = ClusterConfigurationManager.Instance.JoinOpeningsDistance;
+                if (!string.IsNullOrEmpty(targetCategory) && targetCategory.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    toleranceMm = Math.Min(toleranceMm, 100); // clamp pipes to 100mm
+                }
                 double toleranceDist = UnitUtils.ConvertToInternalUnits(toleranceMm, UnitTypeId.Millimeters);
                 
                 DebugLogger.Log($"[UniversalClusterService] Using JoinOpeningsDistance: {toleranceMm}mm (from {ClusterConfigurationManager.Instance.ConfigurationSource})");
@@ -95,10 +99,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Log($"[UniversalClusterService] Found {allSleeves.Count} total sleeves (all categories)");
                 File.AppendAllText(clusterLogPath, $"Found {allSleeves.Count} total sleeves (all categories)\n");
                 
-                // ⚠️ TEMPORARY FIX: Don't filter by category for now
-                // Clustering will group by systemType from MEP_Category parameter OR all together if parameter missing
-                // This allows clustering to work even without MEP_Category parameter in families
+                // Filter by active category when provided
                 var rawSleeves = allSleeves;
+                if (!string.IsNullOrEmpty(targetCategory))
+                {
+                    if (targetCategory.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        rawSleeves = allSleeves.Where(s => GetCategoryFromMepElementId(s).IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+                        DebugLogger.Log($"[UniversalClusterService] Filtered sleeves for Pipes only: {rawSleeves.Count}");
+                    }
+                    else if (targetCategory.IndexOf("Duct", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        rawSleeves = allSleeves.Where(s => GetCategoryFromMepElementId(s).IndexOf("Duct", StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+                        DebugLogger.Log($"[UniversalClusterService] Filtered sleeves for Ducts only: {rawSleeves.Count}");
+                    }
+                    else if (targetCategory.IndexOf("Cable", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        rawSleeves = allSleeves.Where(s => GetCategoryFromMepElementId(s).IndexOf("Cable", StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+                        DebugLogger.Log($"[UniversalClusterService] Filtered sleeves for Cable Trays only: {rawSleeves.Count}");
+                    }
+                }
                 
                 DebugLogger.Log($"[UniversalClusterService] Processing {rawSleeves.Count} sleeves" + 
                                (string.IsNullOrEmpty(targetCategory) ? " (all categories)" : $" (filtering will happen during grouping)"));
@@ -196,7 +216,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
 
                             // Place cluster sleeve
-                            PlaceClusterSleeve(doc, cluster, groupKey, out int placed1, out int deleted1, xmlFilePath);
+                            PlaceClusterSleeve(doc, cluster, groupKey, targetCategory, out int placed1, out int deleted1, xmlFilePath);
                             placedCount += placed1;
                             deletedCount += deleted1;
                             
@@ -821,6 +841,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             Document doc,
             List<FamilyInstance> cluster,
             SleeveGroupKey groupKey,
+            string targetCategory,
             out int placed,
             out int deleted,
             string xmlFilePath = null)
@@ -834,6 +855,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var fam = s.Symbol?.Family?.Name ?? "";
                 return fam.Contains("Circular");
             });
+            // PIPE CLUSTERS: Always rectangular regardless of member shape (legacy parity)
+            // Be robust to different labels (e.g., "Pipe", "Pipes", localized)
+            bool isPipeCategory = (!string.IsNullOrEmpty(groupKey.systemType) && groupKey.systemType.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                   (!string.IsNullOrEmpty(targetCategory) && targetCategory.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0);
+            if (isPipeCategory)
+            {
+                isCircular = false;
+                DebugLogger.Log("[ClusterService] For Pipes category: forcing rectangular cluster shape (legacy parity)");
+            }
             
             // Select universal family based on host type and shape
             string familyName = "";

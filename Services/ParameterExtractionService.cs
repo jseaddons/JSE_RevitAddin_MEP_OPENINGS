@@ -416,9 +416,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     "CircularOpeningOnSlab"
                 };
 
-            using (var t = new Transaction(doc, "BootstrapOpeningParams"))
+            // Check if we can safely start a transaction (not already in a transaction context)
+            bool canStartTransaction = true;
+            try
             {
-                t.Start();
+                // Try to check if document is modifiable (this will fail if already in transaction)
+                var testModifiable = doc.IsModifiable;
+            }
+            catch
+            {
+                // If we can't check modifiable status, we're likely in a transaction context
+                canStartTransaction = false;
+            }
+
+            if (canStartTransaction)
+            {
+                using (var t = new Transaction(doc, "BootstrapOpeningParams"))
+                {
+                    t.Start();
 
                 // 1.  Ensure at least one instance of each family exists
                 foreach (var name in targetFamilies)
@@ -471,7 +486,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 foreach (var fi in instances)
                     doc.Delete(fi.Id);
 
-                t.Commit();
+                    t.Commit();
+                }
+            }
+            else
+            {
+                // Can't start transaction - skip bootstrap and just harvest existing symbols
+                System.Diagnostics.Debug.WriteLine($"[BOOTSTRAP] Cannot start transaction - skipping bootstrap, using existing parameters only");
             }
 
             // 4.  Also harvest the symbols (catches any type-only parameters)

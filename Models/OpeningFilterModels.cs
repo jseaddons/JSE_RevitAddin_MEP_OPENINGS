@@ -99,6 +99,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public List<string> SelectedHostFiles { get; set; } = new List<string>();
 
         /// <summary>
+        /// Selected host element types (e.g., "Wall", "Floor", "Structural Framing") for UI restoration and filtering
+        /// </summary>
+        [XmlArray("SelectedHostElementTypes")]
+        [XmlArrayItem("HostType")]
+        public List<string> SelectedHostElementTypes { get; set; } = new List<string>();
+
+        /// <summary>
         /// Clash zone storage for this filter
         /// </summary>
         public ClashZoneStorage? ClashZoneStorage { get; set; }

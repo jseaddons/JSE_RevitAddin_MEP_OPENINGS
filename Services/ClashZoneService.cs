@@ -249,6 +249,61 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 _log($"=== END GEOMETRY ANALYSIS ===");
 
+                // Penetration adequacy filter: skip shallow/grazing intersections
+                try
+                {
+                    // Apply penetration adequacy only to Walls and Floors; skip for Structural Framing
+                    var hostTypeName = GetStructuralElementType(structuralElement);
+                    if (hostTypeName == "Wall" || hostTypeName == "Floor")
+                    {
+                        var hostThickness = GetElementThickness(structuralElement);
+                        var mepDir = GetMepElementOrientation(mepElement);
+                        var hostNormal = GetStructuralElementNormal(structuralElement);
+                        var (mepW, mepH) = GetMepElementDimensions(mepElement);
+                        var mepCat = GetElementCategoryName(mepElement);
+
+                        double crossSize = 0.0;
+                        if (string.Equals(mepCat, "Pipes", StringComparison.OrdinalIgnoreCase))
+                        {
+                            crossSize = Math.Max(mepW, mepH); // diameter in feet
+                        }
+                        else
+                        {
+                            // ducts, trays, accessories – use smaller side of the rectangle
+                            crossSize = Math.Min(mepW, mepH);
+                        }
+
+                        // Normalize vectors (defensive)
+                        var dLen = Math.Sqrt(mepDir.X * mepDir.X + mepDir.Y * mepDir.Y + mepDir.Z * mepDir.Z);
+                        var nLen = Math.Sqrt(hostNormal.X * hostNormal.X + hostNormal.Y * hostNormal.Y + hostNormal.Z * hostNormal.Z);
+
+                        double penetrationRatio = 1.0; // default pass-through if not computable
+                        if (hostThickness > 1e-6 && crossSize > 1e-6 && dLen > 1e-6 && nLen > 1e-6)
+                        {
+                            var dNorm = new XYZ(mepDir.X / dLen, mepDir.Y / dLen, mepDir.Z / dLen);
+                            var nNorm = new XYZ(hostNormal.X / nLen, hostNormal.Y / nLen, hostNormal.Z / nLen);
+                            var dot = Math.Abs(dNorm.X * nNorm.X + dNorm.Y * nNorm.Y + dNorm.Z * nNorm.Z);
+                            penetrationRatio = (hostThickness * dot) / crossSize;
+                        }
+
+                        // Threshold: require at least 20% penetration of cross-section
+                        const double MinPenetrationRatio = 0.20;
+                        if (penetrationRatio < MinPenetrationRatio)
+                        {
+                            _log($"SKIP: Insufficient penetration (ratio={penetrationRatio:F3} < {MinPenetrationRatio:F2}) for {hostTypeName}. MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                            continue;
+                        }
+                    }
+                    else if (hostTypeName == "Structural Framing")
+                    {
+                        _log("[PENETRATION] Bypassing penetration filter for Structural Framing (using legacy behavior)");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _log($"WARN: Penetration filter failed ({ex.Message}) – proceeding without filter.");
+                }
+
                 // Check if this clash zone already exists
                 var existingClashZone = FindExistingClashZone(mepElement.Id, structuralElement.Id, intersectionPoint);
 
@@ -926,6 +981,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // For fire dampers: detect MSFD type and connector side
             var (isMSFD, connectorSide) = GetDamperConnectorInfo(mepElement, mepCategory);
             
+            // Placement point: intersection point is already at host center for FULL penetrations
+            // MepIntersectionService.GetBoundingBoxCenter() averages entry/exit points to get mid-depth
+            // NOTE: For partial penetrations that pass the 20% filter, intersection point is used as-is
+            // (the working code doesn't have special handling for partial penetrations)
+            XYZ placementPoint = intersectionPoint;
+
             var clashZone = new ClashZone
             {
                 MepElementId = mepElement.Id,
@@ -943,10 +1004,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 StructuralElementDocumentTitle = structuralElement.Document.Title,
                 StructuralElementType = structuralElementType,
                 StructuralElementThickness = GetElementThickness(structuralElement),
+                
                 StructuralElementNormal = GetStructuralElementNormal(structuralElement), // Pre-calculate normal/direction for orientation
                 
                 // NEW: Pre-calculated placement data (calculated during refresh, used during placement)
-                SleevePlacementPoint = intersectionPoint, // Intersection point is already at wall center
+                SleevePlacementPoint = placementPoint,
                 MepElementWidth = finalWidth,
                 MepElementHeight = finalHeight,
                 MepElementOrientation = mepOrientation,
@@ -963,6 +1025,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DetectedAt = DateTime.Now,
                 LastUpdated = DateTime.Now
             };
+            try
+            {
+                var th = clashZone.StructuralElementThickness;
+                var thMm = UnitUtils.ConvertFromInternalUnits(th, UnitTypeId.Millimeters);
+                Services.DebugLogger.Info($"[CLASH-THICKNESS-ASSIGN] structuralId={structuralElement.Id.IntegerValue} thickness={th:F6}ft ({thMm:F1}mm)");
+            }
+            catch { }
             
             // DEBUG: Log the pre-calculated data
             _log($"[DEBUG] Created ClashZone {clashZone.Id}:");
@@ -1155,14 +1224,97 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     return floor.get_Parameter(BuiltInParameter.FLOOR_ATTR_THICKNESS_PARAM)?.AsDouble() ?? 0.1;
                 }
-                else if (element is FamilyInstance famInst && 
-                         famInst.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+                else if ((element?.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming))
                 {
-                    // For structural framing, try to get thickness parameter
-                    var thicknessParam = famInst.LookupParameter("Width") ?? 
-                                       famInst.LookupParameter("Thickness") ?? 
-                                       famInst.LookupParameter("Depth");
-                    return thicknessParam?.AsDouble() ?? 0.1;
+                    // Structural framing: read TYPE parameter 'b' (case-insensitive) regardless of instance/type wrapper
+                    try
+                    {
+                        // Resolve the type element from any element (FamilyInstance or not)
+                        ElementId typeId = ElementId.InvalidElementId;
+                        try { typeId = (element as FamilyInstance)?.GetTypeId() ?? element.GetTypeId(); } catch { }
+                        var typeElem = element.Document?.GetElement(typeId);
+
+                        if (typeElem == null)
+                        {
+                            DebugLogger.Warning($"[FRAMING-THICKNESS] Could not get type element for framing {element.Id.IntegerValue}");
+                            return 0.1;
+                        }
+
+                        Parameter p = null;
+                        double bVal = 0.0;
+
+                        // Try multiple parameter names for breadth/depth
+                        string[] possibleNames = { "b", "B", "Breadth", "Depth", "Width", "Height", "d", "D" };
+
+                        foreach (var paramName in possibleNames)
+                        {
+                            try
+                            {
+                                p = typeElem.LookupParameter(paramName);
+                                if (p != null && !p.IsReadOnly)
+                                {
+                                    bVal = p.AsDouble();
+                                    if (bVal > 0)
+                                    {
+                                        DebugLogger.Info($"[FRAMING-THICKNESS] Found parameter '{paramName}' = {bVal:F6}ft on framing {element.Id.IntegerValue}");
+                                        break;
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                DebugLogger.Warning($"[FRAMING-THICKNESS] Error reading parameter '{paramName}': {ex.Message}");
+                            }
+                        }
+
+                        // Log all available parameters for debugging
+                        if (bVal <= 0.0)
+                        {
+                            try
+                            {
+                                var parts = new System.Collections.Generic.List<string>();
+                                foreach (Parameter tp in typeElem.Parameters)
+                                {
+                                    var name = tp?.Definition?.Name ?? "<null>";
+                                    string val = string.Empty;
+                                    if (tp.StorageType == StorageType.Double)
+                                    {
+                                        double d = tp.AsDouble();
+                                        double mm = UnitUtils.ConvertFromInternalUnits(d, UnitTypeId.Millimeters);
+                                        val = mm.ToString("F1") + "mm";
+                                    }
+                                    else
+                                    {
+                                        val = tp.AsString() ?? tp.AsValueString() ?? string.Empty;
+                                    }
+                                    parts.Add(name + ":" + val);
+                                }
+                                DebugLogger.Info($"[FRAMING-THICKNESS-PARAMS] typeId={typeId.IntegerValue}: {string.Join(", ", parts)}");
+                            }
+                            catch (Exception ex)
+                            {
+                                DebugLogger.Warning($"[FRAMING-THICKNESS] Error logging parameters: {ex.Message}");
+                            }
+                        }
+
+                        // Convert to mm for logging
+                        try
+                        {
+                            var valMm = UnitUtils.ConvertFromInternalUnits(bVal, UnitTypeId.Millimeters);
+                            DebugLogger.Info($"[FRAMING-THICKNESS] id={element.Id.IntegerValue}: key={(p?.Definition?.Name ?? "<null>")} value={valMm:F1}mm");
+                        }
+                        catch (Exception ex)
+                        {
+                            DebugLogger.Warning($"[FRAMING-THICKNESS] Error converting units: {ex.Message}");
+                        }
+
+                        return bVal > 0.0 ? bVal : 0.1;
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLogger.Warning($"[FRAMING-THICKNESS] Error getting framing thickness: {ex.Message}");
+                        return 0.1;
+                    }
                 }
                 return 0.1; // Default fallback
             }
@@ -1294,7 +1446,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (curve != null)
                         {
                             var wallDirection = curve.Direction;
+                            // FIX: For X-wall (Direction=(1,0,0)), normal should be (0,1,0) or (0,-1,0)
+                            // For Y-wall (Direction=(0,1,0)), normal should be (1,0,0) or (-1,0,0)
+                            // The original formula was correct: normal = (-Y, X, 0)
                             var wallNormal = new XYZ(-wallDirection.Y, wallDirection.X, 0).Normalize();
+                            
+                            // DEBUG: Log wall direction and normal
+                            DebugLogger.Info($"[WALL-DIR] Wall {wall.Id.IntegerValue}: Direction=({wallDirection.X:F3},{wallDirection.Y:F3},{wallDirection.Z:F3}), Normal=({wallNormal.X:F3},{wallNormal.Y:F3},{wallNormal.Z:F3})");
+                            
+                            // ALSO log to placement_debug.log for immediate visibility
+                            try
+                            {
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                    $"[WALL-DIR] Wall {wall.Id.IntegerValue}: Direction=({wallDirection.X:F3},{wallDirection.Y:F3},{wallDirection.Z:F3}), Normal=({wallNormal.X:F3},{wallNormal.Y:F3},{wallNormal.Z:F3})\n");
+                            }
+                            catch { }
+                            
                             return wallNormal;
                         }
                     }

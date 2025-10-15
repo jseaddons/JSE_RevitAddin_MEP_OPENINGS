@@ -39,6 +39,74 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             DebugLogger.Info($"[UniversalSleevePlaycer] Initialized for category: {_strategy.GetCategoryName()}");
         }
 
+        private double GetPipeOutsideDiameterFromClashZone(ClashZone cz)
+        {
+            // Prefer snapshot value if captured
+            try
+            {
+                try
+                {
+                    var asm = System.Reflection.Assembly.GetExecutingAssembly();
+                    var ver = System.Diagnostics.FileVersionInfo.GetVersionInfo(asm.Location)?.FileVersion ?? "?";
+                    var ts = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                        $"[BUILD] {ts} Assembly={System.IO.Path.GetFileName(asm.Location)} Version={ver} Path={asm.Location}\n");
+                }
+                catch { }
+                var od = TryGetSnapshotDouble(cz.MepParameterValues, new[] { "Outside Diameter", "OD", "OutsideDiameter" });
+                if (od > 0) return od;
+            }
+            catch { }
+
+            // Fallback: derive from stored formatted size (e.g., Ø200)
+            try
+            {
+                var size = cz.MepElementFormattedSize ?? string.Empty;
+                if (size.StartsWith("Ø"))
+                {
+                    var mm = double.Parse(size.TrimStart('Ø'));
+                    return UnitUtils.ConvertToInternalUnits(mm, UnitTypeId.Millimeters);
+                }
+            }
+            catch { }
+
+            // Final fallback: use MepElementWidth as diameter if present
+            return cz.MepElementWidth > 0 ? cz.MepElementWidth : 0.0;
+        }
+
+        private double TryGetSnapshotDouble(List<Models.SerializableKeyValue> bag, string[] keys)
+        {
+            if (bag == null) return 0.0;
+            foreach (var k in keys)
+            {
+                var item = bag.Find(p => string.Equals(p.Key, k, StringComparison.OrdinalIgnoreCase));
+                if (item != null)
+                {
+                    var raw = item.Value ?? string.Empty;
+                    var s = raw.Trim();
+                    // Strip common unit suffixes and symbols (case-insensitive)
+                    var sl = s.ToLowerInvariant();
+                    sl = sl.Replace("millimeters", "");
+                    sl = sl.Replace("millimeter", "");
+                    sl = sl.Replace("mm", "");
+                    sl = sl.Replace("ø", "");
+                    // Keep digits, sign, dot or comma only
+                    var filtered = new System.Text.StringBuilder();
+                    foreach (var ch in sl)
+                    {
+                        if ((ch >= '0' && ch <= '9') || ch == '-' || ch == '.' || ch == ',') filtered.Append(ch);
+                    }
+                    var norm = filtered.ToString().Replace(',', '.');
+                    if (double.TryParse(norm, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var val))
+                        return norm.Length > 0 ? UnitUtils.ConvertToInternalUnits(val, UnitTypeId.Millimeters) : 0.0;
+                    // Try plain parse (feet) if invariant mm parse failed
+                    if (double.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var feetVal))
+                        return feetVal;
+                }
+            }
+            return 0.0;
+        }
+
         /// <summary>
         /// STEP 1: Collect MEP elements from all documents (active + linked)
         /// READ-ONLY phase - NO transaction required
@@ -124,6 +192,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ⚠️ CRITICAL: Iterate over CLASH ZONES, not MEP elements
                 // Each clash zone represents a unique (MEP Element + Structural Element) PAIR
                 // The same MEP element can appear in multiple clash zones if it intersects multiple walls
+                // Clash zones are already filtered by UI during refresh, so process all provided zones
                 foreach (var clashZone in clashZones)
                 {
                     try
@@ -209,36 +278,72 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             Shape = clashZone.DuctShape
                         };
                         
-                        // ⚠️ SPECIAL HANDLING: Dampers and Cable Trays use asymmetric clearance and need placement offset
+						// ⚠️ SPECIAL HANDLING & SIZING ORDER:
+						// 1) Pipes (host-agnostic), 2) Dampers, 3) Cable trays, 4) Ducts/default
                         XYZ placementOffset = XYZ.Zero;
                         double finalWidth, finalHeight, finalDiameter;
                         
-                        if (_strategy is DamperPlacementStrategy damperStrategy)
+						bool isPipesCategory = string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
+						if (isPipesCategory)
+						{
+							var clearance = _strategy.GetClearance(mepSize, _conditions);
+							var baseOd = GetPipeOutsideDiameterFromClashZone(clashZone);
+							var ins = mepSize.IsInsulated ? mepSize.InsulationThickness : 0.0;
+							finalDiameter = baseOd + (2 * ins) + (2 * clearance);
+							finalWidth = finalDiameter;
+							finalHeight = finalDiameter;
+							try
+							{
+								System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+									$"[PIPE-SIZE] CZ={clashZone.Id} OD={baseOd:F6}ft, ins={ins:F6}ft, clr={clearance:F6}ft, finalDia={finalDiameter:F6}ft\n");
+							}
+							catch { }
+						}
+						else if (_strategy is DamperPlacementStrategy damperStrategy)
                         {
                             // Fire dampers: asymmetric clearance + offset for MSFD
-                            var (offsetVector, width, height) = damperStrategy.GetDamperPlacementAdjustment(clashZone, _conditions);
-                            placementOffset = offsetVector;
-                            finalWidth = width;
-                            finalHeight = height;
-                            finalDiameter = width; // Not used for dampers (rectangular only)
+                            var adj = damperStrategy.GetDamperPlacementAdjustment(clashZone, _conditions);
+                            placementOffset = adj.offsetVector;
+                            finalWidth = adj.finalWidth;
+                            finalHeight = adj.finalHeight;
+                            finalDiameter = adj.finalWidth; // Not used for dampers (rectangular only)
                         }
                         else if (_strategy is CableTrayPlacementStrategy cableTrayStrategy)
                         {
                             // Cable trays: asymmetric clearance + upward offset
-                            var (offsetVector, width, height) = cableTrayStrategy.GetCableTrayPlacementAdjustment(clashZone, _conditions);
-                            placementOffset = offsetVector;
-                            finalWidth = width;
-                            finalHeight = height;
-                            finalDiameter = width; // Not used for cable trays (rectangular only)
+                            var adj2 = cableTrayStrategy.GetCableTrayPlacementAdjustment(clashZone, _conditions);
+                            placementOffset = adj2.offsetVector;
+                            finalWidth = adj2.finalWidth;
+                            finalHeight = adj2.finalHeight;
+                            finalDiameter = adj2.finalWidth; // Not used for cable trays (rectangular only)
                         }
                         else
                         {
-                            // Ducts/Pipes: symmetric clearance, no offset
+							// Ducts/default: symmetric clearance, no offset
                         var clearance = _strategy.GetClearance(mepSize, _conditions);
                             finalWidth = mepSize.Width + (2 * clearance);
                             finalHeight = mepSize.Height + (2 * clearance);
                             finalDiameter = mepSize.Diameter + (2 * clearance);
                         }
+
+                        // OPTIONAL ORIENTATION NORMALIZATION FOR FLOOR DUCTS (rectangular):
+                        // Swap width/height so the family's "Width" axis aligns with the MEP direction
+                        // This avoids the need for a +90° correction for rectangular duct sleeves on floors.
+                        try
+                        {
+                            bool isFloorHostHere = clashZone.StructuralElementType == "Floor" ||
+                                                   clashZone.StructuralElementType == "Floors";
+                            bool isDuctStrategy = _strategy is Strategies.DuctPlacementStrategy;
+                            bool isRectangular = !(string.Equals(mepSize.Shape, "Round", StringComparison.OrdinalIgnoreCase) ||
+                                                   string.Equals(mepSize.Shape, "Circular", StringComparison.OrdinalIgnoreCase));
+
+                            if (isFloorHostHere && isDuctStrategy && isRectangular)
+                            {
+                                var tmp = finalWidth; finalWidth = finalHeight; finalHeight = tmp;
+                                DebugLogger.Info("[UniversalSleevePlacer] FLOOR/DUCT (rectangular): swapped Width/Height to align family axis with MEP direction");
+                            }
+                        }
+                        catch { }
                         
                         // Select universal family
                         var (familyName, typeName) = SelectUniversalFamily(clashZone, mepSize);
@@ -257,8 +362,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             familySymbol.Activate();
                         }
                         
-                        // Apply placement offset for dampers/cable trays
-                        XYZ adjustedPlacementPoint = clashZone.SleevePlacementPoint + placementOffset;
+                        // Use the exact clash placement point (no substitution) and apply strategy offset
+                        var placementPointChosen = clashZone.SleevePlacementPoint;
+                        
+                        DebugLogger.Info($"[UniversalSleevePlacer] Using exact intersection point {placementPointChosen} for {clashZone.MepElementCategory} on {clashZone.StructuralElementType}");
+
+                        XYZ adjustedPlacementPoint = placementPointChosen + placementOffset;
+                        DebugLogger.Info($"[UniversalSleevePlacer] Using placement point {placementPointChosen} → adjusted {adjustedPlacementPoint}");
                         
                         if (placementOffset.GetLength() > 0.001)
                         {
@@ -294,6 +404,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         // ⚠️ CRITICAL: Set orientation (rotation for floors, HostOrientation parameter for walls/framing)
                         SetSleeveOrientation(sleeveInstance, clashZone);
+
+                        // Ensure final location matches the intended adjusted placement point (some families snap to level origin)
+                        try
+                        {
+                            var loc = sleeveInstance.Location as LocationPoint;
+                            if (loc != null)
+                            {
+                                var currentPt = loc.Point;
+                                if (currentPt.DistanceTo(adjustedPlacementPoint) > 0.0001)
+                                {
+                                    var delta = adjustedPlacementPoint - currentPt;
+                                    loc.Move(delta);
+                                    DebugLogger.Info($"[UniversalSleevePlacer] Moved sleeve {sleeveInstance.Id} to exact placement point {adjustedPlacementPoint} (from {currentPt})");
+                                }
+                                else
+                                {
+                                    DebugLogger.Info($"[UniversalSleevePlacer] Sleeve {sleeveInstance.Id} already at desired point {currentPt}");
+                                }
+                            }
+                        }
+                        catch { }
                         
                         // Update ClashZone flags
                         clashZone.IsResolved = true;
@@ -332,8 +463,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                   clashZone.StructuralElementType == "Walls" ||
                                   clashZone.StructuralElementType == "Structural Framing";
             
-            // Determine shape
-            bool isCircular = mepSize.Shape == "Round" || mepSize.Shape == "Circular";
+            // Determine opening shape per category (separate concerns for pipes vs ducts)
+            bool isCircular;
+            if (string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
+            {
+                // Pipes: driven by UI/global setting only
+                var pipeType = clashZone.PipeOpeningType;
+                if (string.IsNullOrWhiteSpace(pipeType))
+                {
+                    pipeType = OpeningSettingsHelper.GetOpeningTypeForCategory("Pipes");
+                }
+                isCircular = string.Equals(pipeType, "Circular", StringComparison.OrdinalIgnoreCase);
+            }
+            else if (string.Equals(clashZone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase))
+            {
+                // Ducts: geometry-driven (round vs rectangular); UI may override elsewhere
+                isCircular = string.Equals(mepSize.Shape, "Round", StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(mepSize.Shape, "Circular", StringComparison.OrdinalIgnoreCase);
+            }
+            else
+            {
+                // Other categories (cable trays, accessories): rectangular
+                isCircular = false;
+            }
             
             DebugLogger.Info($"[UniversalSleevePlacer] Family selection - StructuralElementType: '{clashZone.StructuralElementType}', isWallOrFraming: {isWallOrFraming}, MEP Shape: '{mepSize.Shape}', isCircular: {isCircular}");
             
@@ -390,7 +542,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             return levels.FirstOrDefault();
         }
-        
+        // ============================================================================
+// CORRECTED SetSleeveParameters Method
+// ============================================================================
         private void SetSleeveParameters(
             FamilyInstance sleeveInstance, 
             MepElementSize mepSize,
@@ -401,24 +555,68 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                // ⚠️ Apply rounding to nearest 5mm if setting is enabled
+        bool isPipe = string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
+        
+        // Apply rounding to nearest 5mm if setting is enabled
                 var (roundedWidth, roundedHeight) = OpeningSettingsHelper.RoundDimensionsToNearest5mm(finalWidth, finalHeight);
                 var roundedDiameter = OpeningSettingsHelper.RoundDiameterToNearest5mm(finalDiameter);
+        
+        // Log what we're setting (with millimeter conversions for readability)
+        try
+        {
+            double diamMm = UnitUtils.ConvertFromInternalUnits(roundedDiameter, UnitTypeId.Millimeters);
+            double widthMm = UnitUtils.ConvertFromInternalUnits(roundedWidth, UnitTypeId.Millimeters);
+            double heightMm = UnitUtils.ConvertFromInternalUnits(roundedHeight, UnitTypeId.Millimeters);
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                $"[PARAM-SET] Sleeve {sleeveInstance.Id.IntegerValue}: isPipe={isPipe}, Shape={mepSize.Shape}, roundedDia={diamMm:F1}mm, W={widthMm:F1}mm, H={heightMm:F1}mm\n");
+        }
+        catch { }
                 
                 // Set size parameters
-                if (mepSize.Shape == "Round" || mepSize.Shape == "Circular")
+        bool treatAsCircular =
+            string.Equals(mepSize.Shape, "Round", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(mepSize.Shape, "Circular", StringComparison.OrdinalIgnoreCase) ||
+            isPipe;
+
+        if (treatAsCircular)
+        {
+            // Try common diameter parameter names in order
+            string[] diameterParamNames = new[]
+            {
+                "Opening Outside Diameter",
+                "Opening_Diameter",
+                "Outside Diameter",
+                "Diameter",
+                "Width"  // Some circular families use Width
+            };
+            
+            bool setOk = false;
+            foreach (var name in diameterParamNames)
+            {
+                var p = sleeveInstance.LookupParameter(name);
+                if (p != null && !p.IsReadOnly)
                 {
-                    // Try Diameter parameter first (for circular openings)
-                    var diamParam = sleeveInstance.LookupParameter("Diameter");
-                    if (diamParam != null && !diamParam.IsReadOnly)
+                    p.Set(roundedDiameter);
+                    double diamMm = UnitUtils.ConvertFromInternalUnits(roundedDiameter, UnitTypeId.Millimeters);
+                    DebugLogger.Info($"[UniversalSleevePlacer] Set '{name}' = {roundedDiameter:F6} ft ({diamMm:F1}mm) on sleeve {sleeveInstance.Id}");
+                    try
                     {
-                        diamParam.Set(roundedDiameter);
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                            $"[PARAM-SUCCESS] Sleeve {sleeveInstance.Id.IntegerValue}: Set '{name}' = {diamMm:F1}mm\n");
                     }
-                    else
+                    catch { }
+                    setOk = true;
+                    break;
+                }
+            }
+            
+            if (!setOk)
                     {
                         // Fallback to Width/Height for circular
                         sleeveInstance.LookupParameter("Width")?.Set(roundedDiameter);
                         sleeveInstance.LookupParameter("Height")?.Set(roundedDiameter);
+                double diamMm = UnitUtils.ConvertFromInternalUnits(roundedDiameter, UnitTypeId.Millimeters);
+                DebugLogger.Info($"[UniversalSleevePlacer] Fallback set Width/Height = {diamMm:F1}mm (circular) on sleeve {sleeveInstance.Id}");
                     }
                 }
                 else
@@ -426,42 +624,96 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Rectangular
                     sleeveInstance.LookupParameter("Width")?.Set(roundedWidth);
                     sleeveInstance.LookupParameter("Height")?.Set(roundedHeight);
-                }
-                
-                // ⚠️ CRITICAL: Set Depth parameter to structural element thickness
-                // For walls: set to "Wall Width" parameter (wall thickness)
-                // For floors/slabs: set to "Depth" parameter (floor thickness)
-                // For framing: set to "b" parameter (beam width)
+            double widthMm = UnitUtils.ConvertFromInternalUnits(roundedWidth, UnitTypeId.Millimeters);
+            double heightMm = UnitUtils.ConvertFromInternalUnits(roundedHeight, UnitTypeId.Millimeters);
+            DebugLogger.Info($"[UniversalSleevePlacer] Set Width={widthMm:F1}mm, Height={heightMm:F1}mm (rectangular)");
+        }
+        
+        // CRITICAL: Set Depth parameter based on host type
+        // Priority: Wall Width (walls) > Depth (floors/framing) > Type Depth (fallback)
+        bool isWallHost = clashZone.StructuralElementType == "Wall" || clashZone.StructuralElementType == "Walls";
+        bool isFramingHost = string.Equals(clashZone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
+        
                 var depthParam = sleeveInstance.LookupParameter("Depth");
                 var wallWidthParam = sleeveInstance.LookupParameter("Wall Width");
-                var bParam = sleeveInstance.LookupParameter("b");
-                
-                if (wallWidthParam != null && !wallWidthParam.IsReadOnly)
-                {
+        
+        double thicknessMm = UnitUtils.ConvertFromInternalUnits(clashZone.StructuralElementThickness, UnitTypeId.Millimeters);
+        
+        try
+        {
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                $"[DEPTH-CHECK] Sleeve {sleeveInstance.Id.IntegerValue}: Host={clashZone.StructuralElementType}, isWall={isWallHost}, isFraming={isFramingHost}, HasDepth={depthParam != null}, DepthRO={depthParam?.IsReadOnly}, HasWallWidth={wallWidthParam != null}, WallWidthRO={wallWidthParam?.IsReadOnly}, StructThickness={thicknessMm:F1}mm\n");
+        }
+        catch { }
+        
+        bool depthSetSuccess = false;
+        
+        if (isWallHost && wallWidthParam != null && !wallWidthParam.IsReadOnly)
+        {
+            // Wall host: use Wall Width parameter
                     wallWidthParam.Set(clashZone.StructuralElementThickness);
-                    DebugLogger.Info($"[UniversalSleevePlacer] Set Wall Width = {clashZone.StructuralElementThickness} ft");
+            DebugLogger.Info($"[UniversalSleevePlacer] WALL: Set Wall Width = {thicknessMm:F1}mm");
+            try
+            {
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                    $"[DEPTH-SET] Sleeve {sleeveInstance.Id.IntegerValue}: WALL - Set Wall Width = {thicknessMm:F1}mm ✓\n");
+            }
+            catch { }
+            depthSetSuccess = true;
                 }
                 else if (depthParam != null && !depthParam.IsReadOnly)
                 {
+            // Floor/Framing host: use Depth parameter
                     depthParam.Set(clashZone.StructuralElementThickness);
-                    DebugLogger.Info($"[UniversalSleevePlacer] Set Depth = {clashZone.StructuralElementThickness} ft");
-                }
-                else if (bParam != null && !bParam.IsReadOnly)
+            DebugLogger.Info($"[UniversalSleevePlacer] {(isFramingHost ? "FRAMING" : "FLOOR")}: Set Depth = {thicknessMm:F1}mm");
+            try
+            {
+                // Verify the parameter was set correctly
+                double depthRead = depthParam.AsDouble();
+                double depthReadMm = UnitUtils.ConvertFromInternalUnits(depthRead, UnitTypeId.Millimeters);
+                bool verified = Math.Abs(depthRead - clashZone.StructuralElementThickness) < 0.0001;
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                    $"[DEPTH-SET] Sleeve {sleeveInstance.Id.IntegerValue}: {(isFramingHost ? "FRAMING" : "FLOOR")} - Set Depth = {depthReadMm:F1}mm, Verified={verified} {(verified ? "✓" : "✗")}\n");
+            }
+            catch { }
+            depthSetSuccess = true;
+        }
+        else
+        {
+            // Try type parameter as fallback
+            var typeDepthParam = sleeveInstance.Symbol?.LookupParameter("Depth");
+            if (typeDepthParam != null && !typeDepthParam.IsReadOnly)
+            {
+                typeDepthParam.Set(clashZone.StructuralElementThickness);
+                DebugLogger.Info($"[UniversalSleevePlacer] Set TYPE Depth = {thicknessMm:F1}mm (instance param not writable)");
+                try
                 {
-                    bParam.Set(clashZone.StructuralElementThickness);
-                    DebugLogger.Info($"[UniversalSleevePlacer] Set b = {clashZone.StructuralElementThickness} ft");
+                    _doc.Regenerate();
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                        $"[DEPTH-SET] Sleeve {sleeveInstance.Id.IntegerValue}: TYPE Depth = {thicknessMm:F1}mm (regenerated) ✓\n");
                 }
-                
-                // ⚠️ ZERO LINKED FILE ACCESS - all data pre-calculated during refresh!
+                catch { }
+                depthSetSuccess = true;
+            }
+        }
+        
+        if (!depthSetSuccess)
+        {
+            DebugLogger.Warning($"[UniversalSleevePlacer] WARNING: Could not find writable Depth or Wall Width parameter on sleeve {sleeveInstance.Id}");
+            try
+            {
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                    $"[DEPTH-FAIL] Sleeve {sleeveInstance.Id.IntegerValue}: No writable depth parameter found! ✗\n");
+            }
+            catch { }
+        }
+        
+        // Set MEP metadata parameters
                 var mepElementIdParam = sleeveInstance.LookupParameter("MEP_ElementId");
                 if (mepElementIdParam != null && !mepElementIdParam.IsReadOnly)
                 {
                     mepElementIdParam.Set(clashZone.MepElementId.IntegerValue);
-                    DebugLogger.Info($"[UniversalSleevePlacer] Set MEP_ElementId = {clashZone.MepElementId.IntegerValue} on sleeve {sleeveInstance.Id}");
-                }
-                else
-                {
-                    DebugLogger.Warning($"[UniversalSleevePlacer] MEP_ElementId parameter not found or read-only on sleeve {sleeveInstance.Id}");
+            DebugLogger.Info($"[UniversalSleevePlacer] Set MEP_ElementId = {clashZone.MepElementId.IntegerValue}");
                 }
 
                 sleeveInstance.LookupParameter("MEP_UniqueId")?.Set(clashZone.MepElementUniqueId);
@@ -469,32 +721,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 sleeveInstance.LookupParameter("System_Abbreviation")?.Set(clashZone.MepElementSystemAbbreviation);
                 sleeveInstance.LookupParameter("MEP_Count")?.Set(1);  // Individual sleeve
 
-                DebugLogger.Info($"[UniversalSleevePlacer] Set parameters for sleeve {sleeveInstance.Id}");
+        DebugLogger.Info($"[UniversalSleevePlacer] ✓ Set all parameters for sleeve {sleeveInstance.Id}");
             }
             catch (Exception ex)
             {
-                DebugLogger.Warning($"[UniversalSleevePlacer] Error setting parameters: {ex.Message}");
-            }
+        DebugLogger.Warning($"[UniversalSleevePlacer] Error setting parameters: {ex.Message}\n{ex.StackTrace}");
+        try
+        {
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                $"[PARAM-ERROR] Sleeve {sleeveInstance.Id.IntegerValue}: {ex.Message}\n");
         }
+        catch { }
+    }
+}
 
-        /// <summary>
-        /// Set sleeve orientation based on structural element type
-        /// For floors: Rotate sleeve based on MEP element direction
-        /// For walls/framing: Set HostOrientation parameter based on wall normal or framing direction
-        /// Mimics DuctSleevePlacer.cs lines 536-580
-        /// </summary>
+// ============================================================================
+// CORRECTED SetSleeveOrientation Method
+// ============================================================================
         private void SetSleeveOrientation(FamilyInstance sleeveInstance, ClashZone clashZone)
         {
             try
             {
-                // Use pre-calculated data from ClashZone (calculated during refresh)
-                // No need to get structural element and recalculate!
                 bool isFloorHost = clashZone.StructuralElementType == "Floor" || 
                                   clashZone.StructuralElementType == "Floors";
                 
                 if (isFloorHost)
                 {
-                    // FLOOR: Rotate sleeve based on MEP element direction (from ClashZone)
+            // ====== FLOOR HOST: Rotate based on MEP direction ======
                     var mepOrientation = clashZone.MepElementOrientation;
                     if (mepOrientation != null && (mepOrientation.X != 0 || mepOrientation.Y != 0))
                     {
@@ -503,15 +756,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             double rotationAngle = Math.Atan2(mepOrientation.Y, mepOrientation.X);
                             double rotationAngleDegrees = rotationAngle * 180 / Math.PI;
-                            DebugLogger.Info($"[UniversalSleevePlacer] FLOOR: Rotating sleeve by {rotationAngleDegrees:F1}° based on MEP orientation ({mepOrientation.X:F3}, {mepOrientation.Y:F3})");
                             
                             Line rotationAxis = Line.CreateBound(loc.Point, loc.Point + XYZ.BasisZ);
                             ElementTransformUtils.RotateElement(_doc, sleeveInstance.Id, rotationAxis, rotationAngle);
                             
-                            DebugLogger.Info($"[UniversalSleevePlacer] FLOOR: Applied rotation of {rotationAngleDegrees:F1}°");
-                        }
+                    DebugLogger.Info($"[UniversalSleevePlacer] FLOOR: Rotated sleeve {rotationAngleDegrees:F1}° based on MEP orientation ({mepOrientation.X:F3}, {mepOrientation.Y:F3})");
+                    try
+                    {
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                            $"[ORIENT-FLOOR] Sleeve {sleeveInstance.Id.IntegerValue}: Rotated {rotationAngleDegrees:F1}° for MEP dir ({mepOrientation.X:F3},{mepOrientation.Y:F3})\n");
                     }
-                    // Also set HostOrientation parameter to "FloorHosted"
+                    catch { }
+                }
+            }
+            
+            // Set HostOrientation parameter
                     var hostOrientationParam = sleeveInstance.LookupParameter("HostOrientation");
                     if (hostOrientationParam != null && !hostOrientationParam.IsReadOnly)
                     {
@@ -521,37 +780,123 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 else
                 {
-                    // WALL or FRAMING: 
-                    // 1. Rotate sleeve if MEP is Y-axis oriented
-                    // 2. Set HostOrientation parameter based on wall normal
+            // ====== WALL or FRAMING HOST ======
+            bool isFramingHost = string.Equals(clashZone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
+            bool isPipe = string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
+            bool isCableTray = string.Equals(clashZone.MepElementCategory, "Cable Trays", StringComparison.OrdinalIgnoreCase) ||
+                              string.Equals(clashZone.MepElementCategory, "Cable Tray Fittings", StringComparison.OrdinalIgnoreCase);
                     
                     var mepOrientation = clashZone.MepElementOrientation;
+            var structuralNormal = clashZone.StructuralElementNormal;
+            
+            try
+            {
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                    $"[ORIENT-INPUT] Sleeve {sleeveInstance.Id.IntegerValue}: Cat={clashZone.MepElementCategory}, Host={clashZone.StructuralElementType}, MEP=({mepOrientation?.X:F3},{mepOrientation?.Y:F3}), StructN=({structuralNormal?.X:F3},{structuralNormal?.Y:F3})\n");
+            }
+            catch { }
+            
                     if (mepOrientation != null && (mepOrientation.X != 0 || mepOrientation.Y != 0))
+            {
+                var loc = sleeveInstance.Location as LocationPoint;
+                if (loc != null)
+                {
+                    // SPECIAL CASE: Pipes on Framing - always align to MEP direction
+                    if (isPipe && isFramingHost)
                     {
-                        // Check if MEP element is Y-axis oriented
-                        bool isYAxisMep = Math.Abs(mepOrientation.Y) > Math.Abs(mepOrientation.X);
-                        DebugLogger.Info($"[UniversalSleevePlacer] WALL/FRAMING: isYAxisMep={isYAxisMep}, MEP direction=({mepOrientation.X:F3},{mepOrientation.Y:F3})");
+                        double angle = Math.Atan2(mepOrientation.Y, mepOrientation.X);
+                        double angleDegrees = angle * 180 / Math.PI;
                         
-                        if (isYAxisMep)
+                        Line rotationAxis = Line.CreateBound(loc.Point, loc.Point + XYZ.BasisZ);
+                        ElementTransformUtils.RotateElement(_doc, sleeveInstance.Id, rotationAxis, angle);
+                        
+                        DebugLogger.Info($"[UniversalSleevePlacer] FRAMING+PIPE: Aligned sleeve to MEP direction {angleDegrees:F1}°");
+                        try
                         {
-                            // Rotate sleeve 90 degrees for Y-axis MEP elements
-                            var loc = sleeveInstance.Location as LocationPoint;
-                            if (loc != null)
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                $"[ORIENT-APPLY] Sleeve {sleeveInstance.Id.IntegerValue}: FRAMING+PIPE aligned to MEP {angleDegrees:F1}° ✓\n");
+                        }
+                        catch { }
+                    }
+                    else
+                    {
+                        // GENERAL CASE: Check if wall/framing is Y-oriented to decide rotation
+                        bool allowRotate = false;
+                        
+                        if (structuralNormal != null && (structuralNormal.X != 0 || structuralNormal.Y != 0))
+                        {
+                            // FIX: Use wall direction logic instead of normal direction
+                            // For X-wall: Direction=(1,0,0) or (-1,0,0), Normal=(0,1,0) or (0,-1,0)
+                            // For Y-wall: Direction=(0,1,0) or (0,-1,0), Normal=(1,0,0) or (-1,0,0)
+                            // We need to infer wall direction from normal: if normal is Y-oriented, wall is X-oriented
+                            
+                            double absWX = Math.Abs(structuralNormal.X);
+                            double absWY = Math.Abs(structuralNormal.Y);
+                            
+                            // FIXED LOGIC: If normal is Y-oriented (|Wy| > |Wx|), then wall is X-oriented (no rotation)
+                            // If normal is X-oriented (|Wx| > |Wy|), then wall is Y-oriented (rotation allowed)
+                            allowRotate = absWX > absWY; // Rotate only for Y-oriented walls/framing
+                            
+                            // DEBUG: Explicit wall orientation detection
+                            bool isXWall = absWY > absWX; // Normal is Y-oriented = Wall is X-oriented
+                            bool isYWall = absWX > absWY; // Normal is X-oriented = Wall is Y-oriented
+                            string wallType = isXWall ? "X-WALL" : (isYWall ? "Y-WALL" : "UNKNOWN");
+                            
+                            DebugLogger.Info($"[UniversalSleevePlacer] WALL/FRAMING GUARD: |Wx|={absWX:F3}, |Wy|={absWY:F3}, Type={wallType}, allowRotate={allowRotate}");
+                            try
                             {
-                                double rotationAngle = Math.PI / 2; // 90 degrees
-                                Line rotationAxis = Line.CreateBound(loc.Point, loc.Point + XYZ.BasisZ);
-                                ElementTransformUtils.RotateElement(_doc, sleeveInstance.Id, rotationAxis, rotationAngle);
-                                DebugLogger.Info($"[UniversalSleevePlacer] WALL/FRAMING: Rotated Y-axis MEP sleeve 90°");
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                    $"[ORIENT-GUARD] Sleeve {sleeveInstance.Id.IntegerValue}: |Wx|={absWX:F3}, |Wy|={absWY:F3}, Type={wallType}, allowRotate={allowRotate}\n");
+                            }
+                            catch { }
+                        }
+                        
+                        if (!allowRotate)
+                        {
+                            // ==========================================
+                            // X-WALL LOGIC (Horizontal walls)
+                            // ==========================================
+                            // Family created in LEFT view → extrudes along Y-axis
+                            // Works naturally for Y-walls, needs +90° for X-walls
+                            // ALL families: Circular, Rectangular, Ducts, Pipes, Cable Trays
+                            
+                            var locXWall = sleeveInstance.Location as LocationPoint;
+                            if (locXWall != null)
+                            {
+                                Line rotationAxis = Line.CreateBound(locXWall.Point, locXWall.Point + XYZ.BasisZ);
+                                double rotation = Math.PI / 2; // +90 degrees
+                                ElementTransformUtils.RotateElement(_doc, sleeveInstance.Id, rotationAxis, rotation);
+                                
+                                DebugLogger.Info($"[ORIENT-FIX] Sleeve {sleeveInstance.Id.IntegerValue}: X-WALL +90° (LEFT view family)");
+                                try
+                                {
+                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                        $"[ORIENT-FIX] Sleeve {sleeveInstance.Id.IntegerValue}: X-WALL +90° (LEFT view family) ✓\n");
+                                }
+                                catch { }
                             }
                         }
                         else
                         {
-                            DebugLogger.Info($"[UniversalSleevePlacer] WALL/FRAMING: X-axis MEP - no rotation needed");
+                            // ==========================================
+                            // Y-WALL LOGIC (Vertical walls)
+                            // ==========================================
+                            // Family created in LEFT view → NO rotation needed
+                            // ALL families work perfectly as-is: Circular, Rectangular, Ducts, Pipes, Cable Trays
+                            
+                            DebugLogger.Info($"[ORIENT-SKIP] Sleeve {sleeveInstance.Id.IntegerValue}: Y-WALL no rotation (LEFT view family already aligned)");
+                            try
+                            {
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                    $"[ORIENT-SKIP] Sleeve {sleeveInstance.Id.IntegerValue}: Y-WALL no rotation (LEFT view family) ✓\n");
+                            }
+                            catch { }
                         }
                     }
-                    
-                    // Set HostOrientation parameter based on wall normal
-                    var structuralNormal = clashZone.StructuralElementNormal;
+                }
+            }
+            
+            // Set HostOrientation parameter based on structural normal
                     if (structuralNormal != null && (structuralNormal.X != 0 || structuralNormal.Y != 0))
                     {
                         double absX = Math.Abs(structuralNormal.X);
@@ -562,14 +907,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (hostOrientationParam != null && !hostOrientationParam.IsReadOnly)
                         {
                             hostOrientationParam.Set(orientation);
-                            DebugLogger.Info($"[UniversalSleevePlacer] WALL/FRAMING: Set HostOrientation = {orientation} (wall normal: {structuralNormal.X:F3}, {structuralNormal.Y:F3})");
+                            DebugLogger.Info($"[UniversalSleevePlacer] WALL/FRAMING: Set HostOrientation = {orientation}");
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                DebugLogger.Warning($"[UniversalSleevePlacer] Error setting sleeve orientation: {ex.Message}");
+                DebugLogger.Warning($"[UniversalSleevePlacer] Error setting sleeve orientation: {ex.Message}\n{ex.StackTrace}");
+                try
+                {
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                        $"[ORIENT-ERROR] Sleeve {sleeveInstance.Id.IntegerValue}: {ex.Message}\n");
+                }
+                catch { }
             }
         }
     }

@@ -228,7 +228,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     Title = "Save Filter",
                     Filter = "XML Files (*.xml)|*.xml|All Files (*.*)|*.*",
                     DefaultExt = "xml",
-                    FileName = $"{selectedFilter.Name}.xml"
+                    FileName = $"{selectedFilter.Name}.xml",
+                    InitialDirectory = GetDefaultFilterDirectory()
                 };
 
                 if (saveDialog.ShowDialog() == DialogResult.OK)
@@ -289,8 +290,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public string GetDefaultFilterDirectory()
         {
             var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            var filterDir = Path.Combine(appDataPath, "JSE_MEP_Openings", "Projects", "Default", "Filters");
+            var projectName = GetCurrentProjectNameSafe();
+            var filterDir = Path.Combine(appDataPath, "JSE_MEP_Openings", "Projects", projectName, "Filters");
             return filterDir;
+        }
+
+        private string GetCurrentProjectNameSafe()
+        {
+            try
+            {
+                // Use environment variable set by the host or fallback to process title
+                var title = Environment.GetEnvironmentVariable("JSE_ACTIVE_DOC_TITLE");
+                if (!string.IsNullOrWhiteSpace(title)) return NormalizeProjectName(title);
+            }
+            catch { }
+            return "Default";
+        }
+
+        private string NormalizeProjectName(string name)
+        {
+            foreach (var c in Path.GetInvalidFileNameChars())
+            {
+                name = name.Replace(c, '_');
+            }
+            return name.Trim();
         }
 
         /// <summary>
@@ -348,11 +371,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (openDialog.ShowDialog() == DialogResult.OK)
                 {
-                    var loadedFilter = LoadFilterFromXmlFile(openDialog.FileName);
+                var loadedFilter = LoadFilterFromXmlFile(openDialog.FileName);
                     
                     if (loadedFilter != null)
                     {
                         AddFilterToList(filterListBox, loadedFilter);
+                        try { FilterUiStateProvider.ApplyFilterToUi?.Invoke(loadedFilter); } catch { }
                         
                         _log($"[FILTER_MGMT] Loaded filter '{loadedFilter.Name}' from: {openDialog.FileName}");
                         _updateStatus($"Loaded filter: {loadedFilter.Name}");
@@ -401,8 +425,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         private OpeningFilter CreateFilterFromCurrentUIState(string filterName)
         {
-            // This service does not have access to UI; keep defaults and let caller update fields
-            return new OpeningFilter
+            var filter = new OpeningFilter
             {
                 Name = filterName,
                 Category = Models.MepCategory.Ducts,
@@ -411,6 +434,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 LastModified = DateTime.Now,
                 ClashZoneStorage = null
             };
+
+            // Pull current UI selections via provider if available
+            try
+            {
+                var cats = FilterUiStateProvider.GetSelectedMepCategoryNames?.Invoke();
+                if (cats != null && cats.Count > 0)
+                {
+                    filter.SelectedMepCategoryNames = new List<string>(cats);
+                    filter.SelectedMepCategoryName = cats[0];
+                }
+
+                var refs = FilterUiStateProvider.GetSelectedReferenceFiles?.Invoke();
+                if (refs != null) filter.SelectedReferenceFiles = new List<string>(refs);
+
+                var hosts = FilterUiStateProvider.GetSelectedHostFiles?.Invoke();
+                if (hosts != null) filter.SelectedHostFiles = new List<string>(hosts);
+
+                var hostTypes = FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke();
+                if (hostTypes != null) filter.SelectedHostElementTypes = new List<string>(hostTypes);
+            }
+            catch { }
+
+            return filter;
         }
 
         private OpeningFilter GetSelectedFilter(ListBox filterListBox)
@@ -481,7 +527,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
-        private OpeningFilter LoadFilterFromXmlFile(string filePath)
+        public OpeningFilter LoadFilterFromXmlFile(string filePath)
         {
             try
             {

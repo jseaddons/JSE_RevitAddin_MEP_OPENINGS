@@ -447,6 +447,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// Document key for Host element (distinguishes active vs linked docs)
         /// </summary>
         public string HostDocKey { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Whether this clash is eligible for processing under the current UI selection (host types, etc.)
+        /// This flag is set during refresh and used during placement to respect UI state without deleting zones.
+        /// </summary>
+        public bool IsEligibleByCurrentUi { get; set; } = true;
     }
     
     /// <summary>

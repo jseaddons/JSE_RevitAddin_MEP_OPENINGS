@@ -129,9 +129,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         private void ShowTransferResults(ParameterTransferResult result)
         {
             var message = $"Parameter transfer completed successfully!\n\n" +
-                         $"Transferred: {result.TransferredCount}\n" +
-                         $"Failed: {result.FailedCount}";
-
+                                    $"Transferred: {result.TransferredCount}\n" +
+                                    $"Failed: {result.FailedCount}";
+                    
             if (result.Warnings.Count > 0)
             {
                 message += $"\nWarnings: {result.Warnings.Count}";

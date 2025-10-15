@@ -24,7 +24,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public List<(Element, Element, BoundingBoxXYZ, XYZ)> FindIntersections(
             Document document, 
             View3D view3D,
-            List<string> selectedMepCategories = null)
+            List<string> selectedMepCategories = null,
+            List<string> selectedReferenceFiles = null,
+            List<string> selectedHostFiles = null,
+            List<string> allowedHostElementTypes = null)
         {
             try
             {
@@ -57,9 +60,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var mepElements = new List<Element>();
                 var wallElements = new List<Element>();
 
-                CollectElements(document, modelMin, modelMax, ref mepElements, ref wallElements, selectedMepCategories);
+                CollectElements(document, modelMin, modelMax, ref mepElements, ref wallElements, selectedMepCategories, selectedReferenceFiles, selectedHostFiles, allowedHostElementTypes);
 
                 _logger($"Found {mepElements.Count} MEP elements and {wallElements.Count} structural elements (walls/floors/framing) in section box");
+                _logger($"Selected MEP cats: {string.Join(", ", selectedMepCategories ?? new List<string>())}");
+                _logger($"Selected host types: {string.Join(", ", allowedHostElementTypes ?? new List<string>())}");
 
                 if (mepElements.Count == 0)
                 {
@@ -76,6 +81,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // STEP 3: Find intersections
                 var intersections = FindIntersectionsInternal(mepElements, wallElements, document);
 
+                // Enforce section box bounds using oriented-box test (view's local coords)
+                Transform invSection = sectionTransform.Inverse;
+                intersections = intersections
+                    .Where(tuple =>
+                    {
+                        var center = tuple.Item4;
+                        var local = invSection.OfPoint(center);
+                        return local.X >= sectionBox.Min.X && local.X <= sectionBox.Max.X &&
+                               local.Y >= sectionBox.Min.Y && local.Y <= sectionBox.Max.Y &&
+                               local.Z >= sectionBox.Min.Z && local.Z <= sectionBox.Max.Z;
+                    })
+                    .ToList();
+                _logger($"Filtered intersections inside oriented section box: {intersections.Count}");
+
                 _logger($"=== INTERSECTION RESULTS ===");
                 _logger($"Total intersections found: {intersections.Count}");
 
@@ -91,7 +110,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         private void CollectElements(Document doc, XYZ modelMin, XYZ modelMax, 
                                      ref List<Element> mepElements, ref List<Element> wallElements,
-                                     List<string> selectedMepCategories = null)
+                                     List<string> selectedMepCategories = null,
+                                     List<string> selectedReferenceFiles = null,
+                                     List<string> selectedHostFiles = null,
+                                     List<string> allowedHostElementTypes = null)
         {
             Outline hostOutline = new Outline(modelMin, modelMax);
 
@@ -119,7 +141,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             else
             {
                 // Only collect selected categories
-                if (selectedMepCategories.Contains("Ducts"))
+                if (selectedMepCategories.Any(c => string.Equals(c, "Ducts", StringComparison.OrdinalIgnoreCase)))
                 {
                     mepCats.Add(BuiltInCategory.OST_DuctCurves);
                     mepCats.Add(BuiltInCategory.OST_DuctFitting);
@@ -127,13 +149,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     _logger("Including Ducts categories");
                 }
                 
-                if (selectedMepCategories.Contains("Duct Accessories"))
+                if (selectedMepCategories.Any(c => string.Equals(c, "Duct Accessories", StringComparison.OrdinalIgnoreCase)))
                 {
                     mepCats.Add(BuiltInCategory.OST_DuctAccessory);
                     _logger("Including Duct Accessories category");
                 }
                 
-                if (selectedMepCategories.Contains("Pipes"))
+                if (selectedMepCategories.Any(c => string.Equals(c, "Pipes", StringComparison.OrdinalIgnoreCase) || string.Equals(c, "Pipe", StringComparison.OrdinalIgnoreCase)))
                 {
                     mepCats.Add(BuiltInCategory.OST_PipeCurves);
                     mepCats.Add(BuiltInCategory.OST_PipeFitting);
@@ -141,13 +163,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     _logger("Including Pipes categories");
                 }
                 
-                if (selectedMepCategories.Contains("Cable Trays"))
+                if (selectedMepCategories.Any(c => string.Equals(c, "Cable Trays", StringComparison.OrdinalIgnoreCase) || string.Equals(c, "Cable Tray", StringComparison.OrdinalIgnoreCase)))
                 {
                     mepCats.Add(BuiltInCategory.OST_CableTray);
                     mepCats.Add(BuiltInCategory.OST_CableTrayFitting);
                     mepCats.Add(BuiltInCategory.OST_Conduit);
                     mepCats.Add(BuiltInCategory.OST_ConduitFitting);
                     _logger("Including Cable Trays categories");
+                }
+
+                // Discipline-to-category mapping for filters named by discipline
+                if (selectedMepCategories.Any(c => string.Equals(c, "Ventilation", StringComparison.OrdinalIgnoreCase) || string.Equals(c, "HVAC", StringComparison.OrdinalIgnoreCase)))
+                {
+                    mepCats.Add(BuiltInCategory.OST_DuctCurves);
+                    mepCats.Add(BuiltInCategory.OST_DuctFitting);
+                    mepCats.Add(BuiltInCategory.OST_DuctAccessory);
+                    mepCats.Add(BuiltInCategory.OST_DuctTerminal);
+                    _logger("Including HVAC/Ventilation (duct) categories via discipline mapping");
+                }
+
+                if (selectedMepCategories.Any(c => string.Equals(c, "Electrical", StringComparison.OrdinalIgnoreCase)))
+                {
+                    mepCats.Add(BuiltInCategory.OST_CableTray);
+                    mepCats.Add(BuiltInCategory.OST_CableTrayFitting);
+                    mepCats.Add(BuiltInCategory.OST_Conduit);
+                    mepCats.Add(BuiltInCategory.OST_ConduitFitting);
+                    _logger("Including Electrical (tray/conduit) categories via discipline mapping");
+                }
+
+                if (selectedMepCategories.Any(c => string.Equals(c, "Plumbing", StringComparison.OrdinalIgnoreCase)))
+                {
+                    mepCats.Add(BuiltInCategory.OST_PipeCurves);
+                    mepCats.Add(BuiltInCategory.OST_PipeFitting);
+                    mepCats.Add(BuiltInCategory.OST_PipeAccessory);
+                    _logger("Including Plumbing (pipes) categories via discipline mapping");
                 }
                 
                 _logger($"Selected MEP categories: {string.Join(", ", selectedMepCategories)}");
@@ -167,32 +216,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         .ToElements()
                 );
             }
+            _logger($"Collected {mepElements.Count} MEP elements from host document after category filter");
 
-            wallElements.AddRange(
-                new FilteredElementCollector(doc)
-                    .OfCategory(BuiltInCategory.OST_Walls)
-                    .WhereElementIsNotElementType()
-                    .WherePasses(new BoundingBoxIntersectsFilter(hostOutline))
-                    .ToElements()
-            );
+            // ✅ CRITICAL FIX: Track MEP count before processing links
+            int mepCountBeforeLinks = mepElements.Count;
 
-            // ✅ CRITICAL FIX: Also collect floors for intersection detection
-            wallElements.AddRange(
-                new FilteredElementCollector(doc)
-                    .OfCategory(BuiltInCategory.OST_Floors)
-                    .WhereElementIsNotElementType()
-                    .WherePasses(new BoundingBoxIntersectsFilter(hostOutline))
-                    .ToElements()
-            );
-
-            // ✅ CRITICAL FIX: Also collect structural framing for intersection detection
-            wallElements.AddRange(
-                new FilteredElementCollector(doc)
-                    .OfCategory(BuiltInCategory.OST_StructuralFraming)
-                    .WhereElementIsNotElementType()
-                    .WherePasses(new BoundingBoxIntersectsFilter(hostOutline))
-                    .ToElements()
-            );
+            // ⚠️ IMPORTANT: Host elements (Walls, Floors, Structural Framing) are ALWAYS in linked files ONLY
+            // DO NOT collect host elements from active document - they only exist in architectural/structural links
+            _logger($"Host elements will ONLY be collected from selected host files (linked files): {string.Join(", ", selectedHostFiles ?? new List<string>())}");
 
             // Collect from links
             var links = new FilteredElementCollector(doc)
@@ -202,10 +233,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             _logger($"DEBUG: Found {links.Count} linked models");
 
+            // Use passed-in reference files (MEP links), independent from host files
+            // If not provided, fall back to UI state provider
+            if (selectedReferenceFiles == null)
+            {
+                selectedReferenceFiles = FilterUiStateProvider.GetSelectedReferenceFiles?.Invoke() ?? new List<string>();
+            }
+            
+            _logger($"DEBUG: Selected reference files (MEP links): {string.Join(", ", selectedReferenceFiles)}");
+
+            // Normalization helper for robust filename matching
+            Func<string, string> norm = s =>
+            {
+                if (string.IsNullOrWhiteSpace(s)) return string.Empty;
+                var trimmed = s;
+                var idxParen = trimmed.IndexOf('(');
+                if (idxParen >= 0) trimmed = trimmed.Substring(0, idxParen);
+                trimmed = System.IO.Path.GetFileNameWithoutExtension(trimmed);
+                trimmed = trimmed.ToLowerInvariant().Replace("_detached", "");
+                trimmed = trimmed.Replace('_', ' ').Replace('-', ' ');
+                trimmed = System.Text.RegularExpressions.Regex.Replace(trimmed, "\\s+", " ");
+                return trimmed.Trim();
+            };
+
             foreach (var link in links)
             {
                 Document linkDoc = link.GetLinkDocument();
                 if (linkDoc == null) continue;
+                string linkTitleNorm = norm(linkDoc.Title);
 
                 Transform linkTransform = link.GetTotalTransform();
                 Transform invTransform = linkTransform.Inverse;
@@ -228,42 +283,149 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 Outline linkOutline = new Outline(actualMin, actualMax);
 
-                foreach (var cat in mepCats)
+                // Collect MEP from reference links only (if any specified); otherwise from all links
+                bool refMatch = selectedReferenceFiles.Count == 0 || selectedReferenceFiles.Any(f =>
                 {
-                    mepElements.AddRange(
+                    string ui = norm(f);
+                    return linkTitleNorm.Contains(ui) || ui.Contains(linkTitleNorm);
+                });
+                if (refMatch)
+                {
+                    foreach (var cat in mepCats)
+                    {
+                        mepElements.AddRange(
+                            new FilteredElementCollector(linkDoc)
+                                .OfCategory(cat)
+                                .WhereElementIsNotElementType()
+                                .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
+                                .ToElements()
+                        );
+                    }
+                    _logger($"Collected {mepElements.Count} total MEP elements after processing reference link '{linkDoc.Title}'");
+                }
+                else
+                {
+                    _logger($"DEBUG: Skipping MEP collection from link '{linkDoc.Title}' (not in selected reference files)");
+                }
+
+                // Collect hosts only from selected host files (if specified), else from all links
+                bool hostMatch = selectedHostFiles == null || selectedHostFiles.Count == 0 || selectedHostFiles.Any(f =>
+                {
+                    string ui = norm(f);
+                    return linkTitleNorm.Contains(ui) || ui.Contains(linkTitleNorm);
+                });
+                
+                _logger($"DEBUG: Host match for '{linkDoc.Title}': {hostMatch} (selected host files: {string.Join(", ", selectedHostFiles ?? new List<string>())})");
+                
+                if (hostMatch)
+                {
+                    wallElements.AddRange(
                         new FilteredElementCollector(linkDoc)
-                            .OfCategory(cat)
+                            .OfCategory(BuiltInCategory.OST_Walls)
                             .WhereElementIsNotElementType()
                             .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
                             .ToElements()
                     );
+
+                    // Floors
+                    wallElements.AddRange(
+                        new FilteredElementCollector(linkDoc)
+                            .OfCategory(BuiltInCategory.OST_Floors)
+                            .WhereElementIsNotElementType()
+                            .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
+                            .ToElements()
+                    );
+
+                    // Structural Framing
+                    wallElements.AddRange(
+                        new FilteredElementCollector(linkDoc)
+                            .OfCategory(BuiltInCategory.OST_StructuralFraming)
+                            .WhereElementIsNotElementType()
+                            .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
+                            .ToElements()
+                    );
+
+                    _logger($"Collected {wallElements.Count} total host elements after processing host link '{linkDoc.Title}'");
                 }
+                else
+                {
+                    _logger($"DEBUG: Skipping host collection from link '{linkDoc.Title}' (not in selected host files)");
+                }
+            }
 
-                wallElements.AddRange(
-                    new FilteredElementCollector(linkDoc)
-                        .OfCategory(BuiltInCategory.OST_Walls)
-                        .WhereElementIsNotElementType()
-                        .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
-                        .ToElements()
-                );
+            // ✅ CRITICAL FIX: Fallback for single-model workflows
+            // If MEP collection is still empty after checking links, and we're in a single-model workflow (no links or no reference files selected),
+            // the MEP elements are in the active document itself
+            if (mepElements.Count == mepCountBeforeLinks && mepCats.Count > 0)
+            {
+                if (links.Count == 0)
+                {
+                    _logger("SINGLE-MODEL WORKFLOW: No linked files found. MEP elements are in the active document (already collected).");
+                }
+                else if (mepElements.Count == 0)
+                {
+                    _logger("FALLBACK: No MEP elements collected from selected reference files. Scanning all links for selected categories.");
+                    foreach (var link in links)
+                    {
+                        var linkDoc = link.GetLinkDocument();
+                        if (linkDoc == null) continue;
+                        Transform inv = link.GetTotalTransform().Inverse;
+                        XYZ linkMin = inv.OfPoint(modelMin);
+                        XYZ linkMax = inv.OfPoint(modelMax);
+                        XYZ actualMin = new XYZ(Math.Min(linkMin.X, linkMax.X), Math.Min(linkMin.Y, linkMax.Y), Math.Min(linkMin.Z, linkMax.Z));
+                        XYZ actualMax = new XYZ(Math.Max(linkMin.X, linkMax.X), Math.Max(linkMin.Y, linkMax.Y), Math.Max(linkMin.Z, linkMax.Z));
+                        var linkOutline = new Outline(actualMin, actualMax);
+                        foreach (var cat in mepCats)
+                        {
+                            mepElements.AddRange(new FilteredElementCollector(linkDoc)
+                                .OfCategory(cat)
+                                .WhereElementIsNotElementType()
+                                .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
+                                .ToElements());
+                        }
+                    }
+                    _logger($"FALLBACK: Collected {mepElements.Count} MEP elements after scanning all links.");
+                }
+            }
 
-                // ✅ CRITICAL FIX: Also collect floors from linked documents for intersection detection
-                wallElements.AddRange(
-                    new FilteredElementCollector(linkDoc)
-                        .OfCategory(BuiltInCategory.OST_Floors)
-                        .WhereElementIsNotElementType()
-                        .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
-                        .ToElements()
-                );
-
-                // ✅ CRITICAL FIX: Also collect structural framing from linked documents for intersection detection
-                wallElements.AddRange(
-                    new FilteredElementCollector(linkDoc)
-                        .OfCategory(BuiltInCategory.OST_StructuralFraming)
-                        .WhereElementIsNotElementType()
-                        .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
-                        .ToElements()
-                );
+            // ✅ CRITICAL FIX: Fallback for host elements in single-model workflows
+            if (wallElements.Count == 0)
+            {
+                if (links.Count == 0)
+                {
+                    _logger("SINGLE-MODEL WORKFLOW: No linked files found. Host elements (walls/floors/framing) are in the active document (already collected).");
+                }
+                else
+                {
+                    _logger("FALLBACK: No host elements collected from selected host files. Scanning all links for Walls/Floors/Framing.");
+                    foreach (var link in links)
+                    {
+                        var linkDoc = link.GetLinkDocument();
+                        if (linkDoc == null) continue;
+                        Transform inv = link.GetTotalTransform().Inverse;
+                        XYZ linkMin = inv.OfPoint(modelMin);
+                        XYZ linkMax = inv.OfPoint(modelMax);
+                        XYZ actualMin = new XYZ(Math.Min(linkMin.X, linkMax.X), Math.Min(linkMin.Y, linkMax.Y), Math.Min(linkMin.Z, linkMax.Z));
+                        XYZ actualMax = new XYZ(Math.Max(linkMin.X, linkMax.X), Math.Max(linkMin.Y, linkMax.Y), Math.Max(linkMin.Z, linkMax.Z));
+                        var linkOutline = new Outline(actualMin, actualMax);
+                        wallElements.AddRange(new FilteredElementCollector(linkDoc)
+                            .OfCategory(BuiltInCategory.OST_Walls)
+                            .WhereElementIsNotElementType()
+                            .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
+                            .ToElements());
+                        wallElements.AddRange(new FilteredElementCollector(linkDoc)
+                            .OfCategory(BuiltInCategory.OST_Floors)
+                            .WhereElementIsNotElementType()
+                            .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
+                            .ToElements());
+                        wallElements.AddRange(new FilteredElementCollector(linkDoc)
+                            .OfCategory(BuiltInCategory.OST_StructuralFraming)
+                            .WhereElementIsNotElementType()
+                            .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
+                            .ToElements());
+                    }
+                    _logger($"FALLBACK: Collected {wallElements.Count} host elements after scanning all links.");
+                }
             }
         }
 

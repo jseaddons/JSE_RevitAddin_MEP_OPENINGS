@@ -104,39 +104,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             //     .Select(e => (e, (Transform?)null)).ToList();
 
 
-            using (var tx = new Transaction(doc, "Place Pipe Sleeves"))
-            {
-                tx.Start();
-                try
-                {
-                    // Register failure preprocessor to suppress duplicate-instance warnings
-                    var fho = tx.GetFailureHandlingOptions();
-                    fho.SetFailuresPreprocessor(new JSE_RevitAddin_MEP_OPENINGS.Services.DuplicateInstanceSuppressor());
-                    tx.SetFailureHandlingOptions(fho);
-                }
-                catch { /* If API not available or fails, continue without suppressor */ }
-
-                var placerService = new PipeSleevePlacerService(
-                    doc,
-                    pipeTuples,
-                    structuralElements,
-                    pipeWallSymbol!,
-                    pipeSlabSymbol!,
-                    existingSleeves,
-                    Log
-                );
-                placerService.PlaceAllPipeSleeves();
-                placedCount = placerService.PlacedCount;
-                skippedCount = placerService.SkippedCount;
-                errorCount = placerService.ErrorCount;
-                tx.Commit();
-                Log($"Placement complete. Placed: {placedCount}, Skipped: {skippedCount}, Errors: {errorCount}");
-
-                // Show status prompt to user
-                string summary = $"PIPE SLEEVE SUMMARY: Placed={placedCount}, Skipped={skippedCount}, Errors={errorCount}";
-                TaskDialog.Show("Pipe Sleeve Placement", summary);
-            }
-                return Result.Succeeded;
+            TaskDialog.Show("Info", "PipeSleeveCommand is deprecated. Use the Parameter Service (universal placer) workflow.");
+            return Result.Succeeded;
             }
             catch (Exception ex)
             {

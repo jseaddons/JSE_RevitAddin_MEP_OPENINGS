@@ -256,6 +256,57 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 this.Shown += (s, e) => LoadRealLinkedFiles(document);
             }
 
+            // Register FilterUiStateProvider delegates for Refresh/Filter services
+            try
+            {
+                Services.FilterUiStateProvider.GetSelectedHostElementTypes = () =>
+                {
+                    var selected = new List<string>();
+                    try
+                    {
+                        // Bottom-right host categories: horizontal (Walls, Structural Framing) and vertical (Floors, Ceilings)
+                        var hostCategoryLists = _bottomRightPanel?.Controls?.OfType<System.Windows.Forms.CheckedListBox>()?.ToList();
+                        if (hostCategoryLists != null && hostCategoryLists.Count >= 1)
+                        {
+                            foreach (var lb in hostCategoryLists)
+                            {
+                                foreach (var item in lb.CheckedItems)
+                                {
+                                    var name = item?.ToString() ?? string.Empty;
+                                    if (!string.IsNullOrWhiteSpace(name)) selected.Add(name);
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                    return selected.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                };
+
+                Services.FilterUiStateProvider.ApplyFilterToUi = (filter) =>
+                {
+                    try
+                    {
+                        // Apply host element types to bottom-right lists
+                        var hostTypes = filter?.SelectedHostElementTypes ?? new List<string>();
+                        var hostCategoryLists = _bottomRightPanel?.Controls?.OfType<System.Windows.Forms.CheckedListBox>()?.ToList();
+                        if (hostCategoryLists != null)
+                        {
+                            foreach (var lb in hostCategoryLists)
+                            {
+                                for (int i = 0; i < lb.Items.Count; i++)
+                                {
+                                    var name = lb.Items[i]?.ToString() ?? string.Empty;
+                                    bool shouldCheck = hostTypes.Contains(name, StringComparer.OrdinalIgnoreCase);
+                                    lb.SetItemChecked(i, shouldCheck);
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                };
+            }
+            catch { }
+
         }
 
         private void InitializeComponent()
@@ -2625,6 +2676,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     DebugLogger.Warning("[TRANSFER_ALL] No valid mappings found in the current service tab.");
                     return;
                 }
+
+                // Infer source category for XML selection
+                var activeServiceTab = servicePanel.Parent as WinForms.TabPage;
+                config.SourceCategoryName = activeServiceTab?.Text ?? string.Empty;
 
                 // Collect all opening instance IDs (placed sleeves)
                 var doc = _uiDocument?.Document;
@@ -5614,12 +5669,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 if (document != null)
                 {
                     // Get actual UI selections
-            var selectedFilterItems = GetSelectedFilterItems();
+                    var selectedFilterItems = GetSelectedFilterItems();
                     var selectedMepCategories = GetSelectedMepCategories();
                     var selectedReferenceFiles = GetSelectedReferenceFiles();
                     var selectedHostFiles = GetSelectedHostFiles();
                     var clearanceSettings = GetClearanceSettings();
-                    
+
+                    // Guard: No filters selected → prompt and STOP (do nothing else)
+                    if (selectedFilterItems == null || selectedFilterItems.Count == 0)
+                    {
+                        System.Windows.Forms.MessageBox.Show(
+                            "Please select at least one filter before running Refresh.",
+                            "No Filter Selected",
+                            System.Windows.Forms.MessageBoxButtons.OK,
+                            System.Windows.Forms.MessageBoxIcon.Warning);
+                        _statusLabel.Text = "Refresh cancelled - No filter selected";
+                        _progressBar.Visible = false;
+                        _refreshButton.Enabled = true;
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [ON_REFRESH_CLICK] Cancelled - No filter selected\n");
+                        return;
+                    }
+
                     var refreshService = new Services.RefreshService(document, _uiDocument, _appProfileService);
                     refreshService.SetUIReferences(_statusLabel, _progressBar, _refreshButton);
                     refreshService.ExecuteRefresh(selectedFilterItems, selectedMepCategories, selectedReferenceFiles, selectedHostFiles, clearanceSettings);
@@ -5636,9 +5706,68 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
                     System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] Parameter dropdowns updated successfully");
                     JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] Parameter dropdowns updated successfully\n");
+                    
+                    DebugLogger.Info("[OK_BUTTON_DEBUG] About to check OK button enabling logic");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] About to check OK button enabling logic\n");
 
-                    // Gate: Enable OK only after a successful Refresh completes. Do NOT enable Transfer All here.
-                    _okButton.Enabled = true;
+                    // Gate: Enable OK only if there are unresolved clash zones after refresh
+                    try
+                    {
+                        DebugLogger.Info("[OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto\n");
+                        
+                        var loaded = _filterManagementService?.LoadFilterAuto(GetSelectedFilterItems().FirstOrDefault());
+                        
+                        DebugLogger.Info("[OK_BUTTON_DEBUG] LoadFilterAuto completed");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] LoadFilterAuto completed\n");
+                        
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] About to extract zones\n");
+                        var zones = loaded?.ClashZoneStorage?.ClashZones ?? new List<Models.ClashZone>();
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Zones extracted: {zones.Count}\n");
+                        
+                        // DEBUG: Log OK button enabling logic
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Total zones loaded: {zones.Count}\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Unresolved zones: {zones.Count(cz => !cz.IsResolved)}\n");
+                        
+                        // Apply UI host-type filter to existing zones
+                        var allowedHostTypesUI = new HashSet<string>(
+                            Services.FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>(),
+                            StringComparer.OrdinalIgnoreCase);
+                        
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Allowed host types: [{string.Join(", ", allowedHostTypesUI)}]\n");
+                        
+                        if (allowedHostTypesUI.Count > 0)
+                        {
+                            var beforeFilter = zones.Count;
+                            
+                            // DEBUG: Log first 5 zones' structural types and eligibility
+                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Sample zone types (first 5):\n");
+                            foreach (var zone in zones.Take(5))
+                            {
+                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG]   - Type='{zone.StructuralElementType}', IsEligible={zone.IsEligibleByCurrentUi}, Resolved={zone.IsResolved}\n");
+                            }
+                            
+                            // Handle plural/singular mismatch: "Walls" (UI) vs "Wall" (Revit)
+                            zones = zones.Where(cz => 
+                                (allowedHostTypesUI.Contains(cz.StructuralElementType) ||
+                                 allowedHostTypesUI.Contains(cz.StructuralElementType + "s") ||
+                                 allowedHostTypesUI.Any(t => t.TrimEnd('s').Equals(cz.StructuralElementType, StringComparison.OrdinalIgnoreCase))) &&
+                                cz.IsEligibleByCurrentUi).ToList();
+                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] After host type filter: {beforeFilter} -> {zones.Count}\n");
+                        }
+                        
+                        var unresolved = zones.Count(cz => !cz.IsResolved);
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Final unresolved count: {unresolved}\n");
+                        
+                        _okButton.Enabled = unresolved > 0;
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] OK button enabled: {_okButton.Enabled}\n");
+                    }
+                    catch (Exception ex) 
+                    { 
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] ❌ ERROR enabling OK button: {ex.Message}\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Stack: {ex.StackTrace}\n");
+                        _okButton.Enabled = false; 
+                    }
                 }
                 else
                 {

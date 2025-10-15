@@ -626,6 +626,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             try
             {
+                // Build snapshot index (sleeveId -> (mepBag, hostBag)) from latest category XML
+                var snapshotIndex = BuildSnapshotIndex(config.SourceCategoryName);
+                
                 // Execute each mapping
                 foreach (var mapping in config.Mappings)
                 {
@@ -634,10 +637,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     switch (mapping.TransferType)
                     {
                         case TransferType.ReferenceToOpening:
-                            mappingResult = TransferFromReferenceElementsInTransaction(doc, openingIds, mapping);
+                            mappingResult = TransferFromReferenceElementsInTransaction(doc, openingIds, mapping, snapshotIndex);
                             break;
                         case TransferType.HostToOpening:
-                            mappingResult = TransferFromHostElementsInTransaction(doc, openingIds, mapping);
+                            mappingResult = TransferFromHostElementsInTransaction(doc, openingIds, mapping, snapshotIndex);
                             break;
                         case TransferType.LevelToOpening:
                             mappingResult = TransferFromLevelsInTransaction(doc, openingIds, mapping);
@@ -684,7 +687,136 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return result;
         }
         
+        public ParameterTransferResult TransferFromReferenceElementsInTransaction(
+            Document doc,
+            List<ElementId> openingIds,
+            ParameterMapping mapping,
+            Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)> snapshotIndex)
+        {
+            // Delegate to core with a resolver for MEP bags
+            return TransferFromElementsWithSnapshot(doc, openingIds, mapping, snapshotIndex, useHost:false);
+        }
+
+        public ParameterTransferResult TransferFromHostElementsInTransaction(
+            Document doc,
+            List<ElementId> openingIds,
+            ParameterMapping mapping,
+            Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)> snapshotIndex)
+        {
+            // Delegate to core with a resolver for HOST bags
+            return TransferFromElementsWithSnapshot(doc, openingIds, mapping, snapshotIndex, useHost:true);
+        }
+
+        private ParameterTransferResult TransferFromElementsWithSnapshot(
+            Document doc,
+            List<ElementId> openingIds,
+            ParameterMapping mapping,
+            Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)> snapshotIndex,
+            bool useHost)
+        {
+            var result = new ParameterTransferResult();
+            var transferredCount = 0;
+            var failedCount = 0;
+            var errors = new List<string>();
+
+            foreach (var openingId in openingIds)
+            {
+                try
+                {
+                    var opening = doc.GetElement(openingId);
+                    if (opening == null) continue;
+
+                    // Preferred path: use snapshot bag if available for this sleeve
+                    var sleeveId = opening.Id.IntegerValue; // opening instance id matches SleeveInstanceId we stored
+                    string snapshotValue = null;
+                    if (snapshotIndex != null && snapshotIndex.TryGetValue(sleeveId, out var bags))
+                    {
+                        var bag = useHost ? bags.host : bags.mep;
+                        if (bag != null)
+                        {
+                            if (!bag.TryGetValue(mapping.SourceParameter, out snapshotValue))
+                            {
+                                var alias = GetAlias(mapping.SourceParameter);
+                                if (!string.IsNullOrWhiteSpace(alias))
+                                {
+                                    bag.TryGetValue(alias, out snapshotValue);
+                                }
+                            }
+                        }
+                    }
+
+                    bool ok = false;
+                    if (!string.IsNullOrWhiteSpace(snapshotValue))
+                    {
+                        var targetParam = opening.LookupParameter(mapping.TargetParameter);
+                        ok = SetParameterValueSafely(targetParam, snapshotValue);
+                    }
+                    else
+                    {
+                        // Fallback to existing live logic
+                        var sources = useHost ? GetHostElementsForOpening(doc, opening) : GetMepElementsInOpening(doc, opening);
+                        ok = TransferParameterFromElements(doc, opening, sources, mapping);
+                    }
+
+                    if (ok) transferredCount++; else failedCount++;
+                }
+                catch (Exception ex)
+                {
+                    failedCount++;
+                    errors.Add($"Error transferring to opening {openingId}: {ex.Message}");
+                }
+            }
+
+            result.Success = errors.Count == 0;
+            result.TransferredCount = transferredCount;
+            result.FailedCount = failedCount;
+            result.Errors = errors;
+            result.Message = $"Snapshot-aware transfer: {transferredCount} updated, {failedCount} failed.";
+            return result;
+        }
+
+        private string GetAlias(string sourceParameter)
+        {
+            if (string.IsNullOrWhiteSpace(sourceParameter)) return string.Empty;
+            var s = sourceParameter.Trim();
+            if (s.Equals("Size", StringComparison.OrdinalIgnoreCase) || s.Equals("Service Size", StringComparison.OrdinalIgnoreCase))
+                return "MepElementFormattedSize";
+            return string.Empty;
+        }
+        
         #region Private Helper Methods
+
+        private Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)> BuildSnapshotIndex(string sourceCategoryName)
+        {
+            var index = new Dictionary<int, (Dictionary<string,string>, Dictionary<string,string>)>();
+            try
+            {
+                var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                if (!Directory.Exists(filtersDirectory)) return index;
+
+                var cat = (sourceCategoryName ?? string.Empty).ToLower().Replace(" ", "_");
+                var pattern = string.IsNullOrWhiteSpace(cat) ? "*.xml" : $"*_{cat}.xml";
+                var xmlFile = Directory.GetFiles(filtersDirectory, pattern).OrderByDescending(f => File.GetLastWriteTime(f)).FirstOrDefault();
+                if (string.IsNullOrEmpty(xmlFile)) return index;
+
+                var serializer = new System.Xml.Serialization.XmlSerializer(typeof(Models.OpeningFilter));
+                using (var reader = new StreamReader(xmlFile))
+                {
+                    var filter = (Models.OpeningFilter)serializer.Deserialize(reader);
+                    var zones = filter?.ClashZoneStorage?.ClashZones ?? new List<Models.ClashZone>();
+                    foreach (var cz in zones)
+                    {
+                        var sleeveId = cz.SleeveInstanceId;
+                        if (sleeveId <= 0) continue;
+                        var mep = cz.MepParameterValues?.ToDictionary(k => k.Key, v => v.Value, StringComparer.OrdinalIgnoreCase) ?? new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+                        var host = cz.HostParameterValues?.ToDictionary(k => k.Key, v => v.Value, StringComparer.OrdinalIgnoreCase) ?? new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+                        index[sleeveId] = (mep, host);
+                    }
+                }
+            }
+            catch { }
+            return index;
+        }
         
         private List<Element> GetMepElementsInOpening(Document doc, Element opening)
         {
@@ -692,16 +824,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             try
             {
-                // Get MEP elements that intersect with the opening
-                var collector = new FilteredElementCollector(doc)
+                // 1) MEPCurve sources (ducts, pipes, trays)
+                var curveCollector = new FilteredElementCollector(doc)
                     .OfClass(typeof(MEPCurve))
                     .WhereElementIsNotElementType();
-                
-                foreach (Element mepElement in collector)
+                foreach (Element mepElement in curveCollector)
                 {
                     if (ElementsIntersect(opening, mepElement))
                     {
                         mepElements.Add(mepElement);
+                    }
+                }
+
+                // 2) Additional MEP family-instance categories (not MEPCurve): fittings/accessories for ducts/pipes/cable trays
+                var fiCategories = new List<BuiltInCategory>
+                {
+                    BuiltInCategory.OST_DuctAccessory,
+                    BuiltInCategory.OST_DuctFitting,
+                    BuiltInCategory.OST_PipeAccessory,
+                    BuiltInCategory.OST_PipeFitting,
+                    BuiltInCategory.OST_CableTrayFitting
+                };
+                foreach (var bic in fiCategories)
+                {
+                    var fiCollector = new FilteredElementCollector(doc)
+                        .OfCategory(bic)
+                        .WhereElementIsNotElementType()
+                        .ToElements();
+                    foreach (Element e in fiCollector)
+                    {
+                        if (ElementsIntersect(opening, e))
+                        {
+                            mepElements.Add(e);
+                        }
                     }
                 }
             }
@@ -804,8 +959,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var targetParam = targetElement.LookupParameter(mapping.TargetParameter);
                 if (targetParam == null || targetParam.IsReadOnly) return false;
                 
-                var value = sourceParam.AsString();
-                if (string.IsNullOrEmpty(value)) return false;
+                var value = GetParameterValueAsString(sourceParam);
+                if (string.IsNullOrWhiteSpace(value)) return false;
                 
                 // Apply renaming if conditions exist
                 value = _renamingService.ApplyRenaming(value, mapping.SourceParameter);
@@ -844,7 +999,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var sourceParam = sourceElement.LookupParameter(mapping.SourceParameter);
                     if (sourceParam != null)
                     {
-                        var value = sourceParam.AsString();
+                        var value = GetParameterValueAsString(sourceParam);
                         if (!string.IsNullOrEmpty(value))
                         {
                             // Apply renaming if conditions exist
@@ -877,6 +1032,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 System.Diagnostics.Debug.WriteLine($"Error transferring multiple parameters: {ex.Message}");
                 return false;
             }
+        }
+
+        private string GetParameterValueAsString(Parameter p)
+        {
+            try
+            {
+                if (p == null) return string.Empty;
+                var s = p.AsString();
+                if (!string.IsNullOrWhiteSpace(s)) return s;
+                s = p.AsValueString();
+                if (!string.IsNullOrWhiteSpace(s)) return s;
+                switch (p.StorageType)
+                {
+                    case StorageType.Integer:
+                        return p.AsInteger().ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    case StorageType.Double:
+                        return p.AsDouble().ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    case StorageType.ElementId:
+                        return p.AsElementId()?.IntegerValue.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+                    default:
+                        return string.Empty;
+                }
+            }
+            catch { return string.Empty; }
         }
         
         private bool ElementsIntersect(Element element1, Element element2)
