@@ -240,6 +240,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public string StructuralElementType { get; set; } = string.Empty;
         
         /// <summary>
+        /// The orientation of the host element (X or Y for walls/framing, blank for floors)
+        /// Pre-calculated during refresh for efficient clustering and orientation logic
+        /// </summary>
+        public string HostOrientation { get; set; } = string.Empty;
+        
+        /// <summary>
         /// The thickness of the structural element (for depth calculation)
         /// </summary>
         public double StructuralElementThickness { get; set; } = 0.0;

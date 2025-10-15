@@ -2101,3 +2101,165 @@ The resolved flags reset fix ensures that users can delete sleeves and place the
 4. ✅ **"Optimizations" can break working code** - GetBoundingBoxCenter() was already optimal
 5. ✅ **Simple solutions are often correct** - averaging entry/exit points naturally gives center
 6. ✅ **Test thoroughly before "improving"** - the working code had good reasons for its approach
+
+---
+
+## 🔧 **CLUSTER SLEEVE ORIENTATION FIX FOR WALLS**
+
+### **Problem: Width/Depth Swap on X-Direction Walls**
+
+**Symptom:**
+- Cluster sleeves on walls with X direction had swapped Width/Depth dimensions
+- Caused by Left-orientation family definition combined with rotation logic
+
+**Root Cause:**
+1. Universal families are created in LEFT view (looking at wall from left side)
+2. Y-orientation walls require 90° rotation for proper alignment  
+3. Rotation applied AFTER dimension calculation but dimensions calculated BEFORE rotation
+4. For walls/framing: Only Width and Depth parameters exist (no Height parameter)
+5. Width = opening span, Depth = host thickness (through-wall dimension)
+
+**The Problematic Flow:**
+```csharp
+// 1. Calculate bounding box dimensions
+var (width, height, depth, mid) = ClusterBoundingBoxServices.GetClusterBoundingBox(cluster);
+
+// 2. Place cluster sleeve at midpoint
+FamilyInstance inst = doc.Create.NewFamilyInstance(mid, clusterSymbol, refLevel!, StructuralType.NonStructural);
+
+// 3. Apply rotation for X-orientation walls
+if (groupKey.hostType == "Wall" && groupKey.orientation == "X")
+{
+    rotationAngle = Math.PI / 2;  // 90 degrees
+    ElementTransformUtils.RotateElement(doc, inst.Id, rotationAxis, rotationAngle);
+}
+
+// 4. Set parameters using PRE-rotation dimensions ❌
+// For X-walls: height/depth are swapped relative to rotated sleeve
+widthParam.Set(height);   // Wrong for rotated sleeve!
+depthParam.Set(depth);    // Wrong for rotated sleeve!
+```
+
+**The Fix:**
+```csharp
+// 1. Calculate bounding box dimensions (same as before)
+var (width, height, depth, mid) = ClusterBoundingBoxServices.GetClusterBoundingBox(cluster);
+
+// 2. Place and rotate sleeve (same as before)
+FamilyInstance inst = doc.Create.NewFamilyInstance(mid, clusterSymbol, refLevel!, StructuralType.NonStructural);
+
+double rotationAngle = 0.0;
+if (groupKey.hostType == "Wall" && groupKey.orientation == "Y")
+{
+    rotationAngle = Math.PI / 2;
+    ElementTransformUtils.RotateElement(doc, inst.Id, rotationAxis, rotationAngle);
+}
+
+// 3. ✅ SWAP dimensions if rotated to compensate for post-placement rotation
+bool shouldSwapDimensions = (groupKey.hostType == "Wall" && rotationAngle != 0.0);
+double openingWidth = shouldSwapDimensions ? depth : height;
+
+// 4. Set Width parameter (opening span)
+widthParam.Set(openingWidth);
+
+// 5. Set Depth parameter (host thickness - through-wall)
+// This is ALWAYS the wall thickness, regardless of rotation
+double hostThickness = wall.get_Parameter(BuiltInParameter.WALL_ATTR_WIDTH_PARAM)?.AsDouble() ?? wall.Width;
+depthParam.Set(hostThickness);
+```
+
+**Key Implementation Details:**
+
+**Method Signature Update:**
+```csharp
+// Before:
+private void SetClusterSizeParameters(
+    Document doc,
+    FamilyInstance inst,
+    List<FamilyInstance> cluster,
+    SleeveGroupKey groupKey,
+    double width,
+    double height,
+    double depth)
+
+// After:
+private void SetClusterSizeParameters(
+    Document doc,
+    FamilyInstance inst,
+    List<FamilyInstance> cluster,
+    SleeveGroupKey groupKey,
+    double width,
+    double height,
+    double depth,
+    bool shouldSwapDimensions = false)  // ← New parameter
+```
+
+**Wall/Framing Parameter Logic:**
+```csharp
+if (groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing")
+{
+    // Step 1: Assign all from bbox
+    double openingWidth = width;
+    double openingHeight = height;
+    double openingDepth = depth;
+    
+    // Step 2: Map world coordinates to sleeve parameters based on wall orientation
+    if (groupKey.orientation == "Y")
+    {
+        // Y-wall: Width=H (opening span along wall), Height=D (wall thickness), Depth=W (wall thickness)
+        double tempWidth = openingWidth;
+        double tempHeight = openingHeight;
+        double tempDepth = openingDepth;
+        openingWidth = tempHeight;  // H (608.6mm) → Width = 608.6mm
+        openingHeight = tempDepth;  // D (270mm) → Height = 270mm
+        openingDepth = tempWidth;   // W (200mm) → Depth = 200mm
+    }
+    else if (shouldSwapDimensions) // X-walls
+    {
+        // X-wall: Width=W (opening span along wall), Height=D (wall thickness), Depth=H (wall thickness)
+        double tempWidth = openingWidth;
+        double tempHeight = openingHeight;
+        double tempDepth = openingDepth;
+        openingWidth = tempWidth;   // W (478.8mm) → Width = 478.8mm
+        openingHeight = tempDepth;  // D (238.9mm) → Height = 238.9mm
+        openingDepth = tempHeight;  // H (200mm) → Depth = 200mm
+    }
+    
+    // Set the mapped dimensions (no override with wall thickness)
+    if (widthParam != null && !widthParam.IsReadOnly) widthParam.Set(openingWidth);
+    if (heightParam != null && !heightParam.IsReadOnly) heightParam.Set(openingHeight);
+    if (depthParam != null && !depthParam.IsReadOnly) depthParam.Set(openingDepth);
+}
+```
+
+**Diagnostic Logging:**
+```csharp
+File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+    $"[CLUSTER-DIM] Sleeve {inst.Id}: Orientation={groupKey.orientation}, Swap={shouldSwapDimensions}, " +
+    $"BBox(W={UnitUtils.ConvertFromInternalUnits(width, UnitTypeId.Millimeters):F1}mm, " +
+    $"H={UnitUtils.ConvertFromInternalUnits(height, UnitTypeId.Millimeters):F1}mm, " +
+    $"D={UnitUtils.ConvertFromInternalUnits(depth, UnitTypeId.Millimeters):F1}mm), " +
+    $"Opening Width={UnitUtils.ConvertFromInternalUnits(openingWidth, UnitTypeId.Millimeters):F1}mm\n");
+```
+
+**Why This Works:**
+- **Y-orientation walls** (Direction=0,1,0, running along Y axis): 
+  - Width = H (opening span along wall) ✅
+  - Height = D (wall thickness) ✅
+  - Depth = W (wall thickness) ✅
+- **X-orientation walls** (Direction=1,0,0, running along X axis): 
+  - Width = W (opening span along wall) ✅
+  - Height = D (wall thickness) ✅
+  - Depth = H (wall thickness) ✅
+- All dimensions use mapped bbox values (no wall thickness override) ✅
+- Dimensions align with sleeve family parameter requirements ✅
+
+**Testing Requirements:**
+- [x] Y-orientation walls (Direction=0,1,0): No rotation, dimensions correct
+- [ ] X-orientation walls (Direction=1,0,0): 90° rotation, dimensions swapped
+- [ ] Structural framing on X-axis: Similar to X-direction walls
+- [ ] Structural framing on Y-axis: Similar to Y-direction walls
+- [ ] Floor slabs: Different logic (Width/Height/Depth all used)
+
+**Files Modified:**
+- `Services/UniversalClusterService.cs` (lines 964-965, 1013-1072)

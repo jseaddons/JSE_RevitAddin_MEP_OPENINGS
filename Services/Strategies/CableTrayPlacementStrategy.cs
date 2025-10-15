@@ -71,6 +71,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                 double trayWidth = clashZone.MepElementWidth;
                 double trayHeight = clashZone.MepElementHeight;
                 
+                // ⚠️ DIAGNOSTIC: Log cable tray dimensions from ClashZone
+                double trayWidthMm = UnitUtils.ConvertFromInternalUnits(trayWidth, UnitTypeId.Millimeters);
+                double trayHeightMm = UnitUtils.ConvertFromInternalUnits(trayHeight, UnitTypeId.Millimeters);
+                DebugLogger.Info($"[CableTrayStrategy] CZ={clashZone.Id}: Read from XML: Width={trayWidthMm:F1}mm ({trayWidth:F6}ft), Height={trayHeightMm:F1}mm ({trayHeight:F6}ft)");
+                
                 // Get clearance from OpeningConditions (loaded from UI via CONDITIONS XML)
                 double topClearanceMm = conditions.ClearanceSettings.CableTrayTop;
                 double otherClearanceMm = conditions.ClearanceSettings.CableTrayOther;
@@ -88,8 +93,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                 double finalWidth = trayWidth + (2 * otherClearance); // Left and right use other clearance
                 double finalHeight = trayHeight + topClearance + otherClearance; // Top uses top clearance, bottom uses other
                 
+                // ⚠️ DIAGNOSTIC: Log final calculated dimensions
+                double finalWidthMm = UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters);
+                double finalHeightMm = UnitUtils.ConvertFromInternalUnits(finalHeight, UnitTypeId.Millimeters);
                 DebugLogger.Info($"[CableTrayStrategy] Top={topClearance:F4}ft, Other={otherClearance:F4}ft, Offset={offsetAmount:F4}ft upward");
-                DebugLogger.Info($"[CableTrayStrategy] Size: {finalWidth:F4} x {finalHeight:F4}, Offset: {offsetVector}");
+                DebugLogger.Info($"[CableTrayStrategy] FINAL SIZE: Width={finalWidthMm:F1}mm ({finalWidth:F6}ft) x Height={finalHeightMm:F1}mm ({finalHeight:F6}ft), Offset: {offsetVector}");
                 
                 return (offsetVector, finalWidth, finalHeight);
             }

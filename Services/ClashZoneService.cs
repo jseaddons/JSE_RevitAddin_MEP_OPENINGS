@@ -1003,6 +1003,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DocumentPath = document.PathName,
                 StructuralElementDocumentTitle = structuralElement.Document.Title,
                 StructuralElementType = structuralElementType,
+                HostOrientation = GetHostOrientation(structuralElement), // Pre-calculate orientation (X/Y for walls/framing)
                 StructuralElementThickness = GetElementThickness(structuralElement),
                 
                 StructuralElementNormal = GetStructuralElementNormal(structuralElement), // Pre-calculate normal/direction for orientation
@@ -1048,6 +1049,80 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Get structural element type name for depth calculation
         /// </summary>
+        /// <summary>
+        /// Get host orientation (X or Y) for walls and structural framing based on their direction
+        /// Pre-calculated during refresh for efficient clustering
+        /// </summary>
+        private string GetHostOrientation(Element structuralElement)
+        {
+            try
+            {
+                if (structuralElement is Wall wall)
+                {
+                    if (wall.Location is LocationCurve locationCurve)
+                    {
+                        var curve = locationCurve.Curve;
+                        if (curve is Line line)
+                        {
+                            var direction = line.Direction.Normalize();
+                            
+                            // Check if wall is more aligned with X or Y axis
+                            double absX = Math.Abs(direction.X);
+                            double absY = Math.Abs(direction.Y);
+                            
+                            // If wall runs along X axis (direction is primarily in X), orientation is X
+                            // If wall runs along Y axis (direction is primarily in Y), orientation is Y
+                            if (absX > absY)
+                            {
+                                _log($"[HOST-ORIENT] Wall {wall.Id}: Direction=({direction.X:F3},{direction.Y:F3}), absX={absX:F3} > absY={absY:F3} → Orientation=X");
+                                return "X"; // Wall runs along X axis
+                            }
+                            else
+                            {
+                                _log($"[HOST-ORIENT] Wall {wall.Id}: Direction=({direction.X:F3},{direction.Y:F3}), absY={absY:F3} > absX={absX:F3} → Orientation=Y");
+                                return "Y"; // Wall runs along Y axis
+                            }
+                        }
+                    }
+                }
+                else if (structuralElement is FamilyInstance famInst && 
+                         famInst.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+                {
+                    if (famInst.Location is LocationCurve locationCurve)
+                    {
+                        var curve = locationCurve.Curve;
+                        if (curve is Line line)
+                        {
+                            var direction = line.Direction.Normalize();
+                            
+                            // Same logic as walls
+                            double absX = Math.Abs(direction.X);
+                            double absY = Math.Abs(direction.Y);
+                            
+                            if (absX > absY)
+                            {
+                                _log($"[HOST-ORIENT] Framing {famInst.Id}: Direction=({direction.X:F3},{direction.Y:F3}), absX={absX:F3} > absY={absY:F3} → Orientation=X");
+                                return "X";
+                            }
+                            else
+                            {
+                                _log($"[HOST-ORIENT] Framing {famInst.Id}: Direction=({direction.X:F3},{direction.Y:F3}), absY={absY:F3} > absX={absX:F3} → Orientation=Y");
+                                return "Y";
+                            }
+                        }
+                    }
+                }
+                
+                // Floors don't need orientation
+                return "";
+            }
+            catch (Exception ex)
+            {
+                _log($"[HOST-ORIENT] Error determining orientation: {ex.Message}");
+                return "";
+            }
+        }
+
         private string GetStructuralElementType(Element element)
         {
             if (element is Wall)

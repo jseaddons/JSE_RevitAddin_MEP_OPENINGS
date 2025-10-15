@@ -169,14 +169,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 // Group sleeves by host type, system type, and orientation
                 var sleeveGroups = sleeves.GroupBy(sleeve => {
-                    var hostOrientationParam = sleeve.LookupParameter("HostOrientation");
-                    string effectiveOrientation = hostOrientationParam != null ? hostOrientationParam.AsString() : "";
-                    
                     var famName = sleeve.Symbol.Family.Name.ToLower();
                     string hostType = famName.Contains("onwall") ? "Wall" : (famName.Contains("onslab") || famName.Contains("onfloor") ? "Floor" : "Unknown");
                     
                     // Get category from MEP_ElementId by looking up in XML files (same approach as MarkParameterService)
                     string systemType = GetCategoryFromMepElementId(sleeve);
+                    
+                    // ⚠️ FIX: Get orientation from ClashZone (pre-calculated during refresh)
+                    string effectiveOrientation = GetOrientationFromClashZone(sleeve);
                     
                     // Log to dedicated cluster debug file
                     File.AppendAllText(clusterLogPath, $"Sleeve {sleeve.Id}: hostType={hostType}, systemType={systemType}, orientation={effectiveOrientation}\n");
@@ -243,6 +243,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             return (placedCount, deletedCount);
+        }
+
+        /// <summary>
+        /// Get host orientation from ClashZone (pre-calculated during refresh)
+        /// </summary>
+        private string GetOrientationFromClashZone(FamilyInstance sleeve)
+        {
+            try
+            {
+                var mepElementIdParam = sleeve.LookupParameter("MEP_ElementId");
+                if (mepElementIdParam != null)
+                {
+                    long mepElementId = mepElementIdParam.AsInteger();
+                    
+                    // Find clash zone for this MEP element
+                    var clashZone = GetClashZoneByMepElementId(mepElementId);
+                    if (clashZone != null)
+                    {
+                        return clashZone.HostOrientation ?? "";
+                    }
+                }
+                
+                return "";
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[UniversalClusterService] Error getting orientation from ClashZone: {ex.Message}");
+                return "";
+            }
         }
 
         /// <summary>
@@ -946,10 +975,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             FamilyInstance inst = doc.Create.NewFamilyInstance(mid, clusterSymbol, refLevel!, StructuralType.NonStructural);
 
             // Apply rotation if needed
+            // ⚠️ FIX: X-orientation walls need rotation, not Y-orientation walls
             double rotationAngle = 0.0;
-            if (groupKey.hostType == "Wall" && groupKey.orientation == "Y")
+            if (groupKey.hostType == "Wall" && groupKey.orientation == "X")
             {
-                rotationAngle = Math.PI / 2;
+                rotationAngle = Math.PI / 2;  // 90° rotation for X-oriented walls
             }
 
             if (rotationAngle != 0.0)
@@ -960,8 +990,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 ElementTransformUtils.RotateElement(doc, inst.Id, rotationAxis, rotationAngle);
             }
 
-            // Set size parameters
-            SetClusterSizeParameters(doc, inst, cluster, groupKey, width, height, depth);
+            // Set size parameters (swap dimensions if rotated for orientation alignment)
+            bool shouldSwapDimensions = (groupKey.hostType == "Wall" && rotationAngle != 0.0);
+            SetClusterSizeParameters(doc, inst, cluster, groupKey, width, height, depth, shouldSwapDimensions);
 
             // ⚠️ CRITICAL: Set MEP_ElementId on cluster sleeve (use first individual sleeve's MEP_ElementId)
             var firstSleeve = cluster.FirstOrDefault();
@@ -1016,7 +1047,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             SleeveGroupKey groupKey,
             double width,
             double height,
-            double depth)
+            double depth,
+            bool shouldSwapDimensions = false)
         {
             var widthParam = inst.LookupParameter("Width");
             var heightParam = inst.LookupParameter("Height");
@@ -1024,36 +1056,111 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             if (groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing")
             {
-                // Map to match family created in Left view
-                if (widthParam != null && !widthParam.IsReadOnly) widthParam.Set(height);
-                if (heightParam != null && !heightParam.IsReadOnly) heightParam.Set(depth);
-
-                // Use host thickness for Depth
-                double hostThickness = width;
-                if (groupKey.hostType == "Wall")
+                // Step 1: Assign all from bbox
+                double openingWidth = width;
+                double openingHeight = height;
+                double openingDepth = depth;
+                
+                // Step 2: Map world coordinates to sleeve parameters
+                if (groupKey.orientation == "Y")
                 {
-                    var wall = cluster[0].Host as Wall;
-                    if (wall != null)
+                    // Y-wall: Width=H, Height=D, Depth=W
+                    double tempWidth = openingWidth;
+                    double tempHeight = openingHeight;
+                    double tempDepth = openingDepth;
+                    openingWidth = tempHeight;  // H (608.6mm)
+                    openingHeight = tempDepth;  // D (270mm)
+                    openingDepth = tempWidth;   // W (200mm)
+                }
+                else if (shouldSwapDimensions) // X-walls
+                {
+                    // X-wall: Width=W, Height=D, Depth=H
+                    double tempWidth = openingWidth;
+                    double tempHeight = openingHeight;
+                    double tempDepth = openingDepth;
+                    openingWidth = tempWidth;   // W (478.8mm)
+                    openingHeight = tempDepth;  // D (238.9mm)
+                    openingDepth = tempHeight;  // H (200mm)
+                }
+                
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                    $"[CLUSTER-DIM] Sleeve {inst.Id}: Orientation={groupKey.orientation}, Swap={shouldSwapDimensions}, " +
+                    $"BBox(W={UnitUtils.ConvertFromInternalUnits(width, UnitTypeId.Millimeters):F1}mm, " +
+                    $"H={UnitUtils.ConvertFromInternalUnits(height, UnitTypeId.Millimeters):F1}mm, " +
+                    $"D={UnitUtils.ConvertFromInternalUnits(depth, UnitTypeId.Millimeters):F1}mm), " +
+                    $"Final(W={UnitUtils.ConvertFromInternalUnits(openingWidth, UnitTypeId.Millimeters):F1}mm, " +
+                    $"H={UnitUtils.ConvertFromInternalUnits(openingHeight, UnitTypeId.Millimeters):F1}mm, " +
+                    $"D={UnitUtils.ConvertFromInternalUnits(openingDepth, UnitTypeId.Millimeters):F1}mm)\n");
+                
+                // Set Width and Height from bbox dimensions (after swap if needed)
+                if (widthParam != null && !widthParam.IsReadOnly) widthParam.Set(openingWidth);
+                if (heightParam != null && !heightParam.IsReadOnly) heightParam.Set(openingHeight);
+
+                // Get actual host thickness for Depth parameter (through-wall dimension)
+                // ⚠️ CRITICAL: Use ClashZone.StructuralElementThickness (pre-calculated during refresh)
+                var firstSleeve = cluster[0];
+                var mepIdParam = firstSleeve.LookupParameter("MEP_ElementId");
+                double hostThickness = openingDepth;  // Default fallback
+                
+                if (mepIdParam != null)
+                {
+                    long mepId = mepIdParam.AsInteger();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                        $"[CLUSTER-DEPTH] Sleeve {inst.Id}: Looking up ClashZone for MEP_ElementId={mepId}\n");
+                    
+                    var clashZone = GetClashZoneByMepElementId(mepId);
+                    if (clashZone != null)
                     {
-                        hostThickness = wall.get_Parameter(BuiltInParameter.WALL_ATTR_WIDTH_PARAM)?.AsDouble() ?? wall.Width;
-                        DebugLogger.Log($"[ClusterService] Wall thickness used for Depth: {UnitUtils.ConvertFromInternalUnits(hostThickness, UnitTypeId.Millimeters):F1}mm");
+                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                            $"[CLUSTER-DEPTH] Found ClashZone {clashZone.Id}, StructThickness={clashZone.StructuralElementThickness:F6}ft ({UnitUtils.ConvertFromInternalUnits(clashZone.StructuralElementThickness, UnitTypeId.Millimeters):F1}mm)\n");
+                        
+                        if (clashZone.StructuralElementThickness > 0)
+                        {
+                            hostThickness = clashZone.StructuralElementThickness;
+                        }
+                    }
+                    else
+                    {
+                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                            $"[CLUSTER-DEPTH] ClashZone NOT FOUND for MEP_ElementId={mepId}\n");
                     }
                 }
-                else if (groupKey.hostType == "Structural Framing")
+                
+                // Fallback: Try to get from host element directly if ClashZone thickness was not available
+                if (hostThickness <= 0.0)
                 {
-                    var framing = cluster[0].Host as FamilyInstance;
-                    if (framing != null)
+                    if (groupKey.hostType == "Wall")
                     {
-                        var framingType = framing.Symbol;
-                        var bParam = framingType.LookupParameter("b");
-                        if (bParam != null && bParam.StorageType == StorageType.Double)
+                        var wall = cluster[0].Host as Wall;
+                        if (wall != null)
                         {
-                            hostThickness = bParam.AsDouble();
-                            DebugLogger.Log($"[ClusterService] Framing 'b' parameter used for Depth: {UnitUtils.ConvertFromInternalUnits(hostThickness, UnitTypeId.Millimeters):F1}mm");
+                            hostThickness = wall.get_Parameter(BuiltInParameter.WALL_ATTR_WIDTH_PARAM)?.AsDouble() ?? wall.Width;
+                            DebugLogger.Log($"[ClusterService] Wall thickness from host element: {UnitUtils.ConvertFromInternalUnits(hostThickness, UnitTypeId.Millimeters):F1}mm");
+                        }
+                    }
+                    else if (groupKey.hostType == "Structural Framing")
+                    {
+                        var framing = cluster[0].Host as FamilyInstance;
+                        if (framing != null)
+                        {
+                            var framingType = framing.Symbol;
+                            var bParam = framingType.LookupParameter("b");
+                            if (bParam != null && bParam.StorageType == StorageType.Double)
+                            {
+                                hostThickness = bParam.AsDouble();
+                                DebugLogger.Log($"[ClusterService] Framing 'b' parameter used for Depth: {UnitUtils.ConvertFromInternalUnits(hostThickness, UnitTypeId.Millimeters):F1}mm");
+                            }
                         }
                     }
                 }
-                if (depthParam != null && !depthParam.IsReadOnly) depthParam.Set(hostThickness);
+                
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                    $"[CLUSTER-DIM] Sleeve {inst.Id}: Mapped Depth = {UnitUtils.ConvertFromInternalUnits(openingDepth, UnitTypeId.Millimeters):F1}mm\n");
+                    
+                // Set the mapped dimensions (no override with wall thickness)
+                if (widthParam != null && !widthParam.IsReadOnly) widthParam.Set(openingWidth);
+                if (heightParam != null && !heightParam.IsReadOnly) heightParam.Set(openingHeight);
+                if (depthParam != null && !depthParam.IsReadOnly) depthParam.Set(openingDepth);
             }
             else
             {
