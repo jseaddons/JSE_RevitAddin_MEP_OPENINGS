@@ -34,11 +34,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.ViewModels
                 _placeAction.Invoke(_commandData);
                 return;
             }
-            // Fallback -- directly execute command if no delegate supplied (legacy behavior)
-            var command = new OpeningsPLaceCommand();
-            string? message = null;
-            ElementSet elements = new ElementSet();
-            command.Execute(_commandData, ref message!, elements);
+            // Fallback -- OpeningsPLaceCommand is obsolete
+            // All placement should go through SleevePlacementExternalEvent via the Place Openings button
+            System.Diagnostics.Debug.WriteLine("Attempted to use obsolete OpeningsPLaceCommand - please use the Place Openings workflow instead");
         }
 
         private void ExecuteAddMarkParameter()

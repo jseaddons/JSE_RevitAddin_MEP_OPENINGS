@@ -528,7 +528,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         // Collects structural elements within section box bounds only - MAJOR PERFORMANCE OPTIMIZATION
-    public static List<(Element, Transform?)> CollectStructuralElementsForDirectIntersectionVisibleOnly(Document doc, Action<string> log)
+    public static List<(Element, Transform?)> CollectStructuralElementsForDirectIntersectionVisibleOnly(Document doc, Action<string> log, List<string>? selectedHostTypes = null)
         {
             var elements = new List<(Element, Transform?)>();
             log("Starting structural element collection.");
@@ -552,13 +552,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 log($"Error getting section box: {ex.Message}");
             }
 
-            // Use the same solid-based section-box filtering used by the MEP collector.
-            // This mirrors the working logic and avoids AABB pitfalls across host/link transforms.
-            var categories = new[] {
+            // ✅ FIX: Filter structural categories based on UI host type selection
+            var allCategories = new[] {
                 BuiltInCategory.OST_Walls,
                 BuiltInCategory.OST_StructuralFraming,
                 BuiltInCategory.OST_Floors
             };
+
+            var categories = allCategories;
+            if (selectedHostTypes != null && selectedHostTypes.Count > 0)
+            {
+                var filteredCategories = new List<BuiltInCategory>();
+                
+                if (selectedHostTypes.Any(ht => ht.Equals("Walls", StringComparison.OrdinalIgnoreCase)))
+                {
+                    filteredCategories.Add(BuiltInCategory.OST_Walls);
+                    log("UI Selection: Including Walls");
+                }
+                
+                if (selectedHostTypes.Any(ht => ht.Equals("Structural Framing", StringComparison.OrdinalIgnoreCase)))
+                {
+                    filteredCategories.Add(BuiltInCategory.OST_StructuralFraming);
+                    log("UI Selection: Including Structural Framing");
+                }
+                
+                if (selectedHostTypes.Any(ht => ht.Equals("Floors", StringComparison.OrdinalIgnoreCase)))
+                {
+                    filteredCategories.Add(BuiltInCategory.OST_Floors);
+                    log("UI Selection: Including Floors");
+                }
+                
+                if (filteredCategories.Count > 0)
+                {
+                    categories = filteredCategories.ToArray();
+                    log($"✅ FILTERED: Only collecting {filteredCategories.Count} selected host types (was {allCategories.Length} total)");
+                }
+                else
+                {
+                    log("⚠️ WARNING: No valid host types selected, using all categories");
+                }
+            }
+            else
+            {
+                log("No host type selection provided, collecting all structural categories");
+            }
 
             try
             {
@@ -641,7 +678,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         // Backwards-compatible overload: no-op logger
         public static List<(Element, Transform?)> CollectStructuralElementsForDirectIntersectionVisibleOnly(Document doc)
         {
-            return CollectStructuralElementsForDirectIntersectionVisibleOnly(doc, _ => { });
+            return CollectStructuralElementsForDirectIntersectionVisibleOnly(doc, _ => { }, null);
         }
         
         // Copy of the working CollectElements method from the command

@@ -1127,7 +1127,130 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 referenceCategoriesListBox.Items.Add(category, false);
             }
             
+            // FOOLPROOF UI: Auto-select Duct Accessories when Ducts is selected
+            referenceCategoriesListBox.ItemCheck += OnMepCategoryItemCheck;
+            
             System.Diagnostics.Debug.WriteLine($"Populated MEP categories with {allMepCategories.Count} standard categories");
+        }
+
+        /// <summary>
+        /// FOOLPROOF UI: Auto-select Duct Accessories when Ducts is selected
+        /// This prevents the user from forgetting to select duct accessories
+        /// </summary>
+        private void OnMepCategoryItemCheck(object sender, ItemCheckEventArgs e)
+        {
+            try
+            {
+                var listBox = sender as WinForms.CheckedListBox;
+                if (listBox == null) return;
+                
+                var itemText = listBox.Items[e.Index].ToString();
+                
+                // If user is checking "Ducts", auto-check "Duct Accessories"
+                if (itemText.Equals("Ducts", StringComparison.OrdinalIgnoreCase) && e.NewValue == CheckState.Checked)
+                {
+                    // Find "Duct Accessories" item
+                    for (int i = 0; i < listBox.Items.Count; i++)
+                    {
+                        if (listBox.Items[i].ToString().Equals("Duct Accessories", StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Auto-check Duct Accessories
+                            listBox.SetItemChecked(i, true);
+                            DebugLogger.Info("[FOOLPROOF_UI] Auto-selected 'Duct Accessories' because 'Ducts' was selected");
+                            
+                            // Show user-friendly message
+                            ShowAutoSelectionMessage("Duct Accessories", "Ducts");
+                            break;
+                        }
+                    }
+                }
+                
+                // If user is unchecking "Duct Accessories", warn about potential issues
+                if (itemText.Equals("Duct Accessories", StringComparison.OrdinalIgnoreCase) && e.NewValue == CheckState.Unchecked)
+                {
+                    // Check if Ducts is still selected
+                    bool ductsSelected = false;
+                    for (int i = 0; i < listBox.Items.Count; i++)
+                    {
+                        if (listBox.Items[i].ToString().Equals("Ducts", StringComparison.OrdinalIgnoreCase) && listBox.GetItemChecked(i))
+                        {
+                            ductsSelected = true;
+                            break;
+                        }
+                    }
+                    
+                    if (ductsSelected)
+                    {
+                        ShowDuctAccessoriesWarning();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[FOOLPROOF_UI] Error in auto-selection: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Show user-friendly message about auto-selection
+        /// </summary>
+        private void ShowAutoSelectionMessage(string autoSelected, string trigger)
+        {
+            try
+            {
+                // You can implement a toast notification or status message here
+                DebugLogger.Info($"[FOOLPROOF_UI] Auto-selected '{autoSelected}' because '{trigger}' was selected");
+                
+                // Optional: Show a brief status message
+                // StatusLabel.Text = $"Auto-selected {autoSelected} for complete duct system detection";
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[FOOLPROOF_UI] Error showing auto-selection message: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Show warning when user unchecks Duct Accessories while Ducts is selected
+        /// </summary>
+        private void ShowDuctAccessoriesWarning()
+        {
+            try
+            {
+                var result = WinForms.MessageBox.Show(
+                    "Warning: You've unchecked 'Duct Accessories' while 'Ducts' is still selected.\n\n" +
+                    "This may cause dampers to be missed during sleeve placement.\n\n" +
+                    "Do you want to keep 'Duct Accessories' selected for complete detection?",
+                    "Duct Accessories Warning",
+                    WinForms.MessageBoxButtons.YesNo,
+                    WinForms.MessageBoxIcon.Warning);
+                
+                if (result == WinForms.DialogResult.Yes)
+                {
+                    // Re-check Duct Accessories
+                    var mepCategoriesListBox = _topRightPanel.Controls.OfType<WinForms.CheckedListBox>().FirstOrDefault();
+                    if (mepCategoriesListBox != null)
+                    {
+                        for (int i = 0; i < mepCategoriesListBox.Items.Count; i++)
+                        {
+                            if (mepCategoriesListBox.Items[i].ToString().Equals("Duct Accessories", StringComparison.OrdinalIgnoreCase))
+                            {
+                                mepCategoriesListBox.SetItemChecked(i, true);
+                                DebugLogger.Info("[FOOLPROOF_UI] User chose to keep 'Duct Accessories' selected");
+                                break;
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    DebugLogger.Info("[FOOLPROOF_UI] User chose to proceed without 'Duct Accessories' - background auto-detection will handle dampers");
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[FOOLPROOF_UI] Error showing duct accessories warning: {ex.Message}");
+            }
         }
 
         private void UpdateMepTypeBasedOnSelection()
@@ -6749,8 +6872,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
                 // Use the proven TestMepIntersection service with current UI selections
                 var selectedCategories = GetSelectedMepCategories();
+                var selectedHostTypes = Services.FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>();
                 var intersectionService = new IntersectionDetectionService(msg => DebugLogger.Info(msg));
-                var intersections = intersectionService.FindIntersections(document, view3D, selectedCategories);
+                var intersections = intersectionService.FindIntersections(document, view3D, selectedCategories, null, null, selectedHostTypes);
 
                 DebugLogger.Info($"GetCurrentIntersections: Found {intersections.Count} total intersections using TestMepIntersection service");
                 return intersections;

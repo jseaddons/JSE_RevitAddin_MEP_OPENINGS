@@ -67,6 +67,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ⚠️ CRITICAL: Reset cluster flags for deleted cluster sleeves
                 ResetClusterFlagsForDeletedSleeves(doc, xmlFilePath);
                 
+                // Load clash zone cache once (calculate once, use many times)
+                LoadClashZoneCache(xmlFilePath);
+                
                 // Get cluster configuration
                 double toleranceMm = ClusterConfigurationManager.Instance.JoinOpeningsDistance;
                 if (!string.IsNullOrEmpty(targetCategory) && targetCategory.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -512,6 +515,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             
                             foreach (var clashZone in filter.ClashZoneStorage.ClashZones)
                             {
+                                // Check cluster sleeves
                                 if (clashZone.IsClusterResolved)
                                 {
                                     // ✅ FIX: Check integer version (ClusterSleeveInstanceId) which IS serialized to XML
@@ -543,6 +547,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         }
                                     }
                                 }
+                                
+                                // ⚠️ CRITICAL: Also check individual sleeves (IsResolved)
+                                if (clashZone.IsResolved && !clashZone.IsClusterResolved)
+                                {
+                                    if (clashZone.SleeveInstanceId <= 0)
+                                    {
+                                        clashZone.IsResolved = false;
+                                        clashZone.ResolvedSleeveId = null;
+                                        clashZone.SleeveInstanceId = -1;
+                                        clashZone.SleeveFamilyName = string.Empty;
+                                        clashZone.LastUpdated = DateTime.Now;
+                                        resetCount++;
+                                        modified = true;
+                                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"Reset individual sleeve flag for ClashZone {clashZone.Id} - SleeveInstanceId was {clashZone.SleeveInstanceId} (invalid)\n");
+                                    }
+                                    else
+                                    {
+                                        // Check if individual sleeve still exists in Revit
+                                        var sleeveId = new ElementId(clashZone.SleeveInstanceId);
+                                        var sleeve = doc.GetElement(sleeveId);
+                                        if (sleeve == null)
+                                        {
+                                            // Individual sleeve was deleted - reset flag
+                                            clashZone.IsResolved = false;
+                                            clashZone.ResolvedSleeveId = null;
+                                            clashZone.SleeveInstanceId = -1;
+                                            clashZone.SleeveFamilyName = string.Empty;
+                                            clashZone.LastUpdated = DateTime.Now;
+                                            resetCount++;
+                                            modified = true;
+                                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"Reset individual sleeve flag for ClashZone {clashZone.Id} - sleeve {clashZone.SleeveInstanceId} was deleted\n");
+                                        }
+                                    }
+                                }
                             }
                             
                             // ✅ FIX: Only save if modifications were made, and reader is already closed
@@ -565,7 +603,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (resetCount > 0)
                 {
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"Reset cluster flags for {resetCount} deleted cluster sleeves\n");
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"✓ Reset flags for {resetCount} deleted sleeves (cluster + individual)\n");
+                }
+                else
+                {
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"✓ No deleted sleeves found - all flags preserved\n");
                 }
             }
             catch (Exception ex)
@@ -838,6 +880,230 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return candidates;
         }
 
+        /// <summary>
+        /// Cache for clash zone data to avoid expensive lookups during clustering
+        /// Key: MEP Element ID, Value: ClashZone data
+        /// </summary>
+        private Dictionary<long, ClashZone> _clashZoneCache = new Dictionary<long, ClashZone>();
+
+        /// <summary>
+        /// Load clash zone cache from XML files once at the start of clustering
+        /// This follows "calculate once, use many times" principle
+        /// </summary>
+        private void LoadClashZoneCache(string xmlFilePath)
+        {
+            _clashZoneCache.Clear();
+            
+            try
+            {
+                var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                
+                if (!Directory.Exists(filtersDirectory))
+                    return;
+
+                var xmlFiles = string.IsNullOrEmpty(xmlFilePath) 
+                    ? Directory.GetFiles(filtersDirectory, "*.xml")
+                    : new[] { xmlFilePath };
+
+                foreach (var xmlFile in xmlFiles)
+                {
+                    if (File.Exists(xmlFile))
+                    {
+                        var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
+                        using (var reader = new StreamReader(xmlFile))
+                        {
+                            var filter = (OpeningFilter)serializer.Deserialize(reader);
+                            
+                            if (filter?.ClashZoneStorage?.ClashZones != null)
+                            {
+                                foreach (var cz in filter.ClashZoneStorage.ClashZones)
+                                {
+                                    // Cache by MEP element ID for fast lookup
+                                    if (cz.MepElementIdValue > 0)
+                                    {
+                                        _clashZoneCache[cz.MepElementIdValue] = cz;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                    $"[CACHE] Loaded {_clashZoneCache.Count} clash zones into cache\n");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[UniversalClusterService] Error loading clash zone cache: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Get clash zone from cache by MEP element ID (from sleeve parameter)
+        /// </summary>
+        private ClashZone GetClashZoneFromCache(FamilyInstance sleeve)
+        {
+            try
+            {
+                var mepIdParam = sleeve.LookupParameter("MEP_ElementId");
+                if (mepIdParam != null && !string.IsNullOrEmpty(mepIdParam.AsString()))
+                {
+                    if (long.TryParse(mepIdParam.AsString(), out long mepId))
+                    {
+                        if (_clashZoneCache.TryGetValue(mepId, out ClashZone cz))
+                        {
+                            return cz;
+                        }
+                    }
+                }
+            }
+            catch { }
+            return null;
+        }
+        
+        /// <summary>
+        /// Get pipe information string from cached clash zone
+        /// </summary>
+        private string GetPipeInfoFromCache(FamilyInstance sleeve)
+        {
+            var cz = GetClashZoneFromCache(sleeve);
+            if (cz != null)
+            {
+                return $"pipeId={cz.MepElementIdValue}, pipe={cz.MepElementSize:F1}mm";
+            }
+            return "pipeId=Unknown, pipe=Unknown";
+        }
+
+        /// <summary>
+        /// Get MEP_ElementId parameter value
+        /// </summary>
+        private string GetMepElementId(FamilyInstance sleeve)
+        {
+            try
+            {
+                var mepIdParam = sleeve.LookupParameter("MEP_ElementId");
+                if (mepIdParam != null && !mepIdParam.IsReadOnly)
+                {
+                    return mepIdParam.AsString();
+                }
+            }
+            catch { }
+            return "Unknown";
+        }
+
+        /// <summary>
+        /// Get pipe size from MEP_ElementId parameter
+        /// </summary>
+        private string GetPipeSizeFromMepElementId(FamilyInstance sleeve)
+        {
+            try
+            {
+                var mepIdParam = sleeve.LookupParameter("MEP_ElementId");
+                if (mepIdParam != null && !mepIdParam.IsReadOnly)
+                {
+                    string mepElementId = mepIdParam.AsString();
+                    if (long.TryParse(mepElementId, out long mepId))
+                    {
+                        var clashZone = GetClashZoneByMepElementId(mepId);
+                        if (clashZone != null)
+                        {
+                            return $"{clashZone.MepElementSize:F1}mm";
+                        }
+                    }
+                }
+            }
+            catch { }
+            return "Unknown";
+        }
+
+        /// <summary>
+        /// Calculate sleeve outer diameter from bounding box
+        /// </summary>
+        private double GetSleeveOuterDiameter(BoundingBoxXYZ bbox)
+        {
+            if (bbox == null) return 0.0;
+            
+            // For circular sleeves, diameter is the larger of width or height
+            double width = UnitUtils.ConvertFromInternalUnits(bbox.Max.X - bbox.Min.X, UnitTypeId.Millimeters);
+            double height = UnitUtils.ConvertFromInternalUnits(bbox.Max.Y - bbox.Min.Y, UnitTypeId.Millimeters);
+            
+            return Math.Max(width, height);
+        }
+
+        /// <summary>
+        /// Check if a sleeve is circular based on its family name
+        /// </summary>
+        private bool IsCircularSleeve(FamilyInstance sleeve)
+        {
+            string familyName = sleeve.Symbol?.FamilyName ?? "";
+            return familyName.IndexOf("Circular", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   familyName.IndexOf("Round", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        /// <summary>
+        /// Calculate the minimum distance between two circular sleeves using cached XML data
+        /// Returns the clearance between the outer edges (center-to-center minus radii)
+        /// Follows "calculate once, use many times" - uses MepElementSize from XML cache
+        /// </summary>
+        private double GetMinimumDistanceBetweenCircularSleeves(FamilyInstance sleeve1, FamilyInstance sleeve2, BoundingBoxXYZ bbox1, BoundingBoxXYZ bbox2)
+        {
+            // Calculate centers from bounding boxes
+            XYZ center1 = new XYZ(
+                (bbox1.Min.X + bbox1.Max.X) / 2.0,
+                (bbox1.Min.Y + bbox1.Max.Y) / 2.0,
+                (bbox1.Min.Z + bbox1.Max.Z) / 2.0
+            );
+            
+            XYZ center2 = new XYZ(
+                (bbox2.Min.X + bbox2.Max.X) / 2.0,
+                (bbox2.Min.Y + bbox2.Max.Y) / 2.0,
+                (bbox2.Min.Z + bbox2.Max.Z) / 2.0
+            );
+            
+            // Calculate center-to-center distance (in Revit internal units - feet)
+            double centerDistance = center1.DistanceTo(center2);
+            
+            // Get MEP element sizes from cached clash zones (already calculated during refresh)
+            var cz1 = GetClashZoneFromCache(sleeve1);
+            var cz2 = GetClashZoneFromCache(sleeve2);
+            
+            double diameter1_mm = cz1?.MepElementSize ?? GetSleeveOuterDiameter(bbox1);
+            double diameter2_mm = cz2?.MepElementSize ?? GetSleeveOuterDiameter(bbox2);
+            
+            // Convert diameters to radii in feet
+            double radius1 = UnitUtils.ConvertToInternalUnits(diameter1_mm / 2.0, UnitTypeId.Millimeters);
+            double radius2 = UnitUtils.ConvertToInternalUnits(diameter2_mm / 2.0, UnitTypeId.Millimeters);
+            
+            // Clearance = center-to-center - (radius1 + radius2) (all in feet)
+            double clearance = centerDistance - (radius1 + radius2);
+            
+            return Math.Max(0.0, clearance); // Return 0 if overlapping
+        }
+
+        /// <summary>
+        /// Calculate the minimum distance between two bounding boxes
+        /// Returns 0 if they overlap, otherwise the shortest distance between any two points
+        /// </summary>
+        private double GetMinimumDistanceBetweenBoundingBoxes(BoundingBoxXYZ bbox1, BoundingBoxXYZ bbox2)
+        {
+            // Check if bounding boxes overlap
+            bool xOverlap = bbox1.Max.X >= bbox2.Min.X && bbox1.Min.X <= bbox2.Max.X;
+            bool yOverlap = bbox1.Max.Y >= bbox2.Min.Y && bbox1.Min.Y <= bbox2.Max.Y;
+            bool zOverlap = bbox1.Max.Z >= bbox2.Min.Z && bbox1.Min.Z <= bbox2.Max.Z;
+            
+            if (xOverlap && yOverlap && zOverlap)
+            {
+                return 0.0; // Bounding boxes overlap
+            }
+            
+            // Calculate minimum distance between non-overlapping bounding boxes
+            double dx = Math.Max(0, Math.Max(bbox1.Min.X - bbox2.Max.X, bbox2.Min.X - bbox1.Max.X));
+            double dy = Math.Max(0, Math.Max(bbox1.Min.Y - bbox2.Max.Y, bbox2.Min.Y - bbox1.Max.Y));
+            double dz = Math.Max(0, Math.Max(bbox1.Min.Z - bbox2.Max.Z, bbox2.Min.Z - bbox1.Max.Z));
+            
+            return Math.Sqrt(dx * dx + dy * dy + dz * dz);
+        }
+
         private List<FamilyInstance> FilterNeighborsByBoundingBox(
             FamilyInstance inst,
             List<FamilyInstance> candidates,
@@ -856,11 +1122,56 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var o2_bbox = bboxes.ContainsKey(s) ? bboxes[s] : s.get_BoundingBox(null);
                 if (o1_bbox == null || o2_bbox == null) continue;
 
-                bool xOverlap = o1_bbox.Max.X >= o2_bbox.Min.X - toleranceDist && o1_bbox.Min.X <= o2_bbox.Max.X + toleranceDist;
-                bool yOverlap = o1_bbox.Max.Y >= o2_bbox.Min.Y - toleranceDist && o1_bbox.Min.Y <= o2_bbox.Max.Y + toleranceDist;
-                bool zOverlap = o1_bbox.Max.Z >= o2_bbox.Min.Z - toleranceDist && o1_bbox.Min.Z <= o2_bbox.Max.Z + toleranceDist;
-
-                if (xOverlap && yOverlap && zOverlap) neighbors.Add(s);
+                // Calculate distance based on sleeve type
+                // For circular sleeves: Use center-to-center minus radii (actual clearance)
+                // For rectangular sleeves: Use bounding box boundary distance
+                bool isCircular1 = IsCircularSleeve(inst);
+                bool isCircular2 = IsCircularSleeve(s);
+                
+                double minDistance;
+                string distanceMethod;
+                
+                if (isCircular1 && isCircular2)
+                {
+                    // Both circular: Use proper circular distance (center-to-center - radii)
+                    // Uses MepElementSize from XML cache (calculate once, use many times)
+                    minDistance = GetMinimumDistanceBetweenCircularSleeves(inst, s, o1_bbox, o2_bbox);
+                    distanceMethod = "circular";
+                }
+                else
+                {
+                    // At least one rectangular: Use bounding box distance
+                    minDistance = GetMinimumDistanceBetweenBoundingBoxes(o1_bbox, o2_bbox);
+                    distanceMethod = "bbox";
+                }
+                
+                // Debug logging for clustering distance with pipe sizes
+                double minDistanceMm = UnitUtils.ConvertFromInternalUnits(minDistance, UnitTypeId.Millimeters);
+                double toleranceMm = UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters);
+                
+                // Get pipe information from cache (fast lookup from XML)
+                string pipe1Info = GetPipeInfoFromCache(inst);
+                string pipe2Info = GetPipeInfoFromCache(s);
+                
+                // Calculate individual sleeve outer diameter
+                double sleeve1OD = GetSleeveOuterDiameter(o1_bbox);
+                double sleeve2OD = GetSleeveOuterDiameter(o2_bbox);
+                
+                if (minDistance <= toleranceDist)
+                {
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                        $"[CLUSTER-DISTANCE] CLUSTERING sleeves {inst.Id} and {s.Id}: distance={minDistanceMm:F1}mm <= tolerance={toleranceMm:F1}mm (method={distanceMethod})\n");
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                        $"[CLUSTER-PIPE-SIZE] Sleeve {inst.Id}: {pipe1Info}, sleeveOD={sleeve1OD:F1}mm, bbox=({UnitUtils.ConvertFromInternalUnits(o1_bbox.Min.X, UnitTypeId.Millimeters):F1},{UnitUtils.ConvertFromInternalUnits(o1_bbox.Min.Y, UnitTypeId.Millimeters):F1}) to ({UnitUtils.ConvertFromInternalUnits(o1_bbox.Max.X, UnitTypeId.Millimeters):F1},{UnitUtils.ConvertFromInternalUnits(o1_bbox.Max.Y, UnitTypeId.Millimeters):F1})\n");
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                        $"[CLUSTER-PIPE-SIZE] Sleeve {s.Id}: {pipe2Info}, sleeveOD={sleeve2OD:F1}mm, bbox=({UnitUtils.ConvertFromInternalUnits(o2_bbox.Min.X, UnitTypeId.Millimeters):F1},{UnitUtils.ConvertFromInternalUnits(o2_bbox.Min.Y, UnitTypeId.Millimeters):F1}) to ({UnitUtils.ConvertFromInternalUnits(o2_bbox.Max.X, UnitTypeId.Millimeters):F1},{UnitUtils.ConvertFromInternalUnits(o2_bbox.Max.Y, UnitTypeId.Millimeters):F1})\n");
+                    neighbors.Add(s);
+                }
+                else
+                {
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                        $"[CLUSTER-DISTANCE] NOT clustering sleeves {inst.Id} and {s.Id}: distance={minDistanceMm:F1}mm > tolerance={toleranceMm:F1}mm (method={distanceMethod})\n");
+                }
             }
 
             return neighbors;
@@ -1150,17 +1461,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 hostThickness = bParam.AsDouble();
                                 DebugLogger.Log($"[ClusterService] Framing 'b' parameter used for Depth: {UnitUtils.ConvertFromInternalUnits(hostThickness, UnitTypeId.Millimeters):F1}mm");
                             }
+                            else
+                            {
+                                // ⚠️ BUG FIX: Use bounding box calculation instead of hardcoded 500mm
+                                var framingBbox = framing.get_BoundingBox(null);
+                                if (framingBbox != null)
+                                {
+                                    // Calculate thickness from bounding box
+                                    var thickness = Math.Max(
+                                        Math.Max(
+                                            framingBbox.Max.X - framingBbox.Min.X,
+                                            framingBbox.Max.Y - framingBbox.Min.Y
+                                        ),
+                                        framingBbox.Max.Z - framingBbox.Min.Z
+                                    );
+                                    hostThickness = thickness;
+                                    DebugLogger.Log($"[ClusterService] FRAMING FIX: Using calculated thickness {UnitUtils.ConvertFromInternalUnits(thickness, UnitTypeId.Millimeters):F1}mm instead of 500mm fallback");
+                                }
+                                else
+                                {
+                                    hostThickness = UnitUtils.ConvertToInternalUnits(500.0, UnitTypeId.Millimeters);
+                                    DebugLogger.Log($"[ClusterService] FRAMING FALLBACK: Using 500mm fallback (no bounding box available)");
+                                }
+                            }
                         }
                     }
                 }
                 
                 File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                    $"[CLUSTER-DIM] Sleeve {inst.Id}: Mapped Depth = {UnitUtils.ConvertFromInternalUnits(openingDepth, UnitTypeId.Millimeters):F1}mm\n");
+                    $"[CLUSTER-DIM] Sleeve {inst.Id}: Mapped Depth = {UnitUtils.ConvertFromInternalUnits(openingDepth, UnitTypeId.Millimeters):F1}mm, HostThickness = {UnitUtils.ConvertFromInternalUnits(hostThickness, UnitTypeId.Millimeters):F1}mm\n");
                     
-                // Set the mapped dimensions (no override with wall thickness)
+                // Set the mapped dimensions (use hostThickness for depth instead of openingDepth)
                 if (widthParam != null && !widthParam.IsReadOnly) widthParam.Set(openingWidth);
                 if (heightParam != null && !heightParam.IsReadOnly) heightParam.Set(openingHeight);
-                if (depthParam != null && !depthParam.IsReadOnly) depthParam.Set(openingDepth);
+                if (depthParam != null && !depthParam.IsReadOnly) depthParam.Set(hostThickness);
             }
             else
             {

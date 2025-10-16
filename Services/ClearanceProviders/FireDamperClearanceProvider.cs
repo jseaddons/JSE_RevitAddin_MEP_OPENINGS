@@ -15,7 +15,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders
             {
                 // Use existing FireDamperSleevePlacerService logic
                 string familyTypeName = damper.Symbol.Name;
-                bool isMSFD = familyTypeName?.Trim().ToUpperInvariant().Contains("MSFD") ?? false;
+                string typeNameUpper = familyTypeName?.Trim().ToUpperInvariant() ?? "";
+                bool isMSFD = typeNameUpper.Contains("MSFD");
+                bool isMSD = typeNameUpper.Contains("MSD");
+                bool isMD = typeNameUpper.Contains("MD");
+                bool isMotorized = typeNameUpper.Contains("MOTORIZED");
+                
+                // MD dampers should get MEP side clearance (same as MSFD/MSD)
+                bool needsMepSideClearance = isMSFD || isMSD || isMD || isMotorized;
                 
                 // Check UI overrides first
                 if (uiClearances != null)
@@ -28,8 +35,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders
                 }
                 
                 // UI should always provide default values, but if somehow missing, use reasonable defaults
-                return isMSFD ? 
-                    UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters) : // MSFD: 100mm
+                return needsMepSideClearance ? 
+                    UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters) : // MSFD/MSD/MD/Motorized: 100mm MEP side clearance
                     UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters);    // Standard: 50mm
             }
             
@@ -51,9 +58,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders
             if (mepElement is FamilyInstance damper)
             {
                 string familyTypeName = damper.Symbol.Name;
-                bool isMSFD = familyTypeName?.Trim().ToUpperInvariant().Contains("MSFD") ?? false;
+                string typeNameUpper = familyTypeName?.Trim().ToUpperInvariant() ?? "";
+                bool isMSFD = typeNameUpper.Contains("MSFD");
+                bool isMSD = typeNameUpper.Contains("MSD");
+                bool isMD = typeNameUpper.Contains("MD");
+                bool isMotorized = typeNameUpper.Contains("MOTORIZED");
                 
-                return isMSFD ? "fire_damper_msfd_clearance" : "fire_damper_standard_clearance";
+                // MD dampers should use MEP side clearance (same as MSFD/MSD)
+                bool needsMepSideClearance = isMSFD || isMSD || isMD || isMotorized;
+                
+                return needsMepSideClearance ? "fire_damper_msfd_clearance" : "fire_damper_standard_clearance";
             }
             
             return "fire_damper_standard_clearance";

@@ -89,7 +89,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (bParam != null && bParam.StorageType == StorageType.Double)
                         sleeveDepth = bParam.AsDouble();
                     else
-                        sleeveDepth = UnitUtils.ConvertToInternalUnits(500.0, UnitTypeId.Millimeters);
+                    {
+                        // FIXED: Use actual structural framing thickness instead of hardcoded 500mm
+                        var framingBbox = famInst.get_BoundingBox(null);
+                        if (framingBbox != null)
+                        {
+                            // Calculate thickness from bounding box
+                            var thickness = Math.Max(
+                                Math.Max(
+                                    framingBbox.Max.X - framingBbox.Min.X,
+                                    framingBbox.Max.Y - framingBbox.Min.Y
+                                ),
+                                framingBbox.Max.Z - framingBbox.Min.Z
+                            );
+                            sleeveDepth = thickness;
+                            JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[PipeSleevePlacer] FRAMING FIX: Using calculated thickness {UnitUtils.ConvertFromInternalUnits(thickness, UnitTypeId.Millimeters):F1}mm instead of 500mm fallback");
+                        }
+                        else
+                        {
+                            sleeveDepth = UnitUtils.ConvertToInternalUnits(500.0, UnitTypeId.Millimeters);
+                            JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[PipeSleevePlacer] FRAMING FALLBACK: Using 500mm fallback (no bounding box available)");
+                        }
+                    }
 
                     var loc = famInst.Location as LocationCurve;
                     n = loc != null && loc.Curve is Line line ? line.Direction.CrossProduct(XYZ.BasisZ).Normalize() : XYZ.BasisY;

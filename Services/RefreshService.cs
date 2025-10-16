@@ -1128,8 +1128,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
+        // ============================================================================
+        // FIX: Ensure Cable Tray Clash Zones are Saved for BOTH X-Walls and Y-Walls
+        // Location: RefreshService.cs, FilterClashZonesByCategory method
+        // ============================================================================
+
         /// <summary>
         /// Filters clash zones by MEP element category
+        /// FIXED: Robust category matching for cable trays from linked files
         /// </summary>
         private List<Models.ClashZone> FilterClashZonesByCategory(List<Models.ClashZone> clashZones, string category, Document document, string refreshLogPath)
         {
@@ -1144,32 +1150,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 for (int i = 0; i < Math.Min(5, clashZones.Count); i++)
                 {
                     var cz = clashZones[i];
-                    DebugLogger.Info($"[CLASH_DEBUG] Clash zone {i}: MEP ID={cz.MepElementId}, Structural ID={cz.StructuralElementId}");
-                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Clash zone {i}: MEP ID={cz.MepElementId}, Structural ID={cz.StructuralElementId}\n");
+                    DebugLogger.Info($"[CLASH_DEBUG] Sample zone {i}: MEP ID={cz.MepElementId}, Cat='{cz.MepElementCategory}', Structural={cz.StructuralElementType}");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, 
+                        $"[{DateTime.Now}] [CLASH_DEBUG] Sample zone {i}: MEP ID={cz.MepElementId}, Cat='{cz.MepElementCategory}', Structural={cz.StructuralElementType}\n");
                 }
+
+                // Count zones by structural type for debugging
+                var byStructType = clashZones.GroupBy(cz => cz.StructuralElementType).ToDictionary(g => g.Key, g => g.Count());
+                DebugLogger.Info($"[CLASH_DEBUG] Zones by structural type: {string.Join(", ", byStructType.Select(kv => $"{kv.Key}={kv.Value}"))}");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, 
+                    $"[{DateTime.Now}] [CLASH_DEBUG] Zones by structural type: {string.Join(", ", byStructType.Select(kv => $"{kv.Key}={kv.Value}"))}\n");
 
                 foreach (var clashZone in clashZones)
                 {
                     try
                     {
-                        // ⚠️ CRITICAL FIX: Use cached category from ClashZone instead of re-detecting ⚠️
-                        // Re-detection fails for linked elements, but cached value is always correct
+                        // ✅ CRITICAL FIX: Use cached category from ClashZone (reliable for linked files)
                         var elementCategory = clashZone.MepElementCategory ?? "Unknown";
 
-                        DebugLogger.Info($"[CLASH_DEBUG] Clash zone {clashZone.Id} - MEP element {clashZone.MepElementId}: category='{elementCategory}' (from ClashZone), checking against requested category='{category}'");
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Clash zone {clashZone.Id} - MEP element {clashZone.MepElementId}: category='{elementCategory}' (from ClashZone), checking against requested category='{category}'\n");
+                        // 🔍 ENHANCED DEBUGGING: Log every zone being checked
+                        var structType = clashZone.StructuralElementType ?? "Unknown";
+                        var structNormal = clashZone.StructuralElementNormal;
+                        var wallOrientation = "Unknown";
+                        
+                        if (structNormal != null)
+                        {
+                            double absX = Math.Abs(structNormal.X);
+                            double absY = Math.Abs(structNormal.Y);
+                            wallOrientation = absX > absY ? "X-Wall" : "Y-Wall";
+                        }
 
-                        // Check if element belongs to the requested category
-                        if (IsElementInCategory(elementCategory, category))
+                        DebugLogger.Info($"[CLASH_DEBUG] Zone {clashZone.Id}: Cat='{elementCategory}', Struct='{structType}', Orient='{wallOrientation}', Checking against '{category}'");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, 
+                            $"[{DateTime.Now}] [CLASH_DEBUG] Zone {clashZone.Id}: Cat='{elementCategory}', Struct='{structType}', Orient='{wallOrientation}', Checking against '{category}'\n");
+
+                        // ✅ FIX: Enhanced category matching with fallback for linked files
+                        bool isMatch = IsElementInCategoryEnhanced(elementCategory, category, clashZone, document);
+
+                        if (isMatch)
                         {
                             filteredZones.Add(clashZone);
-                            DebugLogger.Info($"[CLASH_DEBUG] ✓ Clash zone {clashZone.Id} MATCHES category '{category}' - element category: {elementCategory}");
-                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ✓ Clash zone {clashZone.Id} MATCHES category '{category}' - element category: {elementCategory}\n");
+                            DebugLogger.Info($"[CLASH_DEBUG] ✅ Zone {clashZone.Id} MATCHED '{category}' - Cat='{elementCategory}', Orient='{wallOrientation}'");
+                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, 
+                                $"[{DateTime.Now}] [CLASH_DEBUG] ✅ Zone {clashZone.Id} MATCHED '{category}' - Cat='{elementCategory}', Orient='{wallOrientation}'\n");
                         }
                         else
                         {
-                            DebugLogger.Info($"[CLASH_DEBUG] ✗ Clash zone {clashZone.Id} does NOT match category '{category}' - element category: {elementCategory}");
-                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ✗ Clash zone {clashZone.Id} does NOT match category '{category}' - element category: {elementCategory}\n");
+                            DebugLogger.Info($"[CLASH_DEBUG] ❌ Zone {clashZone.Id} NOT matched '{category}' - Cat='{elementCategory}'");
+                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, 
+                                $"[{DateTime.Now}] [CLASH_DEBUG] ❌ Zone {clashZone.Id} NOT matched '{category}' - Cat='{elementCategory}'\n");
                         }
                     }
                     catch (Exception ex)
@@ -1178,7 +1207,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
 
-                DebugLogger.Info($"[CLASH_DEBUG] Filtered {filteredZones.Count} clash zones for category '{category}'");
+                DebugLogger.Info($"[CLASH_DEBUG] ✅ Filtered {filteredZones.Count}/{clashZones.Count} clash zones for category '{category}'");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, 
+                    $"[{DateTime.Now}] [CLASH_DEBUG] ✅ Filtered {filteredZones.Count}/{clashZones.Count} clash zones for category '{category}'\n");
             }
             catch (Exception ex)
             {
@@ -1186,6 +1217,139 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             return filteredZones;
+        }
+
+        /// <summary>
+        /// Enhanced category matching with fallback for linked file elements
+        /// FIXED: Handles cable trays, conduits, and all MEP categories robustly
+        /// </summary>
+        private bool IsElementInCategoryEnhanced(string elementCategory, string requestedCategory, Models.ClashZone clashZone, Document document)
+        {
+            try
+            {
+                // Convert to lowercase for case-insensitive comparison
+                var elementCatLower = elementCategory?.ToLower() ?? "";
+                var requestedCatLower = requestedCategory?.ToLower() ?? "";
+
+                // ✅ PHASE 1: Standard category matching (fast path)
+                bool standardMatch = IsElementInCategory(elementCategory, requestedCategory);
+                
+                if (standardMatch)
+                {
+                    DebugLogger.Info($"[CATEGORY_MATCH] ✅ Standard match for '{elementCategory}' -> '{requestedCategory}'");
+                    return true;
+                }
+
+                // ✅ PHASE 2: Enhanced matching for problematic categories
+                if (requestedCatLower == "cable trays")
+                {
+                    // Cable Trays: Check multiple variations
+                    bool isCableTray = 
+                        elementCatLower.Contains("cable") ||
+                        elementCatLower.Contains("tray") ||
+                        elementCatLower.Contains("conduit") ||
+                        elementCatLower == "cable tray" ||
+                        elementCatLower == "cable trays" ||
+                        elementCatLower == "cable tray fittings" ||
+                        elementCatLower == "cable tray fitting" ||
+                        elementCatLower == "conduit" ||
+                        elementCatLower == "conduits" ||
+                        elementCatLower == "conduit fittings" ||
+                        elementCatLower == "conduit fitting";
+
+                    if (isCableTray)
+                    {
+                        DebugLogger.Info($"[CATEGORY_MATCH] ✅ Cable tray enhanced match for '{elementCategory}'");
+                        return true;
+                    }
+
+                    // ✅ PHASE 3: Fallback - check actual element from Revit (for linked files)
+                    try
+                    {
+                        var mepElement = GetElementFromDocumentOrLinked(document, clashZone.MepElementId);
+                        if (mepElement != null)
+                        {
+                            var actualCategory = mepElement.Category?.Name ?? "";
+                            var actualCatLower = actualCategory.ToLower();
+                            
+                            bool isCableTrayActual = 
+                                actualCatLower.Contains("cable") ||
+                                actualCatLower.Contains("tray") ||
+                                actualCatLower.Contains("conduit");
+
+                            if (isCableTrayActual)
+                            {
+                                DebugLogger.Info($"[CATEGORY_MATCH] ✅ Cable tray FALLBACK match from actual element: '{actualCategory}'");
+                                // Update cached category for future use
+                                clashZone.MepElementCategory = actualCategory;
+                                return true;
+                            }
+                            else
+                            {
+                                DebugLogger.Info($"[CATEGORY_MATCH] ❌ Cable tray fallback check failed: actual category = '{actualCategory}'");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLogger.Warning($"[CATEGORY_MATCH] Fallback element check failed: {ex.Message}");
+                    }
+                }
+
+                // Similar enhanced matching for other categories
+                if (requestedCatLower == "pipes")
+                {
+                    bool isPipe = 
+                        elementCatLower.Contains("pipe") ||
+                        elementCatLower == "pipes" ||
+                        elementCatLower == "pipe curves" ||
+                        elementCatLower == "pipe fittings" ||
+                        elementCatLower == "pipe accessories";
+
+                    if (isPipe)
+                    {
+                        DebugLogger.Info($"[CATEGORY_MATCH] ✅ Pipe enhanced match for '{elementCategory}'");
+                        return true;
+                    }
+                }
+
+                if (requestedCatLower == "ducts")
+                {
+                    bool isDuct = 
+                        (elementCatLower.Contains("duct") && !elementCatLower.Contains("accessory")) ||
+                        elementCatLower == "ducts" ||
+                        elementCatLower == "duct curves" ||
+                        elementCatLower == "duct fittings";
+
+                    if (isDuct)
+                    {
+                        DebugLogger.Info($"[CATEGORY_MATCH] ✅ Duct enhanced match for '{elementCategory}'");
+                        return true;
+                    }
+                }
+
+                if (requestedCatLower == "duct accessories")
+                {
+                    bool isDuctAccessory = 
+                        elementCatLower.Contains("duct") && elementCatLower.Contains("accessor") ||
+                        elementCatLower == "duct accessories" ||
+                        elementCatLower == "duct accessory";
+
+                    if (isDuctAccessory)
+                    {
+                        DebugLogger.Info($"[CATEGORY_MATCH] ✅ Duct accessory enhanced match for '{elementCategory}'");
+                        return true;
+                    }
+                }
+
+                DebugLogger.Info($"[CATEGORY_MATCH] ❌ No match found for '{elementCategory}' -> '{requestedCategory}'");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[CATEGORY_MATCH] Error in IsElementInCategoryEnhanced: {ex.Message}");
+                return false;
+            }
         }
 
         /// <summary>
@@ -1454,10 +1618,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                elementCatLower.Contains("pipe");
 
                     case "cable trays":
-                        // Match actual Revit category names for cable trays
+                        // Match actual Revit category names for cable trays (enhanced matching)
                         return elementCatLower == "cable trays" ||
                                elementCatLower == "cable tray fittings" ||
-                               elementCatLower == "cable tray";
+                               elementCatLower == "cable tray" ||
+                               elementCatLower.Contains("cable") ||
+                               elementCatLower.Contains("tray");
 
                     default:
                         DebugLogger.Warning($"[CLASH_DEBUG] Unknown requested category: '{requestedCategory}'");

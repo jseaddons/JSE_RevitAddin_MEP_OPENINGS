@@ -12,6 +12,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
     /// </summary>
     public class DamperPlacementStrategy : ISleevePlacementStrategy
     {
+        private readonly Document _doc;
+        
+        public DamperPlacementStrategy(Document doc)
+        {
+            _doc = doc ?? throw new ArgumentNullException(nameof(doc));
+        }
         public MepElementSize GetMepElementSize(Element mepElement)
         {
             var damper = mepElement as FamilyInstance;
@@ -40,18 +46,66 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
             // Dampers don't have insulation
             size.IsInsulated = false;
             
+            // Store damper type for clearance calculation
+            string familyTypeName = damper.Symbol?.Name ?? "";
+            string typeNameUpper = familyTypeName.Trim().ToUpperInvariant();
+            
+            // Detect specific damper types (case insensitive)
+            if (typeNameUpper.Contains("MSFD"))
+            {
+                size.DamperType = "MSFD";
+            }
+            else if (typeNameUpper.Contains("MSD"))
+            {
+                size.DamperType = "MSD";
+            }
+            else if (typeNameUpper.Contains("MD"))
+            {
+                size.DamperType = "MD";
+            }
+            else if (typeNameUpper.Contains("MOTORIZED"))
+            {
+                size.DamperType = "Motorized";
+            }
+            else
+            {
+                size.DamperType = "Standard";
+            }
+            
+            DebugLogger.Info($"[DamperStrategy] Detected damper type: '{size.DamperType}' from family: '{familyTypeName}'");
+            
             return size;
         }
         
         public double GetClearance(MepElementSize mepSize, OpeningConditions conditions)
         {
-            // ⚠️ DAMPER SPECIAL: NO clearance addition
-            // Opening size = exact damper size (no addition)
-            // Fire dampers must fit precisely in fire-rated assemblies
+            // Use the damper type stored in MepElementSize during GetMepElementSize
+            string damperType = mepSize.DamperType ?? "";
+            DebugLogger.Info($"[DamperStrategy] Damper type from MepElementSize: '{damperType}'");
             
-            DebugLogger.Info($"[DamperStrategy] Clearance: 0mm (dampers use exact size for fire rating compliance)");
+            // Apply appropriate clearance based on damper type
+            double clearanceInMm;
+            if (damperType.Contains("MSFD"))
+            {
+                clearanceInMm = conditions?.ClearanceSettings?.DuctAccessoryMepNormal ?? 100.0; // MSFD uses MEP side clearance
+                DebugLogger.Info($"[DamperStrategy] MSFD damper - using MEP side clearance: {clearanceInMm}mm");
+            }
+            else if (damperType.Contains("MSD") || damperType.Contains("MD") || damperType.Contains("Motorized"))
+            {
+                clearanceInMm = conditions?.ClearanceSettings?.DuctAccessoryMepNormal ?? 100.0; // MSD, MD, Motorized use MEP side clearance
+                DebugLogger.Info($"[DamperStrategy] {(damperType.Contains("MSD") ? "MSD" : damperType.Contains("MD") ? "MD" : "Motorized")} damper - using MEP side clearance: {clearanceInMm}mm");
+            }
+            else
+            {
+                clearanceInMm = conditions?.ClearanceSettings?.DuctAccessoryOtherNormal ?? 50.0; // Standard dampers use other side clearance
+                DebugLogger.Info($"[DamperStrategy] Standard damper - using other side clearance: {clearanceInMm}mm");
+            }
             
-            return 0.0;  // No clearance addition for dampers
+            // Convert from mm to feet (Revit internal units)
+            double clearanceInFeet = UnitUtils.ConvertToInternalUnits(clearanceInMm, UnitTypeId.Millimeters);
+            DebugLogger.Info($"[DamperStrategy] Final clearance: {clearanceInMm}mm = {clearanceInFeet:F6}ft");
+            
+            return clearanceInFeet;
         }
         
         public string GetSystemAbbreviation(Element mepElement)

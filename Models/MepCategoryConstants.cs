@@ -61,10 +61,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
             var normalized = category.Trim();
             
             // Handle common variations
-            if (normalized.Equals("Duct", System.StringComparison.OrdinalIgnoreCase))
+            if (normalized.Equals("Duct", System.StringComparison.OrdinalIgnoreCase) ||
+                normalized.Equals("Duct Curves", System.StringComparison.OrdinalIgnoreCase))
                 return DUCTS;
             
-            if (normalized.Equals("Pipe", System.StringComparison.OrdinalIgnoreCase))
+            if (normalized.Equals("Pipe", System.StringComparison.OrdinalIgnoreCase) ||
+                normalized.Equals("Pipe Curves", System.StringComparison.OrdinalIgnoreCase))
                 return PIPES;
             
             if (normalized.Equals("Cable Tray", System.StringComparison.OrdinalIgnoreCase) ||

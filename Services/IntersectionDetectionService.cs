@@ -319,31 +319,76 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (hostMatch)
                 {
-                    wallElements.AddRange(
-                        new FilteredElementCollector(linkDoc)
-                            .OfCategory(BuiltInCategory.OST_Walls)
-                            .WhereElementIsNotElementType()
-                            .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
-                            .ToElements()
-                    );
+                    // ✅ FIX: Only collect structural categories that are selected in UI
+                    if (allowedHostElementTypes == null || allowedHostElementTypes.Count == 0)
+                    {
+                        // Fallback: collect all structural categories if no selection
+                        _logger("No host element types selected - collecting all structural categories");
+                        wallElements.AddRange(
+                            new FilteredElementCollector(linkDoc)
+                                .OfCategory(BuiltInCategory.OST_Walls)
+                                .WhereElementIsNotElementType()
+                                .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
+                                .ToElements()
+                        );
+                        wallElements.AddRange(
+                            new FilteredElementCollector(linkDoc)
+                                .OfCategory(BuiltInCategory.OST_Floors)
+                                .WhereElementIsNotElementType()
+                                .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
+                                .ToElements()
+                        );
+                        wallElements.AddRange(
+                            new FilteredElementCollector(linkDoc)
+                                .OfCategory(BuiltInCategory.OST_StructuralFraming)
+                                .WhereElementIsNotElementType()
+                                .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
+                                .ToElements()
+                        );
+                    }
+                    else
+                    {
+                        // ✅ FILTERED: Only collect selected host element types
+                        _logger($"UI Selected Host types: {string.Join(", ", allowedHostElementTypes)}");
+                        
+                        if (allowedHostElementTypes.Any(ht => ht.Equals("Walls", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            wallElements.AddRange(
+                                new FilteredElementCollector(linkDoc)
+                                    .OfCategory(BuiltInCategory.OST_Walls)
+                                    .WhereElementIsNotElementType()
+                                    .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
+                                    .ToElements()
+                            );
+                            _logger("UI Selection: Including Walls");
+                        }
 
-                    // Floors
-                    wallElements.AddRange(
-                        new FilteredElementCollector(linkDoc)
-                            .OfCategory(BuiltInCategory.OST_Floors)
-                            .WhereElementIsNotElementType()
-                            .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
-                            .ToElements()
-                    );
+                        if (allowedHostElementTypes.Any(ht => ht.Equals("Floors", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            wallElements.AddRange(
+                                new FilteredElementCollector(linkDoc)
+                                    .OfCategory(BuiltInCategory.OST_Floors)
+                                    .WhereElementIsNotElementType()
+                                    .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
+                                    .ToElements()
+                            );
+                            _logger("UI Selection: Including Floors");
+                        }
 
-                    // Structural Framing
-                    wallElements.AddRange(
-                        new FilteredElementCollector(linkDoc)
-                            .OfCategory(BuiltInCategory.OST_StructuralFraming)
-                            .WhereElementIsNotElementType()
-                            .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
-                            .ToElements()
-                    );
+                        if (allowedHostElementTypes.Any(ht => ht.Equals("Structural Framing", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            wallElements.AddRange(
+                                new FilteredElementCollector(linkDoc)
+                                    .OfCategory(BuiltInCategory.OST_StructuralFraming)
+                                    .WhereElementIsNotElementType()
+                                    .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
+                                    .ToElements()
+                            );
+                            _logger("UI Selection: Including Structural Framing");
+                        }
+                        
+                        _logger($"✅ FILTERED: Only collected {allowedHostElementTypes.Count} selected host types (was 3 total)");
+                    }
 
                     _logger($"Collected {wallElements.Count} total host elements after processing host link '{linkDoc.Title}'");
                 }
@@ -397,7 +442,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 else
                 {
-                    _logger("FALLBACK: No host elements collected from selected host files. Scanning all links for Walls/Floors/Framing.");
+                    _logger("FALLBACK: No host elements collected from selected host files. Scanning all links for selected host types only.");
                     foreach (var link in links)
                     {
                         var linkDoc = link.GetLinkDocument();
@@ -408,23 +453,57 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         XYZ actualMin = new XYZ(Math.Min(linkMin.X, linkMax.X), Math.Min(linkMin.Y, linkMax.Y), Math.Min(linkMin.Z, linkMax.Z));
                         XYZ actualMax = new XYZ(Math.Max(linkMin.X, linkMax.X), Math.Max(linkMin.Y, linkMax.Y), Math.Max(linkMin.Z, linkMax.Z));
                         var linkOutline = new Outline(actualMin, actualMax);
-                        wallElements.AddRange(new FilteredElementCollector(linkDoc)
-                            .OfCategory(BuiltInCategory.OST_Walls)
-                            .WhereElementIsNotElementType()
-                            .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
-                            .ToElements());
-                        wallElements.AddRange(new FilteredElementCollector(linkDoc)
-                            .OfCategory(BuiltInCategory.OST_Floors)
-                            .WhereElementIsNotElementType()
-                            .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
-                            .ToElements());
-                        wallElements.AddRange(new FilteredElementCollector(linkDoc)
-                            .OfCategory(BuiltInCategory.OST_StructuralFraming)
-                            .WhereElementIsNotElementType()
-                            .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
-                            .ToElements());
+                        
+                        // ✅ FIX: Apply same host type filtering in fallback
+                        if (allowedHostElementTypes == null || allowedHostElementTypes.Count == 0)
+                        {
+                            // Fallback: collect all structural categories
+                            wallElements.AddRange(new FilteredElementCollector(linkDoc)
+                                .OfCategory(BuiltInCategory.OST_Walls)
+                                .WhereElementIsNotElementType()
+                                .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
+                                .ToElements());
+                            wallElements.AddRange(new FilteredElementCollector(linkDoc)
+                                .OfCategory(BuiltInCategory.OST_Floors)
+                                .WhereElementIsNotElementType()
+                                .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
+                                .ToElements());
+                            wallElements.AddRange(new FilteredElementCollector(linkDoc)
+                                .OfCategory(BuiltInCategory.OST_StructuralFraming)
+                                .WhereElementIsNotElementType()
+                                .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
+                                .ToElements());
+                        }
+                        else
+                        {
+                            // Only collect selected host types
+                            if (allowedHostElementTypes.Any(ht => ht.Equals("Walls", StringComparison.OrdinalIgnoreCase)))
+                            {
+                                wallElements.AddRange(new FilteredElementCollector(linkDoc)
+                                    .OfCategory(BuiltInCategory.OST_Walls)
+                                    .WhereElementIsNotElementType()
+                                    .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
+                                    .ToElements());
+                            }
+                            if (allowedHostElementTypes.Any(ht => ht.Equals("Floors", StringComparison.OrdinalIgnoreCase)))
+                            {
+                                wallElements.AddRange(new FilteredElementCollector(linkDoc)
+                                    .OfCategory(BuiltInCategory.OST_Floors)
+                                    .WhereElementIsNotElementType()
+                                    .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
+                                    .ToElements());
+                            }
+                            if (allowedHostElementTypes.Any(ht => ht.Equals("Structural Framing", StringComparison.OrdinalIgnoreCase)))
+                            {
+                                wallElements.AddRange(new FilteredElementCollector(linkDoc)
+                                    .OfCategory(BuiltInCategory.OST_StructuralFraming)
+                                    .WhereElementIsNotElementType()
+                                    .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
+                                    .ToElements());
+                            }
+                        }
                     }
-                    _logger($"FALLBACK: Collected {wallElements.Count} host elements after scanning all links.");
+                    _logger($"FALLBACK: Collected {wallElements.Count} host elements after scanning all links with host type filtering.");
                 }
             }
         }

@@ -39,6 +39,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public double InsulationThickness { get; set; }
         
         /// <summary>
+        /// Damper type for duct accessories (MSFD, MSD, MD, Motorized, etc.)
+        /// </summary>
+        public string DamperType { get; set; } = "";
+        
+        /// <summary>
         /// Formatted size string for display (e.g., "Ø300", "400×200")
         /// </summary>
         public string FormattedSize

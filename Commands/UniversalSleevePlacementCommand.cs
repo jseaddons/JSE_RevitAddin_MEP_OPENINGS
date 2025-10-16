@@ -67,9 +67,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     {
                         // Set failure handler to auto-resolve warnings
                         var options = t.GetFailureHandlingOptions();
-                        options.SetFailuresPreprocessor(new WarningSwallower());
+                        options.SetFailuresPreprocessor(new UniversalWarningSwallower());
                         t.SetFailureHandlingOptions(options);
-                        DebugLogger.Info($"{_logPrefix} Transaction started with WarningSwallower enabled");
+                        DebugLogger.Info($"{_logPrefix} Transaction started with UniversalWarningSwallower enabled");
                         
                         // Place all sleeves in single transaction (zero linked file access!)
                         var placerService = new UniversalSleevePlacerService(_doc, _conditions, _strategy);
@@ -130,7 +130,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 "Ducts" => new DuctPlacementStrategy(),
                 "Pipes" => new PipePlacementStrategy(),
                 "Cable Trays" => new CableTrayPlacementStrategy(),
-                "Duct Accessories" => new DamperPlacementStrategy(),
+                "Duct Accessories" => new DamperPlacementStrategy(_doc),
                 _ => throw new ArgumentException($"Unknown category: {category}")
             };
         }
@@ -200,6 +200,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 DebugLogger.Error($"{_logPrefix} Error loading conditions: {ex.Message}");
                 _conditions = new OpeningConditions { Category = _category };
             }
+        }
+    }
+
+    /// <summary>
+    /// Failure preprocessor to auto-dismiss warnings during universal sleeve placement
+    /// </summary>
+    public class UniversalWarningSwallower : IFailuresPreprocessor
+    {
+        public FailureProcessingResult PreprocessFailures(FailuresAccessor fa)
+        {
+            var failures = fa.GetFailureMessages();
+            foreach (var f in failures)
+            {
+                var description = f.GetDescriptionText();
+                if (f.GetSeverity() == FailureSeverity.Warning)
+                {
+                    fa.DeleteWarning(f);
+                    DebugLogger.Info($"[UniversalWarningSwallower] Dismissed warning: {description}");
+                }
+                // Also dismiss duplicate-related errors to prevent transaction rollback
+                else if (f.GetSeverity() == FailureSeverity.Error && 
+                         (description.Contains("duplicate") || description.Contains("already exists")))
+                {
+                    fa.DeleteWarning(f);
+                    DebugLogger.Info($"[UniversalWarningSwallower] Dismissed duplicate error: {description}");
+                }
+            }
+            return FailureProcessingResult.Continue;
         }
     }
 }

@@ -10,6 +10,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -260,11 +261,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         continue;
                     }
 
-                    // OPTIMIZATION: Place sleeve using all pre-calculated parameters (no linked file access)
-                    var placer = new DuctSleevePlacer(_doc);
-                    // ENHANCED: Use LevelMonitoringService for proper level association
-                    placer.PlaceDuctSleeveOptimized(duct, placementPoint, finalWidth, finalHeight, mepOrientation, appropriateSymbol, clashZone.StructuralElementType, clashZone.StructuralElementThickness, clashZone.MepElementLevelName, placementPoint.Z);
-                    placed++;
+                    // OPTIMIZATION: Use UniversalSleevePlacerService for "calculate once, use many times" principle
+                    var universalService = new UniversalSleevePlacerService(_doc, _conditions, new DuctPlacementStrategy());
+                    var result = universalService.PlaceAllSleevesInTransaction(new List<ClashZone> { clashZone });
+                    placed += result.PlacedCount;
 
                     // Mark as resolved after successful placement
                     clashZone.IsResolved = true;

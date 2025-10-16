@@ -172,11 +172,54 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var documentPath = document.PathName;
             var documentHash = CalculateDocumentHash(document);
             
+            // FOOLPROOF: Auto-detect dampers even if user forgot to select "Duct Accessories" category
+            List<(Element, Element, BoundingBoxXYZ, XYZ)> enhancedIntersections;
+            List<(ElementId damperId, BoundingBoxXYZ bbox, ElementId wallId)> damperLocations;
+            
+            try
+            {
+                _log($"[DEBUG] Starting duct-damper optimization with {currentIntersections.Count} intersections");
+                enhancedIntersections = AutoDetectMissingDampers(document, currentIntersections);
+                _log($"[FOOLPROOF] Enhanced intersections: {enhancedIntersections.Count} (Original: {currentIntersections.Count})");
+                
+                // OPTIMIZATION: Pre-calculate damper locations from XML + enhanced intersections (Calculate Once, Use Many Times)
+                damperLocations = PreCalculateDamperLocationsFromXmlAndCurrent(document, enhancedIntersections);
+                _log($"[OPTIMIZATION] Pre-calculated {damperLocations.Count} damper locations from XML + enhanced intersections");
+            }
+            catch (Exception ex)
+            {
+                _log($"[ERROR] Failed in foolproof/optimization methods: {ex.Message}");
+                // Fallback to original intersections
+                enhancedIntersections = currentIntersections;
+                damperLocations = new List<(ElementId damperId, BoundingBoxXYZ bbox, ElementId wallId)>();
+            }
+            
             _log($"Detecting new clash zones for document: {documentPath}");
             _log($"Current intersections count: {currentIntersections.Count}");
+            
+            // FOOLPROOF METHOD: Always process dampers first, then ducts (category-based priority)
+            List<(Element, Element, BoundingBoxXYZ, XYZ)> prioritizedIntersections;
+            try
+            {
+                prioritizedIntersections = PrioritizeIntersectionsByCategory(enhancedIntersections);
+                _log($"[PRIORITY] Processed {prioritizedIntersections.Count} intersections in priority order");
+            }
+            catch (Exception ex)
+            {
+                _log($"[ERROR] Failed in priority method: {ex.Message}");
+                prioritizedIntersections = enhancedIntersections;
+            }
+            
+            // DEBUG: Log each intersection being processed in priority order
+            for (int i = 0; i < prioritizedIntersections.Count; i++)
+            {
+                var (mepElement, structuralElement, boundingBox, intersectionPoint) = prioritizedIntersections[i];
+                var mepCategory = GetElementCategoryName(mepElement);
+                _log($"[DEBUG] Processing intersection {i + 1}/{prioritizedIntersections.Count}: MEP={mepElement.Id} ({mepCategory}) <-> Structural={structuralElement.Id}");
+            }
             _log($"Existing clash zones count: {_clashZoneStorage.ClashZones.Count}");
             
-            foreach (var (mepElement, structuralElement, boundingBox, intersectionPoint) in currentIntersections)
+            foreach (var (mepElement, structuralElement, boundingBox, intersectionPoint) in prioritizedIntersections)
             {
                 // CRITICAL FIX: Validate elements before creating clash zones
                 if (mepElement == null || structuralElement == null)
@@ -249,6 +292,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 _log($"=== END GEOMETRY ANALYSIS ===");
 
+                // Duct-Damper priority filter: skip ducts when damper is present (cost-effective)
+                try
+                {
+                    var mepCat = GetElementCategoryName(mepElement);
+                    _log($"[DUCT-DAMPER] Checking element {mepElement.Id} with category '{mepCat}' against {damperLocations.Count} damper locations");
+                    if (string.Equals(mepCat, "Ducts", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (IsDuctNearDamper(mepElement, damperLocations))
+                        {
+                            _log($"SKIP: Duct {mepElement.Id} - damper present in same intersection, prioritizing damper sleeve");
+                            continue;
+                        }
+                        else
+                        {
+                            _log($"[DUCT-DAMPER] Duct {mepElement.Id} - no damper nearby, proceeding with sleeve placement");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _log($"Error in duct-damper priority filter: {ex.Message}");
+                }
                 // Penetration adequacy filter: skip shallow/grazing intersections
                 try
                 {
@@ -261,6 +326,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var hostNormal = GetStructuralElementNormal(structuralElement);
                         var (mepW, mepH) = GetMepElementDimensions(mepElement);
                         var mepCat = GetElementCategoryName(mepElement);
+
+                        _log($"[DEBUG] Penetration calculation for {mepCat}: MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                        _log($"[DEBUG]   MEP Direction: ({mepDir.X:F3}, {mepDir.Y:F3}, {mepDir.Z:F3})");
+                        _log($"[DEBUG]   Host Normal: ({hostNormal.X:F3}, {hostNormal.Y:F3}, {hostNormal.Z:F3})");
+                        _log($"[DEBUG]   Host Thickness: {hostThickness:F3}");
+                        _log($"[DEBUG]   MEP Dimensions: W={mepW:F3}, H={mepH:F3}");
 
                         double crossSize = 0.0;
                         if (string.Equals(mepCat, "Pipes", StringComparison.OrdinalIgnoreCase))
@@ -284,15 +355,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var nNorm = new XYZ(hostNormal.X / nLen, hostNormal.Y / nLen, hostNormal.Z / nLen);
                             var dot = Math.Abs(dNorm.X * nNorm.X + dNorm.Y * nNorm.Y + dNorm.Z * nNorm.Z);
                             penetrationRatio = (hostThickness * dot) / crossSize;
+                            
+                            _log($"[DEBUG]   Normalized MEP Dir: ({dNorm.X:F3}, {dNorm.Y:F3}, {dNorm.Z:F3})");
+                            _log($"[DEBUG]   Normalized Host Normal: ({nNorm.X:F3}, {nNorm.Y:F3}, {nNorm.Z:F3})");
+                            _log($"[DEBUG]   Dot Product: {dot:F3}");
+                            _log($"[DEBUG]   Cross Size: {crossSize:F3}");
                         }
 
-                        // Threshold: require at least 20% penetration of cross-section
-                        const double MinPenetrationRatio = 0.20;
+                        // Threshold: require at least 5% penetration of cross-section (reduced for cable trays)
+                        const double MinPenetrationRatio = 0.05;
+                        _log($"[DEBUG] Penetration check: ratio={penetrationRatio:F3}, threshold={MinPenetrationRatio:F2}, hostThickness={hostThickness:F3}, crossSize={crossSize:F3}");
                         if (penetrationRatio < MinPenetrationRatio)
                         {
                             _log($"SKIP: Insufficient penetration (ratio={penetrationRatio:F3} < {MinPenetrationRatio:F2}) for {hostTypeName}. MEP={mepElement.Id}, Structural={structuralElement.Id}");
                             continue;
                         }
+                        _log($"[DEBUG] Penetration check PASSED: ratio={penetrationRatio:F3} >= {MinPenetrationRatio:F2}");
                     }
                     else if (hostTypeName == "Structural Framing")
                     {
@@ -326,10 +404,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     else
                 {
                     // Create new clash zone
-                    var newClashZone = CreateClashZone(mepElement, structuralElement, intersectionPoint, boundingBox, document, clearanceSettings);
-                    newClashZones.Add(newClashZone);
-                    _clashZoneStorage.ClashZones.Add(newClashZone);
-                    _log($"New clash zone detected: MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                    _log($"[DEBUG] About to create clash zone: MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                    try
+                    {
+                        var newClashZone = CreateClashZone(mepElement, structuralElement, intersectionPoint, boundingBox, document, clearanceSettings);
+                        newClashZones.Add(newClashZone);
+                        _clashZoneStorage.ClashZones.Add(newClashZone);
+                        _log($"New clash zone detected: MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                    }
+                    catch (Exception ex)
+                    {
+                        _log($"[ERROR] Failed to create clash zone: MEP={mepElement.Id}, Structural={structuralElement.Id}, Error={ex.Message}");
+                    }
                     }
                 }
                 else if (!existingClashZone.IsResolved)
@@ -944,6 +1030,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             // OPTIMIZATION: Store structural element type and thickness for depth calculation
             var structuralElementType = GetStructuralElementType(structuralElement);
+            _log($"[DEBUG] StructuralElementType for {structuralElement.Id}: '{structuralElementType}' (Element: {structuralElement.GetType().Name})");
             
             // OPTIMIZATION: Calculate MEP element dimensions and orientation during refresh
             var (mepWidth, mepHeight) = GetMepElementDimensions(mepElement);
@@ -1673,6 +1760,432 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
+        /// FOOLPROOF: Auto-detect dampers even if user forgot to select "Duct Accessories" category
+        /// This prevents the scenario where user only selects "Ducts" and misses dampers
+        /// </summary>
+        private List<(Element, Element, BoundingBoxXYZ, XYZ)> AutoDetectMissingDampers(
+            Document document, List<(Element, Element, BoundingBoxXYZ, XYZ)> currentIntersections)
+        {
+            var enhancedIntersections = new List<(Element, Element, BoundingBoxXYZ, XYZ)>(currentIntersections);
+            
+            try
+            {
+                // Check if user selected ducts but forgot duct accessories
+                var hasDucts = currentIntersections.Any(i => 
+                {
+                    var mepCat = GetElementCategoryName(i.Item1);
+                    return string.Equals(mepCat, "Ducts", StringComparison.OrdinalIgnoreCase);
+                });
+                
+                var hasDuctAccessories = currentIntersections.Any(i => 
+                {
+                    var mepCat = GetElementCategoryName(i.Item1);
+                    return string.Equals(mepCat, "Duct Accessories", StringComparison.OrdinalIgnoreCase);
+                });
+                
+                if (hasDucts && !hasDuctAccessories)
+                {
+                    _log($"[FOOLPROOF] User selected ducts but forgot duct accessories - auto-detecting dampers");
+                    
+                    // Get all structural elements that ducts intersect with
+                    var ductWallIds = currentIntersections
+                        .Where(i => string.Equals(GetElementCategoryName(i.Item1), "Ducts", StringComparison.OrdinalIgnoreCase))
+                        .Select(i => i.Item2.Id)
+                        .Distinct()
+                        .ToList();
+                    
+                    // Find dampers that intersect with the same walls
+                    var autoDetectedDampers = FindDampersIntersectingSameWalls(document, ductWallIds);
+                    
+                    foreach (var (damperElement, wallElement, boundingBox, intersectionPoint) in autoDetectedDampers)
+                    {
+                        // Avoid duplicates
+                        if (!enhancedIntersections.Any(i => i.Item1.Id == damperElement.Id))
+                        {
+                            enhancedIntersections.Add((damperElement, wallElement, boundingBox, intersectionPoint));
+                            _log($"[FOOLPROOF] Auto-detected damper {damperElement.Id} intersecting wall {wallElement.Id}");
+                        }
+                    }
+                    
+                    _log($"[FOOLPROOF] Auto-detected {autoDetectedDampers.Count} dampers that user missed");
+                }
+                else if (hasDuctAccessories)
+                {
+                    _log($"[FOOLPROOF] User correctly selected duct accessories - no auto-detection needed");
+                }
+                else
+                {
+                    _log($"[FOOLPROOF] No ducts selected - no auto-detection needed");
+                }
+            }
+            catch (Exception ex)
+            {
+                _log($"Error in auto-detection: {ex.Message}");
+            }
+            
+            return enhancedIntersections;
+        }
+        
+        /// <summary>
+        /// Find dampers that intersect with the same walls as ducts
+        /// </summary>
+        private List<(Element, Element, BoundingBoxXYZ, XYZ)> FindDampersIntersectingSameWalls(
+            Document document, List<ElementId> wallIds)
+        {
+            var damperIntersections = new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
+            
+            try
+            {
+                // Get all duct accessories (dampers) from the document
+                var ductAccessories = new FilteredElementCollector(document)
+                    .OfCategory(BuiltInCategory.OST_DuctAccessory)
+                    .WhereElementIsNotElementType()
+                    .Cast<Element>()
+                    .ToList();
+                
+                // Also check family instances with "damper" in the name
+                var damperFamilyInstances = new FilteredElementCollector(document)
+                    .OfClass(typeof(FamilyInstance))
+                    .Cast<FamilyInstance>()
+                    .Where(fi => fi.Symbol?.Family?.Name?.ToLowerInvariant().Contains("damper") == true)
+                    .Cast<Element>()
+                    .ToList();
+                
+                var allDampers = ductAccessories.Concat(damperFamilyInstances).ToList();
+                
+                foreach (var damper in allDampers)
+                {
+                    var damperBbox = damper.get_BoundingBox(null);
+                    if (damperBbox == null) continue;
+                    
+                    // Check if damper intersects with any of the walls that ducts intersect
+                    foreach (var wallId in wallIds)
+                    {
+                        var wallElement = document.GetElement(wallId);
+                        if (wallElement == null) continue;
+                        
+                        var wallBbox = wallElement.get_BoundingBox(null);
+                        if (wallBbox == null) continue;
+                        
+                        // Check if bounding boxes intersect
+                        if (BoundingBoxesIntersect(damperBbox.Min, damperBbox.Max, wallBbox.Min, wallBbox.Max))
+                        {
+                            // Calculate intersection point (center of intersection)
+                            var intersectionMin = new XYZ(
+                                Math.Max(damperBbox.Min.X, wallBbox.Min.X),
+                                Math.Max(damperBbox.Min.Y, wallBbox.Min.Y),
+                                Math.Max(damperBbox.Min.Z, wallBbox.Min.Z)
+                            );
+                            
+                            var intersectionMax = new XYZ(
+                                Math.Min(damperBbox.Max.X, wallBbox.Max.X),
+                                Math.Min(damperBbox.Max.Y, wallBbox.Max.Y),
+                                Math.Min(damperBbox.Max.Z, wallBbox.Max.Z)
+                            );
+                            
+                            var intersectionPoint = new XYZ(
+                                (intersectionMin.X + intersectionMax.X) / 2,
+                                (intersectionMin.Y + intersectionMax.Y) / 2,
+                                (intersectionMin.Z + intersectionMax.Z) / 2
+                            );
+                            
+                            var intersectionBbox = new BoundingBoxXYZ
+                            {
+                                Min = intersectionMin,
+                                Max = intersectionMax
+                            };
+                            
+                            damperIntersections.Add((damper, wallElement, intersectionBbox, intersectionPoint));
+                            break; // Found intersection with this wall, move to next damper
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log($"Error finding dampers intersecting same walls: {ex.Message}");
+            }
+            
+            return damperIntersections;
+        }
+        
+        /// <summary>
+        /// Check if two bounding boxes intersect
+        /// </summary>
+        private bool BoundingBoxesIntersect(XYZ min1, XYZ max1, XYZ min2, XYZ max2)
+        {
+            return min1.X <= max2.X && max1.X >= min2.X &&
+                   min1.Y <= max2.Y && max1.Y >= min2.Y &&
+                   min1.Z <= max2.Z && max1.Z >= min2.Z;
+        }
+
+        /// <summary>
+        /// FOOLPROOF METHOD: Prioritize intersections by category to ensure dampers are always processed first
+        /// Priority Order: 1) Dampers, 2) Other Duct Accessories, 3) Ducts, 4) Everything else
+        /// </summary>
+        private List<(Element, Element, BoundingBoxXYZ, XYZ)> PrioritizeIntersectionsByCategory(
+            List<(Element, Element, BoundingBoxXYZ, XYZ)> intersections)
+        {
+            var prioritized = new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
+            
+            try
+            {
+                // Priority 1: Dampers (highest priority)
+                var dampers = intersections.Where(i => IsDamperElement(i.Item1)).ToList();
+                prioritized.AddRange(dampers);
+                _log($"[PRIORITY] Added {dampers.Count} dampers (Priority 1)");
+                
+                // Priority 2: Other Duct Accessories (medium priority)
+                var otherDuctAccessories = intersections.Where(i => 
+                {
+                    var mepCat = GetElementCategoryName(i.Item1);
+                    return string.Equals(mepCat, "Duct Accessories", StringComparison.OrdinalIgnoreCase) && 
+                           !IsDamperElement(i.Item1);
+                }).ToList();
+                prioritized.AddRange(otherDuctAccessories);
+                _log($"[PRIORITY] Added {otherDuctAccessories.Count} other duct accessories (Priority 2)");
+                
+                // Priority 3: Ducts (lower priority - will be skipped if damper nearby)
+                var ducts = intersections.Where(i => 
+                {
+                    var mepCat = GetElementCategoryName(i.Item1);
+                    return string.Equals(mepCat, "Ducts", StringComparison.OrdinalIgnoreCase);
+                }).ToList();
+                prioritized.AddRange(ducts);
+                _log($"[PRIORITY] Added {ducts.Count} ducts (Priority 3)");
+                
+                // Priority 4: Everything else (lowest priority)
+                var others = intersections.Where(i => 
+                {
+                    var mepCat = GetElementCategoryName(i.Item1);
+                    return !string.Equals(mepCat, "Duct Accessories", StringComparison.OrdinalIgnoreCase) &&
+                           !string.Equals(mepCat, "Ducts", StringComparison.OrdinalIgnoreCase);
+                }).ToList();
+                prioritized.AddRange(others);
+                _log($"[PRIORITY] Added {others.Count} other MEP elements (Priority 4)");
+                
+                _log($"[PRIORITY] Total prioritized intersections: {prioritized.Count} (Original: {intersections.Count})");
+            }
+            catch (Exception ex)
+            {
+                _log($"Error prioritizing intersections: {ex.Message}");
+                return intersections; // Fallback to original order
+            }
+            
+            return prioritized;
+        }
+
+        /// <summary>
+        /// Pre-calculate damper locations from XML + current intersections (Calculate Once, Use Many Times)
+        /// This solves the cross-XML cycle problem where dampers and ducts are processed separately
+        /// </summary>
+        private List<(ElementId damperId, BoundingBoxXYZ bbox, ElementId wallId)> PreCalculateDamperLocationsFromXmlAndCurrent(
+            Document document, List<(Element, Element, BoundingBoxXYZ, XYZ)> currentIntersections)
+        {
+            var damperLocations = new List<(ElementId damperId, BoundingBoxXYZ bbox, ElementId wallId)>();
+            
+            try
+            {
+                // STEP 1: Get dampers from saved XML data (from previous refresh cycles)
+                if (_clashZoneStorage?.ClashZones != null)
+                {
+                    foreach (var clashZone in _clashZoneStorage.ClashZones)
+                    {
+                        if (IsDamperClashZone(clashZone))
+                        {
+                            // Try to get the damper element from document
+                            var damperElement = document.GetElement(clashZone.MepElementId);
+                            if (damperElement != null)
+                            {
+                                var damperBbox = damperElement.get_BoundingBox(null);
+                                if (damperBbox != null)
+                                {
+                                    damperLocations.Add((damperId: clashZone.MepElementId, bbox: damperBbox, wallId: clashZone.StructuralElementId));
+                                    _log($"[PRE-CALC-XML] Damper {clashZone.MepElementId} location cached from XML");
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // STEP 2: Add dampers from current intersections (from current refresh cycle)
+                foreach (var (mepElement, structuralElement, boundingBox, intersectionPoint) in currentIntersections)
+                {
+                    var mepCat = GetElementCategoryName(mepElement);
+                    
+                    // Check if it's a damper
+                    if (string.Equals(mepCat, "Duct Accessories", StringComparison.OrdinalIgnoreCase) ||
+                        IsDamperElement(mepElement))
+                    {
+                        var damperBbox = mepElement.get_BoundingBox(null);
+                        if (damperBbox != null)
+                        {
+                            // Avoid duplicates (check if already added from XML)
+                            if (!damperLocations.Any(d => d.damperId == mepElement.Id))
+                            {
+                                damperLocations.Add((damperId: mepElement.Id, bbox: damperBbox, wallId: structuralElement.Id));
+                                _log($"[PRE-CALC-CURRENT] Damper {mepElement.Id} location cached from current intersections");
+                            }
+                        }
+                    }
+                }
+                
+                _log($"[PRE-CALC] Total damper locations: {damperLocations.Count} (XML: {_clashZoneStorage?.ClashZones?.Count(c => IsDamperClashZone(c)) ?? 0}, Current: {currentIntersections.Count(i => IsDamperElement(i.Item1))})");
+            }
+            catch (Exception ex)
+            {
+                _log($"Error pre-calculating damper locations: {ex.Message}");
+            }
+            
+            return damperLocations;
+        }
+        
+        /// <summary>
+        /// Check if a clash zone represents a damper
+        /// </summary>
+        private bool IsDamperClashZone(ClashZone clashZone)
+        {
+            try
+            {
+                // First check if it's a duct accessory
+                if (!string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
+                    return false;
+                
+                // Then check if it's specifically a damper by looking at the system abbreviation or other indicators
+                // Dampers typically have system abbreviations like "FD", "MSFD", "MSD", "MD", etc.
+                var systemAbbr = clashZone.MepElementSystemAbbreviation?.ToUpperInvariant() ?? "";
+                
+                // Check for damper-related system abbreviations
+                if (systemAbbr.Contains("FD") || systemAbbr.Contains("MSFD") || systemAbbr.Contains("MSD") || 
+                    systemAbbr.Contains("MD") || systemAbbr.Contains("DAMPER"))
+                {
+                    return true;
+                }
+                
+                // Also check if it's marked as MSFD damper
+                if (clashZone.IsMSFDDamper)
+                {
+                    return true;
+                }
+                
+                // Fallback: check if the formatted size suggests it's a damper
+                // Dampers typically have rectangular sizes (e.g., "400x200") rather than round sizes
+                var formattedSize = clashZone.MepElementFormattedSize?.ToUpperInvariant() ?? "";
+                if (formattedSize.Contains("X") && !formattedSize.Contains("Ø"))
+                {
+                    // It's rectangular, likely a damper
+                    return true;
+                }
+                
+                // If we can't determine, be conservative and exclude it
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+        
+        /// <summary>
+        /// Check if a duct is near a damper using pre-calculated locations (Efficient O(n) lookup)
+        /// </summary>
+        private bool IsDuctNearDamper(Element ductElement, List<(ElementId damperId, BoundingBoxXYZ bbox, ElementId wallId)> damperLocations)
+        {
+            try
+            {
+                const double proximityTolerance = 0.02; // 1/4 inch tolerance (as requested)
+                
+                // Get duct bounding box
+                var ductBbox = ductElement.get_BoundingBox(null);
+                if (ductBbox == null) return false;
+                
+                // Check pre-calculated damper locations (Efficient O(n) lookup)
+                foreach (var (damperId, damperBbox, wallId) in damperLocations)
+                {
+                    // Skip if it's the same element
+                    if (damperId == ductElement.Id) continue;
+                    
+                    // Check if duct and damper are within proximity tolerance
+                    var distance = GetMinimumDistanceBetweenBoundingBoxes(ductBbox, damperBbox);
+                    
+                    if (distance <= proximityTolerance)
+                    {
+                        _log($"[DUCT-DAMPER] Duct {ductElement.Id} is {distance:F4}ft from Damper {damperId} (tolerance: {proximityTolerance}ft = 1/4\")");
+                        return true;
+                    }
+                }
+                
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _log($"Error checking duct-damper proximity: {ex.Message}");
+                return false;
+            }
+        }
+        
+        /// <summary>
+        /// Check if an element is a damper based on family name or category
+        /// </summary>
+        private bool IsDamperElement(Element element)
+        {
+            try
+            {
+                // First check if it's a duct accessory
+                if (element.Category?.Id.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
+                {
+                    // Then check if it's specifically a damper family
+                    if (element is FamilyInstance famInst)
+                    {
+                        var familyName = famInst.Symbol?.Family?.Name?.ToLowerInvariant();
+                        if (familyName != null && familyName.Contains("damper"))
+                            return true;
+                    }
+                }
+                
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+        
+        /// <summary>
+        /// Calculate minimum distance between two bounding boxes
+        /// </summary>
+        private double GetMinimumDistanceBetweenBoundingBoxes(BoundingBoxXYZ bbox1, BoundingBoxXYZ bbox2)
+        {
+            try
+            {
+                // Calculate distance between closest corners
+                var min1 = bbox1.Min;
+                var max1 = bbox1.Max;
+                var min2 = bbox2.Min;
+                var max2 = bbox2.Max;
+                
+                // Find closest points
+                var closest1 = new XYZ(
+                    Math.Max(min1.X, Math.Min(max1.X, (min2.X + max2.X) / 2)),
+                    Math.Max(min1.Y, Math.Min(max1.Y, (min2.Y + max2.Y) / 2)),
+                    Math.Max(min1.Z, Math.Min(max1.Z, (min2.Z + max2.Z) / 2))
+                );
+                
+                var closest2 = new XYZ(
+                    Math.Max(min2.X, Math.Min(max2.X, (min1.X + max1.X) / 2)),
+                    Math.Max(min2.Y, Math.Min(max2.Y, (min1.Y + max1.Y) / 2)),
+                    Math.Max(min2.Z, Math.Min(max2.Z, (min1.Z + max1.Z) / 2))
+                );
+                
+                return closest1.DistanceTo(closest2);
+            }
+            catch
+            {
+                return double.MaxValue; // Return large distance if calculation fails
+            }
+        }
+
+        /// <summary>
         /// Get MEP element orientation vector
         /// </summary>
         private XYZ GetMepElementOrientation(Element mepElement)
@@ -1698,6 +2211,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 else if (mepElement is Conduit conduit && conduit.Location is LocationCurve conduitCurve)
                 {
                     var line = conduitCurve.Curve as Line;
+                    if (line != null)
+                    {
+                        return line.Direction;
+                    }
+                }
+                else if (mepElement is Autodesk.Revit.DB.Electrical.CableTray cableTray && cableTray.Location is LocationCurve cableTrayCurve)
+                {
+                    var line = cableTrayCurve.Curve as Line;
                     if (line != null)
                     {
                         return line.Direction;

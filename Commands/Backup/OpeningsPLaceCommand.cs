@@ -108,15 +108,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 
             DebugLogger.Log("Starting pipe sleeve placement...");
             PlacePipeSleeves(commandData, doc);
-            DebugLogger.Log("Pipe sleeve batch completed.");
+            DebugLogger.Log("Pipe sleeve batch completed. Proceeding to rectangular pipe clustering...");
             StructuralElementLogger.LogStructuralElement("SYSTEM", new Autodesk.Revit.DB.ElementId((BuiltInParameter)0L), "PIPE_SLEEVES_COMPLETED", "Pipe sleeve batch finished successfully.");
 
-            // ⚠️ REMOVED: PlaceRectangularPipeOpenings() - PipeOpeningsRectCommand is now DEPRECATED
-            // RectangularSleeveClusterCommandV2 handles ALL clustering (including circular pipes on walls)
-            // DebugLogger.Log("Starting rectangular pipe clustering...");
-            // PlaceRectangularPipeOpenings(commandData, doc);
+            DebugLogger.Log("Starting rectangular pipe clustering...");
+            PlaceRectangularPipeOpenings(commandData, doc); // Enabled to allow PipeOpeningsRectCommand to run
             
-            DebugLogger.Log("Starting universal sleeve clustering (all MEP types, all shapes, all hosts)...");
+            DebugLogger.Log("Starting rectangular sleeve clustering...");
             PlaceRectangularSleeveClusterV2(commandData, doc);
             DebugLogger.Log("OpeningsPLaceCommand: All sleeve commands completed");
 
@@ -180,19 +178,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         {
             try
             {
-                DebugLogger.Log("Executing CableTraySleeveCommand...");
-                var cableTrayCommand = new CableTraySleeveCommand();
-                string message = "";
-                ElementSet elements = new ElementSet();
-                var result = cableTrayCommand.Execute(commandData, ref message, elements);
-                if (result != Result.Succeeded)
-                {
-                    DebugLogger.Log($"Cable tray sleeve placement failed: {message}");
-                }
-                else
-                {
-                    DebugLogger.Log("Cable tray sleeve placement completed successfully");
-                }
+                DebugLogger.Log("Executing UniversalSleevePlacementCommand for Cable Trays...");
+                // Note: This method is obsolete - use SleevePlacementExternalEvent instead
+                // Kept for backward compatibility but should be migrated to the event-based approach
+                DebugLogger.Warning("PlaceCableTraySleeves is deprecated - please use the main placement workflow");
+                
+                // For now, just log a warning - the main workflow handles cable trays
+                DebugLogger.Log("Cable tray sleeves should be placed via the main 'Place Openings' workflow, not this legacy command");
             }
             catch (Exception ex)
             {

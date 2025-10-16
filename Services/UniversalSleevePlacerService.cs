@@ -182,6 +182,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 return (0, 0);
             }
             
+            // DEBUG: Log all incoming ClashZone objects to trace XML loading
+            DebugLogger.Log($"[XML-DEBUG] PlaceAllSleevesInTransaction called with {clashZones.Count} clash zones:");
+            foreach (var cz in clashZones.Take(5)) // Log first 5 to avoid spam
+            {
+                DebugLogger.Log($"[XML-DEBUG] ClashZone {cz.Id}: MepElementCategory='{cz.MepElementCategory}', StructuralElementType='{cz.StructuralElementType}', MepElementId={cz.MepElementIdValue}, StructuralElementId={cz.StructuralElementIdValue}");
+            }
+            
             // ⚠️ DON'T reset resolved flags during placement!
             // Flags are managed by refresh - it checks if sleeves exist and resets flags if deleted
             // If we reset here, we'll place duplicate sleeves for existing ones
@@ -629,10 +636,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             DebugLogger.Info($"[UniversalSleevePlacer] Set Width={widthMm:F1}mm, Height={heightMm:F1}mm (rectangular)");
         }
         
+        // ⚠️ FLOOR FIX: For duct sleeves on floors, rotate orientation by 90 degrees and swap width/height
+        bool isFloorHost = string.Equals(clashZone.StructuralElementType, "Floor", StringComparison.OrdinalIgnoreCase) ||
+                          string.Equals(clashZone.StructuralElementType, "Floors", StringComparison.OrdinalIgnoreCase);
+        bool isDuct = string.Equals(clashZone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase);
+        
+        DebugLogger.Info($"[UniversalSleevePlacer] FLOOR DUCT CHECK: StructuralElementType='{clashZone.StructuralElementType}', MepElementCategory='{clashZone.MepElementCategory}', isFloorHost={isFloorHost}, isDuct={isDuct}");
+        
+        if (isFloorHost && isDuct && !treatAsCircular)
+        {
+            // Swap width and height for duct sleeves on floors
+            double tempWidth = roundedWidth;
+            roundedWidth = roundedHeight;  // Use height as width
+            roundedHeight = tempWidth;     // Use original width as height
+            
+            // Update the sleeve parameters with swapped values
+            sleeveInstance.LookupParameter("Width")?.Set(roundedWidth);
+            sleeveInstance.LookupParameter("Height")?.Set(roundedHeight);
+            
+            DebugLogger.Info($"[UniversalSleevePlacer] FLOOR DUCT SWAP: Width={UnitUtils.ConvertFromInternalUnits(roundedWidth, UnitTypeId.Millimeters):F1}mm, Height={UnitUtils.ConvertFromInternalUnits(roundedHeight, UnitTypeId.Millimeters):F1}mm");
+        }
+        
         // CRITICAL: Set Depth parameter based on host type
         // Priority: Wall Width (walls) > Depth (floors/framing) > Type Depth (fallback)
         bool isWallHost = clashZone.StructuralElementType == "Wall" || clashZone.StructuralElementType == "Walls";
         bool isFramingHost = string.Equals(clashZone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
+        
+        // ⚠️ BUG FIX: For structural framing, swap width and depth based on orientation
+        if (isFramingHost && !treatAsCircular)
+        {
+            // Get host orientation from ClashZone
+            string hostOrientation = clashZone.HostOrientation ?? "";
+            
+            if (hostOrientation == "X")
+            {
+                // X-framing: swap width and depth
+                double tempWidth = roundedWidth;
+                roundedWidth = roundedHeight;  // Use height as width
+                roundedHeight = tempWidth;     // Use original width as height
+                DebugLogger.Info($"[UniversalSleevePlacer] X-FRAMING SWAP: Width={UnitUtils.ConvertFromInternalUnits(roundedWidth, UnitTypeId.Millimeters):F1}mm, Height={UnitUtils.ConvertFromInternalUnits(roundedHeight, UnitTypeId.Millimeters):F1}mm");
+            }
+            else if (hostOrientation == "Y")
+            {
+                // Y-framing: swap width and depth
+                double tempWidth = roundedWidth;
+                roundedWidth = roundedHeight;  // Use height as width
+                roundedHeight = tempWidth;     // Use original width as height
+                DebugLogger.Info($"[UniversalSleevePlacer] Y-FRAMING SWAP: Width={UnitUtils.ConvertFromInternalUnits(roundedWidth, UnitTypeId.Millimeters):F1}mm, Height={UnitUtils.ConvertFromInternalUnits(roundedHeight, UnitTypeId.Millimeters):F1}mm");
+            }
+        }
         
                 var depthParam = sleeveInstance.LookupParameter("Depth");
                 var wallWidthParam = sleeveInstance.LookupParameter("Wall Width");
@@ -721,6 +773,88 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 sleeveInstance.LookupParameter("System_Abbreviation")?.Set(clashZone.MepElementSystemAbbreviation);
                 sleeveInstance.LookupParameter("MEP_Count")?.Set(1);  // Individual sleeve
 
+                // ⚠️ CRITICAL FIX: Transfer HostParameterValues from XML intersection data to sleeve parameters
+                if (clashZone.HostParameterValues != null && clashZone.HostParameterValues.Count > 0)
+                {
+                    DebugLogger.Info($"[UniversalSleevePlacer] Transferring {clashZone.HostParameterValues.Count} host parameters from XML intersection data");
+                    
+                    foreach (var hostParam in clashZone.HostParameterValues)
+                    {
+                        try
+                        {
+                            var param = sleeveInstance.LookupParameter(hostParam.Key);
+                            if (param != null && !param.IsReadOnly)
+                            {
+                                // Handle different parameter storage types
+                                if (param.StorageType == StorageType.String)
+                                {
+                                    param.Set(hostParam.Value);
+                                    DebugLogger.Info($"[UniversalSleevePlacer] Set host parameter '{hostParam.Key}' = '{hostParam.Value}' (string)");
+                                }
+                                else if (param.StorageType == StorageType.Integer)
+                                {
+                                    if (int.TryParse(hostParam.Value, out int intValue))
+                                    {
+                                        param.Set(intValue);
+                                        DebugLogger.Info($"[UniversalSleevePlacer] Set host parameter '{hostParam.Key}' = {intValue} (integer)");
+                                    }
+                                }
+                                else if (param.StorageType == StorageType.Double)
+                                {
+                                    if (double.TryParse(hostParam.Value, out double doubleValue))
+                                    {
+                                        param.Set(doubleValue);
+                                        DebugLogger.Info($"[UniversalSleevePlacer] Set host parameter '{hostParam.Key}' = {doubleValue} (double)");
+                                    }
+                                }
+                                else if (param.StorageType == StorageType.ElementId)
+                                {
+                                    // Handle ElementId parameters - this might need special handling
+                                    DebugLogger.Warning($"[UniversalSleevePlacer] Host parameter '{hostParam.Key}' is ElementId type - skipping (value: '{hostParam.Value}')");
+                                }
+                                
+                                // Log successful parameter transfer
+                                try
+                                {
+                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                        $"[HOST-PARAM-SET] Sleeve {sleeveInstance.Id.IntegerValue}: Set '{hostParam.Key}' = '{hostParam.Value}' ({param.StorageType}) ✓\n");
+                                }
+                                catch { }
+                            }
+                            else
+                            {
+                                DebugLogger.Warning($"[UniversalSleevePlacer] Host parameter '{hostParam.Key}' not found or read-only on sleeve {sleeveInstance.Id}");
+                                try
+                                {
+                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                        $"[HOST-PARAM-MISSING] Sleeve {sleeveInstance.Id.IntegerValue}: Parameter '{hostParam.Key}' not found or read-only ✗\n");
+                                }
+                                catch { }
+                            }
+                        }
+                        catch (Exception paramEx)
+                        {
+                            DebugLogger.Warning($"[UniversalSleevePlacer] Error setting host parameter '{hostParam.Key}' = '{hostParam.Value}': {paramEx.Message}");
+                            try
+                            {
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                    $"[HOST-PARAM-ERROR] Sleeve {sleeveInstance.Id.IntegerValue}: '{hostParam.Key}' = '{hostParam.Value}' - {paramEx.Message} ✗\n");
+                            }
+                            catch { }
+                        }
+                    }
+                }
+                else
+                {
+                    DebugLogger.Warning($"[UniversalSleevePlacer] No HostParameterValues found in ClashZone {clashZone.Id} - host parameters not transferred");
+                    try
+                    {
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                            $"[HOST-PARAM-EMPTY] Sleeve {sleeveInstance.Id.IntegerValue}: No HostParameterValues in ClashZone {clashZone.Id} ✗\n");
+                    }
+                    catch { }
+                }
+
         DebugLogger.Info($"[UniversalSleevePlacer] ✓ Set all parameters for sleeve {sleeveInstance.Id}");
             }
             catch (Exception ex)
@@ -755,6 +889,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (loc != null)
                         {
                             double rotationAngle = Math.Atan2(mepOrientation.Y, mepOrientation.X);
+                            
+                            // ⚠️ FLOOR DUCT FIX: Add 90 degrees rotation for duct sleeves on floors
+                            bool isFloorHostForRotation = string.Equals(clashZone.StructuralElementType, "Floor", StringComparison.OrdinalIgnoreCase) ||
+                                                         string.Equals(clashZone.StructuralElementType, "Floors", StringComparison.OrdinalIgnoreCase);
+                            bool isDuctForRotation = string.Equals(clashZone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase);
+                            
+                            DebugLogger.Info($"[UniversalSleevePlacer] ROTATION CHECK: StructuralElementType='{clashZone.StructuralElementType}', MepElementCategory='{clashZone.MepElementCategory}', isFloorHostForRotation={isFloorHostForRotation}, isDuctForRotation={isDuctForRotation}");
+                            
+                            if (isFloorHostForRotation && isDuctForRotation)
+                            {
+                                rotationAngle += Math.PI / 2; // Add 90 degrees (π/2 radians)
+                                DebugLogger.Info($"[UniversalSleevePlacer] FLOOR DUCT: Added 90° rotation for duct sleeve on floor");
+                            }
+                            
                             double rotationAngleDegrees = rotationAngle * 180 / Math.PI;
                             
                             Line rotationAxis = Line.CreateBound(loc.Point, loc.Point + XYZ.BasisZ);
@@ -777,6 +925,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         hostOrientationParam.Set("FloorHosted");
                         DebugLogger.Info($"[UniversalSleevePlacer] FLOOR: Set HostOrientation = FloorHosted");
                     }
+                    
+                    // ✅ FIX: Return early to prevent wall rotation logic from running
+                    return;
                 }
                 else
                 {
@@ -793,6 +944,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
                     $"[ORIENT-INPUT] Sleeve {sleeveInstance.Id.IntegerValue}: Cat={clashZone.MepElementCategory}, Host={clashZone.StructuralElementType}, MEP=({mepOrientation?.X:F3},{mepOrientation?.Y:F3}), StructN=({structuralNormal?.X:F3},{structuralNormal?.Y:F3})\n");
+                
+                // DEBUG: Log all ClashZone properties to trace XML loading issue
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                    $"[XML-DEBUG] ClashZone {clashZone.Id}: MepElementCategory='{clashZone.MepElementCategory}', StructuralElementType='{clashZone.StructuralElementType}', MepElementId={clashZone.MepElementIdValue}, StructuralElementId={clashZone.StructuralElementIdValue}\n");
             }
             catch { }
             
@@ -801,20 +956,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var loc = sleeveInstance.Location as LocationPoint;
                 if (loc != null)
                 {
-                    // SPECIAL CASE: Pipes on Framing - always align to MEP direction
-                    if (isPipe && isFramingHost)
+                    // SPECIAL CASE: Pipes and Cable Trays on Framing - align to MEP direction
+                    if ((isPipe || isCableTray) && isFramingHost)
                     {
                         double angle = Math.Atan2(mepOrientation.Y, mepOrientation.X);
+                        
+                        // For framing, we need to consider the structural normal to determine correct rotation
+                        if (structuralNormal != null)
+                        {
+                            // Calculate the angle between MEP direction and structural normal
+                            double mepAngle = Math.Atan2(mepOrientation.Y, mepOrientation.X);
+                            double structAngle = Math.Atan2(structuralNormal.Y, structuralNormal.X);
+                            
+                            // The sleeve should be perpendicular to the framing direction
+                            // If MEP is parallel to framing, rotate 90°
+                            double dotProduct = mepOrientation.X * structuralNormal.X + mepOrientation.Y * structuralNormal.Y;
+                            if (Math.Abs(dotProduct) < 0.1) // Nearly perpendicular (MEP ⊥ Framing)
+                            {
+                                angle = mepAngle; // Use MEP direction as-is
+                            }
+                            else // Nearly parallel (MEP ∥ Framing)
+                            {
+                                angle = mepAngle + Math.PI / 2; // Rotate 90° from MEP direction
+                            }
+                        }
+                        
                         double angleDegrees = angle * 180 / Math.PI;
                         
                         Line rotationAxis = Line.CreateBound(loc.Point, loc.Point + XYZ.BasisZ);
                         ElementTransformUtils.RotateElement(_doc, sleeveInstance.Id, rotationAxis, angle);
                         
-                        DebugLogger.Info($"[UniversalSleevePlacer] FRAMING+PIPE: Aligned sleeve to MEP direction {angleDegrees:F1}°");
+                        string mepType = isPipe ? "PIPE" : "CABLETRAY";
+                        DebugLogger.Info($"[UniversalSleevePlacer] FRAMING+{mepType}: Aligned sleeve to MEP direction {angleDegrees:F1}°");
                         try
                         {
                             System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
-                                $"[ORIENT-APPLY] Sleeve {sleeveInstance.Id.IntegerValue}: FRAMING+PIPE aligned to MEP {angleDegrees:F1}° ✓\n");
+                                $"[ORIENT-APPLY] Sleeve {sleeveInstance.Id.IntegerValue}: FRAMING+{mepType} aligned to MEP {angleDegrees:F1}° ✓\n");
                         }
                         catch { }
                     }

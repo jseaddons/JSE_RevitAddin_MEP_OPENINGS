@@ -112,10 +112,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS
 
             panel.AddSeparator(); // This adds a visual gap
 
-            var button2 = panel.AddPushButton<OpeningsPLaceCommand>("Openings");
-            button2.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
-            button2.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
-
+            // Note: OpeningsPLaceCommand is obsolete - use the main dialog workflow instead
+            // The "Place Openings" button in the dialog handles all placement via SleevePlacementExternalEvent
+            
             panel.AddSeparator(); // This adds a visual gap
 
             var button3 = panel.AddPushButton<MarkParameterAddValue>("Mark Parameters");
