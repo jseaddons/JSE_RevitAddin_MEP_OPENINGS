@@ -163,46 +163,50 @@ Saves to: Ventilation_ducts.xml
 ### 2. Configuration Phase (UI → XML)
 
 ```
-User changes clearances in UI
+User changes clearances/opening types in UI
   ↓
 Clicks OK
   ↓
 EmergencyMainDialog.SaveConditionsToXml()
   ↓
-Reads all UI textboxes:
-  - normal_clearance
-  - insulated_clearance
-  - round_duct_normal_clearance
-  - round_duct_insulated_clearance
+For each selected filter + category combination:
+  - Creates combinedKey = "FilterName_Category"
+  - Reads UI values (clearances, opening types)
+  - Creates OpeningConditions object
   ↓
-Creates OpeningConditions object
+ConditionsService.SaveConditions(conditions, combinedKey)
   ↓
-ConditionsService.SaveConditions()
-  ↓
-Saves to: Ventilation_ducts_CONDITIONS.xml
+Saves to: FilterName_Category_CONDITIONS.xml
+  Example: Ventilation_Pipes_CONDITIONS.xml
 ```
 
 ### 3. Placement Phase (XML → Revit)
 
 ```
-DuctSleevePlacementCommand.Execute()
+UniversalSleevePlacementCommand.Execute()
   ↓
 LoadConditionsFromXml()
   ↓
-Creates DuctSleevePlacerService(_doc, _conditions)
+Creates combinedKey = "FilterName_Category"
+  ↓
+ConditionsService.LoadConditions(combinedKey)
+  ↓
+Loads: FilterName_Category_CONDITIONS.xml
+  ↓
+Creates UniversalSleevePlacerService(_doc, _conditions)
   ↓
 For each ClashZone:
-  - Read: DuctShape (from ClashZone)
-  - Read: InsulationType (from ClashZone)
-  - Select clearance from _conditions.ClearanceSettings
+  - Read: MEP category (from ClashZone)
+  - Read: Clearance from _conditions.ClearanceSettings
+  - Read: Opening type from _conditions.OpeningTypePreferences
   ↓
-GetClearanceFromUI(ductShape, insulationType)
+GetClearanceFromConditions(category, mepSize)
   ↓
-Returns appropriate clearance:
-  - Round + Normal → RoundNormal
-  - Round + Insulated → RoundInsulated
-  - Rectangular + Normal → RectangularNormal
-  - Rectangular + Insulated → RectangularInsulated
+SelectUniversalFamily(clashZone, mepSize)
+  ↓
+Uses opening type preferences:
+  - Pipes: _conditions.OpeningTypePreferences.Pipes
+  - Round Ducts: _conditions.OpeningTypePreferences.RoundDucts
 ```
 
 ## Benefits
@@ -235,21 +239,27 @@ Returns appropriate clearance:
 ## File Naming Convention
 
 ```
-FilterName_CONDITIONS.xml
+FilterName_Category_CONDITIONS.xml
 ```
 
 Examples:
-- `Ventilation_ducts_CONDITIONS.xml`
-- `Plumbing_pipes_CONDITIONS.xml`
-- `Electrical_cabletrays_CONDITIONS.xml`
+- `Ventilation_Ducts_CONDITIONS.xml`
+- `Ventilation_Pipes_CONDITIONS.xml`
+- `Ventilation_DuctAccessories_CONDITIONS.xml`
+- `Plumbing_Pipes_CONDITIONS.xml`
+- `Electrical_CableTrays_CONDITIONS.xml`
+
+**🛡️ ARCHITECTURE UPDATE:** Uses BOTH filter name AND category to allow different clearance/opening types per category within the same filter.
 
 Stored alongside clash zone files:
 ```
 %APPDATA%\JSE_MEP_Openings\Projects\Default\Filters\
-├── Ventilation_ducts.xml                  (CLASH ZONES - data)
-├── Ventilation_ducts_CONDITIONS.xml       (CONDITIONS - settings)
-├── Plumbing_pipes.xml
-└── Plumbing_pipes_CONDITIONS.xml
+├── Ventilation_Ducts.xml                  (CLASH ZONES - data)
+├── Ventilation_Ducts_CONDITIONS.xml       (CONDITIONS - settings)
+├── Ventilation_Pipes.xml
+├── Ventilation_Pipes_CONDITIONS.xml
+├── Ventilation_DuctAccessories.xml
+└── Ventilation_DuctAccessories_CONDITIONS.xml
 ```
 
 ## Critical Methods
@@ -257,24 +267,28 @@ Stored alongside clash zone files:
 ### ⚠️ DO NOT REMOVE ⚠️
 
 1. **EmergencyMainDialog.SaveConditionsToXml()**
-   - Saves UI values to CONDITIONS.xml
+   - Saves UI values to CONDITIONS.xml using combined key
    - Called on OK click before external event
+   - Creates separate XML files per category
 
-2. **DuctSleevePlacementCommand.LoadConditionsFromXml()**
-   - Loads CONDITIONS.xml into memory
+2. **UniversalSleevePlacementCommand.LoadConditionsFromXml()**
+   - Loads CONDITIONS.xml using combined key (FilterName_Category)
    - Called in constructor
+   - Gets category-specific settings
 
-3. **DuctSleevePlacerService.GetClearanceFromUI()**
-   - Selects clearance from _conditions based on shape + insulation
+3. **UniversalSleevePlacerService.GetClearanceFromConditions()**
+   - Selects clearance from _conditions based on category + insulation
    - Called during sleeve placement
+   - Uses CONDITIONS service for all clearance types
 
-4. **ClashZoneService.GetDuctShape()**
-   - Detects duct shape from family name
-   - Stores in ClashZone.DuctShape
+4. **UniversalSleevePlacerService.SelectUniversalFamily()**
+   - Uses opening type preferences from CONDITIONS
+   - Pipes: _conditions.OpeningTypePreferences.Pipes
+   - Round Ducts: _conditions.OpeningTypePreferences.RoundDucts
 
-5. **ClashZoneService.GetInsulationType()**
-   - Detects insulation from parameters
-   - Stores in ClashZone.InsulationType
+5. **ClashZoneService.DetectNewClashZones()**
+   - Stores raw dimensions (no pre-calculated clearance)
+   - All clearance handled by CONDITIONS service
 
 ## Migration Notes
 

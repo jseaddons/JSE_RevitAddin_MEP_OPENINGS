@@ -117,19 +117,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         {
             if (_appProfileService == null) return;
             
-            DebugLogger.Info($"ExternalEventHandlers.ShowMainDialog: About to create EmergencyMainDialog");
-            DebugLogger.Info($"ExternalEventHandlers.ShowMainDialog: _uiDocument = {(_uiDocument != null ? "NOT NULL" : "NULL")}");
-            DebugLogger.Info($"ExternalEventHandlers.ShowMainDialog: _document = {(_document != null ? "NOT NULL" : "NULL")}");
+            // 🔍 DIAGNOSTIC: Log BEFORE creating EmergencyMainDialog
+            DebugLogger.Info($"🔍 ShowMainDialog: About to create EmergencyMainDialog");
+            DebugLogger.Info($"🔍 ShowMainDialog: _uiDocument = {(_uiDocument != null ? "NOT NULL" : "NULL")}");
+            DebugLogger.Info($"🔍 ShowMainDialog: _document = {(_document != null ? "NOT NULL" : "NULL")}");
+            
+            // 🔍 DIAGNOSTIC: Count sleeves BEFORE creating dialog
+            if (_document != null)
+            {
+                var sleevesBeforeCount = new FilteredElementCollector(_document)
+                    .OfClass(typeof(FamilyInstance))
+                    .Cast<FamilyInstance>()
+                    .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                    .Count();
+                DebugLogger.Info($"🔍 ShowMainDialog: Sleeves BEFORE creating dialog: {sleevesBeforeCount}");
+            }
             
             // CRITICAL FIX: Get UIDocument from current Revit context if not available
             var uiDocument = _uiDocument ?? GetCurrentUIDocument();
-            DebugLogger.Info($"ExternalEventHandlers.ShowMainDialog: Final UIDocument = {(uiDocument != null ? "NOT NULL" : "NULL")}");
+            DebugLogger.Info($"🔍 ShowMainDialog: Final UIDocument = {(uiDocument != null ? "NOT NULL" : "NULL")}");
+            
+            // 🔍 DIAGNOSTIC: Log just before constructor call
+            DebugLogger.Info($"🔍 ShowMainDialog: About to call EmergencyMainDialog constructor");
             
             // Allow null document - EmergencyMainDialog can acquire it if needed
             var emergencyMainDlg = new EmergencyMainDialog(_appProfileService, _document, uiDocument);
-            DebugLogger.Info($"ExternalEventHandlers.ShowMainDialog: EmergencyMainDialog created successfully");
+            DebugLogger.Info($"🔍 ShowMainDialog: EmergencyMainDialog created successfully");
+            
+            // 🔍 DIAGNOSTIC: Count sleeves AFTER creating dialog (but before showing)
+            if (_document != null)
+            {
+                var sleevesAfterCount = new FilteredElementCollector(_document)
+                    .OfClass(typeof(FamilyInstance))
+                    .Cast<FamilyInstance>()
+                    .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                    .Count();
+                DebugLogger.Info($"🔍 ShowMainDialog: Sleeves AFTER creating dialog: {sleevesAfterCount}");
+            }
+            
             // Show modeless to avoid blocking Revit UI and potential freezes
+            DebugLogger.Info($"🔍 ShowMainDialog: About to show dialog");
             emergencyMainDlg.Show();
+            DebugLogger.Info($"🔍 ShowMainDialog: Dialog shown successfully");
         }
         
         /// <summary>

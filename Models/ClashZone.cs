@@ -368,6 +368,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public XYZ MepElementOrientation { get; set; }
         
         /// <summary>
+        /// Pre-calculated MEP element orientation direction ("X" or "Y") for sleeve rotation
+        /// </summary>
+        public string MepElementOrientationDirection { get; set; }
+        
+        /// <summary>
         /// XML serializable MEP element orientation X component
         /// </summary>
         public double MepElementOrientationX

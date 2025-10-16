@@ -170,35 +170,61 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             {
                 var conditionsService = new ConditionsService(msg => DebugLogger.Info(msg));
                 
-                // Extract filter name from category (standard naming: Ventilation for Ducts, etc.)
-                // This matches the XML file naming convention: Ventilation_CONDITIONS.xml for Ducts
-                string filterName = _category switch
+                // 🛡️ ARCHITECTURE FIX: Use BOTH filter name AND category for unique CONDITIONS XML
+                // This allows different clearance/opening types per category within the same filter
+                // File naming: "FilterName_Category_CONDITIONS.xml" (e.g., "Ventilation_Pipes_CONDITIONS.xml")
+                
+                // Get the actual selected filter names from the current UI state
+                var selectedFilterNames = GetSelectedFilterNamesFromUI();
+                
+                if (selectedFilterNames.Count == 0)
                 {
-                    "Ducts" => "Ventilation",
-                    "Pipes" => "Plumbing", // or "WaterSystems"
-                    "Cable Trays" => "DataDevices", // or "Electrical"
-                    "Duct Accessories" => "Ventilation", // Uses same as Ducts
-                    _ => "Ventilation" // Default fallback
-                };
+                    DebugLogger.Warning($"{_logPrefix} No filter names found in UI - using default conditions");
+                    _conditions = new OpeningConditions { FilterName = "Default", Category = _category };
+                    return;
+                }
                 
-                DebugLogger.Info($"{_logPrefix} Using filter name '{filterName}' for category '{_category}'");
+                // Use the first selected filter name + current category
+                string filterName = selectedFilterNames.First();
+                string combinedKey = $"{filterName}_{_category}";
                 
-                _conditions = conditionsService.LoadConditions(filterName);
+                DebugLogger.Info($"{_logPrefix} Using combined key '{combinedKey}' (Filter: '{filterName}', Category: '{_category}')");
+                
+                _conditions = conditionsService.LoadConditions(combinedKey);
                 
                 if (_conditions != null)
                 {
-                    DebugLogger.Info($"{_logPrefix} Loaded conditions for filter '{filterName}'");
+                    DebugLogger.Info($"{_logPrefix} Loaded conditions for '{combinedKey}' - Pipes: {_conditions.OpeningTypePreferences?.Pipes ?? "null"}, RoundDucts: {_conditions.OpeningTypePreferences?.RoundDucts ?? "null"}");
                 }
                 else
                 {
-                    DebugLogger.Warning($"{_logPrefix} No conditions found for filter '{filterName}' - using defaults");
+                    DebugLogger.Warning($"{_logPrefix} No conditions found for '{combinedKey}' - using defaults");
                     _conditions = new OpeningConditions { FilterName = filterName, Category = _category };
                 }
             }
             catch (Exception ex)
             {
                 DebugLogger.Error($"{_logPrefix} Error loading conditions: {ex.Message}");
-                _conditions = new OpeningConditions { Category = _category };
+                _conditions = new OpeningConditions { FilterName = "Default", Category = _category };
+            }
+        }
+        
+        /// <summary>
+        /// Get selected filter names from UI state
+        /// </summary>
+        private List<string> GetSelectedFilterNamesFromUI()
+        {
+            try
+            {
+                // Use FilterUiStateProvider to get current UI state
+                var selectedFilters = FilterUiStateProvider.GetSelectedFilterItems?.Invoke() ?? new List<string>();
+                DebugLogger.Info($"{_logPrefix} UI selected filter names: {string.Join(", ", selectedFilters)}");
+                return selectedFilters;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"{_logPrefix} Error getting filter names from UI: {ex.Message}");
+                return new List<string>();
             }
         }
     }

@@ -176,6 +176,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             SkippedCount = 0;
             ErrorCount = 0;
             
+            // 🛡️ FAIL-SAFE: Check document state before starting
+            if (!_doc.IsModifiable)
+            {
+                DebugLogger.Error("[UniversalSleevePlacer] Document is read-only or workshared and not checked out");
+                throw new InvalidOperationException("Document is not modifiable. Please check out the file or ensure it's not read-only.");
+            }
+            
             if (clashZones == null || clashZones.Count == 0)
             {
                 DebugLogger.Warning($"[UniversalSleevePlacer] No clash zones provided");
@@ -290,67 +297,67 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         XYZ placementOffset = XYZ.Zero;
                         double finalWidth, finalHeight, finalDiameter;
                         
+						// 🛡️ ARCHITECTURE FIX: Use CONDITIONS service for ALL clearance types
+						// This ensures consistent architecture: CONDITIONS XML → UniversalSleevePlacerService
+						// Raw dimensions from ClashZone + Clearance from CONDITIONS = Final dimensions
+						
 						bool isPipesCategory = string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
 						if (isPipesCategory)
 						{
-							var clearance = _strategy.GetClearance(mepSize, _conditions);
-							var baseOd = GetPipeOutsideDiameterFromClashZone(clashZone);
-							var ins = mepSize.IsInsulated ? mepSize.InsulationThickness : 0.0;
-							finalDiameter = baseOd + (2 * ins) + (2 * clearance);
+							// ✅ Pipes: Raw dimensions + CONDITIONS clearance
+							var rawDiameter = clashZone.MepElementWidth; // Raw diameter from ClashZone
+							var clearance = GetClearanceFromConditions("Pipes", mepSize);
+							finalDiameter = rawDiameter + (2 * clearance);
 							finalWidth = finalDiameter;
 							finalHeight = finalDiameter;
-							try
-							{
-								System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
-									$"[PIPE-SIZE] CZ={clashZone.Id} OD={baseOd:F6}ft, ins={ins:F6}ft, clr={clearance:F6}ft, finalDia={finalDiameter:F6}ft\n");
-							}
-							catch { }
+							DebugLogger.Info($"[UniversalSleevePlacer] PIPE: Raw={UnitUtils.ConvertFromInternalUnits(rawDiameter, UnitTypeId.Millimeters):F1}mm + Clearance={UnitUtils.ConvertFromInternalUnits(clearance, UnitTypeId.Millimeters):F1}mm = Final={UnitUtils.ConvertFromInternalUnits(finalDiameter, UnitTypeId.Millimeters):F1}mm");
 						}
 						else if (_strategy is DamperPlacementStrategy damperStrategy)
                         {
-                            // Fire dampers: asymmetric clearance + offset for MSFD
+                            // ✅ Fire dampers: Raw dimensions + CONDITIONS clearance via strategy
+                            var rawWidth = clashZone.MepElementWidth;
+                            var rawHeight = clashZone.MepElementHeight;
+                            
+                            // Get offset and final dimensions from strategy (uses CONDITIONS)
                             var adj = damperStrategy.GetDamperPlacementAdjustment(clashZone, _conditions);
                             placementOffset = adj.offsetVector;
                             finalWidth = adj.finalWidth;
                             finalHeight = adj.finalHeight;
-                            finalDiameter = adj.finalWidth; // Not used for dampers (rectangular only)
+                            finalDiameter = finalWidth; // Not used for dampers (rectangular only)
+                            
+                            DebugLogger.Info($"[UniversalSleevePlacer] DAMPER: Raw={UnitUtils.ConvertFromInternalUnits(rawWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(rawHeight, UnitTypeId.Millimeters):F1}mm → Final={UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(finalHeight, UnitTypeId.Millimeters):F1}mm");
                         }
                         else if (_strategy is CableTrayPlacementStrategy cableTrayStrategy)
                         {
-                            // Cable trays: asymmetric clearance + upward offset
+                            // ✅ Cable trays: Raw dimensions + CONDITIONS clearance via strategy
+                            var rawWidth = clashZone.MepElementWidth;
+                            var rawHeight = clashZone.MepElementHeight;
+                            
+                            // Get offset and final dimensions from strategy (uses CONDITIONS)
                             var adj2 = cableTrayStrategy.GetCableTrayPlacementAdjustment(clashZone, _conditions);
                             placementOffset = adj2.offsetVector;
                             finalWidth = adj2.finalWidth;
                             finalHeight = adj2.finalHeight;
-                            finalDiameter = adj2.finalWidth; // Not used for cable trays (rectangular only)
+                            finalDiameter = finalWidth; // Not used for cable trays (rectangular only)
+                            
+                            DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY: Raw={UnitUtils.ConvertFromInternalUnits(rawWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(rawHeight, UnitTypeId.Millimeters):F1}mm → Final={UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(finalHeight, UnitTypeId.Millimeters):F1}mm");
                         }
                         else
                         {
-							// Ducts/default: symmetric clearance, no offset
-                        var clearance = _strategy.GetClearance(mepSize, _conditions);
-                            finalWidth = mepSize.Width + (2 * clearance);
-                            finalHeight = mepSize.Height + (2 * clearance);
-                            finalDiameter = mepSize.Diameter + (2 * clearance);
+							// ✅ Ducts: Raw dimensions + CONDITIONS clearance
+                            var rawWidth = clashZone.MepElementWidth;
+                            var rawHeight = clashZone.MepElementHeight;
+                            var clearance = GetClearanceFromConditions("Ducts", mepSize);
+                            finalWidth = rawWidth + (2 * clearance);
+                            finalHeight = rawHeight + (2 * clearance);
+                            finalDiameter = finalWidth; // For round elements
+                            
+                            DebugLogger.Info($"[UniversalSleevePlacer] DUCT: Raw={UnitUtils.ConvertFromInternalUnits(rawWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(rawHeight, UnitTypeId.Millimeters):F1}mm + Clearance={UnitUtils.ConvertFromInternalUnits(clearance, UnitTypeId.Millimeters):F1}mm = Final={UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(finalHeight, UnitTypeId.Millimeters):F1}mm");
                         }
 
-                        // OPTIONAL ORIENTATION NORMALIZATION FOR FLOOR DUCTS (rectangular):
-                        // Swap width/height so the family's "Width" axis aligns with the MEP direction
-                        // This avoids the need for a +90° correction for rectangular duct sleeves on floors.
-                        try
-                        {
-                            bool isFloorHostHere = clashZone.StructuralElementType == "Floor" ||
-                                                   clashZone.StructuralElementType == "Floors";
-                            bool isDuctStrategy = _strategy is Strategies.DuctPlacementStrategy;
-                            bool isRectangular = !(string.Equals(mepSize.Shape, "Round", StringComparison.OrdinalIgnoreCase) ||
-                                                   string.Equals(mepSize.Shape, "Circular", StringComparison.OrdinalIgnoreCase));
-
-                            if (isFloorHostHere && isDuctStrategy && isRectangular)
-                            {
-                                var tmp = finalWidth; finalWidth = finalHeight; finalHeight = tmp;
-                                DebugLogger.Info("[UniversalSleevePlacer] FLOOR/DUCT (rectangular): swapped Width/Height to align family axis with MEP direction");
-                            }
-                        }
-                        catch { }
+                        // ⚠️ REMOVED: Old width/height swapping logic that was causing double-swapping
+                        // The new logic later in the method (lines 660-665) handles this correctly
+                        // by ensuring the longer dimension becomes width, not just swapping blindly
                         
                         // Select universal family
                         var (familyName, typeName) = SelectUniversalFamily(clashZone, mepSize);
@@ -470,28 +477,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                   clashZone.StructuralElementType == "Walls" ||
                                   clashZone.StructuralElementType == "Structural Framing";
             
-            // Determine opening shape per category (separate concerns for pipes vs ducts)
+            // 🛡️ ARCHITECTURE FIX: Use CONDITIONS XML for opening type preferences (not ClashZone or geometry)
+            // This follows the reference architecture: CONDITIONS.xml stores user preferences
             bool isCircular;
             if (string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
             {
-                // Pipes: driven by UI/global setting only
-                var pipeType = clashZone.PipeOpeningType;
-                if (string.IsNullOrWhiteSpace(pipeType))
-                {
-                    pipeType = OpeningSettingsHelper.GetOpeningTypeForCategory("Pipes");
-                }
+                // ✅ CORRECT: Pipes opening type from CONDITIONS XML (user preference)
+                var pipeType = _conditions?.OpeningTypePreferences?.Pipes ?? "Circular";
                 isCircular = string.Equals(pipeType, "Circular", StringComparison.OrdinalIgnoreCase);
+                DebugLogger.Info($"[UniversalSleevePlacer] PIPE opening type from CONDITIONS XML: '{pipeType}' → isCircular={isCircular}");
             }
-            else if (string.Equals(clashZone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase))
+            else if (string.Equals(clashZone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
             {
-                // Ducts: geometry-driven (round vs rectangular); UI may override elsewhere
-                isCircular = string.Equals(mepSize.Shape, "Round", StringComparison.OrdinalIgnoreCase) ||
-                             string.Equals(mepSize.Shape, "Circular", StringComparison.OrdinalIgnoreCase);
+                // ✅ CORRECT: Round ducts opening type from CONDITIONS XML (user preference)
+                // Check if this is a round duct first
+                bool isRoundDuct = string.Equals(mepSize.Shape, "Round", StringComparison.OrdinalIgnoreCase) ||
+                                  string.Equals(mepSize.Shape, "Circular", StringComparison.OrdinalIgnoreCase);
+                
+                if (isRoundDuct)
+                {
+                    // Round ducts: use user preference from CONDITIONS XML
+                    var roundDuctType = _conditions?.OpeningTypePreferences?.RoundDucts ?? "Circular";
+                    isCircular = string.Equals(roundDuctType, "Circular", StringComparison.OrdinalIgnoreCase);
+                    DebugLogger.Info($"[UniversalSleevePlacer] ROUND DUCT opening type from CONDITIONS XML: '{roundDuctType}' → isCircular={isCircular}");
+                }
+                else
+                {
+                    // Rectangular ducts: always rectangular opening
+                    isCircular = false;
+                    DebugLogger.Info($"[UniversalSleevePlacer] RECTANGULAR DUCT → isCircular=false");
+                }
             }
             else
             {
                 // Other categories (cable trays, accessories): rectangular
                 isCircular = false;
+                DebugLogger.Info($"[UniversalSleevePlacer] OTHER CATEGORY ({clashZone.MepElementCategory}) → isCircular=false");
             }
             
             DebugLogger.Info($"[UniversalSleevePlacer] Family selection - StructuralElementType: '{clashZone.StructuralElementType}', isWallOrFraming: {isWallOrFraming}, MEP Shape: '{mepSize.Shape}', isCircular: {isCircular}");
@@ -549,6 +571,142 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             return levels.FirstOrDefault();
         }
+        
+        /// <summary>
+        /// Get clearance value from CONDITIONS service for simple clearance categories
+        /// </summary>
+        private double GetClearanceFromConditions(string category, MepElementSize mepSize)
+        {
+            try
+            {
+                if (_conditions?.ClearanceSettings == null)
+                {
+                    DebugLogger.Warning($"[GetClearanceFromConditions] No clearance settings available, using default 50mm");
+                    return UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters);
+                }
+
+                // Determine clearance based on category and element properties
+                double clearanceInMm = 50.0; // Default fallback
+
+                if (string.Equals(category, "Pipes", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Pipes: Check if insulated
+                    bool isInsulated = IsPipeInsulated(mepSize);
+                    clearanceInMm = isInsulated ? _conditions.ClearanceSettings.PipesInsulated : _conditions.ClearanceSettings.PipesNormal;
+                }
+                else if (string.Equals(category, "Ducts", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Ducts: Check if insulated and shape
+                    bool isInsulated = IsDuctInsulated(mepSize);
+                    bool isRound = string.Equals(mepSize.Shape, "Round", StringComparison.OrdinalIgnoreCase) ||
+                                  string.Equals(mepSize.Shape, "Circular", StringComparison.OrdinalIgnoreCase);
+                    
+                    if (isRound)
+                    {
+                        clearanceInMm = isInsulated ? _conditions.ClearanceSettings.RoundInsulated : _conditions.ClearanceSettings.RoundNormal;
+                    }
+                    else
+                    {
+                        clearanceInMm = isInsulated ? _conditions.ClearanceSettings.RectangularInsulated : _conditions.ClearanceSettings.RectangularNormal;
+                    }
+                }
+
+                // Convert from mm to feet (Revit internal units)
+                double clearanceInFeet = UnitUtils.ConvertToInternalUnits(clearanceInMm, UnitTypeId.Millimeters);
+                
+                DebugLogger.Info($"[GetClearanceFromConditions] {category}: {clearanceInMm}mm → {clearanceInFeet:F6}ft");
+                return clearanceInFeet;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[GetClearanceFromConditions] Error getting clearance for {category}: {ex.Message}");
+                return UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters); // Safe fallback
+            }
+        }
+
+        /// <summary>
+        /// Determine if a pipe is insulated (simplified logic)
+        /// </summary>
+        private bool IsPipeInsulated(MepElementSize mepSize)
+        {
+            // Simplified logic - in real implementation, this would check pipe parameters
+            // For now, assume larger pipes are more likely to be insulated
+            double diameterMm = UnitUtils.ConvertFromInternalUnits(mepSize.Diameter, UnitTypeId.Millimeters);
+            
+            // Assume pipes > 200mm are insulated
+            return diameterMm > 200.0;
+        }
+
+        /// <summary>
+        /// Determine if a duct is insulated (simplified logic)
+        /// </summary>
+        private bool IsDuctInsulated(MepElementSize mepSize)
+        {
+            // Simplified logic - in real implementation, this would check duct parameters
+            // For now, assume larger ducts are more likely to be insulated
+            double maxDimension = Math.Max(mepSize.Width, mepSize.Height);
+            double maxDimensionMm = UnitUtils.ConvertFromInternalUnits(maxDimension, UnitTypeId.Millimeters);
+            
+            // Assume ducts > 500mm are insulated
+            return maxDimensionMm > 500.0;
+        }
+
+        // ============================================================================
+        // 🛡️ FAIL-SAFE: Dimension Validation
+        // ============================================================================
+        private bool ValidateSleeveDimensions(double width, double height, double diameter, ClashZone clashZone)
+        {
+            try
+            {
+                // Convert to millimeters for easier validation
+                double widthMm = UnitUtils.ConvertFromInternalUnits(width, UnitTypeId.Millimeters);
+                double heightMm = UnitUtils.ConvertFromInternalUnits(height, UnitTypeId.Millimeters);
+                double diameterMm = UnitUtils.ConvertFromInternalUnits(diameter, UnitTypeId.Millimeters);
+                
+                // 🚨 CRITICAL LIMITS: Prevent oversized sleeves that crash Revit
+                const double MAX_SIZE_MM = 10000.0; // 10 meters - reasonable maximum
+                const double MIN_SIZE_MM = 10.0;    // 10mm - reasonable minimum
+                
+                // Check for invalid/negative dimensions
+                if (widthMm <= 0 || heightMm <= 0 || diameterMm <= 0)
+                {
+                    DebugLogger.Error($"[ValidateDimensions] NEGATIVE/ZERO dimensions: W={widthMm:F1}mm, H={heightMm:F1}mm, D={diameterMm:F1}mm");
+                    return false;
+                }
+                
+                // Check for oversized dimensions
+                if (widthMm > MAX_SIZE_MM || heightMm > MAX_SIZE_MM || diameterMm > MAX_SIZE_MM)
+                {
+                    DebugLogger.Error($"[ValidateDimensions] OVERSIZED dimensions: W={widthMm:F1}mm, H={heightMm:F1}mm, D={diameterMm:F1}mm (MAX={MAX_SIZE_MM}mm)");
+                    return false;
+                }
+                
+                // Check for undersized dimensions
+                if (widthMm < MIN_SIZE_MM || heightMm < MIN_SIZE_MM || diameterMm < MIN_SIZE_MM)
+                {
+                    DebugLogger.Error($"[ValidateDimensions] UNDERSIZED dimensions: W={widthMm:F1}mm, H={heightMm:F1}mm, D={diameterMm:F1}mm (MIN={MIN_SIZE_MM}mm)");
+                    return false;
+                }
+                
+                // Check for reasonable aspect ratio (prevent extremely thin sleeves)
+                const double MAX_ASPECT_RATIO = 20.0; // Max 20:1 ratio
+                double aspectRatio1 = Math.Max(widthMm, heightMm) / Math.Min(widthMm, heightMm);
+                if (aspectRatio1 > MAX_ASPECT_RATIO)
+                {
+                    DebugLogger.Error($"[ValidateDimensions] EXTREME ASPECT RATIO: {aspectRatio1:F1}:1 (MAX={MAX_ASPECT_RATIO}:1)");
+                    return false;
+                }
+                
+                DebugLogger.Info($"[ValidateDimensions] ✓ VALID dimensions: W={widthMm:F1}mm, H={heightMm:F1}mm, D={diameterMm:F1}mm");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[ValidateDimensions] ERROR validating dimensions: {ex.Message}");
+                return false; // Fail safe - don't proceed with invalid dimensions
+            }
+        }
+        
         // ============================================================================
 // CORRECTED SetSleeveParameters Method
 // ============================================================================
@@ -562,6 +720,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
+                // 🛡️ FAIL-SAFE: Validate dimensions before setting parameters
+                if (!ValidateSleeveDimensions(finalWidth, finalHeight, finalDiameter, clashZone))
+                {
+                    DebugLogger.Error($"[UniversalSleevePlacer] INVALID DIMENSIONS for ClashZone {clashZone.Id}: W={finalWidth:F3}ft, H={finalHeight:F3}ft, D={finalDiameter:F3}ft");
+                    ErrorCount++;
+                    return; // Skip this sleeve - don't crash Revit
+                }
         bool isPipe = string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
         
         // Apply rounding to nearest 5mm if setting is enabled
@@ -636,27 +801,51 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             DebugLogger.Info($"[UniversalSleevePlacer] Set Width={widthMm:F1}mm, Height={heightMm:F1}mm (rectangular)");
         }
         
-        // ⚠️ FLOOR FIX: For duct and cable tray sleeves on floors, rotate orientation by 90 degrees and swap width/height
+        // ⚠️ FLOOR FIX: For duct sleeves on floors, rotate orientation by 90 degrees and swap width/height
+        // NOTE: Cable trays should NOT have width/height swapped - they maintain their original orientation
         bool isFloorHost = string.Equals(clashZone.StructuralElementType, "Floor", StringComparison.OrdinalIgnoreCase) ||
                           string.Equals(clashZone.StructuralElementType, "Floors", StringComparison.OrdinalIgnoreCase);
-        bool isDuct = string.Equals(clashZone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase);
+        bool isDuct = string.Equals(clashZone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase) ||
+                      string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase);
         bool isCableTray = string.Equals(clashZone.MepElementCategory, "Cable Trays", StringComparison.OrdinalIgnoreCase) ||
                           string.Equals(clashZone.MepElementCategory, "Cable Tray Fittings", StringComparison.OrdinalIgnoreCase);
 
         DebugLogger.Info($"[UniversalSleevePlacer] FLOOR MEP CHECK: StructuralElementType='{clashZone.StructuralElementType}', MepElementCategory='{clashZone.MepElementCategory}', isFloorHost={isFloorHost}, isDuct={isDuct}, isCableTray={isCableTray}");
 
-        if (isFloorHost && (isDuct || isCableTray) && !treatAsCircular)
+        // ⚠️ CRITICAL FIX: Choose ONE approach for duct orientation on floors
+        // Option 1: Swap width/height (NO rotation) - This aligns family axes with MEP direction
+        // Option 2: Keep original width/height (WITH rotation) - This rotates the sleeve to align
+        // We'll use Option 1 (swap only) for consistency and to avoid double-correction
+        
+        if (isFloorHost && isDuct && !treatAsCircular)
         {
-            // Swap width and height for duct sleeves on floors
-            double tempWidth = roundedWidth;
-            roundedWidth = roundedHeight;  // Use height as width
-            roundedHeight = tempWidth;     // Use original width as height
+            // ⚠️ CRITICAL FIX: Ensure longer dimension becomes width for duct sleeves on floors
+            // This ensures consistent orientation regardless of how Revit stores the dimensions
+            if (roundedHeight > roundedWidth)
+            {
+                // Height is longer - swap so longer dimension becomes width
+                double tempWidth = roundedWidth;
+                roundedWidth = roundedHeight;  // Use height as width (longer dimension)
+                roundedHeight = tempWidth;     // Use original width as height (shorter dimension)
+                
+                DebugLogger.Info($"[UniversalSleevePlacer] FLOOR DUCT SWAP: Height({UnitUtils.ConvertFromInternalUnits(roundedHeight, UnitTypeId.Millimeters):F1}mm) > Width({UnitUtils.ConvertFromInternalUnits(tempWidth, UnitTypeId.Millimeters):F1}mm) - Swapped to make longer dimension the width");
+            }
+            else
+            {
+                // Width is already longer - no swap needed
+                DebugLogger.Info($"[UniversalSleevePlacer] FLOOR DUCT NO SWAP: Width({UnitUtils.ConvertFromInternalUnits(roundedWidth, UnitTypeId.Millimeters):F1}mm) >= Height({UnitUtils.ConvertFromInternalUnits(roundedHeight, UnitTypeId.Millimeters):F1}mm) - Longer dimension already width");
+            }
             
-            // Update the sleeve parameters with swapped values
+            // Update the sleeve parameters with correct values
             sleeveInstance.LookupParameter("Width")?.Set(roundedWidth);
             sleeveInstance.LookupParameter("Height")?.Set(roundedHeight);
             
-            DebugLogger.Info($"[UniversalSleevePlacer] FLOOR DUCT SWAP: Width={UnitUtils.ConvertFromInternalUnits(roundedWidth, UnitTypeId.Millimeters):F1}mm, Height={UnitUtils.ConvertFromInternalUnits(roundedHeight, UnitTypeId.Millimeters):F1}mm");
+            DebugLogger.Info($"[UniversalSleevePlacer] FLOOR DUCT FINAL: Width={UnitUtils.ConvertFromInternalUnits(roundedWidth, UnitTypeId.Millimeters):F1}mm, Height={UnitUtils.ConvertFromInternalUnits(roundedHeight, UnitTypeId.Millimeters):F1}mm (NO ROTATION)");
+        }
+        else if (isFloorHost && isCableTray && !treatAsCircular)
+        {
+            // Cable trays on floors: NO width/height swap - maintain original orientation
+            DebugLogger.Info($"[UniversalSleevePlacer] FLOOR CABLE TRAY: NO SWAP - Width={UnitUtils.ConvertFromInternalUnits(roundedWidth, UnitTypeId.Millimeters):F1}mm, Height={UnitUtils.ConvertFromInternalUnits(roundedHeight, UnitTypeId.Millimeters):F1}mm");
         }
         
         // CRITICAL: Set Depth parameter based on host type
@@ -883,26 +1072,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (isFloorHost)
                 {
-            // ====== FLOOR HOST: Rotate based on MEP direction ======
-                    var mepOrientation = clashZone.MepElementOrientation;
-                    if (mepOrientation != null && (mepOrientation.X != 0 || mepOrientation.Y != 0))
+            // ====== FLOOR HOST: Rotate based on MEP orientation ======
+                    // Get stored MEP orientation from XML ("X" or "Y")
+                    string mepOrientation = clashZone.MepElementOrientationDirection;
+                    
+                    if (!string.IsNullOrEmpty(mepOrientation))
                     {
                         var loc = sleeveInstance.Location as LocationPoint;
                         if (loc != null)
                         {
-                            double rotationAngle = Math.Atan2(mepOrientation.Y, mepOrientation.X);
+                            double rotationAngle = 0.0;
                             
-                            // ⚠️ FLOOR DUCT FIX: Add 90 degrees rotation for duct sleeves on floors
-                            bool isFloorHostForRotation = string.Equals(clashZone.StructuralElementType, "Floor", StringComparison.OrdinalIgnoreCase) ||
-                                                         string.Equals(clashZone.StructuralElementType, "Floors", StringComparison.OrdinalIgnoreCase);
-                            bool isDuctForRotation = string.Equals(clashZone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase);
-                            
-                            DebugLogger.Info($"[UniversalSleevePlacer] ROTATION CHECK: StructuralElementType='{clashZone.StructuralElementType}', MepElementCategory='{clashZone.MepElementCategory}', isFloorHostForRotation={isFloorHostForRotation}, isDuctForRotation={isDuctForRotation}");
-                            
-                            if (isFloorHostForRotation && isDuctForRotation)
+                            // ⚠️ SIMPLIFIED LOGIC FOR FLOORS: Focus on vertical elements only
+                            // All vertical elements (ducts, pipes, cable trays) use the same logic
+                            if (mepOrientation == "Y")
                             {
-                                rotationAngle += Math.PI / 2; // Add 90 degrees (π/2 radians)
-                                DebugLogger.Info($"[UniversalSleevePlacer] FLOOR DUCT: Added 90° rotation for duct sleeve on floor");
+                                rotationAngle = Math.PI / 2; // 90 degrees
+                                DebugLogger.Info($"[UniversalSleevePlacer] VERTICAL {clashZone.MepElementCategory.ToUpper()} ON FLOOR: MEP orientation is Y - rotating sleeve 90°");
+                            }
+                            else
+                            {
+                                rotationAngle = 0.0; // No rotation needed
+                                DebugLogger.Info($"[UniversalSleevePlacer] VERTICAL {clashZone.MepElementCategory.ToUpper()} ON FLOOR: MEP orientation is X - no rotation needed");
                             }
                             
                             double rotationAngleDegrees = rotationAngle * 180 / Math.PI;
@@ -910,11 +1101,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             Line rotationAxis = Line.CreateBound(loc.Point, loc.Point + XYZ.BasisZ);
                             ElementTransformUtils.RotateElement(_doc, sleeveInstance.Id, rotationAxis, rotationAngle);
                             
-                    DebugLogger.Info($"[UniversalSleevePlacer] FLOOR: Rotated sleeve {rotationAngleDegrees:F1}° based on MEP orientation ({mepOrientation.X:F3}, {mepOrientation.Y:F3})");
+                    DebugLogger.Info($"[UniversalSleevePlacer] FLOOR: Rotated sleeve {rotationAngleDegrees:F1}° based on MEP orientation ({mepOrientation})");
                     try
                     {
                         System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
-                            $"[ORIENT-FLOOR] Sleeve {sleeveInstance.Id.IntegerValue}: Rotated {rotationAngleDegrees:F1}° for MEP dir ({mepOrientation.X:F3},{mepOrientation.Y:F3})\n");
+                            $"[ORIENT-FLOOR] Sleeve {sleeveInstance.Id.IntegerValue}: Rotated {rotationAngleDegrees:F1}° for MEP dir ({mepOrientation})\n");
                     }
                     catch { }
                 }

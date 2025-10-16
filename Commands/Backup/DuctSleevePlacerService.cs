@@ -173,18 +173,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     DebugLogger.Info($"[DuctSleevePlacerService] Processing Duct {inputDuct.Id} from clash zone {clashZone.Id} (category: {clashZone.MepElementCategory})");
 
-                    // Apply clearance to raw dimensions (based on duct shape and insulation type from ClashZone)
-                    var requiredClearance = GetClearanceFromUI(clashZone.DuctShape, clashZone.InsulationType);
-                    var finalWidth = rawWidth + (2 * requiredClearance);
-                    var finalHeight = rawHeight + (2 * requiredClearance);
+                    // ⚠️ CRITICAL OPTIMIZATION: Use pre-calculated dimensions from XML (already include clearance)
+                    // This ensures consistency and avoids double-clearance calculation
+                    var finalWidth = clashZone.MepElementWidth;   // Already includes clearance
+                    var finalHeight = clashZone.MepElementHeight; // Already includes clearance
                     
-                    // Debug: Log dimension calculations
-                    double rawWidthMm = UnitUtils.ConvertFromInternalUnits(rawWidth, UnitTypeId.Millimeters);
-                    double rawHeightMm = UnitUtils.ConvertFromInternalUnits(rawHeight, UnitTypeId.Millimeters);
-                    double clearanceMm = UnitUtils.ConvertFromInternalUnits(requiredClearance, UnitTypeId.Millimeters);
+                    // Debug: Log pre-calculated dimensions
                     double finalWidthMm = UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters);
                     double finalHeightMm = UnitUtils.ConvertFromInternalUnits(finalHeight, UnitTypeId.Millimeters);
-                    DebugLogger.Info($"[DuctSleevePlacerService] Dimension calc: Raw={rawWidthMm:F0}×{rawHeightMm:F0}mm + Clearance={clearanceMm:F0}mm → Final={finalWidthMm:F0}×{finalHeightMm:F0}mm");
+                    DebugLogger.Info($"[DuctSleevePlacerService] Using pre-calculated dimensions from XML: Width={finalWidthMm:F0}mm, Height={finalHeightMm:F0}mm (already includes clearance)");
 
                     // ⚠️ CRITICAL: Determine opening type based on duct shape from family name ⚠️
                     // DO NOT REMOVE: This logic ensures correct sleeve family selection

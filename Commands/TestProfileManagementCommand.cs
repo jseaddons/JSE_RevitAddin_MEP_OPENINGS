@@ -128,7 +128,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             System.Diagnostics.Debug.WriteLine("Opening main dialog after profile management");
                             File.AppendAllText(logPath, $"[{DateTime.Now}] Opening main dialog after profile management\n");
                             
+                            // 🔍 DIAGNOSTIC: Count sleeves BEFORE ShowMainDialog
+                            try
+                            {
+                                var sleevesBeforeShowMain = new FilteredElementCollector(doc)
+                                    .OfClass(typeof(FamilyInstance))
+                                    .Cast<FamilyInstance>()
+                                    .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                                    .Count();
+                                File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Sleeves BEFORE ShowMainDialog: {sleevesBeforeShowMain}\n");
+                            }
+                            catch (Exception ex)
+                            {
+                                File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Error counting sleeves BEFORE ShowMainDialog: {ex.Message}\n");
+                            }
+                            
                             ShowMainDialog(appProfileService, doc, uiDoc, logPath);
+                            
+                            // 🔍 DIAGNOSTIC: Count sleeves AFTER ShowMainDialog
+                            try
+                            {
+                                var sleevesAfterShowMain = new FilteredElementCollector(doc)
+                                    .OfClass(typeof(FamilyInstance))
+                                    .Cast<FamilyInstance>()
+                                    .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                                    .Count();
+                                File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Sleeves AFTER ShowMainDialog: {sleevesAfterShowMain}\n");
+                            }
+                            catch (Exception ex)
+                            {
+                                File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Error counting sleeves AFTER ShowMainDialog: {ex.Message}\n");
+                            }
                         }
                     }
                 }
@@ -164,10 +194,56 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         {
             try
             {
+                // 🔍 DIAGNOSTIC: Count sleeves BEFORE EmergencyMainDialog constructor
+                try
+                {
+                    var sleevesBeforeConstructor = new FilteredElementCollector(doc)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Sleeves BEFORE EmergencyMainDialog constructor: {sleevesBeforeConstructor}\n");
+                }
+                catch (Exception ex)
+                {
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Error counting sleeves BEFORE constructor: {ex.Message}\n");
+                }
+                
                 // Show modal to ensure dialog is visible and blocks until user closes it
                 var mainDialog = new Views.EmergencyMainDialog(appProfileService, doc, uiDoc);
+                
+                // 🔍 DIAGNOSTIC: Count sleeves AFTER EmergencyMainDialog constructor (before ShowDialog)
+                try
+                {
+                    var sleevesAfterConstructor = new FilteredElementCollector(doc)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Sleeves AFTER EmergencyMainDialog constructor: {sleevesAfterConstructor}\n");
+                }
+                catch (Exception ex)
+                {
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Error counting sleeves AFTER constructor: {ex.Message}\n");
+                }
+                
                 var dialogResult = mainDialog.ShowDialog();
                 File.AppendAllText(logPath, $"[{DateTime.Now}] Main dialog shown modal with result: {dialogResult}\n");
+                
+                // 🔍 DIAGNOSTIC: Count sleeves AFTER ShowDialog completes
+                try
+                {
+                    var sleevesAfterShowDialog = new FilteredElementCollector(doc)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Sleeves AFTER ShowDialog completes: {sleevesAfterShowDialog}\n");
+                }
+                catch (Exception ex)
+                {
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Error counting sleeves AFTER ShowDialog: {ex.Message}\n");
+                }
             }
             catch (Exception ex)
             {

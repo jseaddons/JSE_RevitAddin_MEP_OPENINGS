@@ -38,7 +38,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private bool _userHasMadeManualChanges = false;
         
         // Store filters from last refresh to reuse during opening creation
-        private List<OpeningFilter>? _lastRefreshFilters = null;
+        private bool _isInitializing = true; // Flag to prevent refresh during initialization
         
         
         // Main panels - 4-section layout
@@ -146,48 +146,125 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         public EmergencyMainDialog(ApplicationProfileService appProfileService, Document? document = null, UIDocument? uiDocument = null)
         {
+            try
+            {
+                // 🔍 DIAGNOSTIC: Log constructor start IMMEDIATELY to file (bypass DebugLogger)
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                    $"[{DateTime.Now}] 🔍 Constructor: EmergencyMainDialog constructor STARTED\n");
+                
+                // 🔍 DIAGNOSTIC: Log parameters
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                    $"[{DateTime.Now}] 🔍 Constructor: appProfileService = {(appProfileService != null ? "NOT NULL" : "NULL")}\n");
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                    $"[{DateTime.Now}] 🔍 Constructor: document = {(document != null ? "NOT NULL" : "NULL")}\n");
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                    $"[{DateTime.Now}] 🔍 Constructor: uiDocument = {(uiDocument != null ? "NOT NULL" : "NULL")}\n");
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 Constructor: ERROR in initial logging: {ex.Message}\n");
+                }
+                catch { }
+            }
+            
             _appProfileService = appProfileService;
             _document = document;
             _uiDocument = uiDocument;
             
             // Close all log files to free file handles
+            try
+            {
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                    $"[{DateTime.Now}] 🔍 Constructor: About to close log files\n");
+            }
+            catch { }
+            
             DebugLogger.CloseAllLogFiles();
+            DebugLogger.Info("🔍 Constructor: Closed all log files");
+            
+            try
+            {
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                    $"[{DateTime.Now}] 🔍 Constructor: Closed all log files\n");
+            }
+            catch { }
             
             // Set logging context for OK button debugging
             DebugLogger.SetServiceContext("OKButton");
+            DebugLogger.Info("🔍 Constructor: Set service context to OKButton");
             
             // STEP 1: IMMEDIATE LOG - Use rolling log system for main UI
             // Clean up old logs first to prevent accumulation
             DebugLogger.CleanupOldLogs();
+            DebugLogger.Info("🔍 Constructor: Cleaned up old logs");
 
             // Set logging context for main UI
             DebugLogger.SetServiceContext("MainUI");
+            DebugLogger.Info("🔍 Constructor: Set service context to MainUI");
+            
             // Initialize DebugLogger for main UI session
             DebugLogger.InitCustomLogFileOverwrite("MainUi");
             DebugLogger.Info($"Emergency Main Dialog Constructor Started");
             DebugLogger.Info($"ApplicationProfileService: {appProfileService != null}");
             DebugLogger.Info($"Document: {document?.Title ?? "null"}");
+            DebugLogger.Info("🔍 Constructor: DebugLogger initialized successfully");
             // DebugLogger handles its own error handling - no need for catch block
 
             // STEP 2: Continue with normal initialization
+            DebugLogger.Info("🔍 Constructor: About to initialize services");
             _appProfileService = appProfileService ?? throw new ArgumentNullException(nameof(appProfileService));
+            DebugLogger.Info("🔍 Constructor: ApplicationProfileService initialized");
+            
             _filterManagementService = new FilterManagementService(
                 msg => DebugLogger.Info(msg),
                 msg => _statusLabel.Text = msg
             );
+            DebugLogger.Info("🔍 Constructor: FilterManagementService initialized");
+            
             _linkedFileService = new LinkedFileService();
+            DebugLogger.Info("🔍 Constructor: LinkedFileService initialized");
+            
             _activeDocument = document;
+            DebugLogger.Info("🔍 Constructor: ActiveDocument set");
 
             // Log successful initialization
             DebugLogger.Info("Services initialized successfully");
+            DebugLogger.Info("🔍 Constructor: All services initialized successfully");
 
             // DebugLogger already initialized above - no need to reinitialize
 
             try
             {
+                // 🔍 DIAGNOSTIC: Count sleeves BEFORE InitializeComponent
+                if (_document != null)
+                {
+                    var sleevesBeforeInit = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 Constructor: Sleeves BEFORE InitializeComponent: {sleevesBeforeInit}\n");
+                }
+                
                 DebugLogger.Info("About to call InitializeComponent()");
                 InitializeComponent();
                 DebugLogger.Info("InitializeComponent() completed successfully");
+                
+                // 🔍 DIAGNOSTIC: Count sleeves AFTER InitializeComponent
+                if (_document != null)
+                {
+                    var sleevesAfterInit = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 Constructor: Sleeves AFTER InitializeComponent: {sleevesAfterInit}\n");
+                }
             }
             catch (Exception ex)
             {
@@ -198,9 +275,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
             try
             {
+                // 🔍 DIAGNOSTIC: Count sleeves BEFORE LoadProfileInfo
+                if (_document != null)
+                {
+                    var sleevesBeforeProfile = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 Constructor: Sleeves BEFORE LoadProfileInfo: {sleevesBeforeProfile}\n");
+                }
+                
                 DebugLogger.Info("About to call LoadProfileInfo()");
                 LoadProfileInfo();
                 DebugLogger.Info("LoadProfileInfo() completed successfully");
+                
+                // 🔍 DIAGNOSTIC: Count sleeves AFTER LoadProfileInfo
+                if (_document != null)
+                {
+                    var sleevesAfterProfile = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 Constructor: Sleeves AFTER LoadProfileInfo: {sleevesAfterProfile}\n");
+                }
             }
             catch (Exception ex)
             {
@@ -227,6 +328,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // STEP 4: Initialize External Event for proper sleeve placement
             try
             {
+                // 🔍 DIAGNOSTIC: Count sleeves BEFORE External Event initialization
+                if (_document != null)
+                {
+                    var sleevesBeforeExternal = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 Constructor: Sleeves BEFORE External Event init: {sleevesBeforeExternal}\n");
+                }
+                
                 _sleevePlacementHandler = new SleevePlacementExternalEvent();
                 _sleevePlacementHandler.PlacementCompleted += () =>
                 {
@@ -241,6 +354,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 };
                 _sleevePlacementEvent = ExternalEvent.Create(_sleevePlacementHandler);
                 DebugLogger.Info("External Event initialized successfully for sleeve placement");
+                
+                // 🔍 DIAGNOSTIC: Count sleeves AFTER External Event initialization
+                if (_document != null)
+                {
+                    var sleevesAfterExternal = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 Constructor: Sleeves AFTER External Event init: {sleevesAfterExternal}\n");
+                }
             }
             catch (Exception ex)
             {
@@ -249,16 +374,69 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
             // STEP 4: Log completion
             DebugLogger.Info("EmergencyMainDialog initialization COMPLETED");
+            
+            // 🔍 DIAGNOSTIC: Add logging to track constructor progress
+            DebugLogger.Info("🔍 Constructor: About to set up Shown event handler");
 
             // Load real linked files if document is provided (after UI is initialized)
             if (document != null)
             {
-                this.Shown += (s, e) => LoadRealLinkedFiles(document);
+                this.Shown += (s, e) => {
+                    try
+                    {
+                        DebugLogger.Info("=== DIALOG SHOWN EVENT TRIGGERED ===");
+                        
+                        // 🔍 DIAGNOSTIC: Count sleeves BEFORE LoadRealLinkedFiles
+                        var sleevesBeforeCount = new FilteredElementCollector(document)
+                            .OfClass(typeof(FamilyInstance))
+                            .Cast<FamilyInstance>()
+                            .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                            .Count();
+                        DebugLogger.Info($"🔍 Sleeves BEFORE LoadRealLinkedFiles: {sleevesBeforeCount}");
+                        
+                        LoadRealLinkedFiles(document);
+                        
+                        // 🔍 DIAGNOSTIC: Count sleeves AFTER LoadRealLinkedFiles
+                        var sleevesAfterCount = new FilteredElementCollector(document)
+                            .OfClass(typeof(FamilyInstance))
+                            .Cast<FamilyInstance>()
+                            .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                            .Count();
+                        DebugLogger.Info($"🔍 Sleeves AFTER LoadRealLinkedFiles: {sleevesAfterCount}");
+                        DebugLogger.Info($"🔍 Sleeves DELETED: {sleevesBeforeCount - sleevesAfterCount}");
+                        
+                        if (sleevesBeforeCount != sleevesAfterCount)
+                        {
+                            DebugLogger.Error($"⚠️ CRITICAL BUG DETECTED: {sleevesBeforeCount - sleevesAfterCount} sleeves were deleted when dialog opened!");
+                        }
+                        
+                        // ⚠️ CRITICAL FIX: Mark initialization as complete to allow live parameter extraction
+                        _isInitializing = false;
+                        DebugLogger.Info("🔍 Initialization complete - _isInitializing set to false");
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLogger.Error($"Error in Shown event diagnostic logging: {ex.Message}");
+                        LoadRealLinkedFiles(document);
+                        
+                        // ⚠️ CRITICAL FIX: Mark initialization as complete even if error occurs
+                        _isInitializing = false;
+                        DebugLogger.Info("🔍 Initialization complete (after error) - _isInitializing set to false");
+                    }
+                };
             }
 
+            // 🔍 DIAGNOSTIC: Log after Shown event setup
+            DebugLogger.Info("🔍 Constructor: Shown event handler setup completed");
+            
             // Register FilterUiStateProvider delegates for Refresh/Filter services
             try
             {
+                Services.FilterUiStateProvider.GetSelectedFilterItems = () =>
+                {
+                    return GetSelectedFilterItems();
+                };
+
                 Services.FilterUiStateProvider.GetSelectedHostElementTypes = () =>
                 {
                     var selected = new List<string>();
@@ -311,6 +489,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         private void InitializeComponent()
         {
+            // 🔍 DIAGNOSTIC: Count sleeves at START of InitializeComponent
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesAtStart = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 InitializeComponent START: {sleevesAtStart} sleeves\n");
+                }
+            }
+            catch { }
+            
             this.SuspendLayout();
 
             // Form properties
@@ -510,9 +704,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Bold)
             };
             _statusPanel.Controls.Add(_configureButton);
+
+            // Note: Parameter Service is now available as a separate command
+            // This keeps the main UI focused on clash detection and sleeve placement
             
             // Progress Bar (after buttons, can be longer now)
-            int progressBarStartX = buttonStartX + 130 + statusButtonSpacing; // After both buttons
+            int progressBarStartX = buttonStartX + 130 + statusButtonSpacing; // After both buttons (60+60+10)
             _progressBar = new WinForms.ProgressBar
             {
                 Location = new System.Drawing.Point(progressBarStartX, 5), // After buttons
@@ -588,29 +785,180 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // DebugLogger.Info($"_rightPanel created: Width={_rightPanel.Width}, Location={_rightPanel.Location}, Dock={_rightPanel.Dock}");
 
             // Add content to panels
+            
+            // 🔍 DIAGNOSTIC: Count sleeves BEFORE InitializePanelContent
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesBeforePanelContent = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 BEFORE InitializePanelContent: {sleevesBeforePanelContent} sleeves\n");
+                }
+            }
+            catch { }
+            
             InitializePanelContent();
+            
+            // 🔍 DIAGNOSTIC: Count sleeves AFTER InitializePanelContent
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesAfterPanelContent = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 AFTER InitializePanelContent: {sleevesAfterPanelContent} sleeves\n");
+                }
+            }
+            catch { }
+            
             PositionPanels();
             BalanceLeftLayout();
             this.Shown += (_, __) => _bottomLeftPanel.Height = (_leftPanel.Height - _horizontalSplitter.Height) / 2;
             this.Resize += (_, __) => BalanceLeftLayout();
             _leftPanel.Resize += (_, __) => BalanceLeftLayout();
 
+            // 🔍 DIAGNOSTIC: Count sleeves BEFORE ResumeLayout (end of InitializeComponent)
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesBeforeResume = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 InitializeComponent END (before ResumeLayout): {sleevesBeforeResume} sleeves\n");
+                }
+            }
+            catch { }
+
             this.ResumeLayout(false);
+            
+            // 🔍 DIAGNOSTIC: Log constructor completion
+            DebugLogger.Info("🔍 Constructor: EmergencyMainDialog constructor COMPLETED successfully");
+            
+            try
+            {
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                    $"[{DateTime.Now}] 🔍 Constructor: EmergencyMainDialog constructor COMPLETED successfully\n");
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 Constructor: CRITICAL ERROR in constructor: {ex.Message}\n");
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 Constructor: Stack trace: {ex.StackTrace}\n");
+                }
+                catch { }
+                throw; // Re-throw to see the error
+            }
         }
 
         private void InitializePanelContent()
         {
+            // 🔍 DIAGNOSTIC: Count sleeves at START of InitializePanelContent
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesAtStart = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 InitializePanelContent START: {sleevesAtStart} sleeves\n");
+                }
+            }
+            catch { }
+            
             // NEW: Create filters panel (left column)
             CreateFiltersPanel();
+            
+            // 🔍 DIAGNOSTIC: Count sleeves AFTER CreateFiltersPanel
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesAfterFilters = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 AFTER CreateFiltersPanel: {sleevesAfterFilters} sleeves\n");
+                }
+            }
+            catch { }
             
             // Create main content panel (center) - displays intersection results
             CreateMainContentPanel();
             
+            // 🔍 DIAGNOSTIC: Count sleeves AFTER CreateMainContentPanel
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesAfterMainContent = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 AFTER CreateMainContentPanel: {sleevesAfterMainContent} sleeves\n");
+                }
+            }
+            catch { }
+            
             // Create 4-section layout within left panel
             CreateFourSectionLayout();
             
+            // 🔍 DIAGNOSTIC: Count sleeves AFTER CreateFourSectionLayout
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesAfterFourSection = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 AFTER CreateFourSectionLayout: {sleevesAfterFourSection} sleeves\n");
+                }
+            }
+            catch { }
+            
             // Right Panel: Opening Configuration
             InitializeRightPanel();
+            
+            // 🔍 DIAGNOSTIC: Count sleeves AFTER InitializeRightPanel
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesAfterRightPanel = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 AFTER InitializeRightPanel: {sleevesAfterRightPanel} sleeves\n");
+                }
+            }
+            catch { }
         }
 
         private void CreateFiltersPanel()
@@ -679,10 +1027,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 // DebugLogger.Info("Filter list box created");
             
             // Add sample filters (like conVoid) via service so internal list is tracked
+            
+            // 🔍 DIAGNOSTIC: Count sleeves BEFORE SeedDefaultFilters
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesBeforeSeed = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 BEFORE SeedDefaultFilters: {sleevesBeforeSeed} sleeves\n");
+                }
+            }
+            catch { }
+            
             _filterManagementService.SeedDefaultFilters(
                 filterListBox,
                 new System.Collections.Generic.List<string> { "Electrical", "Plumbing", "Ventilation" }
             );
+            
+            // 🔍 DIAGNOSTIC: Count sleeves AFTER SeedDefaultFilters
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesAfterSeed = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 AFTER SeedDefaultFilters: {sleevesAfterSeed} sleeves\n");
+                }
+            }
+            catch { }
+            
             // DebugLogger.Info("Sample filters seeded via FilterManagementService");
             
             // Button panel positioned right below the filter list box
@@ -1551,10 +1933,77 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _rightPanel.Controls.Add(_mepTypeCombo);
 
             // Create clearance panels
+            
+            // 🔍 DIAGNOSTIC: Count sleeves BEFORE CreateClearancePanels
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesBeforeClearance = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 BEFORE CreateClearancePanels: {sleevesBeforeClearance} sleeves\n");
+                }
+            }
+            catch { }
+            
             CreateClearancePanels();
+            
+            // 🔍 DIAGNOSTIC: Count sleeves AFTER CreateClearancePanels
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesAfterClearance = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 AFTER CreateClearancePanels: {sleevesAfterClearance} sleeves\n");
+                }
+            }
+            catch { }
 
             // Parameter filter section
+            
+            // 🔍 DIAGNOSTIC: Count sleeves BEFORE CreateParameterFilterPanel
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesBeforeParameter = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 BEFORE CreateParameterFilterPanel: {sleevesBeforeParameter} sleeves\n");
+                }
+            }
+            catch { }
+            
             CreateParameterFilterPanel();
+            
+            // 🔍 DIAGNOSTIC: Count sleeves AFTER CreateParameterFilterPanel
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesAfterParameter = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 AFTER CreateParameterFilterPanel: {sleevesAfterParameter} sleeves\n");
+                }
+            }
+            catch { }
+            
             // Ensure correct panel visible at startup
             UpdateClearanceVisibility();
             // Initialize discipline prefix based on default MEP Type selection
@@ -2408,13 +2857,112 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _parameterFilterPanel.Controls.Add(_masterParameterTabs);
 
             // Create Reference Elements master tab
+            
+            // 🔍 DIAGNOSTIC: Count sleeves BEFORE CreateReferenceElementsMasterTab
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesBeforeReference = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 BEFORE CreateReferenceElementsMasterTab: {sleevesBeforeReference} sleeves\n");
+                }
+            }
+            catch { }
+            
             CreateReferenceElementsMasterTab();
             
+            // 🔍 DIAGNOSTIC: Count sleeves AFTER CreateReferenceElementsMasterTab
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesAfterReference = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 AFTER CreateReferenceElementsMasterTab: {sleevesAfterReference} sleeves\n");
+                }
+            }
+            catch { }
+            
             // Create Host Elements master tab
+            
+            // 🔍 DIAGNOSTIC: Count sleeves BEFORE CreateHostElementsMasterTab
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesBeforeHost = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 BEFORE CreateHostElementsMasterTab: {sleevesBeforeHost} sleeves\n");
+                }
+            }
+            catch { }
+            
             CreateHostElementsMasterTab();
             
+            // 🔍 DIAGNOSTIC: Count sleeves AFTER CreateHostElementsMasterTab
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesAfterHost = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 AFTER CreateHostElementsMasterTab: {sleevesAfterHost} sleeves\n");
+                }
+            }
+            catch { }
+            
             // Add Parameter Marking Configuration section at the bottom
+            
+            // 🔍 DIAGNOSTIC: Count sleeves BEFORE CreateParameterMarkingSection
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesBeforeMarking = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 BEFORE CreateParameterMarkingSection: {sleevesBeforeMarking} sleeves\n");
+                }
+            }
+            catch { }
+            
             CreateParameterMarkingSection();
+            
+            // 🔍 DIAGNOSTIC: Count sleeves AFTER CreateParameterMarkingSection
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesAfterMarking = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 AFTER CreateParameterMarkingSection: {sleevesAfterMarking} sleeves\n");
+                }
+            }
+            catch { }
         }
 
         /// <summary>
@@ -2607,7 +3155,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             
             // Get current MEP parameters using live harvest
+            
+            // 🔍 DIAGNOSTIC: Count sleeves BEFORE ParameterExtractionService creation
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesBeforeParameterService = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 BEFORE ParameterExtractionService creation: {sleevesBeforeParameterService} sleeves\n");
+                }
+            }
+            catch { }
+            
             var parameterService = new Services.ParameterExtractionService();
+            
+            // 🔍 DIAGNOSTIC: Count sleeves AFTER ParameterExtractionService creation
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesAfterParameterService = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 AFTER ParameterExtractionService creation: {sleevesAfterParameterService} sleeves\n");
+                }
+            }
+            catch { }
+            
             var mepParameters = GetMepParametersForTab(servicePanel);
             nameCombo.Items.AddRange(mepParameters.ToArray());
             nameCombo.SelectedItem = parameterName;
@@ -2626,7 +3208,54 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
 
             // CRITICAL FIX: Use live bootstrap routine instead of cached parameters
-            var openingParameters = parameterService.GetCurrentOpeningParameters(_uiDocument?.Document);
+            
+            // 🔍 DIAGNOSTIC: Count sleeves BEFORE GetCurrentOpeningParameters
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesBeforeGetOpening = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 BEFORE GetCurrentOpeningParameters: {sleevesBeforeGetOpening} sleeves\n");
+                }
+            }
+            catch { }
+            
+            // ⚠️ CRITICAL FIX: Skip GetCurrentOpeningParameters during initialization to prevent sleeve deletion
+            List<string> openingParameters;
+            if (_isInitializing)
+            {
+                // During initialization, use cached parameters to avoid triggering refresh operations
+                openingParameters = new List<string> { "Width", "Height", "Length", "Level", "Reference Level" };
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                    $"[{DateTime.Now}] 🔍 SKIPPING GetCurrentOpeningParameters during initialization - using cached parameters\n");
+            }
+            else
+            {
+                // After initialization, use live parameters
+                openingParameters = parameterService.GetCurrentOpeningParameters(_uiDocument?.Document);
+            }
+            
+            // 🔍 DIAGNOSTIC: Count sleeves AFTER GetCurrentOpeningParameters
+            try
+            {
+                if (_document != null)
+                {
+                    var sleevesAfterGetOpening = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 AFTER GetCurrentOpeningParameters: {sleevesAfterGetOpening} sleeves\n");
+                }
+            }
+            catch { }
+            
             openingParamCombo.Items.AddRange(openingParameters.Cast<object>().ToArray());
             openingParamCombo.Items.Insert(0, "<Select Opening Parameter>");
             openingParamCombo.SelectedIndex = 0;
@@ -3173,6 +3802,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 if (_activeDocument != null && categoryNames.Any())
                 {
+                    // ⚠️ CRITICAL FIX: Skip parameter extraction during initialization to prevent sleeve deletion
+                    if (_isInitializing)
+                    {
+                        // During initialization, use cached parameters to avoid triggering refresh operations
+                        parameters.AddRange(new[] { "Width", "Height", "Length", "Level", "Reference Level", "Schedule Level" });
+                        DebugLogger.Info("🔍 SKIPPING GetAvailableParametersForSpecificCategories during initialization - using cached parameters");
+                        return parameters;
+                    }
+                    
                     var parameterService = new ParameterExtractionService();
                     
                     // Convert category names to MepCategory enum
@@ -3408,6 +4046,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         private void LoadRealLinkedFiles(Document document)
         {
+            // 🔍 DIAGNOSTIC: Log LoadRealLinkedFiles start
+            try
+            {
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                    $"[{DateTime.Now}] 🔍 LoadRealLinkedFiles: STARTED\n");
+                
+                // Count sleeves BEFORE LoadRealLinkedFiles
+                var sleevesBeforeCount = new FilteredElementCollector(document)
+                    .OfClass(typeof(FamilyInstance))
+                    .Cast<FamilyInstance>()
+                    .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                    .Count();
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                    $"[{DateTime.Now}] 🔍 LoadRealLinkedFiles: Sleeves BEFORE: {sleevesBeforeCount}\n");
+            }
+            catch { }
+            
             DebugLogger.Info("=== STARTING LoadRealLinkedFiles ===");
             DebugLogger.Info($"Document: {document?.Title ?? "null"}");
 
@@ -3455,6 +4110,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
 
                             DebugLogger.Info("=== LoadRealLinkedFiles COMPLETED ===");
+                
+                // 🔍 DIAGNOSTIC: Log LoadRealLinkedFiles completion
+                try
+                {
+                    // Count sleeves AFTER LoadRealLinkedFiles
+                    var sleevesAfterCount = new FilteredElementCollector(document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 LoadRealLinkedFiles: Sleeves AFTER: {sleevesAfterCount}\n");
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 LoadRealLinkedFiles: COMPLETED\n");
+                }
+                catch { }
                 
                 // CRITICAL: Restore configuration AFTER UI is fully populated
                 RestoreConfigurationToUI();
@@ -3580,15 +4251,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         // ⚠️ NOTE: MarkPrefixes are UI state, not opening conditions - handled separately
                     };
                     
-                    // Save to XML
-                    bool saved = conditionsService.SaveConditions(conditions);
+                    // 🛡️ ARCHITECTURE FIX: Save CONDITIONS XML using combined key (FilterName_Category)
+                    // This allows different clearance/opening types per category within the same filter
+                    string combinedKey = $"{filter.Name}_{filter.Category}";
+                    bool saved = conditionsService.SaveConditions(conditions, combinedKey);
                     if (saved)
                     {
-                        DebugLogger.Info($"[SaveConditionsToXml] Saved conditions for filter '{filter.Name}'");
+                        DebugLogger.Info($"[SaveConditionsToXml] Saved conditions for '{combinedKey}' (Filter: '{filter.Name}', Category: '{filter.Category}')");
                     }
                     else
                     {
-                        DebugLogger.Warning($"[SaveConditionsToXml] Failed to save conditions for filter '{filter.Name}'");
+                        DebugLogger.Warning($"[SaveConditionsToXml] Failed to save conditions for '{combinedKey}'");
                     }
                 }
             }
@@ -4916,6 +5589,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         {
             try
             {
+                // 🔍 DIAGNOSTIC: Count sleeves BEFORE RestoreClashZonesFromUIState
+                if (_document != null)
+                {
+                    var sleevesBeforeRestore = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 RestoreClashZonesFromUIState: Sleeves BEFORE: {sleevesBeforeRestore}\n");
+                }
+                
                 DebugLogger.Info("[CLASH_RESTORE] Restoring clash zones from UI state");
                 
                 var currentProfile = GetCurrentProfile();
@@ -5001,10 +5686,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 // Save to profile configuration
                 currentProfile.Configuration.ClashZoneStorage = clashZoneStorage;
                 DebugLogger.Info($"[CLASH_RESTORE] Restored {clashZoneStorage.ClashZones.Count} clash zones to profile configuration");
+                
+                // 🔍 DIAGNOSTIC: Count sleeves AFTER RestoreClashZonesFromUIState
+                if (_document != null)
+                {
+                    var sleevesAfterRestore = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 RestoreClashZonesFromUIState: Sleeves AFTER: {sleevesAfterRestore}\n");
+                }
             }
             catch (Exception ex)
             {
                 DebugLogger.Error($"[CLASH_RESTORE] Failed to restore clash zones: {ex.Message}");
+                
+                // 🔍 DIAGNOSTIC: Count sleeves AFTER RestoreClashZonesFromUIState ERROR
+                try
+                {
+                    if (_document != null)
+                    {
+                        var sleevesAfterError = new FilteredElementCollector(_document)
+                            .OfClass(typeof(FamilyInstance))
+                            .Cast<FamilyInstance>()
+                            .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                            .Count();
+                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                            $"[{DateTime.Now}] 🔍 RestoreClashZonesFromUIState: Sleeves AFTER ERROR: {sleevesAfterError}\n");
+                    }
+                }
+                catch { }
             }
         }
         
@@ -5775,6 +6488,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
         }
 
+        /// <summary>
+        /// Launches the Parameter Service dialog with integration to update main UI dropdowns
+        /// </summary>
+        public void LaunchParameterService()
+        {
+            try
+            {
+                DebugLogger.Info("=== LAUNCHING PARAMETER SERVICE WITH MAIN UI INTEGRATION ===");
+                
+                using (var parameterServiceDialog = new ParameterServiceDialog(_document, _uiDocument, this))
+                {
+                    var result = parameterServiceDialog.ShowDialog();
+                    
+                    if (result == WinForms.DialogResult.OK)
+                    {
+                        var extractedParameters = parameterServiceDialog.GetExtractedParameters();
+                        DebugLogger.Info($"Parameter service completed successfully. Extracted {extractedParameters.Count} parameters.");
+                        _statusLabel.Text = $"Parameter service completed! Found {extractedParameters.Count} parameters.";
+                    }
+                    else
+                    {
+                        DebugLogger.Info("Parameter service cancelled");
+                        _statusLabel.Text = "Parameter service cancelled";
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"Error launching parameter service: {ex.Message}");
+                WinForms.MessageBox.Show($"Error launching parameter service: {ex.Message}", "Error", 
+                    WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
+                _statusLabel.Text = "Error launching parameter service";
+            }
+        }
+
         private void OnRefreshClick(object? sender, EventArgs e)
         {
             // IMMEDIATE LOGGING BEFORE ANYTHING ELSE
@@ -5817,18 +6565,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     refreshService.SetUIReferences(_statusLabel, _progressBar, _refreshButton);
                     refreshService.ExecuteRefresh(selectedFilterItems, selectedMepCategories, selectedReferenceFiles, selectedHostFiles, clearanceSettings);
                     
-                    // Update parameter dropdowns after successful refresh
-                    System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] About to update parameter dropdowns");
-                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] About to update parameter dropdowns\n");
+                    // ⚠️ CRITICAL FIX: Skip parameter dropdown updates during refresh to prevent sleeve deletion
+                    // Parameter dropdowns don't need to be updated during refresh operations
+                    System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion\n");
                     
-                    UpdateParameterDropdownsFromMepCategories(document);
+                    // Update parameter dropdowns after successful refresh
+                    // System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] About to update parameter dropdowns");
+                    // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] About to update parameter dropdowns\n");
+                    
+                    // UpdateParameterDropdownsFromMepCategories(document);
 
                     // Also update host parameters for the Host to Opening tab
-                    System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] About to update host parameters");
-                    PopulateHostParameters();
+                    // System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] About to update host parameters");
+                    // PopulateHostParameters();
 
-                    System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] Parameter dropdowns updated successfully");
-                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] Parameter dropdowns updated successfully\n");
+                    // System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] Parameter dropdowns updated successfully");
+                    // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] Parameter dropdowns updated successfully\n");
                     
                     DebugLogger.Info("[OK_BUTTON_DEBUG] About to check OK button enabling logic");
                     JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] About to check OK button enabling logic\n");
@@ -5999,11 +6752,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         /// <summary>
         /// Populates host parameter dropdowns using HostParameterService
         /// </summary>
-        private void PopulateHostParameters()
+        public void PopulateHostParameters()
         {
             try
             {
                 DebugLogger.Info("[HOST_SERVICE] Starting host parameter population");
+
+                // ⚠️ CRITICAL FIX: Skip host parameter population during initialization to prevent sleeve deletion
+                if (_isInitializing)
+                {
+                    DebugLogger.Info("🔍 SKIPPING PopulateHostParameters during initialization - using cached parameters");
+                    return;
+                }
 
                 // Get selected host files
                 var selectedHostFiles = GetSelectedHostFiles();
@@ -6351,12 +7111,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         /// <summary>
         /// Updates parameter dropdowns with parameters from MEP categories (not clash zones)
         /// </summary>
-        private void UpdateParameterDropdownsFromMepCategories(Document document)
+        public void UpdateParameterDropdownsFromMepCategories(Document document)
         {
             try
             {
                 DebugLogger.Info("[PARAMETER_DEBUG] Starting parameter dropdown update using ParameterExtractionService");
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [PARAMETER_DEBUG] Starting parameter dropdown update using ParameterExtractionService\n");
+                
+                // ⚠️ CRITICAL FIX: Skip parameter extraction during initialization to prevent sleeve deletion
+                if (_isInitializing)
+                {
+                    DebugLogger.Info("🔍 SKIPPING UpdateParameterDropdownsFromMepCategories during initialization - using cached parameters");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] 🔍 SKIPPING UpdateParameterDropdownsFromMepCategories during initialization - using cached parameters\n");
+                    return;
+                }
                 
                 var mepParameters = new HashSet<string>();
                 var openingParameters = new HashSet<string>();

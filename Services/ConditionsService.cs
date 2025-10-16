@@ -35,13 +35,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Save opening conditions to XML file
         /// File name: FilterName_CONDITIONS.xml (e.g., Ventilation_ducts_CONDITIONS.xml)
         /// </summary>
-        public bool SaveConditions(OpeningConditions conditions)
+        public bool SaveConditions(OpeningConditions conditions, string customKey = null)
         {
             try
             {
-                if (string.IsNullOrEmpty(conditions.FilterName))
+                // Use custom key if provided, otherwise use FilterName
+                string key = customKey ?? conditions.FilterName;
+                
+                if (string.IsNullOrEmpty(key))
                 {
-                    _log("Cannot save conditions: FilterName is empty");
+                    _log("Cannot save conditions: Key is empty");
                     return false;
                 }
 
@@ -49,7 +52,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 conditions.LastModified = DateTime.Now;
 
                 // Build file path
-                var fileName = $"{conditions.FilterName}_CONDITIONS.xml";
+                var fileName = $"{key}_CONDITIONS.xml";
                 var filePath = Path.Combine(_projectDirectory, fileName);
 
                 // Serialize to XML
@@ -60,7 +63,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 _log($"[ConditionsService] Saved conditions to: {filePath}");
-                DebugLogger.Info($"[ConditionsService] Saved conditions for filter '{conditions.FilterName}' - Clearances: Rect={conditions.ClearanceSettings.RectangularNormal}/{conditions.ClearanceSettings.RectangularInsulated}mm, Round={conditions.ClearanceSettings.RoundNormal}/{conditions.ClearanceSettings.RoundInsulated}mm");
+                DebugLogger.Info($"[ConditionsService] Saved conditions for key '{key}' - Clearances: Rect={conditions.ClearanceSettings.RectangularNormal}/{conditions.ClearanceSettings.RectangularInsulated}mm, Round={conditions.ClearanceSettings.RoundNormal}/{conditions.ClearanceSettings.RoundInsulated}mm");
                 
                 return true;
             }

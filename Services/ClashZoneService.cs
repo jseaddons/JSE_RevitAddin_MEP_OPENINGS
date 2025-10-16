@@ -154,7 +154,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public List<ClashZone> DetectNewClashZones(
             List<(Element, Element, BoundingBoxXYZ, XYZ)> currentIntersections,
             Document document,
-            Dictionary<string, double> clearanceSettings = null)
+            Dictionary<string, double> clearanceSettings = null,
+            List<string> selectedCategories = null)
         {
             if (_clashZoneStorage == null)
             {
@@ -433,7 +434,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             // CRITICAL: Check for existing sleeves and reset IsResolved flag if sleeves were deleted
             // This allows re-placement of sleeves after manual deletion
-            ResetResolvedFlagForDeletedSleeves(document);
+            // ⚠️ CRITICAL FIX: Only reset flags for selected categories to avoid affecting other filters/categories
+            ResetResolvedFlagForDeletedSleeves(document, selectedCategories);
             
             // CRITICAL FIX: Remove duplicate clash zones (same MEP + structural element)
             RemoveDuplicateClashZones();
@@ -689,13 +691,53 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return false;
                 }
 
-                _log($"Clash zone {clashZone.Id} matches current selection (from selected file + not resolved + visible in section box)");
+                // STEP 4: Check if host type matches current UI selection
+                bool hostTypeMatches = DoesHostTypeMatchCurrentSelection(clashZone);
+                if (!hostTypeMatches)
+                {
+                    _log($"Clash zone {clashZone.Id} host type '{clashZone.StructuralElementType}' doesn't match current UI selection - skipping");
+                    return false;
+                }
+
+                _log($"Clash zone {clashZone.Id} matches current selection (from selected file + not resolved + visible in section box + host type matches)");
                 return true;
             }
             catch (Exception ex)
             {
                 _log($"Error checking clash zone {clashZone.Id} against current selection: {ex.Message} - REMOVING invalid clash zone");
                 return false; // Remove clash zone on error - it's invalid
+            }
+        }
+
+        /// <summary>
+        /// Check if host type matches current UI selection
+        /// </summary>
+        private bool DoesHostTypeMatchCurrentSelection(ClashZone clashZone)
+        {
+            try
+            {
+                // Get currently selected host types from UI
+                var selectedHostTypes = FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>();
+                
+                if (selectedHostTypes.Count == 0)
+                {
+                    // If no host types selected, allow all (backward compatibility)
+                    return true;
+                }
+                
+                // Handle plural/singular mismatch: "Walls" (UI) vs "Wall" (Revit)
+                bool hostTypeMatch = selectedHostTypes.Contains(clashZone.StructuralElementType) ||
+                                   selectedHostTypes.Contains(clashZone.StructuralElementType + "s") ||
+                                   selectedHostTypes.Any(t => t.TrimEnd('s').Equals(clashZone.StructuralElementType, StringComparison.OrdinalIgnoreCase));
+                
+                _log($"[HOST_TYPE_FILTER] ClashZone {clashZone.Id}: StructuralElementType='{clashZone.StructuralElementType}', SelectedHostTypes=[{string.Join(", ", selectedHostTypes)}], Match={hostTypeMatch}");
+                
+                return hostTypeMatch;
+            }
+            catch (Exception ex)
+            {
+                _log($"[HOST_TYPE_FILTER] Error checking host type for clash zone {clashZone.Id}: {ex.Message}");
+                return true; // Default to allowing on error (backward compatibility)
             }
         }
 
@@ -946,14 +988,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Reset IsResolved flag for clash zones where sleeves no longer exist
         /// This allows re-placement of sleeves after manual deletion
         /// Called during refresh to detect deleted sleeves
+        /// ⚠️ CRITICAL FIX: Only reset flags for clash zones in current UI context (selected filters/categories)
         /// </summary>
-        private void ResetResolvedFlagForDeletedSleeves(Document document)
+        private void ResetResolvedFlagForDeletedSleeves(Document document, List<string> selectedCategories = null)
         {
             try
             {
                 int resetCount = 0;
                 
-                foreach (var clashZone in _clashZoneStorage.ClashZones)
+                // ⚠️ CRITICAL FIX: Only process clash zones that match current UI context
+                var clashZonesToCheck = _clashZoneStorage.ClashZones;
+                
+                if (selectedCategories != null && selectedCategories.Count > 0)
+                {
+                    // Filter to only clash zones from selected categories
+                    clashZonesToCheck = _clashZoneStorage.ClashZones
+                        .Where(cz => selectedCategories.Contains(cz.MepElementCategory, StringComparer.OrdinalIgnoreCase))
+                        .ToList();
+                    
+                    _log($"[ResetResolvedFlag] Filtering to {clashZonesToCheck.Count} clash zones from selected categories: {string.Join(", ", selectedCategories)}");
+                }
+                else
+                {
+                    // ⚠️ CRITICAL FIX: If no categories specified, DO NOT process any clash zones
+                    // This prevents accidental reset of IsResolved flags during dialog initialization
+                    _log($"[ResetResolvedFlag] No category filter specified - SKIPPING reset to prevent accidental sleeve deletion");
+                    return;
+                }
+                
+                foreach (var clashZone in clashZonesToCheck)
                 {
                     if (clashZone.IsResolved)
                     {
@@ -967,14 +1030,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // Check if sleeve actually exists at the placement point
                         bool sleeveExists = CheckForExistingSleeve(clashZone.SleevePlacementPoint, document);
                         
-                        _log($"[ResetResolvedFlag] Checking clash zone {clashZone.Id}: sleeveExists={sleeveExists}, IsResolved={clashZone.IsResolved}");
+                        _log($"[ResetResolvedFlag] Checking clash zone {clashZone.Id} ({clashZone.MepElementCategory}): sleeveExists={sleeveExists}, IsResolved={clashZone.IsResolved}");
                         
                         if (!sleeveExists)
                         {
                             clashZone.IsResolved = false;
                             clashZone.LastUpdated = DateTime.Now;
                             resetCount++;
-                            _log($"[ResetResolvedFlag] ✓ Reset IsResolved to FALSE for clash zone {clashZone.Id} - sleeve no longer exists");
+                            _log($"[ResetResolvedFlag] ✓ Reset IsResolved to FALSE for clash zone {clashZone.Id} ({clashZone.MepElementCategory}) - sleeve no longer exists");
                         }
                         else
                         {
@@ -985,7 +1048,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (resetCount > 0)
                 {
-                    _log($"[ResetResolvedFlag] Reset IsResolved flag for {resetCount} clash zones where sleeves were deleted");
+                    _log($"[ResetResolvedFlag] Reset IsResolved flag for {resetCount} clash zones where sleeves were deleted (from selected categories only)");
                 }
             }
             catch (Exception ex)
@@ -1036,9 +1099,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var (mepWidth, mepHeight) = GetMepElementDimensions(mepElement);
             var mepOrientation = GetMepElementOrientation(mepElement);
             
-            // Store raw MEP dimensions (clearance will be applied by placement service)
-            var finalWidth = mepWidth;
-            var finalHeight = mepHeight;
+            // 🛡️ ARCHITECTURE FIX: Store RAW dimensions only (no pre-calculated clearance)
+            // All clearance (simple and complex) will be handled by CONDITIONS service during placement
+            // This ensures consistent architecture: CONDITIONS XML → UniversalSleevePlacerService
+            var mepCategoryForClearance = GetElementCategoryName(mepElement);
+            
+            // Store raw dimensions for ALL categories - clearance handled by CONDITIONS service
+            double finalWidth = mepWidth;
+            double finalHeight = mepHeight;
+            
+            DebugLogger.Info($"[CLASH_DEBUG] Element {mepElement.Id}: Raw dimensions {mepWidth:F3}x{mepHeight:F3} (clearance will be handled by CONDITIONS service during placement)");
             
             // Get pipe opening type if applicable
             var pipeOpeningType = GetPipeOpeningType(mepElement);
@@ -1052,6 +1122,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ⚠️ CRITICAL: Get MEP element category for category-specific processing ⚠️
             // DO NOT REMOVE: This is essential for each placement service to validate its category
             var mepCategory = GetElementCategoryName(mepElement);
+            DebugLogger.Info($"[CLASH_DEBUG] Element {mepElement.Id} ({mepElement.GetType().Name}): Category='{mepCategory}', Element.Category.Name='{mepElement.Category?.Name}'");
             
             // ⚠️ CRITICAL: Get duct shape from family name (Round or Rectangular) ⚠️
             // DO NOT REMOVE: This determines correct sleeve family selection for round vs rectangular ducts
@@ -1099,7 +1170,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 SleevePlacementPoint = placementPoint,
                 MepElementWidth = finalWidth,
                 MepElementHeight = finalHeight,
-                MepElementOrientation = mepOrientation,
+                MepElementOrientationDirection = GetMepElementOrientationFromBbox(mepElement),
                 PipeOpeningType = pipeOpeningType,
                 MepElementLevelName = levelName,
                 MepElementLevelElevation = levelElevation,
@@ -1233,17 +1304,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                // Get category name from element (primary method)
+                // ⚠️ CRITICAL FIX: Check element type FIRST for Duct elements
+                // This prevents Duct elements from being misclassified as "Duct Accessories"
+                if (element is Autodesk.Revit.DB.Mechanical.Duct) return "Ducts";
+                if (element is Autodesk.Revit.DB.Plumbing.Pipe) return "Pipes";
+                if (element is Autodesk.Revit.DB.Electrical.CableTray) return "Cable Trays";
+                
+                // Get category name from element (fallback method)
                 var categoryName = element?.Category?.Name;
                 if (!string.IsNullOrEmpty(categoryName))
                 {
                     return categoryName;
                 }
-                
-                // Fallback: Determine from element type
-                if (element is Autodesk.Revit.DB.Mechanical.Duct) return "Ducts";
-                if (element is Autodesk.Revit.DB.Plumbing.Pipe) return "Pipes";
-                if (element is Autodesk.Revit.DB.Electrical.CableTray) return "Cable Trays";
                 
                 // Check by category ID for Duct Accessories
                 if (element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
@@ -1335,11 +1407,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         /// <summary>
         /// ⚠️ CRITICAL METHOD - DO NOT REMOVE ⚠️
-        /// Check if a sleeve exists at the given placement point (within 50mm tolerance)
+        /// Check if a sleeve exists at the EXACT placement point stored in XML
         /// This is essential for refresh to detect deleted sleeves and reset IsResolved flag
         /// Without this, deleted sleeves cannot be re-placed (duplication suppressor prevents it)
         /// </summary>
-        private bool CheckForExistingSleeve(XYZ placementPoint, Document document, double tolerance = 0.164042) // 50mm in feet
+        private bool CheckForExistingSleeve(XYZ placementPoint, Document document)
         {
             try
             {
@@ -1349,19 +1421,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                     .ToList();
 
+                _log($"[CheckExistingSleeve] Checking for sleeves at EXACT placement point {placementPoint}");
+
                 foreach (var opening in openingFamilies)
                 {
+                    XYZ openingLocation = null;
+                    
+                    // Handle both LocationPoint and LocationCurve
                     if (opening.Location is LocationPoint locationPoint)
                     {
-                        double distance = locationPoint.Point.DistanceTo(placementPoint);
-                        if (distance <= tolerance)
+                        openingLocation = locationPoint.Point;
+                    }
+                    else if (opening.Location is LocationCurve locationCurve)
+                    {
+                        // For LocationCurve, use the midpoint
+                        openingLocation = locationCurve.Curve.Evaluate(0.5, true);
+                    }
+                    
+                    if (openingLocation != null)
+                    {
+                        // Check for EXACT match (within Revit's precision tolerance ~1mm)
+                        double distance = openingLocation.DistanceTo(placementPoint);
+                        if (distance < 0.003) // ~1mm tolerance for Revit precision
                         {
-                            _log($"[CheckExistingSleeve] Found existing sleeve {opening.Id} at distance {distance:F3}ft from placement point");
+                            _log($"[CheckExistingSleeve] ✓ Found existing sleeve {opening.Id} at EXACT placement point");
                             return true;
                         }
                     }
                 }
                 
+                _log($"[CheckExistingSleeve] No existing sleeve found at EXACT placement point {placementPoint}");
                 return false;
             }
             catch (Exception ex)
@@ -2186,18 +2275,83 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
+        /// Get MEP element orientation from bounding box (X or Y)
+        /// </summary>
+        private string GetMepElementOrientationFromBbox(Element mepElement)
+        {
+            try
+            {
+                // Get MEP element's bounding box
+                BoundingBoxXYZ mepBbox = mepElement.get_BoundingBox(null);
+                
+                if (mepBbox == null)
+                {
+                    DebugLogger.Warning($"[GetMepElementOrientationFromBbox] No bounding box for element {mepElement.Id}");
+                    return "X"; // Default to X orientation
+                }
+                
+                // Calculate dimensions
+                double bboxWidth = mepBbox.Max.X - mepBbox.Min.X;  // X-axis dimension
+                double bboxHeight = mepBbox.Max.Y - mepBbox.Min.Y; // Y-axis dimension
+                
+                // Determine orientation
+                string mepOrientation;
+                if (bboxWidth > bboxHeight)
+                {
+                    mepOrientation = "X"; // Width runs in X-axis
+                }
+                else
+                {
+                    mepOrientation = "Y"; // Width runs in Y-axis
+                }
+                
+                DebugLogger.Info($"[GetMepElementOrientationFromBbox] Element {mepElement.Id}: BboxWidth={bboxWidth:F3}, BboxHeight={bboxHeight:F3}, Orientation={mepOrientation}");
+                
+                return mepOrientation;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[GetMepElementOrientationFromBbox] Error getting orientation for element {mepElement?.Id}: {ex.Message}");
+                return "X"; // Default to X orientation
+            }
+        }
+
+        /// <summary>
         /// Get MEP element orientation vector
         /// </summary>
         private XYZ GetMepElementOrientation(Element mepElement)
         {
             try
             {
+                DebugLogger.Info($"[GetMepElementOrientation] Element {mepElement.Id}: Type={mepElement.GetType().Name}, Category={mepElement.Category?.Name}, Location={mepElement.Location?.GetType().Name}");
+                
                 if (mepElement is Duct duct && duct.Location is LocationCurve curve)
                 {
                     var line = curve.Curve as Line;
                     if (line != null)
                     {
-                        return line.Direction;
+                        var direction = line.Direction;
+                        DebugLogger.Info($"[GetMepElementOrientation] Duct {mepElement.Id}: Direction=({direction.X:F3}, {direction.Y:F3}, {direction.Z:F3})");
+                        return direction;
+                    }
+                }
+                else if (mepElement is Duct verticalDuct && verticalDuct.Location is LocationPoint point)
+                {
+                    // Vertical ducts might have LocationPoint instead of LocationCurve
+                    DebugLogger.Info($"[GetMepElementOrientation] Duct {mepElement.Id}: Has LocationPoint, checking for vertical orientation");
+                    // For vertical ducts, we might need to check other properties
+                    return XYZ.BasisZ; // Default to vertical for now
+                }
+                else if (mepElement is FamilyInstance ductAccessory && 
+                         ductAccessory.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory &&
+                         ductAccessory.Location is LocationCurve ductAccessoryCurve)
+                {
+                    var line = ductAccessoryCurve.Curve as Line;
+                    if (line != null)
+                    {
+                        var direction = line.Direction;
+                        DebugLogger.Info($"[GetMepElementOrientation] DuctAccessory {mepElement.Id}: Direction=({direction.X:F3}, {direction.Y:F3}, {direction.Z:F3})");
+                        return direction;
                     }
                 }
                 else if (mepElement is Pipe pipe && pipe.Location is LocationCurve pipeCurve)
@@ -2447,9 +2601,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         private double CalculateRequiredClearance(double mepSize)
         {
-            // Return clearance in mm for consistency with UI
-            // TODO: Use actual clearance settings from UI instead of hardcoded value
-            return 50.0; // 50mm clearance (stored in mm, not feet)
+            // Return clearance in feet (Revit internal units) for consistency
+            // Convert 50mm to feet
+            return UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters);
         }
         
         private double CalculateRequiredClearance(double mepSize, Dictionary<string, double> clearanceSettings, Element mepElement)
@@ -2483,14 +2637,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
                 
-                // Return clearance directly in mm (UI stores values in mm)
-                // Note: mepSize is in Revit internal units (feet), but for now return in mm for consistency
-                return clearanceInMm;
+                // Convert clearance from mm to feet (Revit internal units)
+                // UI stores values in mm, but Revit uses feet internally
+                return UnitUtils.ConvertToInternalUnits(clearanceInMm, UnitTypeId.Millimeters);
             }
             catch (Exception ex)
             {
                 _log($"Error calculating clearance: {ex.Message}, using default");
-                return mepSize + (50.0 / 304.8); // Fallback to 50mm
+                return UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters); // Fallback to 50mm converted to feet
             }
         }
         

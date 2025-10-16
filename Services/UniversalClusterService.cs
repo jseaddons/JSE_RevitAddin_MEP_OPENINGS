@@ -439,10 +439,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         clashZone.ClusterSleeveId = clusterSleeveId;
                                         clashZone.ClusterSleeveInstanceId = clusterSleeveId.IntegerValue; // ✅ FIX: Store integer for XML serialization
                                         clashZone.LastUpdated = DateTime.Now;
+                                        
+                                        // ⚠️ CRITICAL FIX: Also clear individual sleeve flags since individual sleeve was deleted
+                                        clashZone.IsResolved = false; // Individual sleeve was deleted by clustering
+                                        clashZone.SleeveInstanceId = -1; // Clear individual sleeve ID
+                                        clashZone.SleeveFamilyName = string.Empty; // Clear individual sleeve family
+                                        
                                         updated = true;
                                         markedCount++;
                                         
-                                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"Marked ClashZone {clashZone.Id} as cluster-resolved with cluster sleeve {clusterSleeveId.IntegerValue}\n");
+                                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"Marked ClashZone {clashZone.Id} as cluster-resolved with cluster sleeve {clusterSleeveId.IntegerValue} (cleared individual flags)\n");
                                     }
                                 }
                             }

@@ -662,6 +662,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 var allowedMepCats = new HashSet<string>(selectedMepCategories ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
+                DebugLogger.Info($"[CLASH_DEBUG] Selected MEP categories from UI: [{string.Join(", ", selectedMepCategories ?? new List<string>())}]");
+                DebugLogger.Info($"[CLASH_DEBUG] Allowed MEP categories: [{string.Join(", ", allowedMepCats)}]");
                 var allowedHostTypes = new HashSet<string>(
                     FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>(),
                     StringComparer.OrdinalIgnoreCase);
@@ -729,7 +731,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             DebugLogger.Info($"[CLASH_DEBUG] Intersection breakdown by category: {string.Join(", ", intersectionBreakdown.Select(kv => $"{kv.Key}={kv.Value}"))}");
             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Intersection breakdown by category: {string.Join(", ", intersectionBreakdown.Select(kv => $"{kv.Key}={kv.Value}"))}\n");
 
-            var newClashZones = _clashZoneService.DetectNewClashZones(currentIntersections, _document, clearanceSettings);
+            var newClashZones = _clashZoneService.DetectNewClashZones(currentIntersections, _document, clearanceSettings, selectedMepCategories);
 
             // === Parameter Snapshot (whitelist-based) ===
             try
