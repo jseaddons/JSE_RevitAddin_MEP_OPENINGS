@@ -636,14 +636,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             DebugLogger.Info($"[UniversalSleevePlacer] Set Width={widthMm:F1}mm, Height={heightMm:F1}mm (rectangular)");
         }
         
-        // ⚠️ FLOOR FIX: For duct sleeves on floors, rotate orientation by 90 degrees and swap width/height
+        // ⚠️ FLOOR FIX: For duct and cable tray sleeves on floors, rotate orientation by 90 degrees and swap width/height
         bool isFloorHost = string.Equals(clashZone.StructuralElementType, "Floor", StringComparison.OrdinalIgnoreCase) ||
                           string.Equals(clashZone.StructuralElementType, "Floors", StringComparison.OrdinalIgnoreCase);
         bool isDuct = string.Equals(clashZone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase);
-        
-        DebugLogger.Info($"[UniversalSleevePlacer] FLOOR DUCT CHECK: StructuralElementType='{clashZone.StructuralElementType}', MepElementCategory='{clashZone.MepElementCategory}', isFloorHost={isFloorHost}, isDuct={isDuct}");
-        
-        if (isFloorHost && isDuct && !treatAsCircular)
+        bool isCableTray = string.Equals(clashZone.MepElementCategory, "Cable Trays", StringComparison.OrdinalIgnoreCase) ||
+                          string.Equals(clashZone.MepElementCategory, "Cable Tray Fittings", StringComparison.OrdinalIgnoreCase);
+
+        DebugLogger.Info($"[UniversalSleevePlacer] FLOOR MEP CHECK: StructuralElementType='{clashZone.StructuralElementType}', MepElementCategory='{clashZone.MepElementCategory}', isFloorHost={isFloorHost}, isDuct={isDuct}, isCableTray={isCableTray}");
+
+        if (isFloorHost && (isDuct || isCableTray) && !treatAsCircular)
         {
             // Swap width and height for duct sleeves on floors
             double tempWidth = roundedWidth;

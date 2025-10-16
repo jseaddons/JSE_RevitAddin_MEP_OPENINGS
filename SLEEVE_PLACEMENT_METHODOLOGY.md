@@ -104,6 +104,71 @@ zones = zones.Where(cz =>
 
 ---
 
+## ⚠️ CRITICAL: Vertical MEP Element Orientation Fix (Oct 16, 2025)
+
+### Problem
+**Vertical MEP elements** (running perpendicular to floors) were getting incorrect rotation when placed on floors:
+- **Cable trays**: Rotating 221.6° instead of 0°
+- **Pipes**: Would have same issue if rectangular opening type selected
+- **Ducts**: Already handled correctly but logic was inconsistent
+
+### Root Cause
+```csharp
+// ❌ WRONG: Vertical elements have mepOrientation = (0.000, 0.000, Z)
+double rotationAngle = Math.Atan2(mepOrientation.Y, mepOrientation.X);
+// Math.Atan2(0, 0) returns 0, but then adding 90° gives wrong result
+```
+
+**Issue**: For vertical MEP elements, the Z-component dominates, but the rotation logic only considered X,Y components.
+
+### Solution
+**Detect vertical elements and apply different rotation logic:**
+
+```csharp
+// ✅ CORRECT: Handle vertical vs horizontal MEP elements differently
+bool isVerticalMep = Math.Abs(mepOrientation.Z) > Math.Max(Math.Abs(mepOrientation.X), Math.Abs(mepOrientation.Y));
+
+if (isFloorHostForRotation && isVerticalMep)
+{
+    // ⚠️ VERTICAL MEP ON FLOOR: No rotation needed - sleeve should align with MEP cross-section
+    rotationAngle = 0.0; // No rotation for vertical elements on floors
+    DebugLogger.Info($"[UniversalSleevePlacer] VERTICAL {mepType} ON FLOOR: No rotation needed");
+}
+else
+{
+    // ⚠️ HORIZONTAL MEP ON FLOOR: Use direction-based rotation
+    rotationAngle = Math.Atan2(mepOrientation.Y, mepOrientation.X);
+    if (isFloorHostForRotation && (isDuctForRotation || isCableTrayForRotation || isPipeForRotation))
+    {
+        rotationAngle += Math.PI / 2; // Add 90 degrees for horizontal elements
+    }
+}
+```
+
+### Implementation Location
+**File**: `Services/UniversalSleevePlacerService.cs` (lines 891-924)
+**Method**: `SetSleeveOrientation` - Floor rotation logic
+
+### Affected MEP Categories
+| Category | Before Fix | After Fix | Impact |
+|----------|------------|-----------|---------|
+| **Cable Trays** | 221.6° rotation | 0° rotation | ✅ Fixed - Proper alignment |
+| **Pipes (Rectangular)** | Would be 221.6° | 0° rotation | ✅ Fixed - Future-proof |
+| **Ducts** | Already working | Still working | ✅ Consistent logic |
+
+### Key Logic Changes
+1. **Vertical Detection**: `Math.Abs(mepOrientation.Z) > Math.Max(Math.Abs(mepOrientation.X), Math.Abs(mepOrientation.Y))`
+2. **Zero Rotation**: Vertical elements on floors get `rotationAngle = 0.0`
+3. **Enhanced Logging**: Shows whether element is vertical or horizontal
+4. **Unified Logic**: All MEP categories (Ducts, Pipes, Cable Trays) use same logic
+
+### Testing Verification
+- **Vertical cable trays on floors**: Should show `[VERTICAL CABLETRAY ON FLOOR: No rotation needed]`
+- **Horizontal elements**: Should show `[HORIZONTAL {TYPE} ON FLOOR: Added 90° rotation]`
+- **Logs should show**: `MepOrientation=(0.000,0.000,Z), isVerticalMep=true`
+
+---
+
 ## Core Principle
 **Calculate once during refresh, use many times during placement** - eliminating redundant calculations and ensuring perfect consistency between detection and placement.
 

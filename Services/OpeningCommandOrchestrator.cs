@@ -86,6 +86,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
+        /// Order filters by priority to ensure duct accessories are processed before ducts
+        /// </summary>
+        private List<OpeningFilter> OrderFiltersByPriority(List<OpeningFilter> filters)
+        {
+            return filters.OrderBy(f => GetFilterPriority(f)).ToList();
+        }
+
+        /// <summary>
+        /// Get priority value for filter ordering (lower number = higher priority)
+        /// </summary>
+        private int GetFilterPriority(OpeningFilter filter)
+        {
+            // Check if this filter is for duct accessories
+            if (filter.SelectedMepCategoryNames?.Any(cat => 
+                string.Equals(cat, "Duct Accessories", StringComparison.OrdinalIgnoreCase)) == true)
+            {
+                return 1; // Highest priority - process first
+            }
+
+            // Check if this filter is for ducts
+            if (filter.SelectedMepCategoryNames?.Any(cat => 
+                string.Equals(cat, "Ducts", StringComparison.OrdinalIgnoreCase)) == true)
+            {
+                return 2; // Second priority - process after duct accessories
+            }
+
+            // All other categories get default priority
+            return 10; // Lower priority - process last
+        }
+
+        /// <summary>
         /// Execute all filters for a discipline with memory management
         /// </summary>
         private void ExecuteDisciplineWithMemoryManagement(string discipline, List<OpeningFilter> filters, bool showProgress)
@@ -94,7 +125,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             try
             {
-                foreach (var filter in filters)
+                // ✅ PRIORITY ORDERING: Sort filters to ensure duct accessories are processed before ducts
+                var orderedFilters = OrderFiltersByPriority(filters);
+                DebugLogger.Info($"[OpeningCommandOrchestrator] Ordered {orderedFilters.Count} filters by priority for discipline: {discipline}");
+                
+                // Log the processing order
+                for (int i = 0; i < orderedFilters.Count; i++)
+                {
+                    var filter = orderedFilters[i];
+                    var categories = string.Join(", ", filter.SelectedMepCategoryNames ?? new List<string>());
+                    var priority = GetFilterPriority(filter);
+                    DebugLogger.Info($"[OpeningCommandOrchestrator] Processing order {i + 1}: '{filter.Name}' (Categories: {categories}, Priority: {priority})");
+                }
+
+                foreach (var filter in orderedFilters)
                 {
                     var commandSequence = GetCommandSequence(filter);
                     ExecuteCommandSequence(commandSequence, filter, showProgress);

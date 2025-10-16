@@ -426,8 +426,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 else
                 {
-                    // Skip resolved clash zones during refresh - they should not be updated
-                    _log($"Skipping resolved clash zone: {existingClashZone.Id} (MEP={mepElement.Id}, Structural={structuralElement.Id})");
+                    // Preserve resolved clash zones during refresh - keep them in the list
+                    _log($"Preserved resolved clash zone: {existingClashZone.Id} (IsResolved={existingClashZone.IsResolved})");
                 }
             }
             

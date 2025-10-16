@@ -425,3 +425,564 @@
 [16-10-2025 10:35:02] [OK_BUTTON_DEBUG] Final unresolved count: 21
 [16-10-2025 10:35:02] [OK_BUTTON_DEBUG] OK button enabled: True
 [16-10-2025 10:35:02] RefreshService.ExecuteRefresh() method completed successfully
+[16-10-2025 10:53:38] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-16_10-53-38)
+[16-10-2025 10:53:38] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[16-10-2025 10:54:06] === ON_REFRESH_CLICK STARTED ===
+[16-10-2025 10:54:06] About to call RefreshService.ExecuteRefresh() method
+[16-10-2025 10:54:06] === REFRESH STARTED === Timestamp: 2025-10-16_10-54-06
+[16-10-2025 10:54:07] About to update parameter dropdowns
+[16-10-2025 10:54:08] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[16-10-2025 10:54:08] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[16-10-2025 10:54:08] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[16-10-2025 10:54:08] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[16-10-2025 10:54:08] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[16-10-2025 10:54:08] [PARAMETER_SERVICE] Updating tab 'Cable Trays' for category 'Cable Trays'
+[16-10-2025 10:54:08] [PARAMETER_SERVICE] Found 62 parameters for category 'Cable Trays' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Cable Trays'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[16-10-2025 10:54:09] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[16-10-2025 10:54:09] Parameter dropdowns updated successfully
+[16-10-2025 10:54:09] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[16-10-2025 10:54:09] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[16-10-2025 10:54:09] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[16-10-2025 10:54:09] [OK_BUTTON_DEBUG] About to extract zones
+[16-10-2025 10:54:09] [OK_BUTTON_DEBUG] Zones extracted: 35
+[16-10-2025 10:54:09] [OK_BUTTON_DEBUG] Total zones loaded: 35
+[16-10-2025 10:54:09] [OK_BUTTON_DEBUG] Unresolved zones: 35
+[16-10-2025 10:54:09] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
+[16-10-2025 10:54:09] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[16-10-2025 10:54:09] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[16-10-2025 10:54:09] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[16-10-2025 10:54:09] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[16-10-2025 10:54:09] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[16-10-2025 10:54:09] [OK_BUTTON_DEBUG]   - Type='Structural Framing', IsEligible=True, Resolved=False
+[16-10-2025 10:54:09] [OK_BUTTON_DEBUG] After host type filter: 35 -> 35
+[16-10-2025 10:54:09] [OK_BUTTON_DEBUG] Final unresolved count: 35
+[16-10-2025 10:54:09] [OK_BUTTON_DEBUG] OK button enabled: True
+[16-10-2025 10:54:09] RefreshService.ExecuteRefresh() method completed successfully
+[16-10-2025 10:54:43] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-16_10-54-43)
+[16-10-2025 10:54:43] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[16-10-2025 10:54:58] === ON_REFRESH_CLICK STARTED ===
+[16-10-2025 10:54:58] About to call RefreshService.ExecuteRefresh() method
+[16-10-2025 10:54:58] === REFRESH STARTED === Timestamp: 2025-10-16_10-54-58
+[16-10-2025 10:54:59] About to update parameter dropdowns
+[16-10-2025 10:55:00] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[16-10-2025 10:55:00] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[16-10-2025 10:55:00] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[16-10-2025 10:55:00] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[16-10-2025 10:55:00] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[16-10-2025 10:55:00] [PARAMETER_SERVICE] Updating tab 'Cable Trays' for category 'Cable Trays'
+[16-10-2025 10:55:00] [PARAMETER_SERVICE] Found 62 parameters for category 'Cable Trays' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Cable Trays'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[16-10-2025 10:55:00] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[16-10-2025 10:55:00] Parameter dropdowns updated successfully
+[16-10-2025 10:55:00] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[16-10-2025 10:55:00] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[16-10-2025 10:55:00] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[16-10-2025 10:55:00] [OK_BUTTON_DEBUG] About to extract zones
+[16-10-2025 10:55:00] [OK_BUTTON_DEBUG] Zones extracted: 12
+[16-10-2025 10:55:00] [OK_BUTTON_DEBUG] Total zones loaded: 12
+[16-10-2025 10:55:00] [OK_BUTTON_DEBUG] Unresolved zones: 12
+[16-10-2025 10:55:00] [OK_BUTTON_DEBUG] Allowed host types: [Floors]
+[16-10-2025 10:55:00] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[16-10-2025 10:55:00] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 10:55:00] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 10:55:00] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 10:55:00] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 10:55:00] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 10:55:00] [OK_BUTTON_DEBUG] After host type filter: 12 -> 12
+[16-10-2025 10:55:00] [OK_BUTTON_DEBUG] Final unresolved count: 12
+[16-10-2025 10:55:00] [OK_BUTTON_DEBUG] OK button enabled: True
+[16-10-2025 10:55:00] RefreshService.ExecuteRefresh() method completed successfully
+[16-10-2025 11:08:59] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-16_11-08-59)
+[16-10-2025 11:08:59] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[16-10-2025 11:09:12] === ON_REFRESH_CLICK STARTED ===
+[16-10-2025 11:09:12] About to call RefreshService.ExecuteRefresh() method
+[16-10-2025 11:09:13] === REFRESH STARTED === Timestamp: 2025-10-16_11-09-12
+[16-10-2025 11:09:13] About to update parameter dropdowns
+[16-10-2025 11:09:14] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[16-10-2025 11:09:14] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[16-10-2025 11:09:14] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[16-10-2025 11:09:14] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[16-10-2025 11:09:14] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[16-10-2025 11:09:14] [PARAMETER_SERVICE] Updating tab 'Cable Trays' for category 'Cable Trays'
+[16-10-2025 11:09:14] [PARAMETER_SERVICE] Found 62 parameters for category 'Cable Trays' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Cable Trays'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[16-10-2025 11:09:15] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[16-10-2025 11:09:15] Parameter dropdowns updated successfully
+[16-10-2025 11:09:15] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[16-10-2025 11:09:15] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[16-10-2025 11:09:15] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[16-10-2025 11:09:15] [OK_BUTTON_DEBUG] About to extract zones
+[16-10-2025 11:09:15] [OK_BUTTON_DEBUG] Zones extracted: 12
+[16-10-2025 11:09:15] [OK_BUTTON_DEBUG] Total zones loaded: 12
+[16-10-2025 11:09:15] [OK_BUTTON_DEBUG] Unresolved zones: 12
+[16-10-2025 11:09:15] [OK_BUTTON_DEBUG] Allowed host types: [Floors]
+[16-10-2025 11:09:15] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[16-10-2025 11:09:15] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:09:15] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:09:15] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:09:15] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:09:15] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:09:15] [OK_BUTTON_DEBUG] After host type filter: 12 -> 12
+[16-10-2025 11:09:15] [OK_BUTTON_DEBUG] Final unresolved count: 12
+[16-10-2025 11:09:15] [OK_BUTTON_DEBUG] OK button enabled: True
+[16-10-2025 11:09:15] RefreshService.ExecuteRefresh() method completed successfully
+[16-10-2025 11:15:04] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-16_11-15-04)
+[16-10-2025 11:15:04] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[16-10-2025 11:15:20] === ON_REFRESH_CLICK STARTED ===
+[16-10-2025 11:15:20] About to call RefreshService.ExecuteRefresh() method
+[16-10-2025 11:15:20] === REFRESH STARTED === Timestamp: 2025-10-16_11-15-20
+[16-10-2025 11:15:21] About to update parameter dropdowns
+[16-10-2025 11:15:21] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[16-10-2025 11:15:21] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[16-10-2025 11:15:21] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[16-10-2025 11:15:21] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[16-10-2025 11:15:21] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[16-10-2025 11:15:21] [PARAMETER_SERVICE] Updating tab 'Cable Trays' for category 'Cable Trays'
+[16-10-2025 11:15:21] [PARAMETER_SERVICE] Found 62 parameters for category 'Cable Trays' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Cable Trays'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[16-10-2025 11:15:22] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[16-10-2025 11:15:22] Parameter dropdowns updated successfully
+[16-10-2025 11:15:22] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[16-10-2025 11:15:22] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[16-10-2025 11:15:22] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[16-10-2025 11:15:22] [OK_BUTTON_DEBUG] About to extract zones
+[16-10-2025 11:15:22] [OK_BUTTON_DEBUG] Zones extracted: 12
+[16-10-2025 11:15:22] [OK_BUTTON_DEBUG] Total zones loaded: 12
+[16-10-2025 11:15:22] [OK_BUTTON_DEBUG] Unresolved zones: 12
+[16-10-2025 11:15:22] [OK_BUTTON_DEBUG] Allowed host types: [Floors]
+[16-10-2025 11:15:22] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[16-10-2025 11:15:22] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:15:22] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:15:22] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:15:22] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:15:22] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:15:22] [OK_BUTTON_DEBUG] After host type filter: 12 -> 12
+[16-10-2025 11:15:22] [OK_BUTTON_DEBUG] Final unresolved count: 12
+[16-10-2025 11:15:22] [OK_BUTTON_DEBUG] OK button enabled: True
+[16-10-2025 11:15:22] RefreshService.ExecuteRefresh() method completed successfully
+[16-10-2025 11:16:25] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-16_11-16-25)
+[16-10-2025 11:16:25] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[16-10-2025 11:16:35] === ON_REFRESH_CLICK STARTED ===
+[16-10-2025 11:16:35] About to call RefreshService.ExecuteRefresh() method
+[16-10-2025 11:16:36] === REFRESH STARTED === Timestamp: 2025-10-16_11-16-36
+[16-10-2025 11:16:36] About to update parameter dropdowns
+[16-10-2025 11:16:37] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[16-10-2025 11:16:37] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[16-10-2025 11:16:37] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[16-10-2025 11:16:37] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[16-10-2025 11:16:37] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[16-10-2025 11:16:37] [PARAMETER_SERVICE] Updating tab 'Cable Trays' for category 'Cable Trays'
+[16-10-2025 11:16:37] [PARAMETER_SERVICE] Found 62 parameters for category 'Cable Trays' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Cable Trays'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[16-10-2025 11:16:38] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[16-10-2025 11:16:38] Parameter dropdowns updated successfully
+[16-10-2025 11:16:38] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[16-10-2025 11:16:38] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[16-10-2025 11:16:38] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[16-10-2025 11:16:38] [OK_BUTTON_DEBUG] About to extract zones
+[16-10-2025 11:16:38] [OK_BUTTON_DEBUG] Zones extracted: 12
+[16-10-2025 11:16:38] [OK_BUTTON_DEBUG] Total zones loaded: 12
+[16-10-2025 11:16:38] [OK_BUTTON_DEBUG] Unresolved zones: 12
+[16-10-2025 11:16:38] [OK_BUTTON_DEBUG] Allowed host types: [Floors]
+[16-10-2025 11:16:38] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[16-10-2025 11:16:38] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:16:38] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:16:38] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:16:38] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:16:38] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:16:38] [OK_BUTTON_DEBUG] After host type filter: 12 -> 12
+[16-10-2025 11:16:38] [OK_BUTTON_DEBUG] Final unresolved count: 12
+[16-10-2025 11:16:38] [OK_BUTTON_DEBUG] OK button enabled: True
+[16-10-2025 11:16:38] RefreshService.ExecuteRefresh() method completed successfully
+[16-10-2025 11:18:57] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-16_11-18-57)
+[16-10-2025 11:18:57] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[16-10-2025 11:19:11] === ON_REFRESH_CLICK STARTED ===
+[16-10-2025 11:19:11] About to call RefreshService.ExecuteRefresh() method
+[16-10-2025 11:19:11] === REFRESH STARTED === Timestamp: 2025-10-16_11-19-11
+[16-10-2025 11:19:12] About to update parameter dropdowns
+[16-10-2025 11:19:13] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[16-10-2025 11:19:13] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[16-10-2025 11:19:13] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[16-10-2025 11:19:13] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[16-10-2025 11:19:13] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[16-10-2025 11:19:13] [PARAMETER_SERVICE] Updating tab 'Cable Trays' for category 'Cable Trays'
+[16-10-2025 11:19:13] [PARAMETER_SERVICE] Found 62 parameters for category 'Cable Trays' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Cable Trays'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[16-10-2025 11:19:13] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[16-10-2025 11:19:13] Parameter dropdowns updated successfully
+[16-10-2025 11:19:13] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[16-10-2025 11:19:13] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[16-10-2025 11:19:13] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[16-10-2025 11:19:13] [OK_BUTTON_DEBUG] About to extract zones
+[16-10-2025 11:19:13] [OK_BUTTON_DEBUG] Zones extracted: 12
+[16-10-2025 11:19:13] [OK_BUTTON_DEBUG] Total zones loaded: 12
+[16-10-2025 11:19:13] [OK_BUTTON_DEBUG] Unresolved zones: 12
+[16-10-2025 11:19:13] [OK_BUTTON_DEBUG] Allowed host types: [Floors]
+[16-10-2025 11:19:13] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[16-10-2025 11:19:13] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:19:13] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:19:13] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:19:13] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:19:13] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:19:13] [OK_BUTTON_DEBUG] After host type filter: 12 -> 12
+[16-10-2025 11:19:13] [OK_BUTTON_DEBUG] Final unresolved count: 12
+[16-10-2025 11:19:13] [OK_BUTTON_DEBUG] OK button enabled: True
+[16-10-2025 11:19:13] RefreshService.ExecuteRefresh() method completed successfully
+[16-10-2025 11:25:37] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-16_11-25-37)
+[16-10-2025 11:25:37] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[16-10-2025 11:25:55] === ON_REFRESH_CLICK STARTED ===
+[16-10-2025 11:25:55] About to call RefreshService.ExecuteRefresh() method
+[16-10-2025 11:25:55] === REFRESH STARTED === Timestamp: 2025-10-16_11-25-55
+[16-10-2025 11:25:55] About to update parameter dropdowns
+[16-10-2025 11:25:56] [PARAMETER_SERVICE] Starting category-specific population for 1 categories
+[16-10-2025 11:25:56] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[16-10-2025 11:25:56] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[16-10-2025 11:25:56] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[16-10-2025 11:25:56] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[16-10-2025 11:25:56] [PARAMETER_SERVICE] Updating tab 'Pipes' for category 'Pipes'
+[16-10-2025 11:25:56] [PARAMETER_SERVICE] Found 129 parameters for category 'Pipes' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Pipes'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[16-10-2025 11:25:57] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[16-10-2025 11:25:57] Parameter dropdowns updated successfully
+[16-10-2025 11:25:57] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[16-10-2025 11:25:57] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[16-10-2025 11:25:57] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[16-10-2025 11:25:57] [OK_BUTTON_DEBUG] About to extract zones
+[16-10-2025 11:25:57] [OK_BUTTON_DEBUG] Zones extracted: 7
+[16-10-2025 11:25:57] [OK_BUTTON_DEBUG] Total zones loaded: 7
+[16-10-2025 11:25:57] [OK_BUTTON_DEBUG] Unresolved zones: 7
+[16-10-2025 11:25:57] [OK_BUTTON_DEBUG] Allowed host types: [Floors]
+[16-10-2025 11:25:57] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[16-10-2025 11:25:57] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:25:57] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:25:57] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:25:57] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:25:57] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:25:57] [OK_BUTTON_DEBUG] After host type filter: 7 -> 7
+[16-10-2025 11:25:57] [OK_BUTTON_DEBUG] Final unresolved count: 7
+[16-10-2025 11:25:57] [OK_BUTTON_DEBUG] OK button enabled: True
+[16-10-2025 11:25:57] RefreshService.ExecuteRefresh() method completed successfully
+[16-10-2025 11:26:31] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-16_11-26-31)
+[16-10-2025 11:26:31] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[16-10-2025 11:26:47] === ON_REFRESH_CLICK STARTED ===
+[16-10-2025 11:26:47] About to call RefreshService.ExecuteRefresh() method
+[16-10-2025 11:26:47] === REFRESH STARTED === Timestamp: 2025-10-16_11-26-47
+[16-10-2025 11:26:50] About to update parameter dropdowns
+[16-10-2025 11:26:51] [PARAMETER_SERVICE] Starting category-specific population for 2 categories
+[16-10-2025 11:26:51] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[16-10-2025 11:26:51] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[16-10-2025 11:26:51] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[16-10-2025 11:26:51] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[16-10-2025 11:26:51] [PARAMETER_SERVICE] Updating tab 'Ducts' for category 'Ducts'
+[16-10-2025 11:26:51] [PARAMETER_SERVICE] Found 87 parameters for category 'Ducts' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Ducts'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[16-10-2025 11:26:51] [PARAMETER_SERVICE] Updating tab 'Duct Accessories' for category 'Duct Accessories'
+[16-10-2025 11:26:52] [PARAMETER_SERVICE] Found 152 parameters for category 'Duct Accessories' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Duct Accessories'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[16-10-2025 11:26:52] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[16-10-2025 11:26:52] Parameter dropdowns updated successfully
+[16-10-2025 11:26:52] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[16-10-2025 11:26:52] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[16-10-2025 11:26:52] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[16-10-2025 11:26:52] [OK_BUTTON_DEBUG] About to extract zones
+[16-10-2025 11:26:52] [OK_BUTTON_DEBUG] Zones extracted: 146
+[16-10-2025 11:26:52] [OK_BUTTON_DEBUG] Total zones loaded: 146
+[16-10-2025 11:26:52] [OK_BUTTON_DEBUG] Unresolved zones: 146
+[16-10-2025 11:26:52] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing, Floors]
+[16-10-2025 11:26:52] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[16-10-2025 11:26:52] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[16-10-2025 11:26:52] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[16-10-2025 11:26:52] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[16-10-2025 11:26:52] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[16-10-2025 11:26:52] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[16-10-2025 11:26:52] [OK_BUTTON_DEBUG] After host type filter: 146 -> 146
+[16-10-2025 11:26:52] [OK_BUTTON_DEBUG] Final unresolved count: 146
+[16-10-2025 11:26:52] [OK_BUTTON_DEBUG] OK button enabled: True
+[16-10-2025 11:26:52] RefreshService.ExecuteRefresh() method completed successfully
+[16-10-2025 11:49:14] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-16_11-49-14)
+[16-10-2025 11:49:14] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[16-10-2025 11:49:28] === ON_REFRESH_CLICK STARTED ===
+[16-10-2025 11:49:28] About to call RefreshService.ExecuteRefresh() method
+[16-10-2025 11:49:28] === REFRESH STARTED === Timestamp: 2025-10-16_11-49-28
+[16-10-2025 11:49:30] About to update parameter dropdowns
+[16-10-2025 11:49:31] [PARAMETER_SERVICE] Starting category-specific population for 2 categories
+[16-10-2025 11:49:31] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[16-10-2025 11:49:31] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[16-10-2025 11:49:31] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[16-10-2025 11:49:31] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[16-10-2025 11:49:31] [PARAMETER_SERVICE] Updating tab 'Ducts' for category 'Ducts'
+[16-10-2025 11:49:31] [PARAMETER_SERVICE] Found 87 parameters for category 'Ducts' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Ducts'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[16-10-2025 11:49:32] [PARAMETER_SERVICE] Updating tab 'Duct Accessories' for category 'Duct Accessories'
+[16-10-2025 11:49:32] [PARAMETER_SERVICE] Found 152 parameters for category 'Duct Accessories' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Duct Accessories'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[16-10-2025 11:49:32] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[16-10-2025 11:49:32] Parameter dropdowns updated successfully
+[16-10-2025 11:49:32] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[16-10-2025 11:49:32] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[16-10-2025 11:49:32] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[16-10-2025 11:49:32] [OK_BUTTON_DEBUG] About to extract zones
+[16-10-2025 11:49:32] [OK_BUTTON_DEBUG] Zones extracted: 24
+[16-10-2025 11:49:32] [OK_BUTTON_DEBUG] Total zones loaded: 24
+[16-10-2025 11:49:32] [OK_BUTTON_DEBUG] Unresolved zones: 24
+[16-10-2025 11:49:32] [OK_BUTTON_DEBUG] Allowed host types: [Floors]
+[16-10-2025 11:49:32] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[16-10-2025 11:49:32] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:49:32] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:49:32] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:49:32] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:49:32] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 11:49:32] [OK_BUTTON_DEBUG] After host type filter: 24 -> 24
+[16-10-2025 11:49:32] [OK_BUTTON_DEBUG] Final unresolved count: 24
+[16-10-2025 11:49:32] [OK_BUTTON_DEBUG] OK button enabled: True
+[16-10-2025 11:49:32] RefreshService.ExecuteRefresh() method completed successfully
+[16-10-2025 11:58:18] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-16_11-58-18)
+[16-10-2025 11:58:18] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[16-10-2025 11:58:43] === ON_REFRESH_CLICK STARTED ===
+[16-10-2025 11:58:43] About to call RefreshService.ExecuteRefresh() method
+[16-10-2025 11:58:43] === REFRESH STARTED === Timestamp: 2025-10-16_11-58-43
+[16-10-2025 11:58:45] About to update parameter dropdowns
+[16-10-2025 11:58:46] [PARAMETER_SERVICE] Starting category-specific population for 2 categories
+[16-10-2025 11:58:46] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[16-10-2025 11:58:46] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[16-10-2025 11:58:46] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[16-10-2025 11:58:46] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[16-10-2025 11:58:46] [PARAMETER_SERVICE] Updating tab 'Ducts' for category 'Ducts'
+[16-10-2025 11:58:46] [PARAMETER_SERVICE] Found 87 parameters for category 'Ducts' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Ducts'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[16-10-2025 11:58:47] [PARAMETER_SERVICE] Updating tab 'Duct Accessories' for category 'Duct Accessories'
+[16-10-2025 11:58:47] [PARAMETER_SERVICE] Found 152 parameters for category 'Duct Accessories' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Duct Accessories'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[16-10-2025 11:58:47] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[16-10-2025 11:58:47] Parameter dropdowns updated successfully
+[16-10-2025 11:58:47] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[16-10-2025 11:58:47] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[16-10-2025 11:58:47] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[16-10-2025 11:58:47] [OK_BUTTON_DEBUG] About to extract zones
+[16-10-2025 11:58:47] [OK_BUTTON_DEBUG] Zones extracted: 85
+[16-10-2025 11:58:47] [OK_BUTTON_DEBUG] Total zones loaded: 85
+[16-10-2025 11:58:47] [OK_BUTTON_DEBUG] Unresolved zones: 85
+[16-10-2025 11:58:47] [OK_BUTTON_DEBUG] Allowed host types: [Walls]
+[16-10-2025 11:58:47] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[16-10-2025 11:58:47] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[16-10-2025 11:58:47] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[16-10-2025 11:58:47] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[16-10-2025 11:58:47] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[16-10-2025 11:58:47] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[16-10-2025 11:58:47] [OK_BUTTON_DEBUG] After host type filter: 85 -> 85
+[16-10-2025 11:58:47] [OK_BUTTON_DEBUG] Final unresolved count: 85
+[16-10-2025 11:58:47] [OK_BUTTON_DEBUG] OK button enabled: True
+[16-10-2025 11:58:47] RefreshService.ExecuteRefresh() method completed successfully
+[16-10-2025 12:00:49] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-16_12-00-49)
+[16-10-2025 12:00:49] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[16-10-2025 12:01:16] === ON_REFRESH_CLICK STARTED ===
+[16-10-2025 12:01:16] About to call RefreshService.ExecuteRefresh() method
+[16-10-2025 12:01:16] === REFRESH STARTED === Timestamp: 2025-10-16_12-01-16
+[16-10-2025 12:01:18] About to update parameter dropdowns
+[16-10-2025 12:01:19] [PARAMETER_SERVICE] Starting category-specific population for 2 categories
+[16-10-2025 12:01:19] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[16-10-2025 12:01:19] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[16-10-2025 12:01:19] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[16-10-2025 12:01:19] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[16-10-2025 12:01:19] [PARAMETER_SERVICE] Updating tab 'Ducts' for category 'Ducts'
+[16-10-2025 12:01:19] [PARAMETER_SERVICE] Found 87 parameters for category 'Ducts' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Ducts'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[16-10-2025 12:01:19] [PARAMETER_SERVICE] Updating tab 'Duct Accessories' for category 'Duct Accessories'
+[16-10-2025 12:01:19] [PARAMETER_SERVICE] Found 152 parameters for category 'Duct Accessories' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Duct Accessories'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[16-10-2025 12:01:20] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[16-10-2025 12:01:20] Parameter dropdowns updated successfully
+[16-10-2025 12:01:20] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[16-10-2025 12:01:20] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[16-10-2025 12:01:20] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[16-10-2025 12:01:20] [OK_BUTTON_DEBUG] About to extract zones
+[16-10-2025 12:01:20] [OK_BUTTON_DEBUG] Zones extracted: 24
+[16-10-2025 12:01:20] [OK_BUTTON_DEBUG] Total zones loaded: 24
+[16-10-2025 12:01:20] [OK_BUTTON_DEBUG] Unresolved zones: 24
+[16-10-2025 12:01:20] [OK_BUTTON_DEBUG] Allowed host types: [Floors]
+[16-10-2025 12:01:20] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[16-10-2025 12:01:20] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 12:01:20] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 12:01:20] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 12:01:20] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 12:01:20] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 12:01:20] [OK_BUTTON_DEBUG] After host type filter: 24 -> 24
+[16-10-2025 12:01:20] [OK_BUTTON_DEBUG] Final unresolved count: 24
+[16-10-2025 12:01:20] [OK_BUTTON_DEBUG] OK button enabled: True
+[16-10-2025 12:01:20] RefreshService.ExecuteRefresh() method completed successfully
+[16-10-2025 12:25:14] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-16_12-25-14)
+[16-10-2025 12:25:14] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[16-10-2025 12:25:35] === ON_REFRESH_CLICK STARTED ===
+[16-10-2025 12:25:35] About to call RefreshService.ExecuteRefresh() method
+[16-10-2025 12:25:35] === REFRESH STARTED === Timestamp: 2025-10-16_12-25-35
+[16-10-2025 12:25:36] About to update parameter dropdowns
+[16-10-2025 12:25:37] [PARAMETER_SERVICE] Starting category-specific population for 2 categories
+[16-10-2025 12:25:37] [PARAMETER_SERVICE] Using cached opening parameters: 53 parameters
+[16-10-2025 12:25:37] [PARAMETER_SERVICE] Found 6 total linked files, 2 host element files
+[16-10-2025 12:25:37] [PARAMETER_SERVICE] Found 82 host element parameters from linked files
+[16-10-2025 12:25:37] [PARAMETER_SERVICE] Combined total: 99 unique parameters
+[16-10-2025 12:25:37] [PARAMETER_SERVICE] Updating tab 'Ducts' for category 'Ducts'
+[16-10-2025 12:25:37] [PARAMETER_SERVICE] Found 87 parameters for category 'Ducts' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Ducts'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[16-10-2025 12:25:38] [PARAMETER_SERVICE] Updating tab 'Duct Accessories' for category 'Duct Accessories'
+[16-10-2025 12:25:38] [PARAMETER_SERVICE] Found 152 parameters for category 'Duct Accessories' from linked files
+[LIVE-DIAG] CreateAutomaticParameterRows about to fill Opening combo with 53 items
+[ROW-CHECK] About to create 3 rows for category 'Duct Accessories'
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-CHECK] Opening combo now contains 53 items (after AddRange)
+[UI-TRUTH] Added-row combo count = 53
+[REF-FINAL] Method completed - bootstrap returns 53 opening parameters
+[16-10-2025 12:25:38] [PARAMETER_SERVICE] Category-specific parameter population completed successfully
+[16-10-2025 12:25:38] Parameter dropdowns updated successfully
+[16-10-2025 12:25:38] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[16-10-2025 12:25:38] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[16-10-2025 12:25:38] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[16-10-2025 12:25:38] [OK_BUTTON_DEBUG] About to extract zones
+[16-10-2025 12:25:38] [OK_BUTTON_DEBUG] Zones extracted: 24
+[16-10-2025 12:25:38] [OK_BUTTON_DEBUG] Total zones loaded: 24
+[16-10-2025 12:25:38] [OK_BUTTON_DEBUG] Unresolved zones: 24
+[16-10-2025 12:25:38] [OK_BUTTON_DEBUG] Allowed host types: [Floors]
+[16-10-2025 12:25:38] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[16-10-2025 12:25:38] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 12:25:38] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 12:25:38] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 12:25:38] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 12:25:38] [OK_BUTTON_DEBUG]   - Type='Floor', IsEligible=True, Resolved=False
+[16-10-2025 12:25:38] [OK_BUTTON_DEBUG] After host type filter: 24 -> 24
+[16-10-2025 12:25:38] [OK_BUTTON_DEBUG] Final unresolved count: 24
+[16-10-2025 12:25:38] [OK_BUTTON_DEBUG] OK button enabled: True
+[16-10-2025 12:25:38] RefreshService.ExecuteRefresh() method completed successfully
+[16-10-2025 12:28:03] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-16_12-28-03)
+[16-10-2025 12:28:03] REFRESH BUTTON CREATED: Visible=False, Enabled=True
