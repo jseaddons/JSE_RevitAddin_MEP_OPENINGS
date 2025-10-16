@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using Autodesk.Revit.DB;
@@ -46,6 +47,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         {
             try
             {
+                // 🚨 DEBUG: Direct file logging to bypass DebugLogger issues
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\universal_command_debug.log", 
+                    $"[{DateTime.Now}] 🚨 UniversalSleevePlacementCommand.Execute STARTED for category '{_category}' with {_clashZones.Count} clash zones\n");
+                
                 DebugLogger.Info($"{_logPrefix} Starting sleeve placement for {_clashZones.Count} clash zones");
                 
                 // ---- 1. VALIDATION: Check document state (NO transaction) ----
@@ -73,7 +78,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         
                         // Place all sleeves in single transaction (zero linked file access!)
                         var placerService = new UniversalSleevePlacerService(_doc, _conditions, _strategy);
-                        var result = placerService.PlaceAllSleevesInTransaction(_clashZones);
+                        
+                        // 🛡️ ARCHITECTURE FIX: Apply comprehensive filtering before placement
+                        // This ensures sleeves are only placed for:
+                        // 1. Correct MEP category (Pipes, Ducts, etc.)
+                        // 2. Selected host types (Floors vs Walls)
+                        // 3. Selected reference linked files
+                        // 4. Selected host linked files
+                        // 5. Within active 3D section box
+                        var filteredClashZones = FilterClashZonesByAllCriteria(_clashZones);
+                        
+                        var result = placerService.PlaceAllSleevesInTransaction(filteredClashZones);
                         
                         // Commit and check status
                         var status = t.Commit();
@@ -207,6 +222,244 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 DebugLogger.Error($"{_logPrefix} Error loading conditions: {ex.Message}");
                 _conditions = new OpeningConditions { FilterName = "Default", Category = _category };
             }
+        }
+        
+        /// <summary>
+        /// Filter clash zones by all 5 criteria: MEP category, host type, reference files, host files, and 3D section box
+        /// </summary>
+        private List<ClashZone> FilterClashZonesByAllCriteria(List<ClashZone> clashZones)
+        {
+            try
+            {
+                // 🚨 DEBUG: Direct file logging to bypass DebugLogger issues
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\universal_command_debug.log", 
+                    $"[{DateTime.Now}] 🚨 FilterClashZonesByAllCriteria STARTED with {clashZones.Count} clash zones\n");
+                
+                // Get selected host types from UI
+                var selectedHostTypes = FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>();
+                
+                if (selectedHostTypes.Count == 0)
+                {
+                    DebugLogger.Warning($"{_logPrefix} No host types selected in UI - placing sleeves on all host types");
+                }
+                
+                var allowedHostTypes = new HashSet<string>(selectedHostTypes, StringComparer.OrdinalIgnoreCase);
+                DebugLogger.Info($"{_logPrefix} UI selected host types: [{string.Join(", ", selectedHostTypes)}]");
+                
+                // Get selected reference files and host files from UI
+                var selectedReferenceFiles = FilterUiStateProvider.GetSelectedReferenceFiles?.Invoke() ?? new List<string>();
+                var selectedHostFiles = FilterUiStateProvider.GetSelectedHostFiles?.Invoke() ?? new List<string>();
+                
+                // 🚨 DEBUG: Direct file logging to bypass DebugLogger issues
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\universal_command_debug.log", 
+                    $"[{DateTime.Now}] 🚨 UI selected reference files: [{string.Join(", ", selectedReferenceFiles)}]\n");
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\universal_command_debug.log", 
+                    $"[{DateTime.Now}] 🚨 UI selected host files: [{string.Join(", ", selectedHostFiles)}]\n");
+                
+                DebugLogger.Info($"{_logPrefix} UI selected reference files: [{string.Join(", ", selectedReferenceFiles)}]");
+                DebugLogger.Info($"{_logPrefix} UI selected host files: [{string.Join(", ", selectedHostFiles)}]");
+                
+                var filteredZones = clashZones.Where(cz =>
+                {
+                    // 🚨 DEBUG: Log first few clash zones to see their file names
+                    if (clashZones.IndexOf(cz) < 3)
+                    {
+                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\universal_command_debug.log", 
+                            $"[{DateTime.Now}] 🚨 ClashZone {cz.Id}: SourceDocKey='{cz.SourceDocKey}', StructuralElementDocumentTitle='{cz.StructuralElementDocumentTitle}'\n");
+                    }
+                    
+                    // 🚨 TROUBLESHOOTING: Re-enabling filters one by one
+                    
+                    // Filter 1: MEP category filtering (safety check) - RE-ENABLED FOR TESTING
+                    bool categoryMatch = string.Equals(cz.MepElementCategory, _category, StringComparison.OrdinalIgnoreCase);
+                    if (!categoryMatch)
+                    {
+                        DebugLogger.Info($"{_logPrefix} Filtered out ClashZone {cz.Id}: MEP category '{cz.MepElementCategory}' doesn't match command category '{_category}'");
+                        return false;
+                    }
+                    
+                    // Filter 2: Host type filtering - RE-ENABLED FOR FINAL TESTING
+                    bool hostTypeMatch = selectedHostTypes.Count == 0 || 
+                                       allowedHostTypes.Contains(cz.StructuralElementType) ||
+                                       allowedHostTypes.Contains(cz.StructuralElementType + "s") ||
+                                       allowedHostTypes.Any(t => t.TrimEnd('s').Equals(cz.StructuralElementType, StringComparison.OrdinalIgnoreCase));
+                    
+                    if (!hostTypeMatch)
+                    {
+                        DebugLogger.Info($"{_logPrefix} Filtered out ClashZone {cz.Id}: Host type '{cz.StructuralElementType}' not in selected types [{string.Join(", ", selectedHostTypes)}]");
+                        return false;
+                    }
+                    
+                    // Filter 3: Reference linked file filtering - RE-ENABLED WITH DETAILED LOGGING
+                    bool referenceFileMatch = selectedReferenceFiles.Count == 0 || 
+                                            IsFileInSelectedList(cz.SourceDocKey, selectedReferenceFiles);
+                    
+                    if (!referenceFileMatch)
+                    {
+                        DebugLogger.Info($"{_logPrefix} Filtered out ClashZone {cz.Id}: Reference file '{cz.SourceDocKey}' not in selected files [{string.Join(", ", selectedReferenceFiles)}]");
+                        return false;
+                    }
+                    
+                    // Filter 4: Host linked file filtering - RE-ENABLED WITH DETAILED LOGGING
+                    bool hostFileMatch = selectedHostFiles.Count == 0 || 
+                                       IsFileInSelectedList(cz.StructuralElementDocumentTitle, selectedHostFiles);
+                    
+                    if (!hostFileMatch)
+                    {
+                        DebugLogger.Info($"{_logPrefix} Filtered out ClashZone {cz.Id}: Host file '{cz.StructuralElementDocumentTitle}' not in selected files [{string.Join(", ", selectedHostFiles)}]");
+                        return false;
+                    }
+                    
+                    // Filter 5: 3D section box filtering - DISABLED FOR DEBUG
+                    // bool sectionBoxMatch = IsClashZoneVisibleInCurrentSectionBox(cz);
+                    // if (!sectionBoxMatch)
+                    // {
+                    //     DebugLogger.Info($"{_logPrefix} Filtered out ClashZone {cz.Id}: Not visible in current 3D section box");
+                    //     return false;
+                    // }
+                    
+                    // 🚨 TEMPORARY: Only apply 3D section box filter (most likely to be correct)
+                    bool sectionBoxMatch = IsClashZoneVisibleInCurrentSectionBox(cz);
+                    if (!sectionBoxMatch)
+                    {
+                        DebugLogger.Info($"{_logPrefix} Filtered out ClashZone {cz.Id}: Not visible in current 3D section box");
+                        return false;
+                    }
+                    
+                    return true;
+                }).ToList();
+                
+                // 🚨 DEBUG: Direct file logging to bypass DebugLogger issues
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\universal_command_debug.log", 
+                    $"[{DateTime.Now}] 🚨 FILTERING COMPLETED: {clashZones.Count} -> {filteredZones.Count} clash zones\n");
+                
+                DebugLogger.Info($"{_logPrefix} FINAL 5-FILTER SYSTEM: MEP category + host type + reference files + host files + 3D section box filters applied: {clashZones.Count} -> {filteredZones.Count} clash zones");
+                return filteredZones;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"{_logPrefix} Error filtering clash zones: {ex.Message}");
+                return clashZones; // Return all zones if filtering fails
+            }
+        }
+        
+        /// <summary>
+        /// Check if clash zone is visible in current 3D section box
+        /// </summary>
+        private bool IsClashZoneVisibleInCurrentSectionBox(ClashZone clashZone)
+        {
+            try
+            {
+                // Check if we have an active 3D view with section box
+                if (!(_doc.ActiveView is View3D view3D) || !view3D.IsSectionBoxActive)
+                {
+                    DebugLogger.Info($"{_logPrefix} No active 3D section box - ClashZone {clashZone.Id} considered visible");
+                    return true; // No section box = all visible
+                }
+
+                // Get section box bounds
+                var sectionBox = Helpers.SectionBoxHelper.GetSectionBoxBounds(view3D);
+                if (sectionBox == null)
+                {
+                    DebugLogger.Info($"{_logPrefix} Could not get section box bounds - ClashZone {clashZone.Id} considered visible");
+                    return true; // Can't get bounds = all visible
+                }
+
+                // Check if clash zone intersection point is within section box
+                var intersectionPoint = clashZone.IntersectionPoint;
+                
+                bool isVisible = intersectionPoint.X >= sectionBox.Min.X && intersectionPoint.X <= sectionBox.Max.X &&
+                               intersectionPoint.Y >= sectionBox.Min.Y && intersectionPoint.Y <= sectionBox.Max.Y &&
+                               intersectionPoint.Z >= sectionBox.Min.Z && intersectionPoint.Z <= sectionBox.Max.Z;
+                
+                if (isVisible)
+                {
+                    DebugLogger.Info($"{_logPrefix} ClashZone {clashZone.Id} is visible in section box at ({intersectionPoint.X:F2}, {intersectionPoint.Y:F2}, {intersectionPoint.Z:F2})");
+                }
+                else
+                {
+                    DebugLogger.Info($"{_logPrefix} ClashZone {clashZone.Id} is outside section box at ({intersectionPoint.X:F2}, {intersectionPoint.Y:F2}, {intersectionPoint.Z:F2})");
+                }
+                
+                return isVisible;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"{_logPrefix} Error checking ClashZone {clashZone.Id} section box visibility: {ex.Message} - considering visible");
+                return true; // Consider visible on error
+            }
+        }
+        
+        /// <summary>
+        /// Check if a file name is in the selected files list (handles parentheses and normalization)
+        /// </summary>
+        private bool IsFileInSelectedList(string fileName, List<string> selectedFiles)
+        {
+            if (string.IsNullOrEmpty(fileName) || selectedFiles.Count == 0)
+            {
+                DebugLogger.Info($"{_logPrefix} IsFileInSelectedList: No filtering - fileName='{fileName}', selectedFiles.Count={selectedFiles.Count}");
+                return true; // No filtering if no selection
+            }
+            
+            // Normalize file names for comparison (remove parentheses content)
+            string normalizedFileName = NormalizeFileName(fileName);
+            
+            DebugLogger.Info($"{_logPrefix} IsFileInSelectedList: Checking fileName='{fileName}' -> normalized='{normalizedFileName}' against selectedFiles=[{string.Join(", ", selectedFiles)}]");
+            
+            // Log each selected file normalization for debugging
+            foreach (var selectedFile in selectedFiles)
+            {
+                string normalizedSelectedFile = NormalizeFileName(selectedFile);
+                DebugLogger.Info($"{_logPrefix} IsFileInSelectedList: Selected file '{selectedFile}' -> normalized='{normalizedSelectedFile}'");
+            }
+            
+            foreach (var selectedFile in selectedFiles)
+            {
+                string normalizedSelectedFile = NormalizeFileName(selectedFile);
+                DebugLogger.Info($"{_logPrefix} IsFileInSelectedList: Comparing '{normalizedFileName}' vs '{normalizedSelectedFile}'");
+                
+                if (string.Equals(normalizedFileName, normalizedSelectedFile, StringComparison.OrdinalIgnoreCase))
+                {
+                    DebugLogger.Info($"{_logPrefix} IsFileInSelectedList: ✅ MATCH FOUND: '{normalizedFileName}' == '{normalizedSelectedFile}'");
+                    return true;
+                }
+            }
+            
+            DebugLogger.Info($"{_logPrefix} IsFileInSelectedList: ❌ NO MATCH: '{normalizedFileName}' not found in selected files");
+            return false;
+        }
+        
+        /// <summary>
+        /// Normalize file name by removing parentheses content, extra text, and extracting filename from path
+        /// </summary>
+        private string NormalizeFileName(string fileName)
+        {
+            if (string.IsNullOrEmpty(fileName))
+                return string.Empty;
+            
+            // Extract filename from full path (e.g., "C:\Users\...\ME-00001.rvt" -> "ME-00001.rvt")
+            fileName = Path.GetFileName(fileName);
+            
+            // Remove file extension (e.g., "ME-00001.rvt" -> "ME-00001")
+            fileName = Path.GetFileNameWithoutExtension(fileName);
+            
+            // Remove content in parentheses (e.g., "Building (Architectural)" -> "Building")
+            var idxParen = fileName.IndexOf('(');
+            if (idxParen >= 0)
+            {
+                fileName = fileName.Substring(0, idxParen).Trim();
+            }
+            
+            // Remove element count suffixes (e.g., "ME-00001 (118 elements)" -> "ME-00001")
+            // This handles cases where UI shows "ME-00001 (118 elements)" but clash zones store "ME-00001"
+            var idxElements = fileName.IndexOf(" elements");
+            if (idxElements >= 0)
+            {
+                fileName = fileName.Substring(0, idxElements).Trim();
+            }
+            
+            // Remove any trailing spaces and return
+            return fileName.Trim();
         }
         
         /// <summary>

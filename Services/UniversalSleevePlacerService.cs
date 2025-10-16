@@ -297,12 +297,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         XYZ placementOffset = XYZ.Zero;
                         double finalWidth, finalHeight, finalDiameter;
                         
-						// 🛡️ ARCHITECTURE FIX: Use CONDITIONS service for ALL clearance types
-						// This ensures consistent architecture: CONDITIONS XML → UniversalSleevePlacerService
-						// Raw dimensions from ClashZone + Clearance from CONDITIONS = Final dimensions
-						
-						bool isPipesCategory = string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
-						if (isPipesCategory)
+                        // 🛡️ ARCHITECTURE FIX: Use CONDITIONS service for ALL clearance types
+                        // This ensures consistent architecture: CONDITIONS XML → UniversalSleevePlacerService
+                        // Raw dimensions from ClashZone + Clearance from CONDITIONS = Final dimensions
+                        
+                        DebugLogger.Info($"[UniversalSleevePlacer] CLEARANCE CALCULATION START: Category='{clashZone.MepElementCategory}', Strategy={(_strategy?.GetType().Name ?? "NULL")}");
+                        
+                        bool isPipesCategory = string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
+                        if (isPipesCategory)
 						{
 							// ✅ Pipes: Raw dimensions + CONDITIONS clearance
 							var rawDiameter = clashZone.MepElementWidth; // Raw diameter from ClashZone
@@ -344,9 +346,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                         else
                         {
-							// ✅ Ducts: Raw dimensions + CONDITIONS clearance
+                            // ✅ Ducts: Raw dimensions + CONDITIONS clearance
                             var rawWidth = clashZone.MepElementWidth;
                             var rawHeight = clashZone.MepElementHeight;
+                            
+                            DebugLogger.Info($"[UniversalSleevePlacer] DUCT CALCULATION START: Raw dimensions {UnitUtils.ConvertFromInternalUnits(rawWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(rawHeight, UnitTypeId.Millimeters):F1}mm");
+                            
                             var clearance = GetClearanceFromConditions("Ducts", mepSize);
                             finalWidth = rawWidth + (2 * clearance);
                             finalHeight = rawHeight + (2 * clearance);
@@ -579,11 +584,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
+                DebugLogger.Info($"[GetClearanceFromConditions] START: category='{category}', _conditions={(_conditions != null ? "NOT NULL" : "NULL")}");
+                
                 if (_conditions?.ClearanceSettings == null)
                 {
                     DebugLogger.Warning($"[GetClearanceFromConditions] No clearance settings available, using default 50mm");
                     return UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters);
                 }
+
+                DebugLogger.Info($"[GetClearanceFromConditions] ClearanceSettings available: RectNormal={_conditions.ClearanceSettings.RectangularNormal}mm, RectInsulated={_conditions.ClearanceSettings.RectangularInsulated}mm");
 
                 // Determine clearance based on category and element properties
                 double clearanceInMm = 50.0; // Default fallback
@@ -593,6 +602,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Pipes: Check if insulated
                     bool isInsulated = IsPipeInsulated(mepSize);
                     clearanceInMm = isInsulated ? _conditions.ClearanceSettings.PipesInsulated : _conditions.ClearanceSettings.PipesNormal;
+                    DebugLogger.Info($"[GetClearanceFromConditions] Pipes: isInsulated={isInsulated}, clearance={clearanceInMm}mm");
                 }
                 else if (string.Equals(category, "Ducts", StringComparison.OrdinalIgnoreCase))
                 {
@@ -601,13 +611,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     bool isRound = string.Equals(mepSize.Shape, "Round", StringComparison.OrdinalIgnoreCase) ||
                                   string.Equals(mepSize.Shape, "Circular", StringComparison.OrdinalIgnoreCase);
                     
+                    DebugLogger.Info($"[GetClearanceFromConditions] Ducts: isInsulated={isInsulated}, isRound={isRound}, Shape='{mepSize.Shape}'");
+                    
                     if (isRound)
                     {
                         clearanceInMm = isInsulated ? _conditions.ClearanceSettings.RoundInsulated : _conditions.ClearanceSettings.RoundNormal;
+                        DebugLogger.Info($"[GetClearanceFromConditions] Round ducts: clearance={clearanceInMm}mm");
                     }
                     else
                     {
                         clearanceInMm = isInsulated ? _conditions.ClearanceSettings.RectangularInsulated : _conditions.ClearanceSettings.RectangularNormal;
+                        DebugLogger.Info($"[GetClearanceFromConditions] Rectangular ducts: clearance={clearanceInMm}mm");
                     }
                 }
 

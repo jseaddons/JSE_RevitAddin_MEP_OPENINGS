@@ -460,6 +460,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     return selected.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
                 };
 
+                Services.FilterUiStateProvider.GetSelectedReferenceFiles = () =>
+                {
+                    return GetSelectedReferenceFiles();
+                };
+
+                Services.FilterUiStateProvider.GetSelectedHostFiles = () =>
+                {
+                    return GetSelectedHostFiles();
+                };
+
                 Services.FilterUiStateProvider.ApplyFilterToUi = (filter) =>
                 {
                     try
@@ -4464,6 +4474,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         {
             try
             {
+                // 🚨 DEBUG: Direct file logging to debug OK button click
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\ok_button_debug.log", 
+                    $"[{DateTime.Now}] 🚨 OK BUTTON CLICKED! Starting sleeve placement...\n");
+                
                 // Disable Parameter Transfer button until placement completes
                 _parameterTransferButton.Enabled = false;
 
@@ -4504,6 +4518,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
                 // Raise external event (non-blocking)
                 _sleevePlacementEvent.Raise();
+
+                // 🚨 DEBUG: Direct file logging after external event
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\ok_button_debug.log", 
+                    $"[{DateTime.Now}] 🚨 EXTERNAL EVENT RAISED! Categories: {string.Join(", ", selectedCategories)}\n");
 
                 DebugLogger.Info($"[EmergencyMainDialog] External event raised for categories: {string.Join(", ", selectedCategories)}");
 
