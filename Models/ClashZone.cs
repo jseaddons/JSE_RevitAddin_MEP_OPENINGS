@@ -246,6 +246,65 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public string HostOrientation { get; set; } = string.Empty;
         
         /// <summary>
+        /// ⚠️ CRITICAL PROPERTY - DO NOT REMOVE ⚠️
+        /// Pre-calculated wall direction vector for robust X-wall/Y-wall detection
+        /// For walls: actual wall direction (not normal) - calculated during refresh
+        /// For framing: framing direction vector
+        /// For floors: not applicable (use MEP orientation)
+        /// This enables robust sleeve rotation without expensive Revit API calls during placement
+        /// </summary>
+        [XmlIgnore]
+        public XYZ WallDirection { get; set; }
+        
+        /// <summary>
+        /// XML serializable wall direction X coordinate
+        /// </summary>
+        public double WallDirectionX
+        {
+            get => WallDirection?.X ?? 0.0;
+            set { 
+                if (WallDirection == null) 
+                    WallDirection = new XYZ(value, 0, 0); 
+                else 
+                    WallDirection = new XYZ(value, WallDirection.Y, WallDirection.Z); 
+            }
+        }
+        
+        /// <summary>
+        /// XML serializable wall direction Y coordinate
+        /// </summary>
+        public double WallDirectionY
+        {
+            get => WallDirection?.Y ?? 0.0;
+            set { 
+                if (WallDirection == null) 
+                    WallDirection = new XYZ(0, value, 0); 
+                else 
+                    WallDirection = new XYZ(WallDirection.X, value, WallDirection.Z); 
+            }
+        }
+        
+        /// <summary>
+        /// XML serializable wall direction Z coordinate
+        /// </summary>
+        public double WallDirectionZ
+        {
+            get => WallDirection?.Z ?? 0.0;
+            set { 
+                if (WallDirection == null) 
+                    WallDirection = new XYZ(0, 0, value); 
+                else 
+                    WallDirection = new XYZ(WallDirection.X, WallDirection.Y, value); 
+            }
+        }
+        
+        /// <summary>
+        /// Pre-calculated wall direction type ("X-WALL", "Y-WALL", "FRAMING", "FLOOR")
+        /// Determined during refresh for efficient sleeve rotation logic
+        /// </summary>
+        public string WallDirectionType { get; set; } = string.Empty;
+        
+        /// <summary>
         /// The thickness of the structural element (for depth calculation)
         /// </summary>
         public double StructuralElementThickness { get; set; } = 0.0;

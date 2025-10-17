@@ -2618,6 +2618,76 @@ private List<(Element, Element, BoundingBoxXYZ, XYZ)> PrioritizeIntersectionsByC
 - ✅ **Order Independence**: Works regardless of intersection order
 - ✅ **Comprehensive Coverage**: Handles all MEP categories
 
+#### **Updated Implementation: UniversalSleevePlacerService**
+
+**Current Implementation** (2025-01-17): The priority system is now implemented in `UniversalSleevePlacerService.PlaceAllSleevesInTransaction()` with two key improvements:
+
+**1. Category-Based Sorting**:
+```csharp
+// ✅ PRIORITY SORTING: Process Duct Accessories (Dampers) BEFORE Ducts
+var sortedClashZones = clashZones
+    .OrderBy(cz => GetCategoryPriority(cz.MepElementCategory))
+    .ThenBy(cz => cz.Id)
+    .ToList();
+
+// Helper method to define category priority for sorting
+private int GetCategoryPriority(string mepCategory)
+{
+    // Lower number = higher priority (processed first)
+    return mepCategory?.ToLowerInvariant() switch
+    {
+        "duct accessories" => 1,  // Dampers - HIGHEST priority
+        "ducts" => 2,             // Ducts - processed after dampers
+        "pipes" => 3,
+        "cable trays" => 4,
+        "cable tray fittings" => 5,
+        _ => 999                  // Unknown categories last
+    };
+}
+```
+
+**2. Location-Based Skip Logic**:
+```csharp
+// ✅ SKIP LOGIC: Ducts should skip if damper sleeve already exists at this location
+if (string.Equals(clashZone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase))
+{
+    // Check if any Duct Accessory (damper) sleeve exists at this location
+    bool damperSleeveExistsNearby = sortedClashZones
+        .Where(cz => string.Equals(cz.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
+        .Where(cz => cz.StructuralElementId.IntegerValue == clashZone.StructuralElementId.IntegerValue) // Same wall/floor
+        .Where(cz => cz.SleevePlacementPoint.DistanceTo(clashZone.SleevePlacementPoint) < 0.5) // Within 0.5 feet (~150mm)
+        .Any(cz => 
+        {
+            // Check if damper has a placed sleeve (cluster or individual)
+            if (cz.IsClusterResolved && cz.ClusterSleeveInstanceId > 0)
+            {
+                var sleeve = _doc.GetElement(new ElementId(cz.ClusterSleeveInstanceId));
+                return sleeve != null;
+            }
+            if (cz.IsResolved && cz.SleeveInstanceId > 0)
+            {
+                var sleeve = _doc.GetElement(new ElementId(cz.SleeveInstanceId));
+                return sleeve != null;
+            }
+            return false;
+        });
+    
+    if (damperSleeveExistsNearby)
+    {
+        DebugLogger.Info($"[UniversalSleevePlacer] SKIP: Duct at ClashZone {clashZone.Id} - Damper sleeve exists nearby at {clashZone.SleevePlacementPoint}");
+        SkippedCount++;
+        continue;
+    }
+}
+```
+
+**Key Improvements**:
+- ✅ **Sorting Verification**: Logs first 10 clash zones after sorting to verify order
+- ✅ **Location-Based Detection**: Checks for damper sleeves at same structural element + proximity
+- ✅ **Dual Resolution Check**: Handles both cluster and individual sleeve resolution
+- ✅ **Proximity Tolerance**: Uses 0.5 feet (150mm) tolerance for "nearby" detection
+- ✅ **Different ClashZone IDs**: Correctly handles cases where dampers and ducts have different ClashZone IDs
+
 #### **Solution 4: Auto-Detection of Missing Categories**
 **Problem**: If user forgets to select "Duct Accessories" category, dampers would be missed
 **Solution**: `AutoDetectMissingDampers()` method

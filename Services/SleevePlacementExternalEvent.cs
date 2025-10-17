@@ -74,27 +74,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Log immediate feedback (non-blocking)
                 DebugLogger.Info($"[SleevePlacementExternalEvent] Processing {_selectedCategories.Count} categories: {string.Join(", ", _selectedCategories)}");
 
-                // Process each category: Place individual sleeves → Cluster → Apply MEPMARK → Persist updated zones
-                foreach (var category in _selectedCategories)
+                // ✅ SEQUENTIAL PROCESSING: Process categories in priority order (Duct Accessories first, then Ducts)
+                var sortedCategories = _selectedCategories
+                    .OrderBy(cat => GetCategoryPriority(cat))
+                    .ThenBy(cat => cat)
+                    .ToList();
+                
+                DebugLogger.Info($"[SleevePlacementExternalEvent] Processing categories in priority order: {string.Join(", ", sortedCategories)}");
+                
+                // Process each category sequentially: placement → clustering → marking → persistence
+                foreach (var category in sortedCategories)
                 {
                     var (clashZones, xmlFilePath) = GetClashZonesForCategory(category);
                     if (clashZones.Count > 0)
                     {
-                        // Step 1: Place individual sleeves
+                        DebugLogger.Info($"[SleevePlacementExternalEvent] === PROCESSING CATEGORY: {category} ({clashZones.Count} clash zones) ===");
+                        
+                        // Step 1: Place individual sleeves for this category
                         ICommand placementCommand = CreateCommandForCategory(category, clashZones);
                         
                         if (placementCommand != null)
                         {
-                            // Step 1: Place individual sleeves
-                            DebugLogger.Info($"[SleevePlacementExternalEvent] Placing individual sleeves for {category} ({clashZones.Count} clash zones)");
+                            DebugLogger.Info($"[SleevePlacementExternalEvent] Step 1: Placing individual sleeves for {category}");
                             placementCommand.Execute(app);
                             
-                        // Step 2: Immediately cluster this category's sleeves
-                        DebugLogger.Info($"[SleevePlacementExternalEvent] Clustering {category} sleeves...");
-                        var clusterCommand = new Commands.UniversalClusterCommand(category, xmlFilePath);
-                        clusterCommand.Execute(app);
+                            // Step 2: Cluster this category's sleeves
+                            DebugLogger.Info($"[SleevePlacementExternalEvent] Step 2: Clustering {category} sleeves...");
+                            var clusterCommand = new Commands.UniversalClusterCommand(category, xmlFilePath);
+                            clusterCommand.Execute(app);
                             
-                            // ✅ NEW: Step 3: Apply MEPMARK to clusters using stored prefixes
+                            // Step 3: Apply MEPMARK to clusters using stored prefixes
                             // Ensure Revit finalizes new elements before marking
                             try
                             {
@@ -105,7 +114,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             {
                                 DebugLogger.Warning($"[SleevePlacementExternalEvent] Regenerate before marking failed: {regenEx.Message}");
                             }
-                            DebugLogger.Info($"[SleevePlacementExternalEvent] Applying MEPMARK to {category} clusters...");
+                            DebugLogger.Info($"[SleevePlacementExternalEvent] Step 3: Applying MEPMARK to {category} clusters...");
                             
                             // ✅ CORRECTED: Use instance variable (safe after null check)
                             string projectPrefix = _markPrefixes.ProjectPrefix;
@@ -115,14 +124,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var markCommand = new Commands.MarkParameterCommand(category, projectPrefix, disciplinePrefix, remarkAll);
                             markCommand.Execute(app);
                             
-                            DebugLogger.Info($"[SleevePlacementExternalEvent] ✓ Completed placement, clustering, and MEPMARK for {category}");
-
-                            // Persist updated clash zones including SleeveInstanceId to the category XML
+                            // Step 4: Persist updated clash zones for this category
                             try
                             {
                                 if (!string.IsNullOrWhiteSpace(xmlFilePath))
                                 {
-                                    DebugLogger.Info($"[SleevePlacementExternalEvent] Persisting updated clash zones to: {xmlFilePath}");
+                                    DebugLogger.Info($"[SleevePlacementExternalEvent] Step 4: Persisting updated clash zones for {category} to: {xmlFilePath}");
                                     var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
                                     OpeningFilter filter;
                                     using (var reader = new StreamReader(xmlFilePath))
@@ -141,7 +148,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     {
                                         serializer.Serialize(writer, filter);
                                     }
-                                    DebugLogger.Info($"[SleevePlacementExternalEvent] ✓ Saved updated zones ({clashZones.Count}) to {xmlFilePath}");
+                                    DebugLogger.Info($"[SleevePlacementExternalEvent] ✓ Saved updated zones ({clashZones.Count}) for {category} to {xmlFilePath}");
                                 }
                                 else
                                 {
@@ -152,6 +159,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             {
                                 DebugLogger.Error($"[SleevePlacementExternalEvent] Error saving updated zones for '{category}': {saveEx.Message}");
                             }
+                            
+                            DebugLogger.Info($"[SleevePlacementExternalEvent] ✓ COMPLETED ALL STEPS FOR CATEGORY: {category}");
                         }
                         else
                         {
@@ -163,6 +172,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         DebugLogger.Warning($"[SleevePlacementExternalEvent] No clash zones found for category: {category}");
                     }
                 }
+                
+                DebugLogger.Info($"[SleevePlacementExternalEvent] ✓ COMPLETED ALL CATEGORIES IN PRIORITY ORDER");
                 
                 DebugLogger.Info("[SleevePlacementExternalEvent] All categories processed (placement + clustering + MEPMARK)");
             }
@@ -324,6 +335,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _selectedCategories = selectedCategories;
             DebugLogger.Info($"[SleevePlacementExternalEvent] Set categories for processing: {string.Join(", ", selectedCategories)}");
         }
+
+        /// <summary>
+        /// ✅ NEW: Get category priority for sequential processing
+        /// Lower number = higher priority (processed first)
+        /// </summary>
+        private int GetCategoryPriority(string mepCategory)
+        {
+            return mepCategory?.ToLowerInvariant() switch
+            {
+                "duct accessories" => 1, // Dampers - HIGHEST priority
+                "ducts" => 2, // Ducts - processed after dampers
+                "pipes" => 3,
+                "cable trays" => 4,
+                "cable tray fittings" => 5,
+                _ => 999 // Unknown categories last
+            };
+        }
+
 
         private ICommand CreateCommandForCategory(string category, List<ClashZone> clashZones)
         {

@@ -157,6 +157,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             Dictionary<string, double> clearanceSettings = null,
             List<string> selectedCategories = null)
         {
+            _log($"[METHOD3] DEBUG: DetectNewClashZones called with {currentIntersections?.Count ?? 0} intersections");
+            
+            // Add build timestamp to refresh_debug.log
+            try
+            {
+                var asm = System.Reflection.Assembly.GetExecutingAssembly();
+                var ver = System.Diagnostics.FileVersionInfo.GetVersionInfo(asm.Location)?.FileVersion ?? "?";
+                var ts = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log",
+                    $"[BUILD] {ts} Assembly={System.IO.Path.GetFileName(asm.Location)} Version={ver} Path={asm.Location}\n");
+            }
+            catch { }
             if (_clashZoneStorage == null)
             {
                 _log("ERROR: ClashZoneStorage is null in DetectNewClashZones");
@@ -228,6 +240,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     _log($"SKIP: Invalid elements - MEP={mepElement?.Id}, Structural={structuralElement?.Id}");
                     continue;
                 }
+
+                // Method 3 is now implemented in IntersectionDetectionService.cs
+                // Ducts with dampers at their ends are filtered out at intersection level
 
                 // CRITICAL FIX: Check if elements are still valid in the document
                 try
@@ -1020,6 +1035,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     if (clashZone.IsResolved)
                     {
+                        // ✅ METHOD 3: Check for damper presence before resetting duct clash zones
+                        if (string.Equals(clashZone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Get the MEP element to check for damper presence
+                            var mepElement = document.GetElement(clashZone.MepElementId);
+                            var structuralElement = document.GetElement(clashZone.StructuralElementId);
+                            
+                            if (mepElement != null && structuralElement != null)
+                            {
+                                if (CheckForDamperAtDuctEnd(document, mepElement, structuralElement, clashZone.IntersectionPoint))
+                                {
+                                    _log($"[ResetResolvedFlag] [METHOD3] SKIP: Duct clash zone {clashZone.Id} - Damper found at duct end, keeping IsResolved=true");
+                                    continue; // Don't reset this clash zone - damper exists
+                                }
+                            }
+                        }
+                        
                         // Validate placement point exists
                         if (clashZone.SleevePlacementPoint == null)
                         {
@@ -1099,6 +1131,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var (mepWidth, mepHeight) = GetMepElementDimensions(mepElement);
             var mepOrientation = GetMepElementOrientation(mepElement);
             
+            // ⚠️ CRITICAL OPTIMIZATION: Calculate wall direction during refresh (one calculation, many uses)
+            var wallDirection = GetWallDirection(structuralElement);
+            var wallDirectionType = GetWallDirectionType(structuralElement, wallDirection);
+            
             // 🛡️ ARCHITECTURE FIX: Store RAW dimensions only (no pre-calculated clearance)
             // All clearance (simple and complex) will be handled by CONDITIONS service during placement
             // This ensures consistent architecture: CONDITIONS XML → UniversalSleevePlacerService
@@ -1165,6 +1201,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 StructuralElementThickness = GetElementThickness(structuralElement),
                 
                 StructuralElementNormal = GetStructuralElementNormal(structuralElement), // Pre-calculate normal/direction for orientation
+                WallDirection = wallDirection, // Pre-calculate wall direction for robust X-wall/Y-wall detection
+                WallDirectionType = wallDirectionType, // Pre-calculate wall direction type for efficient rotation logic
                 
                 // NEW: Pre-calculated placement data (calculated during refresh, used during placement)
                 SleevePlacementPoint = placementPoint,
@@ -1328,6 +1366,185 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 _log($"Error getting element category name: {ex.Message}");
                 return "Unknown";
             }
+        }
+
+        /// <summary>
+        /// ✅ METHOD 3: Check for damper presence at duct end near intersection point
+        /// This prevents creating clash zones for ducts that have dampers at their ends
+        /// </summary>
+        private bool CheckForDamperAtDuctEnd(Document document, Element ductElement, Element wallElement, XYZ intersectionPoint)
+        {
+            try
+            {
+                if (!(ductElement is Autodesk.Revit.DB.Mechanical.Duct duct))
+                {
+                    return false; // Not a duct, no need to check
+                }
+
+                _log($"[METHOD3] Checking for damper at duct end: Duct {duct.Id} near intersection {intersectionPoint}");
+
+                // Get duct geometry and find end points
+                var ductGeometry = duct.get_Geometry(new Options());
+                if (ductGeometry == null) return false;
+
+                var ductEndPoints = GetDuctEndPoints(duct, ductGeometry);
+                if (ductEndPoints.Count == 0) return false;
+
+                _log($"[METHOD3] Found {ductEndPoints.Count} duct end points");
+
+                // Check each end point for damper presence
+                foreach (var endPoint in ductEndPoints)
+                {
+                    double distanceToIntersection = endPoint.DistanceTo(intersectionPoint);
+                    
+                    // Only check end points that are reasonably close to the intersection (within 2 feet)
+                    if (distanceToIntersection < 2.0) // 2 feet = ~600mm
+                    {
+                        _log($"[METHOD3] Checking end point {endPoint} (distance to intersection: {distanceToIntersection:F3}ft)");
+                        
+                        // Search for dampers within radius of this end point
+                        if (SearchForDampersNearPoint(document, endPoint, 0.5)) // 0.5 feet = ~150mm radius
+                        {
+                            _log($"[METHOD3] ✓ DAMPER FOUND: Damper detected near duct end point {endPoint}");
+                            return true; // Damper found, skip this duct
+                        }
+                    }
+                }
+
+                _log($"[METHOD3] ✗ NO DAMPER: No damper found near any duct end points");
+                return false; // No damper found, create clash zone normally
+            }
+            catch (Exception ex)
+            {
+                _log($"[METHOD3] ERROR: Failed to check for damper at duct end: {ex.Message}");
+                return false; // On error, allow clash zone creation (fail safe)
+            }
+        }
+
+        /// <summary>
+        /// Get end points of a duct by analyzing its geometry
+        /// </summary>
+        private List<XYZ> GetDuctEndPoints(Autodesk.Revit.DB.Mechanical.Duct duct, GeometryElement ductGeometry)
+        {
+            var endPoints = new List<XYZ>();
+            
+            try
+            {
+                foreach (GeometryObject geomObj in ductGeometry)
+                {
+                    if (geomObj is Solid solid)
+                    {
+                        // Get the edges of the solid
+                        foreach (Edge edge in solid.Edges)
+                        {
+                            var curve = edge.AsCurve();
+                            if (curve != null)
+                            {
+                                // Add start and end points of each edge
+                                endPoints.Add(curve.GetEndPoint(0));
+                                endPoints.Add(curve.GetEndPoint(1));
+                            }
+                        }
+                    }
+                }
+
+                // Remove duplicate points (within tolerance)
+                var uniqueEndPoints = new List<XYZ>();
+                const double tolerance = 0.01; // 1cm tolerance
+
+                foreach (var point in endPoints)
+                {
+                    bool isDuplicate = uniqueEndPoints.Any(existing => existing.DistanceTo(point) < tolerance);
+                    if (!isDuplicate)
+                    {
+                        uniqueEndPoints.Add(point);
+                    }
+                }
+
+                _log($"[METHOD3] Extracted {uniqueEndPoints.Count} unique end points from duct geometry");
+                return uniqueEndPoints;
+            }
+            catch (Exception ex)
+            {
+                _log($"[METHOD3] ERROR: Failed to get duct end points: {ex.Message}");
+                return new List<XYZ>();
+            }
+        }
+
+        /// <summary>
+        /// Search for dampers within a specified radius of a point
+        /// </summary>
+        private bool SearchForDampersNearPoint(Document document, XYZ searchPoint, double searchRadius)
+        {
+            try
+            {
+                // Create a bounding box around the search point
+                var searchBox = new BoundingBoxXYZ
+                {
+                    Min = new XYZ(searchPoint.X - searchRadius, searchPoint.Y - searchRadius, searchPoint.Z - searchRadius),
+                    Max = new XYZ(searchPoint.X + searchRadius, searchPoint.Y + searchRadius, searchPoint.Z + searchRadius)
+                };
+
+                // Create a filter for duct accessories (dampers)
+                var categoryFilter = new ElementCategoryFilter(BuiltInCategory.OST_DuctAccessory);
+                var boundingBoxFilter = new BoundingBoxIntersectsFilter(new Outline(searchBox.Min, searchBox.Max));
+                var logicalAndFilter = new LogicalAndFilter(categoryFilter, boundingBoxFilter);
+
+                // Search for duct accessories in the bounding box
+                var damperCollector = new FilteredElementCollector(document)
+                    .WherePasses(logicalAndFilter)
+                    .WhereElementIsNotElementType();
+
+                var dampers = damperCollector.ToList();
+                
+                _log($"[METHOD3] Found {dampers.Count} duct accessories within {searchRadius}ft of point {searchPoint}");
+
+                // Check if any of these are actually dampers (fire dampers, volume dampers, etc.)
+                foreach (var damper in dampers)
+                {
+                    var damperType = damper.get_Parameter(BuiltInParameter.ELEM_TYPE_PARAM)?.AsValueString();
+                    var damperFamily = damper.get_Parameter(BuiltInParameter.ELEM_FAMILY_PARAM)?.AsValueString();
+                    
+                    _log($"[METHOD3] Checking damper {damper.Id}: Type='{damperType}', Family='{damperFamily}'");
+                    
+                    // Check if this is a fire damper, volume damper, or other damper type
+                    if (IsDamperType(damperType, damperFamily))
+                    {
+                        _log($"[METHOD3] ✓ CONFIRMED DAMPER: {damper.Id} is a damper (Type='{damperType}', Family='{damperFamily}')");
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _log($"[METHOD3] ERROR: Failed to search for dampers near point: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Check if an element is a damper based on its type and family names
+        /// </summary>
+        private bool IsDamperType(string typeName, string familyName)
+        {
+            if (string.IsNullOrEmpty(typeName) && string.IsNullOrEmpty(familyName))
+                return false;
+
+            var combinedName = $"{familyName} {typeName}".ToLowerInvariant();
+            
+            // Common damper keywords
+            var damperKeywords = new[] { "damper", "fire", "volume", "control", "vav", "msfd", "fd" };
+            
+            bool isDamper = damperKeywords.Any(keyword => combinedName.Contains(keyword));
+            
+            if (isDamper)
+            {
+                _log($"[METHOD3] Damper detected: '{combinedName}' contains damper keywords");
+            }
+            
+            return isDamper;
         }
         
         /// <summary>
@@ -1674,6 +1891,122 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 _log($"[DEBUG] Error getting damper connector info: {ex.Message}");
                 return (false, string.Empty);
+            }
+        }
+        
+        /// <summary>
+        /// ⚠️ CRITICAL METHOD - DO NOT REMOVE ⚠️
+        /// Get wall direction vector for robust X-wall/Y-wall detection
+        /// Calculated during refresh for efficient sleeve rotation logic
+        /// </summary>
+        private XYZ GetWallDirection(Element element)
+        {
+            try
+            {
+                if (element is Wall wall)
+                {
+                    // Get actual wall direction (not normal)
+                    var locationCurve = wall.Location as LocationCurve;
+                    if (locationCurve != null)
+                    {
+                        var curve = locationCurve.Curve as Line;
+                        if (curve != null)
+                        {
+                            var wallDirection = curve.Direction.Normalize();
+                            
+                            // DEBUG: Log wall direction calculation
+                            DebugLogger.Info($"[WALL-DIR-CALC] Wall {wall.Id.IntegerValue}: Direction=({wallDirection.X:F3},{wallDirection.Y:F3},{wallDirection.Z:F3})");
+                            
+                            // ALSO log to placement_debug.log for immediate visibility
+                            try
+                            {
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                    $"[WALL-DIR-CALC] Wall {wall.Id.IntegerValue}: Direction=({wallDirection.X:F3},{wallDirection.Y:F3},{wallDirection.Z:F3})\n");
+                            }
+                            catch { }
+                            
+                            return wallDirection;
+                        }
+                    }
+                }
+                else if (element is FamilyInstance famInst && 
+                         famInst.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+                {
+                    // For structural framing, use framing direction
+                    var locationCurve = famInst.Location as LocationCurve;
+                    if (locationCurve != null)
+                    {
+                        var curve = locationCurve.Curve as Line;
+                        if (curve != null)
+                        {
+                            var framingDirection = curve.Direction.Normalize();
+                            DebugLogger.Info($"[FRAMING-DIR-CALC] Framing {famInst.Id.IntegerValue}: Direction=({framingDirection.X:F3},{framingDirection.Y:F3},{framingDirection.Z:F3})");
+                            return framingDirection;
+                        }
+                    }
+                }
+                else if (element is Floor)
+                {
+                    // For floors, direction is not applicable (use MEP orientation)
+                    return XYZ.Zero;
+                }
+                
+                return XYZ.Zero; // Default for unsupported elements
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[WALL-DIR-CALC] Error calculating wall direction: {ex.Message}");
+                return XYZ.Zero;
+            }
+        }
+        
+        /// <summary>
+        /// ⚠️ CRITICAL METHOD - DO NOT REMOVE ⚠️
+        /// Get wall direction type for efficient sleeve rotation logic
+        /// Determines if wall is X-oriented, Y-oriented, or other
+        /// </summary>
+        private string GetWallDirectionType(Element element, XYZ wallDirection)
+        {
+            try
+            {
+                if (element is Wall)
+                {
+                    if (wallDirection == XYZ.Zero)
+                        return "UNKNOWN";
+                    
+                    double absX = Math.Abs(wallDirection.X);
+                    double absY = Math.Abs(wallDirection.Y);
+                    
+                    // Determine wall orientation based on direction vector
+                    if (absX > absY)
+                    {
+                        return "X-WALL"; // Wall runs along X-axis
+                    }
+                    else if (absY > absX)
+                    {
+                        return "Y-WALL"; // Wall runs along Y-axis
+                    }
+                    else
+                    {
+                        return "DIAGONAL-WALL"; // Wall is diagonal
+                    }
+                }
+                else if (element is FamilyInstance famInst && 
+                         famInst.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+                {
+                    return "FRAMING";
+                }
+                else if (element is Floor)
+                {
+                    return "FLOOR";
+                }
+                
+                return "UNKNOWN";
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[WALL-DIR-TYPE] Error determining wall direction type: {ex.Message}");
+                return "UNKNOWN";
             }
         }
         

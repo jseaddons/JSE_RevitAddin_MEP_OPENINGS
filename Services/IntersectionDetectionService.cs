@@ -591,6 +591,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         _logger($"DEBUG: Processing MEP {mep.Id} ({mep.Category?.Name}) with line from {mepLine.GetEndPoint(0)} to {mepLine.GetEndPoint(1)}");
 
+                        // ✅ METHOD 3: Check for damper presence at duct end points BEFORE processing intersections
+                        if (mep.Category?.Name == "Ducts" || mep.Category?.Name == "Duct Curves")
+                        {
+                            _logger($"[METHOD3] Checking duct {mep.Id} for damper presence at end points");
+                            
+                            if (CheckForDamperAtDuctEnd(doc, mep, mepLine, mepTransform))
+                            {
+                                _logger($"[METHOD3] SKIP: Duct {mep.Id} - Damper found at duct end, skipping intersection detection");
+                                continue; // Skip this duct entirely - no intersections will be created
+                            }
+                            
+                            _logger($"[METHOD3] No damper found at duct {mep.Id} end points - proceeding with intersection detection");
+                        }
+
                         Line mepLineInHostShared;
                         if (mepTransform != null)
                         {
@@ -661,6 +675,161 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             return intersections;
+        }
+
+        /// <summary>
+        /// METHOD 3: Check for damper presence at duct end points
+        /// This prevents creating intersections for ducts that already have dampers
+        /// </summary>
+        private bool CheckForDamperAtDuctEnd(Document document, Element ductElement, Line ductLine, Transform ductTransform)
+        {
+            try
+            {
+                if (!(ductElement is Autodesk.Revit.DB.Mechanical.Duct duct))
+                {
+                    return false; // Not a duct, no need to check
+                }
+
+                _logger($"[METHOD3] Checking for damper at duct end: Duct {duct.Id}");
+
+                // Get duct end points in host coordinates
+                var endPoint1 = ductTransform?.OfPoint(ductLine.GetEndPoint(0)) ?? ductLine.GetEndPoint(0);
+                var endPoint2 = ductTransform?.OfPoint(ductLine.GetEndPoint(1)) ?? ductLine.GetEndPoint(1);
+
+                _logger($"[METHOD3] Duct end points: {endPoint1} and {endPoint2}");
+
+                // Check each end point for damper presence
+                foreach (var endPoint in new[] { endPoint1, endPoint2 })
+                {
+                    if (CheckForDamperNearPoint(document, endPoint))
+                    {
+                        _logger($"[METHOD3] ✓ DAMPER FOUND: Damper detected near duct end point {endPoint}");
+                        return true;
+                    }
+                }
+
+                _logger($"[METHOD3] ✗ NO DAMPER: No damper found near any duct end points");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger($"[METHOD3] ERROR: Failed to check for damper at duct end: {ex.Message}");
+                return false; // Default to false (don't skip) if error occurs
+            }
+        }
+
+        /// <summary>
+        /// Check for damper presence near a specific point
+        /// </summary>
+        private bool CheckForDamperNearPoint(Document document, XYZ searchPoint)
+        {
+            try
+            {
+                double searchRadius = 0.5; // 0.5 feet = ~150mm
+                
+                // ✅ CRITICAL FIX: Search in ALL linked documents, not just the host document
+                // The ducts and dampers are in linked files (ME-00001), not the host document
+                var allDampers = new List<Element>();
+                
+                // Search in host document first
+                var hostCollector = new FilteredElementCollector(document);
+                var hostDampers = hostCollector
+                    .OfCategory(BuiltInCategory.OST_DuctAccessory)
+                    .WhereElementIsNotElementType()
+                    .ToElements()
+                    .Where(d => IsDamperType(d))
+                    .ToList();
+                allDampers.AddRange(hostDampers);
+                
+                // Search in all linked documents
+                var linkedDocs = document.Application.Documents.Cast<Document>()
+                    .Where(doc => doc != document && !doc.IsFamilyDocument)
+                    .ToList();
+                
+                foreach (var linkedDoc in linkedDocs)
+                {
+                    try
+                    {
+                        var linkedCollector = new FilteredElementCollector(linkedDoc);
+                        var linkedDampers = linkedCollector
+                            .OfCategory(BuiltInCategory.OST_DuctAccessory)
+                            .WhereElementIsNotElementType()
+                            .ToElements()
+                            .Where(d => IsDamperType(d))
+                            .ToList();
+                        allDampers.AddRange(linkedDampers);
+                        
+                        _logger($"[METHOD3] Found {linkedDampers.Count} dampers in linked doc '{linkedDoc.Title}'");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger($"[METHOD3] WARNING: Could not search linked doc '{linkedDoc.Title}': {ex.Message}");
+                    }
+                }
+
+                _logger($"[METHOD3] Found {allDampers.Count} total duct accessories across all documents");
+
+                foreach (var damper in allDampers)
+                {
+                    var damperLocation = damper.Location as LocationPoint;
+                    if (damperLocation?.Point != null)
+                    {
+                        double distance = damperLocation.Point.DistanceTo(searchPoint);
+                        if (distance < searchRadius)
+                        {
+                            var damperType = damper.get_Parameter(BuiltInParameter.ELEM_TYPE_PARAM)?.AsValueString() ?? "";
+                            var damperFamily = (damper as FamilyInstance)?.Symbol?.Family?.Name ?? "";
+                            
+                            _logger($"[METHOD3] Checking damper {damper.Id}: Type='{damperType}', Family='{damperFamily}'");
+                            
+                            if (IsDamperType(damper))
+                            {
+                                _logger($"[METHOD3] ✓ CONFIRMED DAMPER: {damper.Id} is a damper (Type='{damperType}', Family='{damperFamily}')");
+                                return true;
+                            }
+                        }
+                    }
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger($"[METHOD3] ERROR: Failed to search for dampers near point: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Check if an element is a damper based on type and family name
+        /// </summary>
+        private bool IsDamperType(Element element)
+        {
+            try
+            {
+                if (element is FamilyInstance fi)
+                {
+                    var familyName = fi.Symbol?.Family?.Name ?? "";
+                    var typeName = fi.Symbol?.Name ?? "";
+                    var combinedName = $"{familyName} {typeName}".ToLowerInvariant();
+                    
+                    // Check for damper keywords
+                    var damperKeywords = new[] { "damper", "dam", "fire", "smoke", "motorized", "motorised" };
+                    
+                    if (damperKeywords.Any(keyword => combinedName.Contains(keyword)))
+                    {
+                        _logger($"[METHOD3] Damper detected: '{combinedName}' contains damper keywords");
+                        return true;
+                    }
+                }
+                
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger($"[METHOD3] ERROR: Failed to check damper type: {ex.Message}");
+                return false;
+            }
         }
     }
 }
