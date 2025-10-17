@@ -3,6 +3,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Plumbing;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Utils;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Configuration;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
 {
@@ -92,6 +93,51 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
         public string GetCategoryName()
         {
             return "Pipes";
+        }
+        
+        /// <summary>
+        /// Determines the opening type for a pipe based on global configuration rules
+        /// Implements the architecture: Global rules > UI preferences
+        /// </summary>
+        /// <param name="mepSize">MEP element size information</param>
+        /// <param name="uiPreference">UI preference for opening type</param>
+        /// <returns>Resolved opening type: "Circular" or "Rectangular"</returns>
+        public string GetResolvedOpeningType(MepElementSize mepSize, string uiPreference = "Circular")
+        {
+            try
+            {
+                // Create element properties for configuration resolution
+                var elementProps = new ElementProperties
+                {
+                    Diameter = mepSize.Diameter,
+                    Width = mepSize.Width,
+                    Height = mepSize.Height,
+                    Shape = mepSize.Shape,
+                    IsInsulated = mepSize.IsInsulated,
+                    InsulationThickness = mepSize.InsulationThickness,
+                    Angle = 0.0 // Pipes typically don't have angle issues
+                };
+                
+                // Create UI preferences
+                var uiPreferences = new UIUserPreferences
+                {
+                    OpeningType = uiPreference,
+                    Clearance = 50.0 // Default clearance, will be resolved separately
+                };
+                
+                // Resolve configuration using global rules
+                var resolvedConfig = ConfigurationResolutionService.Instance
+                    .ResolveConfiguration("Pipes", elementProps, uiPreferences);
+                
+                DebugLogger.Info($"[PipeStrategy] Opening type resolution: {resolvedConfig}");
+                
+                return resolvedConfig.OpeningType;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[PipeStrategy] Error resolving opening type: {ex.Message}");
+                return uiPreference; // Fallback to UI preference
+            }
         }
     }
 }

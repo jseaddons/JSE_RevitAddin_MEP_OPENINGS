@@ -192,6 +192,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             // Execute UniversalSleevePlacementCommand separately since it implements ICommand
             ExecuteUniversalSleevePlacement(filter, showProgress);
+            
+            // ✅ CRITICAL: Execute clustering immediately after sleeve placement for each category
+            // This follows the architecture: Place sleeves → Cluster sleeves → Mark sleeves
+            ExecuteClusteringForCategory(filter, showProgress);
+        }
+
+        /// <summary>
+        /// Execute clustering for a specific category after sleeve placement
+        /// </summary>
+        private void ExecuteClusteringForCategory(OpeningFilter filter, bool showProgress)
+        {
+            try
+            {
+                // Convert MepCategory enum to string for cluster command
+                string categoryString = filter.Category switch
+                {
+                    Models.MepCategory.Ducts => "Ducts",
+                    Models.MepCategory.DuctAccessories => "Duct Accessories",
+                    Models.MepCategory.Pipes => "Pipes", 
+                    Models.MepCategory.CableTrays => "Cable Trays",
+                    _ => "Ducts"
+                };
+                
+                DebugLogger.Info($"[OpeningCommandOrchestrator] Starting clustering for category: {categoryString}");
+                
+                // Use UniversalClusterService directly (service-based architecture)
+                using (var tx = new Transaction(_document, $"Cluster {categoryString} Openings"))
+                {
+                    tx.Start();
+                    
+                    var clusterService = new UniversalClusterService();
+                    var (placedCount, deletedCount) = clusterService.ClusterSleeves(_document, categoryString, _uiDocument);
+                    
+                    tx.Commit();
+                    
+                    DebugLogger.Info($"[OpeningCommandOrchestrator] ✓ Clustering complete for {categoryString}: {placedCount} clusters placed, {deletedCount} individual sleeves deleted");
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[OpeningCommandOrchestrator] Error clustering {filter.Category}: {ex.Message}");
+                // Don't throw - clustering failure shouldn't stop the entire process
+            }
         }
 
         /// <summary>

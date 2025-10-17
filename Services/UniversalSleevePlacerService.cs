@@ -351,7 +351,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             Shape = clashZone.DuctShape
                         };
                         
-                        // ⚠️ SPECIAL HANDLING & SIZING ORDER:
+						// ⚠️ SPECIAL HANDLING & SIZING ORDER:
 						// 1) Pipes (host-agnostic), 2) Dampers, 3) Cable trays, 4) Ducts/default
                         XYZ placementOffset = XYZ.Zero;
                         double finalWidth = 0.0, finalHeight = 0.0, finalDiameter = 0.0;
@@ -443,7 +443,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // by ensuring the longer dimension becomes width, not just swapping blindly
                         
                         // Select universal family
-                        var (familyName, typeName) = SelectUniversalFamily(clashZone, mepSize);
+                        var (familyName, typeName, isCircular) = SelectUniversalFamily(clashZone, mepSize);
                         var familySymbol = LoadFamilySymbol(familyName);
                         
                         if (familySymbol == null)
@@ -497,7 +497,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                         
                         // Set parameters
-                        SetSleeveParameters(sleeveInstance, mepSize, finalWidth, finalHeight, finalDiameter, clashZone);
+                        SetSleeveParameters(sleeveInstance, mepSize, finalWidth, finalHeight, finalDiameter, clashZone, isCircular);
                         
                         // ⚠️ CRITICAL: Set orientation (rotation for floors, HostOrientation parameter for walls/framing)
                         SetSleeveOrientation(sleeveInstance, clashZone);
@@ -610,28 +610,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             DebugLogger.Error($"[UniversalSleevePlacer] Error loading Duct Accessories clash zones: {ex.Message}");
             return new List<ClashZone>();
         }
-    }
+        }
         
         /// <summary>
         /// Select universal family based on host type and MEP shape
         /// Uses 4 universal families following CONVOID approach
         /// </summary>
-        private (string familyName, string typeName) SelectUniversalFamily(ClashZone clashZone, MepElementSize mepSize)
+        private (string familyName, string typeName, bool isCircular) SelectUniversalFamily(ClashZone clashZone, MepElementSize mepSize)
         {
             // Determine host type (check both singular and plural forms)
             bool isWallOrFraming = clashZone.StructuralElementType == "Wall" || 
                                   clashZone.StructuralElementType == "Walls" ||
                                   clashZone.StructuralElementType == "Structural Framing";
             
-            // 🛡️ ARCHITECTURE FIX: Use CONDITIONS XML for opening type preferences (not ClashZone or geometry)
-            // This follows the reference architecture: CONDITIONS.xml stores user preferences
+            // 🛡️ ARCHITECTURE FIX: Use global configuration rules + CONDITIONS XML for opening type preferences
+            // This follows the reference architecture: Global rules > UI preferences
             bool isCircular;
             if (string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
             {
-                // ✅ CORRECT: Pipes opening type from CONDITIONS XML (user preference)
+                // ✅ CORRECT: Pipes opening type using global configuration resolution
                 var pipeType = _conditions?.OpeningTypePreferences?.Pipes ?? "Circular";
-                isCircular = string.Equals(pipeType, "Circular", StringComparison.OrdinalIgnoreCase);
-                DebugLogger.Info($"[UniversalSleevePlacer] PIPE opening type from CONDITIONS XML: '{pipeType}' → isCircular={isCircular}");
+                
+                // Use PipePlacementStrategy to resolve opening type with global rules
+                if (_strategy is PipePlacementStrategy pipeStrategy)
+                {
+                    var resolvedType = pipeStrategy.GetResolvedOpeningType(mepSize, pipeType);
+                    isCircular = string.Equals(resolvedType, "Circular", StringComparison.OrdinalIgnoreCase);
+                    DebugLogger.Info($"[UniversalSleevePlacer] PIPE opening type resolved: UI='{pipeType}' → Global Rule='{resolvedType}' → isCircular={isCircular}");
+                }
+                else
+                {
+                    // Fallback to CONDITIONS XML if strategy not available
+                    isCircular = string.Equals(pipeType, "Circular", StringComparison.OrdinalIgnoreCase);
+                    DebugLogger.Info($"[UniversalSleevePlacer] PIPE opening type from CONDITIONS XML (fallback): '{pipeType}' → isCircular={isCircular}");
+                }
             }
             else if (string.Equals(clashZone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase) ||
                      string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
@@ -677,7 +689,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             DebugLogger.Info($"[UniversalSleevePlacer] Selected family: {familyName}, Type: {typeName}");
             
-            return (familyName, typeName);
+            return (familyName, typeName, isCircular);
         }
         
         private FamilySymbol LoadFamilySymbol(string familyName)
@@ -1039,7 +1051,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             double finalWidth,
             double finalHeight,
             double finalDiameter,
-            ClashZone clashZone)
+            ClashZone clashZone,
+            bool isCircular)
         {
             try
             {
@@ -1071,7 +1084,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         bool treatAsCircular =
             string.Equals(mepSize.Shape, "Round", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(mepSize.Shape, "Circular", StringComparison.OrdinalIgnoreCase) ||
-            isPipe;
+            (isPipe && isCircular); // ✅ FIX: Only treat pipes as circular if they're actually circular opening type
 
         if (treatAsCircular)
         {
