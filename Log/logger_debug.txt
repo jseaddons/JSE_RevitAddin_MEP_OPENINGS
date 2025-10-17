@@ -1,452 +1,278 @@
-[17-10-2025 09:47:27] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_09-47-27)
-[17-10-2025 09:47:27] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[17-10-2025 09:47:40] === ON_REFRESH_CLICK STARTED ===
-[17-10-2025 09:47:40] About to call RefreshService.ExecuteRefresh() method
-[17-10-2025 09:47:40] === REFRESH STARTED === Timestamp: 2025-10-17_09-47-40
-[17-10-2025 09:47:43] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
-[17-10-2025 09:47:43] [OK_BUTTON_DEBUG] About to check OK button enabling logic
-[17-10-2025 09:47:43] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
-[17-10-2025 09:47:43] [OK_BUTTON_DEBUG] LoadFilterAuto completed
-[17-10-2025 09:47:43] [OK_BUTTON_DEBUG] About to extract zones
-[17-10-2025 09:47:43] [OK_BUTTON_DEBUG] Zones extracted: 90
-[17-10-2025 09:47:43] [OK_BUTTON_DEBUG] Total zones loaded: 90
-[17-10-2025 09:47:43] [OK_BUTTON_DEBUG] Unresolved zones: 90
-[17-10-2025 09:47:43] [OK_BUTTON_DEBUG] Allowed host types: [Walls]
-[17-10-2025 09:47:43] [OK_BUTTON_DEBUG] Sample zone types (first 5):
-[17-10-2025 09:47:43] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 09:47:43] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 09:47:43] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 09:47:43] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 09:47:43] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 09:47:43] [OK_BUTTON_DEBUG] After host type filter: 90 -> 90
-[17-10-2025 09:47:43] [OK_BUTTON_DEBUG] Final unresolved count: 90
-[17-10-2025 09:47:43] [OK_BUTTON_DEBUG] OK button enabled: True
-[17-10-2025 09:47:43] RefreshService.ExecuteRefresh() method completed successfully
-[17-10-2025 09:51:55] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_09-51-55)
-[17-10-2025 09:51:55] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[17-10-2025 09:52:03] === ON_REFRESH_CLICK STARTED ===
-[17-10-2025 09:52:03] About to call RefreshService.ExecuteRefresh() method
-[17-10-2025 09:52:03] === REFRESH STARTED === Timestamp: 2025-10-17_09-52-03
-[17-10-2025 09:52:04] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
-[17-10-2025 09:52:04] [OK_BUTTON_DEBUG] About to check OK button enabling logic
-[17-10-2025 09:52:04] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
-[17-10-2025 09:52:04] [OK_BUTTON_DEBUG] LoadFilterAuto completed
-[17-10-2025 09:52:04] [OK_BUTTON_DEBUG] About to extract zones
-[17-10-2025 09:52:04] [OK_BUTTON_DEBUG] Zones extracted: 22
-[17-10-2025 09:52:04] [OK_BUTTON_DEBUG] Total zones loaded: 22
-[17-10-2025 09:52:04] [OK_BUTTON_DEBUG] Unresolved zones: 22
-[17-10-2025 09:52:04] [OK_BUTTON_DEBUG] Allowed host types: [Walls]
-[17-10-2025 09:52:04] [OK_BUTTON_DEBUG] Sample zone types (first 5):
-[17-10-2025 09:52:04] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 09:52:04] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 09:52:04] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 09:52:04] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 09:52:04] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 09:52:04] [OK_BUTTON_DEBUG] After host type filter: 22 -> 22
-[17-10-2025 09:52:04] [OK_BUTTON_DEBUG] Final unresolved count: 22
-[17-10-2025 09:52:04] [OK_BUTTON_DEBUG] OK button enabled: True
-[17-10-2025 09:52:04] RefreshService.ExecuteRefresh() method completed successfully
-[17-10-2025 10:01:58] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_10-01-58)
-[17-10-2025 10:01:58] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[17-10-2025 10:02:02] === ON_REFRESH_CLICK STARTED ===
-[17-10-2025 10:02:02] About to call RefreshService.ExecuteRefresh() method
-[17-10-2025 10:02:02] === REFRESH STARTED === Timestamp: 2025-10-17_10-02-02
-[17-10-2025 10:02:03] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
-[17-10-2025 10:02:03] [OK_BUTTON_DEBUG] About to check OK button enabling logic
-[17-10-2025 10:02:03] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
-[17-10-2025 10:02:03] [OK_BUTTON_DEBUG] LoadFilterAuto completed
-[17-10-2025 10:02:03] [OK_BUTTON_DEBUG] About to extract zones
-[17-10-2025 10:02:03] [OK_BUTTON_DEBUG] Zones extracted: 8
-[17-10-2025 10:02:03] [OK_BUTTON_DEBUG] Total zones loaded: 8
-[17-10-2025 10:02:03] [OK_BUTTON_DEBUG] Unresolved zones: 8
-[17-10-2025 10:02:03] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
-[17-10-2025 10:02:03] [OK_BUTTON_DEBUG] Sample zone types (first 5):
-[17-10-2025 10:02:03] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:02:03] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:02:03] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:02:03] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:02:03] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:02:03] [OK_BUTTON_DEBUG] After host type filter: 8 -> 8
-[17-10-2025 10:02:03] [OK_BUTTON_DEBUG] Final unresolved count: 8
-[17-10-2025 10:02:03] [OK_BUTTON_DEBUG] OK button enabled: True
-[17-10-2025 10:02:03] RefreshService.ExecuteRefresh() method completed successfully
-[17-10-2025 10:13:53] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_10-13-53)
-[17-10-2025 10:13:53] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[17-10-2025 10:13:59] === ON_REFRESH_CLICK STARTED ===
-[17-10-2025 10:13:59] About to call RefreshService.ExecuteRefresh() method
-[17-10-2025 10:14:00] === REFRESH STARTED === Timestamp: 2025-10-17_10-14-00
-[17-10-2025 10:14:00] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
-[17-10-2025 10:14:00] [OK_BUTTON_DEBUG] About to check OK button enabling logic
-[17-10-2025 10:14:00] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
-[17-10-2025 10:14:00] [OK_BUTTON_DEBUG] LoadFilterAuto completed
-[17-10-2025 10:14:00] [OK_BUTTON_DEBUG] About to extract zones
-[17-10-2025 10:14:00] [OK_BUTTON_DEBUG] Zones extracted: 8
-[17-10-2025 10:14:00] [OK_BUTTON_DEBUG] Total zones loaded: 8
-[17-10-2025 10:14:00] [OK_BUTTON_DEBUG] Unresolved zones: 8
-[17-10-2025 10:14:00] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
-[17-10-2025 10:14:00] [OK_BUTTON_DEBUG] Sample zone types (first 5):
-[17-10-2025 10:14:00] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:14:00] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:14:00] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:14:00] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:14:00] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:14:00] [OK_BUTTON_DEBUG] After host type filter: 8 -> 8
-[17-10-2025 10:14:00] [OK_BUTTON_DEBUG] Final unresolved count: 8
-[17-10-2025 10:14:00] [OK_BUTTON_DEBUG] OK button enabled: True
-[17-10-2025 10:14:00] RefreshService.ExecuteRefresh() method completed successfully
-[17-10-2025 10:15:05] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_10-15-05)
-[17-10-2025 10:15:05] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[17-10-2025 10:15:13] === ON_REFRESH_CLICK STARTED ===
-[17-10-2025 10:15:13] About to call RefreshService.ExecuteRefresh() method
-[17-10-2025 10:15:13] === REFRESH STARTED === Timestamp: 2025-10-17_10-15-13
-[17-10-2025 10:15:13] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
-[17-10-2025 10:15:13] [OK_BUTTON_DEBUG] About to check OK button enabling logic
-[17-10-2025 10:15:13] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
-[17-10-2025 10:15:13] [OK_BUTTON_DEBUG] LoadFilterAuto completed
-[17-10-2025 10:15:13] [OK_BUTTON_DEBUG] About to extract zones
-[17-10-2025 10:15:13] [OK_BUTTON_DEBUG] Zones extracted: 7
-[17-10-2025 10:15:13] [OK_BUTTON_DEBUG] Total zones loaded: 7
-[17-10-2025 10:15:13] [OK_BUTTON_DEBUG] Unresolved zones: 7
-[17-10-2025 10:15:13] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
-[17-10-2025 10:15:13] [OK_BUTTON_DEBUG] Sample zone types (first 5):
-[17-10-2025 10:15:13] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:15:13] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:15:13] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:15:13] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:15:13] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:15:13] [OK_BUTTON_DEBUG] After host type filter: 7 -> 7
-[17-10-2025 10:15:13] [OK_BUTTON_DEBUG] Final unresolved count: 7
-[17-10-2025 10:15:13] [OK_BUTTON_DEBUG] OK button enabled: True
-[17-10-2025 10:15:13] RefreshService.ExecuteRefresh() method completed successfully
-[17-10-2025 10:20:51] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_10-20-51)
-[17-10-2025 10:20:51] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[17-10-2025 10:20:59] === ON_REFRESH_CLICK STARTED ===
-[17-10-2025 10:20:59] About to call RefreshService.ExecuteRefresh() method
-[17-10-2025 10:20:59] === REFRESH STARTED === Timestamp: 2025-10-17_10-20-59
-[17-10-2025 10:21:00] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
-[17-10-2025 10:21:00] [OK_BUTTON_DEBUG] About to check OK button enabling logic
-[17-10-2025 10:21:00] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
-[17-10-2025 10:21:00] [OK_BUTTON_DEBUG] LoadFilterAuto completed
-[17-10-2025 10:21:00] [OK_BUTTON_DEBUG] About to extract zones
-[17-10-2025 10:21:00] [OK_BUTTON_DEBUG] Zones extracted: 9
-[17-10-2025 10:21:00] [OK_BUTTON_DEBUG] Total zones loaded: 9
-[17-10-2025 10:21:00] [OK_BUTTON_DEBUG] Unresolved zones: 9
-[17-10-2025 10:21:00] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
-[17-10-2025 10:21:00] [OK_BUTTON_DEBUG] Sample zone types (first 5):
-[17-10-2025 10:21:00] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:21:00] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:21:00] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:21:00] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:21:00] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:21:00] [OK_BUTTON_DEBUG] After host type filter: 9 -> 9
-[17-10-2025 10:21:00] [OK_BUTTON_DEBUG] Final unresolved count: 9
-[17-10-2025 10:21:00] [OK_BUTTON_DEBUG] OK button enabled: True
-[17-10-2025 10:21:00] RefreshService.ExecuteRefresh() method completed successfully
-[17-10-2025 10:24:51] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_10-24-51)
-[17-10-2025 10:24:51] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[17-10-2025 10:24:56] === ON_REFRESH_CLICK STARTED ===
-[17-10-2025 10:24:56] About to call RefreshService.ExecuteRefresh() method
-[17-10-2025 10:24:56] === REFRESH STARTED === Timestamp: 2025-10-17_10-24-56
-[17-10-2025 10:24:57] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
-[17-10-2025 10:24:57] [OK_BUTTON_DEBUG] About to check OK button enabling logic
-[17-10-2025 10:24:57] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
-[17-10-2025 10:24:57] [OK_BUTTON_DEBUG] LoadFilterAuto completed
-[17-10-2025 10:24:57] [OK_BUTTON_DEBUG] About to extract zones
-[17-10-2025 10:24:57] [OK_BUTTON_DEBUG] Zones extracted: 9
-[17-10-2025 10:24:57] [OK_BUTTON_DEBUG] Total zones loaded: 9
-[17-10-2025 10:24:57] [OK_BUTTON_DEBUG] Unresolved zones: 9
-[17-10-2025 10:24:57] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
-[17-10-2025 10:24:57] [OK_BUTTON_DEBUG] Sample zone types (first 5):
-[17-10-2025 10:24:57] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:24:57] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:24:57] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:24:57] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:24:57] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:24:57] [OK_BUTTON_DEBUG] After host type filter: 9 -> 9
-[17-10-2025 10:24:57] [OK_BUTTON_DEBUG] Final unresolved count: 9
-[17-10-2025 10:24:57] [OK_BUTTON_DEBUG] OK button enabled: True
-[17-10-2025 10:24:57] RefreshService.ExecuteRefresh() method completed successfully
-[17-10-2025 10:26:24] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_10-26-24)
-[17-10-2025 10:26:24] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[17-10-2025 10:26:34] === ON_REFRESH_CLICK STARTED ===
-[17-10-2025 10:26:34] About to call RefreshService.ExecuteRefresh() method
-[17-10-2025 10:26:34] === REFRESH STARTED === Timestamp: 2025-10-17_10-26-34
-[17-10-2025 10:26:35] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
-[17-10-2025 10:26:35] [OK_BUTTON_DEBUG] About to check OK button enabling logic
-[17-10-2025 10:26:35] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
-[17-10-2025 10:26:35] [OK_BUTTON_DEBUG] LoadFilterAuto completed
-[17-10-2025 10:26:35] [OK_BUTTON_DEBUG] About to extract zones
-[17-10-2025 10:26:35] [OK_BUTTON_DEBUG] Zones extracted: 9
-[17-10-2025 10:26:35] [OK_BUTTON_DEBUG] Total zones loaded: 9
-[17-10-2025 10:26:35] [OK_BUTTON_DEBUG] Unresolved zones: 9
-[17-10-2025 10:26:35] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
-[17-10-2025 10:26:35] [OK_BUTTON_DEBUG] Sample zone types (first 5):
-[17-10-2025 10:26:35] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:26:35] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:26:35] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:26:35] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:26:35] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:26:35] [OK_BUTTON_DEBUG] After host type filter: 9 -> 9
-[17-10-2025 10:26:35] [OK_BUTTON_DEBUG] Final unresolved count: 9
-[17-10-2025 10:26:35] [OK_BUTTON_DEBUG] OK button enabled: True
-[17-10-2025 10:26:35] RefreshService.ExecuteRefresh() method completed successfully
-[17-10-2025 10:33:41] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_10-33-41)
-[17-10-2025 10:33:41] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[17-10-2025 10:33:47] === ON_REFRESH_CLICK STARTED ===
-[17-10-2025 10:33:47] About to call RefreshService.ExecuteRefresh() method
-[17-10-2025 10:33:47] === REFRESH STARTED === Timestamp: 2025-10-17_10-33-47
-[17-10-2025 10:33:47] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
-[17-10-2025 10:33:47] [OK_BUTTON_DEBUG] About to check OK button enabling logic
-[17-10-2025 10:33:47] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
-[17-10-2025 10:33:47] [OK_BUTTON_DEBUG] LoadFilterAuto completed
-[17-10-2025 10:33:47] [OK_BUTTON_DEBUG] About to extract zones
-[17-10-2025 10:33:47] [OK_BUTTON_DEBUG] Zones extracted: 9
-[17-10-2025 10:33:47] [OK_BUTTON_DEBUG] Total zones loaded: 9
-[17-10-2025 10:33:47] [OK_BUTTON_DEBUG] Unresolved zones: 9
-[17-10-2025 10:33:47] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
-[17-10-2025 10:33:47] [OK_BUTTON_DEBUG] Sample zone types (first 5):
-[17-10-2025 10:33:47] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:33:47] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:33:47] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:33:47] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:33:47] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:33:47] [OK_BUTTON_DEBUG] After host type filter: 9 -> 9
-[17-10-2025 10:33:47] [OK_BUTTON_DEBUG] Final unresolved count: 9
-[17-10-2025 10:33:47] [OK_BUTTON_DEBUG] OK button enabled: True
-[17-10-2025 10:33:47] RefreshService.ExecuteRefresh() method completed successfully
-[17-10-2025 10:40:03] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_10-40-03)
-[17-10-2025 10:40:03] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[17-10-2025 10:40:08] === ON_REFRESH_CLICK STARTED ===
-[17-10-2025 10:40:08] About to call RefreshService.ExecuteRefresh() method
-[17-10-2025 10:40:08] === REFRESH STARTED === Timestamp: 2025-10-17_10-40-08
-[17-10-2025 10:40:08] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
-[17-10-2025 10:40:08] [OK_BUTTON_DEBUG] About to check OK button enabling logic
-[17-10-2025 10:40:08] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
-[17-10-2025 10:40:08] [OK_BUTTON_DEBUG] LoadFilterAuto completed
-[17-10-2025 10:40:08] [OK_BUTTON_DEBUG] About to extract zones
-[17-10-2025 10:40:08] [OK_BUTTON_DEBUG] Zones extracted: 9
-[17-10-2025 10:40:08] [OK_BUTTON_DEBUG] Total zones loaded: 9
-[17-10-2025 10:40:08] [OK_BUTTON_DEBUG] Unresolved zones: 9
-[17-10-2025 10:40:08] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
-[17-10-2025 10:40:08] [OK_BUTTON_DEBUG] Sample zone types (first 5):
-[17-10-2025 10:40:08] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:40:08] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:40:08] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:40:08] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:40:08] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 10:40:08] [OK_BUTTON_DEBUG] After host type filter: 9 -> 9
-[17-10-2025 10:40:08] [OK_BUTTON_DEBUG] Final unresolved count: 9
-[17-10-2025 10:40:08] [OK_BUTTON_DEBUG] OK button enabled: True
-[17-10-2025 10:40:08] RefreshService.ExecuteRefresh() method completed successfully
-[17-10-2025 11:02:29] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_11-02-29)
-[17-10-2025 11:02:29] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[17-10-2025 11:02:36] === ON_REFRESH_CLICK STARTED ===
-[17-10-2025 11:02:36] About to call RefreshService.ExecuteRefresh() method
-[17-10-2025 11:02:36] === REFRESH STARTED === Timestamp: 2025-10-17_11-02-36
-[17-10-2025 11:02:37] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
-[17-10-2025 11:02:37] [OK_BUTTON_DEBUG] About to check OK button enabling logic
-[17-10-2025 11:02:37] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
-[17-10-2025 11:02:37] [OK_BUTTON_DEBUG] LoadFilterAuto completed
-[17-10-2025 11:02:37] [OK_BUTTON_DEBUG] About to extract zones
-[17-10-2025 11:02:37] [OK_BUTTON_DEBUG] Zones extracted: 9
-[17-10-2025 11:02:37] [OK_BUTTON_DEBUG] Total zones loaded: 9
-[17-10-2025 11:02:37] [OK_BUTTON_DEBUG] Unresolved zones: 9
-[17-10-2025 11:02:37] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
-[17-10-2025 11:02:37] [OK_BUTTON_DEBUG] Sample zone types (first 5):
-[17-10-2025 11:02:37] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:02:37] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:02:37] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:02:37] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:02:37] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:02:37] [OK_BUTTON_DEBUG] After host type filter: 9 -> 9
-[17-10-2025 11:02:37] [OK_BUTTON_DEBUG] Final unresolved count: 9
-[17-10-2025 11:02:37] [OK_BUTTON_DEBUG] OK button enabled: True
-[17-10-2025 11:02:37] RefreshService.ExecuteRefresh() method completed successfully
-[17-10-2025 11:04:20] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_11-04-20)
-[17-10-2025 11:04:21] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[17-10-2025 11:04:27] === ON_REFRESH_CLICK STARTED ===
-[17-10-2025 11:04:27] About to call RefreshService.ExecuteRefresh() method
-[17-10-2025 11:04:27] === REFRESH STARTED === Timestamp: 2025-10-17_11-04-27
-[17-10-2025 11:04:28] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
-[17-10-2025 11:04:28] [OK_BUTTON_DEBUG] About to check OK button enabling logic
-[17-10-2025 11:04:28] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
-[17-10-2025 11:04:28] [OK_BUTTON_DEBUG] LoadFilterAuto completed
-[17-10-2025 11:04:28] [OK_BUTTON_DEBUG] About to extract zones
-[17-10-2025 11:04:28] [OK_BUTTON_DEBUG] Zones extracted: 9
-[17-10-2025 11:04:28] [OK_BUTTON_DEBUG] Total zones loaded: 9
-[17-10-2025 11:04:28] [OK_BUTTON_DEBUG] Unresolved zones: 9
-[17-10-2025 11:04:28] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
-[17-10-2025 11:04:28] [OK_BUTTON_DEBUG] Sample zone types (first 5):
-[17-10-2025 11:04:28] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:04:28] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:04:28] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:04:28] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:04:28] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:04:28] [OK_BUTTON_DEBUG] After host type filter: 9 -> 9
-[17-10-2025 11:04:28] [OK_BUTTON_DEBUG] Final unresolved count: 9
-[17-10-2025 11:04:28] [OK_BUTTON_DEBUG] OK button enabled: True
-[17-10-2025 11:04:28] RefreshService.ExecuteRefresh() method completed successfully
-[17-10-2025 11:08:01] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_11-08-01)
-[17-10-2025 11:08:01] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[17-10-2025 11:08:08] === ON_REFRESH_CLICK STARTED ===
-[17-10-2025 11:08:08] About to call RefreshService.ExecuteRefresh() method
-[17-10-2025 11:08:08] === REFRESH STARTED === Timestamp: 2025-10-17_11-08-08
-[17-10-2025 11:08:09] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
-[17-10-2025 11:08:09] [OK_BUTTON_DEBUG] About to check OK button enabling logic
-[17-10-2025 11:08:09] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
-[17-10-2025 11:08:09] [OK_BUTTON_DEBUG] LoadFilterAuto completed
-[17-10-2025 11:08:09] [OK_BUTTON_DEBUG] About to extract zones
-[17-10-2025 11:08:09] [OK_BUTTON_DEBUG] Zones extracted: 9
-[17-10-2025 11:08:09] [OK_BUTTON_DEBUG] Total zones loaded: 9
-[17-10-2025 11:08:09] [OK_BUTTON_DEBUG] Unresolved zones: 9
-[17-10-2025 11:08:09] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
-[17-10-2025 11:08:09] [OK_BUTTON_DEBUG] Sample zone types (first 5):
-[17-10-2025 11:08:09] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:08:09] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:08:09] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:08:09] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:08:09] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:08:09] [OK_BUTTON_DEBUG] After host type filter: 9 -> 9
-[17-10-2025 11:08:09] [OK_BUTTON_DEBUG] Final unresolved count: 9
-[17-10-2025 11:08:09] [OK_BUTTON_DEBUG] OK button enabled: True
-[17-10-2025 11:08:09] RefreshService.ExecuteRefresh() method completed successfully
-[17-10-2025 11:15:03] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_11-15-03)
-[17-10-2025 11:15:04] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[17-10-2025 11:15:08] === ON_REFRESH_CLICK STARTED ===
-[17-10-2025 11:15:08] About to call RefreshService.ExecuteRefresh() method
-[17-10-2025 11:15:08] === REFRESH STARTED === Timestamp: 2025-10-17_11-15-08
-[17-10-2025 11:15:09] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
-[17-10-2025 11:15:09] [OK_BUTTON_DEBUG] About to check OK button enabling logic
-[17-10-2025 11:15:09] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
-[17-10-2025 11:15:09] [OK_BUTTON_DEBUG] LoadFilterAuto completed
-[17-10-2025 11:15:09] [OK_BUTTON_DEBUG] About to extract zones
-[17-10-2025 11:15:09] [OK_BUTTON_DEBUG] Zones extracted: 9
-[17-10-2025 11:15:09] [OK_BUTTON_DEBUG] Total zones loaded: 9
-[17-10-2025 11:15:09] [OK_BUTTON_DEBUG] Unresolved zones: 9
-[17-10-2025 11:15:09] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
-[17-10-2025 11:15:09] [OK_BUTTON_DEBUG] Sample zone types (first 5):
-[17-10-2025 11:15:09] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:15:09] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:15:09] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:15:09] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:15:09] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:15:09] [OK_BUTTON_DEBUG] After host type filter: 9 -> 9
-[17-10-2025 11:15:09] [OK_BUTTON_DEBUG] Final unresolved count: 9
-[17-10-2025 11:15:09] [OK_BUTTON_DEBUG] OK button enabled: True
-[17-10-2025 11:15:09] RefreshService.ExecuteRefresh() method completed successfully
-[17-10-2025 11:23:46] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_11-23-46)
-[17-10-2025 11:23:46] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[17-10-2025 11:24:12] === ON_REFRESH_CLICK STARTED ===
-[17-10-2025 11:24:12] About to call RefreshService.ExecuteRefresh() method
-[17-10-2025 11:24:12] === REFRESH STARTED === Timestamp: 2025-10-17_11-24-12
-[17-10-2025 11:24:13] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
-[17-10-2025 11:24:13] [OK_BUTTON_DEBUG] About to check OK button enabling logic
-[17-10-2025 11:24:13] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
-[17-10-2025 11:24:13] [OK_BUTTON_DEBUG] LoadFilterAuto completed
-[17-10-2025 11:24:13] [OK_BUTTON_DEBUG] About to extract zones
-[17-10-2025 11:24:13] [OK_BUTTON_DEBUG] Zones extracted: 9
-[17-10-2025 11:24:13] [OK_BUTTON_DEBUG] Total zones loaded: 9
-[17-10-2025 11:24:13] [OK_BUTTON_DEBUG] Unresolved zones: 8
-[17-10-2025 11:24:13] [OK_BUTTON_DEBUG] Allowed host types: [Walls]
-[17-10-2025 11:24:13] [OK_BUTTON_DEBUG] Sample zone types (first 5):
-[17-10-2025 11:24:13] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:24:13] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:24:13] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:24:13] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:24:13] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:24:13] [OK_BUTTON_DEBUG] After host type filter: 9 -> 9
-[17-10-2025 11:24:13] [OK_BUTTON_DEBUG] Final unresolved count: 8
-[17-10-2025 11:24:13] [OK_BUTTON_DEBUG] OK button enabled: True
-[17-10-2025 11:24:13] RefreshService.ExecuteRefresh() method completed successfully
-[17-10-2025 11:26:11] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_11-26-11)
-[17-10-2025 11:26:11] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[17-10-2025 11:26:39] === ON_REFRESH_CLICK STARTED ===
-[17-10-2025 11:26:39] About to call RefreshService.ExecuteRefresh() method
-[17-10-2025 11:26:39] === REFRESH STARTED === Timestamp: 2025-10-17_11-26-39
-[17-10-2025 11:26:40] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
-[17-10-2025 11:26:40] [OK_BUTTON_DEBUG] About to check OK button enabling logic
-[17-10-2025 11:26:40] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
-[17-10-2025 11:26:40] [OK_BUTTON_DEBUG] LoadFilterAuto completed
-[17-10-2025 11:26:40] [OK_BUTTON_DEBUG] About to extract zones
-[17-10-2025 11:26:40] [OK_BUTTON_DEBUG] Zones extracted: 27
-[17-10-2025 11:26:40] [OK_BUTTON_DEBUG] Total zones loaded: 27
-[17-10-2025 11:26:40] [OK_BUTTON_DEBUG] Unresolved zones: 27
-[17-10-2025 11:26:40] [OK_BUTTON_DEBUG] Allowed host types: [Walls]
-[17-10-2025 11:26:40] [OK_BUTTON_DEBUG] Sample zone types (first 5):
-[17-10-2025 11:26:40] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:26:40] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:26:40] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:26:40] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:26:40] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:26:40] [OK_BUTTON_DEBUG] After host type filter: 27 -> 27
-[17-10-2025 11:26:40] [OK_BUTTON_DEBUG] Final unresolved count: 27
-[17-10-2025 11:26:40] [OK_BUTTON_DEBUG] OK button enabled: True
-[17-10-2025 11:26:40] RefreshService.ExecuteRefresh() method completed successfully
-[17-10-2025 11:27:01] === ON_REFRESH_CLICK STARTED ===
-[17-10-2025 11:27:01] About to call RefreshService.ExecuteRefresh() method
-[17-10-2025 11:27:01] === REFRESH STARTED === Timestamp: 2025-10-17_11-27-01
-[17-10-2025 11:27:02] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
-[17-10-2025 11:27:02] [OK_BUTTON_DEBUG] About to check OK button enabling logic
-[17-10-2025 11:27:02] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
-[17-10-2025 11:27:02] [OK_BUTTON_DEBUG] LoadFilterAuto completed
-[17-10-2025 11:27:02] [OK_BUTTON_DEBUG] About to extract zones
-[17-10-2025 11:27:02] [OK_BUTTON_DEBUG] Zones extracted: 41
-[17-10-2025 11:27:02] [OK_BUTTON_DEBUG] Total zones loaded: 41
-[17-10-2025 11:27:02] [OK_BUTTON_DEBUG] Unresolved zones: 41
-[17-10-2025 11:27:02] [OK_BUTTON_DEBUG] Allowed host types: [Walls]
-[17-10-2025 11:27:02] [OK_BUTTON_DEBUG] Sample zone types (first 5):
-[17-10-2025 11:27:02] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:27:02] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:27:02] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:27:02] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:27:02] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:27:02] [OK_BUTTON_DEBUG] After host type filter: 41 -> 41
-[17-10-2025 11:27:02] [OK_BUTTON_DEBUG] Final unresolved count: 41
-[17-10-2025 11:27:02] [OK_BUTTON_DEBUG] OK button enabled: True
-[17-10-2025 11:27:02] RefreshService.ExecuteRefresh() method completed successfully
-[17-10-2025 11:27:20] === ON_REFRESH_CLICK STARTED ===
-[17-10-2025 11:27:20] About to call RefreshService.ExecuteRefresh() method
-[17-10-2025 11:27:20] === REFRESH STARTED === Timestamp: 2025-10-17_11-27-20
-[17-10-2025 11:27:21] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
-[17-10-2025 11:27:21] [OK_BUTTON_DEBUG] About to check OK button enabling logic
-[17-10-2025 11:27:21] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
-[17-10-2025 11:27:21] [OK_BUTTON_DEBUG] LoadFilterAuto completed
-[17-10-2025 11:27:21] [OK_BUTTON_DEBUG] About to extract zones
-[17-10-2025 11:27:21] [OK_BUTTON_DEBUG] Zones extracted: 41
-[17-10-2025 11:27:21] [OK_BUTTON_DEBUG] Total zones loaded: 41
-[17-10-2025 11:27:21] [OK_BUTTON_DEBUG] Unresolved zones: 41
-[17-10-2025 11:27:21] [OK_BUTTON_DEBUG] Allowed host types: [Walls]
-[17-10-2025 11:27:21] [OK_BUTTON_DEBUG] Sample zone types (first 5):
-[17-10-2025 11:27:21] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:27:21] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:27:21] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:27:21] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:27:21] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:27:21] [OK_BUTTON_DEBUG] After host type filter: 41 -> 41
-[17-10-2025 11:27:21] [OK_BUTTON_DEBUG] Final unresolved count: 41
-[17-10-2025 11:27:21] [OK_BUTTON_DEBUG] OK button enabled: True
-[17-10-2025 11:27:21] RefreshService.ExecuteRefresh() method completed successfully
-[17-10-2025 11:30:34] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_11-30-34)
-[17-10-2025 11:30:34] REFRESH BUTTON CREATED: Visible=False, Enabled=True
-[17-10-2025 11:30:42] === ON_REFRESH_CLICK STARTED ===
-[17-10-2025 11:30:42] About to call RefreshService.ExecuteRefresh() method
-[17-10-2025 11:30:42] === REFRESH STARTED === Timestamp: 2025-10-17_11-30-42
-[17-10-2025 11:30:44] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
-[17-10-2025 11:30:44] [OK_BUTTON_DEBUG] About to check OK button enabling logic
-[17-10-2025 11:30:44] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
-[17-10-2025 11:30:44] [OK_BUTTON_DEBUG] LoadFilterAuto completed
-[17-10-2025 11:30:44] [OK_BUTTON_DEBUG] About to extract zones
-[17-10-2025 11:30:44] [OK_BUTTON_DEBUG] Zones extracted: 13
-[17-10-2025 11:30:44] [OK_BUTTON_DEBUG] Total zones loaded: 13
-[17-10-2025 11:30:44] [OK_BUTTON_DEBUG] Unresolved zones: 13
-[17-10-2025 11:30:44] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
-[17-10-2025 11:30:44] [OK_BUTTON_DEBUG] Sample zone types (first 5):
-[17-10-2025 11:30:44] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:30:44] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:30:44] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:30:44] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:30:44] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
-[17-10-2025 11:30:44] [OK_BUTTON_DEBUG] After host type filter: 13 -> 13
-[17-10-2025 11:30:44] [OK_BUTTON_DEBUG] Final unresolved count: 13
-[17-10-2025 11:30:44] [OK_BUTTON_DEBUG] OK button enabled: True
-[17-10-2025 11:30:44] RefreshService.ExecuteRefresh() method completed successfully
+[17-10-2025 15:07:25] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_15-07-25)
+[17-10-2025 15:07:25] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[17-10-2025 15:07:34] === ON_REFRESH_CLICK STARTED ===
+[17-10-2025 15:07:34] About to call RefreshService.ExecuteRefresh() method
+[17-10-2025 15:07:34] === REFRESH STARTED === Timestamp: 2025-10-17_15-07-34
+[17-10-2025 15:07:35] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
+[17-10-2025 15:07:35] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[17-10-2025 15:07:35] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[17-10-2025 15:07:35] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[17-10-2025 15:07:35] [OK_BUTTON_DEBUG] About to extract zones
+[17-10-2025 15:07:35] [OK_BUTTON_DEBUG] Zones extracted: 2
+[17-10-2025 15:07:35] [OK_BUTTON_DEBUG] Total zones loaded: 2
+[17-10-2025 15:07:35] [OK_BUTTON_DEBUG] Unresolved zones: 2
+[17-10-2025 15:07:35] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
+[17-10-2025 15:07:35] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[17-10-2025 15:07:35] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:07:35] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:07:35] [OK_BUTTON_DEBUG] After host type filter: 2 -> 2
+[17-10-2025 15:07:35] [OK_BUTTON_DEBUG] Final unresolved count: 2
+[17-10-2025 15:07:35] [OK_BUTTON_DEBUG] OK button enabled: True
+[17-10-2025 15:07:35] RefreshService.ExecuteRefresh() method completed successfully
+[17-10-2025 15:07:59] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_15-07-59)
+[17-10-2025 15:07:59] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[17-10-2025 15:08:15] === ON_REFRESH_CLICK STARTED ===
+[17-10-2025 15:08:15] About to call RefreshService.ExecuteRefresh() method
+[17-10-2025 15:08:15] === REFRESH STARTED === Timestamp: 2025-10-17_15-08-15
+[17-10-2025 15:08:16] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
+[17-10-2025 15:08:16] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[17-10-2025 15:08:16] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[17-10-2025 15:08:16] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[17-10-2025 15:08:16] [OK_BUTTON_DEBUG] About to extract zones
+[17-10-2025 15:08:16] [OK_BUTTON_DEBUG] Zones extracted: 2
+[17-10-2025 15:08:16] [OK_BUTTON_DEBUG] Total zones loaded: 2
+[17-10-2025 15:08:16] [OK_BUTTON_DEBUG] Unresolved zones: 2
+[17-10-2025 15:08:16] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
+[17-10-2025 15:08:16] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[17-10-2025 15:08:16] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:08:16] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:08:16] [OK_BUTTON_DEBUG] After host type filter: 2 -> 2
+[17-10-2025 15:08:16] [OK_BUTTON_DEBUG] Final unresolved count: 2
+[17-10-2025 15:08:16] [OK_BUTTON_DEBUG] OK button enabled: True
+[17-10-2025 15:08:16] RefreshService.ExecuteRefresh() method completed successfully
+[17-10-2025 15:09:18] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_15-09-18)
+[17-10-2025 15:09:18] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[17-10-2025 15:09:26] === ON_REFRESH_CLICK STARTED ===
+[17-10-2025 15:09:26] About to call RefreshService.ExecuteRefresh() method
+[17-10-2025 15:09:26] === REFRESH STARTED === Timestamp: 2025-10-17_15-09-26
+[17-10-2025 15:09:27] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
+[17-10-2025 15:09:27] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[17-10-2025 15:09:27] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[17-10-2025 15:09:27] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[17-10-2025 15:09:27] [OK_BUTTON_DEBUG] About to extract zones
+[17-10-2025 15:09:27] [OK_BUTTON_DEBUG] Zones extracted: 23
+[17-10-2025 15:09:27] [OK_BUTTON_DEBUG] Total zones loaded: 23
+[17-10-2025 15:09:27] [OK_BUTTON_DEBUG] Unresolved zones: 23
+[17-10-2025 15:09:27] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
+[17-10-2025 15:09:27] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[17-10-2025 15:09:27] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:09:27] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:09:27] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:09:27] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:09:27] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:09:27] [OK_BUTTON_DEBUG] After host type filter: 23 -> 23
+[17-10-2025 15:09:27] [OK_BUTTON_DEBUG] Final unresolved count: 23
+[17-10-2025 15:09:27] [OK_BUTTON_DEBUG] OK button enabled: True
+[17-10-2025 15:09:27] RefreshService.ExecuteRefresh() method completed successfully
+[17-10-2025 15:12:59] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_15-12-59)
+[17-10-2025 15:12:59] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[17-10-2025 15:13:06] === ON_REFRESH_CLICK STARTED ===
+[17-10-2025 15:13:06] About to call RefreshService.ExecuteRefresh() method
+[17-10-2025 15:13:06] === REFRESH STARTED === Timestamp: 2025-10-17_15-13-06
+[17-10-2025 15:13:06] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
+[17-10-2025 15:13:06] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[17-10-2025 15:13:06] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[17-10-2025 15:13:06] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[17-10-2025 15:13:06] [OK_BUTTON_DEBUG] About to extract zones
+[17-10-2025 15:13:06] [OK_BUTTON_DEBUG] Zones extracted: 2
+[17-10-2025 15:13:06] [OK_BUTTON_DEBUG] Total zones loaded: 2
+[17-10-2025 15:13:06] [OK_BUTTON_DEBUG] Unresolved zones: 2
+[17-10-2025 15:13:06] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
+[17-10-2025 15:13:06] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[17-10-2025 15:13:06] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:13:06] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:13:06] [OK_BUTTON_DEBUG] After host type filter: 2 -> 2
+[17-10-2025 15:13:06] [OK_BUTTON_DEBUG] Final unresolved count: 2
+[17-10-2025 15:13:06] [OK_BUTTON_DEBUG] OK button enabled: True
+[17-10-2025 15:13:06] RefreshService.ExecuteRefresh() method completed successfully
+[17-10-2025 15:21:16] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_15-21-16)
+[17-10-2025 15:21:16] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[17-10-2025 15:21:22] === ON_REFRESH_CLICK STARTED ===
+[17-10-2025 15:21:22] About to call RefreshService.ExecuteRefresh() method
+[17-10-2025 15:21:22] === REFRESH STARTED === Timestamp: 2025-10-17_15-21-22
+[17-10-2025 15:21:23] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
+[17-10-2025 15:21:23] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[17-10-2025 15:21:23] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[17-10-2025 15:21:23] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[17-10-2025 15:21:23] [OK_BUTTON_DEBUG] About to extract zones
+[17-10-2025 15:21:23] [OK_BUTTON_DEBUG] Zones extracted: 2
+[17-10-2025 15:21:23] [OK_BUTTON_DEBUG] Total zones loaded: 2
+[17-10-2025 15:21:23] [OK_BUTTON_DEBUG] Unresolved zones: 2
+[17-10-2025 15:21:23] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
+[17-10-2025 15:21:23] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[17-10-2025 15:21:23] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:21:23] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:21:23] [OK_BUTTON_DEBUG] After host type filter: 2 -> 2
+[17-10-2025 15:21:23] [OK_BUTTON_DEBUG] Final unresolved count: 2
+[17-10-2025 15:21:23] [OK_BUTTON_DEBUG] OK button enabled: True
+[17-10-2025 15:21:23] RefreshService.ExecuteRefresh() method completed successfully
+[17-10-2025 15:23:36] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_15-23-36)
+[17-10-2025 15:23:36] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[17-10-2025 15:23:41] === ON_REFRESH_CLICK STARTED ===
+[17-10-2025 15:23:41] About to call RefreshService.ExecuteRefresh() method
+[17-10-2025 15:23:41] === REFRESH STARTED === Timestamp: 2025-10-17_15-23-41
+[17-10-2025 15:23:42] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
+[17-10-2025 15:23:42] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[17-10-2025 15:23:42] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[17-10-2025 15:23:42] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[17-10-2025 15:23:42] [OK_BUTTON_DEBUG] About to extract zones
+[17-10-2025 15:23:42] [OK_BUTTON_DEBUG] Zones extracted: 2
+[17-10-2025 15:23:42] [OK_BUTTON_DEBUG] Total zones loaded: 2
+[17-10-2025 15:23:42] [OK_BUTTON_DEBUG] Unresolved zones: 2
+[17-10-2025 15:23:42] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
+[17-10-2025 15:23:42] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[17-10-2025 15:23:42] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:23:42] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:23:42] [OK_BUTTON_DEBUG] After host type filter: 2 -> 2
+[17-10-2025 15:23:42] [OK_BUTTON_DEBUG] Final unresolved count: 2
+[17-10-2025 15:23:42] [OK_BUTTON_DEBUG] OK button enabled: True
+[17-10-2025 15:23:42] RefreshService.ExecuteRefresh() method completed successfully
+[17-10-2025 15:27:21] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_15-27-21)
+[17-10-2025 15:27:21] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[17-10-2025 15:27:37] === ON_REFRESH_CLICK STARTED ===
+[17-10-2025 15:27:37] About to call RefreshService.ExecuteRefresh() method
+[17-10-2025 15:27:37] === REFRESH STARTED === Timestamp: 2025-10-17_15-27-37
+[17-10-2025 15:27:38] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
+[17-10-2025 15:27:38] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[17-10-2025 15:27:38] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[17-10-2025 15:27:38] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[17-10-2025 15:27:38] [OK_BUTTON_DEBUG] About to extract zones
+[17-10-2025 15:27:38] [OK_BUTTON_DEBUG] Zones extracted: 2
+[17-10-2025 15:27:38] [OK_BUTTON_DEBUG] Total zones loaded: 2
+[17-10-2025 15:27:38] [OK_BUTTON_DEBUG] Unresolved zones: 2
+[17-10-2025 15:27:38] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
+[17-10-2025 15:27:38] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[17-10-2025 15:27:38] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:27:38] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:27:38] [OK_BUTTON_DEBUG] After host type filter: 2 -> 2
+[17-10-2025 15:27:38] [OK_BUTTON_DEBUG] Final unresolved count: 2
+[17-10-2025 15:27:38] [OK_BUTTON_DEBUG] OK button enabled: True
+[17-10-2025 15:27:38] RefreshService.ExecuteRefresh() method completed successfully
+[17-10-2025 15:28:33] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_15-28-33)
+[17-10-2025 15:28:33] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[17-10-2025 15:30:40] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_15-30-40)
+[17-10-2025 15:30:40] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[17-10-2025 15:30:46] === ON_REFRESH_CLICK STARTED ===
+[17-10-2025 15:30:46] About to call RefreshService.ExecuteRefresh() method
+[17-10-2025 15:30:46] === REFRESH STARTED === Timestamp: 2025-10-17_15-30-46
+[17-10-2025 15:30:46] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
+[17-10-2025 15:30:46] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[17-10-2025 15:30:46] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[17-10-2025 15:30:46] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[17-10-2025 15:30:46] [OK_BUTTON_DEBUG] About to extract zones
+[17-10-2025 15:30:46] [OK_BUTTON_DEBUG] Zones extracted: 2
+[17-10-2025 15:30:46] [OK_BUTTON_DEBUG] Total zones loaded: 2
+[17-10-2025 15:30:46] [OK_BUTTON_DEBUG] Unresolved zones: 2
+[17-10-2025 15:30:46] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
+[17-10-2025 15:30:46] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[17-10-2025 15:30:46] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:30:46] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:30:46] [OK_BUTTON_DEBUG] After host type filter: 2 -> 2
+[17-10-2025 15:30:46] [OK_BUTTON_DEBUG] Final unresolved count: 2
+[17-10-2025 15:30:46] [OK_BUTTON_DEBUG] OK button enabled: True
+[17-10-2025 15:30:46] RefreshService.ExecuteRefresh() method completed successfully
+[17-10-2025 15:34:27] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_15-34-27)
+[17-10-2025 15:34:27] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[17-10-2025 15:34:31] === ON_REFRESH_CLICK STARTED ===
+[17-10-2025 15:34:31] About to call RefreshService.ExecuteRefresh() method
+[17-10-2025 15:34:31] === REFRESH STARTED === Timestamp: 2025-10-17_15-34-31
+[17-10-2025 15:34:32] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
+[17-10-2025 15:34:32] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[17-10-2025 15:34:32] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[17-10-2025 15:34:32] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[17-10-2025 15:34:32] [OK_BUTTON_DEBUG] About to extract zones
+[17-10-2025 15:34:32] [OK_BUTTON_DEBUG] Zones extracted: 2
+[17-10-2025 15:34:32] [OK_BUTTON_DEBUG] Total zones loaded: 2
+[17-10-2025 15:34:32] [OK_BUTTON_DEBUG] Unresolved zones: 2
+[17-10-2025 15:34:32] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
+[17-10-2025 15:34:32] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[17-10-2025 15:34:32] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:34:32] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:34:32] [OK_BUTTON_DEBUG] After host type filter: 2 -> 2
+[17-10-2025 15:34:32] [OK_BUTTON_DEBUG] Final unresolved count: 2
+[17-10-2025 15:34:32] [OK_BUTTON_DEBUG] OK button enabled: True
+[17-10-2025 15:34:32] RefreshService.ExecuteRefresh() method completed successfully
+[17-10-2025 15:39:49] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_15-39-49)
+[17-10-2025 15:39:49] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[17-10-2025 15:39:54] === ON_REFRESH_CLICK STARTED ===
+[17-10-2025 15:39:54] About to call RefreshService.ExecuteRefresh() method
+[17-10-2025 15:39:54] === REFRESH STARTED === Timestamp: 2025-10-17_15-39-54
+[17-10-2025 15:39:55] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
+[17-10-2025 15:39:55] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[17-10-2025 15:39:55] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[17-10-2025 15:39:55] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[17-10-2025 15:39:55] [OK_BUTTON_DEBUG] About to extract zones
+[17-10-2025 15:39:55] [OK_BUTTON_DEBUG] Zones extracted: 2
+[17-10-2025 15:39:55] [OK_BUTTON_DEBUG] Total zones loaded: 2
+[17-10-2025 15:39:55] [OK_BUTTON_DEBUG] Unresolved zones: 2
+[17-10-2025 15:39:55] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
+[17-10-2025 15:39:55] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[17-10-2025 15:39:55] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:39:55] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:39:55] [OK_BUTTON_DEBUG] After host type filter: 2 -> 2
+[17-10-2025 15:39:55] [OK_BUTTON_DEBUG] Final unresolved count: 2
+[17-10-2025 15:39:55] [OK_BUTTON_DEBUG] OK button enabled: True
+[17-10-2025 15:39:55] RefreshService.ExecuteRefresh() method completed successfully
+[17-10-2025 15:46:46] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_15-46-46)
+[17-10-2025 15:46:46] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[17-10-2025 15:46:50] === ON_REFRESH_CLICK STARTED ===
+[17-10-2025 15:46:50] About to call RefreshService.ExecuteRefresh() method
+[17-10-2025 15:46:50] === REFRESH STARTED === Timestamp: 2025-10-17_15-46-50
+[17-10-2025 15:46:50] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
+[17-10-2025 15:46:50] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[17-10-2025 15:46:50] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[17-10-2025 15:46:50] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[17-10-2025 15:46:50] [OK_BUTTON_DEBUG] About to extract zones
+[17-10-2025 15:46:50] [OK_BUTTON_DEBUG] Zones extracted: 2
+[17-10-2025 15:46:50] [OK_BUTTON_DEBUG] Total zones loaded: 2
+[17-10-2025 15:46:50] [OK_BUTTON_DEBUG] Unresolved zones: 2
+[17-10-2025 15:46:50] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
+[17-10-2025 15:46:50] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[17-10-2025 15:46:50] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:46:50] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:46:50] [OK_BUTTON_DEBUG] After host type filter: 2 -> 2
+[17-10-2025 15:46:50] [OK_BUTTON_DEBUG] Final unresolved count: 2
+[17-10-2025 15:46:50] [OK_BUTTON_DEBUG] OK button enabled: True
+[17-10-2025 15:46:50] RefreshService.ExecuteRefresh() method completed successfully
+[17-10-2025 15:48:38] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_15-48-38)
+[17-10-2025 15:48:38] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[17-10-2025 15:48:42] === ON_REFRESH_CLICK STARTED ===
+[17-10-2025 15:48:42] About to call RefreshService.ExecuteRefresh() method
+[17-10-2025 15:48:42] === REFRESH STARTED === Timestamp: 2025-10-17_15-48-42
+[17-10-2025 15:48:43] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
+[17-10-2025 15:48:43] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[17-10-2025 15:48:43] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[17-10-2025 15:48:43] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[17-10-2025 15:48:43] [OK_BUTTON_DEBUG] About to extract zones
+[17-10-2025 15:48:43] [OK_BUTTON_DEBUG] Zones extracted: 2
+[17-10-2025 15:48:43] [OK_BUTTON_DEBUG] Total zones loaded: 2
+[17-10-2025 15:48:43] [OK_BUTTON_DEBUG] Unresolved zones: 2
+[17-10-2025 15:48:43] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
+[17-10-2025 15:48:43] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[17-10-2025 15:48:43] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:48:43] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:48:43] [OK_BUTTON_DEBUG] After host type filter: 2 -> 2
+[17-10-2025 15:48:43] [OK_BUTTON_DEBUG] Final unresolved count: 2
+[17-10-2025 15:48:43] [OK_BUTTON_DEBUG] OK button enabled: True
+[17-10-2025 15:48:43] RefreshService.ExecuteRefresh() method completed successfully
+[17-10-2025 15:49:25] InitCustomLogFileOverwrite called with: MainUi (timestamp: 2025-10-17_15-49-25)
+[17-10-2025 15:49:25] REFRESH BUTTON CREATED: Visible=False, Enabled=True
+[17-10-2025 15:49:51] === ON_REFRESH_CLICK STARTED ===
+[17-10-2025 15:49:51] About to call RefreshService.ExecuteRefresh() method
+[17-10-2025 15:49:51] === REFRESH STARTED === Timestamp: 2025-10-17_15-49-51
+[17-10-2025 15:49:52] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion
+[17-10-2025 15:49:52] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[17-10-2025 15:49:52] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto
+[17-10-2025 15:49:52] [OK_BUTTON_DEBUG] LoadFilterAuto completed
+[17-10-2025 15:49:52] [OK_BUTTON_DEBUG] About to extract zones
+[17-10-2025 15:49:52] [OK_BUTTON_DEBUG] Zones extracted: 2
+[17-10-2025 15:49:52] [OK_BUTTON_DEBUG] Total zones loaded: 2
+[17-10-2025 15:49:52] [OK_BUTTON_DEBUG] Unresolved zones: 2
+[17-10-2025 15:49:52] [OK_BUTTON_DEBUG] Allowed host types: [Walls, Structural Framing]
+[17-10-2025 15:49:52] [OK_BUTTON_DEBUG] Sample zone types (first 5):
+[17-10-2025 15:49:52] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:49:52] [OK_BUTTON_DEBUG]   - Type='Wall', IsEligible=True, Resolved=False
+[17-10-2025 15:49:52] [OK_BUTTON_DEBUG] After host type filter: 2 -> 2
+[17-10-2025 15:49:52] [OK_BUTTON_DEBUG] Final unresolved count: 2
+[17-10-2025 15:49:52] [OK_BUTTON_DEBUG] OK button enabled: True
+[17-10-2025 15:49:52] RefreshService.ExecuteRefresh() method completed successfully

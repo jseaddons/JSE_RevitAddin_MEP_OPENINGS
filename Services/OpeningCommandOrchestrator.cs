@@ -3,6 +3,8 @@ using Autodesk.Revit.UI;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
+using System.Xml.Serialization;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Commands;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
@@ -193,18 +195,118 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
+        /// Load clash zones for a specific filter from XML file
+        /// </summary>
+        private List<ClashZone> LoadClashZonesForFilter(OpeningFilter filter)
+        {
+            try
+            {
+                // Convert MepCategory enum back to string for file naming
+                string categoryName = filter.Category switch
+                {
+                    Models.MepCategory.Ducts => "Ducts",
+                    Models.MepCategory.DuctAccessories => "Duct Accessories", 
+                    Models.MepCategory.Pipes => "Pipes",
+                    Models.MepCategory.CableTrays => "Cable Trays",
+                    _ => "Ducts"
+                };
+
+                // Construct XML file path (CORRECTED: Use same path as refresh process)
+                string filterName = filter.Name;
+                string xmlFileName = $"{filterName}_{categoryName.Replace(" ", "_").ToLower()}.xml";
+                string xmlFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters", xmlFileName);
+
+                DebugLogger.Info($"[OpeningCommandOrchestrator] Looking for clash zones in: {xmlFilePath}");
+                
+                // 🔥 CRITICAL DEBUG: Force direct file logging to trace orchestrator execution
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] Looking for clash zones in: {xmlFilePath}\n");
+
+                if (!File.Exists(xmlFilePath))
+                {
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] ❌ XML file not found: {xmlFilePath}\n");
+                    DebugLogger.Warning($"[OpeningCommandOrchestrator] XML file not found: {xmlFilePath}");
+                    return new List<ClashZone>();
+                }
+                
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ✅ XML file found: {xmlFilePath}\n");
+
+                // Load clash zones from XML
+                var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
+                OpeningFilter loadedFilter;
+                using (var reader = new StreamReader(xmlFilePath))
+                {
+                    loadedFilter = (OpeningFilter)serializer.Deserialize(reader);
+                }
+
+                // Extract clash zones from the loaded filter
+                var clashZones = new List<ClashZone>();
+                if (loadedFilter?.ClashZoneStorage?.ClashZones != null)
+                {
+                    clashZones = loadedFilter.ClashZoneStorage.ClashZones;
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] ✅ Successfully loaded {clashZones.Count} clash zones from {xmlFilePath}\n");
+                    DebugLogger.Info($"[OpeningCommandOrchestrator] Successfully loaded {clashZones.Count} clash zones from {xmlFilePath}");
+                }
+                else
+                {
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] ❌ No clash zones found in XML file: {xmlFilePath}\n");
+                    DebugLogger.Warning($"[OpeningCommandOrchestrator] No clash zones found in XML file: {xmlFilePath}");
+                }
+
+                return clashZones;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[OpeningCommandOrchestrator] Error loading clash zones for filter {filter.Name}: {ex.Message}");
+                return new List<ClashZone>();
+            }
+        }
+
+        /// <summary>
         /// Execute UniversalSleevePlacementCommand
         /// </summary>
         private void ExecuteUniversalSleevePlacement(OpeningFilter filter, bool showProgress)
         {
             try
             {
+                // 🔥 CRITICAL DEBUG: Direct file logging to trace orchestrator execution
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🔥 ExecuteUniversalSleevePlacement CALLED 🔥\n");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] Filter Category: {filter.Category}\n");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] UI Clearances Count: {_uiClearances?.Count ?? 0}\n");
+                
                 DebugLogger.Info($"[OpeningCommandOrchestrator] Executing UniversalSleevePlacementCommand for {filter.Category}");
 
-                var universalCommand = new UniversalSleevePlacementCommand(_document, new List<ClashZone>(), filter.Category.ToString());
-                universalCommand.Execute(_uiDocument.Application);
+                // ✅ CRITICAL FIX: Load clash zones from XML file
+                var clashZones = LoadClashZonesForFilter(filter);
+                DebugLogger.Info($"[OpeningCommandOrchestrator] Loaded {clashZones.Count} clash zones for {filter.Category}");
 
-                DebugLogger.Info($"[OpeningCommandOrchestrator] UniversalSleevePlacementCommand completed successfully");
+                if (clashZones.Count > 0)
+                {
+                    // ✅ CRITICAL FIX: Convert enum to proper string format for strategy creation
+                    string categoryString = filter.Category switch
+                    {
+                        Models.MepCategory.Ducts => "Ducts",
+                        Models.MepCategory.DuctAccessories => "Duct Accessories", // Note: space, not "DuctAccessories"
+                        Models.MepCategory.Pipes => "Pipes", 
+                        Models.MepCategory.CableTrays => "Cable Trays", // Note: space, not "CableTrays"
+                        _ => "Ducts"
+                    };
+                    
+                    var universalCommand = new UniversalSleevePlacementCommand(_document, clashZones, categoryString, _uiClearances);
+                    universalCommand.Execute(_uiDocument.Application);
+                    DebugLogger.Info($"[OpeningCommandOrchestrator] UniversalSleevePlacementCommand completed successfully");
+                }
+                else
+                {
+                    DebugLogger.Warning($"[OpeningCommandOrchestrator] No clash zones found for {filter.Category}, skipping placement");
+                }
             }
             catch (Exception ex)
             {

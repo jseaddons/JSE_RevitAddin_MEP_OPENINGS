@@ -6,6 +6,7 @@ using Autodesk.Revit.DB.Mechanical;
 using Autodesk.Revit.DB.Plumbing;
 using Autodesk.Revit.DB.Electrical;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
 using static JSE_RevitAddin_MEP_OPENINGS.Models.MepCategoryConstants;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
@@ -1160,6 +1161,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var mepCategory = GetElementCategoryName(mepElement);
             DebugLogger.Info($"[CLASH_DEBUG] Element {mepElement.Id} ({mepElement.GetType().Name}): Category='{mepCategory}', Element.Category.Name='{mepElement.Category?.Name}'");
             
+            // ✅ CRITICAL FIX: Use strategy classes to get MEP element size with insulation information
+            MepElementSize mepElementSize = GetMepElementSizeWithStrategy(mepElement, mepCategory);
+            
             // ⚠️ CRITICAL: Get duct shape from family name (Round or Rectangular) ⚠️
             // DO NOT REMOVE: This determines correct sleeve family selection for round vs rectangular ducts
             var ductShape = GetDuctShape(mepElement);
@@ -1192,6 +1196,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 MepElementGeometryHash = CalculateElementGeometryHash(mepElement),
                 StructuralElementGeometryHash = CalculateElementGeometryHash(structuralElement),
                 MepElementCategory = MepCategoryConstants.Normalize(mepCategory), // Store STANDARDIZED category name
+                // ✅ CRITICAL FIX: Store MEP element size with insulation information
+                MepElementSizeData = mepElementSize,
                 DuctShape = ductShape, // Store duct shape (Round/Rectangular) from family name
                 InsulationType = insulationType, // Store insulation type (Normal/Insulated) for clearance selection
                 DocumentPath = document.PathName,
@@ -2914,6 +2920,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
         
+        /// <summary>
+        /// ✅ CRITICAL FIX: Get MEP element size using strategy classes for insulation detection
+        /// </summary>
+        private MepElementSize GetMepElementSizeWithStrategy(Element mepElement, string mepCategory)
+        {
+            try
+            {
+                // 🔥 CRITICAL DEBUG: Force direct file logging to trace strategy analysis
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\strategy_analysis.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] Analyzing element {mepElement.Id} with category '{mepCategory}'\n");
+                
+                // Use appropriate strategy based on category
+                ISleevePlacementStrategy strategy = mepCategory switch
+                {
+                    "Ducts" => new DuctPlacementStrategy(),
+                    "Duct Accessories" => new DamperPlacementStrategy(mepElement.Document), // Pass the document from the MEP element
+                    "Pipes" => new PipePlacementStrategy(),
+                    "Cable Trays" => new CableTrayPlacementStrategy(),
+                    _ => new DuctPlacementStrategy() // Default fallback
+                };
+
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\strategy_analysis.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] Using strategy: {strategy.GetType().Name}\n");
+
+                // Get MEP element size with insulation information
+                var mepElementSize = strategy.GetMepElementSize(mepElement);
+                
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\strategy_analysis.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ✅ Strategy analysis complete: Shape='{mepElementSize.Shape}', IsInsulated={mepElementSize.IsInsulated}, InsulationThickness={mepElementSize.InsulationThickness:F6}ft\n");
+                
+                DebugLogger.Info($"[ClashZoneService] Strategy '{strategy.GetType().Name}' analyzed element {mepElement.Id}: Shape='{mepElementSize.Shape}', IsInsulated={mepElementSize.IsInsulated}");
+                
+                return mepElementSize;
+            }
+            catch (Exception ex)
+            {
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\strategy_analysis.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ❌ ERROR in strategy analysis: {ex.Message}\n");
+                DebugLogger.Error($"[ClashZoneService] Error getting MEP element size with strategy: {ex.Message}");
+                return new MepElementSize(); // Return empty size on error
+            }
+        }
+
         private double GetMepElementSize(Element mepElement)
         {
             try

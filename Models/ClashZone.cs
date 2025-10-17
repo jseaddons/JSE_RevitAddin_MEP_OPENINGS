@@ -111,6 +111,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public double MepElementSize { get; set; }
         
         /// <summary>
+        /// ✅ NEW: Detailed MEP element size information with insulation data
+        /// </summary>
+        public MepElementSize MepElementSizeData { get; set; } = new MepElementSize();
+        
+        /// <summary>
         /// The clearance required for this clash zone
         /// </summary>
         public double RequiredClearance { get; set; }

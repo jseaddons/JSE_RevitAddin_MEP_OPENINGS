@@ -15,6 +15,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public static Func<List<string>> GetSelectedHostFiles { get; set; }
         public static Func<List<string>> GetSelectedHostElementTypes { get; set; }
         public static Func<List<string>> GetSelectedFilterItems { get; set; }
+        public static Func<string, Dictionary<string, double>> GetClearanceSettings { get; set; }
 
         public static Action<OpeningFilter> ApplyFilterToUi { get; set; }
     }

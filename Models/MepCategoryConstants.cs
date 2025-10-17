@@ -51,6 +51,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         }
         
         /// <summary>
+        /// Parse string category name to MepCategory enum
+        /// </summary>
+        public static MepCategory Parse(string category)
+        {
+            var normalized = Normalize(category);
+            
+            return normalized switch
+            {
+                DUCTS => MepCategory.Ducts,
+                DUCT_ACCESSORIES => MepCategory.DuctAccessories,
+                PIPES => MepCategory.Pipes,
+                CABLE_TRAYS => MepCategory.CableTrays,
+                _ => MepCategory.Ducts // Default fallback
+            };
+        }
+        
+        /// <summary>
         /// Normalize category name to standard (handles "Duct" → "Ducts", etc.)
         /// </summary>
         public static string Normalize(string category)

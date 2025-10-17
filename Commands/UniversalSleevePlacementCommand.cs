@@ -28,8 +28,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         private readonly ISleevePlacementStrategy _strategy;
         private readonly string _logPrefix;
         private OpeningConditions _conditions;
+        private readonly Dictionary<string, double> _clearanceSettings;
 
-        public UniversalSleevePlacementCommand(Document doc, List<ClashZone> clashZones, string category)
+        public UniversalSleevePlacementCommand(Document doc, List<ClashZone> clashZones, string category, Dictionary<string, double> clearanceSettings = null)
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _clashZones = clashZones ?? throw new ArgumentNullException(nameof(clashZones));
@@ -41,6 +42,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             
             // Load conditions from XML
             LoadConditionsFromXml();
+            
+            // ✅ NEW: Store clearance settings for direct UI access
+            _clearanceSettings = clearanceSettings ?? new Dictionary<string, double>();
+            
+            DebugLogger.Info($"{_logPrefix} Constructor: Received {_clearanceSettings.Count} clearance settings from UI");
+            foreach (var kvp in _clearanceSettings)
+            {
+                DebugLogger.Info($"{_logPrefix} Clearance: {kvp.Key} = {kvp.Value}mm");
+            }
         }
 
         public void Execute(UIApplication app)
@@ -77,7 +87,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         DebugLogger.Info($"{_logPrefix} Transaction started with UniversalWarningSwallower enabled");
                         
                         // Place all sleeves in single transaction (zero linked file access!)
-                        var placerService = new UniversalSleevePlacerService(_doc, _conditions, _strategy);
+                        var placerService = new UniversalSleevePlacerService(_doc, _conditions, _strategy, _clearanceSettings);
                         
                         // 🛡️ ARCHITECTURE FIX: Apply comprehensive filtering before placement
                         // This ensures sleeves are only placed for:
@@ -201,15 +211,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 
                 // Use the first selected filter name + current category
                 string filterName = selectedFilterNames.First();
-                string combinedKey = $"{filterName}_{_category}";
+                
+                // ✅ STANDARDIZED: Use normalized category names to match clash zone file naming
+                string normalizedCategory = NormalizeCategoryName(_category);
+                string combinedKey = $"{filterName}_{normalizedCategory}";
                 
                 DebugLogger.Info($"{_logPrefix} Using combined key '{combinedKey}' (Filter: '{filterName}', Category: '{_category}')");
+                
+                // ⚠️ DIAGNOSTIC: Log the exact file path being loaded
+                string expectedFileName = $"{combinedKey}_CONDITIONS.xml";
+                DebugLogger.Info($"{_logPrefix} Expected CONDITIONS file: '{expectedFileName}'");
                 
                 _conditions = conditionsService.LoadConditions(combinedKey);
                 
                 if (_conditions != null)
                 {
                     DebugLogger.Info($"{_logPrefix} Loaded conditions for '{combinedKey}' - Pipes: {_conditions.OpeningTypePreferences?.Pipes ?? "null"}, RoundDucts: {_conditions.OpeningTypePreferences?.RoundDucts ?? "null"}");
+                    
+                    // ⚠️ DIAGNOSTIC: Log clearance values from CONDITIONS XML
+                    if (_conditions.ClearanceSettings != null)
+                    {
+                        DebugLogger.Info($"{_logPrefix} CONDITIONS XML Clearances: RectNormal={_conditions.ClearanceSettings.RectangularNormal}mm, RectInsulated={_conditions.ClearanceSettings.RectangularInsulated}mm");
+                        DebugLogger.Info($"{_logPrefix} CONDITIONS XML Clearances: RoundNormal={_conditions.ClearanceSettings.RoundNormal}mm, RoundInsulated={_conditions.ClearanceSettings.RoundInsulated}mm");
+                        DebugLogger.Info($"{_logPrefix} CONDITIONS XML Clearances: PipesNormal={_conditions.ClearanceSettings.PipesNormal}mm, PipesInsulated={_conditions.ClearanceSettings.PipesInsulated}mm");
+                        DebugLogger.Info($"{_logPrefix} CONDITIONS XML Clearances: CableTrayTop={_conditions.ClearanceSettings.CableTrayTop}mm, CableTrayOther={_conditions.ClearanceSettings.CableTrayOther}mm");
+                    }
+                    else
+                    {
+                        DebugLogger.Warning($"{_logPrefix} CONDITIONS XML has NULL ClearanceSettings!");
+                    }
                 }
                 else
                 {
@@ -462,6 +492,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             return fileName.Trim();
         }
         
+        /// <summary>
+        /// ✅ STANDARDIZED: Normalize category names to match clash zone file naming
+        /// Converts "Duct Accessories" → "duct_accessories", "Ducts" → "ducts", etc.
+        /// </summary>
+        private string NormalizeCategoryName(string categoryName)
+        {
+            if (string.IsNullOrEmpty(categoryName))
+                return "unknown";
+                
+            return categoryName
+                .Replace(" ", "_")           // "Duct Accessories" → "Duct_Accessories"
+                .ToLowerInvariant();          // "Duct_Accessories" → "duct_accessories"
+        }
+
         /// <summary>
         /// Get selected filter names from UI state
         /// </summary>

@@ -46,15 +46,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
             // Check insulation
             var insulationParam = mepElement.LookupParameter("Insulation Thickness") 
                                ?? mepElement.LookupParameter("InsulationThickness");
+            
+            // ⚠️ DIAGNOSTIC: Log insulation detection for debugging
+            DebugLogger.Info($"[DuctStrategy] Duct {mepElement.Id}: Checking insulation parameters");
+            DebugLogger.Info($"[DuctStrategy] Duct {mepElement.Id}: InsulationThickness param = {insulationParam?.AsDouble() ?? -1:F6}ft");
+            
             if (insulationParam != null && insulationParam.HasValue)
             {
                 double thickness = insulationParam.AsDouble();
+                double thicknessMm = UnitUtils.ConvertFromInternalUnits(thickness, UnitTypeId.Millimeters);
+                DebugLogger.Info($"[DuctStrategy] Duct {mepElement.Id}: Insulation thickness = {thicknessMm:F1}mm ({thickness:F6}ft)");
+                
                 if (thickness > 0.001) // > ~0.3mm
                 {
                     size.IsInsulated = true;
                     size.InsulationThickness = thickness;
+                    DebugLogger.Info($"[DuctStrategy] Duct {mepElement.Id}: ✅ INSULATED (thickness > 0.3mm)");
+                }
+                else
+                {
+                    DebugLogger.Info($"[DuctStrategy] Duct {mepElement.Id}: ❌ NOT INSULATED (thickness ≤ 0.3mm)");
                 }
             }
+            else
+            {
+                DebugLogger.Info($"[DuctStrategy] Duct {mepElement.Id}: ❌ NOT INSULATED (no insulation parameter)");
+            }
+            
+            // ⚠️ DIAGNOSTIC: Log final insulation status for XML storage
+            DebugLogger.Info($"[DuctStrategy] Duct {mepElement.Id}: FINAL STATUS - Shape='{size.Shape}', IsInsulated={size.IsInsulated}, InsulationThickness={size.InsulationThickness:F6}ft");
             
             return size;
         }

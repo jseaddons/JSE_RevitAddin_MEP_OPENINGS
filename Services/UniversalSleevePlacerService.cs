@@ -25,18 +25,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly Document _doc;
         private readonly OpeningConditions _conditions;
         private readonly ISleevePlacementStrategy _strategy;
+        private readonly Dictionary<string, double> _clearanceSettings;
         
         public int PlacedCount { get; private set; }
         public int SkippedCount { get; private set; }
         public int ErrorCount { get; private set; }
 
-        public UniversalSleevePlacerService(Document doc, OpeningConditions conditions, ISleevePlacementStrategy strategy)
+        public UniversalSleevePlacerService(Document doc, OpeningConditions conditions, ISleevePlacementStrategy strategy, Dictionary<string, double> clearanceSettings = null)
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _conditions = conditions ?? new OpeningConditions();
             _strategy = strategy ?? throw new ArgumentNullException(nameof(strategy));
+            _clearanceSettings = clearanceSettings ?? new Dictionary<string, double>();
+            
+            // 🔥 CRITICAL DEBUG: Direct file logging to trace service instantiation
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\service_instantiation.log", 
+                $"[{DateTime.Now:HH:mm:ss}] 🔥 UniversalSleevePlacerService CONSTRUCTOR CALLED 🔥\n");
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\service_instantiation.log", 
+                $"[{DateTime.Now:HH:mm:ss}] Strategy Type: {_strategy.GetType().Name}\n");
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\service_instantiation.log", 
+                $"[{DateTime.Now:HH:mm:ss}] Strategy Category: {_strategy.GetCategoryName()}\n");
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\service_instantiation.log", 
+                $"[{DateTime.Now:HH:mm:ss}] Clearance Settings Count: {_clearanceSettings.Count}\n");
             
             DebugLogger.Info($"[UniversalSleevePlaycer] Initialized for category: {_strategy.GetCategoryName()}");
+            DebugLogger.Info($"[UniversalSleevePlaycer] Received {_clearanceSettings.Count} clearance settings from UI");
+            
+            // Log all clearance settings for debugging
+            foreach (var kvp in _clearanceSettings)
+            {
+                DebugLogger.Info($"[UniversalSleevePlaycer] Clearance: {kvp.Key} = {kvp.Value}mm");
+            }
             
             // Add build timestamp to placement_debug.log
             try
@@ -300,75 +319,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         // STEP 3: If we reach here, place individual sleeve (fresh or replacement)
                         
+                        // 🔥 DEBUG: Log category comparison
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\category_match_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] ClashZone {clashZone.Id}: MepElementCategory='{clashZone.MepElementCategory}' (len={clashZone.MepElementCategory?.Length}), Strategy='{_strategy.GetCategoryName()}' (len={_strategy.GetCategoryName()?.Length})\n");
+                        
                         // Validate category match
                         if (!string.IsNullOrEmpty(clashZone.MepElementCategory) && 
                             clashZone.MepElementCategory != _strategy.GetCategoryName())
                         {
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\category_match_debug.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] 🔥 CATEGORY MISMATCH! Skipping ClashZone {clashZone.Id}\n");
                             DebugLogger.Warning($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} category '{clashZone.MepElementCategory}' doesn't match '{_strategy.GetCategoryName()}'");
                             SkippedCount++;
                             continue;
                         }
                         
-                        // ✅ METHOD 1 (COMMENTED OUT): XML-based proximity check for Ducts
-                        // This method loads Duct Accessories XML data and checks proximity
-                        // If Method 3 (clash detection) doesn't work, uncomment this method
-                        /*
-                        if (string.Equals(clashZone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase))
-                        {
-                            // Load Duct Accessories XML data to check for existing damper sleeves
-                            var damperClashZones = LoadDuctAccessoriesClashZones();
-                            DebugLogger.Info($"[UniversalSleevePlacer] Loaded {damperClashZones.Count} Duct Accessories clash zones for proximity check");
-                            
-                            // Check if any Duct Accessory (damper) sleeve exists at this location
-                            bool damperSleeveExistsNearby = damperClashZones
-                                .Where(cz => cz.StructuralElementId.IntegerValue == clashZone.StructuralElementId.IntegerValue) // Same wall/floor
-                                .Any(cz => 
-                                {
-                                    // Check if damper has a placed sleeve (cluster or individual)
-                                    bool hasSleeve = false;
-                                    if (cz.IsClusterResolved && cz.ClusterSleeveInstanceId > 0)
-                                    {
-                                        var sleeve = _doc.GetElement(new ElementId(cz.ClusterSleeveInstanceId));
-                                        hasSleeve = sleeve != null;
-                                    }
-                                    if (!hasSleeve && cz.IsResolved && cz.SleeveInstanceId > 0)
-                                    {
-                                        var sleeve = _doc.GetElement(new ElementId(cz.SleeveInstanceId));
-                                        hasSleeve = sleeve != null;
-                                    }
-                                    
-                                    if (hasSleeve)
-                                    {
-                                        // Calculate distance between duct and damper placement points
-                                        double distance = cz.SleevePlacementPoint.DistanceTo(clashZone.SleevePlacementPoint);
-                                        
-                                        // Use 0.5 feet (150mm) tolerance for 200mm wall thickness
-                                        double maxDistance = 0.5; // 0.5 feet = ~150mm
-                                        
-                                        DebugLogger.Info($"[UniversalSleevePlacer] Checking proximity: Duct at {clashZone.SleevePlacementPoint} vs Damper at {cz.SleevePlacementPoint} = {distance:F3}ft (max: {maxDistance}ft)");
-                                        
-                                        if (distance < maxDistance)
-                                        {
-                                            DebugLogger.Info($"[UniversalSleevePlacer] ✓ PROXIMITY MATCH: Duct and Damper are {distance:F3}ft apart (within {maxDistance}ft tolerance)");
-                                            return true;
-                                        }
-                                        else
-                                        {
-                                            DebugLogger.Info($"[UniversalSleevePlacer] ✗ PROXIMITY MISS: Duct and Damper are {distance:F3}ft apart (exceeds {maxDistance}ft tolerance)");
-                                        }
-                                    }
-                                    
-                                    return false;
-                                });
-                            
-                            if (damperSleeveExistsNearby)
-                            {
-                                DebugLogger.Info($"[UniversalSleevePlacer] SKIP: Duct at ClashZone {clashZone.Id} - Damper sleeve exists nearby at {clashZone.SleevePlacementPoint}");
-                                SkippedCount++;
-                                continue;
-                            }
-                        }
-                        */
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\category_match_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] ✅ CATEGORY MATCH! Proceeding with ClashZone {clashZone.Id}\n");
+                        
+                        
+                        // 🔥 DEBUG: Log that we're about to start clearance calculation
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\clearance_calculation_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] 🔥 ABOUT TO START CLEARANCE CALCULATION for ClashZone {clashZone.Id}\n");
                         
                         // ⚠️ ZERO LINKED FILE ACCESS - use pre-calculated MEP size from ClashZone
                         var mepSize = new MepElementSize
@@ -379,14 +351,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             Shape = clashZone.DuctShape
                         };
                         
-						// ⚠️ SPECIAL HANDLING & SIZING ORDER:
+                        // ⚠️ SPECIAL HANDLING & SIZING ORDER:
 						// 1) Pipes (host-agnostic), 2) Dampers, 3) Cable trays, 4) Ducts/default
                         XYZ placementOffset = XYZ.Zero;
-                        double finalWidth, finalHeight, finalDiameter;
+                        double finalWidth = 0.0, finalHeight = 0.0, finalDiameter = 0.0;
                         
                         // 🛡️ ARCHITECTURE FIX: Use CONDITIONS service for ALL clearance types
                         // This ensures consistent architecture: CONDITIONS XML → UniversalSleevePlacerService
                         // Raw dimensions from ClashZone + Clearance from CONDITIONS = Final dimensions
+                        
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\clearance_calculation_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] 🔥 CLEARANCE CALCULATION START: Category='{clashZone.MepElementCategory}', Strategy={(_strategy?.GetType().Name ?? "NULL")}\n");
                         
                         DebugLogger.Info($"[UniversalSleevePlacer] CLEARANCE CALCULATION START: Category='{clashZone.MepElementCategory}', Strategy={(_strategy?.GetType().Name ?? "NULL")}");
                         
@@ -416,24 +391,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             
                             DebugLogger.Info($"[UniversalSleevePlacer] DAMPER: Raw={UnitUtils.ConvertFromInternalUnits(rawWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(rawHeight, UnitTypeId.Millimeters):F1}mm → Final={UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(finalHeight, UnitTypeId.Millimeters):F1}mm");
                         }
-                        else if (_strategy is CableTrayPlacementStrategy cableTrayStrategy)
+                        
+                        // ✅ DEBUG: Log strategy information
+                        DebugLogger.Info($"[UniversalSleevePlacer] Strategy Type: {_strategy.GetType().Name}");
+                        DebugLogger.Info($"[UniversalSleevePlacer] Strategy Category: {_strategy.GetCategoryName()}");
+                        
+                        if (_strategy is DuctPlacementStrategy ductStrategy)
                         {
-                            // ✅ Cable trays: Raw dimensions + CONDITIONS clearance via strategy
-                            var rawWidth = clashZone.MepElementWidth;
-                            var rawHeight = clashZone.MepElementHeight;
-                            
-                            // Get offset and final dimensions from strategy (uses CONDITIONS)
-                            var adj2 = cableTrayStrategy.GetCableTrayPlacementAdjustment(clashZone, _conditions);
-                            placementOffset = adj2.offsetVector;
-                            finalWidth = adj2.finalWidth;
-                            finalHeight = adj2.finalHeight;
-                            finalDiameter = finalWidth; // Not used for cable trays (rectangular only)
-                            
-                            DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY: Raw={UnitUtils.ConvertFromInternalUnits(rawWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(rawHeight, UnitTypeId.Millimeters):F1}mm → Final={UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(finalHeight, UnitTypeId.Millimeters):F1}mm");
-                        }
-                        else
-                        {
-                            // ✅ Ducts: Raw dimensions + CONDITIONS clearance
+                            // ✅ Ducts: Raw dimensions + CONDITIONS clearance via strategy
                             var rawWidth = clashZone.MepElementWidth;
                             var rawHeight = clashZone.MepElementHeight;
                             
@@ -445,6 +410,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             finalDiameter = finalWidth; // For round elements
                             
                             DebugLogger.Info($"[UniversalSleevePlacer] DUCT: Raw={UnitUtils.ConvertFromInternalUnits(rawWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(rawHeight, UnitTypeId.Millimeters):F1}mm + Clearance={UnitUtils.ConvertFromInternalUnits(clearance, UnitTypeId.Millimeters):F1}mm = Final={UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(finalHeight, UnitTypeId.Millimeters):F1}mm");
+                        }
+                        else if (_strategy is CableTrayPlacementStrategy cableTrayStrategy)
+                        {
+                            // 🔥 DEBUG: Log that we're entering the cable tray strategy block
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\clearance_calculation_debug.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] 🎯 CABLE TRAY STRATEGY BLOCK ENTERED for ClashZone {clashZone.Id}\n");
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\clearance_calculation_debug.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] About to call GetCableTrayPlacementAdjustment with {_clearanceSettings.Count} settings\n");
+                            
+                            // ✅ Cable trays: Raw dimensions + UI/XML clearance via strategy
+                            var rawWidth = clashZone.MepElementWidth;
+                            var rawHeight = clashZone.MepElementHeight;
+                            
+                            DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY STRATEGY: Raw={UnitUtils.ConvertFromInternalUnits(rawWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(rawHeight, UnitTypeId.Millimeters):F1}mm");
+                            DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY STRATEGY: UI Clearance Settings Count={_clearanceSettings.Count}");
+                            
+                            // Get offset and final dimensions from strategy (uses UI settings first, then CONDITIONS)
+                            var adj2 = cableTrayStrategy.GetCableTrayPlacementAdjustment(clashZone, _conditions, _clearanceSettings);
+                            placementOffset = adj2.offsetVector;
+                            finalWidth = adj2.finalWidth;
+                            finalHeight = adj2.finalHeight;
+                            
+                            DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY STRATEGY: Final={UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(finalHeight, UnitTypeId.Millimeters):F1}mm");
+                            finalDiameter = finalWidth; // Not used for cable trays (rectangular only)
+                            
+                            DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY: Raw={UnitUtils.ConvertFromInternalUnits(rawWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(rawHeight, UnitTypeId.Millimeters):F1}mm → Final={UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(finalHeight, UnitTypeId.Millimeters):F1}mm");
                         }
 
                         // ⚠️ REMOVED: Old width/height swapping logic that was causing double-swapping
@@ -555,8 +546,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 throw;
             }
             
-        return (PlacedCount, SkippedCount);
-    }
+            return (PlacedCount, SkippedCount);
+        }
 
     // Helper method to define category priority for sorting
     private int GetCategoryPriority(string mepCategory)
@@ -728,21 +719,171 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
-        /// Get clearance value from CONDITIONS service for simple clearance categories
+        /// Get clearance value from UI clearance settings (priority) or CONDITIONS service (fallback)
         /// </summary>
         private double GetClearanceFromConditions(string category, MepElementSize mepSize)
         {
             try
             {
-                DebugLogger.Info($"[GetClearanceFromConditions] START: category='{category}', _conditions={(_conditions != null ? "NOT NULL" : "NULL")}");
+                // 🔥 CRITICAL DEBUG: Force direct file logging to trace clearance calculation
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\clearance_calculation.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] GetClearanceFromConditions START: category='{category}', Shape='{mepSize.Shape}', IsInsulated={mepSize.IsInsulated}\n");
                 
-                if (_conditions?.ClearanceSettings == null)
+                DebugLogger.Info($"[GetClearanceFromConditions] START: category='{category}', UI settings={_clearanceSettings.Count}, XML conditions={(_conditions != null ? "NOT NULL" : "NULL")}");
+                
+                // ✅ PRIORITY 1: Use UI clearance settings if available
+                if (_clearanceSettings.Count > 0)
                 {
-                    DebugLogger.Warning($"[GetClearanceFromConditions] No clearance settings available, using default 50mm");
-                    return UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters);
+                    double clearanceInMm = GetClearanceFromUISettings(category, mepSize);
+                    if (clearanceInMm > 0)
+                    {
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\clearance_calculation.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] ✅ Using UI clearance: {clearanceInMm}mm for {category}\n");
+                        DebugLogger.Info($"[GetClearanceFromConditions] Using UI clearance: {clearanceInMm}mm for {category}");
+                        return UnitUtils.ConvertToInternalUnits(clearanceInMm, UnitTypeId.Millimeters);
+                    }
                 }
-
-                DebugLogger.Info($"[GetClearanceFromConditions] ClearanceSettings available: RectNormal={_conditions.ClearanceSettings.RectangularNormal}mm, RectInsulated={_conditions.ClearanceSettings.RectangularInsulated}mm");
+                
+                // ✅ PRIORITY 2: Fallback to XML conditions
+                if (_conditions?.ClearanceSettings != null)
+                {
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\clearance_calculation.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] Using XML clearance settings for {category}\n");
+                    DebugLogger.Info($"[GetClearanceFromConditions] Using XML clearance settings for {category}");
+                    return GetClearanceFromXmlConditions(category, mepSize);
+                }
+                
+                // ✅ PRIORITY 3: Default fallback
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\clearance_calculation.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ No clearance settings available, using default 50mm\n");
+                DebugLogger.Warning($"[GetClearanceFromConditions] No clearance settings available, using default 50mm");
+                return UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters);
+            }
+            catch (Exception ex)
+            {
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\clearance_calculation.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ❌ ERROR in clearance calculation: {ex.Message}\n");
+                DebugLogger.Error($"[GetClearanceFromConditions] Error: {ex.Message}");
+                return UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters);
+            }
+        }
+        
+        /// <summary>
+        /// Get clearance value from UI settings
+        /// </summary>
+        private double GetClearanceFromUISettings(string category, MepElementSize mepSize)
+        {
+            try
+            {
+                DebugLogger.Info($"[GetClearanceFromUISettings] Checking UI settings for category: {category}");
+                
+                // Log all available UI clearance settings
+                foreach (var kvp in _clearanceSettings)
+                {
+                    DebugLogger.Info($"[GetClearanceFromUISettings] Available: {kvp.Key} = {kvp.Value}mm");
+                }
+                
+                if (string.Equals(category, "Pipes", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Check for pipe-specific clearance keys
+                    string normalKey = "pipes_normal_clearance";
+                    string insulatedKey = "pipes_insulated_clearance";
+                    
+                    bool isInsulated = IsPipeInsulated(mepSize);
+                    string targetKey = isInsulated ? insulatedKey : normalKey;
+                    
+                    if (_clearanceSettings.ContainsKey(targetKey))
+                    {
+                        double clearance = _clearanceSettings[targetKey];
+                        DebugLogger.Info($"[GetClearanceFromUISettings] Pipes: isInsulated={isInsulated}, key='{targetKey}', clearance={clearance}mm");
+                        return clearance;
+                    }
+                    
+                    // Fallback to generic pipe clearance
+                    if (_clearanceSettings.ContainsKey("pipes_clearance"))
+                    {
+                        double clearance = _clearanceSettings["pipes_clearance"];
+                        DebugLogger.Info($"[GetClearanceFromUISettings] Pipes: Using generic clearance={clearance}mm");
+                        return clearance;
+                    }
+                }
+                else if (string.Equals(category, "Cable Trays", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Check for cable tray-specific clearance keys
+                    string topKey = "cabletray_top_clearance";
+                    string otherKey = "cabletray_other_clearance";
+                    
+                    // Try top clearance first, then other
+                    if (_clearanceSettings.ContainsKey(topKey))
+                    {
+                        double clearance = _clearanceSettings[topKey];
+                        DebugLogger.Info($"[GetClearanceFromUISettings] Cable Trays: Using top clearance={clearance}mm");
+                        return clearance;
+                    }
+                    
+                    if (_clearanceSettings.ContainsKey(otherKey))
+                    {
+                        double clearance = _clearanceSettings[otherKey];
+                        DebugLogger.Info($"[GetClearanceFromUISettings] Cable Trays: Using other clearance={clearance}mm");
+                        return clearance;
+                    }
+                }
+                else if (string.Equals(category, "Ducts", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Check for duct-specific clearance keys
+                    string normalKey = "ducts_normal_clearance";
+                    string insulatedKey = "ducts_insulated_clearance";
+                    
+                    bool isInsulated = IsDuctInsulated(mepSize);
+                    string targetKey = isInsulated ? insulatedKey : normalKey;
+                    
+                    DebugLogger.Info($"[GetClearanceFromUISettings] Ducts: Looking for key='{targetKey}', isInsulated={isInsulated}");
+                    
+                    if (_clearanceSettings.ContainsKey(targetKey))
+                    {
+                        double clearance = _clearanceSettings[targetKey];
+                        DebugLogger.Info($"[GetClearanceFromUISettings] Ducts: Found key='{targetKey}', clearance={clearance}mm");
+                        return clearance;
+                    }
+                    else
+                    {
+                        DebugLogger.Warning($"[GetClearanceFromUISettings] Ducts: Key '{targetKey}' not found in clearance settings!");
+                        
+                        // Try alternative keys
+                        if (_clearanceSettings.ContainsKey("normal_clearance"))
+                        {
+                            double clearance = _clearanceSettings["normal_clearance"];
+                            DebugLogger.Info($"[GetClearanceFromUISettings] Ducts: Using fallback 'normal_clearance' = {clearance}mm");
+                            return clearance;
+                        }
+                        
+                        if (_clearanceSettings.ContainsKey("insulated_clearance"))
+                        {
+                            double clearance = _clearanceSettings["insulated_clearance"];
+                            DebugLogger.Info($"[GetClearanceFromUISettings] Ducts: Using fallback 'insulated_clearance' = {clearance}mm");
+                            return clearance;
+                        }
+                    }
+                }
+                
+                DebugLogger.Warning($"[GetClearanceFromUISettings] No UI clearance found for category: {category}");
+                return 0; // Indicate no UI clearance found
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[GetClearanceFromUISettings] Error: {ex.Message}");
+                return 0;
+            }
+        }
+        
+        /// <summary>
+        /// Get clearance value from XML conditions (fallback method)
+        /// </summary>
+        private double GetClearanceFromXmlConditions(string category, MepElementSize mepSize)
+        {
+            try
+            {
+                DebugLogger.Info($"[GetClearanceFromXmlConditions] ClearanceSettings available: RectNormal={_conditions.ClearanceSettings.RectangularNormal}mm, RectInsulated={_conditions.ClearanceSettings.RectangularInsulated}mm");
 
                 // Determine clearance based on category and element properties
                 double clearanceInMm = 50.0; // Default fallback
@@ -751,8 +892,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     // Pipes: Check if insulated
                     bool isInsulated = IsPipeInsulated(mepSize);
+                    
+                    // ⚠️ DIAGNOSTIC: Log insulation detection from XML data
+                    DebugLogger.Info($"[GetClearanceFromXmlConditions] Pipes: Reading from XML - Shape='{mepSize.Shape}', IsInsulated={isInsulated}, InsulationThickness={mepSize.InsulationThickness:F6}ft");
+                    DebugLogger.Info($"[GetClearanceFromXmlConditions] Pipes: isInsulated={isInsulated}, clearance={clearanceInMm}mm");
+                    
                     clearanceInMm = isInsulated ? _conditions.ClearanceSettings.PipesInsulated : _conditions.ClearanceSettings.PipesNormal;
-                    DebugLogger.Info($"[GetClearanceFromConditions] Pipes: isInsulated={isInsulated}, clearance={clearanceInMm}mm");
+                    DebugLogger.Info($"[GetClearanceFromXmlConditions] Pipes: Final clearance={clearanceInMm}mm (insulated={isInsulated})");
                 }
                 else if (string.Equals(category, "Ducts", StringComparison.OrdinalIgnoreCase))
                 {
@@ -761,58 +907,71 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     bool isRound = string.Equals(mepSize.Shape, "Round", StringComparison.OrdinalIgnoreCase) ||
                                   string.Equals(mepSize.Shape, "Circular", StringComparison.OrdinalIgnoreCase);
                     
-                    DebugLogger.Info($"[GetClearanceFromConditions] Ducts: isInsulated={isInsulated}, isRound={isRound}, Shape='{mepSize.Shape}'");
+                    // ⚠️ DIAGNOSTIC: Log insulation detection from XML data
+                    DebugLogger.Info($"[GetClearanceFromXmlConditions] Ducts: Reading from XML - Shape='{mepSize.Shape}', IsInsulated={isInsulated}, InsulationThickness={mepSize.InsulationThickness:F6}ft");
+                    DebugLogger.Info($"[GetClearanceFromXmlConditions] Ducts: isInsulated={isInsulated}, isRound={isRound}, Shape='{mepSize.Shape}'");
                     
                     if (isRound)
                     {
                         clearanceInMm = isInsulated ? _conditions.ClearanceSettings.RoundInsulated : _conditions.ClearanceSettings.RoundNormal;
-                        DebugLogger.Info($"[GetClearanceFromConditions] Round ducts: clearance={clearanceInMm}mm");
+                        DebugLogger.Info($"[GetClearanceFromXmlConditions] Round ducts: clearance={clearanceInMm}mm");
                     }
                     else
                     {
                         clearanceInMm = isInsulated ? _conditions.ClearanceSettings.RectangularInsulated : _conditions.ClearanceSettings.RectangularNormal;
-                        DebugLogger.Info($"[GetClearanceFromConditions] Rectangular ducts: clearance={clearanceInMm}mm");
+                        DebugLogger.Info($"[GetClearanceFromXmlConditions] Rectangular ducts: clearance={clearanceInMm}mm");
                     }
+                }
+                else if (string.Equals(category, "Cable Trays", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Cable Trays: Use top clearance as default
+                    clearanceInMm = _conditions.ClearanceSettings.CableTrayTop;
+                    DebugLogger.Info($"[GetClearanceFromXmlConditions] Cable Trays: clearance={clearanceInMm}mm");
                 }
 
                 // Convert from mm to feet (Revit internal units)
                 double clearanceInFeet = UnitUtils.ConvertToInternalUnits(clearanceInMm, UnitTypeId.Millimeters);
                 
-                DebugLogger.Info($"[GetClearanceFromConditions] {category}: {clearanceInMm}mm → {clearanceInFeet:F6}ft");
+                DebugLogger.Info($"[GetClearanceFromXmlConditions] {category}: {clearanceInMm}mm → {clearanceInFeet:F6}ft");
                 return clearanceInFeet;
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[GetClearanceFromConditions] Error getting clearance for {category}: {ex.Message}");
-                return UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters); // Safe fallback
+                DebugLogger.Error($"[GetClearanceFromXmlConditions] Error: {ex.Message}");
+                return UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters);
             }
         }
 
         /// <summary>
-        /// Determine if a pipe is insulated (simplified logic)
+        /// Determine if a pipe is insulated (use actual insulation data from strategy analysis)
         /// </summary>
         private bool IsPipeInsulated(MepElementSize mepSize)
         {
-            // Simplified logic - in real implementation, this would check pipe parameters
-            // For now, assume larger pipes are more likely to be insulated
-            double diameterMm = UnitUtils.ConvertFromInternalUnits(mepSize.Diameter, UnitTypeId.Millimeters);
+            // ✅ FIXED: Use actual insulation data from strategy analysis instead of guessing
+            // The MepElementSize object already contains the correct insulation status
+            // from the PipePlacementStrategy.GetMepElementSize method
             
-            // Assume pipes > 200mm are insulated
-            return diameterMm > 200.0;
+            // 🔥 CRITICAL DEBUG: Log the actual insulation data being used
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\clearance_calculation.log", 
+                $"[{DateTime.Now:HH:mm:ss}] IsPipeInsulated: Using actual data - IsInsulated={mepSize.IsInsulated}, InsulationThickness={mepSize.InsulationThickness:F6}ft\n");
+            
+            return mepSize.IsInsulated;
         }
 
         /// <summary>
-        /// Determine if a duct is insulated (simplified logic)
+        /// Determine if a duct is insulated (use actual insulation data from strategy analysis)
         /// </summary>
         private bool IsDuctInsulated(MepElementSize mepSize)
         {
-            // Simplified logic - in real implementation, this would check duct parameters
-            // For now, assume larger ducts are more likely to be insulated
-            double maxDimension = Math.Max(mepSize.Width, mepSize.Height);
-            double maxDimensionMm = UnitUtils.ConvertFromInternalUnits(maxDimension, UnitTypeId.Millimeters);
+            // ✅ FIXED: Use actual insulation data from strategy analysis instead of guessing
+            // The MepElementSize object already contains the correct insulation status
+            // from the DuctPlacementStrategy.GetMepElementSize method
             
-            // Assume ducts > 500mm are insulated
-            return maxDimensionMm > 500.0;
+            // 🔥 CRITICAL DEBUG: Log the actual insulation data being used
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\clearance_calculation.log", 
+                $"[{DateTime.Now:HH:mm:ss}] IsDuctInsulated: Using actual data - IsInsulated={mepSize.IsInsulated}, InsulationThickness={mepSize.InsulationThickness:F6}ft\n");
+            
+            return mepSize.IsInsulated;
         }
 
         // ============================================================================
@@ -1397,8 +1556,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (wallDirection == null || wallDirection == XYZ.Zero || string.IsNullOrEmpty(wallDirectionType))
                         {
                             // FALLBACK: Calculate wall direction from structural normal
-                            if (structuralNormal != null && (structuralNormal.X != 0 || structuralNormal.Y != 0))
-                            {
+                        if (structuralNormal != null && (structuralNormal.X != 0 || structuralNormal.Y != 0))
+                        {
                                 // Wall direction is perpendicular to wall normal
                                 wallDirection = new XYZ(-structuralNormal.Y, structuralNormal.X, 0).Normalize();
                                 
@@ -1446,12 +1605,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         DebugLogger.Info($"[UniversalSleevePlacer] WALL/FRAMING: Using wall direction type: {wallType}");
                         
                         // Log to placement_debug.log for immediate visibility
-                        try
-                        {
-                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                            try
+                            {
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
                                 $"[WALL-DIR-FINAL] Sleeve {sleeveInstance.Id.IntegerValue}: WallDirection=({wallDirection?.X:F3},{wallDirection?.Y:F3},{wallDirection?.Z:F3}), WallType={wallType} ✓\n");
-                        }
-                        catch { }
+                            }
+                            catch { }
                         
                         // Robust wall orientation logic based on wall direction type
                         if (wallType == "X-WALL")

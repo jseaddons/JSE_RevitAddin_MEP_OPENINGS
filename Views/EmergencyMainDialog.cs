@@ -341,6 +341,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 }
                 
                 _sleevePlacementHandler = new SleevePlacementExternalEvent();
+                
+                // 🔥 CRITICAL DEBUG: Verify DLL is being loaded with current build
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\dll_load_timestamp.log", 
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] 🔥 DLL LOADED - SleevePlacementExternalEvent constructed\n");
+                
                 _sleevePlacementHandler.PlacementCompleted += () =>
                 {
                     try
@@ -468,6 +473,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Services.FilterUiStateProvider.GetSelectedHostFiles = () =>
                 {
                     return GetSelectedHostFiles();
+                };
+
+                Services.FilterUiStateProvider.GetClearanceSettings = (category) =>
+                {
+                    return GetClearanceSettings(category);
                 };
 
                 Services.FilterUiStateProvider.ApplyFilterToUi = (filter) =>
@@ -4263,7 +4273,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     
                     // 🛡️ ARCHITECTURE FIX: Save CONDITIONS XML using combined key (FilterName_Category)
                     // This allows different clearance/opening types per category within the same filter
-                    string combinedKey = $"{filter.Name}_{filter.Category}";
+                    // ✅ STANDARDIZED: Use normalized category names to match clash zone file naming
+                    string normalizedCategory = NormalizeCategoryName(filter.Category.ToString());
+                    string combinedKey = $"{filter.Name}_{normalizedCategory}";
                     bool saved = conditionsService.SaveConditions(conditions, combinedKey);
                     if (saved)
                     {
@@ -4415,6 +4427,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         }
 
         /// <summary>
+        /// ✅ STANDARDIZED: Normalize category names to match clash zone file naming
+        /// Converts "Duct Accessories" → "duct_accessories", "Ducts" → "ducts", etc.
+        /// </summary>
+        private string NormalizeCategoryName(string categoryName)
+        {
+            if (string.IsNullOrEmpty(categoryName))
+                return "unknown";
+                
+            return categoryName
+                .Replace(" ", "_")           // "Duct Accessories" → "Duct_Accessories"
+                .ToLowerInvariant();          // "Duct_Accessories" → "duct_accessories"
+        }
+
+        /// <summary>
         /// Read mark prefix settings from UI textboxes
         /// ⚠️ UI STATE METHOD - Reads Project Prefix and Discipline Prefix from UI for mark parameter command
         /// </summary>
@@ -4510,8 +4536,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 }
 
                 // ✅ CORRECTED: Use SetContext instead of SetSelectedCategories
-                // Pass both categories AND mark prefixes to external event handler
-                _sleevePlacementHandler.SetContext(selectedCategories, markPrefixes);
+                // Pass categories, mark prefixes, AND filter name to external event handler
+                var selectedFilterNames = GetSelectedFilterItems();
+                var selectedFilterName = selectedFilterNames.Count > 0 ? selectedFilterNames[0] : "Default";
+                _sleevePlacementHandler.SetContext(selectedCategories, markPrefixes, selectedFilterName);
 
                 // Hide UI while processing to show prompts clearly
                 this.Hide();

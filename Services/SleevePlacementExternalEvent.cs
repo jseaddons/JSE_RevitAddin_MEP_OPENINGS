@@ -12,6 +12,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
     /// <summary>
     /// External Event Handler - JUST a transaction context bridge
+    /// 
+    /// ⚠️ ARCHITECTURE COMPLIANCE REQUIRED ⚠️
+    /// This class MUST use OpeningCommandOrchestrator for proper architecture compliance.
+    /// 
+    /// INTENDED ARCHITECTURE FLOW:
+    /// 1. SleevePlacementExternalEvent (External Event Handler) - provides Revit API context
+    /// 2. OpeningCommandOrchestrator (THE ACTUAL ORCHESTRATOR) - handles command creation, execution, memory management
+    /// 3. UniversalSleevePlacementCommand (per category) - individual sleeve placement
+    /// 4. UniversalSleevePlacerService - actual sleeve placement logic
+    /// 
+    /// ❌ DO NOT BYPASS THE ORCHESTRATOR ❌
+    /// ❌ DO NOT CREATE COMMANDS DIRECTLY ❌
+    /// ✅ ALWAYS USE OpeningCommandOrchestrator.ExecuteMultipleFilters() ✅
+    /// 
     /// Only provides proper Revit API context and tells orchestrator which categories to process
     /// Orchestrator routes to individual commands, commands get their own data
     /// </summary>
@@ -21,34 +35,66 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private List<string> _selectedCategories;
         private Document _document;
         private UIDocument _uiDocument;
-        private MarkPrefixSettings _markPrefixes; // ✅ NEW: Instance variable for mark prefixes
+        private MarkPrefixSettings _markPrefixes;
+        private string _selectedFilterName; // ✅ NEW: Store the selected filter name // ✅ NEW: Instance variable for mark prefixes
 
         /// <summary>
         /// ✅ NEW: Set context for sleeve placement operation
-        /// Pass both categories AND mark prefixes from UI
+        /// Pass categories, mark prefixes, AND filter name from UI
         /// </summary>
-        public void SetContext(List<string> categories, MarkPrefixSettings markPrefixes)
+        public void SetContext(List<string> categories, MarkPrefixSettings markPrefixes, string filterName)
         {
+            DebugLogger.Info("[SleevePlacementExternalEvent] ===== SETCONTEXT METHOD CALLED =====");
+            DebugLogger.Info($"[SleevePlacementExternalEvent] Categories: {string.Join(", ", categories)}");
+            DebugLogger.Info($"[SleevePlacementExternalEvent] MarkPrefixes: {markPrefixes?.ProjectPrefix ?? "NULL"}");
+            DebugLogger.Info($"[SleevePlacementExternalEvent] FilterName: {filterName ?? "NULL"}");
+            
             _selectedCategories = categories ?? throw new ArgumentNullException(nameof(categories));
             _markPrefixes = markPrefixes ?? throw new ArgumentNullException(nameof(markPrefixes));
-            DebugLogger.Info($"[SleevePlacementExternalEvent] SetContext called - Categories: {string.Join(", ", categories)}");
+            _selectedFilterName = filterName ?? throw new ArgumentNullException(nameof(filterName));
+            DebugLogger.Info($"[SleevePlacementExternalEvent] SetContext called - Categories: {string.Join(", ", categories)}, Filter: {filterName}");
         }
 
         public void Execute(UIApplication app)
         {
             try
             {
+                // 🔥 CRITICAL DEBUG: Force direct file logging to bypass any logger issues
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: {DateTime.Now:yyyy-MM-dd HH:mm:ss} 🔥🔥🔥\n");
+                
+                // 🔥 CRITICAL DEBUG: Force direct file logging to trace execution
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] STEP 1: Execute method started\n");
+                
+                // ✅ DEBUG: Add immediate logging to confirm Execute is called
+                DebugLogger.Info("[SleevePlacementExternalEvent] ===== EXECUTE METHOD CALLED =====");
+                DebugLogger.Info($"[SleevePlacementExternalEvent] _selectedCategories is null: {_selectedCategories == null}");
+                DebugLogger.Info($"[SleevePlacementExternalEvent] _markPrefixes is null: {_markPrefixes == null}");
+                
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] STEP 2: _selectedCategories is null: {_selectedCategories == null}\n");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] STEP 3: _markPrefixes is null: {_markPrefixes == null}\n");
+                
                 // ✅ CORRECTED: Defensive null check with fallback
                 if (_markPrefixes == null)
                 {
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] STEP 4: Mark prefixes null, using defaults\n");
                     DebugLogger.Warning("[SleevePlacementExternalEvent] Mark prefixes not set, using defaults");
                     _markPrefixes = new MarkPrefixSettings();
                 }
                 
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] STEP 5: Starting sleeve placement process\n");
                 DebugLogger.Info("[SleevePlacementExternalEvent] Starting sleeve placement process");
                 
                 _uiDocument = app.ActiveUIDocument;
                 _document = _uiDocument.Document;
+                
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] STEP 6: Got UI document and document\n");
                 
                 // Log document details for debugging
                 DebugLogger.Info($"[SleevePlacementExternalEvent] Active document - Path: {_document.PathName}");
@@ -56,10 +102,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Info($"[SleevePlacementExternalEvent] Active document - IsLinked: {_document.IsLinked}");
                 DebugLogger.Info($"[SleevePlacementExternalEvent] Active document - IsWorkshared: {_document.IsWorkshared}");
                 
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] STEP 7: Document: {_document.Title}, IsLinked: {_document.IsLinked}\n");
+                
                 // Ensure we're working with the host document, not a linked file
                 // Sleeves must be placed in the host document where structural elements are located
                 if (_document.IsLinked)
                 {
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] STEP 8: ❌ DOCUMENT IS LINKED - RETURNING EARLY\n");
                     var msg = "Cannot place sleeves: Currently active document is a linked file.\n\n" +
                              "Please activate the host document (main project file) and try again.\n" +
                              "Sleeves must be placed in the host document, not in linked files.";
@@ -68,114 +119,74 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return;
                 }
 
-                // ⚠️ CRITICAL: Load cluster configuration from filter settings BEFORE executing commands
-                LoadClusterConfigurationFromFilters();
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] STEP 9: ✅ Document is not linked, continuing\n");
+
+                // ✅ CRITICAL FIX: Check for null _selectedCategories
+                if (_selectedCategories == null)
+                {
+                    DebugLogger.Error("[SleevePlacementExternalEvent] _selectedCategories is null - cannot process");
+                    TaskDialog.Show("Error", "No categories selected for processing");
+                    return;
+                }
 
                 // Log immediate feedback (non-blocking)
                 DebugLogger.Info($"[SleevePlacementExternalEvent] Processing {_selectedCategories.Count} categories: {string.Join(", ", _selectedCategories)}");
 
-                // ✅ SEQUENTIAL PROCESSING: Process categories in priority order (Duct Accessories first, then Ducts)
-                var sortedCategories = _selectedCategories
-                    .OrderBy(cat => GetCategoryPriority(cat))
-                    .ThenBy(cat => cat)
-                    .ToList();
-                
-                DebugLogger.Info($"[SleevePlacementExternalEvent] Processing categories in priority order: {string.Join(", ", sortedCategories)}");
-                
-                // Process each category sequentially: placement → clustering → marking → persistence
-                foreach (var category in sortedCategories)
+                // ✅ DEBUG: Add try-catch around LoadClusterConfigurationFromFilters
+                try
                 {
-                    var (clashZones, xmlFilePath) = GetClashZonesForCategory(category);
-                    if (clashZones.Count > 0)
-                    {
-                        DebugLogger.Info($"[SleevePlacementExternalEvent] === PROCESSING CATEGORY: {category} ({clashZones.Count} clash zones) ===");
-                        
-                        // Step 1: Place individual sleeves for this category
-                        ICommand placementCommand = CreateCommandForCategory(category, clashZones);
-                        
-                        if (placementCommand != null)
-                        {
-                            DebugLogger.Info($"[SleevePlacementExternalEvent] Step 1: Placing individual sleeves for {category}");
-                            placementCommand.Execute(app);
-                            
-                            // Step 2: Cluster this category's sleeves
-                            DebugLogger.Info($"[SleevePlacementExternalEvent] Step 2: Clustering {category} sleeves...");
-                            var clusterCommand = new Commands.UniversalClusterCommand(category, xmlFilePath);
-                            clusterCommand.Execute(app);
-                            
-                            // Step 3: Apply MEPMARK to clusters using stored prefixes
-                            // Ensure Revit finalizes new elements before marking
-                            try
-                            {
-                                _uiDocument?.Document?.Regenerate();
-                                DebugLogger.Info($"[SleevePlacementExternalEvent] Document regenerated after placement/clustering before marking");
-                            }
-                            catch (Exception regenEx)
-                            {
-                                DebugLogger.Warning($"[SleevePlacementExternalEvent] Regenerate before marking failed: {regenEx.Message}");
-                            }
-                            DebugLogger.Info($"[SleevePlacementExternalEvent] Step 3: Applying MEPMARK to {category} clusters...");
-                            
-                            // ✅ CORRECTED: Use instance variable (safe after null check)
-                            string projectPrefix = _markPrefixes.ProjectPrefix;
-                            string disciplinePrefix = _markPrefixes.GetDisciplinePrefix(category);
-                            bool remarkAll = _markPrefixes.RemarkAll;
-                            
-                            var markCommand = new Commands.MarkParameterCommand(category, projectPrefix, disciplinePrefix, remarkAll);
-                            markCommand.Execute(app);
-                            
-                            // Step 4: Persist updated clash zones for this category
-                            try
-                            {
-                                if (!string.IsNullOrWhiteSpace(xmlFilePath))
-                                {
-                                    DebugLogger.Info($"[SleevePlacementExternalEvent] Step 4: Persisting updated clash zones for {category} to: {xmlFilePath}");
-                                    var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
-                                    OpeningFilter filter;
-                                    using (var reader = new StreamReader(xmlFilePath))
-                                    {
-                                        filter = (OpeningFilter)serializer.Deserialize(reader);
-                                    }
-                                    if (filter?.ClashZoneStorage == null)
-                                    {
-                                        filter = filter ?? new OpeningFilter();
-                                        filter.ClashZoneStorage = new ClashZoneStorage();
-                                    }
-                                    filter.ClashZoneStorage.ClashZones = clashZones;
-                                    filter.ClashZoneStorage.LastUpdated = DateTime.Now;
-                                    // Save back
-                                    using (var writer = new StreamWriter(xmlFilePath))
-                                    {
-                                        serializer.Serialize(writer, filter);
-                                    }
-                                    DebugLogger.Info($"[SleevePlacementExternalEvent] ✓ Saved updated zones ({clashZones.Count}) for {category} to {xmlFilePath}");
-                                }
-                                else
-                                {
-                                    DebugLogger.Warning($"[SleevePlacementExternalEvent] No xmlFilePath found for category '{category}', cannot persist updated SleeveInstanceId");
-                                }
-                            }
-                            catch (Exception saveEx)
-                            {
-                                DebugLogger.Error($"[SleevePlacementExternalEvent] Error saving updated zones for '{category}': {saveEx.Message}");
-                            }
-                            
-                            DebugLogger.Info($"[SleevePlacementExternalEvent] ✓ COMPLETED ALL STEPS FOR CATEGORY: {category}");
-                        }
-                        else
-                        {
-                            DebugLogger.Warning($"[SleevePlacementExternalEvent] No command available for category: {category}");
-                        }
-                    }
-                    else
-                    {
-                        DebugLogger.Warning($"[SleevePlacementExternalEvent] No clash zones found for category: {category}");
-                    }
+                    DebugLogger.Info("[SleevePlacementExternalEvent] About to call LoadClusterConfigurationFromFilters...");
+                    LoadClusterConfigurationFromFilters();
+                    DebugLogger.Info("[SleevePlacementExternalEvent] LoadClusterConfigurationFromFilters completed successfully");
                 }
+                catch (Exception loadEx)
+                {
+                    DebugLogger.Error($"[SleevePlacementExternalEvent] Error in LoadClusterConfigurationFromFilters: {loadEx.Message}");
+                    DebugLogger.Error($"[SleevePlacementExternalEvent] LoadClusterConfigurationFromFilters stack trace: {loadEx.StackTrace}");
+                    throw; // Re-throw to be caught by outer try-catch
+                }
+
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] STEP 10: About to create orchestrator\n");
                 
-                DebugLogger.Info($"[SleevePlacementExternalEvent] ✓ COMPLETED ALL CATEGORIES IN PRIORITY ORDER");
+                // ✅ ARCHITECTURE COMPLIANCE: Use OpeningCommandOrchestrator for proper command execution
+                DebugLogger.Info("[SleevePlacementExternalEvent] Creating OpeningCommandOrchestrator for proper architecture compliance");
                 
-                DebugLogger.Info("[SleevePlacementExternalEvent] All categories processed (placement + clustering + MEPMARK)");
+                var orchestrator = new OpeningCommandOrchestrator(_document, _uiDocument);
+                
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] STEP 11: Orchestrator created successfully\n");
+                
+                // ✅ Set UI clearance settings in orchestrator
+                var clearanceSettings = GetClearanceSettingsFromUI();
+                orchestrator.SetUIClearances(clearanceSettings);
+                DebugLogger.Info($"[SleevePlacementExternalEvent] Set {clearanceSettings.Count} UI clearance settings in orchestrator");
+                
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] STEP 12: Set UI clearances in orchestrator\n");
+                
+                // ✅ Convert categories to filters for orchestrator
+                var filters = ConvertCategoriesToFilters(_selectedCategories);
+                DebugLogger.Info($"[SleevePlacementExternalEvent] Converted {_selectedCategories.Count} categories to {filters.Count} filters");
+                
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] STEP 13: Converted {_selectedCategories.Count} categories to {filters.Count} filters\n");
+                
+                // ✅ Execute through orchestrator (proper architecture)
+                DebugLogger.Info("[SleevePlacementExternalEvent] Executing through OpeningCommandOrchestrator...");
+                
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] STEP 14: About to execute orchestrator\n");
+                
+                orchestrator.ExecuteMultipleFilters(filters, showProgress: true);
+                
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] STEP 15: ✅ Orchestrator execution completed\n");
+                
+                DebugLogger.Info("[SleevePlacementExternalEvent] Orchestrator execution completed");
+                
+                DebugLogger.Info("[SleevePlacementExternalEvent] ✓ COMPLETED THROUGH PROPER ORCHESTRATOR ARCHITECTURE");
             }
             catch (Exception ex)
             {
@@ -186,6 +197,89 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             finally
             {
                 try { PlacementCompleted?.Invoke(); } catch { }
+            }
+        }
+
+        /// <summary>
+        /// ✅ NEW: Get clearance settings from UI for orchestrator
+        /// </summary>
+        private Dictionary<string, double> GetClearanceSettingsFromUI()
+        {
+            try
+            {
+                var clearanceSettings = new Dictionary<string, double>();
+                
+                // ✅ CRITICAL FIX: Check for null _selectedCategories
+                if (_selectedCategories == null)
+                {
+                    DebugLogger.Error("[SleevePlacementExternalEvent] _selectedCategories is null in GetClearanceSettingsFromUI");
+                    return clearanceSettings;
+                }
+                
+                // Get clearance settings from FilterUiStateProvider
+                foreach (var category in _selectedCategories)
+                {
+                    var categorySettings = FilterUiStateProvider.GetClearanceSettings?.Invoke(category) ?? new Dictionary<string, double>();
+                    foreach (var kvp in categorySettings)
+                    {
+                        clearanceSettings[kvp.Key] = kvp.Value;
+                    }
+                }
+                
+                DebugLogger.Info($"[SleevePlacementExternalEvent] Collected {clearanceSettings.Count} clearance settings from UI");
+                return clearanceSettings;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[SleevePlacementExternalEvent] Error getting clearance settings: {ex.Message}");
+                return new Dictionary<string, double>();
+            }
+        }
+        
+        /// <summary>
+        /// ✅ NEW: Convert categories to filters for orchestrator
+        /// </summary>
+        private List<OpeningFilter> ConvertCategoriesToFilters(List<string> categories)
+        {
+            try
+            {
+                var filters = new List<OpeningFilter>();
+                
+                // ✅ CRITICAL FIX: Check for null categories parameter
+                if (categories == null)
+                {
+                    DebugLogger.Error("[SleevePlacementExternalEvent] categories parameter is null in ConvertCategoriesToFilters");
+                    return filters;
+                }
+                
+                foreach (var categoryName in categories)
+                {
+                    var (clashZones, xmlFilePath) = GetClashZonesForCategory(categoryName);
+                    if (clashZones.Count > 0)
+                    {
+                        // Convert string category to MepCategory enum
+                        var mepCategory = MepCategoryConstants.Parse(categoryName);
+                        
+                        var filter = new OpeningFilter
+                        {
+                            Name = _selectedFilterName, // ✅ FIXED: Use actual filter name from UI
+                            Category = mepCategory,
+                            SelectedMepCategoryName = categoryName,
+                            IsEnabled = true,
+                            CreatedDate = DateTime.Now,
+                            LastModified = DateTime.Now
+                        };
+                        filters.Add(filter);
+                        DebugLogger.Info($"[SleevePlacementExternalEvent] Created filter '{filter.Name}' for category '{categoryName}' with {clashZones.Count} clash zones");
+                    }
+                }
+                
+                return filters;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[SleevePlacementExternalEvent] Error converting categories to filters: {ex.Message}");
+                return new List<OpeningFilter>();
             }
         }
 
@@ -283,6 +377,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             try
             {
+                // ✅ CRITICAL FIX: Check for null category parameter
+                if (string.IsNullOrEmpty(category))
+                {
+                    DebugLogger.Error("[SleevePlacementExternalEvent] category parameter is null or empty in GetClashZonesForCategory");
+                    return (clashZones, xmlFilePath);
+                }
+                
                 var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
                 
                 // Search for files matching pattern: *_{category}.xml
@@ -327,6 +428,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         public string GetName()
         {
+            DebugLogger.Info("[SleevePlacementExternalEvent] GetName() called - returning 'Sleeve Placement Handler'");
             return "Sleeve Placement Handler";
         }
 
@@ -365,12 +467,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Info($"[SleevePlacementExternalEvent] Category '{category}' normalized to '{normalizedCategory}'");
                 DebugLogger.Info($"[SleevePlacementExternalEvent] Creating UniversalSleevePlacementCommand for {normalizedCategory} with {clashZones.Count} clash zones");
                 
-                return new UniversalSleevePlacementCommand(_document, clashZones, normalizedCategory);
+                // ✅ NEW: Get clearance settings from UI for this category
+                var clearanceSettings = GetClearanceSettingsForCategory(normalizedCategory);
+                
+                return new UniversalSleevePlacementCommand(_document, clashZones, normalizedCategory, clearanceSettings);
             }
             catch (Exception ex)
             {
                 DebugLogger.Error($"[SleevePlacementExternalEvent] Error creating command for {category}: {ex.Message}");
                 return null;
+            }
+        }
+        
+        /// <summary>
+        /// Get clearance settings from UI for a specific category
+        /// </summary>
+        private Dictionary<string, double> GetClearanceSettingsForCategory(string category)
+        {
+            try
+            {
+                // Use FilterUiStateProvider to get clearance settings from UI
+                var clearanceSettings = FilterUiStateProvider.GetClearanceSettings?.Invoke(category) ?? new Dictionary<string, double>();
+                
+                DebugLogger.Info($"[SleevePlacementExternalEvent] Retrieved {clearanceSettings.Count} clearance settings for category '{category}'");
+                foreach (var kvp in clearanceSettings)
+                {
+                    DebugLogger.Info($"[SleevePlacementExternalEvent] Clearance: {kvp.Key} = {kvp.Value}mm");
+                }
+                
+                return clearanceSettings;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[SleevePlacementExternalEvent] Error getting clearance settings for {category}: {ex.Message}");
+                return new Dictionary<string, double>();
             }
         }
 
