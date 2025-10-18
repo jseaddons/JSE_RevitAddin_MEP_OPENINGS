@@ -1034,7 +1034,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 foreach (var clashZone in clashZonesToCheck)
                 {
-                    if (clashZone.IsResolved)
+                    // ✅ FIX: Check BOTH individual and cluster sleeve flags
+                    bool needsIndividualCheck = clashZone.IsResolved;
+                    bool needsClusterCheck = clashZone.IsClusterResolved;
+                    
+                    if (needsIndividualCheck || needsClusterCheck)
                     {
                         // ✅ METHOD 3: Check for damper presence before resetting duct clash zones
                         if (string.Equals(clashZone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase))
@@ -1047,7 +1051,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             {
                                 if (CheckForDamperAtDuctEnd(document, mepElement, structuralElement, clashZone.IntersectionPoint))
                                 {
-                                    _log($"[ResetResolvedFlag] [METHOD3] SKIP: Duct clash zone {clashZone.Id} - Damper found at duct end, keeping IsResolved=true");
+                                    _log($"[ResetResolvedFlag] [METHOD3] SKIP: Duct clash zone {clashZone.Id} - Damper found at duct end, keeping flags=true");
                                     continue; // Don't reset this clash zone - damper exists
                                 }
                             }
@@ -1060,28 +1064,73 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             continue;
                         }
                         
-                        // Check if sleeve actually exists at the placement point
-                        bool sleeveExists = CheckForExistingSleeve(clashZone.SleevePlacementPoint, document);
-                        
-                        _log($"[ResetResolvedFlag] Checking clash zone {clashZone.Id} ({clashZone.MepElementCategory}): sleeveExists={sleeveExists}, IsResolved={clashZone.IsResolved}");
-                        
-                        if (!sleeveExists)
+                        // Check if individual sleeve exists (if marked as resolved)
+                        bool individualSleeveExists = false;
+                        if (needsIndividualCheck)
                         {
-                            clashZone.IsResolved = false;
-                            clashZone.LastUpdated = DateTime.Now;
-                            resetCount++;
-                            _log($"[ResetResolvedFlag] ✓ Reset IsResolved to FALSE for clash zone {clashZone.Id} ({clashZone.MepElementCategory}) - sleeve no longer exists");
+                            // ✅ CRITICAL FIX: Only reset individual flag if NOT cluster-resolved
+                            // If cluster-resolved, keep individual flag as true even if individual sleeve is missing
+                            if (needsClusterCheck)
+                            {
+                                _log($"[ResetResolvedFlag] SKIP individual sleeve check for clash zone {clashZone.Id} ({clashZone.MepElementCategory}) - cluster-resolved, keeping IsResolved=true");
+                            }
+                            else
+                            {
+                                individualSleeveExists = CheckForExistingSleeve(clashZone.SleevePlacementPoint, document);
+                                _log($"[ResetResolvedFlag] Checking individual sleeve for clash zone {clashZone.Id} ({clashZone.MepElementCategory}): exists={individualSleeveExists}, IsResolved={clashZone.IsResolved}");
+                                
+                                if (!individualSleeveExists)
+                                {
+                                    clashZone.IsResolved = false;
+                                    clashZone.SleeveInstanceId = -1;
+                                    clashZone.SleeveFamilyName = string.Empty;
+                                    clashZone.LastUpdated = DateTime.Now;
+                                    resetCount++;
+                                    _log($"[ResetResolvedFlag] ✓ Reset IsResolved to FALSE for clash zone {clashZone.Id} ({clashZone.MepElementCategory}) - individual sleeve no longer exists");
+                                }
+                                else
+                                {
+                                    _log($"[ResetResolvedFlag] Individual sleeve still exists at {clashZone.SleevePlacementPoint} - keeping IsResolved=true");
+                                }
+                            }
                         }
-                        else
+                        
+                        // Check if cluster sleeve exists (if marked as cluster resolved)
+                        bool clusterSleeveExists = false;
+                        if (needsClusterCheck && clashZone.ClusterSleeveInstanceId > 0)
                         {
-                            _log($"[ResetResolvedFlag] Sleeve still exists at {clashZone.SleevePlacementPoint} - keeping IsResolved=true");
+                            var clusterSleeveId = new ElementId(clashZone.ClusterSleeveInstanceId);
+                            var clusterSleeve = document.GetElement(clusterSleeveId);
+                            clusterSleeveExists = clusterSleeve != null;
+                            
+                            _log($"[ResetResolvedFlag] Checking cluster sleeve for clash zone {clashZone.Id} ({clashZone.MepElementCategory}): exists={clusterSleeveExists}, IsClusterResolved={clashZone.IsClusterResolved}, ClusterSleeveId={clashZone.ClusterSleeveInstanceId}");
+                            
+                            if (!clusterSleeveExists)
+                            {
+                                clashZone.IsClusterResolved = false;
+                                clashZone.ClusterSleeveInstanceId = -1;
+                                
+                                // ✅ CRITICAL: Also reset individual sleeve flag because individual sleeve was deleted during clustering
+                                // When cluster sleeve is deleted, both individual and cluster sleeves are gone
+                                clashZone.IsResolved = false;
+                                clashZone.SleeveInstanceId = -1;
+                                clashZone.SleeveFamilyName = string.Empty;
+                                
+                                clashZone.LastUpdated = DateTime.Now;
+                                resetCount++;
+                                _log($"[ResetResolvedFlag] ✓ Reset BOTH flags to FALSE for clash zone {clashZone.Id} ({clashZone.MepElementCategory}) - cluster sleeve deleted, individual sleeve was also deleted during clustering");
+                            }
+                            else
+                            {
+                                _log($"[ResetResolvedFlag] Cluster sleeve still exists (ID: {clashZone.ClusterSleeveInstanceId}) - keeping IsClusterResolved=true");
+                            }
                         }
                     }
                 }
                 
                 if (resetCount > 0)
                 {
-                    _log($"[ResetResolvedFlag] Reset IsResolved flag for {resetCount} clash zones where sleeves were deleted (from selected categories only)");
+                    _log($"[ResetResolvedFlag] Reset resolved flags (individual and/or cluster) for {resetCount} clash zones where sleeves were deleted (from selected categories only)");
                 }
             }
             catch (Exception ex)
@@ -2842,6 +2891,77 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
         
+        /// <summary>
+        /// Check if there's an existing cluster sleeve at the given placement point
+        /// </summary>
+        private bool CheckForExistingClusterSleeve(XYZ placementPoint, Document document, double tolerance = 0.05) // 50mm tolerance
+        {
+            try
+            {
+                // Look for existing cluster sleeves near the placement point
+                // Cluster sleeves are typically rectangular opening families
+                
+                var openingFamilies = new FilteredElementCollector(document)
+                    .OfClass(typeof(FamilyInstance))
+                    .Cast<FamilyInstance>()
+                    .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                    .ToList();
+                
+                _log($"[CheckForExistingClusterSleeve] Checking for cluster sleeves at placement point {placementPoint}");
+                
+                // Check if any opening exists within tolerance of the placement point
+                foreach (var opening in openingFamilies)
+                {
+                    if (opening.Location is LocationPoint locationPoint)
+                    {
+                        double distance = locationPoint.Point.DistanceTo(placementPoint);
+                        if (distance <= tolerance)
+                        {
+                            // Check if this is likely a cluster sleeve (rectangular, larger size)
+                            var familyName = opening.Symbol?.Family?.Name ?? "";
+                            var isRectangular = familyName.Contains("Rectangular") || familyName.Contains("Rect");
+                            
+                            // Cluster sleeves are typically larger than individual sleeves
+                            var widthParam = opening.GetParameter("Width");
+                            var heightParam = opening.GetParameter("Height");
+                            var diameterParam = opening.GetParameter("Diameter");
+                            bool isLargeSleeve = false;
+                            
+                            if (widthParam != null && widthParam.HasValue)
+                            {
+                                var value = UnitUtils.ConvertFromInternalUnits(widthParam.AsDouble(), UnitTypeId.Millimeters);
+                                if (value > 300) isLargeSleeve = true;
+                            }
+                            else if (heightParam != null && heightParam.HasValue)
+                            {
+                                var value = UnitUtils.ConvertFromInternalUnits(heightParam.AsDouble(), UnitTypeId.Millimeters);
+                                if (value > 300) isLargeSleeve = true;
+                            }
+                            else if (diameterParam != null && diameterParam.HasValue)
+                            {
+                                var value = UnitUtils.ConvertFromInternalUnits(diameterParam.AsDouble(), UnitTypeId.Millimeters);
+                                if (value > 300) isLargeSleeve = true;
+                            }
+                            
+                            if (isRectangular || isLargeSleeve)
+                            {
+                                _log($"[CheckForExistingClusterSleeve] Found existing cluster sleeve at distance {distance:F3}ft: {opening.Id} ({familyName})");
+                                return true;
+                            }
+                        }
+                    }
+                }
+                
+                _log($"[CheckForExistingClusterSleeve] No existing cluster sleeve found at placement point {placementPoint}");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _log($"[CheckForExistingClusterSleeve] Error checking for existing cluster sleeve: {ex.Message}");
+                return false;
+            }
+        }
+        
         private void UpdateExistingClashZone(ClashZone existingZone, Element mepElement, Element structuralElement, XYZ intersectionPoint, BoundingBoxXYZ boundingBox, Document document)
         {
             existingZone.IntersectionPoint = intersectionPoint;
@@ -2850,6 +2970,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             existingZone.RequiredClearance = CalculateRequiredClearance(existingZone.MepElementSize);
             existingZone.MepElementGeometryHash = CalculateElementGeometryHash(mepElement);
             existingZone.StructuralElementGeometryHash = CalculateElementGeometryHash(structuralElement);
+            
+            // ✅ CRITICAL FIX: Check for existing individual sleeve at intersection point
+            // This ensures IsResolved flag is set correctly for existing clash zones
+            var hasExistingSleeve = CheckForExistingSleeve(intersectionPoint, document);
+            if (hasExistingSleeve && !existingZone.IsResolved)
+            {
+                existingZone.IsResolved = true;
+                existingZone.SleeveInstanceId = -1; // Will be populated during placement if needed
+                _log($"[UpdateExistingClashZone] Found existing individual sleeve at intersection point - set IsResolved=true for clash zone {existingZone.Id}");
+            }
+            
+            // ✅ CRITICAL FIX: Check for existing cluster sleeve at intersection point
+            // This ensures IsClusterResolved flag is set correctly for existing clash zones
+            var hasExistingClusterSleeve = CheckForExistingClusterSleeve(intersectionPoint, document);
+            if (hasExistingClusterSleeve && !existingZone.IsClusterResolved)
+            {
+                existingZone.IsClusterResolved = true;
+                existingZone.ClusterSleeveInstanceId = -1; // Will be populated during clustering if needed
+                _log($"[UpdateExistingClashZone] Found existing cluster sleeve at intersection point - set IsClusterResolved=true for clash zone {existingZone.Id}");
+            }
+            
             existingZone.LastUpdated = DateTime.Now;
         }
         

@@ -2937,3 +2937,100 @@ public List<ClashZone> DetectNewClashZones(Document document, List<(Element, Ele
 8. ✅ **Comprehensive Coverage**: Handles all edge cases and scenarios
 
 This comprehensive solution ensures that duct-damper combinations are handled correctly in all possible scenarios, providing a robust and foolproof system for sleeve placement optimization.
+
+---
+
+## 🎯 MAJOR MILESTONE: Complete Sleeve Placement with UI Integration (Dec 2024)
+
+### ✅ COMPLETED FEATURES
+- **Global Configuration Integration**: Pipe opening type rules (RoundOpeningsBecomeRectangularIfDiameterGreaterThan)
+- **ConfigurationResolutionService**: Resolves conflicts between global rules and UI preferences
+- **Clustering Architecture**: UniversalClusterCommand calls after each category's sleeve placement
+- **Clearance System**: All categories (Ducts, Pipes, Cable Trays) respect UI clearance settings
+- **Pipe Rectangular Sizing**: Pipes >200mm get square sleeves (OD + clearance × 2)
+
+### 🔧 KEY DEBUGGING LESSONS LEARNED
+
+#### **1. Clearance Calculation Priority System**
+```csharp
+// ✅ CORRECT: Priority order for clearance calculation
+1. UI Settings (highest priority)
+2. CONDITIONS XML (fallback)
+3. Default values (last resort)
+```
+**Lesson**: Always implement a priority system for configuration resolution.
+
+#### **2. Pipe Opening Type Logic**
+```csharp
+// ❌ WRONG: All pipes treated as circular
+bool treatAsCircular = isPipe;
+
+// ✅ CORRECT: Consider actual opening type
+bool treatAsCircular = (isPipe && isCircular);
+```
+**Lesson**: Don't assume category behavior - check actual resolved configuration.
+
+#### **3. Clustering Architecture**
+```csharp
+// ✅ CORRECT: Immediate clustering after sleeve placement
+foreach (var filter in orderedFilters)
+{
+    ExecuteUniversalSleevePlacement(filter);  // Place sleeves
+    ExecuteClusteringForCategory(filter);     // Cluster immediately
+}
+```
+**Lesson**: Clustering must happen immediately after sleeve placement for each category.
+
+#### **4. UI Clearance Key Mismatch**
+```csharp
+// ❌ WRONG: Looking for generic keys
+uiClearanceSettings["cabletray_top_clearance"]
+
+// ✅ CORRECT: Use insulation-specific keys
+uiClearanceSettings["cabletray_top_normal"]  // or "cabletray_top_insulated"
+```
+**Lesson**: UI keys are insulation-specific - always check both normal and insulated variants.
+
+#### **5. Global Configuration Integration**
+```csharp
+// ✅ CORRECT: Global rules override UI preferences
+var resolvedConfig = ConfigurationResolutionService.Instance
+    .ResolveConfiguration("Pipes", elementProps, uiPreferences);
+```
+**Lesson**: Global business rules must always take precedence over user preferences.
+
+### 🐛 COMMON DEBUGGING PATTERNS
+
+#### **Clearance Not Applied**
+1. Check `_clearanceSettings.Count` in service constructor
+2. Verify UI keys match strategy expectations
+3. Check insulation detection logic
+4. Verify CONDITIONS XML file loading
+
+#### **Wrong Opening Type**
+1. Check global configuration rules
+2. Verify `isCircular` variable scope
+3. Check `treatAsCircular` logic in parameter setting
+4. Verify family selection logic
+
+#### **Clustering Not Working**
+1. Check if `UniversalClusterCommand` is called after sleeve placement
+2. Verify `ExecuteClusteringForCategory` method exists
+3. Check cluster service transaction requirements
+4. Verify category string conversion
+
+### 📊 DEBUG LOG FILES TO MONITOR
+- `placement_debug.log` - Sleeve placement details
+- `clearance_calculation_debug.log` - Clearance calculation flow
+- `orchestrator_debug.log` - Command orchestration
+- `category_match_debug.log` - Category validation
+- `cabletray_clearance_debug.log` - Cable tray specific debugging
+
+### 🎯 SUCCESS CRITERIA VERIFICATION
+1. **Ducts**: UI clearance values applied correctly
+2. **Pipes**: >200mm get rectangular sleeves with square dimensions
+3. **Cable Trays**: UI clearance (25mm/75mm) applied instead of defaults
+4. **Clustering**: Individual sleeves clustered immediately after placement
+5. **Global Rules**: Pipe opening type rules override UI preferences
+
+**Status**: ✅ ALL CRITERIA MET - Sleeve placement system fully functional with UI integration!

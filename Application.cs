@@ -117,9 +117,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS
             
             panel.AddSeparator(); // This adds a visual gap
 
-            var button3 = panel.AddPushButton<MarkParameterAddValue>("Mark Parameters");
-            button3.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
-            button3.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+            // Note: Mark Parameters button removed - marking is now handled automatically by the orchestrator
+            // during sleeve placement using prefixes configured in the main UI
 
             panel.AddSeparator(); // This adds a visual gap
 

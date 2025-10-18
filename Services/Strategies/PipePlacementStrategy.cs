@@ -101,8 +101,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
         /// </summary>
         /// <param name="mepSize">MEP element size information</param>
         /// <param name="uiPreference">UI preference for opening type</param>
+        /// <param name="hostType">Host element type ("Wall", "Floor", "Structural Framing")</param>
         /// <returns>Resolved opening type: "Circular" or "Rectangular"</returns>
-        public string GetResolvedOpeningType(MepElementSize mepSize, string uiPreference = "Circular")
+        public string GetResolvedOpeningType(MepElementSize mepSize, string uiPreference = "Circular", string hostType = null)
         {
             try
             {
@@ -127,7 +128,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                 
                 // Resolve configuration using global rules
                 var resolvedConfig = ConfigurationResolutionService.Instance
-                    .ResolveConfiguration("Pipes", elementProps, uiPreferences);
+                    .ResolveConfiguration("Pipes", elementProps, uiPreferences, hostType);
                 
                 DebugLogger.Info($"[PipeStrategy] Opening type resolution: {resolvedConfig}");
                 

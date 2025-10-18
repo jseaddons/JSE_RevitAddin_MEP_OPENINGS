@@ -56,13 +56,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             int placedCount = 0;
             int deletedCount = 0;
+            
+            // ✅ PERFORMANCE: Start timing
+            var startTime = DateTime.Now;
 
             try
             {
-                // Initialize dedicated cluster debug log
+                // ✅ PERFORMANCE FIX: Minimal logging - only log session start and end
                 string clusterLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log";
-                File.AppendAllText(clusterLogPath, $"\n===== CLUSTER DEBUG SESSION STARTED {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n");
-                File.AppendAllText(clusterLogPath, $"Target Category: {targetCategory ?? "ALL"}\n");
+                File.AppendAllText(clusterLogPath, $"\n===== CLUSTER SESSION STARTED {DateTime.Now:HH:mm:ss} =====\n");
+                
+                // 🔥 CRITICAL DEBUG: Log which XML file cluster service is working with
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🔥 CLUSTER SERVICE WORKING WITH XML FILE: {xmlFilePath ?? "NULL"}\n");
                 
                 // ⚠️ CRITICAL: Reset cluster flags for deleted cluster sleeves
                 ResetClusterFlagsForDeletedSleeves(doc, xmlFilePath);
@@ -223,6 +229,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             placedCount += placed1;
                             deletedCount += deleted1;
                             
+                            // ✅ CRITICAL: Update ClashZone flags after cluster placement
+                            if (placed1 > 0)
+                            {
+                                DebugLogger.Info($"[UniversalClusterService] 🔥 FLAG UPDATE: placed1={placed1}, about to find cluster sleeve 🔥");
+                                
+                                // Find the cluster sleeve that was just placed (it should be the newest family instance)
+                                var clusterSleeve = FindNewestClusterSleeve(doc, cluster, groupKey);
+                                if (clusterSleeve != null)
+                                {
+                                    DebugLogger.Info($"[UniversalClusterService] 🔥 FLAG UPDATE: Found cluster sleeve {clusterSleeve.Id.IntegerValue}, calling UpdateClashZoneFlagsForCluster 🔥");
+                                    UpdateClashZoneFlagsForCluster(clusterSleeve, cluster, groupKey.systemType);
+                                }
+                                else
+                                {
+                                    DebugLogger.Warning($"[UniversalClusterService] ⚠️ FLAG UPDATE: No cluster sleeve found, skipping flag update");
+                                }
+                            }
+                            else
+                            {
+                                DebugLogger.Warning($"[UniversalClusterService] ⚠️ FLAG UPDATE: placed1={placed1}, no cluster sleeve placed, skipping flag update");
+                            }
+                            
                             // Marking happens inside PlaceClusterSleeve with actual cluster sleeve ID
                         }
                         catch (Exception ex)
@@ -234,6 +262,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 DebugLogger.Log($"[UniversalClusterService] Summary: {placedCount} openings placed, {deletedCount} sleeves deleted.");
                 File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"Summary: {placedCount} openings placed, {deletedCount} sleeves deleted.\n");
+                
+                // ✅ PERFORMANCE: Log clustering performance
+                var endTime = DateTime.Now;
+                var duration = endTime - startTime;
+                DebugLogger.Info($"[UniversalClusterService] ⚡ Clustering completed in {duration.TotalSeconds:F1} seconds");
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"⚡ PERFORMANCE: Clustering completed in {duration.TotalSeconds:F1} seconds\n");
+                
                 File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"===== CLUSTER DEBUG SESSION ENDED {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n\n");
             }
             catch (Exception ex)
@@ -278,7 +313,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// Get category from MEP Element ID by searching XML files (same as MarkParameterService)
+        /// Get category from MEP Element ID using clash cache (one time calculate, use many times)
+        /// ✅ PERFORMANCE: Uses cache to avoid O(n·m) XML deserialization
         /// </summary>
         private string GetCategoryFromMepElementId(FamilyInstance sleeve)
         {
@@ -289,43 +325,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     long mepElementId = mepElementIdParam.AsInteger();
 
-                    // Find matching clash zone in XML files to get category
-                    var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
-
-                    if (Directory.Exists(filtersDirectory))
+                    // ✅ PERFORMANCE: Fast O(1) lookup using clash cache
+                    if (_clashZoneCache != null && _clashZoneCache.TryGetValue(mepElementId, out ClashZone clashZone))
                     {
-                        var xmlFiles = Directory.GetFiles(filtersDirectory, "*.xml");
-
-                        foreach (var xmlFile in xmlFiles)
-                        {
-                            try
-                            {
-                                var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
-                                using (var reader = new StreamReader(xmlFile))
-                                {
-                                    var filter = (OpeningFilter)serializer.Deserialize(reader);
-                                    if (filter?.ClashZoneStorage?.ClashZones != null)
-                                    {
-                                        foreach (var clashZone in filter.ClashZoneStorage.ClashZones)
-                                        {
-                                            if (clashZone.MepElementId.IntegerValue == mepElementId)
-                                            {
-                                                return clashZone.MepElementCategory;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            catch
-                            {
-                                // Ignore deserialization errors for individual files
-                                continue;
-                            }
-                        }
+                        return clashZone.MepElementCategory ?? "Unknown";
                     }
 
-                    DebugLogger.Warning($"[UniversalClusterService] No category found for MEP Element ID {mepElementId}");
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"WARNING: No category found for MEP Element ID {mepElementId} on sleeve {sleeve.Id}\n");
+                    DebugLogger.Warning($"[UniversalClusterService] No category found for MEP Element ID {mepElementId} in cache");
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"WARNING: No category found for MEP Element ID {mepElementId} on sleeve {sleeve.Id} (not in cache)\n");
                     return "Unknown";
                 }
                 else
@@ -440,8 +447,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         clashZone.ClusterSleeveInstanceId = clusterSleeveId.IntegerValue; // ✅ FIX: Store integer for XML serialization
                                         clashZone.LastUpdated = DateTime.Now;
                                         
-                                        // ⚠️ CRITICAL FIX: Also clear individual sleeve flags since individual sleeve was deleted
-                                        clashZone.IsResolved = false; // Individual sleeve was deleted by clustering
+                                        // ✅ CORRECT: Keep individual sleeve flag as TRUE when deleted by clustering
+                                        // This ensures clash zone is avoided next time (both flags true = avoid)
+                                        clashZone.IsResolved = true; // ✅ FIX: Set to true - individual sleeve was deleted by clustering
                                         clashZone.SleeveInstanceId = -1; // Clear individual sleeve ID
                                         clashZone.SleeveFamilyName = string.Empty; // Clear individual sleeve family
                                         
@@ -453,14 +461,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 }
                             }
                             
-                            // Save updated XML if changes were made
-                            if (updated)
-                            {
-                                using (var writer = new StreamWriter(xmlFile))
-                                {
-                                    serializer.Serialize(writer, filter);
-                                }
-                            }
+        // Save updated XML if changes were made
+        if (updated)
+        {
+            try
+            {
+                using (var writer = new StreamWriter(xmlFile))
+                {
+                    serializer.Serialize(writer, filter);
+                }
+                
+                // 🔥 CRITICAL DEBUG: Log XML file save
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 💾 XML FILE SAVED: {xmlFile} with {markedCount} cluster-resolved clash zones\n");
+            }
+            catch (Exception ex)
+            {
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ❌ ERROR SAVING XML FILE: {xmlFile} - {ex.Message}\n");
+            }
+        }
+        else
+        {
+            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                $"[{DateTime.Now:HH:mm:ss}] ⚠️ NO CHANGES MADE - XML FILE NOT SAVED: {xmlFile}\n");
+        }
                         }
                     }
                     catch (Exception ex)
@@ -554,7 +579,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     }
                                 }
                                 
-                                // ⚠️ CRITICAL: Also check individual sleeves (IsResolved)
+                                // ⚠️ CRITICAL: Also check individual sleeves (IsResolved) - BUT ONLY if NOT cluster-resolved
+                                // If cluster-resolved, keep individual flag as true even if individual sleeve is missing
                                 if (clashZone.IsResolved && !clashZone.IsClusterResolved)
                                 {
                                     if (clashZone.SleeveInstanceId <= 0)
@@ -623,12 +649,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// Get clash zone by MEP element ID from XML files
+        /// Get clash zone by MEP element ID using clash cache (one time calculate, use many times)
+        /// ✅ PERFORMANCE: Uses cache to avoid O(n·m) XML deserialization
         /// </summary>
         private ClashZone GetClashZoneByMepElementId(long mepElementId, string xmlFilePath = null)
         {
             try
             {
+                // ✅ PERFORMANCE: Fast O(1) lookup using clash cache
+                if (_clashZoneCache != null && _clashZoneCache.TryGetValue(mepElementId, out ClashZone clashZone))
+                {
+                    return clashZone;
+                }
+
+                // Fallback to XML search only if not in cache (should rarely happen)
+                DebugLogger.Warning($"[UniversalClusterService] MEP Element ID {mepElementId} not found in cache, falling back to XML search");
+                
                 var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
                 
                 if (!Directory.Exists(filtersDirectory))
@@ -649,11 +685,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var filter = (OpeningFilter)serializer.Deserialize(reader);
                             if (filter?.ClashZoneStorage?.ClashZones != null)
                             {
-                                foreach (var clashZone in filter.ClashZoneStorage.ClashZones)
+                                foreach (var cz in filter.ClashZoneStorage.ClashZones)
                                 {
-                                    if (clashZone.MepElementId.IntegerValue == mepElementId)
+                                    if (cz.MepElementId.IntegerValue == mepElementId)
                                     {
-                                        return clashZone;
+                                        return cz;
                                     }
                                 }
                             }
@@ -1165,18 +1201,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (minDistance <= toleranceDist)
                 {
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                        $"[CLUSTER-DISTANCE] CLUSTERING sleeves {inst.Id} and {s.Id}: distance={minDistanceMm:F1}mm <= tolerance={toleranceMm:F1}mm (method={distanceMethod})\n");
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                        $"[CLUSTER-PIPE-SIZE] Sleeve {inst.Id}: {pipe1Info}, sleeveOD={sleeve1OD:F1}mm, bbox=({UnitUtils.ConvertFromInternalUnits(o1_bbox.Min.X, UnitTypeId.Millimeters):F1},{UnitUtils.ConvertFromInternalUnits(o1_bbox.Min.Y, UnitTypeId.Millimeters):F1}) to ({UnitUtils.ConvertFromInternalUnits(o1_bbox.Max.X, UnitTypeId.Millimeters):F1},{UnitUtils.ConvertFromInternalUnits(o1_bbox.Max.Y, UnitTypeId.Millimeters):F1})\n");
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                        $"[CLUSTER-PIPE-SIZE] Sleeve {s.Id}: {pipe2Info}, sleeveOD={sleeve2OD:F1}mm, bbox=({UnitUtils.ConvertFromInternalUnits(o2_bbox.Min.X, UnitTypeId.Millimeters):F1},{UnitUtils.ConvertFromInternalUnits(o2_bbox.Min.Y, UnitTypeId.Millimeters):F1}) to ({UnitUtils.ConvertFromInternalUnits(o2_bbox.Max.X, UnitTypeId.Millimeters):F1},{UnitUtils.ConvertFromInternalUnits(o2_bbox.Max.Y, UnitTypeId.Millimeters):F1})\n");
+                    // ✅ PERFORMANCE FIX: No logging during clustering - only log summary at end
                     neighbors.Add(s);
-                }
-                else
-                {
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                        $"[CLUSTER-DISTANCE] NOT clustering sleeves {inst.Id} and {s.Id}: distance={minDistanceMm:F1}mm > tolerance={toleranceMm:F1}mm (method={distanceMethod})\n");
                 }
             }
 
@@ -1590,6 +1616,253 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private string GetCategoryXmlSuffix(string category)
         {
             return MepCategoryConstants.GetXmlSuffix(category);
+        }
+
+        /// <summary>
+        /// ✅ CRITICAL: Update ClashZone flags after placing cluster sleeve
+        /// This implements the flag management system to prevent individual sleeves over cluster sleeves
+        /// </summary>
+        private void UpdateClashZoneFlagsForCluster(
+            FamilyInstance clusterInstance, 
+            List<FamilyInstance> originalSleeves, 
+            string systemType)
+        {
+            try
+            {
+                DebugLogger.Info($"[UniversalClusterService] 🔥 UpdateClashZoneFlagsForCluster CALLED 🔥");
+                DebugLogger.Info($"[UniversalClusterService] Cluster ID: {clusterInstance.Id.IntegerValue}, Original sleeves: {originalSleeves.Count}, SystemType: {systemType}");
+                
+                // ✅ DEBUG: Log the category mapping
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_management_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] UpdateClashZoneFlagsForCluster: systemType='{systemType}', clusterId={clusterInstance.Id.IntegerValue}\n");
+
+                // Map systemType to category (Ducts → ducts, Pipes → pipes, etc.)
+                // systemType comes from GetCategoryFromMepElementId which returns clashZone.MepElementCategory (plural)
+                string category = systemType switch
+                {
+                    "Ducts" => "ducts",
+                    "Pipes" => "pipes", 
+                    "Cable Trays" => "cabletrays",
+                    "Duct Accessories" => "duct_accessories",
+                    _ => "ducts"
+                };
+
+                // Get cluster mark
+                string clusterMark = clusterInstance.LookupParameter("Mark")?.AsString() 
+                                  ?? $"CO-{clusterInstance.Id.IntegerValue}";
+
+                DebugLogger.Info($"[UniversalClusterService] Loading clash zones for category: {category}");
+                
+                // ✅ DEBUG: Log the category mapping result
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_management_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] Category mapping: '{systemType}' → '{category}'\n");
+
+                // Load clash zones from XML
+                var clashZones = LoadClashZonesFromXml(category);
+                DebugLogger.Info($"[UniversalClusterService] Loaded {clashZones.Count} clash zones from XML");
+
+                // Update each clash zone for deleted sleeves
+                int updatedCount = 0;
+                foreach (var sleeve in originalSleeves)
+                {
+                    var clashZone = clashZones.FirstOrDefault(cz => 
+                        cz.SleeveInstanceId == sleeve.Id.IntegerValue);
+                    
+                    if (clashZone != null)
+                    {
+                        // Mark as clustered
+                        clashZone.IsClustered = true;
+                        clashZone.IsResolved = true;
+                        clashZone.ClusterSleeveInstanceId = clusterInstance.Id.IntegerValue;
+                        clashZone.SleeveInstanceId = -1;  // Deleted
+                        clashZone.SleeveFamilyName = string.Empty;
+                        
+                        updatedCount++;
+                        DebugLogger.Info($"[UniversalClusterService] ✓ Updated ClashZone {clashZone.Id} as clustered");
+                    }
+                    else
+                    {
+                        DebugLogger.Warning($"[UniversalClusterService] ⚠️ ClashZone not found for sleeve {sleeve.Id.IntegerValue}");
+                    }
+                }
+
+                // Save updated clash zones back to XML
+                SaveClashZonesToXml(clashZones, category);
+                DebugLogger.Info($"[UniversalClusterService] ✅ Updated {updatedCount} clash zones as clustered, saved to XML");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[UniversalClusterService] Error updating clash zone flags: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Load clash zones from category-specific XML file
+        /// </summary>
+        private List<Models.ClashZone> LoadClashZonesFromXml(string category)
+        {
+            try
+            {
+                string filtersDirectory = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "JSE_MEP_Openings", "Projects", "Default", "Filters");
+
+                // Find pattern: *_{category}.xml (e.g., Ventilation_ducts.xml)
+                var pattern = $"*_{category}.xml";
+                var matchingFiles = Directory.GetFiles(filtersDirectory, pattern);
+                
+                if (matchingFiles.Length == 0)
+                {
+                    DebugLogger.Warning($"[UniversalClusterService] No XML files found for pattern: {pattern}");
+                    return new List<Models.ClashZone>();
+                }
+
+                // Use most recently modified file
+                var xmlFile = matchingFiles.OrderByDescending(f => File.GetLastWriteTime(f)).First();
+                DebugLogger.Info($"[UniversalClusterService] Loading clash zones from: {xmlFile}");
+
+                var serializer = new XmlSerializer(typeof(Models.OpeningFilter));
+                using (var reader = new StreamReader(xmlFile))
+                {
+                    var filter = (Models.OpeningFilter)serializer.Deserialize(reader);
+                    return filter.ClashZoneStorage?.ClashZones ?? new List<Models.ClashZone>();
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[UniversalClusterService] Error loading clash zones from XML: {ex.Message}");
+                return new List<Models.ClashZone>();
+            }
+        }
+
+        /// <summary>
+        /// Find the newest cluster sleeve that was just placed
+        /// </summary>
+        private FamilyInstance FindNewestClusterSleeve(Document doc, List<FamilyInstance> originalSleeves, SleeveGroupKey groupKey)
+        {
+            try
+            {
+                DebugLogger.Info($"[UniversalClusterService] 🔥 FindNewestClusterSleeve CALLED 🔥");
+                DebugLogger.Info($"[UniversalClusterService] Host Type: {groupKey.hostType}, System Type: {groupKey.systemType}");
+
+                // ✅ CRITICAL FIX: Use the same logic as PlaceClusterSleeve to determine family name
+                // Determine if cluster is circular or rectangular (same logic as PlaceClusterSleeve)
+                bool isCircular = originalSleeves.All(s => 
+                {
+                    var fam = s.Symbol?.Family?.Name ?? "";
+                    return fam.Contains("Circular");
+                });
+                
+                // PIPE CLUSTERS: Always rectangular regardless of member shape (legacy parity)
+                bool isPipeCategory = (!string.IsNullOrEmpty(groupKey.systemType) && groupKey.systemType.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0);
+                if (isPipeCategory)
+                {
+                    isCircular = false;
+                    DebugLogger.Info($"[UniversalClusterService] For Pipes category: forcing rectangular cluster shape");
+                }
+
+                // Select universal family based on host type and shape (same logic as PlaceClusterSleeve)
+                string familyName = "";
+                if (groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing")
+                {
+                    familyName = isCircular ? "CircularOpeningOnWall" : "RectangularOpeningOnWall";
+                }
+                else if (groupKey.hostType == "Floor")
+                {
+                    familyName = isCircular ? "CircularOpeningOnSlab" : "RectangularOpeningOnSlab";
+                }
+                else
+                {
+                    DebugLogger.Error($"[UniversalClusterService] Unknown host type: {groupKey.hostType}");
+                    return null;
+                }
+
+                DebugLogger.Info($"[UniversalClusterService] Looking for cluster family: {familyName} (shape: {(isCircular ? "Circular" : "Rectangular")})");
+
+                // Find all family instances of the cluster family type
+                var clusterSleeves = new FilteredElementCollector(doc)
+                    .OfClass(typeof(FamilyInstance))
+                    .Cast<FamilyInstance>()
+                    .Where(fi => fi.Symbol.Family.Name.Equals(familyName, StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(fi => fi.Id.IntegerValue) // Newest will have highest ID
+                    .ToList();
+
+                DebugLogger.Info($"[UniversalClusterService] Found {clusterSleeves.Count} cluster sleeves of type {familyName}");
+
+                // Return the newest one (highest ID)
+                var newestSleeve = clusterSleeves.FirstOrDefault();
+                if (newestSleeve != null)
+                {
+                    DebugLogger.Info($"[UniversalClusterService] ✅ Found newest cluster sleeve: ID {newestSleeve.Id.IntegerValue}");
+                }
+                else
+                {
+                    DebugLogger.Warning($"[UniversalClusterService] ⚠️ No cluster sleeve found for family {familyName}");
+                }
+
+                return newestSleeve;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[UniversalClusterService] Error finding newest cluster sleeve: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Save updated clash zones back to XML file
+        /// </summary>
+        private void SaveClashZonesToXml(List<Models.ClashZone> clashZones, string category)
+        {
+            try
+            {
+                string filtersDirectory = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "JSE_MEP_Openings", "Projects", "Default", "Filters");
+
+                // Find pattern: *_{category}.xml (e.g., Ventilation_ducts.xml)
+                var pattern = $"*_{category}.xml";
+                var matchingFiles = Directory.GetFiles(filtersDirectory, pattern);
+                
+                if (matchingFiles.Length == 0)
+                {
+                    DebugLogger.Warning($"[UniversalClusterService] No XML files found for pattern: {pattern}");
+                    return;
+                }
+
+                // Use most recently modified file
+                var xmlFile = matchingFiles.OrderByDescending(f => File.GetLastWriteTime(f)).First();
+                DebugLogger.Info($"[UniversalClusterService] Saving clash zones to: {xmlFile}");
+
+                var serializer = new XmlSerializer(typeof(Models.OpeningFilter));
+                Models.OpeningFilter filter;
+                
+                // Load existing filter
+                using (var reader = new StreamReader(xmlFile))
+                {
+                    filter = (Models.OpeningFilter)serializer.Deserialize(reader);
+                }
+                
+                // Update clash zone storage
+                if (filter.ClashZoneStorage == null)
+                {
+                    filter.ClashZoneStorage = new Models.ClashZoneStorage();
+                }
+                filter.ClashZoneStorage.ClashZones = clashZones;
+                filter.LastModified = DateTime.Now;
+                
+                // Save back
+                using (var writer = new StreamWriter(xmlFile))
+                {
+                    serializer.Serialize(writer, filter);
+                }
+                
+                DebugLogger.Info($"[UniversalClusterService] ✅ Successfully saved {clashZones.Count} clash zones to XML");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[UniversalClusterService] Error saving clash zones to XML: {ex.Message}");
+            }
         }
     }
 }

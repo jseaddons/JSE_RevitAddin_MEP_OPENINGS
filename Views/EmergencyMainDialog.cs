@@ -354,6 +354,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         this.Activate();
                         _parameterTransferButton.Enabled = true;
                         if (_transferAllHeaderBtn != null) _transferAllHeaderBtn.Enabled = true;
+                        if (_addParameterButton != null) _addParameterButton.Enabled = true;
                     }
                     catch { }
                 };
@@ -1946,8 +1947,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // Add event handler to update clearance visibility when MEP type changes
             _mepTypeCombo.SelectedIndexChanged += (s, e) => 
             {
+                // ✅ FIX: Update both clearance visibility AND discipline prefix
+                // This ensures discipline prefix textbox shows the correct prefix for the selected MEP type
                 UpdateClearanceVisibility();
-                UpdateDisciplinePrefix(); // ⚠️ NEW: Update discipline prefix when MEP Type changes
+                UpdateDisciplinePrefix(); // ⚠️ CRITICAL: Update discipline prefix when MEP type changes
             };
             
             _rightPanel.Controls.Add(_mepTypeCombo);
@@ -2097,22 +2100,88 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
                 var selectedMepType = _mepTypeCombo?.SelectedItem?.ToString() ?? string.Empty;
                 
-                // Map MEP Type dropdown values to discipline prefixes
-                string disciplinePrefix = selectedMepType switch
+                // Map MEP Type dropdown values to discipline prefixes with proper fallback
+                // Use MepCategoryConstants.Normalize() to handle singular/plural variations
+                string normalizedCategory = MepCategoryConstants.Normalize(selectedMepType);
+                string disciplinePrefix = normalizedCategory switch
                 {
-                    "Ducts" => _categoryPrefixes[MepCategoryConstants.DUCTS], // "DCT"
-                    "Pipes" => _categoryPrefixes[MepCategoryConstants.PIPES], // "PLU"
-                    "Cable Trays" => _categoryPrefixes[MepCategoryConstants.CABLE_TRAYS], // "ELE"
-                    "Duct Accessories" => _categoryPrefixes[MepCategoryConstants.DUCT_ACCESSORIES], // "DAM"
+                    MepCategoryConstants.DUCTS => _categoryPrefixes.ContainsKey(MepCategoryConstants.DUCTS) 
+                        ? _categoryPrefixes[MepCategoryConstants.DUCTS] 
+                        : "DCT",
+                    MepCategoryConstants.PIPES => _categoryPrefixes.ContainsKey(MepCategoryConstants.PIPES) 
+                        ? _categoryPrefixes[MepCategoryConstants.PIPES] 
+                        : "PLU",
+                    MepCategoryConstants.CABLE_TRAYS => _categoryPrefixes.ContainsKey(MepCategoryConstants.CABLE_TRAYS) 
+                        ? _categoryPrefixes[MepCategoryConstants.CABLE_TRAYS] 
+                        : "ELE",
+                    MepCategoryConstants.DUCT_ACCESSORIES => _categoryPrefixes.ContainsKey(MepCategoryConstants.DUCT_ACCESSORIES) 
+                        ? _categoryPrefixes[MepCategoryConstants.DUCT_ACCESSORIES] 
+                        : "DMP",
                     _ => "D" // Default fallback
                 };
 
                 _disciplinePrefixTextBox.Text = disciplinePrefix;
                 DebugLogger.Info($"[UpdateDisciplinePrefix] Updated discipline prefix to '{disciplinePrefix}' for MEP Type '{selectedMepType}'");
+                
+                // ✅ DEBUG: Log the current state of _categoryPrefixes
+                DebugLogger.Info($"[UpdateDisciplinePrefix] Current _categoryPrefixes state:");
+                foreach (var kvp in _categoryPrefixes)
+                {
+                    DebugLogger.Info($"[UpdateDisciplinePrefix]   {kvp.Key} = '{kvp.Value}'");
+                }
             }
             catch (Exception ex)
             {
                 DebugLogger.Error($"[UpdateDisciplinePrefix] Error updating discipline prefix: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// ✅ FIX: Save discipline prefix for the current category when user changes it
+        /// This ensures discipline prefixes persist per category throughout the session
+        /// </summary>
+        private void SaveDisciplinePrefixForCurrentCategory()
+        {
+            try
+            {
+                if (_disciplinePrefixTextBox == null || _mepTypeCombo == null) return;
+                
+                var selectedMepType = _mepTypeCombo.SelectedItem?.ToString() ?? string.Empty;
+                var disciplinePrefix = _disciplinePrefixTextBox.Text?.Trim() ?? string.Empty;
+                
+                if (string.IsNullOrEmpty(disciplinePrefix)) return;
+                
+                // Save the discipline prefix for the current category
+                // Use MepCategoryConstants.Normalize() to handle singular/plural variations
+                string normalizedCategory = MepCategoryConstants.Normalize(selectedMepType);
+                switch (normalizedCategory)
+                {
+                    case MepCategoryConstants.DUCTS:
+                        _categoryPrefixes[MepCategoryConstants.DUCTS] = disciplinePrefix;
+                        break;
+                    case MepCategoryConstants.PIPES:
+                        _categoryPrefixes[MepCategoryConstants.PIPES] = disciplinePrefix;
+                        break;
+                    case MepCategoryConstants.CABLE_TRAYS:
+                        _categoryPrefixes[MepCategoryConstants.CABLE_TRAYS] = disciplinePrefix;
+                        break;
+                    case MepCategoryConstants.DUCT_ACCESSORIES:
+                        _categoryPrefixes[MepCategoryConstants.DUCT_ACCESSORIES] = disciplinePrefix;
+                        break;
+                }
+                
+                DebugLogger.Info($"[SaveDisciplinePrefixForCurrentCategory] Saved '{disciplinePrefix}' for category '{selectedMepType}'");
+                
+                // ✅ DEBUG: Log the updated state of _categoryPrefixes
+                DebugLogger.Info($"[SaveDisciplinePrefixForCurrentCategory] Updated _categoryPrefixes state:");
+                foreach (var kvp in _categoryPrefixes)
+                {
+                    DebugLogger.Info($"[SaveDisciplinePrefixForCurrentCategory]   {kvp.Key} = '{kvp.Value}'");
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[SaveDisciplinePrefixForCurrentCategory] Error saving discipline prefix: {ex.Message}");
             }
         }
         /// <summary>
@@ -2863,9 +2932,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 				}
 			};
 			_parameterFilterPanel.Controls.Add(_transferAllHeaderBtn);
+			
+			// Add button for main parameter filter panel
+			_addParameterButton = new WinForms.Button
+			{
+				Text = "+",
+				Size = new System.Drawing.Size(24, 24),
+				Location = new System.Drawing.Point(_parameterFilterPanel.Width - 170, 2), // Moved left by 30px for spacing
+				Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Right,
+				BackColor = System.Drawing.Color.FromArgb(230, 255, 230),
+				FlatStyle = WinForms.FlatStyle.Flat,
+				Enabled = false // Disabled until sleeve placement completes
+			};
+			_addParameterButton.Click += (_, __) => AddParameterRow("<Select>", "");
+			_parameterFilterPanel.Controls.Add(_addParameterButton);
+			
 			_parameterFilterPanel.Resize += (_, __) =>
 			{
 				_transferAllHeaderBtn.Location = new System.Drawing.Point(_parameterFilterPanel.Width - _transferAllHeaderBtn.Width - 10, 2);
+				_addParameterButton.Location = new System.Drawing.Point(_parameterFilterPanel.Width - 170, 2);
 			};
             // Create master tabs (Reference Elements vs Host Elements)
             _masterParameterTabs = new WinForms.TabControl
@@ -3040,6 +3125,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Tag = "discipline_prefix"
             };
             markingPanel.Controls.Add(_disciplinePrefixTextBox);
+            
+            // ✅ FIX: Add event handler to save discipline prefix when user changes it
+            _disciplinePrefixTextBox.TextChanged += (sender, e) => SaveDisciplinePrefixForCurrentCategory();
             
             // ✅ NEW: Re-mark all checkbox (compact, to the right of textboxes)
             _remarkAllCheckBox = new WinForms.CheckBox
@@ -4460,22 +4548,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     markPrefixes.ProjectPrefix = "SLEEVE_"; // Default fallback
                 }
 
-                // Read Discipline Prefix from UI (this is auto-updated by dropdown)
-                if (_disciplinePrefixTextBox != null && !string.IsNullOrWhiteSpace(_disciplinePrefixTextBox.Text))
-                {
-                    markPrefixes.DuctPrefix = _disciplinePrefixTextBox.Text.Trim();
-                    markPrefixes.PipePrefix = _disciplinePrefixTextBox.Text.Trim();
-                    markPrefixes.CableTrayPrefix = _disciplinePrefixTextBox.Text.Trim();
-                    markPrefixes.DamperPrefix = _disciplinePrefixTextBox.Text.Trim();
-                }
-                else
-                {
-                    // Default fallbacks
-                    markPrefixes.DuctPrefix = "DCT";
-                    markPrefixes.PipePrefix = "PLU";
-                    markPrefixes.CableTrayPrefix = "ELE";
-                    markPrefixes.DamperPrefix = "DAM";
-                }
+                // ✅ FIX: Use category-specific discipline prefixes from _categoryPrefixes dictionary
+                // This ensures each category maintains its own discipline prefix throughout the session
+                markPrefixes.DuctPrefix = _categoryPrefixes.ContainsKey(MepCategoryConstants.DUCTS) ? 
+                    _categoryPrefixes[MepCategoryConstants.DUCTS] : "DCT";
+                markPrefixes.PipePrefix = _categoryPrefixes.ContainsKey(MepCategoryConstants.PIPES) ? 
+                    _categoryPrefixes[MepCategoryConstants.PIPES] : "PLU";
+                markPrefixes.CableTrayPrefix = _categoryPrefixes.ContainsKey(MepCategoryConstants.CABLE_TRAYS) ? 
+                    _categoryPrefixes[MepCategoryConstants.CABLE_TRAYS] : "ELE";
+                markPrefixes.DamperPrefix = _categoryPrefixes.ContainsKey(MepCategoryConstants.DUCT_ACCESSORIES) ? 
+                    _categoryPrefixes[MepCategoryConstants.DUCT_ACCESSORIES] : "DMP";
                 
                 // ✅ NEW: Read "Re-mark all" checkbox state
                 markPrefixes.RemarkAll = _remarkAllCheckBox?.Checked ?? false;
@@ -4518,6 +4600,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 
                 // ✅ NEW: Read mark prefixes from UI
                 var markPrefixes = ReadMarkPrefixesFromUI();
+                
+                // ✅ FIX: Save discipline prefixes from UI before proceeding
+                SaveDisciplinePrefixForCurrentCategory();
                 
                 // ⚠️ CRITICAL: Save CONDITIONS.xml before raising external event ⚠️
                 // This implements proper architecture: Conditions saved to XML, not in static properties
@@ -6609,6 +6694,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
                     var refreshService = new Services.RefreshService(document, _uiDocument, _appProfileService);
                     refreshService.SetUIReferences(_statusLabel, _progressBar, _refreshButton);
+                    
+                    // 🔥 CRITICAL FIX: Load existing clash zone data to preserve cluster information
+                    // This prevents the Refresh process from overwriting existing cluster data
+                    refreshService.LoadExistingClashZoneData();
+                    
                     refreshService.ExecuteRefresh(selectedFilterItems, selectedMepCategories, selectedReferenceFiles, selectedHostFiles, clearanceSettings);
                     
                     // ⚠️ CRITICAL FIX: Skip parameter dropdown updates during refresh to prevent sleeve deletion

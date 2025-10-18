@@ -2,13 +2,13 @@
 using System.Windows.Input;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
+using System.ComponentModel;
+using System.Windows.Input;
 using JSE_RevitAddin_MEP_OPENINGS.Commands;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.ViewModels
 {
-    public sealed class JSE_RevitAddin_MEP_OPENINGSViewModel : ObservableObject
+    public sealed class JSE_RevitAddin_MEP_OPENINGSViewModel : INotifyPropertyChanged
     {
     private readonly ExternalCommandData? _commandData;
     private readonly System.Action<ExternalCommandData>? _placeAction;
@@ -19,8 +19,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.ViewModels
             _commandData = commandData;
             _placeAction = placeAction;
             _addMarkAction = addMarkAction;
-            PlaceOpeningsCommand = new RelayCommand(ExecutePlaceOpenings);
-            AddMarkParameterCommand = new RelayCommand(ExecuteAddMarkParameter);
+            PlaceOpeningsCommand = new SimpleCommand(ExecutePlaceOpenings);
+            AddMarkParameterCommand = new SimpleCommand(ExecuteAddMarkParameter);
         }
 
         public ICommand PlaceOpeningsCommand { get; }
@@ -48,10 +48,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.ViewModels
                 return;
             }
             // Fallback -- directly execute command if no delegate supplied (legacy behavior)
-            var command = new MarkParameterAddValue();
-            string? message = null;
-            ElementSet elements = new ElementSet();
-            command.Execute(_commandData, ref message!, elements);
+            // Note: MarkParameterAddValue moved to Backup folder - using new MarkParameterCommand instead
+            System.Diagnostics.Debug.WriteLine("[ViewModel] MarkParameterAddValue fallback not available - command moved to Backup folder");
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        protected void OnPropertyChanged(string propertyName)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+    }
+
+    // Simple command implementation to replace RelayCommand
+    public class SimpleCommand : ICommand
+    {
+        private readonly Action _execute;
+        private readonly Func<bool>? _canExecute;
+
+        public SimpleCommand(Action execute, Func<bool>? canExecute = null)
+        {
+            _execute = execute ?? throw new ArgumentNullException(nameof(execute));
+            _canExecute = canExecute;
+        }
+
+        public event EventHandler? CanExecuteChanged
+        {
+            add { CommandManager.RequerySuggested += value; }
+            remove { CommandManager.RequerySuggested -= value; }
+        }
+
+        public bool CanExecute(object? parameter)
+        {
+            return _canExecute?.Invoke() ?? true;
+        }
+
+        public void Execute(object? parameter)
+        {
+            _execute();
         }
     }
 }

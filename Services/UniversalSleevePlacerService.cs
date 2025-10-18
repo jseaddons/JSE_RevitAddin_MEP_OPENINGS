@@ -206,6 +206,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             SkippedCount = 0;
             ErrorCount = 0;
             
+            // 🔥 CRITICAL DEBUG: Log flag status from the clash zones passed to this method
+            int clusterResolvedCount = clashZones.Count(cz => cz.IsClusterResolved);
+            int individualResolvedCount = clashZones.Count(cz => cz.IsResolved);
+            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
+                $"[{DateTime.Now:HH:mm:ss}] 🔥 UNIVERSAL SLEEVE PLACER RECEIVED: {clashZones.Count} clash zones\n");
+            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
+                $"[{DateTime.Now:HH:mm:ss}] 📊 FLAGS RECEIVED: IsClusterResolved=True: {clusterResolvedCount}, IsResolved=True: {individualResolvedCount}\n");
+            
             // 🛡️ FAIL-SAFE: Check document state before starting
             if (!_doc.IsModifiable)
             {
@@ -260,41 +268,54 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         // ⚠️ CRITICAL: Hierarchical flag check - cluster takes precedence
                         File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
-                            $"[HIER-CHECK] ClashZone {clashZone.Id}: IsClusterResolved={clashZone.IsClusterResolved}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}\n");
+                            $"[HIER-CHECK] ClashZone {clashZone.Id}: IsClustered={clashZone.IsClustered}, IsClusterResolved={clashZone.IsClusterResolved}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}\n");
                         
-                        // STEP 1: Check if this clash zone is part of a cluster
-                        if (clashZone.IsClusterResolved && clashZone.ClusterSleeveInstanceId > 0)
+                        // STEP 0: Check if already clustered (prevent individual sleeves over cluster sleeves)
+                        if (clashZone.IsClustered)
                         {
-                            // Check if cluster sleeve still exists in Revit
-                            var clusterSleeveId = new ElementId(clashZone.ClusterSleeveInstanceId);
-                            var clusterSleeve = _doc.GetElement(clusterSleeveId);
-                            
+                            DebugLogger.Info($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} is already clustered (ClusterSleeveInstanceId: {clashZone.ClusterSleeveInstanceId}) - preventing individual sleeve placement");
                             File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
-                                $"[HIER-CHECK] ClashZone {clashZone.Id}: Checking cluster sleeve {clashZone.ClusterSleeveInstanceId}, exists={clusterSleeve != null}\n");
-                            
-                            if (clusterSleeve != null)
+                                $"✓ SKIP ClashZone {clashZone.Id}: already clustered (ClusterSleeveInstanceId: {clashZone.ClusterSleeveInstanceId})\n");
+                            SkippedCount++;
+                            continue;
+                        }
+                        
+                        // STEP 1: Check individual sleeve flag first (fastest check)
+                        if (clashZone.IsResolved)
+                        {
+                            // ✅ CRITICAL: Check both flags according to flag management logic
+                            if (clashZone.IsClusterResolved)
                             {
-                                // Cluster sleeve exists - SKIP this clash zone (cluster handles it)
-                                DebugLogger.Info($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} is part of cluster sleeve {clashZone.ClusterSleeveInstanceId}");
+                                // Both flags TRUE: Skip processing (avoid clash zone)
                                 File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
-                                    $"✓ SKIP ClashZone {clashZone.Id}: cluster sleeve {clashZone.ClusterSleeveInstanceId} exists\n");
+                                    $"✓ SKIP ClashZone {clashZone.Id}: Both IsResolved=True AND IsClusterResolved=True - avoid clash zone\n");
                                 SkippedCount++;
                                 continue;
                             }
                             else
                             {
-                                // Cluster sleeve was deleted - reset BOTH flags and place individual sleeve
-                                DebugLogger.Info($"[UniversalSleevePlacer] Cluster sleeve {clashZone.ClusterSleeveInstanceId} was deleted - resetting flags and placing individual sleeve");
-                                clashZone.IsClusterResolved = false;
-                                clashZone.ClusterSleeveInstanceId = -1;
-                                clashZone.IsResolved = false; // ⚠️ CRITICAL: Also reset individual flag
-                                clashZone.SleeveInstanceId = -1;
-                                // Continue to place individual sleeve below
+                                // Only individual flag TRUE: Skip individual sleeve placement
+                                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
+                                    $"✓ SKIP ClashZone {clashZone.Id}: IsResolved=True (individual sleeve already placed)\n");
+                                SkippedCount++;
+                                continue;
                             }
                         }
                         
-                        // STEP 2: Check if individual sleeve already exists (only if NOT cluster-resolved)
-                        if (clashZone.IsResolved && clashZone.SleeveInstanceId > 0)
+                        // STEP 2: Check cluster sleeve flag
+                        if (clashZone.IsClusterResolved)
+                        {
+                            // Only cluster flag TRUE: Skip both individual and cluster placement
+                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
+                                $"✓ SKIP ClashZone {clashZone.Id}: IsClusterResolved=True (cluster sleeve handles it)\n");
+                            SkippedCount++;
+                            continue;
+                        }
+                        
+                        // STEP 3: Both flags FALSE - proceed with individual sleeve placement
+                        
+                        // STEP 4: Check if individual sleeve already exists in Revit (additional safety check)
+                        if (clashZone.SleeveInstanceId > 0)
                         {
                             // Check if individual sleeve still exists in Revit
                             var individualSleeveId = new ElementId(clashZone.SleeveInstanceId);
@@ -309,11 +330,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                             else
                             {
-                                // Individual sleeve was deleted - reset flag and place new one
-                                DebugLogger.Info($"[UniversalSleevePlacer] Individual sleeve {clashZone.SleeveInstanceId} was deleted - resetting flag and placing new sleeve");
-                                clashZone.IsResolved = false;
-                                clashZone.SleeveInstanceId = -1;
-                                // Continue to place individual sleeve below
+                                // ✅ CRITICAL FIX: Only reset individual flag if cluster flag is also false
+                                if (!clashZone.IsClusterResolved)
+                                {
+                                    // No cluster sleeve - reset individual flag and place new one
+                                    DebugLogger.Info($"[UniversalSleevePlacer] Individual sleeve {clashZone.SleeveInstanceId} was deleted and no cluster sleeve - resetting flag and placing new sleeve");
+                                    clashZone.IsResolved = false;
+                                    clashZone.SleeveInstanceId = -1;
+                                    // Continue to place individual sleeve below
+                                }
+                                else
+                                {
+                                    // Cluster sleeve exists - keep individual flag true and skip
+                                    DebugLogger.Info($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} has cluster sleeve - keeping individual flag true");
+                                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
+                                        $"✓ SKIP ClashZone {clashZone.Id}: Individual sleeve missing but cluster sleeve exists - keeping IsResolved=true\n");
+                                    SkippedCount++;
+                                    continue;
+                                }
                             }
                         }
                         
@@ -613,6 +647,66 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
+        /// Check for existing cluster sleeves by spatial proximity (handles stale XML flags)
+        /// This ensures individual sleeves are not placed over cluster sleeves even when XML is stale
+        /// </summary>
+        private bool CheckForClusterSleeveByProximity(ClashZone clashZone)
+        {
+            try
+            {
+                // Get placement point
+                var placementPoint = clashZone.SleevePlacementPoint;
+                if (placementPoint == null) return false;
+                
+                // Search for cluster sleeves within 500mm radius
+                double searchRadius = UnitUtils.ConvertToInternalUnits(500.0, UnitTypeId.Millimeters);
+                
+                // Create bounding box for spatial search
+                var searchBox = new BoundingBoxXYZ
+                {
+                    Min = new XYZ(placementPoint.X - searchRadius, placementPoint.Y - searchRadius, placementPoint.Z - searchRadius),
+                    Max = new XYZ(placementPoint.X + searchRadius, placementPoint.Y + searchRadius, placementPoint.Z + searchRadius)
+                };
+                
+                // Collect cluster sleeve families
+                var clusterFamilies = new[] { "DuctOpeningOnWall", "DuctOpeningOnFloor", "PipeOpeningOnWallRect", "PipeOpeningOnFloorRect", "CableTrayOpeningOnWall", "CableTrayOpeningOnFloor" };
+                
+                var collector = new FilteredElementCollector(_doc)
+                    .WherePasses(new BoundingBoxIntersectsFilter(new Outline(searchBox.Min, searchBox.Max)))
+                    .OfClass(typeof(FamilyInstance));
+                
+                foreach (FamilyInstance instance in collector)
+                {
+                    if (instance.Symbol?.Family?.Name != null)
+                    {
+                        string familyName = instance.Symbol.Family.Name;
+                        
+                        // Check if this is a cluster sleeve family
+                        if (clusterFamilies.Any(cf => familyName.Contains(cf)))
+                        {
+                            // Check if it's on the same host element
+                            var hostElement = instance.Host;
+                            if (hostElement != null && hostElement.Id == clashZone.StructuralElementId)
+                            {
+                                // Found a cluster sleeve on the same host - skip individual sleeve placement
+                                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
+                                    $"[SPATIAL-CHECK] ClashZone {clashZone.Id}: Found cluster sleeve {instance.Id} ({familyName}) on same host {hostElement.Id}\n");
+                                return true;
+                            }
+                        }
+                    }
+                }
+                
+                return false;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[UniversalSleevePlacer] Error checking for cluster sleeve by proximity: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Select universal family based on host type and MEP shape
         /// Uses 4 universal families following CONVOID approach
         /// </summary>
@@ -631,19 +725,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ CORRECT: Pipes opening type using global configuration resolution
                 var pipeType = _conditions?.OpeningTypePreferences?.Pipes ?? "Circular";
                 
+                // 🔍 DEBUG: Log pipe opening type resolution for floors vs walls
+                var hostType = clashZone.StructuralElementType ?? "Unknown";
+                DebugLogger.Info($"[UniversalSleevePlacer] PIPE OPENING TYPE DEBUG: Host={hostType}, Category={clashZone.MepElementCategory}, UI_Preference={pipeType}");
+                
                 // Use PipePlacementStrategy to resolve opening type with global rules
                 if (_strategy is PipePlacementStrategy pipeStrategy)
                 {
-                    var resolvedType = pipeStrategy.GetResolvedOpeningType(mepSize, pipeType);
+                    var resolvedType = pipeStrategy.GetResolvedOpeningType(mepSize, pipeType, hostType);
                     isCircular = string.Equals(resolvedType, "Circular", StringComparison.OrdinalIgnoreCase);
-                    DebugLogger.Info($"[UniversalSleevePlacer] PIPE opening type resolved: UI='{pipeType}' → Global Rule='{resolvedType}' → isCircular={isCircular}");
+                    DebugLogger.Info($"[UniversalSleevePlacer] PIPE opening type resolved: Host={hostType}, UI='{pipeType}' → Global Rule='{resolvedType}' → isCircular={isCircular}");
                 }
                 else
                 {
                     // Fallback to CONDITIONS XML if strategy not available
-                    isCircular = string.Equals(pipeType, "Circular", StringComparison.OrdinalIgnoreCase);
-                    DebugLogger.Info($"[UniversalSleevePlacer] PIPE opening type from CONDITIONS XML (fallback): '{pipeType}' → isCircular={isCircular}");
-                }
+                isCircular = string.Equals(pipeType, "Circular", StringComparison.OrdinalIgnoreCase);
+                    DebugLogger.Info($"[UniversalSleevePlacer] PIPE opening type from CONDITIONS XML (fallback): Host={hostType}, '{pipeType}' → isCircular={isCircular}");
+            }
             }
             else if (string.Equals(clashZone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase) ||
                      string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
@@ -1064,6 +1162,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return; // Skip this sleeve - don't crash Revit
                 }
         bool isPipe = string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
+        
+        // 🔍 DEBUG: Log pipe detection for floors vs walls
+        var hostType = clashZone.StructuralElementType ?? "Unknown";
+        DebugLogger.Info($"[SetSleeveParameters] PIPE DETECTION DEBUG: Host={hostType}, Category={clashZone.MepElementCategory}, isPipe={isPipe}");
         
         // Apply rounding to nearest 5mm if setting is enabled
                 var (roundedWidth, roundedHeight) = OpeningSettingsHelper.RoundDimensionsToNearest5mm(finalWidth, finalHeight);
@@ -1501,44 +1603,67 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var loc = sleeveInstance.Location as LocationPoint;
                 if (loc != null)
                 {
-                    // SPECIAL CASE: Pipes and Cable Trays on Framing - align to MEP direction
+                    // ✅ OPTIMIZED: Pipes and Cable Trays on Framing - use pre-calculated framing direction from XML
                     if ((isPipe || isCableTray) && isFramingHost)
                     {
-                        double angle = Math.Atan2(mepOrientation.Y, mepOrientation.X);
+                        // Use pre-calculated framing direction from XML (no Revit API calls!)
+                        XYZ framingDirection = clashZone.StructuralElementNormal; // StructuralElementNormal stores framing direction for framing hosts
                         
-                        // For framing, we need to consider the structural normal to determine correct rotation
-                        if (structuralNormal != null)
+                        if (framingDirection != null && framingDirection != XYZ.Zero)
                         {
-                            // Calculate the angle between MEP direction and structural normal
-                            double mepAngle = Math.Atan2(mepOrientation.Y, mepOrientation.X);
-                            double structAngle = Math.Atan2(structuralNormal.Y, structuralNormal.X);
+                            // Calculate angle from pre-calculated framing direction
+                            double angle = Math.Atan2(framingDirection.Y, framingDirection.X);
                             
-                            // The sleeve should be perpendicular to the framing direction
-                            // If MEP is parallel to framing, rotate 90°
-                            double dotProduct = mepOrientation.X * structuralNormal.X + mepOrientation.Y * structuralNormal.Y;
-                            if (Math.Abs(dotProduct) < 0.1) // Nearly perpendicular (MEP ⊥ Framing)
+                            // ✅ CRITICAL FIX: For pipes on structural framing in X direction, add 90° rotation
+                            if (isPipe)
                             {
-                                angle = mepAngle; // Use MEP direction as-is
+                                // Check if framing is in X direction (horizontal)
+                                double absX = Math.Abs(framingDirection.X);
+                                double absY = Math.Abs(framingDirection.Y);
+                                
+                                if (absX > absY)
+                                {
+                                    // X-direction framing: add 90° rotation for pipes
+                                    angle += Math.PI / 2; // Add 90 degrees
+                                    DebugLogger.Info($"[UniversalSleevePlacer] FRAMING+PIPE: X-direction framing detected - adding 90° rotation");
+                                }
                             }
-                            else // Nearly parallel (MEP ∥ Framing)
+                            
+                            double angleDegrees = angle * 180 / Math.PI;
+                            
+                            Line rotationAxis = Line.CreateBound(loc.Point, loc.Point + XYZ.BasisZ);
+                            ElementTransformUtils.RotateElement(_doc, sleeveInstance.Id, rotationAxis, angle);
+                            
+                            string mepType = isPipe ? "PIPE" : "CABLETRAY";
+                            DebugLogger.Info($"[UniversalSleevePlacer] FRAMING+{mepType}: Using pre-calculated framing direction {angleDegrees:F1}° from XML");
+                            try
                             {
-                                angle = mepAngle + Math.PI / 2; // Rotate 90° from MEP direction
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                    $"[ORIENT-APPLY] Sleeve {sleeveInstance.Id.IntegerValue}: FRAMING+{mepType} using XML framing direction {angleDegrees:F1}° ✓\n");
                             }
+                            catch { }
                         }
-                        
-                        double angleDegrees = angle * 180 / Math.PI;
-                        
-                        Line rotationAxis = Line.CreateBound(loc.Point, loc.Point + XYZ.BasisZ);
-                        ElementTransformUtils.RotateElement(_doc, sleeveInstance.Id, rotationAxis, angle);
-                        
-                        string mepType = isPipe ? "PIPE" : "CABLETRAY";
-                        DebugLogger.Info($"[UniversalSleevePlacer] FRAMING+{mepType}: Aligned sleeve to MEP direction {angleDegrees:F1}°");
-                        try
+                        else
                         {
-                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
-                                $"[ORIENT-APPLY] Sleeve {sleeveInstance.Id.IntegerValue}: FRAMING+{mepType} aligned to MEP {angleDegrees:F1}° ✓\n");
+                            // Fallback: Use MEP direction if framing direction not available in XML
+                            double angle = Math.Atan2(mepOrientation.Y, mepOrientation.X);
+                            
+                            // ✅ CRITICAL FIX: For pipes on structural framing, add 90° rotation in fallback too
+                            if (isPipe)
+                            {
+                                // For pipes, add 90° rotation as default behavior for structural framing
+                                angle += Math.PI / 2; // Add 90 degrees
+                                DebugLogger.Info($"[UniversalSleevePlacer] FRAMING+PIPE: Fallback mode - adding 90° rotation for pipes");
+                            }
+                            
+                            double angleDegrees = angle * 180 / Math.PI;
+                            
+                            Line rotationAxis = Line.CreateBound(loc.Point, loc.Point + XYZ.BasisZ);
+                            ElementTransformUtils.RotateElement(_doc, sleeveInstance.Id, rotationAxis, angle);
+                            
+                            string mepType = isPipe ? "PIPE" : "CABLETRAY";
+                            DebugLogger.Warning($"[UniversalSleevePlacer] FRAMING+{mepType}: Framing direction not in XML, using MEP direction {angleDegrees:F1}° (fallback)");
                         }
-                        catch { }
                     }
                     else
                     {
@@ -1736,3 +1861,4 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
     }
 }
+

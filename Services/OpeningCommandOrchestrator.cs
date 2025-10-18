@@ -20,12 +20,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly Document _document;
         private readonly UIDocument _uiDocument;
         private readonly Dictionary<string, double> _uiClearances;
+        private readonly MarkPrefixSettings _markPrefixes;
 
-        public OpeningCommandOrchestrator(Document document, UIDocument uiDocument)
+        public OpeningCommandOrchestrator(Document document, UIDocument uiDocument, Dictionary<string, double> uiClearances = null, MarkPrefixSettings markPrefixes = null)
         {
             _document = document ?? throw new ArgumentNullException(nameof(document));
             _uiDocument = uiDocument ?? throw new ArgumentNullException(nameof(uiDocument));
-            _uiClearances = new Dictionary<string, double>();
+            _uiClearances = uiClearances ?? new Dictionary<string, double>();
+            _markPrefixes = markPrefixes ?? new MarkPrefixSettings();
         }
 
         /// <summary>
@@ -48,12 +50,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public void ExecuteMultipleFilters(List<OpeningFilter> filters, bool showProgress = true)
         {
+            // 🔥 CRITICAL DEBUG: Direct file logging to trace orchestrator execution
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                $"[{DateTime.Now:HH:mm:ss}] 🔥 ExecuteMultipleFilters CALLED 🔥\n");
+            
+            DebugLogger.Info("[OpeningCommandOrchestrator] 🔥 ExecuteMultipleFilters CALLED 🔥");
+            
             if (filters == null || filters.Count == 0)
             {
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ❌ No filters provided\n");
                 DebugLogger.Warning("[OpeningCommandOrchestrator] No filters provided");
                 return;
             }
 
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                $"[{DateTime.Now:HH:mm:ss}] Starting execution of {filters.Count} filters\n");
             DebugLogger.Info($"[OpeningCommandOrchestrator] Starting execution of {filters.Count} filters");
 
             try
@@ -67,7 +79,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 // Execute marking for all disciplines at the end
-                ExecuteMarkingForAllDisciplines(filters, showProgress);
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🔥 STARTING MARKING PHASE 🔥\n");
+                DebugLogger.Info("[OpeningCommandOrchestrator] 🔥 STARTING MARKING PHASE 🔥");
+                
+                // ✅ PROPER ARCHITECTURE: Call MarkParameterCommand with UI values
+                // MarkParameterCommand handles "ALL" by processing each category with correct UI discipline prefixes
+                
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🔥 Calling MarkParameterCommand for ALL categories with UI values 🔥\n");
+                
+                // ✅ FIX: Pass MarkPrefixSettings to MarkParameterCommand so it can use UI discipline prefixes
+                var markingCommand = new MarkParameterCommand("ALL", _markPrefixes.ProjectPrefix, "ALL", _markPrefixes.RemarkAll, _markPrefixes);
+                markingCommand.Execute(new UIApplication(_document.Application));
+                
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ✅ MarkParameterCommand completed for ALL categories\n");
+                
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🔥 MARKING PHASE COMPLETED 🔥\n");
+                DebugLogger.Info("[OpeningCommandOrchestrator] 🔥 MARKING PHASE COMPLETED 🔥");
 
                 DebugLogger.Info("[OpeningCommandOrchestrator] All filters executed successfully");
             }
@@ -123,6 +154,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         private void ExecuteDisciplineWithMemoryManagement(string discipline, List<OpeningFilter> filters, bool showProgress)
         {
+            DebugLogger.Info($"[OpeningCommandOrchestrator] 🔥 ExecuteDisciplineWithMemoryManagement CALLED 🔥");
             DebugLogger.Info($"[OpeningCommandOrchestrator] Executing discipline: {discipline} with {filters.Count} filters");
 
             try
@@ -171,11 +203,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Note: UniversalSleevePlacementCommand implements ICommand, not IExternalCommand
             // We'll need to create a wrapper or use a different approach
 
-            // Add clustering if needed
-            if (filter.OpeningType == OpeningType.RectangularClusters)
-            {
-                sequence.Add(new RectangularSleeveClusterCommandV2());
-            }
+            // ✅ FIX: Always add clustering for all filters (no need to check OpeningType)
+            // We'll handle clustering directly in ExecuteCommandSequence using UniversalClusterService
 
             return sequence;
         }
@@ -190,11 +219,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 ExecuteCommandWithResourceManagement(command, filter, showProgress);
             }
 
-            // Execute UniversalSleevePlacementCommand separately since it implements ICommand
+            // ⚠️ CRITICAL: INDIVIDUAL SLEEVES MUST RUN FIRST - DO NOT CHANGE THIS ORDER! ⚠️
+            // Clustering REQUIRES existing individual sleeves to work - it collects sleeves from Revit
+            // If clustering runs first, there will be no sleeves to cluster and it will fail
+            // NEVER PUT ExecuteClusteringForCategory BEFORE ExecuteUniversalSleevePlacement
             ExecuteUniversalSleevePlacement(filter, showProgress);
             
             // ✅ CRITICAL: Execute clustering immediately after sleeve placement for each category
             // This follows the architecture: Place sleeves → Cluster sleeves → Mark sleeves
+            // Use UniversalClusterService directly (faster than old RectangularSleeveClusterCommandV2)
             ExecuteClusteringForCategory(filter, showProgress);
         }
 
@@ -205,6 +238,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
+                // 🔥 CRITICAL DEBUG: Log clustering attempt
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🔥 ExecuteClusteringForCategory CALLED for category: {filter.Category} 🔥\n");
+                
                 // Convert MepCategory enum to string for cluster command
                 string categoryString = filter.Category switch
                 {
@@ -215,7 +252,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     _ => "Ducts"
                 };
                 
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🔥 Starting clustering for category: {categoryString} 🔥\n");
+                
                 DebugLogger.Info($"[OpeningCommandOrchestrator] Starting clustering for category: {categoryString}");
+                
+                // ✅ PERFORMANCE FIX: Get XML file path for this category to avoid loading all 22 XML files
+                string xmlFilePath = GetXmlFilePathForFilter(filter);
                 
                 // Use UniversalClusterService directly (service-based architecture)
                 using (var tx = new Transaction(_document, $"Cluster {categoryString} Openings"))
@@ -223,7 +266,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     tx.Start();
                     
                     var clusterService = new UniversalClusterService();
-                    var (placedCount, deletedCount) = clusterService.ClusterSleeves(_document, categoryString, _uiDocument);
+                    var (placedCount, deletedCount) = clusterService.ClusterSleeves(_document, categoryString, _uiDocument, xmlFilePath);
                     
                     tx.Commit();
                     
@@ -232,7 +275,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ❌ ERROR in ExecuteClusteringForCategory: {ex.Message}\n");
                 DebugLogger.Error($"[OpeningCommandOrchestrator] Error clustering {filter.Category}: {ex.Message}");
+                DebugLogger.Error($"[OpeningCommandOrchestrator] Stack trace: {ex.StackTrace}");
                 // Don't throw - clustering failure shouldn't stop the entire process
             }
         }
@@ -240,30 +286,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Load clash zones for a specific filter from XML file
         /// </summary>
+        /// <summary>
+        /// ✅ PERFORMANCE FIX: Get XML file path for a specific filter
+        /// This avoids loading all 22 XML files during clustering
+        /// </summary>
+        private string GetXmlFilePathForFilter(OpeningFilter filter)
+        {
+            // Convert MepCategory enum back to string for file naming
+            string categoryName = filter.Category switch
+            {
+                Models.MepCategory.Ducts => "Ducts",
+                Models.MepCategory.DuctAccessories => "Duct Accessories", 
+                Models.MepCategory.Pipes => "Pipes",
+                Models.MepCategory.CableTrays => "Cable Trays",
+                _ => "Ducts"
+            };
+
+            // Construct XML file path (same logic as LoadClashZonesForFilter)
+            string filterName = filter.Name;
+            string xmlFileName = $"{filterName}_{categoryName.Replace(" ", "_").ToLower()}.xml";
+            string xmlFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters", xmlFileName);
+            
+            return xmlFilePath;
+        }
+
         private List<ClashZone> LoadClashZonesForFilter(OpeningFilter filter)
         {
             try
             {
-                // Convert MepCategory enum back to string for file naming
-                string categoryName = filter.Category switch
-                {
-                    Models.MepCategory.Ducts => "Ducts",
-                    Models.MepCategory.DuctAccessories => "Duct Accessories", 
-                    Models.MepCategory.Pipes => "Pipes",
-                    Models.MepCategory.CableTrays => "Cable Trays",
-                    _ => "Ducts"
-                };
-
-                // Construct XML file path (CORRECTED: Use same path as refresh process)
-                string filterName = filter.Name;
-                string xmlFileName = $"{filterName}_{categoryName.Replace(" ", "_").ToLower()}.xml";
-                string xmlFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters", xmlFileName);
+                // ✅ PERFORMANCE FIX: Use the helper method to get XML file path
+                string xmlFilePath = GetXmlFilePathForFilter(filter);
 
                 DebugLogger.Info($"[OpeningCommandOrchestrator] Looking for clash zones in: {xmlFilePath}");
                 
                 // 🔥 CRITICAL DEBUG: Force direct file logging to trace orchestrator execution
                 System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] Looking for clash zones in: {xmlFilePath}\n");
+                    $"[{DateTime.Now:HH:mm:ss}] 🔍 INDIVIDUAL SLEEVE SERVICE READING FROM: {xmlFilePath}\n");
 
                 if (!File.Exists(xmlFilePath))
                 {
@@ -279,6 +337,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Load clash zones from XML
                 var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
                 OpeningFilter loadedFilter;
+                
+                // 🔥 CRITICAL DEBUG: Log raw XML content before deserialization
+                string rawXmlContent = File.ReadAllText(xmlFilePath);
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🔍 RAW XML CONTENT (first 1000 chars): {rawXmlContent.Substring(0, Math.Min(1000, rawXmlContent.Length))}\n");
+                
                 using (var reader = new StreamReader(xmlFilePath))
                 {
                     loadedFilter = (OpeningFilter)serializer.Deserialize(reader);
@@ -291,6 +355,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     clashZones = loadedFilter.ClashZoneStorage.ClashZones;
                     System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
                         $"[{DateTime.Now:HH:mm:ss}] ✅ Successfully loaded {clashZones.Count} clash zones from {xmlFilePath}\n");
+                    
+                // 🔥 CRITICAL DEBUG: Check flag values immediately after deserialization
+                int clusterResolvedCount = clashZones.Count(cz => cz.IsClusterResolved);
+                int individualResolvedCount = clashZones.Count(cz => cz.IsResolved);
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 📊 FLAGS AFTER XML DESERIALIZATION: IsClusterResolved=True: {clusterResolvedCount}, IsResolved=True: {individualResolvedCount}\n");
+                
+                // 🔥 CRITICAL DEBUG: Log individual clash zone flag values to identify the issue
+                for (int i = 0; i < clashZones.Count && i < 5; i++) // Log first 5 clash zones
+                {
+                    var cz = clashZones[i];
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🔍 ClashZone {i}: IsResolved={cz.IsResolved}, IsClusterResolved={cz.IsClusterResolved}, ClusterSleeveInstanceId={cz.ClusterSleeveInstanceId}\n");
+                }
+                    
                     DebugLogger.Info($"[OpeningCommandOrchestrator] Successfully loaded {clashZones.Count} clash zones from {xmlFilePath}");
                 }
                 else
@@ -332,6 +411,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (clashZones.Count > 0)
                 {
+                    // 🔥 CRITICAL DEBUG: Log which XML file we're passing clash zones from
+                    string xmlFilePath = GetXmlFilePathForFilter(filter);
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🔍 PASSING CLASH ZONES FROM XML FILE: {xmlFilePath}\n");
+                    
                     // ✅ CRITICAL FIX: Convert enum to proper string format for strategy creation
                     string categoryString = filter.Category switch
                     {
@@ -342,8 +426,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         _ => "Ducts"
                     };
                     
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] About to create UniversalSleevePlacementCommand for category: {categoryString}\n");
+                    
                     var universalCommand = new UniversalSleevePlacementCommand(_document, clashZones, categoryString, _uiClearances);
+                    
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] UniversalSleevePlacementCommand created successfully, about to execute\n");
+                    
                     universalCommand.Execute(_uiDocument.Application);
+                    
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] UniversalSleevePlacementCommand executed successfully\n");
+                    
                     DebugLogger.Info($"[OpeningCommandOrchestrator] UniversalSleevePlacementCommand completed successfully");
                 }
                 else
@@ -353,6 +448,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ❌ EXCEPTION in ExecuteUniversalSleevePlacement: {ex.Message}\n");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] Stack trace: {ex.StackTrace}\n");
                 DebugLogger.Error($"[OpeningCommandOrchestrator] Error executing UniversalSleevePlacementCommand: {ex.Message}");
                 throw;
             }
@@ -367,18 +466,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 DebugLogger.Info($"[OpeningCommandOrchestrator] Executing {command.GetType().Name} for {filter.Category}");
 
-                // Use ExecuteImpl pattern for direct execution (no ExternalCommandData construction)
-                if (command is RectangularSleeveClusterCommandV2 clusterCommand)
-                {
-                    // For now, skip clustering commands that don't have ExecuteImpl
-                    // They will be handled through the Revit command system when needed
-                    DebugLogger.Info($"[OpeningCommandOrchestrator] Skipping {command.GetType().Name} - will be handled through Revit command system");
-                    return;
-                }
-                else
-                {
-                    DebugLogger.Warning($"[OpeningCommandOrchestrator] Command {command.GetType().Name} not supported for direct execution - skipping");
-                }
+                // ✅ FIX: No longer using RectangularSleeveClusterCommandV2 - clustering handled by UniversalClusterService
+                DebugLogger.Warning($"[OpeningCommandOrchestrator] Command {command.GetType().Name} not supported for direct execution - skipping");
             }
             catch (Exception ex)
             {
@@ -387,35 +476,5 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
-        /// <summary>
-        /// Execute marking for all disciplines at the end using ExecuteImpl pattern
-        /// </summary>
-        private void ExecuteMarkingForAllDisciplines(List<OpeningFilter> filters, bool showProgress)
-        {
-            // For now, always execute marking since OpeningFilter doesn't have IncludeMarking property
-            try
-            {
-                DebugLogger.Info("[OpeningCommandOrchestrator] Executing marking for all disciplines");
-
-                var markingCommand = new MarkParameterAddValue();
-                
-                // Use ExecuteImpl pattern for direct execution (no ExternalCommandData construction)
-                var result = markingCommand.ExecuteImpl(_document, _uiDocument, "[MARK_PARAMETER]");
-
-                if (!result.Success)
-                {
-                    DebugLogger.Warning($"[OpeningCommandOrchestrator] Marking completed with warnings: {result.ErrorMessage}");
-                }
-                else
-                {
-                    DebugLogger.Info("[OpeningCommandOrchestrator] Marking completed successfully");
-                }
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Error($"[OpeningCommandOrchestrator] Error executing marking: {ex.Message}");
-                throw;
-            }
-        }
     }
 }

@@ -153,15 +153,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ ARCHITECTURE COMPLIANCE: Use OpeningCommandOrchestrator for proper command execution
                 DebugLogger.Info("[SleevePlacementExternalEvent] Creating OpeningCommandOrchestrator for proper architecture compliance");
                 
-                var orchestrator = new OpeningCommandOrchestrator(_document, _uiDocument);
+                var clearanceSettings = GetClearanceSettingsFromUI();
+                var orchestrator = new OpeningCommandOrchestrator(_document, _uiDocument, clearanceSettings, _markPrefixes);
                 
                 System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] STEP 11: Orchestrator created successfully\n");
+                    $"[{DateTime.Now:HH:mm:ss}] STEP 11: Orchestrator created successfully with clearances and mark prefixes\n");
                 
-                // ✅ Set UI clearance settings in orchestrator
-                var clearanceSettings = GetClearanceSettingsFromUI();
-                orchestrator.SetUIClearances(clearanceSettings);
-                DebugLogger.Info($"[SleevePlacementExternalEvent] Set {clearanceSettings.Count} UI clearance settings in orchestrator");
+                DebugLogger.Info($"[SleevePlacementExternalEvent] Set {clearanceSettings.Count} UI clearance settings and mark prefixes in orchestrator");
                 
                 System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
                     $"[{DateTime.Now:HH:mm:ss}] STEP 12: Set UI clearances in orchestrator\n");

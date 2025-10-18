@@ -66,12 +66,21 @@
 
   <ItemGroup>
     <Compile Remove="Commands\ApplyOpeningsFromCsvCommand.cs" />
+    <Compile Remove="ViewModels\ProfileManagementViewModel.cs" />
+    <Compile Remove="ViewModels\MainDialogViewModel.cs" />
+    <Compile Remove="ViewModels\OpeningStatusPanelViewModel.cs" />
+    <Compile Remove="ViewModels\ProfileSetupViewModel.cs" />
+    <Compile Remove="ViewModels\ProfileSetupViewModelSafe.cs" />
+    <Compile Remove="ViewModels\OpeningStatusDialogViewModel.cs" />
+    <Compile Remove="ViewModels\OpeningStatusItem.cs" />
+    <Compile Remove="Views\ProfileSetupDialog.xaml.cs" />
+    <Compile Remove="Views\MainDialog.xaml.cs" />
+    <Compile Remove="Views\ProfileManagementDialog.xaml.cs" />
     <PackageReference Include="Nice3point.Revit.Build.Tasks" Version="3.0.1" />
     <PackageReference Include="Nice3point.Revit.Toolkit" Version="2023.1.0" />
     <PackageReference Include="Nice3point.Revit.Extensions" Version="2023.1.0" />
     <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2023.1.1" />
     <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2023.1.1" />
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="Serilog" Version="4.2.0" />
     <PackageReference Include="Serilog.Sinks.Debug" Version="3.0.0" />
     <PackageReference Include="ILRepack" Version="2.0.41" />

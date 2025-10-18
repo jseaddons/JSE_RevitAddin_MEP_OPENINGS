@@ -1,15 +1,12 @@
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R24\Debug R24\JSE_RevitAddin_MEP_OPENINGS.addin
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R24\Debug R24\JSE_RevitAddin_MEP_OPENINGS.dll
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R24\Debug R24\JSE_RevitAddin_MEP_OPENINGS.pdb
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R24\Debug R24\CommunityToolkit.Mvvm.dll
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R24\Debug R24\JetBrains.Annotations.dll
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R24\Debug R24\Microsoft.Bcl.AsyncInterfaces.dll
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R24\Debug R24\Nice3point.Revit.Extensions.dll
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R24\Debug R24\Nice3point.Revit.Toolkit.dll
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R24\Debug R24\Serilog.dll
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R24\Debug R24\Serilog.Sinks.Debug.dll
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R24\Debug R24\System.Buffers.dll
-C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R24\Debug R24\System.ComponentModel.Annotations.dll
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R24\Debug R24\System.Diagnostics.DiagnosticSource.dll
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R24\Debug R24\System.Memory.dll
 C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\bin\Debug R24\Debug R24\System.Numerics.Vectors.dll

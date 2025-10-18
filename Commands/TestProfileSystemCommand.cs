@@ -1,5 +1,7 @@
 using System;
+using System.Linq;
 using System.Windows;
+using System.Windows.Forms;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
@@ -30,27 +32,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 // Check if profile setup is required
                 if (profileService.IsProfileSetupRequired())
                 {
-                    // Show profile setup dialog
-                    var viewModel = new ProfileSetupViewModel(profileService, statusManager);
-                    var dialog = new ProfileSetupDialog(viewModel);
-
-                    var result = dialog.ShowDialog();
-                    if (result == true && dialog.CreatedProfile != null)
+                    // Show emergency profile setup dialog (WinForms-based)
+                    using (var emergencyDialog = new Views.EmergencyProfileSetup(profileService, statusManager))
                     {
-                        // Set the created profile as current
-                        profileService.SetCurrentProfile(dialog.CreatedProfile);
-                        
-                        // Show success message
-                        TaskDialog.Show("Profile Setup", 
-                            $"Profile '{dialog.CreatedProfile.Name}' created successfully!\n\n" +
-                            $"Primary Discipline: {dialog.CreatedProfile.PrimaryDiscipline?.Name}\n" +
-                            $"MEP Disciplines: {string.Join(", ", dialog.CreatedProfile.MepDisciplines.Select(d => d.Name))}\n" +
-                            $"Language: {dialog.CreatedProfile.Language}");
-                    }
-                    else
-                    {
-                        TaskDialog.Show("Profile Setup", "Profile setup was cancelled.");
-                        return Result.Cancelled;
+                        var result = emergencyDialog.ShowDialog();
+                        if (result == System.Windows.Forms.DialogResult.OK && emergencyDialog.CreatedProfile != null)
+                        {
+                            // Set the created profile as current
+                            profileService.SetCurrentProfile(emergencyDialog.CreatedProfile);
+                            
+                            // Show success message
+                            TaskDialog.Show("Profile Setup", 
+                                $"Profile '{emergencyDialog.CreatedProfile.Name}' created successfully!\n\n" +
+                                $"Primary Discipline: {emergencyDialog.CreatedProfile.PrimaryDiscipline?.Name}\n" +
+                                $"MEP Disciplines: {string.Join(", ", emergencyDialog.CreatedProfile.MepDisciplines.Select(d => d.Name))}\n" +
+                                $"Language: {emergencyDialog.CreatedProfile.Language}");
+                        }
+                        else
+                        {
+                            TaskDialog.Show("Profile Setup", "Profile setup was cancelled.");
+                            return Result.Cancelled;
+                        }
                     }
                 }
                 else

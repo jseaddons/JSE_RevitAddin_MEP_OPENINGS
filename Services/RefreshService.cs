@@ -57,6 +57,66 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
+        /// 🔥 CRITICAL FIX: Load existing clash zone data to preserve cluster information
+        /// This prevents the Refresh process from overwriting existing cluster data
+        /// </summary>
+        public void LoadExistingClashZoneData()
+        {
+            try
+            {
+                var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                
+                if (!Directory.Exists(filtersDirectory))
+                {
+                    DebugLogger.Info("[RefreshService] No existing filters directory found - starting with empty clash zones");
+                    return;
+                }
+
+                // Look for existing XML files with clash zone data
+                var xmlFiles = Directory.GetFiles(filtersDirectory, "*.xml");
+                
+                if (xmlFiles.Length == 0)
+                {
+                    DebugLogger.Info("[RefreshService] No existing XML files found - starting with empty clash zones");
+                    return;
+                }
+
+                // Load clash zones from the most recently modified XML file
+                var mostRecentFile = xmlFiles
+                    .OrderByDescending(f => File.GetLastWriteTime(f))
+                    .First();
+
+                DebugLogger.Info($"[RefreshService] Loading existing clash zone data from: {mostRecentFile}");
+
+                var serializer = new System.Xml.Serialization.XmlSerializer(typeof(Models.OpeningFilter));
+                using (var reader = new StreamReader(mostRecentFile))
+                {
+                    var filter = (Models.OpeningFilter)serializer.Deserialize(reader);
+                    
+                    if (filter?.ClashZoneStorage?.ClashZones != null)
+                    {
+                        // ✅ CRITICAL: Preserve existing clash zone data including cluster information
+                        _clashZoneService = new ClashZoneService(filter.ClashZoneStorage, msg => DebugLogger.Info(msg));
+                        
+                        int clusterResolvedCount = filter.ClashZoneStorage.ClashZones.Count(cz => cz.IsClusterResolved);
+                        int individualResolvedCount = filter.ClashZoneStorage.ClashZones.Count(cz => cz.IsResolved);
+                        
+                        DebugLogger.Info($"[RefreshService] ✅ Loaded existing clash zone data: {filter.ClashZoneStorage.ClashZones.Count} total, {clusterResolvedCount} cluster-resolved, {individualResolvedCount} individual-resolved");
+                    }
+                    else
+                    {
+                        DebugLogger.Info("[RefreshService] No clash zone data found in existing XML file");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[RefreshService] Error loading existing clash zone data: {ex.Message}");
+                // Continue with empty storage if loading fails
+            }
+        }
+
+        /// <summary>
         /// Ensure shared parameters are loaded into the project
         /// </summary>
         private void EnsureSharedParametersLoaded(Document doc)
@@ -652,10 +712,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             DebugLogger.Info("[CLASH_DEBUG] Skipping cleanup - no cleanup needed");
             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Skipping cleanup - no cleanup needed\n");
 
-            DebugLogger.Info($"[CLASH_DEBUG] Filtering clash zones by current selection - Reference files: {selectedReferenceFiles.Count}, Clearance settings: {clearanceSettings.Count}");
-            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Filtering clash zones by current selection - Reference files: {selectedReferenceFiles.Count}, Clearance settings: {clearanceSettings.Count}\n");
+            DebugLogger.Info($"[CLASH_DEBUG] Using loaded existing clash zones - Reference files: {selectedReferenceFiles.Count}, Clearance settings: {clearanceSettings.Count}");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Using loaded existing clash zones - Reference files: {selectedReferenceFiles.Count}, Clearance settings: {clearanceSettings.Count}\n");
 
-            var filteredClashZones = _clashZoneService.FilterClashZonesByCurrentSelection(selectedReferenceFiles, clearanceSettings, "Refresh", _document);
+            // ✅ CRITICAL FIX: DO NOT call FilterClashZonesByCurrentSelection here!
+            // It will overwrite the loaded clash zones with empty storage
+            // Instead, use the loaded existing clash zones directly
+            var filteredClashZones = existingClashZones;
 
             // ✅ CRITICAL: Filter existing zones by CURRENT UI selections (categories, host types, reference files, host files)
             // This ensures when user changes UI selections, only matching clash zones are processed
@@ -692,6 +755,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (existingClashZones?.ClashZones != null)
                 {
                     var before = existingClashZones.ClashZones.Count;
+                    
+                    // 🔥 CRITICAL DEBUG: Log flags BEFORE filtering
+                    int clusterResolvedBefore = existingClashZones.ClashZones.Count(cz => cz.IsClusterResolved);
+                    int individualResolvedBefore = existingClashZones.ClashZones.Count(cz => cz.IsResolved);
+                    DebugLogger.Info($"[CLASH_DEBUG] BEFORE FILTERING: {before} clash zones, IsClusterResolved=True: {clusterResolvedBefore}, IsResolved=True: {individualResolvedBefore}");
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", 
+                        $"[{DateTime.Now}] [CLASH_DEBUG] BEFORE FILTERING: {before} clash zones, IsClusterResolved=True: {clusterResolvedBefore}, IsResolved=True: {individualResolvedBefore}\n");
+                    
                     existingClashZones.ClashZones = existingClashZones.ClashZones.Where(cz =>
                     {
                         // Filter by MEP category
@@ -703,11 +774,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                            allowedHostTypes.Contains(cz.StructuralElementType + "s") ||
                                            allowedHostTypes.Any(t => t.TrimEnd('s').Equals(cz.StructuralElementType, StringComparison.OrdinalIgnoreCase));
                         
+                        // 🔥 CRITICAL DEBUG: Log individual clash zone filtering
+                        if (!categoryMatch)
+                        {
+                            DebugLogger.Info($"[CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Category mismatch: '{cz.MepElementCategory}' not in [{string.Join(", ", allowedMepCats)}]");
+                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", 
+                                $"[{DateTime.Now}] [CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Category mismatch: '{cz.MepElementCategory}' not in [{string.Join(", ", allowedMepCats)}]\n");
+                        }
+                        if (!hostTypeMatch)
+                        {
+                            DebugLogger.Info($"[CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Host type mismatch: '{cz.StructuralElementType}' not in [{string.Join(", ", allowedHostTypes)}]");
+                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", 
+                                $"[{DateTime.Now}] [CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Host type mismatch: '{cz.StructuralElementType}' not in [{string.Join(", ", allowedHostTypes)}]\n");
+                        }
+                        
                         // Filter by reference file (MEP source) - only if reference files are specified
-                        bool refFileMatch = allowedRefFiles.Count == 0 || allowedRefFiles.Contains(norm(cz.SourceDocKey ?? ""));
+                        // ✅ CRITICAL FIX: Extract filename from full path for comparison
+                        string refFileName = string.IsNullOrEmpty(cz.SourceDocKey) ? "" : Path.GetFileNameWithoutExtension(cz.SourceDocKey);
+                        bool refFileMatch = allowedRefFiles.Count == 0 || allowedRefFiles.Contains(norm(refFileName));
                         
                         // Filter by host file (structural source) - only if host files are specified
-                        bool hostFileMatch = allowedHostFiles.Count == 0 || allowedHostFiles.Contains(norm(cz.StructuralElementDocumentTitle ?? ""));
+                        // ✅ CRITICAL FIX: Extract filename from full path for comparison
+                        string hostFileName = string.IsNullOrEmpty(cz.StructuralElementDocumentTitle) ? "" : Path.GetFileNameWithoutExtension(cz.StructuralElementDocumentTitle);
+                        bool hostFileMatch = allowedHostFiles.Count == 0 || allowedHostFiles.Contains(norm(hostFileName));
+                        
+                        // 🔥 CRITICAL DEBUG: Log file filtering
+                        if (!refFileMatch)
+                        {
+                            DebugLogger.Info($"[CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Reference file mismatch: '{cz.SourceDocKey}' -> filename: '{refFileName}' -> normalized: '{norm(refFileName)}' not in [{string.Join(", ", allowedRefFiles)}]");
+                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", 
+                                $"[{DateTime.Now}] [CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Reference file mismatch: '{refFileName}' not in [{string.Join(", ", allowedRefFiles)}]\n");
+                        }
+                        if (!hostFileMatch)
+                        {
+                            DebugLogger.Info($"[CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Host file mismatch: '{cz.StructuralElementDocumentTitle}' -> filename: '{hostFileName}' -> normalized: '{norm(hostFileName)}' not in [{string.Join(", ", allowedHostFiles)}]");
+                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", 
+                                $"[{DateTime.Now}] [CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Host file mismatch: '{hostFileName}' not in [{string.Join(", ", allowedHostFiles)}]\n");
+                        }
                         
                         return categoryMatch && hostTypeMatch && refFileMatch && hostFileMatch;
                     }).ToList();
@@ -715,6 +818,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DebugLogger.Info($"[CLASH_DEBUG] Current UI filter: MEP cats={allowedMepCats.Count}, Host types={allowedHostTypes.Count}, Ref files={allowedRefFiles.Count}, Host files={allowedHostFiles.Count}");
                     DebugLogger.Info($"[CLASH_DEBUG] Filtered existing zones by current UI: {before} -> {existingClashZones.ClashZones.Count}");
                     JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Filtered existing zones by current UI: {before} -> {existingClashZones.ClashZones.Count}\n");
+                    
+                    // 🔥 CRITICAL DEBUG: Log flags AFTER filtering
+                    int clusterResolvedAfter = existingClashZones.ClashZones.Count(cz => cz.IsClusterResolved);
+                    int individualResolvedAfter = existingClashZones.ClashZones.Count(cz => cz.IsResolved);
+                    DebugLogger.Info($"[CLASH_DEBUG] AFTER FILTERING: {existingClashZones.ClashZones.Count} clash zones, IsClusterResolved=True: {clusterResolvedAfter}, IsResolved=True: {individualResolvedAfter}");
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", 
+                        $"[{DateTime.Now}] [CLASH_DEBUG] AFTER FILTERING: {existingClashZones.ClashZones.Count} clash zones, IsClusterResolved=True: {clusterResolvedAfter}, IsResolved=True: {individualResolvedAfter}\n");
                 }
             }
             catch (Exception ex)
@@ -974,6 +1084,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                                 // Save category-specific XML file
                                 var categoryFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters", $"{categoryFilter.Name}.xml");
+                                
+                                // 🔥 CRITICAL DEBUG: Log flags BEFORE saving to XML
+                                int clusterResolvedBeforeSave = categoryClashZones.Count(cz => cz.IsClusterResolved);
+                                int individualResolvedBeforeSave = categoryClashZones.Count(cz => cz.IsResolved);
+                                DebugLogger.Info($"[CLASH_DEBUG] BEFORE SAVING TO XML: {categoryClashZones.Count} clash zones, IsClusterResolved=True: {clusterResolvedBeforeSave}, IsResolved=True: {individualResolvedBeforeSave}");
+                                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", 
+                                    $"[{DateTime.Now}] [CLASH_DEBUG] BEFORE SAVING TO XML: {categoryClashZones.Count} clash zones, IsClusterResolved=True: {clusterResolvedBeforeSave}, IsResolved=True: {individualResolvedBeforeSave}\n");
+                                
                                 _filterManagementService.SaveFilterToXmlFile(categoryFilter, categoryFilePath);
 
                                 DebugLogger.Info($"[CLASH_DEBUG] Saved {categoryClashZones.Count} clash zones for category '{category}' to: {categoryFilePath}");
@@ -1699,21 +1817,53 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
                 
+                DebugLogger.Info($"[LoadExistingClashZones] Looking for XML files in: {filtersDirectory}");
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", 
+                    $"[{DateTime.Now}] [LoadExistingClashZones] Looking for XML files in: {filtersDirectory}\n");
+                
                 if (!Directory.Exists(filtersDirectory))
+                {
+                    DebugLogger.Warning($"[LoadExistingClashZones] Filters directory does not exist!");
                     return mergedStorage;
+                }
+
+                // 🔥 DEBUG: List ALL XML files in the directory
+                var allXmlFiles = Directory.GetFiles(filtersDirectory, "*.xml");
+                DebugLogger.Info($"[LoadExistingClashZones] Found {allXmlFiles.Length} total XML files");
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", 
+                    $"[{DateTime.Now}] [LoadExistingClashZones] Found {allXmlFiles.Length} total XML files\n");
+                
+                foreach (var xmlFile in allXmlFiles)
+                {
+                    DebugLogger.Info($"[LoadExistingClashZones] - {Path.GetFileName(xmlFile)}");
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", 
+                        $"[{DateTime.Now}] [LoadExistingClashZones] - {Path.GetFileName(xmlFile)}\n");
+                }
 
                 // Load clash zones from each category-specific XML file
                 foreach (var filterName in selectedFilterNames)
                 {
+                    DebugLogger.Info($"[LoadExistingClashZones] Processing filter: {filterName}");
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", 
+                        $"[{DateTime.Now}] [LoadExistingClashZones] Processing filter: {filterName}\n");
+                    
                     foreach (var category in selectedCategories)
                     {
                         var pattern = $"{filterName}_{category.ToLower().Replace(" ", "_")}.xml";
+                        DebugLogger.Info($"[LoadExistingClashZones] Looking for pattern: {pattern}");
+                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", 
+                            $"[{DateTime.Now}] [LoadExistingClashZones] Looking for pattern: {pattern}\n");
+                        
                         var matchingFiles = Directory.GetFiles(filtersDirectory, pattern);
+                        
+                        DebugLogger.Info($"[LoadExistingClashZones] Found {matchingFiles.Length} matching files for pattern: {pattern}");
+                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", 
+                            $"[{DateTime.Now}] [LoadExistingClashZones] Found {matchingFiles.Length} matching files for pattern: {pattern}\n");
                         
                         if (matchingFiles.Length > 0)
                         {
                             var xmlFile = matchingFiles.First();
-                            DebugLogger.Info($"[LoadExistingClashZones] Loading from {Path.GetFileName(xmlFile)}");
+                            DebugLogger.Info($"[LoadExistingClashZones] ✅ Loading from {Path.GetFileName(xmlFile)}");
                             
                             try
                             {
@@ -1724,23 +1874,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     if (filter?.ClashZoneStorage?.ClashZones != null)
                                     {
                                         mergedStorage.ClashZones.AddRange(filter.ClashZoneStorage.ClashZones);
-                                        DebugLogger.Info($"[LoadExistingClashZones] Loaded {filter.ClashZoneStorage.ClashZones.Count} clash zones from {Path.GetFileName(xmlFile)}");
+                                        DebugLogger.Info($"[LoadExistingClashZones] ✅ Loaded {filter.ClashZoneStorage.ClashZones.Count} clash zones from {Path.GetFileName(xmlFile)}");
+                                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", 
+                                            $"[{DateTime.Now}] [LoadExistingClashZones] ✅ Loaded {filter.ClashZoneStorage.ClashZones.Count} clash zones\n");
+                                    }
+                                    else
+                                    {
+                                        DebugLogger.Warning($"[LoadExistingClashZones] ❌ No clash zones in {Path.GetFileName(xmlFile)}");
                                     }
                                 }
                             }
                             catch (Exception ex)
                             {
-                                DebugLogger.Error($"[LoadExistingClashZones] Error loading {Path.GetFileName(xmlFile)}: {ex.Message}");
+                                DebugLogger.Error($"[LoadExistingClashZones] ❌ Error loading {Path.GetFileName(xmlFile)}: {ex.Message}");
+                                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", 
+                                    $"[{DateTime.Now}] [LoadExistingClashZones] ❌ ERROR: {ex.Message}\n");
                             }
                         }
                     }
                 }
                 
-                DebugLogger.Info($"[LoadExistingClashZones] Total clash zones loaded: {mergedStorage.ClashZones.Count}");
+                DebugLogger.Info($"[LoadExistingClashZones] ✅ Total clash zones loaded: {mergedStorage.ClashZones.Count}");
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", 
+                    $"[{DateTime.Now}] [LoadExistingClashZones] ✅ FINAL: Total clash zones loaded: {mergedStorage.ClashZones.Count}\n");
             }
             catch (Exception ex)
             {
                 DebugLogger.Error($"[LoadExistingClashZones] Error: {ex.Message}");
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", 
+                    $"[{DateTime.Now}] [LoadExistingClashZones] EXCEPTION: {ex.Message}\n");
             }
 
             return mergedStorage;

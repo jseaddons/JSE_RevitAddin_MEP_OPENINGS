@@ -4,13 +4,13 @@
 
 
 [Setup]
-AppName=MEP OPENING
+AppName=JSE MEP OPENING (2023-2024)
 AppVersion=1.0
 AppPublisher=JSE
 AppPublisherURL=https://www.jseaddons.com
 AppSupportURL=https://www.jseaddons.com/support
 AppUpdatesURL=https://www.jseaddons.com/updates
-DefaultDirName={autopf}\JSE\MEP_OPENING
+DefaultDirName={userappdata}\Autodesk\Revit\Addins\2024
 DisableProgramGroupPage=yes
 OutputBaseFilename=MEP_OPENING_Installer
 Compression=lzma
@@ -42,6 +42,25 @@ Name: "{autoprograms}\MEP OPENING Uninstall"; Filename: "{uninstallexe}"
 
 
 [Code]
+
+function InitializeSetup(): Boolean;
+var
+  DomainName: String;
+begin
+  Result := False;
+  // Get the domain name from environment variable
+  DomainName := UpperCase(GetEnv('USERDOMAIN'));
+  // Check if domain contains "JSE24" (case insensitive)
+  if Pos('JSE24', DomainName) > 0 then
+  begin
+    Result := True;
+  end
+  else
+  begin
+    MsgBox('Installation Error: Cannot be installed without a valid license. Please contact admin@jseeng.in for assistance.', mbError, MB_OK);
+    Result := False;
+  end;
+end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin

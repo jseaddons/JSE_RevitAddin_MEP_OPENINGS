@@ -48,12 +48,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Configuration
         /// <param name="category">MEP category (e.g., "Pipes", "Ducts")</param>
         /// <param name="elementProps">Element properties including size and shape</param>
         /// <param name="uiPreference">UI preference ("Circular" or "Rectangular")</param>
+        /// <param name="hostType">Host element type ("Wall", "Floor", "Structural Framing")</param>
         /// <returns>Resolved opening type</returns>
-        public string ResolveOpeningType(string category, ElementProperties elementProps, string uiPreference)
+        public string ResolveOpeningType(string category, ElementProperties elementProps, string uiPreference, string hostType = null)
         {
             try
             {
-                // Priority 1: Global size-based rules
+                // Priority 1: Global size-based rules (for ALL pipes - walls, floors, framing)
                 if (category.Equals("Pipes", StringComparison.OrdinalIgnoreCase))
                 {
                     var processingLimits = _globalConfigService.GetProcessingLimits();
@@ -64,8 +65,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Configuration
                     
                     if (diameterMm > diameterThreshold)
                     {
-                        DebugLogger.Info($"[ConfigResolution] Pipe {diameterMm:F1}mm > {diameterThreshold}mm threshold → Rectangular (global rule overrides UI: {uiPreference})");
-                        return "Rectangular"; // Global rule wins
+                        DebugLogger.Info($"[ConfigResolution] Pipe {diameterMm:F1}mm > {diameterThreshold}mm threshold → Rectangular (global rule overrides UI: {uiPreference}) for {hostType ?? "Unknown"} host");
+                        return "Rectangular"; // Global rule wins for ALL pipes >200mm
+                    }
+                    else
+                    {
+                        DebugLogger.Info($"[ConfigResolution] Pipe {diameterMm:F1}mm <= {diameterThreshold}mm threshold → {uiPreference} (UI preference respected) for {hostType ?? "Unknown"} host");
+                        return uiPreference; // UI preference for ALL pipes ≤200mm
                     }
                 }
                 
@@ -177,13 +183,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Configuration
         /// <param name="category">MEP category</param>
         /// <param name="elementProps">Element properties</param>
         /// <param name="uiPreferences">UI user preferences</param>
+        /// <param name="hostType">Host element type</param>
         /// <returns>Resolved configuration</returns>
-        public ResolvedConfiguration ResolveConfiguration(string category, ElementProperties elementProps, UIUserPreferences uiPreferences)
+        public ResolvedConfiguration ResolveConfiguration(string category, ElementProperties elementProps, UIUserPreferences uiPreferences, string hostType = null)
         {
             return new ResolvedConfiguration
             {
                 Category = category,
-                OpeningType = ResolveOpeningType(category, elementProps, uiPreferences.OpeningType),
+                OpeningType = ResolveOpeningType(category, elementProps, uiPreferences.OpeningType, hostType),
                 Clearance = ResolveClearance(category, uiPreferences.Clearance),
                 ShouldProcess = ShouldProcessElement(category, elementProps),
                 ElementProperties = elementProps,
