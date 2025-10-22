@@ -50,7 +50,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             DebugLogger.Info($"[SleevePlacementExternalEvent] FilterName: {filterName ?? "NULL"}");
             
             _selectedCategories = categories ?? throw new ArgumentNullException(nameof(categories));
-            _markPrefixes = markPrefixes ?? throw new ArgumentNullException(nameof(markPrefixes));
+            _markPrefixes = markPrefixes ?? new MarkPrefixSettings(); // Use defaults if null
             _selectedFilterName = filterName ?? throw new ArgumentNullException(nameof(filterName));
             DebugLogger.Info($"[SleevePlacementExternalEvent] SetContext called - Categories: {string.Join(", ", categories)}, Filter: {filterName}");
         }
@@ -384,18 +384,96 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
                 
-                // Search for files matching pattern: *_{category}.xml
-                var pattern = $"*_{category.ToLower().Replace(" ", "_")}.xml";
-                var matchingFiles = Directory.GetFiles(filtersDirectory, pattern);
+                // Search for files matching pattern: prioritize filter name first, then fallback
+                var categoryPattern = category.ToLower().Replace(" ", "_");
                 
-                if (matchingFiles.Length > 0)
+                // DEBUG: Log pattern generation
+                DebugLogger.Info($"[SleevePlacementExternalEvent] Category: '{category}' → Pattern: '{categoryPattern}'");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                    $"[{DateTime.Now}] [PATTERN_DEBUG] Category: '{category}' → Pattern: '{categoryPattern}'\n");
+                
+                // First try: Look for files with the current filter name
+                var filterPattern = $"{_selectedFilterName}_{categoryPattern}.xml";
+                var filterFiles = Directory.GetFiles(filtersDirectory, filterPattern);
+                
+                // DEBUG: Log pattern matching
+                DebugLogger.Info($"[SleevePlacementExternalEvent] Looking for pattern: '{filterPattern}', Found: {filterFiles.Length} files");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                    $"[{DateTime.Now}] [PATTERN_DEBUG] Looking for: '{filterPattern}', Found: {filterFiles.Length} files\n");
+                
+                // If no exact match, try common variations
+                if (filterFiles.Length == 0)
                 {
-                    // Use the most recently modified file to get the latest clash zones
-                    xmlFilePath = matchingFiles
+                    // Try plural forms and common variations
+                    var variations = new List<string>();
+                    
+                    // Add plural variations
+                    if (categoryPattern.EndsWith("s"))
+                    {
+                        variations.Add($"{_selectedFilterName}_{categoryPattern}.xml"); // Already tried
+                    }
+                    else
+                    {
+                        variations.Add($"{_selectedFilterName}_{categoryPattern}s.xml"); // Add 's'
+                    }
+                    
+                    // Add specific category mappings
+                    switch (categoryPattern)
+                    {
+                        case "duct":
+                            variations.Add($"{_selectedFilterName}_ducts.xml");
+                            break;
+                        case "duct_accessory":
+                            variations.Add($"{_selectedFilterName}_duct_accessories.xml");
+                            break;
+                        case "cable_tray":
+                            variations.Add($"{_selectedFilterName}_cable_trays.xml");
+                            break;
+                        case "pipe":
+                            variations.Add($"{_selectedFilterName}_pipes.xml");
+                            break;
+                    }
+                    
+                    // Try each variation
+                    foreach (var variation in variations)
+                    {
+                        var varFiles = Directory.GetFiles(filtersDirectory, variation);
+                        if (varFiles.Length > 0)
+                        {
+                            filterFiles = varFiles;
+                            DebugLogger.Info($"[SleevePlacementExternalEvent] Found variation: '{variation}', Found: {varFiles.Length} files");
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                $"[{DateTime.Now}] [PATTERN_DEBUG] Found variation: '{variation}', Found: {varFiles.Length} files\n");
+                            break;
+                        }
+                    }
+                }
+                
+                if (filterFiles.Length > 0)
+                {
+                    // Use the most recently modified file with the correct filter name
+                    xmlFilePath = filterFiles
                         .OrderByDescending(f => File.GetLastWriteTime(f))
                         .First();
-                    DebugLogger.Info($"[SleevePlacementExternalEvent] Found matching XML file: {xmlFilePath}");
+                    DebugLogger.Info($"[SleevePlacementExternalEvent] Found filter-specific XML file: {xmlFilePath}");
+                }
+                else
+                {
+                    // Fallback: Look for any file matching the category pattern
+                    var fallbackPattern = $"*_{categoryPattern}.xml";
+                    var matchingFiles = Directory.GetFiles(filtersDirectory, fallbackPattern);
                     
+                    if (matchingFiles.Length > 0)
+                    {
+                        xmlFilePath = matchingFiles
+                            .OrderByDescending(f => File.GetLastWriteTime(f))
+                            .First();
+                        DebugLogger.Warning($"[SleevePlacementExternalEvent] Using fallback XML file (filter '{_selectedFilterName}' not found): {xmlFilePath}");
+                    }
+                }
+                
+                if (!string.IsNullOrEmpty(xmlFilePath))
+                {
                     var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
                     using (var reader = new StreamReader(xmlFilePath))
                     {
@@ -413,7 +491,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 else
                 {
-                    DebugLogger.Warning($"[SleevePlacementExternalEvent] No XML files found matching pattern: {pattern} in directory: {filtersDirectory}");
+                    DebugLogger.Warning($"[SleevePlacementExternalEvent] No XML files found for category '{category}' with filter '{_selectedFilterName}' in directory: {filtersDirectory}");
                 }
             }
             catch (Exception ex)

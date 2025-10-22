@@ -129,6 +129,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
+
+
         /// <summary>
         /// Gets the current active profile
         /// </summary>
@@ -506,7 +508,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 _statusManager.StatusUpdated -= OnStatusManagerStatusUpdated;
             }
         }
-        
+
+        /// <summary>
+        /// Forces profile setup to be required for new files by clearing any cached profile data
+        /// </summary>
+        public static void ForceProfileSetupForNewFile()
+        {
+            lock (_lock)
+            {
+                // Force cleanup of existing instance
+                CleanupInstance();
+                
+                // Create a fresh instance
+                _instance = new ApplicationProfileService();
+                
+                // Clear any cached profile data
+                _instance._currentProfile = null;
+                
+                System.Diagnostics.Debug.WriteLine("ApplicationProfileService: Forced profile setup for new file");
+                
+                var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_debug.log";
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] ForceProfileSetupForNewFile: Fresh instance created with no cached profiles\n");
+            }
+        }
+
         /// <summary>
         /// Gets the current active profile
         /// </summary>

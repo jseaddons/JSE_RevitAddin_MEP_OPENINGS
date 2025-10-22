@@ -53,8 +53,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 var uiDoc = uiApp.ActiveUIDocument;
                 var doc = uiDoc.Document;
 
-                // Reset the singleton for a fresh start (to prevent old profile persistence)
-                ApplicationProfileService.ResetForNewProject();
+                // Force profile setup for new files (to prevent old profile persistence)
+                ApplicationProfileService.ForceProfileSetupForNewFile();
                 
                 // Get the fresh application profile service
                 var appProfileService = ApplicationProfileService.Instance;

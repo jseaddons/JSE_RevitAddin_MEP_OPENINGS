@@ -106,37 +106,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS
             }
             catch { }
 
-            var button1 = panel.AddPushButton<StartupCommand>("Execute");
-            button1.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
-            button1.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+            // Note: Execute and Test Profile buttons removed - JSE Openings handles everything
+            // The "JSE Openings" button provides access to profile setup, profile management, and main UI
 
-            panel.AddSeparator(); // This adds a visual gap
+        // Main JSE Openings Command - handles profile setup, management, and main UI
+        var button5 = panel.AddPushButton<TestProfileManagementCommand>("JSE Openings");
+        button5.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+        button5.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
 
-            // Note: OpeningsPLaceCommand is obsolete - use the main dialog workflow instead
-            // The "Place Openings" button in the dialog handles all placement via SleevePlacementExternalEvent
-            
-            panel.AddSeparator(); // This adds a visual gap
-
-            // Note: Mark Parameters button removed - marking is now handled automatically by the orchestrator
-            // during sleeve placement using prefixes configured in the main UI
-
-            panel.AddSeparator(); // This adds a visual gap
-
-            // ClusterMergeCommand removed from ribbon (command deprecated)
-
-            panel.AddSeparator(); // This adds a visual gap
-
-            // Test Profile System Command
-            var button4 = panel.AddPushButton<TestProfileSystemCommand>("Test Profile");
-            button4.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
-            button4.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
-
-            panel.AddSeparator(); // This adds a visual gap
-
-            // TEST: Profile Management Command
-            var button5 = panel.AddPushButton<TestProfileManagementCommand>("Profile Manager");
-            button5.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
-            button5.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+        // Parameter Service Command - standalone parameter transfer functionality
+        var button6 = panel.AddPushButton<ParameterServiceCommand>("Parameter Service");
+        button6.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+        button6.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
 
             try
             {

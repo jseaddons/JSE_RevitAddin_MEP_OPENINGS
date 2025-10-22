@@ -110,7 +110,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // =====  DIAGNOSTIC – DO NOT DELETE  =====
                 if (document != null)
                 {
-                    var liveOpeningParams = _parameterExtractionService.GetCurrentOpeningParameters(document);
+                    var liveOpeningParams = _parameterExtractionService.GetEssentialOpeningParameters(document);
                     DebugLogger.Info($"[LIVE-DIAG] {nameof(AddHostParameterRow)} about to fill Opening combo with {liveOpeningParams.Count} items");
                 }
                 // =======================================
@@ -162,7 +162,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     var openingList = (_cachedOpeningParameters != null && _cachedOpeningParameters.Count > 0)
                         ? _cachedOpeningParameters
-                        : _parameterExtractionService.GetCurrentOpeningParameters(document);
+                        : _parameterExtractionService.GetEssentialOpeningParameters(document);
                     openingCombo.Items.AddRange(openingList.Cast<object>().ToArray());
 
                     // =====  DIAGNOSTIC – DO NOT DELETE  =====
@@ -260,8 +260,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var hostParameters = GetHostParametersFromLinkedFiles(selectedHostFiles, document);
                 DebugLogger.Info($"[HOST_SERVICE] Found {hostParameters.Count} host parameters from linked files");
 
-                // Get opening parameters (use the same live opening family parameter list as Reference tabs)
-                var openingParameters = _parameterExtractionService.GetCurrentOpeningParameters(document);
+                // Get opening parameters (use the optimized method to avoid destructive operations)
+                var openingParameters = _parameterExtractionService.GetEssentialOpeningParameters(document);
                 DebugLogger.Info($"[HOST_SERVICE] Found {openingParameters.Count} opening parameters");
 
                 // Cache for add-row usage

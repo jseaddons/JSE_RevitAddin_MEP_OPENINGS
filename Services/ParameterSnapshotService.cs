@@ -58,6 +58,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             var result = new List<SerializableKeyValue>();
             if (element == null || whitelist == null || whitelist.Count == 0) return result;
+            
+            // DEBUG: Log all available parameters for duct accessories
+            if (element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
+            {
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_capture_debug.log", 
+                    $"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: Starting parameter capture\n");
+                
+                var allParams = element.Parameters.Cast<Parameter>().Where(p => p != null && !string.IsNullOrEmpty(p.Definition?.Name)).ToList();
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_capture_debug.log", 
+                    $"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: Found {allParams.Count} total parameters\n");
+                
+                foreach (var param in allParams.Take(10)) // Log first 10 parameters
+                {
+                    var paramValue = ConvertParameterToString(element, param);
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_capture_debug.log", 
+                        $"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: Parameter '{param.Definition.Name}' = '{paramValue}'\n");
+                }
+            }
 
             foreach (var key in whitelist)
             {
@@ -70,12 +88,53 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         element.get_Parameter(BuiltInParameter.RBS_PIPING_SYSTEM_TYPE_PARAM) ??
                         element.get_Parameter(BuiltInParameter.RBS_SYSTEM_CLASSIFICATION_PARAM);
                 }
-                if (p == null) continue;
+                // Special fallback for System Abbreviation when not found by name
+                if (p == null && key.Equals("System Abbreviation", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Try built-in parameters for system abbreviation
+                    // System Abbreviation is typically a custom parameter, not a built-in parameter
+                    // Try common parameter names for system abbreviation
+                    p = element.LookupParameter("System Abbreviation") ??
+                        element.LookupParameter("System Abbr") ??
+                        element.LookupParameter("Abbreviation") ??
+                        element.LookupParameter("Abbr");
+                    
+                    // DEBUG: Log System Abbreviation search for duct accessories
+                    if (element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
+                    {
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_capture_debug.log", 
+                            $"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: System Abbreviation fallback search - Parameter found: {p != null}\n");
+                        
+                        if (p != null)
+                        {
+                            var testValue = ConvertParameterToString(element, p);
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_capture_debug.log", 
+                                $"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: System Abbreviation value = '{testValue}'\n");
+                        }
+                    }
+                }
+                if (p == null) 
+                {
+                    // DEBUG: Log missing parameters
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_capture_debug.log", 
+                        $"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Parameter '{key}' not found\n");
+                    continue;
+                }
 
                 var value = ConvertParameterToString(element, p);
-                if (string.IsNullOrWhiteSpace(value)) continue;
+                if (string.IsNullOrWhiteSpace(value)) 
+                {
+                    // DEBUG: Log empty parameter values
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_capture_debug.log", 
+                        $"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Parameter '{key}' found but value is empty\n");
+                    continue;
+                }
 
                 result.Add(new SerializableKeyValue { Key = key, Value = value });
+                
+                // DEBUG: Log successful parameter capture
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_capture_debug.log", 
+                    $"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Captured '{key}' = '{value}'\n");
             }
 
             return result;

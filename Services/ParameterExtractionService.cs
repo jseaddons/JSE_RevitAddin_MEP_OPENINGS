@@ -202,8 +202,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Log to main log file
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [PARAMETER_SERVICE] Starting category-specific population for {selectedCategories.Count} categories\n");
                 
-                // Get opening parameters using the corrected harvest routine
-                var openingParameters = GetCurrentOpeningParameters(document);
+                // Get opening parameters using the optimized harvest routine
+                var openingParameters = GetEssentialOpeningParameters(document);
 
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [PARAMETER_SERVICE] Using cached opening parameters: {openingParameters.Count} parameters\n");
 
@@ -405,6 +405,101 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// MASTER FIX: Bootstrap opening parameters by temporarily placing instances to force Revit to bind shared parameters
         /// </summary>
+        /// <summary>
+        /// Optimized method to get only essential opening parameters for better UI performance
+        /// Only loads: size, system*, height, reference level/level parameters, and shared parameters
+        /// </summary>
+        public List<string> GetEssentialOpeningParameters(Document doc)
+        {
+            var essentialParams = new HashSet<string>();
+            
+            // Define essential parameter patterns
+            var essentialPatterns = new[]
+            {
+                "size", "system", "height", "reference level", "level", "ceiling level", 
+                "schedule level", "reference level elevation"
+            };
+
+            try
+            {
+                // Get opening family symbols (faster than creating instances)
+                var targetFamilies = new[] {
+                    "RectangularOpeningOnWall",
+                    "RectangularOpeningOnSlab", 
+                    "CircularOpeningOnWall",
+                    "CircularOpeningOnSlab"
+                };
+
+                foreach (var familyName in targetFamilies)
+                {
+                    var symbol = new FilteredElementCollector(doc)
+                                .OfClass(typeof(FamilySymbol))
+                                .Cast<FamilySymbol>()
+                                .FirstOrDefault(fs => fs.Family.Name.Contains(familyName));
+
+                    if (symbol == null) continue;
+
+                    // Get parameters from symbol
+                    foreach (Parameter p in symbol.Parameters)
+                    {
+                        if (string.IsNullOrEmpty(p.Definition?.Name)) continue;
+                        
+                        var paramName = p.Definition.Name.ToLower();
+                        
+                        // Check if parameter matches essential patterns
+                        bool isEssential = essentialPatterns.Any(pattern => 
+                            paramName.Contains(pattern.ToLower()));
+                        
+                        // Always include shared parameters (they have GUIDs)
+                        bool isSharedParameter = p.Id.IntegerValue > 0;
+                        
+                        if (isEssential || isSharedParameter)
+                        {
+                            essentialParams.Add(p.Definition.Name);
+                        }
+                    }
+                }
+
+                // Also check existing instances for additional shared parameters
+                var existingInstances = new FilteredElementCollector(doc)
+                    .OfClass(typeof(FamilyInstance))
+                    .WhereElementIsNotElementType()
+                    .Cast<FamilyInstance>()
+                    .Where(fi => targetFamilies.Any(n => fi.Symbol.Family.Name.Contains(n)))
+                    .Take(5); // Limit to first 5 instances for performance
+
+                foreach (var instance in existingInstances)
+                {
+                    foreach (Parameter p in instance.Parameters)
+                    {
+                        if (string.IsNullOrEmpty(p.Definition?.Name)) continue;
+                        
+                        var paramName = p.Definition.Name.ToLower();
+                        
+                        // Check if parameter matches essential patterns
+                        bool isEssential = essentialPatterns.Any(pattern => 
+                            paramName.Contains(pattern.ToLower()));
+                        
+                        // Always include shared parameters
+                        bool isSharedParameter = p.Id.IntegerValue > 0;
+                        
+                        if (isEssential || isSharedParameter)
+                        {
+                            essentialParams.Add(p.Definition.Name);
+                        }
+                    }
+                }
+
+                System.Diagnostics.Debug.WriteLine($"[ESSENTIAL_PARAMS] Found {essentialParams.Count} essential opening parameters");
+                return essentialParams.OrderBy(p => p).ToList();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ESSENTIAL_PARAMS] Error getting essential parameters: {ex.Message}");
+                return new List<string>();
+            }
+        }
+
         public List<string> GetCurrentOpeningParameters(Document doc)
         {
             var set = new HashSet<string>();
@@ -598,6 +693,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (linkedFiles.Count > 0)
                 {
+                    System.Diagnostics.Debug.WriteLine($"[MEP_HARVEST] Processing {linkedFiles.Count} linked files for MEP parameters");
+                    
                     // Get parameters from linked files
                     foreach (var linkedFile in linkedFiles)
                     {
@@ -607,26 +704,57 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var linkedDoc = linkedFile.LinkInstance?.GetLinkDocument();
                             if (linkedDoc != null)
                             {
-                                // Convert string categories to enum
+                                // Check if this linked file contains MEP elements
+                                bool hasMepElements = false;
                                 var mepCategories = selectedCategories
                                     .Select(cat => GetMepCategoryFromString(cat))
                                     .Where(cat => cat.HasValue)
                                     .Select(cat => cat.Value!)
                                     .ToList();
 
-                                System.Diagnostics.Debug.WriteLine($"[MEP_HARVEST] Getting parameters for categories: {string.Join(", ", mepCategories)}");
-                                var parameters = GetParametersForMepCategories(linkedDoc, mepCategories);
-                                var parameterNames = parameters.Select(p => p.Name).ToList();
-
-                                System.Diagnostics.Debug.WriteLine($"[MEP_HARVEST] Found {parameterNames.Count} parameters from linked file");
-
-                                // Add unique parameters
-                                foreach (var paramName in parameterNames)
+                                System.Diagnostics.Debug.WriteLine($"[MEP_HARVEST] Checking for MEP elements in categories: {string.Join(", ", mepCategories)}");
+                                
+                                // First, check if there are any MEP elements in this linked file
+                                foreach (var category in mepCategories)
                                 {
-                                    if (!string.IsNullOrEmpty(paramName))
+                                    var builtinCategories = GetBuiltInCategoriesForMepCategory(category);
+                                    foreach (var builtinCategory in builtinCategories)
                                     {
-                                        mepParameters.Add(paramName);
+                                        var elementCount = new FilteredElementCollector(linkedDoc)
+                                            .OfCategory(builtinCategory)
+                                            .WhereElementIsNotElementType()
+                                            .GetElementCount();
+                                        
+                                        if (elementCount > 0)
+                                        {
+                                            hasMepElements = true;
+                                            System.Diagnostics.Debug.WriteLine($"[MEP_HARVEST] Found {elementCount} {builtinCategory} elements in {linkedFile.FileName}");
+                                            break;
+                                        }
                                     }
+                                    if (hasMepElements) break;
+                                }
+
+                                if (hasMepElements)
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"[MEP_HARVEST] Getting parameters for categories: {string.Join(", ", mepCategories)}");
+                                    var parameters = GetParametersForMepCategories(linkedDoc, mepCategories);
+                                    var parameterNames = parameters.Select(p => p.Name).ToList();
+
+                                    System.Diagnostics.Debug.WriteLine($"[MEP_HARVEST] Found {parameterNames.Count} parameters from linked file {linkedFile.FileName}");
+
+                                    // Add unique parameters
+                                    foreach (var paramName in parameterNames)
+                                    {
+                                        if (!string.IsNullOrEmpty(paramName))
+                                        {
+                                            mepParameters.Add(paramName);
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"[MEP_HARVEST] No MEP elements found in linked file: {linkedFile.FileName}");
                                 }
                             }
                             else
@@ -666,12 +794,70 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 System.Diagnostics.Debug.WriteLine($"[MEP_HARVEST] Total MEP parameters harvested: {mepParameters.Count}");
+                
+                // If no parameters were found, provide default fallback parameters
+                if (mepParameters.Count == 0)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[MEP_HARVEST] No MEP parameters found, providing default fallback parameters");
+                    var defaultParameters = new List<string>
+                    {
+                        "Reference Level",
+                        "Level",
+                        "Schedule Level", 
+                        "Reference Level Elevation",
+                        "Size",
+                        "Width",
+                        "Height", 
+                        "Diameter",
+                        "Length",
+                        "Type",
+                        "Family",
+                        "System Type",
+                        "System Name",
+                        "Comments",
+                        "Mark",
+                        "Type Mark",
+                        "Model Name"
+                    };
+                    
+                    foreach (var param in defaultParameters)
+                    {
+                        mepParameters.Add(param);
+                    }
+                    
+                    System.Diagnostics.Debug.WriteLine($"[MEP_HARVEST] Added {defaultParameters.Count} default fallback parameters");
+                }
+                
                 return mepParameters.OrderBy(p => p).ToList();
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[MEP_HARVEST] Error harvesting MEP parameters: {ex.Message}");
-                return new List<string>();
+                
+                // Provide default fallback parameters even on error
+                var defaultParameters = new List<string>
+                {
+                    "Reference Level",
+                    "Level",
+                    "Schedule Level", 
+                    "Reference Level Elevation",
+                    "Size",
+                    "Width",
+                    "Height", 
+                    "Diameter",
+                    "Length",
+                    "Type",
+                    "Family",
+                    "System Type",
+                    "System Name",
+                    "Comments",
+                    "Mark",
+                    "Type Mark",
+                    "Model Name"
+                };
+                
+                System.Diagnostics.Debug.WriteLine($"[MEP_HARVEST] Error occurred, returning {defaultParameters.Count} default fallback parameters");
+                return defaultParameters;
             }
         }
 
@@ -849,8 +1035,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt",
                     $"[{DateTime.Now}] [ADD_ROW] About to populate opening combo - received {openingParameters.Count} parameters from caller{Environment.NewLine}");
 
-                // CRITICAL FIX: Use the LIVE bootstrap routine instead of cached parameters
-                var liveOpeningParams = GetCurrentOpeningParameters(document);
+                // CRITICAL FIX: Use the optimized method instead of destructive bootstrap routine
+                var liveOpeningParams = GetEssentialOpeningParameters(document);
 
                 LoggingConfiguration.ConditionalAppendAllText(
                     @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt",
@@ -905,7 +1091,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 // =====  DIAGNOSTIC – DO NOT DELETE  =====
-                var diagOpeningParams = GetCurrentOpeningParameters(document);
+                var diagOpeningParams = GetEssentialOpeningParameters(document);
                 LoggingConfiguration.ConditionalAppendAllText(
                     @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt",
                     $"[LIVE-DIAG] {nameof(CreateAutomaticParameterRows)} about to fill Opening combo with {diagOpeningParams.Count} items{Environment.NewLine}");
@@ -927,8 +1113,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     $"[ROW-CHECK] About to create {specificParameters.Count} rows for category '{categoryName}'{Environment.NewLine}");
                 // =======================================
                 
-                    // Get opening parameters using the live bootstrap routine - always fresh
-                    var liveOpeningParams = GetCurrentOpeningParameters(document);
+                    // Get opening parameters using the optimized method - no destructive operations
+                    var liveOpeningParams = GetEssentialOpeningParameters(document);
                 
                     // Create parameter rows for each specific parameter
                 foreach (var param in specificParameters)
@@ -1019,7 +1205,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 System.Diagnostics.Debug.WriteLine($"[PARAMETER_UI] Created {specificParameters.Count} specific parameter rows for category '{categoryName}'");
 
                 // =====  DIAGNOSTIC – DO NOT DELETE  =====
-                var finalOpeningParams = GetCurrentOpeningParameters(document);
+                var finalOpeningParams = GetEssentialOpeningParameters(document);
                 LoggingConfiguration.ConditionalAppendAllText(
                     @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt",
                     $"[REF-FINAL] Method completed - bootstrap returns {finalOpeningParams.Count} opening parameters{Environment.NewLine}");

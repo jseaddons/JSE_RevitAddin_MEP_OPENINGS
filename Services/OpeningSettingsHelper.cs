@@ -23,17 +23,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (mepCategory.Equals("Pipes", StringComparison.OrdinalIgnoreCase))
                 {
-                    // Check if user has overridden pipes to be rectangular
-                    if (settings.PipeOpeningTypeRectangular)
-                    {
-                        DebugLogger.Info($"[OPENING_SETTINGS] Pipe opening type set to Rectangular (user override)");
-                        return "Rectangular";
-                    }
-                    else
-                    {
-                        DebugLogger.Info($"[OPENING_SETTINGS] Pipe opening type set to Circular (default)");
-                        return "Circular";
-                    }
+                    // REMOVED: PipeOpeningTypeRectangular global setting that forced ALL pipes to rectangular
+                    // Now pipes will respect UI selection and size threshold rules
+                    DebugLogger.Info($"[OPENING_SETTINGS] Pipe opening type will be determined by UI selection and size threshold rules");
+                    return "Circular"; // Default, will be overridden by UI selection and size rules
                 }
                 else if (mepCategory.Equals("Ducts", StringComparison.OrdinalIgnoreCase))
                 {

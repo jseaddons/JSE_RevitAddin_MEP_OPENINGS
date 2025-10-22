@@ -537,26 +537,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var filter = (OpeningFilter)serializer.Deserialize(reader);
                     _log($"[FILTER_MGMT] Loaded filter from XML: {filePath}");
                     
-                    // ENHANCEMENT: Restore parameter transfer settings if available
-                    if (filter.ParameterTransferConfig != null && filter.ParameterTransferConfig.Mappings.Count > 0)
-                    {
-                        try
-                        {
-                            var parameterTransferService = new ParameterTransferService();
-                            if (parameterTransferService.SaveCurrentParameterTransferConfiguration(filter.ParameterTransferConfig))
-                            {
-                                _log($"[FILTER_MGMT] Restored parameter transfer configuration with {filter.ParameterTransferConfig.Mappings.Count} mappings from filter '{filter.Name}'");
-                            }
-                        }
-                        catch (Exception configEx)
-                        {
-                            _log($"[FILTER_MGMT] Warning: Failed to restore parameter transfer configuration: {configEx.Message}");
-                        }
-                    }
-                    else
-                    {
-                        _log($"[FILTER_MGMT] No parameter transfer configuration found in filter '{filter.Name}'");
-                    }
+                    // Parameter transfer functionality removed
+                    _log($"[FILTER_MGMT] Parameter transfer functionality has been removed from filter '{filter.Name}'");
                     
                     return filter;
                 }

@@ -599,6 +599,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             List<ElementId> openingIds, 
             ParameterTransferConfiguration config)
         {
+            DebugLogger.Info($"[PARAM_TRANSFER] ExecuteTransferConfiguration called with {openingIds.Count} openings and {config.Mappings.Count} mappings");
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                $"[{DateTime.Now}] [PARAM_TRANSFER] ExecuteTransferConfiguration called with {openingIds.Count} openings and {config.Mappings.Count} mappings\n");
+            
             var result = new ParameterTransferResult();
             var allResults = new List<ParameterTransferResult>();
             
@@ -608,6 +612,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 t.Start();
                 var r = ExecuteTransferConfigurationInTransaction(doc, openingIds, config);
                 t.Commit();
+                
+                DebugLogger.Info($"[PARAM_TRANSFER] ExecuteTransferConfiguration completed: Success={r.Success}, TransferredCount={r.TransferredCount}, FailedCount={r.FailedCount}");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                    $"[{DateTime.Now}] [PARAM_TRANSFER] ExecuteTransferConfiguration completed: Success={r.Success}, TransferredCount={r.TransferredCount}, FailedCount={r.FailedCount}\n");
+                
                 return r;
             }
         }
@@ -626,21 +635,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             try
             {
+                // Check if any sleeves exist in the model
+                if (openingIds == null || openingIds.Count == 0)
+                {
+                    result.Success = false;
+                    result.Message = "No sleeves found in the model. Please place sleeves first before transferring parameters.";
+                    result.Errors.Add("No sleeves found - place sleeves first");
+                    DebugLogger.Warning("[PARAM_TRANSFER] No sleeves found in model - user needs to place sleeves first");
+                    return result;
+                }
+                
+                DebugLogger.Info($"[PARAM_TRANSFER] Found {openingIds.Count} sleeves in model - proceeding with parameter transfer");
                 // Build snapshot index (sleeveId -> (mepBag, hostBag)) from latest category XML
-                var snapshotIndex = BuildSnapshotIndex(config.SourceCategoryName);
+                DebugLogger.Info($"[PARAM_TRANSFER] Building snapshot index for category: {config.SourceCategoryName}");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                    $"[{DateTime.Now}] [PARAM_TRANSFER] Building snapshot index for category: {config.SourceCategoryName}\n");
+                
+                var filterIndex = BuildFilterIndex();
+                
+                // Add diagnostic calls to check XML content and filter index
+                DiagnoseXmlContent(config.SourceCategoryName);
+                DiagnoseFilterIndex(filterIndex);
+                
+                DebugLogger.Info($"[PARAM_TRANSFER] Filter index built with {filterIndex.Count} XML files");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                    $"[{DateTime.Now}] [PARAM_TRANSFER] Filter index built with {filterIndex.Count} XML files\n");
+                
+                if (filterIndex.Count == 0)
+                {
+                    DebugLogger.Warning($"[PARAM_TRANSFER] WARNING: No XML files found - all transfers will fail!");
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                        $"[{DateTime.Now}] [PARAM_TRANSFER] WARNING: No XML files found - all transfers will fail!\n");
+                }
                 
                 // Execute each mapping
                 foreach (var mapping in config.Mappings)
                 {
+                    DebugLogger.Info($"[PARAM_TRANSFER] Processing mapping: {mapping.SourceParameter} -> {mapping.TargetParameter}");
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                        $"[{DateTime.Now}] [PARAM_TRANSFER] Processing mapping: {mapping.SourceParameter} -> {mapping.TargetParameter}\n");
+                    
                     ParameterTransferResult mappingResult = null;
 
                     switch (mapping.TransferType)
                     {
                         case TransferType.ReferenceToOpening:
-                            mappingResult = TransferFromReferenceElementsInTransaction(doc, openingIds, mapping, snapshotIndex);
+                            mappingResult = TransferFromReferenceElementsInTransaction(doc, openingIds, mapping, filterIndex);
                             break;
                         case TransferType.HostToOpening:
-                            mappingResult = TransferFromHostElementsInTransaction(doc, openingIds, mapping, snapshotIndex);
+                            mappingResult = TransferFromHostElementsInTransaction(doc, openingIds, mapping, filterIndex);
                             break;
                         case TransferType.LevelToOpening:
                             mappingResult = TransferFromLevelsInTransaction(doc, openingIds, mapping);
@@ -691,79 +734,227 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             Document doc,
             List<ElementId> openingIds,
             ParameterMapping mapping,
-            Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)> snapshotIndex)
+            Dictionary<string, Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)>> filterIndex)
         {
             // Delegate to core with a resolver for MEP bags
-            return TransferFromElementsWithSnapshot(doc, openingIds, mapping, snapshotIndex, useHost:false);
+            return TransferFromElementsWithSnapshot(doc, openingIds, mapping, filterIndex, useHost:false);
         }
 
         public ParameterTransferResult TransferFromHostElementsInTransaction(
             Document doc,
             List<ElementId> openingIds,
             ParameterMapping mapping,
-            Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)> snapshotIndex)
+            Dictionary<string, Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)>> filterIndex)
         {
             // Delegate to core with a resolver for HOST bags
-            return TransferFromElementsWithSnapshot(doc, openingIds, mapping, snapshotIndex, useHost:true);
+            return TransferFromElementsWithSnapshot(doc, openingIds, mapping, filterIndex, useHost:true);
         }
 
         private ParameterTransferResult TransferFromElementsWithSnapshot(
             Document doc,
             List<ElementId> openingIds,
             ParameterMapping mapping,
-            Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)> snapshotIndex,
+            Dictionary<string, Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)>> filterIndex,
             bool useHost)
         {
             var result = new ParameterTransferResult();
             var transferredCount = 0;
             var failedCount = 0;
             var errors = new List<string>();
+            
+            DebugLogger.Info($"[TRANSFER] Starting transfer for mapping: {mapping.SourceParameter} -> {mapping.TargetParameter}");
+            DebugLogger.Info($"[TRANSFER] FilterIndex has {filterIndex.Count} filters");
 
             foreach (var openingId in openingIds)
             {
                 try
                 {
                     var opening = doc.GetElement(openingId);
-                    if (opening == null) continue;
-
-                    // Preferred path: use snapshot bag if available for this sleeve
-                    var sleeveId = opening.Id.IntegerValue; // opening instance id matches SleeveInstanceId we stored
-                    string snapshotValue = null;
-                    if (snapshotIndex != null && snapshotIndex.TryGetValue(sleeveId, out var bags))
+                    if (opening == null)
                     {
-                        var bag = useHost ? bags.host : bags.mep;
-                        if (bag != null)
-                        {
-                            if (!bag.TryGetValue(mapping.SourceParameter, out snapshotValue))
-                            {
-                                var alias = GetAlias(mapping.SourceParameter);
-                                if (!string.IsNullOrWhiteSpace(alias))
-                                {
-                                    bag.TryGetValue(alias, out snapshotValue);
-                                }
-                            }
-                        }
+                        DebugLogger.Warning($"[TRANSFER] Opening {openingId} not found");
+                        continue;
                     }
 
-                    bool ok = false;
-                    if (!string.IsNullOrWhiteSpace(snapshotValue))
+                    // Get XML filename directly from sleeve family parameter
+                    var filterNameParam = opening.LookupParameter("Filter Name");
+                    if (filterNameParam == null) 
                     {
-                        var targetParam = opening.LookupParameter(mapping.TargetParameter);
-                        ok = SetParameterValueSafely(targetParam, snapshotValue);
+                        DebugLogger.Warning($"[TRANSFER] Sleeve {openingId} missing 'Filter Name' parameter");
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                            $"[{DateTime.Now}] [TRANSFER] Sleeve {openingId} missing 'Filter Name' parameter\n");
+                        continue;
+                    }
+                    
+                    string xmlFileName = filterNameParam.AsString();
+                    if (string.IsNullOrEmpty(xmlFileName)) 
+                    {
+                        DebugLogger.Warning($"[TRANSFER] Sleeve {openingId} has empty Filter Name");
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                            $"[{DateTime.Now}] [TRANSFER] Sleeve {openingId} has empty Filter Name\n");
+                        continue;
+                    }
+                    
+                    // Get Instance ID directly from sleeve family parameter
+                    var instanceIdParam = opening.LookupParameter("Sleeve Instance ID");
+                    if (instanceIdParam == null) 
+                    {
+                        DebugLogger.Warning($"[TRANSFER] Sleeve {openingId} missing 'Sleeve Instance ID' parameter");
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                            $"[{DateTime.Now}] [TRANSFER] Sleeve {openingId} missing 'Sleeve Instance ID' parameter\n");
+                        continue;
+                    }
+                    
+                    int sleeveId = instanceIdParam.AsInteger();
+                    
+                    // CRITICAL FIX: Check if this is a cluster sleeve
+                    // For cluster sleeves, Sleeve Instance ID = -1, and we need to look up ClusterSleeveInstanceId in the XML
+                    bool isClusterSleeve = (sleeveId == -1);
+                    if (isClusterSleeve)
+                    {
+                        DebugLogger.Info($"[TRANSFER] Sleeve {openingId} is a cluster sleeve (Sleeve Instance ID = -1), will look up Cluster Sleeve Instance ID");
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                            $"[{DateTime.Now}] [TRANSFER] Sleeve {openingId} is a cluster sleeve (Sleeve Instance ID = -1)\n");
+                        
+                        // Get Cluster Sleeve Instance ID parameter for XML lookup
+                        var clusterInstanceIdParam = opening.LookupParameter("Cluster Sleeve Instance ID");
+                        if (clusterInstanceIdParam != null)
+                        {
+                            sleeveId = clusterInstanceIdParam.AsInteger();
+                            DebugLogger.Info($"[TRANSFER] Cluster sleeve {openingId} has Cluster Sleeve Instance ID = {sleeveId}");
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                $"[{DateTime.Now}] [TRANSFER] Cluster sleeve {openingId} has Cluster Sleeve Instance ID = {sleeveId}\n");
+                        }
+                        else
+                        {
+                            DebugLogger.Warning($"[TRANSFER] Cluster sleeve {openingId} missing 'Cluster Sleeve Instance ID' parameter");
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                $"[{DateTime.Now}] [TRANSFER] Cluster sleeve {openingId} missing 'Cluster Sleeve Instance ID' parameter\n");
+                            continue;
+                        }
+                    }
+                    
+                    DebugLogger.Info($"[TRANSFER] Sleeve {openingId}: XML='{xmlFileName}', ID={sleeveId}");
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                        $"[{DateTime.Now}] [TRANSFER] Sleeve {openingId}: XML='{xmlFileName}', ID={sleeveId}\n");
+                    
+                    // DIRECT LOOKUP - Handle both individual and cluster sleeves
+                    if (filterIndex.TryGetValue(xmlFileName, out var filterData))
+                    {
+                        DebugLogger.Info($"[TRANSFER] Found filter data for '{xmlFileName}' with {filterData.Count} sleeves");
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                            $"[{DateTime.Now}] [TRANSFER] Found filter data for '{xmlFileName}' with {filterData.Count} sleeves\n");
+                        
+                        // CRITICAL FIX: Handle cluster sleeves differently
+                        if (isClusterSleeve)
+                        {
+                            // For cluster sleeves, we need to aggregate parameters from ALL clash zones with the same ClusterSleeveInstanceId
+                            var aggregatedParams = GetAggregatedClusterParameters(filterData, sleeveId, mapping.SourceParameter, useHost);
+                            if (aggregatedParams != null)
+                            {
+                                DebugLogger.Info($"[TRANSFER] Cluster sleeve {sleeveId}: aggregated parameter '{mapping.SourceParameter}' = '{aggregatedParams}'");
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                    $"[{DateTime.Now}] [TRANSFER] Cluster sleeve {sleeveId}: aggregated parameter '{mapping.SourceParameter}' = '{aggregatedParams}'\n");
+                                
+                                var targetParam = opening.LookupParameter(mapping.TargetParameter);
+                                if (targetParam != null)
+                                {
+                                    bool ok = SetParameterValueSafely(targetParam, aggregatedParams);
+                                    if (ok)
+                                    {
+                                        transferredCount++;
+                                        DebugLogger.Info($"[TRANSFER] ✓ Successfully transferred aggregated parameter to cluster sleeve {sleeveId}");
+                                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                            $"[{DateTime.Now}] [TRANSFER] ✓ Successfully transferred aggregated parameter to cluster sleeve {sleeveId}\n");
+                                    }
+                                    else
+                                    {
+                                        DebugLogger.Warning($"[TRANSFER] ✗ Failed to set aggregated parameter value");
+                                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                            $"[{DateTime.Now}] [TRANSFER] ✗ Failed to set aggregated parameter value\n");
+                                    }
+                                }
+                                else
+                                {
+                                    DebugLogger.Warning($"[TRANSFER] Target parameter '{mapping.TargetParameter}' not found on cluster sleeve");
+                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                        $"[{DateTime.Now}] [TRANSFER] Target parameter '{mapping.TargetParameter}' not found on cluster sleeve\n");
+                                }
+                            }
+                            else
+                            {
+                                DebugLogger.Warning($"[TRANSFER] No aggregated parameters found for cluster sleeve {sleeveId}");
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                    $"[{DateTime.Now}] [TRANSFER] No aggregated parameters found for cluster sleeve {sleeveId}\n");
+                            }
+                        }
+                        else if (filterData.TryGetValue(sleeveId, out var paramBags))
+                        {
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                $"[{DateTime.Now}] [TRANSFER] Found sleeve {sleeveId} in XML '{xmlFileName}'\n");
+                            
+                            var sourceParams = useHost ? paramBags.host : paramBags.mep;
+                            DebugLogger.Info($"[TRANSFER] Source params: {string.Join(", ", sourceParams.Keys)}");
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                $"[{DateTime.Now}] [TRANSFER] Source params: {string.Join(", ", sourceParams.Keys)}\n");
+                            
+                            if (sourceParams.TryGetValue(mapping.SourceParameter, out var paramValue))
+                            {
+                                DebugLogger.Info($"[TRANSFER] Found parameter '{mapping.SourceParameter}' = '{paramValue}'");
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                    $"[{DateTime.Now}] [TRANSFER] Found parameter '{mapping.SourceParameter}' = '{paramValue}'\n");
+                                
+                                var targetParam = opening.LookupParameter(mapping.TargetParameter);
+                                if (targetParam != null)
+                                {
+                                    bool ok = SetParameterValueSafely(targetParam, paramValue);
+                                    if (ok)
+                                    {
+                                        transferredCount++;
+                                        DebugLogger.Info($"[TRANSFER] ✓ Successfully transferred to sleeve {sleeveId}");
+                                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                            $"[{DateTime.Now}] [TRANSFER] ✓ Successfully transferred to sleeve {sleeveId}\n");
+                                    }
+                                    else
+                                    {
+                                        DebugLogger.Warning($"[TRANSFER] ✗ Failed to set parameter value");
+                                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                            $"[{DateTime.Now}] [TRANSFER] ✗ Failed to set parameter value\n");
+                                    }
+                                }
+                                else
+                                {
+                                    DebugLogger.Warning($"[TRANSFER] Target parameter '{mapping.TargetParameter}' not found");
+                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                        $"[{DateTime.Now}] [TRANSFER] Target parameter '{mapping.TargetParameter}' not found\n");
+                                }
+                            }
+                            else
+                            {
+                                DebugLogger.Warning($"[TRANSFER] Source parameter '{mapping.SourceParameter}' not found in sleeve data");
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                    $"[{DateTime.Now}] [TRANSFER] Source parameter '{mapping.SourceParameter}' not found in sleeve data\n");
+                            }
                     }
                     else
                     {
-                        // Fallback to existing live logic
-                        var sources = useHost ? GetHostElementsForOpening(doc, opening) : GetMepElementsInOpening(doc, opening);
-                        ok = TransferParameterFromElements(doc, opening, sources, mapping);
+                            DebugLogger.Warning($"[TRANSFER] Sleeve ID {sleeveId} not found in XML '{xmlFileName}'");
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                $"[{DateTime.Now}] [TRANSFER] Sleeve ID {sleeveId} not found in XML '{xmlFileName}'\n");
+                        }
                     }
-
-                    if (ok) transferredCount++; else failedCount++;
+                    else
+                    {
+                        DebugLogger.Warning($"[TRANSFER] XML '{xmlFileName}' not found in index");
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                            $"[{DateTime.Now}] [TRANSFER] XML '{xmlFileName}' not found in index\n");
+                    }
                 }
                 catch (Exception ex)
                 {
                     failedCount++;
-                    errors.Add($"Error transferring to opening {openingId}: {ex.Message}");
+                    errors.Add($"Opening {openingId}: {ex.Message}");
+                    DebugLogger.Error($"[TRANSFER] Exception for opening {openingId}: {ex.Message}");
                 }
             }
 
@@ -771,7 +962,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             result.TransferredCount = transferredCount;
             result.FailedCount = failedCount;
             result.Errors = errors;
-            result.Message = $"Snapshot-aware transfer: {transferredCount} updated, {failedCount} failed.";
+            result.Message = $"Transfer: {transferredCount} updated, {failedCount} failed.";
+            
+            DebugLogger.Info($"[TRANSFER] Final result: {result.Message}");
             return result;
         }
 
@@ -784,38 +977,478 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return string.Empty;
         }
         
-        #region Private Helper Methods
-
-        private Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)> BuildSnapshotIndex(string sourceCategoryName)
+        /// <summary>
+        /// Get category from sleeve prefix (D=Ducts, P=Pipes, E=Cable Trays, DMP=Dampers)
+        /// </summary>
+        private string GetCategoryFromSleevePrefix(Document doc, Element opening)
         {
-            var index = new Dictionary<int, (Dictionary<string,string>, Dictionary<string,string>)>();
+            try
+            {
+                // Get the sleeve's mark parameter to determine prefix
+                var markParam = opening.LookupParameter("Mark");
+                if (markParam != null && markParam.StorageType == StorageType.String)
+                {
+                    var markValue = markParam.AsString();
+                    if (!string.IsNullOrEmpty(markValue))
+                    {
+                        // Extract prefix from mark (e.g., "D001" -> "D", "P002" -> "P", "DMP001" -> "DMP")
+                        var upperMark = markValue.ToUpper();
+                        
+                        if (upperMark.StartsWith("DMP"))
+                            return "Duct Accessories";
+                        else if (upperMark.StartsWith("D"))
+                            return "Ducts";
+                        else if (upperMark.StartsWith("P"))
+                            return "Pipes";
+                        else if (upperMark.StartsWith("E"))
+                            return "Cable Trays";
+                        else
+                            return "Unknown";
+                    }
+                }
+                
+                // Fallback: try to determine from opening family name
+                if (opening is FamilyInstance familyInstance)
+                {
+                    var familyName = familyInstance.Symbol.Family.Name.ToLower();
+                    if (familyName.Contains("duct")) return "Ducts";
+                    if (familyName.Contains("pipe")) return "Pipes";
+                    if (familyName.Contains("cable") || familyName.Contains("tray")) return "Cable Trays";
+                    if (familyName.Contains("damper") || familyName.Contains("accessory")) return "Duct Accessories";
+                }
+                
+                return "Unknown";
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[PARAM_TRANSFER] Error getting category from sleeve prefix: {ex.Message}");
+                return "Unknown";
+            }
+        }
+        
+        /// <summary>
+        /// Get parameters from category-specific XML file
+        /// </summary>
+        private List<string> GetParametersFromCategoryXml(string category, string parameterName)
+        {
+            try
+            {
+                var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
+                    "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                if (!Directory.Exists(filtersDirectory)) return new List<string>();
+                
+                // Use SAME patterns as BuildSnapshotIndex
+                var patterns = new List<string>();
+                var cat = category.ToLower().Replace(" ", "_");
+                
+                // MATCH THE EXACT SAME PATTERN LOGIC AS BuildSnapshotIndex
+                patterns.Add($"*_{cat}.xml");
+                patterns.Add($"*{cat}*.xml");
+                patterns.Add($"{cat}*.xml");
+                patterns.Add($"*conditions*{cat}*.xml");
+                patterns.Add($"*conditions*.xml");
+                
+                foreach (var pattern in patterns)
+                {
+                    var xmlFiles = Directory.GetFiles(filtersDirectory, pattern);
+                    if (xmlFiles.Length > 0)
+                    {
+                        var xmlFile = xmlFiles.OrderByDescending(f => File.GetLastWriteTime(f)).FirstOrDefault();
+                        DebugLogger.Info($"[PARAM_TRANSFER] Loading parameters from: {Path.GetFileName(xmlFile)}");
+                        
+                        // IMPORTANT: Use the SAME deserialization as BuildSnapshotIndex
+                        var serializer = new System.Xml.Serialization.XmlSerializer(typeof(Models.OpeningFilter));
+                        using (var reader = new StreamReader(xmlFile))
+                        {
+                            var filter = (Models.OpeningFilter)serializer.Deserialize(reader);
+                            var zones = filter?.ClashZoneStorage?.ClashZones ?? new List<Models.ClashZone>();
+                            
+                            var values = new List<string>();
+                            foreach (var zone in zones)
+                            {
+                                if (zone.MepParameterValues != null)
+                                {
+                                    // Try EXACT match first
+                                    var exactMatch = zone.MepParameterValues.FirstOrDefault(p => 
+                                        string.Equals(p.Key, parameterName, StringComparison.OrdinalIgnoreCase) && 
+                                        !string.IsNullOrEmpty(p.Value));
+                                    if (exactMatch != null)
+                                    {
+                                        values.Add(exactMatch.Value);
+                                        continue;
+                                    }
+                                    
+                                    // Try case-insensitive match
+                                    foreach (var param in zone.MepParameterValues)
+                                    {
+                                        if (string.Equals(param.Key, parameterName, StringComparison.OrdinalIgnoreCase) && 
+                                            !string.IsNullOrEmpty(param.Value))
+                                        {
+                                            values.Add(param.Value);
+                                            break;
+                                        }
+                                    }
+                                    
+                                    // Try common aliases
+                                    var aliases = GetParameterAliases(parameterName);
+                                    foreach (var alias in aliases)
+                                    {
+                                        var aliasMatch = zone.MepParameterValues.FirstOrDefault(p => 
+                                            string.Equals(p.Key, alias, StringComparison.OrdinalIgnoreCase) && 
+                                            !string.IsNullOrEmpty(p.Value));
+                                        if (aliasMatch != null)
+                                        {
+                                            values.Add(aliasMatch.Value);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            if (values.Count > 0)
+                            {
+                                DebugLogger.Info($"[PARAM_TRANSFER] Found {values.Count} values for parameter '{parameterName}' in category '{category}'");
+                                return values.Distinct().ToList();
+                            }
+                        }
+                    }
+                }
+                
+                DebugLogger.Warning($"[PARAM_TRANSFER] No values found for parameter '{parameterName}' in category '{category}'");
+                return new List<string>();
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[PARAM_TRANSFER] Error getting parameters from category XML: {ex.Message}");
+                return new List<string>();
+            }
+        }
+        
+        /// <summary>
+        /// Get parameter name aliases for better matching
+        /// </summary>
+        private List<string> GetParameterAliases(string parameterName)
+        {
+            var aliases = new List<string> { parameterName };
+            
+            // Add common variations
+            var lower = parameterName.ToLower();
+            if (lower.Contains("system type"))
+            {
+                aliases.AddRange(new[] { "System Type", "SystemType", "MEP System Type", "Service Type" });
+            }
+            else if (lower.Contains("size"))
+            {
+                aliases.AddRange(new[] { "Size", "MEP Size", "MepElementFormattedSize", "Service Size" });
+            }
+            else if (lower.Contains("level"))
+            {
+                aliases.AddRange(new[] { "Level", "Reference Level", "Schedule Level" });
+            }
+            else if (lower.Contains("system name"))
+            {
+                aliases.AddRange(new[] { "System Name", "MEP System Name", "SystemName" });
+            }
+            
+            return aliases.Distinct().ToList();
+        }
+        
+        /// <summary>
+        /// Get host parameters from category-specific XML file
+        /// </summary>
+        private List<string> GetHostParametersFromCategoryXml(string category, string parameterName)
+        {
             try
             {
                 var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
-                if (!Directory.Exists(filtersDirectory)) return index;
+                if (!Directory.Exists(filtersDirectory)) return new List<string>();
+                
+                // Look for XML files matching the category
+                var patterns = new List<string>();
+                var cat = category.ToLower().Replace(" ", "_");
+                patterns.Add($"*{cat}*.xml");
+                patterns.Add($"*_{cat}.xml");
+                patterns.Add($"{cat}*.xml");
+                
+                foreach (var pattern in patterns)
+                {
+                    var xmlFiles = Directory.GetFiles(filtersDirectory, pattern);
+                    if (xmlFiles.Length > 0)
+                    {
+                        var xmlFile = xmlFiles.OrderByDescending(f => File.GetLastWriteTime(f)).FirstOrDefault();
+                        DebugLogger.Info($"[PARAM_TRANSFER] Loading host parameters from: {Path.GetFileName(xmlFile)}");
+                        
+                        // Load the XML file and extract host parameter values
+                var serializer = new System.Xml.Serialization.XmlSerializer(typeof(Models.OpeningFilter));
+                using (var reader = new StreamReader(xmlFile))
+                {
+                    var filter = (Models.OpeningFilter)serializer.Deserialize(reader);
+                    var zones = filter?.ClashZoneStorage?.ClashZones ?? new List<Models.ClashZone>();
+                            
+                            var values = new List<string>();
+                            foreach (var zone in zones)
+                            {
+                                if (zone.HostParameterValues != null)
+                                {
+                                    foreach (var param in zone.HostParameterValues)
+                                    {
+                                        if (string.Equals(param.Key, parameterName, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(param.Value))
+                                        {
+                                            values.Add(param.Value);
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            if (values.Count > 0)
+                            {
+                                DebugLogger.Info($"[PARAM_TRANSFER] Found {values.Count} host values for parameter '{parameterName}' in category '{category}'");
+                                return values.Distinct().ToList();
+                            }
+                        }
+                    }
+                }
+                
+                DebugLogger.Info($"[PARAM_TRANSFER] No host values found for parameter '{parameterName}' in category '{category}'");
+                return new List<string>();
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[PARAM_TRANSFER] Error getting host parameters from category XML: {ex.Message}");
+                return new List<string>();
+            }
+        }
+        
+        /// <summary>
+        /// Diagnostic method to verify snapshot index contents
+        /// </summary>
+        private void DiagnoseFilterIndex(Dictionary<string, Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)>> filterIndex)
+        {
+            DebugLogger.Info($"[DIAGNOSE_FILTER_INDEX] Filter index has {filterIndex.Count} XML files");
+            
+            foreach (var kvp in filterIndex)
+            {
+                DebugLogger.Info($"[DIAGNOSE_FILTER_INDEX] XML '{kvp.Key}': {kvp.Value.Count} sleeves");
+                
+                if (kvp.Value.Count > 0)
+                {
+                    var firstSleeve = kvp.Value.First();
+                    DebugLogger.Info($"[DIAGNOSE_FILTER_INDEX]   First sleeve {firstSleeve.Key}:");
+                    DebugLogger.Info($"[DIAGNOSE_FILTER_INDEX]     MEP params: {string.Join(", ", firstSleeve.Value.mep.Keys)}");
+                    DebugLogger.Info($"[DIAGNOSE_FILTER_INDEX]     Host params: {string.Join(", ", firstSleeve.Value.host.Keys)}");
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Diagnostic method to check XML file content and parameter keys
+        /// </summary>
+        private void DiagnoseXmlContent(string category)
+        {
+            try
+            {
+                var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
+                    "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                
+                var allXmlFiles = Directory.GetFiles(filtersDirectory, "*.xml");
+                DebugLogger.Info($"[DIAGNOSE] All XML files in {filtersDirectory}:");
+                
+                foreach (var xmlFile in allXmlFiles)
+                {
+                    DebugLogger.Info($"[DIAGNOSE]   - {Path.GetFileName(xmlFile)}");
+                    
+                    try
+                    {
+                        var serializer = new System.Xml.Serialization.XmlSerializer(typeof(Models.OpeningFilter));
+                        using (var reader = new StreamReader(xmlFile))
+                        {
+                            var filter = (Models.OpeningFilter)serializer.Deserialize(reader);
+                            var zones = filter?.ClashZoneStorage?.ClashZones ?? new List<Models.ClashZone>();
+                            
+                            DebugLogger.Info($"[DIAGNOSE]     {zones.Count} clash zones");
+                            
+                            if (zones.Count > 0)
+                            {
+                                var firstZone = zones[0];
+                                DebugLogger.Info($"[DIAGNOSE]     First zone MEP params: {string.Join(", ", firstZone.MepParameterValues?.Select(p => p.Key) ?? new List<string>())}");
+                                DebugLogger.Info($"[DIAGNOSE]     First zone Host params: {string.Join(", ", firstZone.HostParameterValues?.Select(p => p.Key) ?? new List<string>())}");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLogger.Error($"[DIAGNOSE]     Error reading file: {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[DIAGNOSE] Error: {ex.Message}");
+            }
+        }
+        
+        #region Private Helper Methods
 
-                var cat = (sourceCategoryName ?? string.Empty).ToLower().Replace(" ", "_");
-                var pattern = string.IsNullOrWhiteSpace(cat) ? "*.xml" : $"*_{cat}.xml";
-                var xmlFile = Directory.GetFiles(filtersDirectory, pattern).OrderByDescending(f => File.GetLastWriteTime(f)).FirstOrDefault();
-                if (string.IsNullOrEmpty(xmlFile)) return index;
+        private Dictionary<string, Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)>> BuildFilterIndex()
+        {
+            var filterIndex = new Dictionary<string, Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)>>();
+            try
+            {
+                var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                DebugLogger.Info($"[PARAM_TRANSFER] Looking for XML files in: {filtersDirectory}");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                    $"[{DateTime.Now}] [PARAM_TRANSFER] Looking for XML files in: {filtersDirectory}\n");
+                
+                if (!Directory.Exists(filtersDirectory)) 
+                {
+                    DebugLogger.Warning($"[PARAM_TRANSFER] Filters directory does not exist: {filtersDirectory}");
+                    return filterIndex;
+                }
+                
+                // Load ALL XML files and build filter-based index
+                var xmlFiles = Directory.GetFiles(filtersDirectory, "*.xml");
+                DebugLogger.Info($"[PARAM_TRANSFER] Found {xmlFiles.Length} XML files in directory");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                    $"[{DateTime.Now}] [PARAM_TRANSFER] Found {xmlFiles.Length} XML files in directory\n");
+
+                foreach (var xmlFile in xmlFiles)
+                {
+                    var fileName = Path.GetFileName(xmlFile);
+                    
+                    // Skip CONDITIONS files
+                    if (fileName.Contains("conditions", StringComparison.OrdinalIgnoreCase))
+                    {
+                        DebugLogger.Info($"[PARAM_TRANSFER] Skipping CONDITIONS file: {fileName}");
+                        continue;
+                    }
+                    
+                    try
+                    {
+                        DebugLogger.Info($"[PARAM_TRANSFER] Loading XML file: {fileName}");
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                            $"[{DateTime.Now}] [PARAM_TRANSFER] Loading XML file: {fileName}\n");
 
                 var serializer = new System.Xml.Serialization.XmlSerializer(typeof(Models.OpeningFilter));
                 using (var reader = new StreamReader(xmlFile))
                 {
                     var filter = (Models.OpeningFilter)serializer.Deserialize(reader);
                     var zones = filter?.ClashZoneStorage?.ClashZones ?? new List<Models.ClashZone>();
-                    foreach (var cz in zones)
+                            
+                            DebugLogger.Info($"[PARAM_TRANSFER] Loaded {zones.Count} clash zones from {fileName}");
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                $"[{DateTime.Now}] [PARAM_TRANSFER] Loaded {zones.Count} clash zones from {fileName}\n");
+                            
+                            var filterData = new Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)>();
+                            
+                            // First pass: collect individual sleeves
+                            foreach (var zone in zones)
+                            {
+                                if (zone.SleeveInstanceId > 0)
+                                {
+                                    var mepParams = zone.MepParameterValues?.ToDictionary(p => p.Key, p => p.Value) ?? new Dictionary<string, string>();
+                                    var hostParams = zone.HostParameterValues?.ToDictionary(p => p.Key, p => p.Value) ?? new Dictionary<string, string>();
+                                    
+                                    filterData[zone.SleeveInstanceId] = (mepParams, hostParams);
+                                    DebugLogger.Info($"[PARAM_TRANSFER] Added individual sleeve {zone.SleeveInstanceId} to index");
+                                }
+                            }
+                            
+                            // Second pass: aggregate cluster sleeves
+                            var clusterGroups = zones.Where(z => z.ClusterSleeveInstanceId > 0)
+                                                   .GroupBy(z => z.ClusterSleeveInstanceId);
+                            
+                            foreach (var clusterGroup in clusterGroups)
+                            {
+                                var clusterSleeveId = clusterGroup.Key;
+                                var clusterZones = clusterGroup.ToList();
+                                
+                                DebugLogger.Info($"[PARAM_TRANSFER] Aggregating {clusterZones.Count} clash zones for cluster sleeve {clusterSleeveId}");
+                                
+                                // Aggregate MEP parameters
+                                var aggregatedMepParams = new Dictionary<string, string>();
+                                var aggregatedHostParams = new Dictionary<string, string>();
+                                
+                                foreach (var zone in clusterZones)
+                                {
+                                    // Aggregate MEP parameters
+                                    if (zone.MepParameterValues != null)
+                                    {
+                                        foreach (var param in zone.MepParameterValues)
+                                        {
+                                            if (!string.IsNullOrEmpty(param.Value))
+                                            {
+                                                if (aggregatedMepParams.ContainsKey(param.Key))
+                                                {
+                                                    // Append to existing value with comma separation
+                                                    var existingValue = aggregatedMepParams[param.Key];
+                                                    if (!existingValue.Contains(param.Value))
+                                                    {
+                                                        aggregatedMepParams[param.Key] = $"{existingValue}, {param.Value}";
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    aggregatedMepParams[param.Key] = param.Value;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Aggregate Host parameters
+                                    if (zone.HostParameterValues != null)
+                                    {
+                                        foreach (var param in zone.HostParameterValues)
+                                        {
+                                            if (!string.IsNullOrEmpty(param.Value))
+                                            {
+                                                if (aggregatedHostParams.ContainsKey(param.Key))
+                                                {
+                                                    // Append to existing value with comma separation
+                                                    var existingValue = aggregatedHostParams[param.Key];
+                                                    if (!existingValue.Contains(param.Value))
+                                                    {
+                                                        aggregatedHostParams[param.Key] = $"{existingValue}, {param.Value}";
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    aggregatedHostParams[param.Key] = param.Value;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                filterData[clusterSleeveId] = (aggregatedMepParams, aggregatedHostParams);
+                                DebugLogger.Info($"[PARAM_TRANSFER] Added aggregated cluster sleeve {clusterSleeveId} with {aggregatedMepParams.Count} MEP params and {aggregatedHostParams.Count} host params");
+                            }
+                            
+                            filterIndex[fileName] = filterData;
+                            DebugLogger.Info($"[PARAM_TRANSFER] Built index for {fileName}: {filterData.Count} sleeves");
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                $"[{DateTime.Now}] [PARAM_TRANSFER] Built index for {fileName}: {filterData.Count} sleeves\n");
+                        }
+                    }
+                    catch (Exception ex)
                     {
-                        var sleeveId = cz.SleeveInstanceId;
-                        if (sleeveId <= 0) continue;
-                        var mep = cz.MepParameterValues?.ToDictionary(k => k.Key, v => v.Value, StringComparer.OrdinalIgnoreCase) ?? new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
-                        var host = cz.HostParameterValues?.ToDictionary(k => k.Key, v => v.Value, StringComparer.OrdinalIgnoreCase) ?? new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
-                        index[sleeveId] = (mep, host);
+                        DebugLogger.Error($"[PARAM_TRANSFER] Error loading {fileName}: {ex.Message}");
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                            $"[{DateTime.Now}] [PARAM_TRANSFER] Error loading {fileName}: {ex.Message}\n");
                     }
                 }
+                
+                DebugLogger.Info($"[PARAM_TRANSFER] Filter index built with {filterIndex.Count} XML files");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                    $"[{DateTime.Now}] [PARAM_TRANSFER] Filter index built with {filterIndex.Count} XML files\n");
             }
-            catch { }
-            return index;
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[PARAM_TRANSFER] Error building filter index: {ex.Message}");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                    $"[{DateTime.Now}] [PARAM_TRANSFER] Error building filter index: {ex.Message}\n");
+            }
+            
+            return filterIndex;
         }
         
         private List<Element> GetMepElementsInOpening(Document doc, Element opening)
@@ -1222,5 +1855,73 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         #endregion
+
+        /// <summary>
+        /// Check if a sleeve is a cluster sleeve
+        /// </summary>
+        private bool IsClusterSleeve(Element sleeve)
+        {
+            try
+            {
+                // Check if the sleeve has a "Sleeve Instance ID" parameter that matches its own ID
+                // For cluster sleeves, this parameter should contain the cluster sleeve's own ID
+                var instanceIdParam = sleeve.LookupParameter("Sleeve Instance ID");
+                if (instanceIdParam == null) return false;
+                
+                int paramValue = instanceIdParam.AsInteger();
+                int sleeveId = sleeve.Id.IntegerValue;
+                
+                // If the parameter value matches the sleeve's own ID, it's likely a cluster sleeve
+                // Individual sleeves would have their own ID, but cluster sleeves replace multiple individual sleeves
+                return paramValue == sleeveId;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// CRITICAL FIX: Get aggregated parameters for cluster sleeves
+        /// Parameters are already aggregated in the filter index, so we just need to retrieve them
+        /// </summary>
+        private string GetAggregatedClusterParameters(
+            Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)> filterData,
+            int clusterSleeveId,
+            string parameterName,
+            bool useHost)
+        {
+            try
+            {
+                DebugLogger.Info($"[AGGREGATE] Getting aggregated parameters for cluster sleeve {clusterSleeveId}, parameter '{parameterName}', useHost={useHost}");
+                
+                // The parameters are already aggregated in the filter index
+                if (filterData.TryGetValue(clusterSleeveId, out var paramBags))
+                {
+                    var sourceParams = useHost ? paramBags.host : paramBags.mep;
+                    if (sourceParams.TryGetValue(parameterName, out var paramValue) && !string.IsNullOrEmpty(paramValue))
+                    {
+                        DebugLogger.Info($"[AGGREGATE] Found aggregated parameter '{parameterName}' = '{paramValue}' for cluster sleeve {clusterSleeveId}");
+                        return paramValue;
+                    }
+                    else
+                    {
+                        DebugLogger.Warning($"[AGGREGATE] Parameter '{parameterName}' not found in aggregated data for cluster sleeve {clusterSleeveId}");
+                        return null;
+                    }
+                }
+                else
+                {
+                    DebugLogger.Warning($"[AGGREGATE] Cluster sleeve {clusterSleeveId} not found in filter data");
+                    return null;
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[AGGREGATE] Error getting aggregated cluster parameters: {ex.Message}");
+                return null;
+            }
+        }
     }
 }
+

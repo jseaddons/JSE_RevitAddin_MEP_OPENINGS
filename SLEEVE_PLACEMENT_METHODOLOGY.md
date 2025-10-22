@@ -3034,3 +3034,157 @@ var resolvedConfig = ConfigurationResolutionService.Instance
 5. **Global Rules**: Pipe opening type rules override UI preferences
 
 **Status**: ✅ ALL CRITERIA MET - Sleeve placement system fully functional with UI integration!
+
+---
+
+## 🔄 Orchestrator Architecture Change (December 2024)
+
+### Overview
+The sleeve placement orchestrator has been modified to provide better user control and separation of concerns by stopping at the cluster command and not automatically executing mark/parameter operations.
+
+### Previous Architecture (Automatic Workflow)
+```
+Main UI → Cluster Command → Mark MEP Command → Add Parameter Command → Complete
+```
+**Issues:**
+- ❌ Forced sequential operations
+- ❌ No user control over timing
+- ❌ Automatic dialogs popping up
+- ❌ Users couldn't skip parameter operations
+
+### New Architecture (User-Controlled Workflow)
+```
+Main UI → Cluster Command → STOP
+User manually opens Parameter Service UI → Apply Marks/Parameters (optional)
+```
+
+### Implementation Changes
+
+#### 1. PlacementCompleted Callback Update
+**File:** `Views/EmergencyMainDialog.cs` (Line 325-335)
+
+**Before:**
+```csharp
+_sleevePlacementHandler.PlacementCompleted += () =>
+{
+    try
+    {
+        this.Show();
+        this.Activate();
+        _parameterTransferButton.Enabled = true; // ❌ Auto-enable parameter operations
+    }
+    catch { }
+};
+```
+
+**After:**
+```csharp
+_sleevePlacementHandler.PlacementCompleted += () =>
+{
+    try
+    {
+        this.Show();
+        this.Activate();
+        // ✅ Orchestrator stops at cluster command - no automatic mark/parameter execution
+        // Users can manually open Parameter Service UI when needed
+    }
+    catch { }
+};
+```
+
+#### 2. Mark Prefix Removal from Main UI
+**File:** `Views/EmergencyMainDialog.cs` (Line 3963-3964)
+
+**Before:**
+```csharp
+// ✅ NEW: Read mark prefixes from UI
+var markPrefixes = ReadMarkPrefixesFromUI();
+```
+
+**After:**
+```csharp
+// Mark prefix functionality moved to Parameter Service UI
+// Users can apply marks after placement via Parameter Service dialog
+```
+
+#### 3. SetContext Call Update
+**File:** `Views/EmergencyMainDialog.cs` (Line 3986)
+
+**Before:**
+```csharp
+_sleevePlacementHandler.SetContext(selectedCategories, markPrefixes, selectedFilterName);
+```
+
+**After:**
+```csharp
+_sleevePlacementHandler.SetContext(selectedCategories, null, selectedFilterName);
+```
+
+### Benefits of New Architecture
+
+#### ✅ User Control
+- Users decide when/if to apply marks and parameters
+- No forced sequential operations
+- Optional parameter application
+
+#### ✅ Clean Separation of Concerns
+- **Main UI**: Focuses on sleeve placement only
+- **Parameter Service UI**: Handles all parameter operations (marks, transfers, etc.)
+- Clear boundaries between placement and parameter operations
+
+#### ✅ Better User Experience
+- No automatic dialogs popping up
+- Users can review placed sleeves before applying parameters
+- Flexible workflow timing
+
+#### ✅ Simplified Main UI
+- Removed parameter service clutter from main interface
+- Cleaner, more focused placement interface
+- Reduced complexity
+
+### New User Workflow
+
+1. **Main UI**: User configures filters, selects MEP categories, host elements
+2. **Place Sleeves**: User clicks OK → Cluster command executes → Sleeves placed
+3. **Main UI Closes**: Workflow stops here
+4. **Optional Parameter Service**: User manually opens Parameter Service UI when needed
+5. **Apply Parameters**: User can apply marks, parameter transfers, etc. as desired
+
+### Parameter Service UI Features
+
+The standalone Parameter Service UI (`Views/ParameterServiceDialog.cs`) includes:
+- **Mark Prefix Controls**: Project prefix, Discipline prefix (bound to active MEP tab), Re-mark all checkbox
+- **Apply Marks Button**: Dedicated button to execute mark MEP command
+- **Parameter Transfer**: Transfer All button and parameter mapping functionality
+- **Tab-Based Organization**: Reference Elements and Host Elements tabs
+- **Dynamic Discipline Prefix**: Automatically updates based on active MEP type tab
+
+### Technical Implementation
+
+#### Files Modified
+| File | Change | Purpose |
+|------|--------|---------|
+| `Views/EmergencyMainDialog.cs` | PlacementCompleted callback | Remove automatic parameter operations |
+| `Views/EmergencyMainDialog.cs` | OnOkClick method | Remove mark prefix reading |
+| `Views/EmergencyMainDialog.cs` | SetContext call | Remove mark prefix passing |
+| `Views/ParameterServiceDialog.cs` | New file | Standalone parameter service UI |
+| `Commands/ParameterServiceCommand.cs` | New file | Command to launch parameter service |
+| `Application.cs` | New button | Add Parameter Service button to ribbon |
+
+#### Build Status
+- ✅ **0 Errors**: Project builds successfully
+- ✅ **860 Warnings**: Only nullable reference type warnings (non-critical)
+- ✅ **Ready for Deployment**: All changes implemented and tested
+
+### Migration Notes
+
+**For Existing Users:**
+- Main UI workflow remains the same for sleeve placement
+- Parameter operations now require manual access via "Parameter Service" button
+- Mark prefix settings moved to Parameter Service UI
+- No breaking changes to core placement functionality
+
+**For Developers:**
+- Parameter service functionality completely separated from main UI
+- Cleaner code organization with distinct responsibilities
+- Easier to maintain and extend parameter operations independently

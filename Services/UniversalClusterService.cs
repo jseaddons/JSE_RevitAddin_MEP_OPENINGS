@@ -1336,6 +1336,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Set size parameters (swap dimensions if rotated for orientation alignment)
             bool shouldSwapDimensions = (groupKey.hostType == "Wall" && rotationAngle != 0.0);
             SetClusterSizeParameters(doc, inst, cluster, groupKey, width, height, depth, shouldSwapDimensions);
+            
+            // CRITICAL FIX: Set metadata parameters for cluster sleeve
+            SetClusterSleeveMetadata(inst, targetCategory);
 
             // ⚠️ CRITICAL: Set MEP_ElementId on cluster sleeve (use first individual sleeve's MEP_ElementId)
             var firstSleeve = cluster.FirstOrDefault();
@@ -1862,6 +1865,74 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             catch (Exception ex)
             {
                 DebugLogger.Error($"[UniversalClusterService] Error saving clash zones to XML: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// CRITICAL FIX: Set metadata parameters for cluster sleeve
+        /// This ensures parameter transfer can find cluster sleeves
+        /// </summary>
+        private void SetClusterSleeveMetadata(FamilyInstance clusterSleeve, string category)
+    {
+        try
+        {
+            DebugLogger.Info($"[SetClusterSleeveMetadata] Setting metadata for cluster sleeve {clusterSleeve.Id}");
+            
+            // Set Filter Name based on category
+            string filterName = GetFilterNameForCategory(category);
+            var filterNameParam = clusterSleeve.LookupParameter("Filter Name");
+            if (filterNameParam != null && !filterNameParam.IsReadOnly)
+            {
+                filterNameParam.Set(filterName);
+                DebugLogger.Info($"[SetClusterSleeveMetadata] Set Filter Name = '{filterName}' for cluster sleeve {clusterSleeve.Id}");
+            }
+            else
+            {
+                DebugLogger.Warning($"[SetClusterSleeveMetadata] Filter Name parameter not found or read-only on cluster sleeve {clusterSleeve.Id}");
+            }
+            
+            // Set Sleeve Instance ID to -1 (indicating this is a cluster sleeve)
+            var instanceIdParam = clusterSleeve.LookupParameter("Sleeve Instance ID");
+            if (instanceIdParam != null && !instanceIdParam.IsReadOnly)
+            {
+                instanceIdParam.Set(-1); // -1 indicates this is a cluster sleeve
+                DebugLogger.Info($"[SetClusterSleeveMetadata] Set Sleeve Instance ID = -1 for cluster sleeve {clusterSleeve.Id}");
+            }
+            else
+            {
+                DebugLogger.Warning($"[SetClusterSleeveMetadata] Sleeve Instance ID parameter not found or read-only on cluster sleeve {clusterSleeve.Id}");
+            }
+            
+            // CRITICAL: Set Cluster Sleeve Instance ID parameter for XML lookup
+            var clusterInstanceIdParam = clusterSleeve.LookupParameter("Cluster Sleeve Instance ID");
+            if (clusterInstanceIdParam != null && !clusterInstanceIdParam.IsReadOnly)
+            {
+                clusterInstanceIdParam.Set(clusterSleeve.Id.IntegerValue);
+                DebugLogger.Info($"[SetClusterSleeveMetadata] Set Cluster Sleeve Instance ID = {clusterSleeve.Id.IntegerValue} for cluster sleeve {clusterSleeve.Id}");
+            }
+            else
+            {
+                DebugLogger.Warning($"[SetClusterSleeveMetadata] Cluster Sleeve Instance ID parameter not found or read-only on cluster sleeve {clusterSleeve.Id}");
+            }
+        }
+        catch (Exception ex)
+        {
+            DebugLogger.Error($"[SetClusterSleeveMetadata] Error setting metadata for cluster sleeve {clusterSleeve.Id}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Get XML filename for category (same as UniversalSleevePlacerService)
+    /// </summary>
+        private string GetFilterNameForCategory(string category)
+        {
+            switch (category.ToLower())
+            {
+                case "ducts": return "MEPF_ducts.xml";
+                case "pipes": return "MEPF_pipes.xml";
+                case "cable trays": return "MEPF_cable_trays.xml";
+                case "duct accessories": return "MEPF_duct_accessories.xml";
+                default: return "Unknown.xml";
             }
         }
     }

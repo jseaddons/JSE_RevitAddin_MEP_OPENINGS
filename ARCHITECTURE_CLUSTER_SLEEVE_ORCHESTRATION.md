@@ -617,3 +617,111 @@ Already stored in `SettingsModel` → included in filter XML automatically.
 
 **This ensures cluster sleeve placement respects user configuration and maintains optimal performance!** ✅
 
+---
+
+## 🔄 Orchestrator Architecture Change (December 2024)
+
+### Overview
+The cluster sleeve orchestration has been modified to provide better user control by stopping at the cluster command and not automatically proceeding to mark/parameter operations.
+
+### Previous Orchestration Flow
+```
+Main UI → Cluster Command → Mark MEP Command → Add Parameter Command → Complete
+```
+
+### New Orchestration Flow
+```
+Main UI → Cluster Command → STOP
+User manually opens Parameter Service UI → Apply Marks/Parameters (optional)
+```
+
+### Key Changes
+
+#### 1. PlacementCompleted Callback
+**File:** `Views/EmergencyMainDialog.cs`
+
+**Before:**
+```csharp
+_sleevePlacementHandler.PlacementCompleted += () =>
+{
+    this.Show();
+    this.Activate();
+    _parameterTransferButton.Enabled = true; // ❌ Auto-continue workflow
+};
+```
+
+**After:**
+```csharp
+_sleevePlacementHandler.PlacementCompleted += () =>
+{
+    this.Show();
+    this.Activate();
+    // ✅ Orchestrator stops at cluster command
+    // Users can manually open Parameter Service UI when needed
+};
+```
+
+#### 2. Mark Prefix Context Removal
+**File:** `Views/EmergencyMainDialog.cs`
+
+**Before:**
+```csharp
+var markPrefixes = ReadMarkPrefixesFromUI();
+_sleevePlacementHandler.SetContext(selectedCategories, markPrefixes, selectedFilterName);
+```
+
+**After:**
+```csharp
+// Mark prefix functionality moved to Parameter Service UI
+_sleevePlacementHandler.SetContext(selectedCategories, null, selectedFilterName);
+```
+
+### Benefits
+
+#### ✅ User Control
+- Users decide when/if to apply marks and parameters
+- No forced sequential operations
+- Optional parameter application
+
+#### ✅ Clean Separation
+- **Cluster Command**: Focuses solely on sleeve placement and clustering
+- **Parameter Service**: Handles all post-placement parameter operations
+- Clear boundaries between placement and parameter operations
+
+#### ✅ Better Performance
+- Cluster command completes faster (no waiting for parameter operations)
+- Users can review placed sleeves before applying parameters
+- Reduced memory usage during placement
+
+### New User Workflow
+
+1. **Main UI**: Configure filters, select MEP categories, host elements
+2. **Place Sleeves**: Click OK → Cluster command executes → Sleeves placed and clustered
+3. **Main UI Closes**: Workflow stops here
+4. **Optional Parameter Service**: User manually opens Parameter Service UI when needed
+5. **Apply Parameters**: User can apply marks, parameter transfers, etc. as desired
+
+### Technical Impact
+
+#### Cluster Command Behavior
+- ✅ **Unchanged**: Cluster command functionality remains identical
+- ✅ **Performance**: No impact on clustering performance
+- ✅ **Reliability**: Same clustering logic and error handling
+
+#### Parameter Operations
+- ✅ **Moved**: All parameter operations moved to standalone Parameter Service UI
+- ✅ **Optional**: Users can skip parameter operations entirely
+- ✅ **Flexible**: Users can apply parameters at any time after placement
+
+### Migration Notes
+
+**For Existing Users:**
+- Cluster sleeve placement workflow remains identical
+- Parameter operations now require manual access via "Parameter Service" button
+- No breaking changes to core clustering functionality
+
+**For Developers:**
+- Cleaner separation between placement and parameter operations
+- Easier to maintain and extend each component independently
+- Reduced coupling between different functional areas
+

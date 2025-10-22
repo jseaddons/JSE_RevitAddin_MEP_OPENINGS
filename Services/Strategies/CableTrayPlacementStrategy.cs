@@ -57,13 +57,129 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
         {
             return "Cable Trays";
         }
+
+        /// <summary>
+        /// Determines if a cable tray is vertical and intersecting a floor
+        /// </summary>
+        private bool IsVerticalCableTrayOnFloor(ClashZone clashZone)
+        {
+            DebugLogger.Info($"[CableTrayStrategy] 🔍 IsVerticalCableTrayOnFloor CHECK for ClashZone {clashZone.Id}");
+            DebugLogger.Info($"[CableTrayStrategy] StructuralElementType: '{clashZone.StructuralElementType}'");
+
+            // Check if this is a floor intersection
+            bool isFloorIntersection = string.Equals(clashZone.StructuralElementType, "Floor", StringComparison.OrdinalIgnoreCase) ||
+                                     string.Equals(clashZone.StructuralElementType, "Floors", StringComparison.OrdinalIgnoreCase);
+
+            DebugLogger.Info($"[CableTrayStrategy] Is floor intersection: {isFloorIntersection}");
+
+            if (!isFloorIntersection)
+            {
+                DebugLogger.Info($"[CableTrayStrategy] ❌ Not a floor intersection, returning false");
+                return false;
+            }
+
+            // For floor intersections, we need to check if cable tray is vertical
+            // We can use the MEP element orientation data from ClashZone
+            var mepOrientation = clashZone.MepElementOrientation;
+            if (mepOrientation != null)
+            {
+                // If Z component is dominant, cable tray is running vertically
+                double absX = Math.Abs(mepOrientation.X);
+                double absY = Math.Abs(mepOrientation.Y);
+                double absZ = Math.Abs(mepOrientation.Z);
+
+                bool isVertical = absZ > absX && absZ > absY;
+
+                DebugLogger.Info($"[CableTrayStrategy] Floor intersection analysis: MEP=({mepOrientation.X:F3},{mepOrientation.Y:F3},{mepOrientation.Z:F3}), isVertical={isVertical}");
+                DebugLogger.Info($"[CableTrayStrategy] Component magnitudes: X={absX:F3}, Y={absY:F3}, Z={absZ:F3}");
+
+                if (isVertical)
+                {
+                    DebugLogger.Info($"[CableTrayStrategy] ✅ Vertical cable tray on floor detected!");
+                }
+                else
+                {
+                    DebugLogger.Info($"[CableTrayStrategy] ❌ Horizontal cable tray on floor - using standard logic");
+                }
+
+                return isVertical;
+            }
+
+            // Fallback: assume vertical if we don't have orientation data
+            DebugLogger.Warning($"[CableTrayStrategy] ⚠️ No MEP orientation data for ClashZone {clashZone.Id}, assuming vertical for floor intersection");
+            return true;
+        }
+
+        /// <summary>
+        /// Determines the cable tray's open side direction for floor intersections using lightweight analysis
+        /// </summary>
+        private XYZ GetCableTrayOpenSideDirection(CableTray cableTray, ClashZone clashZone)
+        {
+            try
+            {
+                DebugLogger.Info($"[CableTrayStrategy] Detecting open side direction for cable tray {cableTray.Id} on floor");
+
+                // Method 1: Use MEP element orientation to determine likely open side
+                var mepOrientation = clashZone.MepElementOrientation;
+                if (mepOrientation != null)
+                {
+                    // Get the cable tray's width direction (perpendicular to centerline)
+                    var (orientation, widthDirection) = JSE_RevitAddin_MEP_OPENINGS.Helpers.MepElementOrientationHelper.GetCableTrayWidthOrientation(cableTray);
+
+                    DebugLogger.Info($"[CableTrayStrategy] Cable tray orientation: {orientation}, widthDirection: ({widthDirection.X:F3},{widthDirection.Y:F3},{widthDirection.Z:F3})");
+
+                    // For floor intersections, the open side is typically perpendicular to the floor
+                    // and aligned with the cable tray's width direction
+                    if (Math.Abs(widthDirection.Z) > 0.5)
+                    {
+                        // Width direction has significant Z component - use it
+                        DebugLogger.Info($"[CableTrayStrategy] Using width direction for open side: ({widthDirection.X:F3},{widthDirection.Y:F3},{widthDirection.Z:F3})");
+                        return widthDirection.Normalize();
+                    }
+                }
+
+                // Method 2: Use bounding box analysis as fallback
+                var bbox = cableTray.get_BoundingBox(null);
+                if (bbox != null)
+                {
+                    double width = bbox.Max.X - bbox.Min.X;
+                    double height = bbox.Max.Y - bbox.Min.Y;
+                    double depth = bbox.Max.Z - bbox.Min.Z;
+
+                    DebugLogger.Info($"[CableTrayStrategy] Bounding box analysis: X={width:F3}ft, Y={height:F3}ft, Z={depth:F3}ft");
+
+                    // Find the smallest dimension (likely the closed side)
+                    if (width <= height && width <= depth)
+                    {
+                        // X is smallest - open side is likely along X
+                        DebugLogger.Info($"[CableTrayStrategy] X dimension smallest, assuming open side along X");
+                        return XYZ.BasisX;
+                    }
+                    else if (height <= width && height <= depth)
+                    {
+                        // Y is smallest - open side is likely along Y
+                        DebugLogger.Info($"[CableTrayStrategy] Y dimension smallest, assuming open side along Y");
+                        return XYZ.BasisY;
+                    }
+                }
+
+                // Method 3: Ultimate fallback - assume upward for floor intersections
+                DebugLogger.Warning($"[CableTrayStrategy] Could not determine open side, using upward as fallback");
+                return XYZ.BasisZ;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[CableTrayStrategy] Error detecting open side direction: {ex.Message}");
+                return XYZ.BasisZ; // Safe fallback
+            }
+        }
         
         /// <summary>
-        /// Calculate cable tray placement adjustment (always offset upward)
+        /// Calculate cable tray placement adjustment with smart open side detection for floor intersections
         /// Returns (offsetVector, finalWidth, finalHeight)
         /// </summary>
         public (XYZ offsetVector, double finalWidth, double finalHeight) GetCableTrayPlacementAdjustment(
-            ClashZone clashZone, 
+            ClashZone clashZone,
             OpeningConditions conditions,
             Dictionary<string, double> uiClearanceSettings = null)
         {
@@ -144,11 +260,63 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                 
                 double topClearance = UnitUtils.ConvertToInternalUnits(topClearanceMm, UnitTypeId.Millimeters);
                 double otherClearance = UnitUtils.ConvertToInternalUnits(otherClearanceMm, UnitTypeId.Millimeters);
-                
-                // Calculate offset upward (always toward top)
-                double offsetAmount = (topClearance - otherClearance) / 2.0;
-                XYZ offsetVector = new XYZ(0, 0, offsetAmount); // Always offset upward
-                
+
+                // 🛠️ ENHANCED: Smart offset direction based on cable tray orientation and host type
+                XYZ offsetVector;
+
+                // Check if this is a vertical cable tray intersecting a floor
+                if (IsVerticalCableTrayOnFloor(clashZone))
+                {
+                    DebugLogger.Info($"[CableTrayStrategy] 🎯 VERTICAL CABLE TRAY ON FLOOR DETECTED - Using smart open side detection");
+
+                    var mepOrientation = clashZone.MepElementOrientation;
+                    if (mepOrientation != null)
+                    {
+                        // Use the width direction (perpendicular to cable tray centerline) as open side indicator
+                        double absX = Math.Abs(mepOrientation.X);
+                        double absY = Math.Abs(mepOrientation.Y);
+                        double absZ = Math.Abs(mepOrientation.Z);
+
+                        DebugLogger.Info($"[CableTrayStrategy] MEP Orientation Analysis: X={absX:F3}, Y={absY:F3}, Z={absZ:F3}");
+
+                        if (absX > absY && absX > absZ)
+                        {
+                            // X component is dominant - open side likely along X
+                            double verticalOffsetAmount = (topClearance - otherClearance) / 2.0;
+                            offsetVector = new XYZ(verticalOffsetAmount, 0, 0);
+                            DebugLogger.Info($"[CableTrayStrategy] 🔄 Using X-direction offset: {verticalOffsetAmount:F4}ft ({offsetVector})");
+                        }
+                        else if (absY > absX && absY > absZ)
+                        {
+                            // Y component is dominant - open side likely along Y
+                            double verticalOffsetAmount = (topClearance - otherClearance) / 2.0;
+                            offsetVector = new XYZ(0, verticalOffsetAmount, 0);
+                            DebugLogger.Info($"[CableTrayStrategy] 🔄 Using Y-direction offset: {verticalOffsetAmount:F4}ft ({offsetVector})");
+                        }
+                        else
+                        {
+                            // Z component is dominant or equal - use Z direction (upward)
+                            double verticalOffsetAmount = (topClearance - otherClearance) / 2.0;
+                            offsetVector = new XYZ(0, 0, verticalOffsetAmount);
+                            DebugLogger.Info($"[CableTrayStrategy] 🔄 Using Z-direction offset: {verticalOffsetAmount:F4}ft ({offsetVector})");
+                        }
+                    }
+                    else
+                    {
+                        // No orientation data - fallback to upward
+                        double verticalOffsetAmount = (topClearance - otherClearance) / 2.0;
+                        offsetVector = new XYZ(0, 0, verticalOffsetAmount);
+                        DebugLogger.Warning($"[CableTrayStrategy] ⚠️ No orientation data for vertical cable tray, using upward fallback");
+                    }
+                }
+                else
+                {
+                    // 🟢 STANDARD LOGIC: For horizontal cable trays and wall intersections, use upward offset
+                    DebugLogger.Info($"[CableTrayStrategy] 🟢 Using standard upward offset logic (horizontal or wall intersection)");
+                    double standardOffsetAmount = (topClearance - otherClearance) / 2.0;
+                    offsetVector = new XYZ(0, 0, standardOffsetAmount); // Always offset upward
+                }
+
                 // Calculate final size with asymmetric clearances
                 double finalWidth = trayWidth + (2 * otherClearance); // Left and right use other clearance
                 double finalHeight = trayHeight + topClearance + otherClearance; // Top uses top clearance, bottom uses other
@@ -156,7 +324,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                 // ⚠️ DIAGNOSTIC: Log final calculated dimensions
                 double finalWidthMm = UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters);
                 double finalHeightMm = UnitUtils.ConvertFromInternalUnits(finalHeight, UnitTypeId.Millimeters);
-                DebugLogger.Info($"[CableTrayStrategy] Top={topClearance:F4}ft, Other={otherClearance:F4}ft, Offset={offsetAmount:F4}ft upward");
+                double offsetAmount = offsetVector.GetLength();
+                DebugLogger.Info($"[CableTrayStrategy] Top={topClearance:F4}ft, Other={otherClearance:F4}ft, Offset={offsetAmount:F4}ft in direction {offsetVector}");
                 DebugLogger.Info($"[CableTrayStrategy] FINAL SIZE: Width={finalWidthMm:F1}mm ({finalWidth:F6}ft) x Height={finalHeightMm:F1}mm ({finalHeight:F6}ft), Offset: {offsetVector}");
                 
                 return (offsetVector, finalWidth, finalHeight);

@@ -78,27 +78,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     ExecuteDisciplineWithMemoryManagement(discipline.Key, discipline.Value, showProgress);
                 }
 
-                // Execute marking for all disciplines at the end
+                // ✅ NEW ARCHITECTURE: Orchestrator stops at cluster command
+                // Mark/parameter operations are now handled manually via Parameter Service UI
                 System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 🔥 STARTING MARKING PHASE 🔥\n");
-                DebugLogger.Info("[OpeningCommandOrchestrator] 🔥 STARTING MARKING PHASE 🔥");
-                
-                // ✅ PROPER ARCHITECTURE: Call MarkParameterCommand with UI values
-                // MarkParameterCommand handles "ALL" by processing each category with correct UI discipline prefixes
-                
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 🔥 Calling MarkParameterCommand for ALL categories with UI values 🔥\n");
-                
-                // ✅ FIX: Pass MarkPrefixSettings to MarkParameterCommand so it can use UI discipline prefixes
-                var markingCommand = new MarkParameterCommand("ALL", _markPrefixes.ProjectPrefix, "ALL", _markPrefixes.RemarkAll, _markPrefixes);
-                markingCommand.Execute(new UIApplication(_document.Application));
-                
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] ✅ MarkParameterCommand completed for ALL categories\n");
-                
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 🔥 MARKING PHASE COMPLETED 🔥\n");
-                DebugLogger.Info("[OpeningCommandOrchestrator] 🔥 MARKING PHASE COMPLETED 🔥");
+                    $"[{DateTime.Now:HH:mm:ss}] ✅ ORCHESTRATOR COMPLETED - STOPPING AT CLUSTER COMMAND ✅\n");
+                DebugLogger.Info("[OpeningCommandOrchestrator] ✅ ORCHESTRATOR COMPLETED - STOPPING AT CLUSTER COMMAND ✅");
 
                 DebugLogger.Info("[OpeningCommandOrchestrator] All filters executed successfully");
             }

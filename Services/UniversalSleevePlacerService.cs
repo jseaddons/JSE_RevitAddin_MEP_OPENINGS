@@ -448,28 +448,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         else if (_strategy is CableTrayPlacementStrategy cableTrayStrategy)
                         {
                             // 🔥 DEBUG: Log that we're entering the cable tray strategy block
-                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\clearance_calculation_debug.log", 
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\clearance_calculation_debug.log",
                                 $"[{DateTime.Now:HH:mm:ss}] 🎯 CABLE TRAY STRATEGY BLOCK ENTERED for ClashZone {clashZone.Id}\n");
-                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\clearance_calculation_debug.log", 
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\clearance_calculation_debug.log",
                                 $"[{DateTime.Now:HH:mm:ss}] About to call GetCableTrayPlacementAdjustment with {_clearanceSettings.Count} settings\n");
-                            
+
                             // ✅ Cable trays: Raw dimensions + UI/XML clearance via strategy
                             var rawWidth = clashZone.MepElementWidth;
                             var rawHeight = clashZone.MepElementHeight;
-                            
+
                             DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY STRATEGY: Raw={UnitUtils.ConvertFromInternalUnits(rawWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(rawHeight, UnitTypeId.Millimeters):F1}mm");
                             DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY STRATEGY: UI Clearance Settings Count={_clearanceSettings.Count}");
-                            
+
                             // Get offset and final dimensions from strategy (uses UI settings first, then CONDITIONS)
                             var adj2 = cableTrayStrategy.GetCableTrayPlacementAdjustment(clashZone, _conditions, _clearanceSettings);
                             placementOffset = adj2.offsetVector;
                             finalWidth = adj2.finalWidth;
                             finalHeight = adj2.finalHeight;
-                            
+
                             DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY STRATEGY: Final={UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(finalHeight, UnitTypeId.Millimeters):F1}mm");
                             finalDiameter = finalWidth; // Not used for cable trays (rectangular only)
-                            
+
                             DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY: Raw={UnitUtils.ConvertFromInternalUnits(rawWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(rawHeight, UnitTypeId.Millimeters):F1}mm → Final={UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(finalHeight, UnitTypeId.Millimeters):F1}mm");
+                        }
+                        else
+                        {
+                            // 🔥 DEBUG: Log when cable tray strategy is not used
+                            DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ CABLE TRAY STRATEGY NOT USED for ClashZone {clashZone.Id}");
+                            DebugLogger.Warning($"[UniversalSleevePlacer] Strategy Type: {_strategy.GetType().Name}");
+                            DebugLogger.Warning($"[UniversalSleevePlacer] Strategy Category: '{_strategy.GetCategoryName()}'");
+                            DebugLogger.Warning($"[UniversalSleevePlacer] ClashZone Category: '{clashZone.MepElementCategory}'");
+                            DebugLogger.Warning($"[UniversalSleevePlacer] Host Type: '{clashZone.StructuralElementType}'");
+
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\strategy_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ❌ CABLE TRAY STRATEGY NOT TRIGGERED for ClashZone {clashZone.Id}\n");
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\strategy_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] Strategy: {_strategy.GetType().Name} ({_strategy.GetCategoryName()})\n");
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\strategy_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ClashZone: Category='{clashZone.MepElementCategory}', Host='{clashZone.StructuralElementType}'\n");
                         }
 
                         // ⚠️ REMOVED: Old width/height swapping logic that was causing double-swapping
@@ -533,6 +549,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // Set parameters
                         SetSleeveParameters(sleeveInstance, mepSize, finalWidth, finalHeight, finalDiameter, clashZone, isCircular);
                         
+                        // Set sleeve metadata for fast parameter transfer
+                        SetSleeveMetadata(sleeveInstance, clashZone.MepElementCategory);
+                        
                         // ⚠️ CRITICAL: Set orientation (rotation for floors, HostOrientation parameter for walls/framing)
                         SetSleeveOrientation(sleeveInstance, clashZone);
 
@@ -573,6 +592,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 
                 DebugLogger.Info($"[UniversalSleevePlacer] Placement loop complete - Placed: {PlacedCount}, Skipped: {SkippedCount}, Errors: {ErrorCount}");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
+                    $"[{DateTime.Now}] [PLACEMENT_COMPLETE] Placed: {PlacedCount}, Skipped: {SkippedCount}, Errors: {ErrorCount}\n");
+                
+                // CRITICAL FIX: Save XML files with updated SleeveInstanceId values
+                if (PlacedCount > 0)
+                {
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
+                        $"[{DateTime.Now}] [XML_SAVE] PlacedCount > 0, calling SaveUpdatedXmlFiles\n");
+                    SaveUpdatedXmlFiles();
+                }
+                else
+                {
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
+                        $"[{DateTime.Now}] [XML_SAVE] PlacedCount = 0, skipping SaveUpdatedXmlFiles\n");
+                }
             }
             catch (Exception ex)
             {
@@ -1498,6 +1532,154 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     }
 }
 
+        /// <summary>
+        /// Set sleeve metadata parameters for fast parameter transfer
+        /// </summary>
+        private void SetSleeveMetadata(FamilyInstance sleeveInstance, string category)
+        {
+            try
+            {
+                // Set Filter Name based on category
+                string filterName = GetFilterNameForCategory(category);
+                var filterNameParam = sleeveInstance.LookupParameter("Filter Name");
+                if (filterNameParam != null && !filterNameParam.IsReadOnly)
+                {
+                    filterNameParam.Set(filterName);
+                    DebugLogger.Info($"[SetSleeveMetadata] Set Filter Name = '{filterName}' for sleeve {sleeveInstance.Id}");
+                }
+                else
+                {
+                    DebugLogger.Warning($"[SetSleeveMetadata] Filter Name parameter not found or read-only on sleeve {sleeveInstance.Id}");
+                }
+                
+                // Set Instance ID
+                var instanceIdParam = sleeveInstance.LookupParameter("Sleeve Instance ID");
+                if (instanceIdParam != null && !instanceIdParam.IsReadOnly)
+                {
+                    instanceIdParam.Set(sleeveInstance.Id.IntegerValue);
+                    DebugLogger.Info($"[SetSleeveMetadata] Set Sleeve Instance ID = {sleeveInstance.Id.IntegerValue} for sleeve {sleeveInstance.Id}");
+                }
+                else
+                {
+                    DebugLogger.Warning($"[SetSleeveMetadata] Sleeve Instance ID parameter not found or read-only on sleeve {sleeveInstance.Id}");
+                }
+                
+                // Log to debug file
+                try
+                {
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                        $"[SLEEVE_METADATA] Sleeve {sleeveInstance.Id.IntegerValue}: Filter='{filterName}', InstanceID={sleeveInstance.Id.IntegerValue} ✓\n");
+                }
+                catch { }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[SetSleeveMetadata] Error setting metadata for sleeve {sleeveInstance.Id}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// CRITICAL FIX: Save XML files with updated SleeveInstanceId values
+        /// This ensures parameter transfer can find the sleeves in the XML
+        /// </summary>
+        private void SaveUpdatedXmlFiles()
+        {
+            try
+            {
+                DebugLogger.Info("[UniversalSleevePlacer] Saving updated XML files with SleeveInstanceId values...");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
+                    $"[{DateTime.Now}] [XML_SAVE] Starting SaveUpdatedXmlFiles method\n");
+                
+                var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
+                    "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                
+                if (!Directory.Exists(filtersDirectory))
+                {
+                    DebugLogger.Warning($"[UniversalSleevePlacer] Filters directory not found: {filtersDirectory}");
+                    return;
+                }
+                
+                // Get all XML files
+                var xmlFiles = Directory.GetFiles(filtersDirectory, "*.xml");
+                DebugLogger.Info($"[UniversalSleevePlacer] Found {xmlFiles.Length} XML files to check");
+                
+                foreach (var xmlFile in xmlFiles)
+                {
+                    try
+                    {
+                        // Skip CONDITIONS files
+                        if (Path.GetFileName(xmlFile).Contains("CONDITIONS", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+                        
+                        // Load the XML file
+                        var serializer = new System.Xml.Serialization.XmlSerializer(typeof(Models.OpeningFilter));
+                        Models.OpeningFilter filter;
+                        
+                        using (var reader = new StreamReader(xmlFile))
+                        {
+                            filter = (Models.OpeningFilter)serializer.Deserialize(reader);
+                        }
+                        
+                        if (filter?.ClashZoneStorage?.ClashZones == null)
+                        {
+                            continue;
+                        }
+                        
+                        bool hasUpdates = false;
+                        foreach (var zone in filter.ClashZoneStorage.ClashZones)
+                        {
+                            // Check if this zone has a valid SleeveInstanceId (not -1)
+                            if (zone.SleeveInstanceId > 0)
+                            {
+                                hasUpdates = true;
+                                DebugLogger.Info($"[UniversalSleevePlacer] Found valid SleeveInstanceId {zone.SleeveInstanceId} in {Path.GetFileName(xmlFile)}");
+                            }
+                        }
+                        
+                        // Save the file if it has updates
+                        if (hasUpdates)
+                        {
+                            filter.LastModified = DateTime.Now;
+                            
+                            using (var writer = new StreamWriter(xmlFile))
+                            {
+                                serializer.Serialize(writer, filter);
+                            }
+                            
+                            DebugLogger.Info($"[UniversalSleevePlacer] ✓ Saved updated XML file: {Path.GetFileName(xmlFile)}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLogger.Error($"[UniversalSleevePlacer] Error processing XML file {Path.GetFileName(xmlFile)}: {ex.Message}");
+                    }
+                }
+                
+                DebugLogger.Info("[UniversalSleevePlacer] XML file saving complete");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[UniversalSleevePlacer] Error saving XML files: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Get XML filename for category
+        /// </summary>
+        private string GetFilterNameForCategory(string category)
+        {
+            switch (category.ToLower())
+            {
+                case "ducts": return "MEPF_ducts.xml";
+                case "pipes": return "MEPF_pipes.xml";
+                case "cable trays": return "MEPF_cable_trays.xml";
+                case "duct accessories": return "MEPF_duct_accessories.xml";
+                default: return "Unknown.xml";
+            }
+        }
+
 // ============================================================================
 // CORRECTED SetSleeveOrientation Method
 // ============================================================================
@@ -1861,4 +2043,3 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
     }
 }
-

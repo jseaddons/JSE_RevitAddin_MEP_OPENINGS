@@ -54,9 +54,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Configuration
         {
             try
             {
-                // Priority 1: Global size-based rules (for ALL pipes - walls, floors, framing)
+                // Priority 1: Global size-based rules (for pipes on walls/floors, NOT structural framing)
                 if (category.Equals("Pipes", StringComparison.OrdinalIgnoreCase))
                 {
+                    // CRITICAL FIX: Round pipes intersecting structural framing should ALWAYS be circular
+                    if (hostType != null && (hostType.Contains("Structural Framing", StringComparison.OrdinalIgnoreCase) || 
+                                           hostType.Contains("Framing", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        DebugLogger.Info($"[ConfigResolution] Pipe intersecting {hostType} → Circular (structural framing rule overrides size threshold)");
+                        return "Circular"; // Always circular for structural framing intersections
+                    }
+                    
                     var processingLimits = _globalConfigService.GetProcessingLimits();
                     var diameterThreshold = processingLimits.RoundOpeningsBecomeRectangularIfDiameterGreaterThan; // 200mm
                     
@@ -66,12 +74,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Configuration
                     if (diameterMm > diameterThreshold)
                     {
                         DebugLogger.Info($"[ConfigResolution] Pipe {diameterMm:F1}mm > {diameterThreshold}mm threshold → Rectangular (global rule overrides UI: {uiPreference}) for {hostType ?? "Unknown"} host");
-                        return "Rectangular"; // Global rule wins for ALL pipes >200mm
+                        return "Rectangular"; // Global rule wins for pipes >200mm on walls/floors
                     }
                     else
                     {
                         DebugLogger.Info($"[ConfigResolution] Pipe {diameterMm:F1}mm <= {diameterThreshold}mm threshold → {uiPreference} (UI preference respected) for {hostType ?? "Unknown"} host");
-                        return uiPreference; // UI preference for ALL pipes ≤200mm
+                        return uiPreference; // UI preference for pipes ≤200mm on walls/floors
                     }
                 }
                 

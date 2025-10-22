@@ -1070,7 +1070,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         ClearanceSettings = categoryClearances,
                                         SelectedMepType = GetCategorySpecificMepType(category)
                                     },
-                                    ParameterTransferConfig = targetFilter.ParameterTransferConfig,
                                     ClashZoneStorage = new Models.ClashZoneStorage
                                     {
                                         ClashZones = categoryClashZones,

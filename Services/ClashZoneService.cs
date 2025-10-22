@@ -1885,7 +1885,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var abbrevParam = mepElement.LookupParameter("System Abbreviation");
                 if (abbrevParam != null && abbrevParam.StorageType == StorageType.String)
                 {
-                    return abbrevParam.AsString() ?? string.Empty;
+                    var value = abbrevParam.AsString() ?? string.Empty;
+                    
+                    // DEBUG: Log System Abbreviation for duct accessories
+                    if (mepElement.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
+                    {
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_capture_debug.log", 
+                            $"[{DateTime.Now}] [GET_SYSTEM_ABBREV] DUCT ACCESSORY {mepElement.Id}: System Abbreviation = '{value}'\n");
+                    }
+                    
+                    return value;
                 }
                 
                 // Fallback: try to get system name and abbreviate it
@@ -1896,8 +1905,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (!string.IsNullOrEmpty(systemName))
                     {
                         // Take first 2-3 characters as abbreviation
-                        return systemName.Length > 3 ? systemName.Substring(0, 3).ToUpper() : systemName.ToUpper();
+                        var abbreviation = systemName.Length > 3 ? systemName.Substring(0, 3).ToUpper() : systemName.ToUpper();
+                        
+                        // DEBUG: Log System Name fallback for duct accessories
+                        if (mepElement.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
+                        {
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_capture_debug.log", 
+                                $"[{DateTime.Now}] [GET_SYSTEM_ABBREV] DUCT ACCESSORY {mepElement.Id}: System Name fallback '{systemName}' → '{abbreviation}'\n");
+                        }
+                        
+                        return abbreviation;
                     }
+                }
+                
+                // DEBUG: Log no System Abbreviation found for duct accessories
+                if (mepElement.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
+                {
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_capture_debug.log", 
+                        $"[{DateTime.Now}] [GET_SYSTEM_ABBREV] DUCT ACCESSORY {mepElement.Id}: No System Abbreviation or System Name found\n");
                 }
                 
                 return string.Empty;
@@ -2812,17 +2837,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         /// <summary>
         /// Get MEP element level information for sleeve placement
+        /// Uses the same logic as HostLevelHelper.GetHostReferenceLevel to get immediate reference level
         /// </summary>
         private (string levelName, double levelElevation) GetMepElementLevelInfo(Element mepElement)
         {
             try
             {
-                // Try to get level from MEP element's LevelId
+                // Use HostLevelHelper to get the immediate reference level (same logic as sleeve placement)
+                var refLevel = JSE_RevitAddin_MEP_OPENINGS.Helpers.HostLevelHelper.GetHostReferenceLevel(mepElement.Document, mepElement);
+                if (refLevel != null)
+                {
+                    DebugLogger.Info($"[ClashZoneService] MEP Element {mepElement.Id}: Using reference level '{refLevel.Name}' (elevation: {refLevel.Elevation})");
+                    return (refLevel.Name, refLevel.Elevation);
+                }
+                
+                // Fallback: try to get level from MEP element's LevelId (original logic)
                 if (mepElement.LevelId != ElementId.InvalidElementId)
                 {
                     var level = mepElement.Document.GetElement(mepElement.LevelId) as Level;
                     if (level != null)
                     {
+                        DebugLogger.Info($"[ClashZoneService] MEP Element {mepElement.Id}: Using LevelId level '{level.Name}' (elevation: {level.Elevation})");
                         return (level.Name, level.Elevation);
                     }
                 }
@@ -2831,16 +2866,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (mepElement.Location is LocationPoint locationPoint)
                 {
                     var elevation = locationPoint.Point.Z;
+                    DebugLogger.Info($"[ClashZoneService] MEP Element {mepElement.Id}: Using location point elevation {elevation}");
                     return ($"Auto-Level-{elevation:F2}", elevation);
                 }
                 else if (mepElement.Location is LocationCurve locationCurve)
                 {
                     var startPoint = locationCurve.Curve.GetEndPoint(0);
                     var elevation = startPoint.Z;
+                    DebugLogger.Info($"[ClashZoneService] MEP Element {mepElement.Id}: Using location curve elevation {elevation}");
                     return ($"Auto-Level-{elevation:F2}", elevation);
                 }
                 
                 // Final fallback
+                DebugLogger.Warning($"[ClashZoneService] MEP Element {mepElement.Id}: No level found, using fallback 'Level 1'");
                 return ("Level 1", 0.0);
             }
             catch (Exception ex)
