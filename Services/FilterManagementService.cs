@@ -537,6 +537,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var filter = (OpeningFilter)serializer.Deserialize(reader);
                     _log($"[FILTER_MGMT] Loaded filter from XML: {filePath}");
                     
+                    // ✅ CRITICAL FIX: Reconstruct SleevePlacementPoint from XML-serializable properties
+                    if (filter?.ClashZoneStorage?.ClashZones != null)
+                    {
+                        foreach (var clashZone in filter.ClashZoneStorage.ClashZones)
+                        {
+                            clashZone.EnsureSleevePlacementPointReconstructed();
+                        }
+                        _log($"[FILTER_MGMT] Reconstructed SleevePlacementPoint for {filter.ClashZoneStorage.ClashZones.Count} clash zones");
+                    }
+                    
                     // Parameter transfer functionality removed
                     _log($"[FILTER_MGMT] Parameter transfer functionality has been removed from filter '{filter.Name}'");
                     

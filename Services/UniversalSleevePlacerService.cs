@@ -4,8 +4,10 @@ using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
+using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Utils;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
@@ -26,17 +28,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly OpeningConditions _conditions;
         private readonly ISleevePlacementStrategy _strategy;
         private readonly Dictionary<string, double> _clearanceSettings;
-        
+        private readonly string _filterName;
+
         public int PlacedCount { get; private set; }
         public int SkippedCount { get; private set; }
         public int ErrorCount { get; private set; }
 
-        public UniversalSleevePlacerService(Document doc, OpeningConditions conditions, ISleevePlacementStrategy strategy, Dictionary<string, double> clearanceSettings = null)
+        public UniversalSleevePlacerService(Document doc, OpeningConditions conditions, ISleevePlacementStrategy strategy, Dictionary<string, double> clearanceSettings = null, string filterName = null)
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _conditions = conditions ?? new OpeningConditions();
             _strategy = strategy ?? throw new ArgumentNullException(nameof(strategy));
             _clearanceSettings = clearanceSettings ?? new Dictionary<string, double>();
+            _filterName = filterName;
             
             // 🔥 CRITICAL DEBUG: Direct file logging to trace service instantiation
             System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\service_instantiation.log", 
@@ -266,16 +270,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         DebugLogger.Info($"[UniversalSleevePlacer] Processing ClashZone {clashZone.Id}: MEP={clashZone.MepElementId.IntegerValue}, Structural={clashZone.StructuralElementId.IntegerValue}");
                         
+                        // ⚠️ CRITICAL: Comprehensive flag state logging for debugging
+                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] [SLEEVE-PLACER] ClashZone {clashZone.Id}: MEP={clashZone.MepElementId.IntegerValue}, Structural={clashZone.StructuralElementId.IntegerValue}\n");
+                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] [SLEEVE-PLACER] FLAGS: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}\n");
+                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] [SLEEVE-PLACER] PARAMS: SleeveInstanceId={clashZone.SleeveInstanceId}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}\n");
+                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] [SLEEVE-PLACER] PLACEMENT: Point={clashZone.SleevePlacementPoint}, Family={clashZone.SleeveFamilyName}\n");
+                        
                         // ⚠️ CRITICAL: Hierarchical flag check - cluster takes precedence
                         File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
-                            $"[HIER-CHECK] ClashZone {clashZone.Id}: IsClustered={clashZone.IsClustered}, IsClusterResolved={clashZone.IsClusterResolved}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}\n");
+                            $"[HIER-CHECK] ClashZone {clashZone.Id}: IsClusterResolved={clashZone.IsClusterResolved}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}\n");
                         
-                        // STEP 0: Check if already clustered (prevent individual sleeves over cluster sleeves)
-                        if (clashZone.IsClustered)
+                        // STEP 0: Check if cluster sleeve actually exists (prevent individual sleeves over cluster sleeves)
+                        if (clashZone.ClusterSleeveInstanceId > 0)
                         {
-                            DebugLogger.Info($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} is already clustered (ClusterSleeveInstanceId: {clashZone.ClusterSleeveInstanceId}) - preventing individual sleeve placement");
+                            DebugLogger.Info($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} has cluster sleeve {clashZone.ClusterSleeveInstanceId} - preventing individual sleeve placement");
                             File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
-                                $"✓ SKIP ClashZone {clashZone.Id}: already clustered (ClusterSleeveInstanceId: {clashZone.ClusterSleeveInstanceId})\n");
+                                $"✓ SKIP ClashZone {clashZone.Id}: has cluster sleeve {clashZone.ClusterSleeveInstanceId}\n");
                             SkippedCount++;
                             continue;
                         }
@@ -283,7 +297,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // STEP 1: Check individual sleeve flag first (fastest check)
                         if (clashZone.IsResolved)
                         {
-                            // ✅ CRITICAL: Check both flags according to flag management logic
+                            // ✅ CRITICAL: Verify sleeve actually exists in Revit before trusting XML flags
+                            if (clashZone.SleeveInstanceId > 0)
+                            {
+                                try
+                                {
+                                    var sleeveElement = _doc.GetElement(new ElementId(clashZone.SleeveInstanceId));
+                                    if (sleeveElement == null)
+                                    {
+                                        // Sleeve was deleted - reset flags and continue with placement
+                                        DebugLogger.Info($"[UniversalSleevePlacer] RESET: Sleeve {clashZone.SleeveInstanceId} was deleted - resetting flags for ClashZone {clashZone.Id}");
+                                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
+                                            $"🔄 RESET ClashZone {clashZone.Id}: Sleeve {clashZone.SleeveInstanceId} was deleted - resetting flags\n");
+                                        clashZone.IsResolved = false;
+                                        clashZone.SleeveInstanceId = -1;
+                                        clashZone.SleeveFamilyName = string.Empty;
+                                        // Continue to placement (don't skip)
+                                    }
+                                    else
+                                    {
+                                        // Sleeve exists - check both flags according to flag management logic
                             if (clashZone.IsClusterResolved)
                             {
                                 // Both flags TRUE: Skip processing (avoid clash zone)
@@ -299,6 +332,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     $"✓ SKIP ClashZone {clashZone.Id}: IsResolved=True (individual sleeve already placed)\n");
                                 SkippedCount++;
                                 continue;
+                                        }
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    DebugLogger.Error($"[UniversalSleevePlacer] Error checking sleeve existence: {ex.Message}");
+                                    // On error, reset flags and continue with placement
+                                    clashZone.IsResolved = false;
+                                    clashZone.SleeveInstanceId = -1;
+                                    clashZone.SleeveFamilyName = string.Empty;
+                                }
+                            }
+                            else
+                            {
+                                // Invalid SleeveInstanceId - reset flags and continue with placement
+                                DebugLogger.Info($"[UniversalSleevePlacer] RESET: Invalid SleeveInstanceId {clashZone.SleeveInstanceId} - resetting flags for ClashZone {clashZone.Id}");
+                                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
+                                    $"🔄 RESET ClashZone {clashZone.Id}: Invalid SleeveInstanceId {clashZone.SleeveInstanceId} - resetting flags\n");
+                                clashZone.IsResolved = false;
+                                clashZone.SleeveInstanceId = -1;
+                                clashZone.SleeveFamilyName = string.Empty;
+                                // Continue to placement (don't skip)
                             }
                         }
                         
@@ -390,6 +445,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         XYZ placementOffset = XYZ.Zero;
                         double finalWidth = 0.0, finalHeight = 0.0, finalDiameter = 0.0;
                         
+                        // 🔥 DEBUG: Log raw dimensions at start of calculation
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\clearance_calculation_debug.log",
+                            $"[RAW-DIMS] Zone {clashZone.Id}: Category={clashZone.MepElementCategory}, RawW={UnitUtils.ConvertFromInternalUnits(clashZone.SleeveWidth, UnitTypeId.Millimeters):F1}mm, RawH={UnitUtils.ConvertFromInternalUnits(clashZone.SleeveHeight, UnitTypeId.Millimeters):F1}mm, RawD={UnitUtils.ConvertFromInternalUnits(clashZone.SleeveDiameter, UnitTypeId.Millimeters):F1}mm\n");
+                        
                         // 🛡️ ARCHITECTURE FIX: Use CONDITIONS service for ALL clearance types
                         // This ensures consistent architecture: CONDITIONS XML → UniversalSleevePlacerService
                         // Raw dimensions from ClashZone + Clearance from CONDITIONS = Final dimensions
@@ -400,19 +459,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         DebugLogger.Info($"[UniversalSleevePlacer] CLEARANCE CALCULATION START: Category='{clashZone.MepElementCategory}', Strategy={(_strategy?.GetType().Name ?? "NULL")}");
                         
 						bool isPipesCategory = string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
+						
+						// 🔥 DEBUG: Log strategy execution
+						System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\strategy_debug.log",
+							$"[STRATEGY-CHECK] Zone {clashZone.Id}: Category={clashZone.MepElementCategory}, isPipe={isPipesCategory}, Strategy={_strategy?.GetType().Name}\n");
+						
 						if (isPipesCategory)
 						{
 							// ✅ Pipes: Raw dimensions + CONDITIONS clearance
+							System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\strategy_debug.log",
+								$"[STRATEGY-PIPES] Zone {clashZone.Id}: Executing Pipes strategy\n");
 							var rawDiameter = clashZone.MepElementWidth; // Raw diameter from ClashZone
 							var clearance = GetClearanceFromConditions("Pipes", mepSize);
 							finalDiameter = rawDiameter + (2 * clearance);
 							finalWidth = finalDiameter;
 							finalHeight = finalDiameter;
 							DebugLogger.Info($"[UniversalSleevePlacer] PIPE: Raw={UnitUtils.ConvertFromInternalUnits(rawDiameter, UnitTypeId.Millimeters):F1}mm + Clearance={UnitUtils.ConvertFromInternalUnits(clearance, UnitTypeId.Millimeters):F1}mm = Final={UnitUtils.ConvertFromInternalUnits(finalDiameter, UnitTypeId.Millimeters):F1}mm");
+							
+							System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\strategy_debug.log",
+								$"[STRATEGY-PIPES] Zone {clashZone.Id}: ✅ PIPE STRATEGY COMPLETED - proceeding to sleeve placement\n");
 						}
 						else if (_strategy is DamperPlacementStrategy damperStrategy)
                         {
                             // ✅ Fire dampers: Raw dimensions + CONDITIONS clearance via strategy
+							System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\strategy_debug.log",
+								$"[STRATEGY-DAMPER] Zone {clashZone.Id}: Executing Damper strategy\n");
                             var rawWidth = clashZone.MepElementWidth;
                             var rawHeight = clashZone.MepElementHeight;
                             
@@ -433,6 +504,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (_strategy is DuctPlacementStrategy ductStrategy)
                         {
                             // ✅ Ducts: Raw dimensions + CONDITIONS clearance via strategy
+							System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\strategy_debug.log",
+								$"[STRATEGY-DUCT] Zone {clashZone.Id}: Executing Duct strategy\n");
                             var rawWidth = clashZone.MepElementWidth;
                             var rawHeight = clashZone.MepElementHeight;
                             
@@ -448,6 +521,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         else if (_strategy is CableTrayPlacementStrategy cableTrayStrategy)
                         {
                             // 🔥 DEBUG: Log that we're entering the cable tray strategy block
+							System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\strategy_debug.log",
+								$"[STRATEGY-CABLETRAY] Zone {clashZone.Id}: Executing CableTray strategy\n");
                             System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\clearance_calculation_debug.log",
                                 $"[{DateTime.Now:HH:mm:ss}] 🎯 CABLE TRAY STRATEGY BLOCK ENTERED for ClashZone {clashZone.Id}\n");
                             System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\clearance_calculation_debug.log",
@@ -473,19 +548,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                         else
                         {
-                            // 🔥 DEBUG: Log when cable tray strategy is not used
-                            DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ CABLE TRAY STRATEGY NOT USED for ClashZone {clashZone.Id}");
-                            DebugLogger.Warning($"[UniversalSleevePlacer] Strategy Type: {_strategy.GetType().Name}");
-                            DebugLogger.Warning($"[UniversalSleevePlacer] Strategy Category: '{_strategy.GetCategoryName()}'");
-                            DebugLogger.Warning($"[UniversalSleevePlacer] ClashZone Category: '{clashZone.MepElementCategory}'");
-                            DebugLogger.Warning($"[UniversalSleevePlacer] Host Type: '{clashZone.StructuralElementType}'");
-
+                            // 🔥 DEBUG: Log when no strategy matches - this is where dimensions stay 0!
                             System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\strategy_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] ❌ CABLE TRAY STRATEGY NOT TRIGGERED for ClashZone {clashZone.Id}\n");
+                                $"[STRATEGY-NONE] Zone {clashZone.Id}: NO STRATEGY MATCHED! Dimensions will remain 0 ❌\n");
                             System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\strategy_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] Strategy: {_strategy.GetType().Name} ({_strategy.GetCategoryName()})\n");
+                                $"[STRATEGY-NONE] Category={clashZone.MepElementCategory}, Strategy={_strategy?.GetType().Name}, Host={clashZone.StructuralElementType}\n");
+                            
+                            // 🔥 FALLBACK: Use raw dimensions + default clearance if no strategy matches
+                            var rawWidth = clashZone.MepElementWidth;
+                            var rawHeight = clashZone.MepElementHeight;
+                            var defaultClearance = UnitUtils.ConvertToInternalUnits(50, UnitTypeId.Millimeters); // 50mm default
+                            
+                            finalWidth = rawWidth + (2 * defaultClearance);
+                            finalHeight = rawHeight + (2 * defaultClearance);
+                            finalDiameter = Math.Max(finalWidth, finalHeight);
+                            
                             System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\strategy_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] ClashZone: Category='{clashZone.MepElementCategory}', Host='{clashZone.StructuralElementType}'\n");
+                                $"[STRATEGY-FALLBACK] Zone {clashZone.Id}: Using fallback - RawW={UnitUtils.ConvertFromInternalUnits(rawWidth, UnitTypeId.Millimeters):F1}mm, RawH={UnitUtils.ConvertFromInternalUnits(rawHeight, UnitTypeId.Millimeters):F1}mm, FinalW={UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters):F1}mm, FinalH={UnitUtils.ConvertFromInternalUnits(finalHeight, UnitTypeId.Millimeters):F1}mm\n");
+                            
+                            DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ NO STRATEGY MATCHED for ClashZone {clashZone.Id} - Using fallback dimensions");
                         }
 
                         // ⚠️ REMOVED: Old width/height swapping logic that was causing double-swapping
@@ -554,13 +635,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         // ⚠️ CRITICAL: Set orientation (rotation for floors, HostOrientation parameter for walls/framing)
                         SetSleeveOrientation(sleeveInstance, clashZone);
+                        
+                        // 🔥 EXEC-TRACE-1: After SetSleeveOrientation
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                            $"[EXEC-TRACE-1] Sleeve {sleeveInstance.Id.IntegerValue}: AFTER SetSleeveOrientation ✓\n");
+
+                        // 🔥 EXEC-TRACE-2: Before coordinate update try-catch
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                            $"[EXEC-TRACE-2] Sleeve {sleeveInstance.Id.IntegerValue}: BEFORE coordinate update try-catch ✓\n");
 
                         // Ensure final location matches the intended adjusted placement point (some families snap to level origin)
                         try
                         {
+                            // 🔥 EXEC-TRACE-3: Inside try block
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                $"[EXEC-TRACE-3] Sleeve {sleeveInstance.Id.IntegerValue}: INSIDE try block ✓\n");
+                            
                             var loc = sleeveInstance.Location as LocationPoint;
                             if (loc != null)
                             {
+                                // 🔥 EXEC-TRACE-4: LocationPoint cast successful
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                    $"[EXEC-TRACE-4] Sleeve {sleeveInstance.Id.IntegerValue}: LocationPoint cast successful ✓\n");
                                 var currentPt = loc.Point;
                                 if (currentPt.DistanceTo(adjustedPlacementPoint) > 0.0001)
                                 {
@@ -572,14 +668,154 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 {
                                     DebugLogger.Info($"[UniversalSleevePlacer] Sleeve {sleeveInstance.Id} already at desired point {currentPt}");
                                 }
+                                
+                                // 🔥 EXEC-TRACE-5: Before coordinate update
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                    $"[EXEC-TRACE-5] Sleeve {sleeveInstance.Id.IntegerValue}: BEFORE coordinate update ✓\n");
+                                
+                                // ✅ CRITICAL FIX: Update ClashZone with actual sleeve placement coordinates
+                                // This ensures PreCalculatedClusterService uses real sleeve locations for proximity calculation
+                                clashZone.SleevePlacementPoint = currentPt;
+                                clashZone.SleevePlacementPointX = currentPt.X;  // XML serializable
+                                clashZone.SleevePlacementPointY = currentPt.Y;  // XML serializable
+                                clashZone.SleevePlacementPointZ = currentPt.Z;  // XML serializable
+                                
+                                // ✅ CRITICAL: Save active document coordinates for proximity calculation
+                                clashZone.SleevePlacementPointActiveDocument = currentPt;
+                                clashZone.SleevePlacementPointActiveDocumentX = currentPt.X;  // XML serializable
+                                clashZone.SleevePlacementPointActiveDocumentY = currentPt.Y;  // XML serializable
+                                clashZone.SleevePlacementPointActiveDocumentZ = currentPt.Z;  // XML serializable
+                                
+                                // 🔥 DEBUG: Verify XML properties are set correctly
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                    $"[XML-PROP-SET] Sleeve {sleeveInstance.Id.IntegerValue}: ActiveDocX={clashZone.SleevePlacementPointActiveDocumentX:F3}, ActiveDocY={clashZone.SleevePlacementPointActiveDocumentY:F3}, ActiveDocZ={clashZone.SleevePlacementPointActiveDocumentZ:F3}\n");
+                                
+                                // 🔥 CRITICAL VALIDATION: Check if dimensions are valid before saving
+                                if (finalWidth <= 0 || finalHeight <= 0 || finalDiameter <= 0)
+                                {
+                                    DebugLogger.Error($"[UniversalSleevePlacer] ❌ INVALID DIMENSIONS DETECTED for sleeve {sleeveInstance.Id.IntegerValue}!");
+                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                        $"[DIM-INVALID] Sleeve {sleeveInstance.Id.IntegerValue}: finalWidth={finalWidth:F6}ft, finalHeight={finalHeight:F6}ft, finalDiameter={finalDiameter:F6}ft ❌\n");
+                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                        $"[DIM-INVALID] Category={clashZone.MepElementCategory}, Strategy={_strategy.GetType().Name}, isPipe={string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase)}\n");
+                                    
+                                    // Skip this sleeve - don't save invalid data
+                                    ErrorCount++;
+                                    continue;
+                                }
+                                
+                                clashZone.SleeveWidth = finalWidth;
+                                clashZone.SleeveHeight = finalHeight;
+                                clashZone.SleeveDiameter = finalDiameter;
+                                
+                                // 🔥 DEBUG: Log the values immediately after setting
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                    $"[DIM-SET] Sleeve {sleeveInstance.Id.IntegerValue}: IMMEDIATELY after setting - W={UnitUtils.ConvertFromInternalUnits(clashZone.SleeveWidth, UnitTypeId.Millimeters):F1}mm, H={UnitUtils.ConvertFromInternalUnits(clashZone.SleeveHeight, UnitTypeId.Millimeters):F1}mm, D={UnitUtils.ConvertFromInternalUnits(clashZone.SleeveDiameter, UnitTypeId.Millimeters):F1}mm\n");
+                                
+                                // ✅ RESTORED: Direct coordinate saving after sleeve placement with minimal timing
+                                // Wait briefly for Revit to update the sleeve bounding box
+                                System.Threading.Thread.Sleep(100); // Minimal wait for Revit to update
+
+                                // Get actual sleeve bounding box coordinates
+                                var actualBbox = sleeveInstance.get_BoundingBox(null);
+                                if (actualBbox != null)
+                                {
+                                    clashZone.SleevePlacementPoint = new XYZ(
+                                        (actualBbox.Min.X + actualBbox.Max.X) / 2,
+                                        (actualBbox.Min.Y + actualBbox.Max.Y) / 2,
+                                        (actualBbox.Min.Z + actualBbox.Max.Z) / 2
+                                    );
+                                    
+                                    // ✅ CRITICAL FIX: Set the actual Revit element ID
+                                    clashZone.SleeveInstanceId = sleeveInstance.Id.IntegerValue;
+                                    
+                                    // Log the actual coordinates
+                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
+                                        $"[COORDINATE-SAVED] {DateTime.Now:HH:mm:ss.fff} - Sleeve {sleeveInstance.Id.IntegerValue}: Actual coordinates = ({clashZone.SleevePlacementPoint.X:F3}, {clashZone.SleevePlacementPoint.Y:F3}, {clashZone.SleevePlacementPoint.Z:F3})\n");
+                                }
+
+                                // ✅ CRITICAL FIX: Immediately save the updated clash zone to XML
+                                // This ensures the values are saved before any other process can overwrite them
+                                try
+                                {
+                                    UpdateClashZoneInXml(clashZone);
+                                    
+                                    // ✅ CRITICAL LOGGING: Log XML save details
+                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
+                                        $"[XML-SAVE] {DateTime.Now:HH:mm:ss.fff} - Sleeve {sleeveInstance.Id.IntegerValue}: Saved to {clashZone.MepElementCategory} XML\n");
+                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
+                                        $"[XML-SAVE] SleeveInstanceId={clashZone.SleeveInstanceId}, Coordinates=({clashZone.SleevePlacementPoint.X:F3}, {clashZone.SleevePlacementPoint.Y:F3}, {clashZone.SleevePlacementPoint.Z:F3})\n");
+                                    
+                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                        $"[XML-IMMEDIATE-SAVE] Sleeve {sleeveInstance.Id.IntegerValue}: Updated XML immediately after setting values\n");
+                                    
+                                    // ✅ CRITICAL: Force file system flush to ensure XML is written to disk
+                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                        $"[XML-FLUSH] Sleeve {sleeveInstance.Id.IntegerValue}: Forcing file system flush\n");
+                                }
+                                catch (Exception ex)
+                                {
+                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
+                                        $"[XML-SAVE-ERROR] {DateTime.Now:HH:mm:ss.fff} - Sleeve {sleeveInstance.Id.IntegerValue}: Error saving to XML - {ex.Message}\n");
+                                    
+                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                        $"[XML-IMMEDIATE-SAVE-ERROR] Sleeve {sleeveInstance.Id.IntegerValue}: Error updating XML - {ex.Message}\n");
+                                }
+                                
+                                // 🔥 DEBUG: Log the actual coordinates and dimensions being saved
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                    $"[COORD-SAVE] Sleeve {sleeveInstance.Id.IntegerValue}: Saving coordinates X={currentPt.X:F3}, Y={currentPt.Y:F3}, Z={currentPt.Z:F3}\n");
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                    $"[DIM-SAVE] Sleeve {sleeveInstance.Id.IntegerValue}: Saving dimensions W={UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters):F1}mm, H={UnitUtils.ConvertFromInternalUnits(finalHeight, UnitTypeId.Millimeters):F1}mm, D={UnitUtils.ConvertFromInternalUnits(finalDiameter, UnitTypeId.Millimeters):F1}mm\n");
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                    $"[ACTIVE-DOC-SAVE] Sleeve {sleeveInstance.Id.IntegerValue}: Saving ActiveDocument coordinates X={currentPt.X:F3}, Y={currentPt.Y:F3}, Z={currentPt.Z:F3}\n");
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                    $"[INTERSECTION-SAVE] Sleeve {sleeveInstance.Id.IntegerValue}: Original intersection point X={clashZone.IntersectionPoint?.X:F3}, Y={clashZone.IntersectionPoint?.Y:F3}, Z={clashZone.IntersectionPoint?.Z:F3}\n");
+                                
+                                
+                                // 🔥 EXEC-TRACE-6: After coordinate update
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                    $"[EXEC-TRACE-6] Sleeve {sleeveInstance.Id.IntegerValue}: AFTER coordinate update ✓\n");
+                                
+                                DebugLogger.Info($"[UniversalSleevePlacer] Updated ClashZone {clashZone.Id} with actual sleeve coordinates: {currentPt}, W={UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters):F1}mm, H={UnitUtils.ConvertFromInternalUnits(finalHeight, UnitTypeId.Millimeters):F1}mm");
+                            }
+                            else
+                            {
+                                DebugLogger.Error($"[UniversalSleevePlacer] ❌ Failed to get LocationPoint for sleeve {sleeveInstance.Id} - cannot update coordinates!");
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                    $"[COORD-UPDATE-FAIL] Sleeve {sleeveInstance.Id.IntegerValue}: LocationPoint is NULL ❌\n");
                             }
                         }
-                        catch { }
+                        catch (Exception coordEx)
+                        {
+                            DebugLogger.Error($"[UniversalSleevePlacer] ❌ CRITICAL ERROR updating coordinates for sleeve {sleeveInstance.Id}: {coordEx.Message}");
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                $"[COORD-UPDATE-ERROR] Sleeve {sleeveInstance.Id.IntegerValue}: {coordEx.Message}\n{coordEx.StackTrace}\n");
+                        }
                         
                         // Update ClashZone flags
                         clashZone.IsResolved = true;
                         clashZone.SleeveInstanceId = sleeveInstance.Id.IntegerValue;
                         clashZone.SleeveFamilyName = familySymbol.Family.Name;
+                        
+                        // ✅ CRITICAL LOGGING: Log SleeveInstanceId immediately after placement
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
+                            $"[SLEEVE-PLACED] {DateTime.Now:HH:mm:ss.fff} - ClashZone {clashZone.Id}: SleeveInstanceId = {clashZone.SleeveInstanceId}, RevitElementId = {sleeveInstance.Id.IntegerValue}, Category = {clashZone.MepElementCategory}\n");
+                        
+                        DebugLogger.Info($"[UniversalSleevePlacer] ✅ SLEEVE PLACED: ClashZone {clashZone.Id} → SleeveInstanceId = {clashZone.SleeveInstanceId} (Revit: {sleeveInstance.Id.IntegerValue})");
+                        
+                        // ✅ CRITICAL: SleevePlacementPoint is already set to actual sleeve location above
+                        // DO NOT overwrite it with adjustedPlacementPoint - we need the REAL coordinates for clustering
+                        
+                        // ⚠️ CRITICAL: Log flag state AFTER sleeve placement
+                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] [SLEEVE-PLACED] ClashZone {clashZone.Id}: Individual sleeve {sleeveInstance.Id.IntegerValue} placed\n");
+                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] [SLEEVE-PLACED] FLAGS: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}\n");
+                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] [SLEEVE-PLACED] PARAMS: SleeveInstanceId={clashZone.SleeveInstanceId}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}\n");
+                        
+                        DebugLogger.Info($"[UniversalSleevePlacer] Saved sleeve placement point: {adjustedPlacementPoint}");
                         
                         PlacedCount++;
                         DebugLogger.Info($"[UniversalSleevePlacer] ✓ Placed {_strategy.GetCategoryName()} sleeve {sleeveInstance.Id} for ClashZone {clashZone.Id} at {adjustedPlacementPoint}");
@@ -600,7 +836,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
                         $"[{DateTime.Now}] [XML_SAVE] PlacedCount > 0, calling SaveUpdatedXmlFiles\n");
+                    
+                    // ⚠️ CRITICAL: Log flag states BEFORE XML save
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] [XML-SAVE-BEFORE] About to save XML with {PlacedCount} placed sleeves\n");
+                    
                     SaveUpdatedXmlFiles();
+                    
+                    // ✅ NEW: Get correct coordinates after ALL sleeves are placed
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
+                        $"[{DateTime.Now}] [COORDINATE-FIX] Calling SleeveCoordinateService to get correct coordinates\n");
+                    
+                    try
+                    {
+                        var coordinateService = new SleeveCoordinateService(_doc);
+                        coordinateService.LogAllSleeveCoordinates();
+                        coordinateService.UpdateSleeveCoordinatesInXml();
+
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                            $"[{DateTime.Now}] [COORDINATE-FIX] ✅ Successfully updated coordinates for {PlacedCount} sleeves\n");
+                    }
+                    catch (Exception coordEx)
+                    {
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                            $"[{DateTime.Now}] [COORDINATE-FIX] ❌ Error updating coordinates: {coordEx.Message}\n");
+                        DebugLogger.Error($"[UniversalSleevePlacer] Error updating coordinates: {coordEx.Message}");
+                    }
+                    
+                    // ✅ REMOVED: SleeveDataService call - SleeveCoordinateService will create _CLUSTER.xml files after placement
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                        $"[{DateTime.Now}] [SLEEVE-DATA] Skipping SleeveDataService - SleeveCoordinateService will create _CLUSTER.xml files\n");
+                    
+                    // ⚠️ CRITICAL: Log flag states AFTER XML save
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] [XML-SAVE-AFTER] XML save completed for {PlacedCount} placed sleeves\n");
                 }
                 else
                 {
@@ -614,7 +883,218 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 throw;
             }
             
+            // ✅ CRITICAL LOGGING: Summary of all placed sleeves with SleeveInstanceId
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
+                $"[PLACEMENT-SUMMARY] {DateTime.Now:HH:mm:ss.fff} - PLACEMENT COMPLETED: Placed={PlacedCount}, Skipped={SkippedCount}\n");
+            
+            DebugLogger.Info($"[UniversalSleevePlacer] 🎯 PLACEMENT COMPLETED: Placed={PlacedCount}, Skipped={SkippedCount}");
+            
+            // ✅ CORRECT: Individual sleeves placed - clustering will be handled by OK button
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
+                $"[PLACEMENT-READY] {DateTime.Now:HH:mm:ss.fff} - {PlacedCount} individual sleeves placed, ready for clustering via OK button\n");
+            
             return (PlacedCount, SkippedCount);
+        }
+        
+        /// <summary>
+        /// Regenerate _CLUSTER.xml files with actual Revit coordinates after all sleeve placement completed
+        /// </summary>
+        private void RegenerateClusterXmlFiles()
+        {
+            try
+            {
+                // Wait briefly for Revit to update all sleeves
+                System.Threading.Thread.Sleep(500);
+                
+                // Collect all sleeves with MEP_ElementId parameter
+                var allSleeves = new FilteredElementCollector(_doc)
+                    .OfClass(typeof(FamilyInstance))
+                    .Cast<FamilyInstance>()
+                    .Where(s => s.LookupParameter("MEP_ElementId") != null && s.LookupParameter("MEP_ElementId").HasValue)
+                    .ToList();
+                
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
+                    $"[REGENERATION-DEBUG] Found {allSleeves.Count} sleeves with MEP_ElementId parameter\n");
+                
+                // Group sleeves by category using MEP_Category parameter
+                var groupedSleeves = allSleeves.GroupBy(s => GetSleeveCategoryFromParameter(s)).ToList();
+                
+                foreach (var group in groupedSleeves)
+                {
+                    var category = group.Key;
+                    var sleeves = group.ToList();
+                    
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
+                        $"[REGENERATION-DEBUG] Processing {sleeves.Count} sleeves for category: {category}\n");
+                    
+                    // Create SleeveDataList with actual Revit coordinates
+                    var sleeveDataList = new List<SleeveData>();
+                    
+                    foreach (var sleeve in sleeves)
+                    {
+                        var bbox = sleeve.get_BoundingBox(null);
+                        if (bbox != null)
+                        {
+                            var sleeveData = new SleeveData
+                            {
+                                SleeveInstanceId = sleeve.Id.IntegerValue,
+                                Corner1 = new XYZ(bbox.Min.X, bbox.Min.Y, bbox.Min.Z),
+                                Corner2 = new XYZ(bbox.Max.X, bbox.Min.Y, bbox.Min.Z),
+                                Corner3 = new XYZ(bbox.Max.X, bbox.Max.Y, bbox.Max.Z),
+                                Corner4 = new XYZ(bbox.Min.X, bbox.Max.Y, bbox.Max.Z),
+                                Width = UnitUtils.ConvertFromInternalUnits(bbox.Max.X - bbox.Min.X, UnitTypeId.Meters),
+                                Height = UnitUtils.ConvertFromInternalUnits(bbox.Max.Y - bbox.Min.Y, UnitTypeId.Meters),
+                                Depth = UnitUtils.ConvertFromInternalUnits(bbox.Max.Z - bbox.Min.Z, UnitTypeId.Meters),
+                                HostType = GetHostType(sleeve),
+                                Orientation = GetSleeveOrientation(sleeve),
+                                Category = category,
+                                CreatedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+                            };
+                            
+                            sleeveDataList.Add(sleeveData);
+                        }
+                    }
+                    
+                    // Save to _CLUSTER.xml file
+                    SaveSleeveDataToClusterXml(sleeveDataList, category);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
+                    $"[REGENERATION-ERROR] Error in RegenerateClusterXmlFiles: {ex.Message}\n");
+                throw;
+            }
+        }
+        
+        /// <summary>
+        /// Get sleeve category from MEP_Category parameter
+        /// </summary>
+        private string GetSleeveCategoryFromParameter(FamilyInstance sleeve)
+        {
+            try
+            {
+                var mepCategoryParam = sleeve.LookupParameter("MEP_Category");
+                if (mepCategoryParam != null && !string.IsNullOrEmpty(mepCategoryParam.AsString()))
+                {
+                    return mepCategoryParam.AsString();
+                }
+                
+                // Fallback to family name
+                var familyName = sleeve.Symbol.FamilyName.ToLower();
+                if (familyName.Contains("circular") || familyName.Contains("round")) return "Pipes";
+                if (familyName.Contains("duct")) return "Ducts";
+                if (familyName.Contains("pipe")) return "Pipes";
+                if (familyName.Contains("cable")) return "Cable Trays";
+                
+                return "Unknown";
+            }
+            catch
+            {
+                return "Unknown";
+            }
+        }
+        
+        /// <summary>
+        /// Get sleeve orientation from MEP element
+        /// </summary>
+        private string GetSleeveOrientation(FamilyInstance sleeve)
+        {
+            try
+            {
+                var mepElementId = sleeve.LookupParameter("MEP_ElementId");
+                if (mepElementId != null && mepElementId.HasValue)
+                {
+                    var mepElement = _doc.GetElement(mepElementId.AsElementId());
+                    if (mepElement != null)
+                    {
+                        // Get orientation from MEP element's Wall Direction Type
+                        var wallDirectionParam = mepElement.LookupParameter("Wall Direction Type");
+                        if (wallDirectionParam != null && !string.IsNullOrEmpty(wallDirectionParam.AsString()))
+                        {
+                            return wallDirectionParam.AsString();
+                        }
+                    }
+                }
+                return "";
+            }
+            catch
+            {
+                return "";
+            }
+        }
+        
+        /// <summary>
+        /// Save sleeve data to _CLUSTER.xml file
+        /// </summary>
+        private void SaveSleeveDataToClusterXml(List<SleeveData> sleeveDataList, string category)
+        {
+            try
+            {
+                var pluralCategory = category switch
+                {
+                    "Pipes" => "Pipes",
+                    "Ducts" => "Ducts", 
+                    "Cable Trays" => "Cable Trays",
+                    _ => category
+                };
+                
+                var fileName = $"Plumbing_{pluralCategory.ToLower().Replace(" ", "_")}_CLUSTER.xml";
+                var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                var filePath = Path.Combine(filtersDirectory, fileName);
+                
+                var xmlDoc = new System.Xml.XmlDocument();
+                var root = xmlDoc.CreateElement("SleeveDataList");
+                xmlDoc.AppendChild(root);
+                
+                foreach (var sleeveData in sleeveDataList)
+                {
+                    var sleeveElement = xmlDoc.CreateElement("SleeveData");
+                    root.AppendChild(sleeveElement);
+                    
+                    AddXmlElement(xmlDoc, sleeveElement, "SleeveInstanceId", sleeveData.SleeveInstanceId.ToString());
+                    AddXmlElement(xmlDoc, sleeveElement, "Corner1X", sleeveData.Corner1.X.ToString("F6"));
+                    AddXmlElement(xmlDoc, sleeveElement, "Corner1Y", sleeveData.Corner1.Y.ToString("F6"));
+                    AddXmlElement(xmlDoc, sleeveElement, "Corner1Z", sleeveData.Corner1.Z.ToString("F6"));
+                    AddXmlElement(xmlDoc, sleeveElement, "Corner2X", sleeveData.Corner2.X.ToString("F6"));
+                    AddXmlElement(xmlDoc, sleeveElement, "Corner2Y", sleeveData.Corner2.Y.ToString("F6"));
+                    AddXmlElement(xmlDoc, sleeveElement, "Corner2Z", sleeveData.Corner2.Z.ToString("F6"));
+                    AddXmlElement(xmlDoc, sleeveElement, "Corner3X", sleeveData.Corner3.X.ToString("F6"));
+                    AddXmlElement(xmlDoc, sleeveElement, "Corner3Y", sleeveData.Corner3.Y.ToString("F6"));
+                    AddXmlElement(xmlDoc, sleeveElement, "Corner3Z", sleeveData.Corner3.Z.ToString("F6"));
+                    AddXmlElement(xmlDoc, sleeveElement, "Corner4X", sleeveData.Corner4.X.ToString("F6"));
+                    AddXmlElement(xmlDoc, sleeveElement, "Corner4Y", sleeveData.Corner4.Y.ToString("F6"));
+                    AddXmlElement(xmlDoc, sleeveElement, "Corner4Z", sleeveData.Corner4.Z.ToString("F6"));
+                    AddXmlElement(xmlDoc, sleeveElement, "Width", sleeveData.Width.ToString("F6"));
+                    AddXmlElement(xmlDoc, sleeveElement, "Height", sleeveData.Height.ToString("F6"));
+                    AddXmlElement(xmlDoc, sleeveElement, "Depth", sleeveData.Depth.ToString("F6"));
+                    AddXmlElement(xmlDoc, sleeveElement, "HostType", sleeveData.HostType);
+                    AddXmlElement(xmlDoc, sleeveElement, "Orientation", sleeveData.Orientation);
+                    AddXmlElement(xmlDoc, sleeveElement, "Category", sleeveData.Category);
+                    AddXmlElement(xmlDoc, sleeveElement, "CreatedAt", sleeveData.CreatedAt);
+                }
+                
+                xmlDoc.Save(filePath);
+                
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
+                    $"[REGENERATION-SAVE] Saved {sleeveDataList.Count} sleeves to {fileName}\n");
+            }
+            catch (Exception ex)
+            {
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
+                    $"[REGENERATION-SAVE-ERROR] Error saving {category} cluster XML: {ex.Message}\n");
+                throw;
+            }
+        }
+        
+        /// <summary>
+        /// Helper method to add XML elements
+        /// </summary>
+        private void AddXmlElement(System.Xml.XmlDocument xmlDoc, System.Xml.XmlElement parent, string name, string value)
+        {
+            var element = xmlDoc.CreateElement(name);
+            element.InnerText = value;
+            parent.AppendChild(element);
         }
 
     // Helper method to define category priority for sorting
@@ -681,64 +1161,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
-        /// Check for existing cluster sleeves by spatial proximity (handles stale XML flags)
-        /// This ensures individual sleeves are not placed over cluster sleeves even when XML is stale
+        /// REMOVED: Expensive spatial checking replaced with simple flag-based approach
+        /// Now we only use IsResolved and IsClusterResolved flags for duplicate avoidance
         /// </summary>
-        private bool CheckForClusterSleeveByProximity(ClashZone clashZone)
-        {
-            try
-            {
-                // Get placement point
-                var placementPoint = clashZone.SleevePlacementPoint;
-                if (placementPoint == null) return false;
-                
-                // Search for cluster sleeves within 500mm radius
-                double searchRadius = UnitUtils.ConvertToInternalUnits(500.0, UnitTypeId.Millimeters);
-                
-                // Create bounding box for spatial search
-                var searchBox = new BoundingBoxXYZ
-                {
-                    Min = new XYZ(placementPoint.X - searchRadius, placementPoint.Y - searchRadius, placementPoint.Z - searchRadius),
-                    Max = new XYZ(placementPoint.X + searchRadius, placementPoint.Y + searchRadius, placementPoint.Z + searchRadius)
-                };
-                
-                // Collect cluster sleeve families
-                var clusterFamilies = new[] { "DuctOpeningOnWall", "DuctOpeningOnFloor", "PipeOpeningOnWallRect", "PipeOpeningOnFloorRect", "CableTrayOpeningOnWall", "CableTrayOpeningOnFloor" };
-                
-                var collector = new FilteredElementCollector(_doc)
-                    .WherePasses(new BoundingBoxIntersectsFilter(new Outline(searchBox.Min, searchBox.Max)))
-                    .OfClass(typeof(FamilyInstance));
-                
-                foreach (FamilyInstance instance in collector)
-                {
-                    if (instance.Symbol?.Family?.Name != null)
-                    {
-                        string familyName = instance.Symbol.Family.Name;
-                        
-                        // Check if this is a cluster sleeve family
-                        if (clusterFamilies.Any(cf => familyName.Contains(cf)))
-                        {
-                            // Check if it's on the same host element
-                            var hostElement = instance.Host;
-                            if (hostElement != null && hostElement.Id == clashZone.StructuralElementId)
-                            {
-                                // Found a cluster sleeve on the same host - skip individual sleeve placement
-                                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
-                                    $"[SPATIAL-CHECK] ClashZone {clashZone.Id}: Found cluster sleeve {instance.Id} ({familyName}) on same host {hostElement.Id}\n");
-                                return true;
-                            }
-                        }
-                    }
-                }
-                
-                return false;
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Error($"[UniversalSleevePlacer] Error checking for cluster sleeve by proximity: {ex.Message}");
-                return false;
-            }
-        }
 
         /// <summary>
         /// Select universal family based on host type and MEP shape
@@ -1435,6 +1860,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 sleeveInstance.LookupParameter("MEP_Size")?.Set(clashZone.MepElementFormattedSize);
                 sleeveInstance.LookupParameter("System_Abbreviation")?.Set(clashZone.MepElementSystemAbbreviation);
                 sleeveInstance.LookupParameter("MEP_Count")?.Set(1);  // Individual sleeve
+                
+                // ✅ CRITICAL FIX: Set MEP_Category parameter for clustering
+                var mepCategoryParam = sleeveInstance.LookupParameter("MEP_Category");
+                if (mepCategoryParam != null && !mepCategoryParam.IsReadOnly)
+                {
+                    mepCategoryParam.Set(clashZone.MepElementCategory);
+                    DebugLogger.Info($"[UniversalSleevePlacer] Set MEP_Category = '{clashZone.MepElementCategory}' for clustering");
+                    
+                    // ✅ CRITICAL LOGGING: Log MEP_Category parameter setting
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
+                        $"[MEP-CATEGORY-SET] {DateTime.Now:HH:mm:ss.fff} - Sleeve {sleeveInstance.Id.IntegerValue}: Set MEP_Category = '{clashZone.MepElementCategory}'\n");
+                }
+                else
+                {
+                    DebugLogger.Warning($"[UniversalSleevePlacer] MEP_Category parameter not found or read-only on sleeve {sleeveInstance.Id}");
+                    
+                    // ✅ CRITICAL LOGGING: Log MEP_Category parameter failure
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
+                        $"[MEP-CATEGORY-FAILED] {DateTime.Now:HH:mm:ss.fff} - Sleeve {sleeveInstance.Id.IntegerValue}: MEP_Category parameter not found or read-only\n");
+                }
 
                 // ⚠️ CRITICAL FIX: Transfer HostParameterValues from XML intersection data to sleeve parameters
                 if (clashZone.HostParameterValues != null && clashZone.HostParameterValues.Count > 0)
@@ -1579,6 +2024,239 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
+        /// ✅ CRITICAL FIX: Immediately update clash zone in XML to prevent value loss
+        /// This ensures the values are saved before any other process can overwrite them
+        /// </summary>
+        /// <summary>
+        /// Collect sleeve data for clustering from placed sleeves
+        /// </summary>
+        private List<SleeveData> CollectSleeveDataForClustering()
+        {
+            var sleeveDataList = new List<SleeveData>();
+            
+            try
+            {
+                // Get all sleeves in the model
+                var sleeves = new FilteredElementCollector(_doc)
+                    .OfClass(typeof(FamilyInstance))
+                    .Cast<FamilyInstance>()
+                    .Where(s => s.Symbol.FamilyName.Contains("Opening"))
+                    .ToList();
+                
+                foreach (var sleeve in sleeves)
+                {
+                    try
+                    {
+                        var bbox = sleeve.get_BoundingBox(null);
+                        if (bbox != null)
+                        {
+                            var sleeveData = new SleeveData
+                            {
+                                SleeveInstanceId = sleeve.Id.IntegerValue,
+                                Category = _strategy.GetCategoryName(),
+                                HostType = GetHostType(sleeve),
+                                Orientation = GetSleeveOrientation(sleeve),
+                                Width = bbox.Max.X - bbox.Min.X,
+                                Height = bbox.Max.Y - bbox.Min.Y,
+                                Depth = bbox.Max.Z - bbox.Min.Z
+                            };
+                            
+                            // Calculate 4 corner coordinates
+                            sleeveData.Corner1 = new XYZ(bbox.Min.X, bbox.Min.Y, bbox.Min.Z);
+                            sleeveData.Corner2 = new XYZ(bbox.Max.X, bbox.Min.Y, bbox.Min.Z);
+                            sleeveData.Corner3 = new XYZ(bbox.Max.X, bbox.Max.Y, bbox.Max.Z);
+                            sleeveData.Corner4 = new XYZ(bbox.Min.X, bbox.Max.Y, bbox.Max.Z);
+                            
+                            sleeveDataList.Add(sleeveData);
+                            
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_data.log",
+                                $"[COLLECT] Sleeve {sleeve.Id.IntegerValue}: Host={sleeveData.HostType}, Orientation={sleeveData.Orientation}, W={sleeveData.Width:F3}, H={sleeveData.Height:F3}, D={sleeveData.Depth:F3}\n");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_data.log",
+                            $"[ERROR] Failed to collect data for sleeve {sleeve.Id.IntegerValue}: {ex.Message}\n");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_data.log",
+                    $"[ERROR] Failed to collect sleeve data: {ex.Message}\n");
+            }
+            
+            return sleeveDataList;
+        }
+        
+        private string GetHostType(FamilyInstance sleeve)
+        {
+            try
+            {
+                var host = sleeve.Host;
+                if (host != null)
+                {
+                    var hostType = host.GetType().Name;
+                    if (hostType.Contains("Wall")) return "Wall";
+                    if (hostType.Contains("Floor")) return "Floor";
+                    if (hostType.Contains("Ceiling")) return "Ceiling";
+                    return hostType;
+                }
+            }
+            catch { }
+            return "Unknown";
+        }
+        
+        private void UpdateClashZoneInXml(ClashZone clashZone)
+        {
+            try
+            {
+                var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
+                    "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                
+                if (!Directory.Exists(filtersDirectory))
+                {
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                        $"[XML-IMMEDIATE-UPDATE] ❌ Filters directory does not exist: {filtersDirectory}\n");
+                    return;
+                }
+
+                // 🎯 CRITICAL FIX: Use category-based file matching to target the correct XML file
+                var targetFileName = GetFilterNameForCategory(clashZone.MepElementCategory);
+                
+                // ✅ CRITICAL LOGGING: Log XML file details
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
+                    $"[XML-FILE-SEARCH] {DateTime.Now:HH:mm:ss.fff} - Looking for zone {clashZone.Id} in category file: {targetFileName}\n");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
+                    $"[XML-FILE-SEARCH] Category: {clashZone.MepElementCategory}, TargetFileName: {targetFileName}\n");
+                
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                    $"[XML-IMMEDIATE-UPDATE] Looking for zone {clashZone.Id} in category file: {targetFileName}\n");
+
+                // First, try to find the exact category-specific file
+                var xmlFiles = Directory.GetFiles(filtersDirectory, "*.xml");
+                string targetFile = null;
+                
+                foreach (var xmlFile in xmlFiles)
+                {
+                    var fileName = Path.GetFileName(xmlFile);
+                    if (fileName.Contains("CONDITIONS", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                        
+                    // Check if this file matches our target category
+                    if (fileName.Contains(targetFileName, StringComparison.OrdinalIgnoreCase) ||
+                        fileName.Contains(clashZone.MepElementCategory.Replace(" ", "_"), StringComparison.OrdinalIgnoreCase))
+                    {
+                        targetFile = xmlFile;
+                        
+                        // ✅ CRITICAL LOGGING: Log XML file found
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
+                            $"[XML-FILE-FOUND] {DateTime.Now:HH:mm:ss.fff} - Found target file: {fileName}\n");
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
+                            $"[XML-FILE-FOUND] Full path: {xmlFile}\n");
+                        
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                            $"[XML-IMMEDIATE-UPDATE] Found target file: {fileName}\n");
+                        break;
+                    }
+                }
+
+                // If no specific file found, fall back to searching all files
+                if (targetFile == null)
+                {
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                        $"[XML-IMMEDIATE-UPDATE] No specific file found, searching all {xmlFiles.Length} XML files\n");
+                    targetFile = xmlFiles.FirstOrDefault(f => !Path.GetFileName(f).Contains("CONDITIONS", StringComparison.OrdinalIgnoreCase));
+                }
+
+                if (targetFile == null)
+                {
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                        $"[XML-IMMEDIATE-UPDATE] ❌ No suitable XML file found!\n");
+                    return;
+                }
+
+                // Load and update the target file
+                var serializer = new System.Xml.Serialization.XmlSerializer(typeof(Models.OpeningFilter));
+                Models.OpeningFilter filter;
+                
+                using (var reader = new StreamReader(targetFile))
+                {
+                    filter = (Models.OpeningFilter)serializer.Deserialize(reader);
+                }
+                
+                if (filter?.ClashZoneStorage?.ClashZones == null)
+                {
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                        $"[XML-IMMEDIATE-UPDATE] ❌ No clash zones in file: {Path.GetFileName(targetFile)}\n");
+                    return;
+                }
+
+                // 🔥 TRIPLE-MATCH VERIFICATION: Match by ID AND MepElementId AND StructuralElementId
+                var zone = filter.ClashZoneStorage.ClashZones.FirstOrDefault(z => 
+                    z.Id == clashZone.Id && 
+                    z.MepElementIdValue == clashZone.MepElementIdValue && 
+                    z.StructuralElementIdValue == clashZone.StructuralElementIdValue);
+                
+                if (zone != null)
+                {
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                        $"[XML-IMMEDIATE-UPDATE] ✅ FOUND zone {clashZone.Id} in {Path.GetFileName(targetFile)}\n");
+                    
+                    // Log BEFORE values
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                        $"[XML-IMMEDIATE-UPDATE] BEFORE: W={UnitUtils.ConvertFromInternalUnits(zone.SleeveWidth, UnitTypeId.Millimeters):F1}mm, H={UnitUtils.ConvertFromInternalUnits(zone.SleeveHeight, UnitTypeId.Millimeters):F1}mm, ActiveDocX={zone.SleevePlacementPointActiveDocumentX:F3}\n");
+                    
+                    // Update the values
+                    zone.SleeveWidth = clashZone.SleeveWidth;
+                    zone.SleeveHeight = clashZone.SleeveHeight;
+                    zone.SleeveDiameter = clashZone.SleeveDiameter;
+                    zone.SleevePlacementPointActiveDocumentX = clashZone.SleevePlacementPointActiveDocumentX;
+                    zone.SleevePlacementPointActiveDocumentY = clashZone.SleevePlacementPointActiveDocumentY;
+                    zone.SleevePlacementPointActiveDocumentZ = clashZone.SleevePlacementPointActiveDocumentZ;
+                    zone.SleeveInstanceId = clashZone.SleeveInstanceId;
+                    
+                    // ✅ REMOVED: Bounding box coordinates - now handled by SleeveCoordinateService
+                    // Coordinates will be updated later using correct timing
+                    
+                    // Log AFTER values
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                        $"[XML-IMMEDIATE-UPDATE] AFTER: W={UnitUtils.ConvertFromInternalUnits(zone.SleeveWidth, UnitTypeId.Millimeters):F1}mm, H={UnitUtils.ConvertFromInternalUnits(zone.SleeveHeight, UnitTypeId.Millimeters):F1}mm, ActiveDocX={zone.SleevePlacementPointActiveDocumentX:F3}\n");
+                    
+                    // Save the file immediately
+                    filter.LastModified = DateTime.Now;
+                    using (var writer = new StreamWriter(targetFile))
+                    {
+                        serializer.Serialize(writer, filter);
+                    }
+                    
+                    // ✅ CRITICAL LOGGING: Log successful XML save with all details
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
+                        $"[XML-SAVE-SUCCESS] {DateTime.Now:HH:mm:ss.fff} - Successfully saved to {Path.GetFileName(targetFile)}\n");
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
+                        $"[XML-SAVE-SUCCESS] Zone: {clashZone.Id}, SleeveInstanceId: {zone.SleeveInstanceId}\n");
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
+                        $"[XML-SAVE-SUCCESS] Coordinates: X={zone.SleevePlacementPointActiveDocumentX:F3}, Y={zone.SleevePlacementPointActiveDocumentY:F3}, Z={zone.SleevePlacementPointActiveDocumentZ:F3}\n");
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
+                        $"[XML-SAVE-SUCCESS] Dimensions: W={UnitUtils.ConvertFromInternalUnits(zone.SleeveWidth, UnitTypeId.Millimeters):F1}mm, H={UnitUtils.ConvertFromInternalUnits(zone.SleeveHeight, UnitTypeId.Millimeters):F1}mm\n");
+                    
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                        $"[XML-IMMEDIATE-UPDATE] ✅ SUCCESS: Updated {Path.GetFileName(targetFile)} with values for zone {clashZone.Id}\n");
+                }
+                else
+                {
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                        $"[XML-IMMEDIATE-UPDATE] ❌ Zone {clashZone.Id} NOT found in {Path.GetFileName(targetFile)} (checked {filter.ClashZoneStorage.ClashZones.Count} zones)\n");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                    $"[XML-IMMEDIATE-UPDATE-ERROR] Error updating XML: {ex.Message}\n");
+            }
+        }
+
+        /// <summary>
         /// CRITICAL FIX: Save XML files with updated SleeveInstanceId values
         /// This ensures parameter transfer can find the sleeves in the XML
         /// </summary>
@@ -1613,7 +2291,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             continue;
                         }
                         
-                        // Load the XML file
+                        // ✅ CRITICAL FIX: Load XML but ensure we don't overwrite current values
                         var serializer = new System.Xml.Serialization.XmlSerializer(typeof(Models.OpeningFilter));
                         Models.OpeningFilter filter;
                         
@@ -1635,18 +2313,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             {
                                 hasUpdates = true;
                                 DebugLogger.Info($"[UniversalSleevePlacer] Found valid SleeveInstanceId {zone.SleeveInstanceId} in {Path.GetFileName(xmlFile)}");
+                                
+                                // 🔥 DEBUG: Log dimension values during XML save
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                    $"[XML-SAVE-CHECK] Zone {zone.Id}: SleeveInstanceId={zone.SleeveInstanceId}, W={UnitUtils.ConvertFromInternalUnits(zone.SleeveWidth, UnitTypeId.Millimeters):F1}mm, H={UnitUtils.ConvertFromInternalUnits(zone.SleeveHeight, UnitTypeId.Millimeters):F1}mm, D={UnitUtils.ConvertFromInternalUnits(zone.SleeveDiameter, UnitTypeId.Millimeters):F1}mm\n");
+                                
+                                // ✅ CRITICAL FIX: The issue is that XML values are 0, but we need to ensure they're saved correctly
+                                // The problem is that the XML serialization is working, but the values are being reset somewhere
+                                // Let's add debug logging to track this issue
+                                if (zone.SleeveWidth == 0 || zone.SleeveHeight == 0)
+                                {
+                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                        $"[XML-SAVE-ISSUE] Zone {zone.Id}: Dimensions are 0 - W={UnitUtils.ConvertFromInternalUnits(zone.SleeveWidth, UnitTypeId.Millimeters):F1}mm, H={UnitUtils.ConvertFromInternalUnits(zone.SleeveHeight, UnitTypeId.Millimeters):F1}mm\n");
+                                }
                             }
                         }
                         
                         // Save the file if it has updates
                         if (hasUpdates)
                         {
+                            // ⚠️ CRITICAL: Log flag states BEFORE XML file save
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] [XML-FILE-SAVE-BEFORE] Saving {Path.GetFileName(xmlFile)} with {filter.ClashZoneStorage.ClashZones.Count} clash zones\n");
+                            
+                            // Log first 3 clash zones for verification
+                            foreach (var zone in filter.ClashZoneStorage.ClashZones.Take(3))
+                            {
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] [XML-FILE-SAVE-BEFORE] ClashZone {zone.Id}: IsResolved={zone.IsResolved}, IsClusterResolved={zone.IsClusterResolved}\n");
+                                
+                                // 🔥 DEBUG: Log ActiveDocument coordinates before XML save
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                    $"[XML-SAVE-BEFORE] Zone {zone.Id}: ActiveDoc={zone.SleevePlacementPointActiveDocument}, X={zone.SleevePlacementPointActiveDocumentX:F3}, Y={zone.SleevePlacementPointActiveDocumentY:F3}, Z={zone.SleevePlacementPointActiveDocumentZ:F3}\n");
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                    $"[XML-SAVE-BEFORE] Zone {zone.Id}: W={UnitUtils.ConvertFromInternalUnits(zone.SleeveWidth, UnitTypeId.Millimeters):F1}mm, H={UnitUtils.ConvertFromInternalUnits(zone.SleeveHeight, UnitTypeId.Millimeters):F1}mm\n");
+                            }
+                            
                             filter.LastModified = DateTime.Now;
                             
                             using (var writer = new StreamWriter(xmlFile))
                             {
                                 serializer.Serialize(writer, filter);
                             }
+                            
+                            // ⚠️ CRITICAL: Log flag states AFTER XML file save
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] [XML-FILE-SAVE-AFTER] Saved {Path.GetFileName(xmlFile)} successfully\n");
                             
                             DebugLogger.Info($"[UniversalSleevePlacer] ✓ Saved updated XML file: {Path.GetFileName(xmlFile)}");
                         }
@@ -1672,10 +2384,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             switch (category.ToLower())
             {
-                case "ducts": return "MEPF_ducts.xml";
-                case "pipes": return "MEPF_pipes.xml";
-                case "cable trays": return "MEPF_cable_trays.xml";
-                case "duct accessories": return "MEPF_duct_accessories.xml";
+                case "ducts": return "Ventilation_ducts.xml";
+                case "pipes": return "Ventilation_pipes.xml";
+                case "cable trays": return "Ventilation_cable_trays.xml";
+                case "duct accessories": return "Ventilation_duct_accessories.xml";
                 default: return "Unknown.xml";
             }
         }

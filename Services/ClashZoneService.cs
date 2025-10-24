@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Mechanical;
@@ -115,38 +116,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 return new List<ClashZone>();
             }
 
-            _log($"Filtering {_clashZoneStorage.ClashZones.Count} clash zones by current selection");
-            _log($"Selected reference files: {string.Join(", ", selectedReferenceFiles)}");
-            _log($"Current clearance settings: {string.Join(", ", currentClearanceSettings.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
-            _log($"Current prefix: {currentPrefix}");
-
-            var filteredZones = new List<ClashZone>();
-            var removedCount = 0;
-
-            foreach (var clashZone in _clashZoneStorage.ClashZones.ToList())
-            {
-                // Check if this clash zone matches current selection criteria
-                bool matchesCurrentSelection = DoesClashZoneMatchCurrentSelection(
-                    clashZone, selectedReferenceFiles, currentClearanceSettings, currentPrefix, document);
-
-                if (matchesCurrentSelection)
-                {
-                    filteredZones.Add(clashZone);
-                }
-                else
-                {
-                    // DON'T remove clash zone from storage - just skip it for this processing
-                    removedCount++;
-                    _log($"Skipping clash zone {clashZone.Id} - doesn't match current selection (keeping in storage)");
-                }
-            }
-
-            _log($"Filtered clash zones: {filteredZones.Count} kept, {removedCount} removed");
+            _log($"Returning all {_clashZoneStorage.ClashZones.Count} clash zones (filtering already done in IntersectionDetectionService)");
+            
+            // ✅ SIMPLIFIED: Return all clash zones since filtering is already done in IntersectionDetectionService
+            // The 5-step filtering (Section Box, Reference File, MEP Categories, Host File, Host Categories)
+            // is already applied during element collection in IntersectionDetectionService
             
             // Update storage metadata
             _clashZoneStorage.LastUpdated = DateTime.Now;
             
-            return filteredZones;
+            return _clashZoneStorage.ClashZones.ToList();
         }
 
         /// <summary>
@@ -414,6 +393,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         _clashZoneStorage.ClashZones.Remove(invalidClashZone);
                         
                         var newClashZone = CreateClashZone(mepElement, structuralElement, intersectionPoint, boundingBox, document, clearanceSettings);
+                        newClashZone.IsCurrentClash = true; // ✅ DEBUG: Mark as current refresh clash
                         newClashZones.Add(newClashZone);
                         _clashZoneStorage.ClashZones.Add(newClashZone);
                         _log($"Replaced invalid clash zone: MEP={mepElement.Id}, Structural={structuralElement.Id}");
@@ -425,6 +405,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     try
                     {
                         var newClashZone = CreateClashZone(mepElement, structuralElement, intersectionPoint, boundingBox, document, clearanceSettings);
+                        newClashZone.IsCurrentClash = true; // ✅ DEBUG: Mark as current refresh clash
                         newClashZones.Add(newClashZone);
                         _clashZoneStorage.ClashZones.Add(newClashZone);
                         _log($"New clash zone detected: MEP={mepElement.Id}, Structural={structuralElement.Id}");
@@ -612,7 +593,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         #region Private Helper Methods
+              
         
+
         /// <summary>
         /// Checks if a clash zone matches the current selection parameters - SIMPLE APPROACH
         /// Keep all clash zones found during refresh
@@ -1000,6 +983,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
+        /// ⚠️ CRITICAL FLAG MANAGEMENT: Complete lifecycle protection
+        /// 
+        /// FLAG LIFECYCLE SCENARIOS:
+        /// 
+        /// 1. FIRST RUN (Fresh Detection):
+        ///    - IsResolved = false, IsClusterResolved = false
+        ///    - Individual sleeve placed → IsResolved = true
+        ///    - Clustering → IsClusterResolved = true, IsResolved = true
+        /// 
+        /// 2. SUBSEQUENT RUNS (Existing Sleeves):
+        ///    - Individual sleeves: IsResolved = true, IsClusterResolved = false
+        ///    - Cluster sleeves: IsResolved = true, IsClusterResolved = true
+        /// 
+        /// 3. DELETION SCENARIOS:
+        ///    - Individual sleeve deleted → Reset IsResolved = false (allow re-placement)
+        ///    - Cluster sleeve deleted → Reset ALL flags = false (allow fresh individual placement)
+        /// 
         /// ⚠️ CRITICAL METHOD - DO NOT REMOVE ⚠️
         /// Reset IsResolved flag for clash zones where sleeves no longer exist
         /// This allows re-placement of sleeves after manual deletion
@@ -1064,36 +1064,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             continue;
                         }
                         
-                        // Check if individual sleeve exists (if marked as resolved)
-                        bool individualSleeveExists = false;
-                        if (needsIndividualCheck)
-                        {
-                            // ✅ CRITICAL FIX: Only reset individual flag if NOT cluster-resolved
-                            // If cluster-resolved, keep individual flag as true even if individual sleeve is missing
-                            if (needsClusterCheck)
-                            {
-                                _log($"[ResetResolvedFlag] SKIP individual sleeve check for clash zone {clashZone.Id} ({clashZone.MepElementCategory}) - cluster-resolved, keeping IsResolved=true");
-                            }
-                            else
-                            {
-                                individualSleeveExists = CheckForExistingSleeve(clashZone.SleevePlacementPoint, document);
-                                _log($"[ResetResolvedFlag] Checking individual sleeve for clash zone {clashZone.Id} ({clashZone.MepElementCategory}): exists={individualSleeveExists}, IsResolved={clashZone.IsResolved}");
-                                
-                                if (!individualSleeveExists)
-                                {
-                                    clashZone.IsResolved = false;
-                                    clashZone.SleeveInstanceId = -1;
-                                    clashZone.SleeveFamilyName = string.Empty;
-                                    clashZone.LastUpdated = DateTime.Now;
-                                    resetCount++;
-                                    _log($"[ResetResolvedFlag] ✓ Reset IsResolved to FALSE for clash zone {clashZone.Id} ({clashZone.MepElementCategory}) - individual sleeve no longer exists");
-                                }
-                                else
-                                {
-                                    _log($"[ResetResolvedFlag] Individual sleeve still exists at {clashZone.SleevePlacementPoint} - keeping IsResolved=true");
-                                }
-                            }
-                        }
+                        // ✅ SIMPLIFIED: Only use flags for duplicate avoidance - no expensive spatial checking
+                        // If flags are set correctly, we trust them - no need to verify sleeve existence
+                        _log($"[ResetResolvedFlag] Using flag-based approach for clash zone {clashZone.Id} ({clashZone.MepElementCategory}): IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}");
                         
                         // Check if cluster sleeve exists (if marked as cluster resolved)
                         bool clusterSleeveExists = false;
@@ -1107,18 +1080,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             
                             if (!clusterSleeveExists)
                             {
+                                // ✅ CRITICAL: Reset ALL flags when cluster sleeve is deleted
+                                // This allows individual sleeve placement in next run
                                 clashZone.IsClusterResolved = false;
                                 clashZone.ClusterSleeveInstanceId = -1;
                                 
-                                // ✅ CRITICAL: Also reset individual sleeve flag because individual sleeve was deleted during clustering
+                                // ✅ CRITICAL: Reset individual sleeve flag because individual sleeve was deleted during clustering
                                 // When cluster sleeve is deleted, both individual and cluster sleeves are gone
                                 clashZone.IsResolved = false;
                                 clashZone.SleeveInstanceId = -1;
                                 clashZone.SleeveFamilyName = string.Empty;
                                 
+                                // ✅ CRITICAL: Reset clustering history flag to allow fresh individual sleeve placement
+                                // Note: IsClustered flag removed - using MarkedForClusteringSleeveProcess instead
+                                
+                                // ⚠️ CRITICAL: Log flag state AFTER reset
+                                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] [RESET-ALL] ClashZone {clashZone.Id}: Cluster sleeve deleted, ALL flags reset\n");
+                                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] [RESET-ALL] FLAGS: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}\n");
+                                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] [RESET-ALL] PARAMS: SleeveInstanceId={clashZone.SleeveInstanceId}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}\n");
+                                
                                 clashZone.LastUpdated = DateTime.Now;
                                 resetCount++;
-                                _log($"[ResetResolvedFlag] ✓ Reset BOTH flags to FALSE for clash zone {clashZone.Id} ({clashZone.MepElementCategory}) - cluster sleeve deleted, individual sleeve was also deleted during clustering");
+                                _log($"[ResetResolvedFlag] ✓ Reset ALL flags to FALSE for clash zone {clashZone.Id} ({clashZone.MepElementCategory}) - cluster sleeve deleted, allowing fresh individual sleeve placement");
                             }
                             else
                             {
@@ -1131,6 +1117,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (resetCount > 0)
                 {
                     _log($"[ResetResolvedFlag] Reset resolved flags (individual and/or cluster) for {resetCount} clash zones where sleeves were deleted (from selected categories only)");
+                    
+                    // ⚠️ CRITICAL: Log flag states AFTER reset operation completion
+                    if (resetCount > 0)
+                    {
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] [RESET-COMPLETE] Reset operation completed for {resetCount} clash zones\n");
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] [RESET-COMPLETE] XML will be saved with updated flag states\n");
+                    }
                 }
             }
             catch (Exception ex)
@@ -1210,6 +1205,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var mepCategory = GetElementCategoryName(mepElement);
             DebugLogger.Info($"[CLASH_DEBUG] Element {mepElement.Id} ({mepElement.GetType().Name}): Category='{mepCategory}', Element.Category.Name='{mepElement.Category?.Name}'");
             
+            // ✅ FIX: Skip pipe accessories when processing pipes filter
+            if (mepCategory == "Pipe Accessories")
+            {
+                DebugLogger.Info($"[CLASH_DEBUG] SKIP: Pipe Accessories element {mepElement.Id} - not processing unwanted clash zones");
+                return null; // Skip creating clash zone for pipe accessories
+            }
+            
             // ✅ CRITICAL FIX: Use strategy classes to get MEP element size with insulation information
             MepElementSize mepElementSize = GetMepElementSizeWithStrategy(mepElement, mepCategory);
             
@@ -1239,6 +1241,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 MepElementId = mepElement.Id,
                 StructuralElementId = structuralElement.Id,
                 IntersectionPoint = intersectionPoint,
+                SleevePlacementPoint = intersectionPoint, // ✅ CRITICAL: Initialize with intersection point for distance calculation
+                SleevePlacementPointX = intersectionPoint.X, // XML serializable
+                SleevePlacementPointY = intersectionPoint.Y, // XML serializable  
+                SleevePlacementPointZ = intersectionPoint.Z, // XML serializable
                 ClashBoundingBox = boundingBox,
                 MepElementSize = 0.0, // Legacy field, not used
                 RequiredClearance = 0.0, // Clearance will be calculated during placement
@@ -1260,10 +1266,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 WallDirectionType = wallDirectionType, // Pre-calculate wall direction type for efficient rotation logic
                 
                 // NEW: Pre-calculated placement data (calculated during refresh, used during placement)
-                SleevePlacementPoint = placementPoint,
                 MepElementWidth = finalWidth,
                 MepElementHeight = finalHeight,
-                MepElementOrientationDirection = GetMepElementOrientationFromBbox(mepElement),
+                MepElementOrientationDirection = GetWallOrientationFromType(wallDirectionType), // Use pre-calculated wall direction type for clustering distance calculation
                 PipeOpeningType = pipeOpeningType,
                 MepElementLevelName = levelName,
                 MepElementLevelElevation = levelElevation,
@@ -2688,6 +2693,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
+        /// Get wall orientation from wall direction type for clustering distance calculation
+        /// </summary>
+        private string GetWallOrientationFromType(string wallDirectionType)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(wallDirectionType))
+                {
+                    DebugLogger.Warning($"[GetWallOrientationFromType] WallDirectionType is null or empty, defaulting to X");
+                    return "X"; // Default to X orientation
+                }
+                
+                // Convert wall direction type to orientation for clustering distance calculation
+                string orientation;
+                if (wallDirectionType.Contains("X-WALL"))
+                {
+                    orientation = "X"; // X-oriented walls use X,Z coordinates for clustering
+                }
+                else if (wallDirectionType.Contains("Y-WALL"))
+                {
+                    orientation = "Y"; // Y-oriented walls use Y,Z coordinates for clustering
+                }
+                else if (wallDirectionType.Contains("FRAMING"))
+                {
+                    orientation = "Z"; // Framing uses X,Y coordinates for clustering
+                }
+                else
+                {
+                    orientation = "X"; // Default fallback
+                    DebugLogger.Warning($"[GetWallOrientationFromType] Unknown wall direction type '{wallDirectionType}', defaulting to X");
+                }
+                
+                DebugLogger.Info($"[GetWallOrientationFromType] WallDirectionType='{wallDirectionType}' → Orientation='{orientation}'");
+                return orientation;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[GetWallOrientationFromType] Error converting wall direction type '{wallDirectionType}': {ex.Message}");
+                return "X"; // Default to X orientation
+            }
+        }
+
+        /// <summary>
         /// Get MEP element orientation from bounding box (X or Y)
         /// </summary>
         private string GetMepElementOrientationFromBbox(Element mepElement)
@@ -3003,6 +3051,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private void UpdateExistingClashZone(ClashZone existingZone, Element mepElement, Element structuralElement, XYZ intersectionPoint, BoundingBoxXYZ boundingBox, Document document)
         {
             existingZone.IntersectionPoint = intersectionPoint;
+            existingZone.SleevePlacementPoint = intersectionPoint; // ✅ CRITICAL: Update placement point for distance calculation
             existingZone.ClashBoundingBox = boundingBox;
             existingZone.MepElementSize = GetMepElementSize(mepElement);
             existingZone.RequiredClearance = CalculateRequiredClearance(existingZone.MepElementSize);

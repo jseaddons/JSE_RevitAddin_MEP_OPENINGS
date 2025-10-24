@@ -25,16 +25,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         private readonly Document _doc;
         private readonly List<ClashZone> _clashZones;
         private readonly string _category;
+        private readonly string _filterName;
         private readonly ISleevePlacementStrategy _strategy;
         private readonly string _logPrefix;
         private OpeningConditions _conditions;
         private readonly Dictionary<string, double> _clearanceSettings;
 
-        public UniversalSleevePlacementCommand(Document doc, List<ClashZone> clashZones, string category, Dictionary<string, double> clearanceSettings = null)
+        public UniversalSleevePlacementCommand(Document doc, List<ClashZone> clashZones, string category, string filterName, Dictionary<string, double> clearanceSettings = null)
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _clashZones = clashZones ?? throw new ArgumentNullException(nameof(clashZones));
             _category = category ?? throw new ArgumentNullException(nameof(category));
+            _filterName = filterName ?? "Unknown";
             _logPrefix = $"[UniversalSleeveCommand-{category}]";
             
             // Select strategy based on category
@@ -87,7 +89,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         DebugLogger.Info($"{_logPrefix} Transaction started with UniversalWarningSwallower enabled");
                         
                         // Place all sleeves in single transaction (zero linked file access!)
-                        var placerService = new UniversalSleevePlacerService(_doc, _conditions, _strategy, _clearanceSettings);
+                        var placerService = new UniversalSleevePlacerService(_doc, _conditions, _strategy, _clearanceSettings, _filterName);
                         
                         // 🛡️ ARCHITECTURE FIX: Apply comprehensive filtering before placement
                         // This ensures sleeves are only placed for:

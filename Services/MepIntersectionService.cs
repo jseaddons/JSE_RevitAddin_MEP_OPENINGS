@@ -205,6 +205,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return batchResults.Select(r => (r.Item2, r.Item3, r.Item4)).ToList();
         }
 
+        public static List<(Element, BoundingBoxXYZ, XYZ)> FindIntersections(
+            Element mepElement,
+            Transform? mepTransform,
+            List<(Element, Transform?)> structuralElements,
+            Action<string> log)
+        {
+            // Delegate to batch processing with single element and transform
+            var batchResults = FindIntersectionsBatch(
+                new List<(Element, Transform?)> { (mepElement, mepTransform) },
+                structuralElements,
+                log);
+            
+            // Convert batch results to individual format
+            return batchResults.Select(r => (r.Item2, r.Item3, r.Item4)).ToList();
+        }
+
         // Legacy method - kept for compatibility
         private static List<(Element, BoundingBoxXYZ, XYZ)> FindIntersectionsLegacy(
             Element mepElement,

@@ -184,6 +184,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 DebugLogger.Info("[SleevePlacementExternalEvent] Orchestrator execution completed");
                 
+                // ✅ SIMPLIFIED: Coordinate saving now handled directly in UniversalSleevePlacerService
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] STEP 16: ✅ Coordinate saving completed in UniversalSleevePlacerService\n");
+                
+                DebugLogger.Info("[SleevePlacementExternalEvent] Coordinate saving completed in UniversalSleevePlacerService");
+                
                 DebugLogger.Info("[SleevePlacementExternalEvent] ✓ COMPLETED THROUGH PROPER ORCHESTRATOR ARCHITECTURE");
             }
             catch (Exception ex)
@@ -546,7 +552,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ NEW: Get clearance settings from UI for this category
                 var clearanceSettings = GetClearanceSettingsForCategory(normalizedCategory);
                 
-                return new UniversalSleevePlacementCommand(_document, clashZones, normalizedCategory, clearanceSettings);
+                return new UniversalSleevePlacementCommand(_document, clashZones, normalizedCategory, _selectedFilterName, clearanceSettings);
             }
             catch (Exception ex)
             {

@@ -856,7 +856,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
                                     $"[{DateTime.Now}] [TRANSFER] Cluster sleeve {sleeveId}: aggregated parameter '{mapping.SourceParameter}' = '{aggregatedParams}'\n");
                                 
-                                var targetParam = opening.LookupParameter(mapping.TargetParameter);
+                        var targetParam = opening.LookupParameter(mapping.TargetParameter);
                                 if (targetParam != null)
                                 {
                                     bool ok = SetParameterValueSafely(targetParam, aggregatedParams);
@@ -866,9 +866,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         DebugLogger.Info($"[TRANSFER] ✓ Successfully transferred aggregated parameter to cluster sleeve {sleeveId}");
                                         System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
                                             $"[{DateTime.Now}] [TRANSFER] ✓ Successfully transferred aggregated parameter to cluster sleeve {sleeveId}\n");
-                                    }
-                                    else
-                                    {
+                    }
+                    else
+                    {
                                         DebugLogger.Warning($"[TRANSFER] ✗ Failed to set aggregated parameter value");
                                         System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
                                             $"[{DateTime.Now}] [TRANSFER] ✗ Failed to set aggregated parameter value\n");

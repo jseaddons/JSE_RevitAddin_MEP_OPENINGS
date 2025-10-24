@@ -1,7 +1,691 @@
-# Sleeve Placement Methodology - Optimized Approach
+# Sleeve Placement Methodology - Complete Flow Documentation
 
 ## Overview
-This document outlines the complete methodology for sleeve placement in MEP openings, including the elimination of the duplicate suppressor system in favor of a more efficient and reliable approach.
+This document outlines the complete methodology for sleeve placement in MEP openings, including individual sleeve placement and clustering flow.
+
+## 🔥 CLUSTERING FLOW - COMPLETE ARCHITECTURE
+
+### Phase 1: Refresh Click (Data Preparation)
+**Purpose:** Detect clashes and save coordinate data for both individual and cluster processing
+
+**Services Involved:**
+- `RefreshService` - Main orchestrator
+- `IntersectionDetectionService` - Detects MEP vs Structural clashes
+- `ClashZoneService` - Creates and manages ClashZone objects
+
+**What Happens:**
+1. **Detect Intersections:** Find MEP elements intersecting structural elements
+2. **Create ClashZones:** One ClashZone per (MEP + Structural) pair
+3. **Save Dual Coordinates:**
+   - `IntersectionPoint` = Linked document coordinates (for individual sleeve placement)
+   - `SleevePlacementPointActiveDocument` = Active document coordinates (for proximity calculation)
+4. **Initialize Flags:** All flags start as `false` or `null`
+
+**Output:** XML files with ClashZone data containing both coordinate systems
+
+### Phase 2: OK Click - Individual Sleeve Placement
+**Purpose:** Place individual sleeves using linked coordinates
+
+**Services Involved:**
+- `UniversalSleevePlacerService` - Places individual sleeves
+- `OpeningCommandOrchestrator` - Coordinates the process
+
+**What Happens:**
+1. **Load ClashZones:** From XML files created during refresh
+2. **Flag Check:** 
+   - If `IsClustered = true` → Check if cluster sleeve exists at cluster placement point
+     - If cluster sleeve exists → SKIP
+     - If cluster sleeve NOT found → Reset both `IsClusterResolved = false` and `IsResolved = false`, proceed
+   - If `IsResolved = true` → Check if individual sleeve exists at placement point
+     - If sleeve exists → SKIP
+     - If sleeve NOT found → Reset `IsResolved = false` and proceed
+3. **Place Sleeves:** Using `IntersectionPoint` (linked coordinates)
+4. **Update Flags:** Set `IsResolved = true`, save `SleeveInstanceId`
+5. **Update Coordinates:** Save actual placed coordinates to `SleevePlacementPoint`
+
+**Output:** Individual sleeves placed, flags updated, coordinates saved
+
+### Phase 3: OK Click - Cluster Processing
+**Purpose:** Group proximate sleeves and place cluster sleeves
+
+**Services Involved:**
+- `UniversalClusterService` - Main cluster orchestrator
+- `PreCalculatedClusterService` - Calculates proximity and groups
+- `ClusterConfigurationManager` - Manages join distance settings
+
+**What Happens:**
+1. **Load ClashZones:** From XML files (same as individual placement)
+2. **Cluster Flag Check FIRST:** For sleeves with `IsClustered = true`
+   - Check if cluster sleeve exists at cluster placement point
+   - If cluster sleeve exists → SKIP (already clustered)
+   - If cluster sleeve NOT found → Reset both `IsClusterResolved = false` and `IsResolved = false`
+3. **Pre-calculate Clusters:** Using `SleevePlacementPointActiveDocument` (active coordinates)
+   - `PreCalculatedClusterService.GetSleeveCorners()` calculates 4 corner points for each sleeve
+   - Uses `SleevePlacementPointActiveDocument` + `SleeveWidth` + `SleeveHeight` from ClashZone
+4. **Proximity Check:** Calculate distances between sleeves using active coordinates
+5. **Group Sleeves:** 
+   - `PreCalculatedClusterService` marks proximate sleeves as `MarkedForClusteringSleeveProcess = true`
+   - `UniversalClusterService.FormClusters()` groups sleeves by host type, system type, and orientation
+   - Groups sleeves marked as `MarkedForClusteringSleeveProcess = true` into cluster groups
+6. **Place Cluster Sleeves:** 
+   - `ClusterBoundingBoxServices.GetClusterBoundingBox()` calculates cluster dimensions
+   - Needs: `List<FamilyInstance>` cluster group
+   - Returns: `(width, height, depth, mid)` for cluster sleeve placement
+7. **Delete Individual Sleeves:** Remove individual sleeves within clusters
+8. **Update Flags:** Set `MarkedForClusteringSleeveProcess = true` and `IsClusterResolved = true`, save `ClusterSleeveInstanceId`
+
+**Output:** Cluster sleeves placed, individual sleeves deleted, flags updated
+
+## 🔧 COORDINATE SYSTEM ARCHITECTURE
+
+### Dual Coordinate System
+**Refresh Phase:**
+- `IntersectionPoint` = Linked document coordinates (for individual placement)
+- `SleevePlacementPointActiveDocument` = Active document coordinates (for clustering)
+
+**Individual Placement:**
+- Uses `IntersectionPoint` (linked coordinates)
+- Updates `SleevePlacementPoint` with actual placed coordinates
+
+**Cluster Processing:**
+- Uses `SleevePlacementPointActiveDocument` (active coordinates from refresh)
+- Calculates proximity using active coordinate system
+
+## 🚩 FLAG MANAGEMENT SYSTEM
+
+### Flag Hierarchy
+1. **`MarkedForClusteringSleeveProcess`** - CLEAR FLAG for clustering decisions
+   - `true` = Sleeve is proximate to other sleeves and should be clustered
+   - `false` = Sleeve should remain individual (not proximate)
+   - `null` = Not yet processed for clustering
+
+2. **`IsClusterResolved`** - Cluster sleeve exists
+   - `true` = Cluster sleeve placed
+   - `false` = No cluster sleeve
+
+3. **`IsResolved`** - Individual sleeve exists
+   - `true` = Individual sleeve placed
+   - `false` = No individual sleeve
+
+### Flag Logic
+
+**Individual Sleeve Placement:**
+```
+if (MarkedForClusteringSleeveProcess == true) → SKIP (sleeve should be clustered, not individual)
+if (IsResolved == true) → Check if sleeve exists at placement point
+  - If sleeve exists → SKIP
+  - If sleeve NOT found → Reset IsResolved = false, proceed with placement
+else → PROCESS (place individual sleeve)
+```
+
+**Cluster Processing:**
+```
+if (MarkedForClusteringSleeveProcess == true) → PROCESS (sleeve is proximate, should be clustered)
+if (MarkedForClusteringSleeveProcess == false) → SKIP (sleeve is not proximate, keep individual)
+if (MarkedForClusteringSleeveProcess == null) → PROCESS (not yet processed, check proximity)
+```
+
+## 📊 CLASS RESPONSIBILITIES
+
+### UniversalSleevePlacerService
+- **Purpose:** Place individual sleeves
+- **Uses:** `IntersectionPoint` (linked coordinates)
+- **Updates:** `IsResolved`, `SleeveInstanceId`, `SleevePlacementPoint`
+- **Flag Check:** Prevents individual sleeve placement for sleeves marked for clustering
+
+### UniversalClusterService
+- **Purpose:** Orchestrate cluster processing
+- **Uses:** `SleevePlacementPointActiveDocument` (active coordinates)
+- **Updates:** `MarkedForClusteringSleeveProcess`, `IsClusterResolved`, `ClusterSleeveInstanceId`
+- **Manages:** Cluster placement and individual sleeve deletion
+- **Processes:** Only sleeves with `MarkedForClusteringSleeveProcess = true`
+
+### PreCalculatedClusterService
+- **Purpose:** Calculate proximity and group sleeves
+- **Uses:** `SleevePlacementPointActiveDocument` (active coordinates)
+- **Calculates:** Distances between sleeves using 4 corner points
+- **Method:** `GetSleeveCorners()` calculates 4 corner coordinates for each sleeve
+- **Sets:** `MarkedForClusteringSleeveProcess = true` for proximate sleeves
+- **Groups:** Proximate sleeves for clustering
+
+## 🎯 CLEAR FLAG SYSTEM
+
+### Why MarkedForClusteringSleeveProcess?
+The previous `IsClustered` flag was confusing because it had multiple meanings:
+- Sometimes it meant "already clustered" (skip processing)
+- Sometimes it meant "should be clustered" (process for clustering)
+- This led to logical errors where sleeves marked as clustered still got individual sleeves placed
+
+### New Clear Flag Logic
+**`MarkedForClusteringSleeveProcess`** has ONE clear meaning:
+- **`true`** = This sleeve is proximate to other sleeves and should be processed for cluster placement
+- **`false`** = This sleeve is not proximate and should remain individual
+- **`null`** = This sleeve hasn't been processed for clustering yet
+
+### Benefits
+1. **Clear Intent:** The flag name explicitly states what it's for
+2. **No Confusion:** One flag, one purpose
+3. **Proper Separation:** Individual sleeve placement vs cluster processing are clearly separated
+4. **Debugging:** Easy to understand what each flag value means
+
+## ⚡ PERFORMANCE OPTIMIZATIONS
+
+### No Expensive Spatial Checks
+- **Flag Management:** Cheap boolean checks prevent duplicates
+- **No 500mm Radius Search:** Eliminated expensive spatial queries
+- **Coordinate Pre-calculation:** Active coordinates saved during refresh
+
+### Efficient Data Flow
+- **Single XML Load:** ClashZones loaded once per phase
+- **Dual Coordinate System:** No runtime coordinate transformation
+- **Flag-based Filtering:** Skip processed sleeves immediately
+
+## 🔄 COMPLETE WORKFLOW
+
+1. **Refresh Click** → Detect clashes, save dual coordinates
+2. **OK Click** → Place individual sleeves using linked coordinates
+3. **OK Click** → Calculate proximity using active coordinates
+4. **OK Click** → Set `MarkedForClusteringSleeveProcess = true` for proximate sleeves
+5. **OK Click** → Process clusters for sleeves marked for clustering
+6. **Result** → Individual sleeves for non-proximate, cluster sleeves for proximate
+
+This architecture ensures efficient, reliable sleeve placement with proper coordinate handling and clear flag management.
+
+## 🔧 IMPLEMENTATION CHANGES (Oct 23, 2025)
+
+### New Flag System Implementation
+**Added `MarkedForClusteringSleeveProcess` flag to replace confusing `IsClustered` logic:**
+
+#### ClashZone Model Changes
+```csharp
+/// <summary>
+/// CLEAR FLAG: Indicates this sleeve should be processed for cluster placement
+/// true = sleeve is proximate to other sleeves and should be clustered
+/// false = sleeve should remain individual (not proximate)
+/// null = not yet processed for clustering
+/// This replaces the confusing IsClustered flag logic
+/// </summary>
+public bool? MarkedForClusteringSleeveProcess { get; set; } = null;
+```
+
+#### PreCalculatedClusterService Changes
+- **Proximity Detection:** Sets `MarkedForClusteringSleeveProcess = true` for proximate sleeves
+- **Non-Proximity:** Sets `MarkedForClusteringSleeveProcess = false` for non-proximate sleeves
+- **Clear Logic:** Only processes sleeves with `MarkedForClusteringSleeveProcess == null`
+
+#### UniversalSleevePlacerService Changes
+- **Skip Logic:** Skips individual sleeve placement if `MarkedForClusteringSleeveProcess == true`
+- **Clear Intent:** Prevents individual sleeves from being placed over sleeves marked for clustering
+
+#### UniversalClusterService Changes
+- **Processing Logic:** Only processes sleeves with `MarkedForClusteringSleeveProcess == true`
+- **Flag Management:** Updates `MarkedForClusteringSleeveProcess` flags in XML
+- **Clear Separation:** Distinguishes between sleeves that should be clustered vs individual
+
+### Benefits of New System
+1. **Eliminates Confusion:** One flag, one clear purpose
+2. **Prevents Logic Errors:** No more individual sleeves placed over cluster sleeves
+3. **Better Debugging:** Clear flag names make troubleshooting easier
+4. **Maintainable Code:** Future developers can easily understand the logic
+
+## 🏗️ CLUSTER SLEEVE PLACEMENT RESPONSIBILITY
+
+### Primary Responsibility Class
+**`UniversalClusterService`** is the main class responsible for placing cluster sleeves.
+
+### Key Method: `PlaceClusterSleeve()`
+**Location:** `Services/UniversalClusterService.cs` (lines 1462-1600+)
+
+**Purpose:** Places a single cluster sleeve to replace multiple individual sleeves
+
+**Parameters:**
+- `Document doc` - Revit document
+- `List<FamilyInstance> cluster` - Group of individual sleeves to be clustered
+- `SleeveGroupKey groupKey` - Host type, system type, orientation grouping
+- `string targetCategory` - MEP category (Ducts, Pipes, etc.)
+- `out int placed` - Number of cluster sleeves placed
+- `out int deleted` - Number of individual sleeves deleted
+- `string xmlFilePath` - XML file path for flag management
+
+### Service Classes Used for Cluster Sleeve Placement
+
+#### 1. **ClusterBoundingBoxServices** (Static Service)
+**File:** `Services/ClusterBoundingBoxServices.cs`
+
+**Method:** `GetClusterBoundingBox(List<FamilyInstance> cluster)`
+
+**Purpose:** Calculates cluster dimensions and midpoint
+- **Input:** List of individual sleeves in the cluster
+- **Output:** `(double width, double height, double depth, XYZ mid)`
+- **Logic:** Creates combined bounding box from all individual sleeves
+- **Usage:** Determines size and placement point for cluster sleeve
+
+**Key Logic:**
+```csharp
+// Combines bounding boxes of all individual sleeves
+BoundingBoxXYZ combinedBbox = Union of all sleeve bounding boxes
+double width = combinedBbox.Max.X - combinedBbox.Min.X
+double height = combinedBbox.Max.Y - combinedBbox.Min.Y  
+double depth = combinedBbox.Max.Z - combinedBbox.Min.Z
+XYZ mid = Center point of combined bounding box
+```
+
+#### 2. **PreCalculatedClusterService** (Dependency)
+**File:** `Services/PreCalculatedClusterService.cs`
+
+**Purpose:** Pre-calculates which sleeves should be clustered
+- **Method:** `PreCalculateClustersFromClashZones()` - Determines proximity
+- **Method:** `GetPreCalculatedClusters()` - Returns grouped sleeves
+- **Sets:** `MarkedForClusteringSleeveProcess = true` for proximate sleeves
+
+#### 3. **UniversalSleevePlacerService** (Related Service)
+**File:** `Services/UniversalSleevePlacerService.cs`
+
+**Purpose:** Places individual sleeves (before clustering)
+- **Method:** `PlaceSleeves()` - Places individual sleeves
+- **Skips:** Sleeves with `MarkedForClusteringSleeveProcess = true`
+- **Updates:** `SleevePlacementPoint` coordinates for proximity calculation
+
+### Cluster Sleeve Placement Process
+
+#### Step 1: Family Selection
+**Logic in `PlaceClusterSleeve()`:**
+```csharp
+// Determine if cluster is circular or rectangular
+bool isCircular = cluster.All(s => s.Symbol.Family.Name.Contains("Circular"));
+
+// Select universal family based on host type and shape
+string familyName = "";
+if (hostType == "Wall" || hostType == "Structural Framing") {
+    familyName = isCircular ? "CircularOpeningOnWall" : "RectangularOpeningOnWall";
+} else if (hostType == "Floor") {
+    familyName = isCircular ? "CircularOpeningOnSlab" : "RectangularOpeningOnSlab";
+}
+```
+
+#### Step 2: Dimension Calculation
+**Uses `ClusterBoundingBoxServices.GetClusterBoundingBox()`:**
+```csharp
+var (width, height, depth, mid) = ClusterBoundingBoxServices.GetClusterBoundingBox(cluster);
+```
+
+#### Step 3: Sleeve Creation
+**Creates cluster sleeve instance:**
+```csharp
+var clusterSleeve = doc.Create.NewFamilyInstance(
+    mid,                    // Placement point (center of cluster)
+    clusterSymbol,          // Selected family symbol
+    referenceLevel,         // Reference level
+    StructuralType.NonStructural
+);
+```
+
+#### Step 4: Parameter Setting
+**Sets cluster sleeve parameters:**
+- **Width/Height:** From `ClusterBoundingBoxServices` calculation
+- **MEP_ElementId:** Set to -1 (cluster sleeve, not individual)
+- **MEP_Category:** Set to target category
+- **HostOrientation:** Set based on group orientation
+
+#### Step 5: Individual Sleeve Deletion
+**Deletes individual sleeves in cluster:**
+```csharp
+foreach (var individualSleeve in cluster) {
+    doc.Delete(individualSleeve.Id);
+    deleted++;
+}
+```
+
+#### Step 6: Flag Management
+**Updates ClashZone flags:**
+```csharp
+foreach (var clashZone in affectedClashZones) {
+    clashZone.MarkedForClusteringSleeveProcess = true;
+    clashZone.IsClusterResolved = true;
+    clashZone.ClusterSleeveInstanceId = clusterSleeve.Id.IntegerValue;
+    clashZone.IsResolved = true;  // Individual sleeve was placed then deleted
+    clashZone.SleeveInstanceId = -1;  // Individual sleeve deleted
+}
+```
+
+### Universal Family Types Used
+1. **RectangularOpeningOnWall** - Rectangular sleeves on walls/framing
+2. **CircularOpeningOnWall** - Circular sleeves on walls/framing  
+3. **RectangularOpeningOnSlab** - Rectangular sleeves on floors
+4. **CircularOpeningOnSlab** - Circular sleeves on floors
+
+### Data Flow for Cluster Placement
+1. **PreCalculatedClusterService** → Determines proximate sleeves
+2. **UniversalClusterService.FormClusters()** → Groups sleeves by host/system/orientation
+3. **UniversalClusterService.PlaceClusterSleeve()** → Places each cluster
+4. **ClusterBoundingBoxServices** → Calculates cluster dimensions
+5. **Revit API** → Creates cluster sleeve instance
+6. **Revit API** → Deletes individual sleeves
+7. **XML Update** → Saves flag changes
+
+## 📋 COMPLETE FLAG INITIALIZATION DOCUMENTATION
+
+### **Flag Definitions in ClashZone Model (Models/ClashZone.cs)**
+
+| Flag Name | Type | Default Value | Purpose |
+|-----------|------|---------------|---------|
+| `IsResolved` | `bool` | `false` | Individual sleeve placed |
+| `IsClusterResolved` | `bool` | `false` | Cluster sleeve placed |
+| `IsClustered` | `bool?` | `null` | **LEGACY FLAG** - Clustering processing status |
+| `IsCurrentClash` | `bool` | `false` | Detected in current refresh |
+| `MarkedForClusteringSleeveProcess` | `bool?` | `null` | Should be processed for clustering |
+
+### **FIRST RUN SCENARIO (Fresh Detection)**
+
+#### **Step 1: ClashZone Creation (Services/ClashZoneService.cs:1259)**
+```csharp
+var clashZone = new ClashZone
+{
+    // ... other properties ...
+    IsResolved = hasExistingSleeve,  // false if no existing sleeve
+    DetectedAt = DateTime.Now,
+    LastUpdated = DateTime.Now
+};
+```
+
+**Flag Values After Creation:**
+- `IsResolved` = `false` (unless existing sleeve found)
+- `IsClusterResolved` = `false` (default)
+- `IsClustered` = `null` (default)
+- `IsCurrentClash` = `false` (default)
+- `MarkedForClusteringSleeveProcess` = `null` (default)
+
+#### **Step 2: Mark as Current Clash (Services/ClashZoneService.cs:396,408)**
+```csharp
+newClashZone.IsCurrentClash = true; // ✅ DEBUG: Mark as current refresh clash
+```
+
+**Flag Values After Marking:**
+- `IsResolved` = `false`
+- `IsClusterResolved` = `false`
+- `IsClustered` = `null`
+- `IsCurrentClash` = `true` ✅ (NEW CLASH)
+- `MarkedForClusteringSleeveProcess` = `null`
+
+#### **Step 3: Individual Sleeve Placement**
+**After Individual Sleeve Placed:**
+- `IsResolved` = `true` ✅ (INDIVIDUAL SLEEVE PLACED)
+- `IsClusterResolved` = `false`
+- `IsClustered` = `null`
+- `IsCurrentClash` = `true`
+- `MarkedForClusteringSleeveProcess` = `null`
+
+#### **Step 4: Clustering Process**
+**After Proximity Check (PreCalculatedClusterService):**
+- `IsResolved` = `true`
+- `IsClusterResolved` = `false`
+- `IsClustered` = `null`
+- `IsCurrentClash` = `true`
+- `MarkedForClusteringSleeveProcess` = `true` ✅ (PROXIMATE - SHOULD CLUSTER)
+
+**After Cluster Sleeve Placed:**
+- `IsResolved` = `true` ✅ (INDIVIDUAL WAS PLACED THEN DELETED)
+- `IsClusterResolved` = `true` ✅ (CLUSTER SLEEVE PLACED)
+- `IsClustered` = `null`
+- `IsCurrentClash` = `true`
+- `MarkedForClusteringSleeveProcess` = `true`
+
+#### **Step 2: Refresh Process**
+**During Refresh (Services/ClashZoneService.cs:427-428):**
+```csharp
+// Preserve resolved clash zones during refresh - keep them in the list
+_log($"Preserved resolved clash zone: {existingClashZone.Id} (IsResolved={existingClashZone.IsResolved})");
+```
+
+**Flag Values After Refresh:**
+- `IsResolved` = `true` ✅ (PRESERVED - individual sleeve exists)
+- `IsClusterResolved` = `true` ✅ (PRESERVED - cluster sleeve exists)
+- `IsClustered` = `null`
+- `IsCurrentClash` = `false` ✅ (NOT CURRENT CLASH)
+- `MarkedForClusteringSleeveProcess` = `true`
+
+#### **Step 3: Sleeve Existence Check (Services/ClashZoneService.cs:1009)**
+**Critical Method:** `ResetResolvedFlagForDeletedSleeves()`
+
+**When Individual Sleeve NOT Found:**
+```csharp
+if (!individualSleeveExists)
+{
+    clashZone.IsResolved = false;           // ✅ RESET - allow re-placement
+    clashZone.SleeveInstanceId = -1;        // ✅ RESET
+    clashZone.SleeveFamilyName = string.Empty; // ✅ RESET
+    clashZone.LastUpdated = DateTime.Now;
+}
+```
+
+**Flag Values After Individual Sleeve Reset:**
+- `IsResolved` = `false` ✅ (RESET - sleeve deleted)
+- `IsClusterResolved` = `true` (unchanged)
+- `IsClustered` = `null` (unchanged)
+- `IsCurrentClash` = `false` (unchanged)
+- `MarkedForClusteringSleeveProcess` = `true` (unchanged)
+
+**When Cluster Sleeve NOT Found:**
+```csharp
+if (!clusterSleeveExists)
+{
+    clashZone.IsClusterResolved = false;    // ✅ RESET
+    clashZone.ClusterSleeveInstanceId = -1; // ✅ RESET
+    
+    // ✅ CRITICAL: Reset ALL flags when cluster sleeve is deleted
+    clashZone.IsResolved = false;           // ✅ RESET - individual was deleted during clustering
+    clashZone.SleeveInstanceId = -1;        // ✅ RESET
+    clashZone.SleeveFamilyName = string.Empty; // ✅ RESET
+    clashZone.IsClustered = false;          // ✅ RESET - allow fresh individual placement
+}
+```
+
+**Flag Values After Cluster Sleeve Reset:**
+- `IsResolved` = `false` ✅ (RESET - both sleeves deleted)
+- `IsClusterResolved` = `false` ✅ (RESET - cluster sleeve deleted)
+- `IsClustered` = `false` ✅ (RESET - allow fresh placement)
+- `IsCurrentClash` = `false` (unchanged)
+- `MarkedForClusteringSleeveProcess` = `true` (unchanged)
+
+### **RERUN SCENARIO (XML Loading)**
+
+#### **Step 1: XML Loading (Services/UniversalClusterService.cs:1135)**
+```csharp
+var filter = (OpeningFilter)serializer.Deserialize(reader);
+// ClashZone objects are deserialized with their saved flag values
+```
+
+**Flag Values After XML Deserialization:**
+- `IsResolved` = `true` (from XML - individual sleeve was placed)
+- `IsClusterResolved` = `true` (from XML - cluster sleeve was placed)
+- `IsClustered` = `null` (from XML)
+- `IsCurrentClash` = `false` ✅ (DEFAULT VALUE - NOT CURRENT CLASH)
+- `MarkedForClusteringSleeveProcess` = `true` (from XML)
+
+#### **Step 2: Refresh Process**
+**During Refresh (Services/ClashZoneService.cs:427-428):**
+```csharp
+// Preserve resolved clash zones during refresh - keep them in the list
+_log($"Preserved resolved clash zone: {existingClashZone.Id} (IsResolved={existingClashZone.IsResolved})");
+```
+
+**Flag Values After Refresh:**
+- `IsResolved` = `true` ✅ (PRESERVED - individual sleeve exists)
+- `IsClusterResolved` = `true` ✅ (PRESERVED - cluster sleeve exists)
+- `IsClustered` = `null`
+- `IsCurrentClash` = `false` ✅ (NOT CURRENT CLASH)
+- `MarkedForClusteringSleeveProcess` = `true`
+
+### **CRITICAL ISSUES IDENTIFIED**
+
+#### **Issue 1: IsCurrentClash Default Value**
+❌ **PROBLEM:** `IsCurrentClash` defaults to `false` in model, but gets set to `true` for new clashes
+✅ **FIXED:** Changed default to `false` to prevent XML-loaded clashes from being marked as current
+
+#### **Issue 2: Flag Preservation During Refresh**
+✅ **CORRECT:** Resolved clash zones are preserved during refresh (line 427-428)
+✅ **CORRECT:** Only unresolved clash zones are updated
+
+#### **Issue 3: XML Loading Flag Preservation**
+✅ **CORRECT:** XML deserialization preserves all flag values from previous run
+✅ **CORRECT:** `IsCurrentClash` correctly defaults to `false` for loaded clashes
+
+### **FLAG LIFECYCLE SUMMARY**
+
+| Scenario | IsResolved | IsClusterResolved | IsCurrentClash | MarkedForClusteringSleeveProcess |
+|----------|------------|-------------------|----------------|----------------------------------|
+| **New Clash Created** | `false` | `false` | `true` | `null` |
+| **Individual Sleeve Placed** | `true` | `false` | `true` | `null` |
+| **Marked for Clustering** | `true` | `false` | `true` | `true` |
+| **Cluster Sleeve Placed** | `true` | `true` | `true` | `true` |
+| **XML Loaded (Rerun)** | `true` | `true` | `false` | `true` |
+| **After Refresh** | `true` | `true` | `false` | `true` |
+| **Individual Sleeve Deleted** | `false` ✅ | `true` | `false` | `true` |
+| **Cluster Sleeve Deleted** | `false` ✅ | `false` ✅ | `false` | `true` |
+
+### **SAFETY MECHANISMS**
+
+1. **Preserve Resolved Zones:** Existing sleeves are not re-placed
+2. **Current Clash Detection:** Only new clashes get `IsCurrentClash = true`
+3. **Flag Persistence:** All flags are saved to XML and restored on reload
+4. **Deletion Detection:** `ResetResolvedFlagForDeletedSleeves()` resets flags if sleeves are deleted
+
+### **RESET FLAG MECHANISM DETAILS**
+
+#### **When ResetResolvedFlagForDeletedSleeves() is Called:**
+- **Trigger:** During refresh process (Services/ClashZoneService.cs:435)
+- **Purpose:** Detect manually deleted sleeves and reset flags to allow re-placement
+- **Scope:** Only processes clash zones from selected categories (prevents accidental resets)
+
+#### **Individual Sleeve Reset Logic:**
+```csharp
+// Only reset individual flag if NOT cluster-resolved
+if (needsIndividualCheck && !needsClusterCheck)
+{
+    individualSleeveExists = CheckForExistingSleeve(clashZone.SleevePlacementPoint, document);
+    
+    if (!individualSleeveExists)
+    {
+        clashZone.IsResolved = false;           // Allow individual sleeve re-placement
+        clashZone.SleeveInstanceId = -1;        // Clear sleeve reference
+        clashZone.SleeveFamilyName = string.Empty; // Clear family name
+    }
+}
+```
+
+#### **Cluster Sleeve Reset Logic:**
+```csharp
+if (!clusterSleeveExists)
+{
+    // Reset cluster flags
+    clashZone.IsClusterResolved = false;
+    clashZone.ClusterSleeveInstanceId = -1;
+    
+    // ✅ CRITICAL: Reset ALL flags when cluster sleeve is deleted
+    // This is because individual sleeves were deleted during clustering
+    clashZone.IsResolved = false;           // Individual sleeve was deleted during clustering
+    clashZone.SleeveInstanceId = -1;        // Clear individual sleeve reference
+    clashZone.SleeveFamilyName = string.Empty; // Clear family name
+    clashZone.IsClustered = false;          // Allow fresh individual placement
+}
+```
+
+#### **Special Cases:**
+1. **Duct-Damper Priority:** Skips reset if damper found at duct end (prevents damper sleeve deletion)
+2. **Cluster-Resolved Protection:** Individual sleeve check is skipped if cluster-resolved (prevents individual sleeve deletion when cluster exists)
+3. **Category Filtering:** Only processes clash zones from currently selected categories
+
+#### **Reset Outcomes:**
+- **Individual Sleeve Deleted:** Only `IsResolved` reset to `false` → Allows individual sleeve re-placement
+- **Cluster Sleeve Deleted:** ALL flags reset to `false` → Allows fresh individual sleeve placement (bypasses clustering)
+- **Both Sleeves Exist:** No reset → Flags preserved, no re-placement
+
+## 🔄 ISCLUSTERED FLAG ROLE ANALYSIS
+
+### **Current Status: LEGACY FLAG**
+The `IsClustered` flag is **currently deprecated** and has been **replaced by `MarkedForClusteringSleeveProcess`**.
+
+### **Original Purpose (Legacy):**
+- **`null`** = Not yet processed for clustering (ALLOW clustering)
+- **`true`** = Already clustered (SKIP completely)  
+- **`false`** = Processed but not proximate (SKIP - keep as individual)
+
+### **Current Usage (Limited):**
+1. **Logging Only:** Used in debug logs for flag state tracking
+2. **Reset Operations:** Set to `false` when cluster sleeve is deleted (line 1122 in ClashZoneService.cs)
+3. **Legacy References:** Still referenced in comments and documentation
+
+### **Replacement Logic:**
+**OLD (IsClustered):**
+```csharp
+// Legacy logic - DEPRECATED
+if (zone.IsClustered == null) {
+    // Process for clustering
+} else if (zone.IsClustered == true) {
+    // Skip - already clustered
+} else {
+    // Skip - not proximate
+}
+```
+
+**NEW (MarkedForClusteringSleeveProcess):**
+```csharp
+// Current logic - ACTIVE
+if (zone.MarkedForClusteringSleeveProcess == null) {
+    // Process for clustering
+} else if (zone.MarkedForClusteringSleeveProcess == true) {
+    // Skip - marked for clustering
+} else {
+    // Skip - not proximate
+}
+```
+
+### **Why IsClustered Was Replaced:**
+1. **Confusing Logic:** `IsClustered = true` meant "already clustered" but also "should be clustered"
+2. **Ambiguous States:** `null` vs `true` vs `false` was unclear
+3. **Better Naming:** `MarkedForClusteringSleeveProcess` is more descriptive
+4. **Clearer Purpose:** Explicitly indicates clustering processing status
+
+### **Migration Status:**
+- ✅ **PreCalculatedClusterService:** Uses `MarkedForClusteringSleeveProcess` (line 206)
+- ✅ **UniversalSleevePlacerService:** Uses `MarkedForClusteringSleeveProcess` (line 286)
+- ⚠️ **IsClustered:** Still set during reset operations (legacy compatibility)
+- ⚠️ **Logging:** Still logged for debugging purposes
+
+### **Recommendation:**
+**`IsClustered` should be removed** in future cleanup, but currently maintained for:
+1. **Backward compatibility** with existing XML files
+2. **Debug logging** for troubleshooting
+3. **Reset operations** when cluster sleeves are deleted
+
+## 🚨 CRITICAL FLAG INITIALIZATION BUG FIX (Oct 14, 2025)
+
+### **The Scary Problem Discovered:**
+**`IsCurrentClash` was defaulting to `true`** in the ClashZone model, causing:
+
+❌ **On Rerun:** All existing clash zones loaded from XML got `IsCurrentClash = true`  
+❌ **System Thought:** All existing sleeves were "new clashes"  
+❌ **Result:** Individual sleeves placed over existing sleeves!  
+
+### **Root Cause:**
+```csharp
+// WRONG - in ClashZone.cs line 150
+public bool IsCurrentClash { get; set; } = true;  // ❌ Scary default!
+
+// CORRECT - Fixed
+public bool IsCurrentClash { get; set; } = false;  // ✅ Safe default for XML-loaded clashes
+```
+
+### **The Fix:**
+- **Changed default value** from `true` to `false` in `Models/ClashZone.cs`
+- **New clashes** still get `IsCurrentClash = true` when detected
+- **XML-loaded clashes** now correctly get `IsCurrentClash = false`
+- **Prevents** individual sleeves being placed over existing sleeves
+
+### **Why This Was Critical:**
+1. **Fresh Detection:** New clash zones → `IsCurrentClash = true` ✅
+2. **XML Loading:** Existing clash zones → `IsCurrentClash = false` ✅ (now fixed)
+3. **Rerun Safety:** No more duplicate sleeve placement ✅
 
 ## ⚠️ CRITICAL: Plural/Singular Category Mismatch Fix (Oct 14, 2025)
 

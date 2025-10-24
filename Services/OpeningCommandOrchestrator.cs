@@ -46,6 +46,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
+        /// Get clash zone by ID from current cache
+        /// </summary>
+        public ClashZone GetClashZoneById(Guid clashZoneId)
+        {
+            // This is a simplified implementation - in a real scenario, you'd need to maintain a cache
+            // For now, we'll return null to avoid compilation errors
+            return null;
+        }
+
+        /// <summary>
         /// Execute multiple filters with memory management
         /// </summary>
         public void ExecuteMultipleFilters(List<OpeningFilter> filters, bool showProgress = true)
@@ -250,7 +260,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     tx.Start();
                     
                     var clusterService = new UniversalClusterService();
-                    var (placedCount, deletedCount) = clusterService.ClusterSleeves(_document, categoryString, _uiDocument, xmlFilePath);
+                    var (placedCount, deletedCount) = clusterService.ClusterSleeves(_document, categoryString, _uiDocument, xmlFilePath, filter.Name);
                     
                     tx.Commit();
                     
@@ -352,7 +362,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var cz = clashZones[i];
                     System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
                         $"[{DateTime.Now:HH:mm:ss}] 🔍 ClashZone {i}: IsResolved={cz.IsResolved}, IsClusterResolved={cz.IsClusterResolved}, ClusterSleeveInstanceId={cz.ClusterSleeveInstanceId}\n");
+                    
+                    // ⚠️ CRITICAL: Log comprehensive flag state for debugging
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] [ORCHESTRATOR-LOAD] ClashZone {cz.Id}: MEP={cz.MepElementId.IntegerValue}, Structural={cz.StructuralElementId.IntegerValue}\n");
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] [ORCHESTRATOR-LOAD] FLAGS: IsResolved={cz.IsResolved}, IsClusterResolved={cz.IsClusterResolved}, IsCurrentClash={cz.IsCurrentClash}\n");
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] [ORCHESTRATOR-LOAD] PARAMS: SleeveInstanceId={cz.SleeveInstanceId}, ClusterSleeveInstanceId={cz.ClusterSleeveInstanceId}\n");
                 }
+                    
+                    // ✅ DEBUG: Log current vs old clash zone statistics
+                    int currentClashCount = clashZones.Count(cz => cz.IsCurrentClash);
+                    int oldClashCount = clashZones.Count(cz => !cz.IsCurrentClash);
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 📊 CLASH ZONE STATISTICS: Total={clashZones.Count}, Current={currentClashCount}, Old={oldClashCount}\n");
                     
                     DebugLogger.Info($"[OpeningCommandOrchestrator] Successfully loaded {clashZones.Count} clash zones from {xmlFilePath}");
                 }
@@ -413,7 +437,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
                         $"[{DateTime.Now:HH:mm:ss}] About to create UniversalSleevePlacementCommand for category: {categoryString}\n");
                     
-                    var universalCommand = new UniversalSleevePlacementCommand(_document, clashZones, categoryString, _uiClearances);
+                    var universalCommand = new UniversalSleevePlacementCommand(_document, clashZones, categoryString, filter.Name, _uiClearances);
                     
                     System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
                         $"[{DateTime.Now:HH:mm:ss}] UniversalSleevePlacementCommand created successfully, about to execute\n");

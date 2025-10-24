@@ -106,6 +106,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public BoundingBoxXYZ ClashBoundingBox { get; set; }
         
         /// <summary>
+        /// ✅ NEW: XML-serializable bounding box coordinates for clustering
+        /// These are calculated during sleeve placement and used for cheap proximity detection
+        /// </summary>
+        public double SleeveBoundingBoxMinX { get; set; } = 0.0;
+        public double SleeveBoundingBoxMinY { get; set; } = 0.0;
+        public double SleeveBoundingBoxMinZ { get; set; } = 0.0;
+        public double SleeveBoundingBoxMaxX { get; set; } = 0.0;
+        public double SleeveBoundingBoxMaxY { get; set; } = 0.0;
+        public double SleeveBoundingBoxMaxZ { get; set; } = 0.0;
+        
+        /// <summary>
         /// The diameter/size of the MEP element at this clash point
         /// </summary>
         public double MepElementSize { get; set; }
@@ -131,9 +142,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public bool IsClusterResolved { get; set; } = false;
         
         /// <summary>
-        /// Whether this clash zone is part of a cluster (used by clustering algorithm)
+        /// REMOVED: IsClustered flag - replaced by MarkedForClusteringSleeveProcess
         /// </summary>
-        public bool IsClustered { get; set; } = false;
+
+        /// <summary>
+        /// Flag indicating if this clash zone was detected in the current refresh
+        /// true = detected in current refresh (new clash)
+        /// false = loaded from previous XML (old clash)
+        /// Used for debugging filtering effectiveness
+        /// </summary>
+        public bool IsCurrentClash { get; set; } = false; // ✅ CRITICAL FIX: Default to false for XML-loaded clashes
+        
+        /// <summary>
+        /// CLEAR FLAG: Indicates this sleeve should be processed for cluster placement
+        /// true = sleeve is proximate to other sleeves and should be clustered
+        /// false = sleeve should remain individual (not proximate)
+        /// null = not yet processed for clustering
+        /// This replaces the confusing IsClustered flag logic
+        /// </summary>
+        public bool? MarkedForClusteringSleeveProcess { get; set; } = null;
         
         /// <summary>
         /// The individual sleeve element ID if resolved
@@ -161,6 +188,145 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// The family name of the placed sleeve (e.g., "RectangularOpeningOnWall")
         /// </summary>
         public string SleeveFamilyName { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// Width of the placed sleeve (in Revit internal units)
+        /// Used for proximity calculation and clustering
+        /// </summary>
+        public double SleeveWidth { get; set; } = 0.0;
+
+        /// <summary>
+        /// Height of the placed sleeve (in Revit internal units)
+        /// Used for proximity calculation and clustering
+        /// </summary>
+        public double SleeveHeight { get; set; } = 0.0;
+
+        /// <summary>
+        /// Diameter of the placed sleeve (in Revit internal units)
+        /// Used for circular sleeves proximity calculation
+        /// </summary>
+        public double SleeveDiameter { get; set; } = 0.0;
+        
+        /// <summary>
+        /// The actual placement point of the sleeve (in Revit internal units)
+        /// Used for simple proximity calculation: check X diff and Y diff
+        /// </summary>
+        [XmlIgnore]
+        public XYZ SleevePlacementPoint { get; set; }
+        
+        /// <summary>
+        /// XML serializable sleeve placement point X coordinate
+        /// </summary>
+        public double SleevePlacementPointX
+        {
+            get => SleevePlacementPoint?.X ?? 0.0;
+            set { 
+                if (SleevePlacementPoint == null) 
+                    SleevePlacementPoint = new XYZ(value, 0, 0); 
+                else 
+                    SleevePlacementPoint = new XYZ(value, SleevePlacementPoint.Y, SleevePlacementPoint.Z); 
+            }
+        }
+        
+        /// <summary>
+        /// XML serializable sleeve placement point Y coordinate
+        /// </summary>
+        public double SleevePlacementPointY
+        {
+            get => SleevePlacementPoint?.Y ?? 0.0;
+            set { 
+                if (SleevePlacementPoint == null) 
+                    SleevePlacementPoint = new XYZ(0, value, 0); 
+                else 
+                    SleevePlacementPoint = new XYZ(SleevePlacementPoint.X, value, SleevePlacementPoint.Z); 
+            }
+        }
+        
+        /// <summary>
+        /// XML serializable sleeve placement point Z coordinate
+        /// </summary>
+        public double SleevePlacementPointZ
+        {
+            get => SleevePlacementPoint?.Z ?? 0.0;
+            set { 
+                if (SleevePlacementPoint == null) 
+                    SleevePlacementPoint = new XYZ(0, 0, value); 
+                else 
+                    SleevePlacementPoint = new XYZ(SleevePlacementPoint.X, SleevePlacementPoint.Y, value);
+            }
+        }
+        
+        /// <summary>
+        /// Sleeve placement point in ACTIVE document coordinates (for proximity calculation)
+        /// </summary>
+        [XmlIgnore]
+        public XYZ SleevePlacementPointActiveDocument { get; set; }
+        
+        /// <summary>
+        /// XML serializable sleeve placement point X coordinate in active document
+        /// </summary>
+        public double SleevePlacementPointActiveDocumentX
+        {
+            get => SleevePlacementPointActiveDocument?.X ?? 0.0;
+            set { 
+                if (SleevePlacementPointActiveDocument == null) 
+                    SleevePlacementPointActiveDocument = new XYZ(value, 0, 0); 
+                else 
+                    SleevePlacementPointActiveDocument = new XYZ(value, SleevePlacementPointActiveDocument.Y, SleevePlacementPointActiveDocument.Z); 
+            }
+        }
+        
+        /// <summary>
+        /// XML serializable sleeve placement point Y coordinate in active document
+        /// </summary>
+        public double SleevePlacementPointActiveDocumentY
+        {
+            get => SleevePlacementPointActiveDocument?.Y ?? 0.0;
+            set { 
+                if (SleevePlacementPointActiveDocument == null) 
+                    SleevePlacementPointActiveDocument = new XYZ(0, value, 0); 
+                else 
+                    SleevePlacementPointActiveDocument = new XYZ(SleevePlacementPointActiveDocument.X, value, SleevePlacementPointActiveDocument.Z); 
+            }
+        }
+        
+        /// <summary>
+        /// XML serializable sleeve placement point Z coordinate in active document
+        /// </summary>
+        public double SleevePlacementPointActiveDocumentZ
+        {
+            get => SleevePlacementPointActiveDocument?.Z ?? 0.0;
+            set { 
+                if (SleevePlacementPointActiveDocument == null) 
+                    SleevePlacementPointActiveDocument = new XYZ(0, 0, value); 
+                else 
+                    SleevePlacementPointActiveDocument = new XYZ(SleevePlacementPointActiveDocument.X, SleevePlacementPointActiveDocument.Y, value);
+            }
+        }
+        
+        /// <summary>
+        /// Ensures SleevePlacementPointActiveDocument is properly reconstructed from XML-serializable properties
+        /// Call this after XML deserialization to ensure SleevePlacementPointActiveDocument is not null
+        /// </summary>
+        public void EnsureSleevePlacementPointActiveDocumentReconstructed()
+        {
+            if (SleevePlacementPointActiveDocument == null && (SleevePlacementPointActiveDocumentX != 0 || SleevePlacementPointActiveDocumentY != 0 || SleevePlacementPointActiveDocumentZ != 0))
+            {
+                SleevePlacementPointActiveDocument = new XYZ(SleevePlacementPointActiveDocumentX, SleevePlacementPointActiveDocumentY, SleevePlacementPointActiveDocumentZ);
+            }
+        }
+        
+        /// <summary>
+        /// Ensures SleevePlacementPoint is properly reconstructed from XML-serializable properties
+        /// Call this after XML deserialization to ensure SleevePlacementPoint is not null
+        /// </summary>
+        public void EnsureSleevePlacementPointReconstructed()
+        {
+            if (SleevePlacementPoint == null && (SleevePlacementPointX != 0 || SleevePlacementPointY != 0 || SleevePlacementPointZ != 0))
+            {
+                SleevePlacementPoint = new XYZ(SleevePlacementPointX, SleevePlacementPointY, SleevePlacementPointZ);
+            }
+        }
         
         /// <summary>
         /// When this clash zone was first detected
@@ -367,53 +533,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         
         // NEW: Pre-calculated placement data (calculated during refresh, used during placement)
         
-        /// <summary>
-        /// Pre-calculated final placement point for the sleeve (no calculation needed during placement)
-        /// </summary>
-        [XmlIgnore]
-        public XYZ SleevePlacementPoint { get; set; }
-        
-        /// <summary>
-        /// XML serializable sleeve placement point X coordinate
-        /// </summary>
-        public double SleevePlacementPointX
-        {
-            get => SleevePlacementPoint?.X ?? 0.0;
-            set { 
-                if (SleevePlacementPoint == null) 
-                    SleevePlacementPoint = new XYZ(value, 0, 0); 
-                else 
-                    SleevePlacementPoint = new XYZ(value, SleevePlacementPoint.Y, SleevePlacementPoint.Z); 
-            }
-        }
-        
-        /// <summary>
-        /// XML serializable sleeve placement point Y coordinate
-        /// </summary>
-        public double SleevePlacementPointY
-        {
-            get => SleevePlacementPoint?.Y ?? 0.0;
-            set { 
-                if (SleevePlacementPoint == null) 
-                    SleevePlacementPoint = new XYZ(0, value, 0); 
-                else 
-                    SleevePlacementPoint = new XYZ(SleevePlacementPoint.X, value, SleevePlacementPoint.Z); 
-            }
-        }
-        
-        /// <summary>
-        /// XML serializable sleeve placement point Z coordinate
-        /// </summary>
-        public double SleevePlacementPointZ
-        {
-            get => SleevePlacementPoint?.Z ?? 0.0;
-            set { 
-                if (SleevePlacementPoint == null) 
-                    SleevePlacementPoint = new XYZ(0, 0, value); 
-                else 
-                    SleevePlacementPoint = new XYZ(SleevePlacementPoint.X, SleevePlacementPoint.Y, value); 
-            }
-        }
         
         /// <summary>
         /// Pre-calculated MEP element width including clearance (no linked file access needed during placement)
@@ -528,6 +647,152 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// This flag is set during refresh and used during placement to respect UI state without deleting zones.
         /// </summary>
         public bool IsEligibleByCurrentUi { get; set; } = true;
+        
+        /// <summary>
+        /// ✅ NEW: Set bounding box coordinates from a Revit BoundingBoxXYZ
+        /// This is called during sleeve placement to save bounding box for cheap clustering
+        /// Coordinates are saved in world coordinates - clustering will use appropriate 2D projection
+        /// </summary>
+        public void SetSleeveBoundingBox(BoundingBoxXYZ boundingBox)
+        {
+            if (boundingBox != null)
+            {
+                // ✅ CORRECT: Save world coordinates as-is - clustering will use appropriate 2D projection
+                SleeveBoundingBoxMinX = boundingBox.Min.X;
+                SleeveBoundingBoxMinY = boundingBox.Min.Y;
+                SleeveBoundingBoxMinZ = boundingBox.Min.Z;
+                SleeveBoundingBoxMaxX = boundingBox.Max.X;
+                SleeveBoundingBoxMaxY = boundingBox.Max.Y;
+                SleeveBoundingBoxMaxZ = boundingBox.Max.Z;
+            }
+        }
+        
+        /// <summary>
+        /// ✅ CORRECT: Calculate minimum distance between two rectangles and check if within tolerance
+        /// Uses 2D coordinates based on host type and orientation
+        /// </summary>
+        public bool IsBoundingBoxOverlapping(ClashZone other, double toleranceDistance)
+        {
+            if (other == null) return false;
+            
+            double minDistance;
+            
+            // ✅ DEBUG: Log orientation values
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
+                $"[DISTANCE-DEBUG] Rect1: Min=({SleeveBoundingBoxMinX:F3}, {SleeveBoundingBoxMinY:F3}), Max=({SleeveBoundingBoxMaxX:F3}, {SleeveBoundingBoxMaxY:F3})\n");
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
+                $"[DISTANCE-DEBUG] Rect2: Min=({other.SleeveBoundingBoxMinX:F3}, {other.SleeveBoundingBoxMinY:F3}), Max=({other.SleeveBoundingBoxMaxX:F3}, {other.SleeveBoundingBoxMaxY:F3})\n");
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
+                $"[DISTANCE-DEBUG] HostType={StructuralElementType}, Orientation={MepElementOrientationDirection}\n");
+            
+            // ✅ CORRECT ALGORITHM: Calculate actual minimum distance between rectangles
+            if (StructuralElementType == "Floor")
+            {
+                // Floor sleeves: Use X,Y distance only (ignore Z coordinate)
+                minDistance = CalculateMinimumDistance2D(
+                    SleeveBoundingBoxMinX, SleeveBoundingBoxMinY, SleeveBoundingBoxMaxX, SleeveBoundingBoxMaxY,
+                    other.SleeveBoundingBoxMinX, other.SleeveBoundingBoxMinY, other.SleeveBoundingBoxMaxX, other.SleeveBoundingBoxMaxY);
+            }
+            else if (StructuralElementType == "Wall" || StructuralElementType == "Structural Framing")
+            {
+                // ✅ FIX: Use orientation from grouping logic instead of MepElementOrientationDirection
+                // For walls, we know the orientation from the sleeve placement logic
+                if (MepElementOrientationDirection == "X" || MepElementOrientationDirection == null)
+                {
+                    // Wall/Framing sleeves (X orientation): Use X,Z distance only (ignore Y coordinate)
+                    minDistance = CalculateMinimumDistance2D(
+                        SleeveBoundingBoxMinX, SleeveBoundingBoxMinZ, SleeveBoundingBoxMaxX, SleeveBoundingBoxMaxZ,
+                        other.SleeveBoundingBoxMinX, other.SleeveBoundingBoxMinZ, other.SleeveBoundingBoxMaxX, other.SleeveBoundingBoxMaxZ);
+                }
+                else if (MepElementOrientationDirection == "Y")
+                {
+                    // Wall/Framing sleeves (Y orientation): Use Y,Z distance only (ignore X coordinate)
+                    minDistance = CalculateMinimumDistance2D(
+                        SleeveBoundingBoxMinY, SleeveBoundingBoxMinZ, SleeveBoundingBoxMaxY, SleeveBoundingBoxMaxZ,
+                        other.SleeveBoundingBoxMinY, other.SleeveBoundingBoxMinZ, other.SleeveBoundingBoxMaxY, other.SleeveBoundingBoxMaxZ);
+                }
+                else
+                {
+                    // Default for walls: Use Y,Z distance (most walls are Y-oriented)
+                    minDistance = CalculateMinimumDistance2D(
+                        SleeveBoundingBoxMinY, SleeveBoundingBoxMinZ, SleeveBoundingBoxMaxY, SleeveBoundingBoxMaxZ,
+                        other.SleeveBoundingBoxMinY, other.SleeveBoundingBoxMinZ, other.SleeveBoundingBoxMaxY, other.SleeveBoundingBoxMaxZ);
+                }
+            }
+            else
+            {
+                // Fallback: Use 3D distance for unknown host types
+                minDistance = CalculateMinimumDistance3D(
+                    SleeveBoundingBoxMinX, SleeveBoundingBoxMinY, SleeveBoundingBoxMinZ, 
+                    SleeveBoundingBoxMaxX, SleeveBoundingBoxMaxY, SleeveBoundingBoxMaxZ,
+                    other.SleeveBoundingBoxMinX, other.SleeveBoundingBoxMinY, other.SleeveBoundingBoxMinZ,
+                    other.SleeveBoundingBoxMaxX, other.SleeveBoundingBoxMaxY, other.SleeveBoundingBoxMaxZ);
+            }
+            
+            return minDistance <= toleranceDistance;
+        }
+        
+        /// <summary>
+        /// Calculate minimum distance between two 2D rectangles
+        /// Returns 0 if they overlap, otherwise the shortest distance between any two points
+        /// </summary>
+        private double CalculateMinimumDistance2D(double minX1, double minY1, double maxX1, double maxY1,
+                                                double minX2, double minY2, double maxX2, double maxY2)
+        {
+            // Check if rectangles overlap
+            bool xOverlap = maxX1 >= minX2 && minX1 <= maxX2;
+            bool yOverlap = maxY1 >= minY2 && minY1 <= maxY2;
+            
+            // Debug logging
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
+                $"[DISTANCE-DEBUG] Rect1: Min=({minX1:F3}, {minY1:F3}), Max=({maxX1:F3}, {maxY1:F3})\n");
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
+                $"[DISTANCE-DEBUG] Rect2: Min=({minX2:F3}, {minY2:F3}), Max=({maxX2:F3}, {maxY2:F3})\n");
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
+                $"[DISTANCE-DEBUG] X-overlap: {xOverlap}, Y-overlap: {yOverlap}\n");
+            
+            if (xOverlap && yOverlap)
+            {
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
+                    $"[DISTANCE-DEBUG] Result: OVERLAP (distance = 0)\n");
+                return 0.0; // Rectangles overlap
+            }
+            
+            // Calculate minimum distance between non-overlapping rectangles
+            double dx = Math.Max(0, Math.Max(minX1 - maxX2, minX2 - maxX1));
+            double dy = Math.Max(0, Math.Max(minY1 - maxY2, minY2 - maxY1));
+            double distance = Math.Sqrt(dx * dx + dy * dy);
+            
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
+                $"[DISTANCE-DEBUG] dx={dx:F3}, dy={dy:F3}, distance={distance:F3} feet ({distance * 304.8:F1}mm)\n");
+            
+            return distance;
+        }
+        
+        /// <summary>
+        /// Calculate minimum distance between two 3D bounding boxes
+        /// Returns 0 if they overlap, otherwise the shortest distance between any two points
+        /// </summary>
+        private double CalculateMinimumDistance3D(double minX1, double minY1, double minZ1, double maxX1, double maxY1, double maxZ1,
+                                                  double minX2, double minY2, double minZ2, double maxX2, double maxY2, double maxZ2)
+        {
+            // Check if bounding boxes overlap
+            bool xOverlap = maxX1 >= minX2 && minX1 <= maxX2;
+            bool yOverlap = maxY1 >= minY2 && minY1 <= maxY2;
+            bool zOverlap = maxZ1 >= minZ2 && minZ1 <= maxZ2;
+            
+            if (xOverlap && yOverlap && zOverlap)
+            {
+                return 0.0; // Bounding boxes overlap
+            }
+            
+            // Calculate minimum distance between non-overlapping bounding boxes
+            double dx = Math.Max(0, Math.Max(minX1 - maxX2, minX2 - maxX1));
+            double dy = Math.Max(0, Math.Max(minY1 - maxY2, minY2 - maxY1));
+            double dz = Math.Max(0, Math.Max(minZ1 - maxZ2, minZ2 - maxZ1));
+            
+            return Math.Sqrt(dx * dx + dy * dy + dz * dz);
+        }
     }
     
     /// <summary>

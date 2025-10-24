@@ -39,6 +39,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS
             try
             {
                 CreateLogger();
+                
+                // Initialize optimization services (Phase 1 - Foundation)
+                InitializeOptimizationServices();
 
                 // Validate license before startup - Simple JSE domain check
                 bool licensed = true;
@@ -145,6 +148,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS
                 var exception = (Exception)args.ExceptionObject;
                 Log.Fatal(exception, "Domain unhandled exception");
             };
+        }
+        
+        /// <summary>
+        /// Initialize optimization services for Phase 1 Foundation optimizations
+        /// </summary>
+        private void InitializeOptimizationServices()
+        {
+            try
+            {
+                // Load optimization flags from configuration
+                OptimizationFlags.LoadFromConfiguration();
+                
+                // Initialize cache invalidation monitor
+                if (OptimizationFlags.UseCacheInvalidation)
+                {
+                    DebugLogger.Info("[Application] Initialized Cache Invalidation Monitor");
+                }
+                
+                // Initialize memory management service
+                if (OptimizationFlags.UseMemoryManagement)
+                {
+                    DebugLogger.Info("[Application] Initialized Memory Management Service");
+                }
+                
+                // Initialize smart tolerance service
+                if (OptimizationFlags.UseSmartTolerance)
+                {
+                    DebugLogger.Info("[Application] Initialized Smart Tolerance Service");
+                }
+                
+                // Log optimization status
+                DebugLogger.Info($"[Application] Optimization Services Initialized:\n{OptimizationFlags.GetOptimizationStatus()}");
+                
+                // Log memory statistics
+                var memoryStats = MemoryManagementService.GetMemoryStatistics();
+                DebugLogger.Info($"[Application] Initial Memory Statistics: {memoryStats}");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[Application] Error initializing optimization services: {ex.Message}");
+                // Fallback to safe defaults
+                OptimizationFlags.ResetToSafeDefaults();
+            }
         }
     }
 }
