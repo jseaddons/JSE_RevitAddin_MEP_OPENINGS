@@ -910,6 +910,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var clusters = new List<List<dynamic>>();
             var processed = new HashSet<int>();
             
+            DebugLogger.Log($"[UniversalClusterService] Starting XML clustering for {xmlSleeves.Count} sleeves with tolerance {UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm");
+            
             foreach (var sleeve in xmlSleeves)
             {
                 if (processed.Contains(sleeve.SleeveInstanceId))
@@ -918,25 +920,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var cluster = new List<dynamic> { sleeve };
                 processed.Add(sleeve.SleeveInstanceId);
                 
-                // Find neighbors using bounding box overlap from XML data
-                foreach (var otherSleeve in xmlSleeves)
+                // ✅ IMPROVED: Use iterative expansion to find all connected sleeves
+                bool foundNewNeighbors = true;
+                while (foundNewNeighbors)
                 {
-                    if (processed.Contains(otherSleeve.SleeveInstanceId))
-                        continue;
-                        
-                    if (BoundingBoxesOverlapFromXml(sleeve, otherSleeve, toleranceDist))
+                    foundNewNeighbors = false;
+                    var currentClusterSize = cluster.Count;
+                    
+                    // Find neighbors for all sleeves in current cluster
+                    foreach (var clusterSleeve in cluster.ToList())
                     {
-                        cluster.Add(otherSleeve);
-                        processed.Add(otherSleeve.SleeveInstanceId);
+                        foreach (var otherSleeve in xmlSleeves)
+                        {
+                            if (processed.Contains(otherSleeve.SleeveInstanceId))
+                                continue;
+                                
+                            if (BoundingBoxesOverlapFromXml(clusterSleeve, otherSleeve, toleranceDist))
+                            {
+                                cluster.Add(otherSleeve);
+                                processed.Add(otherSleeve.SleeveInstanceId);
+                                foundNewNeighbors = true;
+                                DebugLogger.Log($"[UniversalClusterService] Added sleeve {otherSleeve.SleeveInstanceId} to cluster (now {cluster.Count} sleeves)");
+                            }
+                        }
                     }
                 }
                 
                 if (cluster.Count > 1) // Only add clusters with multiple sleeves
                 {
                     clusters.Add(cluster);
+                    DebugLogger.Log($"[UniversalClusterService] Final cluster with {cluster.Count} sleeves: {string.Join(", ", cluster.Select(s => s.SleeveInstanceId))}");
                 }
             }
             
+            DebugLogger.Log($"[UniversalClusterService] Formed {clusters.Count} clusters from {xmlSleeves.Count} sleeves");
             return clusters;
         }
         
@@ -2133,12 +2150,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             // ⚠️ CRITICAL: Mark clash zones as cluster-resolved with the actual cluster sleeve ID
             MarkClashZonesAsClusterResolvedWithSleeveId(cluster, inst.Id, xmlFilePath);
+            
+            DebugLogger.Log($"[ClusterService] About to delete {cluster.Count} individual sleeves for cluster sleeve {inst.Id.IntegerValue}");
 
-            // Delete originals
+            // Delete originals - collect ElementIds first, then delete in batch
+            var sleevesToDelete = new List<ElementId>();
             foreach (var s in cluster)
             {
-                doc.Delete(s.Id);
-                deleted++;
+                try
+                {
+                    // Get the actual Revit sleeve by SleeveInstanceId
+                    var sleeveElementId = new ElementId(s.SleeveInstanceId);
+                    var sleeveElement = doc.GetElement(sleeveElementId);
+                    
+                    if (sleeveElement != null && sleeveElement is FamilyInstance sleeveInstance)
+                    {
+                        sleevesToDelete.Add(sleeveElementId);
+                        DebugLogger.Log($"[ClusterService] Queued for deletion: individual sleeve {sleeveElementId.IntegerValue}");
+                    }
+                    else
+                    {
+                        DebugLogger.Warning($"[ClusterService] Could not find sleeve {s.SleeveInstanceId} for deletion");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Error($"[ClusterService] Error preparing sleeve {s.SleeveInstanceId} for deletion: {ex.Message}");
+                }
+            }
+            
+            // Delete all sleeves in batch (within the same transaction)
+            if (sleevesToDelete.Count > 0)
+            {
+                try
+                {
+                    doc.Delete(sleevesToDelete);
+                    deleted = sleevesToDelete.Count;
+                    DebugLogger.Log($"[ClusterService] Successfully deleted {deleted} individual sleeves in batch");
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Error($"[ClusterService] Error deleting sleeves in batch: {ex.Message}");
+                    deleted = 0;
+                }
             }
         }
 
@@ -2199,88 +2253,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (heightParam != null && !heightParam.IsReadOnly) heightParam.Set(openingHeight);
 
                 // Get actual host thickness for Depth parameter (through-wall dimension)
-                // ⚠️ CRITICAL: Use ClashZone.StructuralElementThickness (pre-calculated during refresh)
+                // ✅ FIXED: Use XML data instead of Revit API calls
                 var firstSleeve = cluster[0];
-                var mepIdParam = firstSleeve.LookupParameter("MEP_ElementId");
-                double hostThickness = openingDepth;  // Default fallback
+                double hostThickness = openingDepth;  // Default fallback to calculated depth
                 
-                if (mepIdParam != null)
+                // Try to get thickness from clash zone using SleeveInstanceId
+                var clashZone = GetClashZoneBySleeveInstanceId(firstSleeve.SleeveInstanceId);
+                if (clashZone != null)
                 {
-                    long mepId = mepIdParam.AsInteger();
                     File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                        $"[CLUSTER-DEPTH] Sleeve {inst.Id}: Looking up ClashZone for MEP_ElementId={mepId}\n");
+                        $"[CLUSTER-DEPTH] Found ClashZone for SleeveInstanceId={firstSleeve.SleeveInstanceId}, StructThickness={clashZone.StructuralElementThickness:F6}ft ({UnitUtils.ConvertFromInternalUnits(clashZone.StructuralElementThickness, UnitTypeId.Millimeters):F1}mm)\n");
                     
-                    var clashZone = GetClashZoneByMepElementId(mepId);
-                    if (clashZone != null)
+                    if (clashZone.StructuralElementThickness > 0)
                     {
-                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                            $"[CLUSTER-DEPTH] Found ClashZone {clashZone.Id}, StructThickness={clashZone.StructuralElementThickness:F6}ft ({UnitUtils.ConvertFromInternalUnits(clashZone.StructuralElementThickness, UnitTypeId.Millimeters):F1}mm)\n");
-                        
-                        if (clashZone.StructuralElementThickness > 0)
-                        {
-                            hostThickness = clashZone.StructuralElementThickness;
-                        }
-                    }
-                    else
-                    {
-                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                            $"[CLUSTER-DEPTH] ClashZone NOT FOUND for MEP_ElementId={mepId}\n");
+                        hostThickness = clashZone.StructuralElementThickness;
                     }
                 }
+                else
+                {
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                        $"[CLUSTER-DEPTH] ClashZone NOT FOUND for SleeveInstanceId={firstSleeve.SleeveInstanceId}, using calculated depth\n");
+                }
                 
-                // Fallback: Try to get from host element directly if ClashZone thickness was not available
+                // ✅ FIXED: Use calculated depth as final fallback (no Revit API calls needed)
                 if (hostThickness <= 0.0)
                 {
-                    if (groupKey.hostType == "Wall")
-                    {
-                        var wall = cluster[0].Host as Wall;
-                        if (wall != null)
-                        {
-                            hostThickness = wall.get_Parameter(BuiltInParameter.WALL_ATTR_WIDTH_PARAM)?.AsDouble() ?? wall.Width;
-                            DebugLogger.Log($"[ClusterService] Wall thickness from host element: {UnitUtils.ConvertFromInternalUnits(hostThickness, UnitTypeId.Millimeters):F1}mm");
-                        }
-                    }
-                    else if (groupKey.hostType == "Structural Framing")
-                    {
-                        var framing = cluster[0].Host as FamilyInstance;
-                        if (framing != null)
-                        {
-                            var framingType = framing.Symbol;
-                            var bParam = framingType.LookupParameter("b");
-                            if (bParam != null && bParam.StorageType == StorageType.Double)
-                            {
-                                hostThickness = bParam.AsDouble();
-                                DebugLogger.Log($"[ClusterService] Framing 'b' parameter used for Depth: {UnitUtils.ConvertFromInternalUnits(hostThickness, UnitTypeId.Millimeters):F1}mm");
-                            }
-                            else
-                            {
-                                // ⚠️ BUG FIX: Use bounding box calculation instead of hardcoded 500mm
-                                var framingBbox = framing.get_BoundingBox(null);
-                                if (framingBbox != null)
-                                {
-                                    // Calculate thickness from bounding box
-                                    var thickness = Math.Max(
-                                        Math.Max(
-                                            framingBbox.Max.X - framingBbox.Min.X,
-                                            framingBbox.Max.Y - framingBbox.Min.Y
-                                        ),
-                                        framingBbox.Max.Z - framingBbox.Min.Z
-                                    );
-                                    hostThickness = thickness;
-                                    DebugLogger.Log($"[ClusterService] FRAMING FIX: Using calculated thickness {UnitUtils.ConvertFromInternalUnits(thickness, UnitTypeId.Millimeters):F1}mm instead of 500mm fallback");
-                                }
-                                else
-                                {
-                                    hostThickness = UnitUtils.ConvertToInternalUnits(500.0, UnitTypeId.Millimeters);
-                                    DebugLogger.Log($"[ClusterService] FRAMING FALLBACK: Using 500mm fallback (no bounding box available)");
-                                }
-                            }
-                        }
-                    }
+                    hostThickness = openingDepth;  // Use calculated depth from bounding box
+                    DebugLogger.Log($"[ClusterService] Using calculated depth as fallback: {UnitUtils.ConvertFromInternalUnits(hostThickness, UnitTypeId.Millimeters):F1}mm");
                 }
                 
                 File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                    $"[CLUSTER-DIM] Sleeve {inst.Id}: Mapped Depth = {UnitUtils.ConvertFromInternalUnits(openingDepth, UnitTypeId.Millimeters):F1}mm, HostThickness = {UnitUtils.ConvertFromInternalUnits(hostThickness, UnitTypeId.Millimeters):F1}mm\n");
+                    $"[CLUSTER-DIM] Sleeve {inst.Id}: Calculated Depth = {UnitUtils.ConvertFromInternalUnits(openingDepth, UnitTypeId.Millimeters):F1}mm, Final HostThickness = {UnitUtils.ConvertFromInternalUnits(hostThickness, UnitTypeId.Millimeters):F1}mm\n");
                     
                 // Set the mapped dimensions (use hostThickness for depth instead of openingDepth)
                 if (widthParam != null && !widthParam.IsReadOnly) widthParam.Set(openingWidth);
