@@ -798,6 +798,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         clashZone.SleeveInstanceId = sleeveInstance.Id.IntegerValue;
                         clashZone.SleeveFamilyName = familySymbol.Family.Name;
                         
+                        // ✅ GLOBAL XML: Record placement in global XML
+                        try
+                        {
+                            var categoryName = clashZone.MepElementCategory;
+                            var globalManager = new GlobalFlagManager(categoryName);
+                            
+                            // Get filter filename from constructor parameter or use default
+                            string filterName = _filterName ?? "unknown_filter.xml";
+                            
+                            globalManager.RecordPlacement(
+                                clashZone.MepElementId,
+                                clashZone.StructuralElementId,
+                                sleeveInstance.Id,
+                                null, // Individual sleeve, no cluster
+                                filterName
+                            );
+                            
+                            DebugLogger.Info($"[GLOBAL-XML] Recorded individual sleeve {sleeveInstance.Id.IntegerValue} for MEP={clashZone.MepElementId.IntegerValue}, Host={clashZone.StructuralElementId.IntegerValue}");
+                        }
+                        catch (Exception globalEx)
+                        {
+                            DebugLogger.Warning($"[GLOBAL-XML] Error recording placement: {globalEx.Message}");
+                        }
+                        
                         // ✅ CRITICAL LOGGING: Log SleeveInstanceId immediately after placement
                         System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
                             $"[SLEEVE-PLACED] {DateTime.Now:HH:mm:ss.fff} - ClashZone {clashZone.Id}: SleeveInstanceId = {clashZone.SleeveInstanceId}, RevitElementId = {sleeveInstance.Id.IntegerValue}, Category = {clashZone.MepElementCategory}\n");
@@ -1777,7 +1801,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var depthParam = sleeveInstance.LookupParameter("Depth");
                 var wallWidthParam = sleeveInstance.LookupParameter("Wall Width");
         
-        double thicknessMm = UnitUtils.ConvertFromInternalUnits(clashZone.StructuralElementThickness, UnitTypeId.Millimeters);
+        // Get the correct thickness based on host type
+        double thickness = 0.0;
+        if (isWallHost)
+        {
+            thickness = clashZone.WallThickness > 0 ? clashZone.WallThickness : clashZone.StructuralElementThickness;
+        }
+        else if (isFramingHost)
+        {
+            thickness = clashZone.FramingThickness > 0 ? clashZone.FramingThickness : clashZone.StructuralElementThickness;
+        }
+        else
+        {
+            thickness = clashZone.StructuralElementThickness;
+        }
+        
+        double thicknessMm = UnitUtils.ConvertFromInternalUnits(thickness, UnitTypeId.Millimeters);
         
         try
         {
@@ -1791,7 +1830,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         if (isWallHost && wallWidthParam != null && !wallWidthParam.IsReadOnly)
         {
             // Wall host: use Wall Width parameter
-                    wallWidthParam.Set(clashZone.StructuralElementThickness);
+                    wallWidthParam.Set(thickness);
             DebugLogger.Info($"[UniversalSleevePlacer] WALL: Set Wall Width = {thicknessMm:F1}mm");
             try
             {
@@ -1804,14 +1843,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 else if (depthParam != null && !depthParam.IsReadOnly)
                 {
             // Floor/Framing host: use Depth parameter
-                    depthParam.Set(clashZone.StructuralElementThickness);
+                    depthParam.Set(thickness);
             DebugLogger.Info($"[UniversalSleevePlacer] {(isFramingHost ? "FRAMING" : "FLOOR")}: Set Depth = {thicknessMm:F1}mm");
             try
             {
                 // Verify the parameter was set correctly
                 double depthRead = depthParam.AsDouble();
                 double depthReadMm = UnitUtils.ConvertFromInternalUnits(depthRead, UnitTypeId.Millimeters);
-                bool verified = Math.Abs(depthRead - clashZone.StructuralElementThickness) < 0.0001;
+                bool verified = Math.Abs(depthRead - thickness) < 0.0001;
                 System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
                     $"[DEPTH-SET] Sleeve {sleeveInstance.Id.IntegerValue}: {(isFramingHost ? "FRAMING" : (isWallHost ? "WALL" : "FLOOR"))} - Set Depth = {depthReadMm:F1}mm, Verified={verified} {(verified ? "✓" : "✗")}\n");
             }
@@ -1824,7 +1863,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var typeDepthParam = sleeveInstance.Symbol?.LookupParameter("Depth");
             if (typeDepthParam != null && !typeDepthParam.IsReadOnly)
             {
-                typeDepthParam.Set(clashZone.StructuralElementThickness);
+                typeDepthParam.Set(thickness);
                 DebugLogger.Info($"[UniversalSleevePlacer] Set TYPE Depth = {thicknessMm:F1}mm (instance param not writable)");
                 try
                 {
@@ -2497,69 +2536,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var loc = sleeveInstance.Location as LocationPoint;
                 if (loc != null)
                 {
-                    // ✅ OPTIMIZED: Pipes and Cable Trays on Framing - use pre-calculated framing direction from XML
-                    if ((isPipe || isCableTray) && isFramingHost)
-                    {
-                        // Use pre-calculated framing direction from XML (no Revit API calls!)
-                        XYZ framingDirection = clashZone.StructuralElementNormal; // StructuralElementNormal stores framing direction for framing hosts
-                        
-                        if (framingDirection != null && framingDirection != XYZ.Zero)
-                        {
-                            // Calculate angle from pre-calculated framing direction
-                            double angle = Math.Atan2(framingDirection.Y, framingDirection.X);
-                            
-                            // ✅ CRITICAL FIX: For pipes on structural framing in X direction, add 90° rotation
-                            if (isPipe)
-                            {
-                                // Check if framing is in X direction (horizontal)
-                                double absX = Math.Abs(framingDirection.X);
-                                double absY = Math.Abs(framingDirection.Y);
-                                
-                                if (absX > absY)
-                                {
-                                    // X-direction framing: add 90° rotation for pipes
-                                    angle += Math.PI / 2; // Add 90 degrees
-                                    DebugLogger.Info($"[UniversalSleevePlacer] FRAMING+PIPE: X-direction framing detected - adding 90° rotation");
-                                }
-                            }
-                            
-                            double angleDegrees = angle * 180 / Math.PI;
-                            
-                            Line rotationAxis = Line.CreateBound(loc.Point, loc.Point + XYZ.BasisZ);
-                            ElementTransformUtils.RotateElement(_doc, sleeveInstance.Id, rotationAxis, angle);
-                            
-                            string mepType = isPipe ? "PIPE" : "CABLETRAY";
-                            DebugLogger.Info($"[UniversalSleevePlacer] FRAMING+{mepType}: Using pre-calculated framing direction {angleDegrees:F1}° from XML");
-                            try
-                            {
-                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
-                                    $"[ORIENT-APPLY] Sleeve {sleeveInstance.Id.IntegerValue}: FRAMING+{mepType} using XML framing direction {angleDegrees:F1}° ✓\n");
-                            }
-                            catch { }
-                        }
-                        else
-                        {
-                            // Fallback: Use MEP direction if framing direction not available in XML
-                            double angle = Math.Atan2(mepOrientation.Y, mepOrientation.X);
-                            
-                            // ✅ CRITICAL FIX: For pipes on structural framing, add 90° rotation in fallback too
-                            if (isPipe)
-                            {
-                                // For pipes, add 90° rotation as default behavior for structural framing
-                                angle += Math.PI / 2; // Add 90 degrees
-                                DebugLogger.Info($"[UniversalSleevePlacer] FRAMING+PIPE: Fallback mode - adding 90° rotation for pipes");
-                            }
-                            
-                            double angleDegrees = angle * 180 / Math.PI;
-                            
-                            Line rotationAxis = Line.CreateBound(loc.Point, loc.Point + XYZ.BasisZ);
-                            ElementTransformUtils.RotateElement(_doc, sleeveInstance.Id, rotationAxis, angle);
-                            
-                            string mepType = isPipe ? "PIPE" : "CABLETRAY";
-                            DebugLogger.Warning($"[UniversalSleevePlacer] FRAMING+{mepType}: Framing direction not in XML, using MEP direction {angleDegrees:F1}° (fallback)");
-                        }
-                    }
-                    else
+                    // Skip the old framing logic - let the wall logic handle it (like walls)
+                    if (true) // Process all elements through wall logic
                     {
                         // DEBUG: Confirm we're reaching the wall direction logic
                         try
@@ -2631,57 +2609,51 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                         }
                         
-                        // Use calculated wall direction type (from XML or fallback)
-                        string wallType = wallDirectionType;
+                        // ✅ SIMPLIFIED: One code path for both walls and framing
+                        // Check HostOrientation from XML (works for both walls and framing)
+                        string hostOrientation = clashZone.HostOrientation ?? "";
+                        bool needsRotation = false; // Whether we need to apply +90° rotation
                         
-                        DebugLogger.Info($"[UniversalSleevePlacer] WALL/FRAMING: Using wall direction type: {wallType}");
-                        
-                        // Log to placement_debug.log for immediate visibility
-                            try
-                            {
-                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
-                                $"[WALL-DIR-FINAL] Sleeve {sleeveInstance.Id.IntegerValue}: WallDirection=({wallDirection?.X:F3},{wallDirection?.Y:F3},{wallDirection?.Z:F3}), WallType={wallType} ✓\n");
-                            }
-                            catch { }
-                        
-                        // Robust wall orientation logic based on wall direction type
-                        if (wallType == "X-WALL")
+                        if (hostOrientation == "X")
                         {
-                            allowRotate = false; // X-walls need +90° rotation
-                            DebugLogger.Info($"[UniversalSleevePlacer] X-WALL detected: Will apply +90° rotation");
+                            needsRotation = true; // X-orientation needs +90° rotation
+                            DebugLogger.Info($"[UniversalSleevePlacer] HostOrientation=X: Will apply +90° rotation");
                         }
-                        else if (wallType == "Y-WALL")
+                        else if (hostOrientation == "Y")
                         {
-                            allowRotate = true; // Y-walls work naturally with LEFT view families
-                            DebugLogger.Info($"[UniversalSleevePlacer] Y-WALL detected: No rotation needed");
-                        }
-                        else if (wallType == "FRAMING")
-                        {
-                            // For framing, use MEP orientation logic (like old DuctSleevePlacerService)
-                            var framingMepOrientation = clashZone.MepElementOrientation;
-                            if (framingMepOrientation != null)
-                            {
-                                bool isYAxisMep = Math.Abs(framingMepOrientation.Y) > Math.Abs(framingMepOrientation.X);
-                                allowRotate = isYAxisMep; // Rotate only for Y-axis MEP elements
-                                DebugLogger.Info($"[UniversalSleevePlacer] FRAMING: MEP orientation Y-axis={isYAxisMep}, allowRotate={allowRotate}");
-                            }
+                            needsRotation = false; // Y-orientation works naturally with LEFT view families
+                            DebugLogger.Info($"[UniversalSleevePlacer] HostOrientation=Y: No rotation needed");
                         }
                         else
                         {
-                            // Fallback to old logic for unknown types
-                            allowRotate = false;
-                            DebugLogger.Warning($"[UniversalSleevePlacer] Unknown wall type '{wallType}', using fallback logic");
+                            // Fallback: Use wall direction type if HostOrientation not available
+                            if (wallDirectionType == "X-WALL")
+                            {
+                                needsRotation = true;
+                                DebugLogger.Warning($"[UniversalSleevePlacer] Fallback: X-WALL detected - will apply +90° rotation");
+                            }
+                            else if (wallDirectionType == "Y-WALL")
+                            {
+                                needsRotation = false;
+                                DebugLogger.Warning($"[UniversalSleevePlacer] Fallback: Y-WALL detected - no rotation");
+                            }
+                            else
+                            {
+                                // Ultimate fallback
+                                needsRotation = false;
+                                DebugLogger.Warning($"[UniversalSleevePlacer] Unknown orientation - using fallback");
+                            }
                         }
                         
                         // Log to placement_debug.log for immediate visibility
                         try
                         {
                             System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
-                                $"[ORIENT-DECISION] Sleeve {sleeveInstance.Id.IntegerValue}: WallType={wallType}, allowRotate={allowRotate} ✓\n");
+                                $"[ORIENT-DECISION] Sleeve {sleeveInstance.Id.IntegerValue}: HostOrientation={hostOrientation}, needsRotation={needsRotation} ✓\n");
                         }
                         catch { }
                         
-                        if (!allowRotate)
+                        if (needsRotation)
                         {
                             // ==========================================
                             // X-WALL LOGIC (Horizontal walls)
@@ -2726,18 +2698,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
             
-            // Set HostOrientation parameter based on structural normal
-                    if (structuralNormal != null && (structuralNormal.X != 0 || structuralNormal.Y != 0))
+            // Set HostOrientation parameter from XML (pre-calculated during refresh)
+                    if (!string.IsNullOrEmpty(clashZone.HostOrientation))
                     {
-                        double absX = Math.Abs(structuralNormal.X);
-                        double absY = Math.Abs(structuralNormal.Y);
-                        string orientation = absX > absY ? "X" : "Y";
-                        
                         var hostOrientationParam = sleeveInstance.LookupParameter("HostOrientation");
                         if (hostOrientationParam != null && !hostOrientationParam.IsReadOnly)
                         {
-                            hostOrientationParam.Set(orientation);
-                            DebugLogger.Info($"[UniversalSleevePlacer] WALL/FRAMING: Set HostOrientation = {orientation}");
+                            hostOrientationParam.Set(clashZone.HostOrientation);
+                            DebugLogger.Info($"[UniversalSleevePlacer] WALL/FRAMING: Set HostOrientation = {clashZone.HostOrientation} (from XML)");
                         }
                     }
                 }

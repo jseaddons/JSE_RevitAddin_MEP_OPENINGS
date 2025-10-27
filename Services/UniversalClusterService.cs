@@ -176,13 +176,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Get sleeves from XML data only (SleeveInstanceId > 0 means placed sleeves)
                 var rawSleeves = _clashZoneCache.Values
                     .Where(cz => cz.SleeveInstanceId > 0) // Only placed sleeves
+                    .Where(cz => !cz.IsClusterResolved) // ✅ CRITICAL: Skip sleeves already resolved by cluster
                     .Where(cz => string.IsNullOrEmpty(targetCategory) || 
                                 string.Equals(cz.MepElementCategory, targetCategory, StringComparison.OrdinalIgnoreCase))
                     .Select(cz => new { 
                         SleeveInstanceId = cz.SleeveInstanceId,
                         Category = cz.MepElementCategory,
                         HostType = GetHostTypeFromClashZone(cz),
-                        Orientation = cz.MepElementOrientationDirection ?? "Unknown",
+                        Orientation = GetEffectiveOrientationForClustering(cz),
                         BoundingBox = GetBoundingBoxFromClashZone(cz)
                     })
                     .ToList();
@@ -602,6 +603,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     clashZone.SleeveInstanceId = -1; // Individual sleeve was deleted
                                     clashZone.SleeveFamilyName = string.Empty; // Individual sleeve family cleared
                                     
+                                    // ✅ GLOBAL XML: Record cluster placement in global XML
+                                    try
+                                    {
+                                        var categoryName = clashZone.MepElementCategory;
+                                        var globalManager = new GlobalFlagManager(categoryName);
+                                        
+                                        // Get filter filename from XML file path
+                                        string filterName = Path.GetFileName(xmlFile ?? "unknown_filter.xml");
+                                        
+                                        globalManager.RecordPlacement(
+                                            clashZone.MepElementId,
+                                            clashZone.StructuralElementId,
+                                            null, // Individual sleeve was deleted
+                                            clusterSleeveId, // Cluster sleeve ID
+                                            filterName
+                                        );
+                                        
+                                        DebugLogger.Info($"[GLOBAL-XML] Recorded cluster sleeve {clusterSleeveId.IntegerValue} for MEP={clashZone.MepElementId.IntegerValue}, Host={clashZone.StructuralElementId.IntegerValue}");
+                                    }
+                                    catch (Exception globalEx)
+                                    {
+                                        DebugLogger.Warning($"[GLOBAL-XML] Error recording cluster placement: {globalEx.Message}");
+                                    }
+                                    
                                     // ⚠️ CRITICAL: Log flag state AFTER cluster sleeve placement
                                     File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
                                         $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-PLACED] ClashZone {clashZone.Id}: Cluster sleeve {clusterSleeveId.IntegerValue} placed\n");
@@ -973,7 +998,67 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (boundingBoxes.Count == 0)
                     return (0, 0, 0, XYZ.Zero);
 
-                // Calculate overall bounding box
+                // ✅ DEBUG: Log individual sleeve bounding boxes
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                    $"\n[CLUSTER-BBOX] Individual sleeves in cluster ({cluster.Count} sleeves):\n");
+                
+                foreach (var sleeve in cluster)
+                {
+                    var bbox = sleeve.BoundingBox;
+                    if (bbox != null)
+                    {
+                        double sleeveWidth = UnitUtils.ConvertFromInternalUnits(bbox.Max.X - bbox.Min.X, UnitTypeId.Millimeters);
+                        double sleeveHeight = UnitUtils.ConvertFromInternalUnits(bbox.Max.Y - bbox.Min.Y, UnitTypeId.Millimeters);
+                        double sleeveDepth = UnitUtils.ConvertFromInternalUnits(bbox.Max.Z - bbox.Min.Z, UnitTypeId.Millimeters);
+                        
+                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                            $"  Sleeve {sleeve.SleeveInstanceId}: W={sleeveWidth:F1}mm, H={sleeveHeight:F1}mm, D={sleeveDepth:F1}mm, " +
+                            $"Min=({bbox.Min.X:F3}, {bbox.Min.Y:F3}, {bbox.Min.Z:F3}), Max=({bbox.Max.X:F3}, {bbox.Max.Y:F3}, {bbox.Max.Z:F3})\n");
+                    }
+                }
+
+                // ✅ NEW: Calculate total volume accounting for overlaps
+                double totalVolume = 0.0;
+                var processedPairs = new HashSet<string>();
+                
+                // Calculate individual volumes and subtract overlaps
+                for (int i = 0; i < boundingBoxes.Count; i++)
+                {
+                    var bbox1 = boundingBoxes[i];
+                    double vol1 = (bbox1.Max.X - bbox1.Min.X) * (bbox1.Max.Y - bbox1.Min.Y) * (bbox1.Max.Z - bbox1.Min.Z);
+                    totalVolume += vol1;
+                    
+                    // Subtract overlaps with previously processed boxes
+                    for (int j = 0; j < i; j++)
+                    {
+                        var bbox2 = boundingBoxes[j];
+                        var pairKey = $"{Math.Min(i, j)}-{Math.Max(i, j)}";
+                        
+                        if (!processedPairs.Contains(pairKey))
+                        {
+                            // Calculate overlap volume
+                            double overlapX = Math.Max(0, Math.Min(bbox1.Max.X, bbox2.Max.X) - Math.Max(bbox1.Min.X, bbox2.Min.X));
+                            double overlapY = Math.Max(0, Math.Min(bbox1.Max.Y, bbox2.Max.Y) - Math.Max(bbox1.Min.Y, bbox2.Min.Y));
+                            double overlapZ = Math.Max(0, Math.Min(bbox1.Max.Z, bbox2.Max.Z) - Math.Max(bbox1.Min.Z, bbox2.Min.Z));
+                            double overlapVol = overlapX * overlapY * overlapZ;
+                            
+                            if (overlapVol > 0)
+                            {
+                                totalVolume -= overlapVol;
+                                
+                                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                                    $"[OVERLAP] Sleeves {i} and {j}: Overlap Vol={UnitUtils.ConvertFromInternalUnits(overlapVol, UnitTypeId.CubicMillimeters):F2}mm³, " +
+                                    $"Overlap Dim=({UnitUtils.ConvertFromInternalUnits(overlapX, UnitTypeId.Millimeters):F1}mm, " +
+                                    $"{UnitUtils.ConvertFromInternalUnits(overlapY, UnitTypeId.Millimeters):F1}mm, " +
+                                    $"{UnitUtils.ConvertFromInternalUnits(overlapZ, UnitTypeId.Millimeters):F1}mm)\n");
+                            }
+                            
+                            processedPairs.Add(pairKey);
+                        }
+                    }
+                }
+                
+                // Calculate overall bounding box (union of all boxes)
                 double minX = boundingBoxes.Min(bbox => bbox.Min.X);
                 double minY = boundingBoxes.Min(bbox => bbox.Min.Y);
                 double minZ = boundingBoxes.Min(bbox => bbox.Min.Z);
@@ -1080,10 +1165,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     clusters.Add(cluster);
                     DebugLogger.Log($"[UniversalClusterService] Formed cluster with {cluster.Count} sleeves: {string.Join(", ", cluster.Select(s => s.Id.IntegerValue))}");
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                        $"✓ CLUSTER: {string.Join(", ", cluster.Select(s => s.Id.IntegerValue))}\n");
                 }
                 else
                 {
                     DebugLogger.Log($"[UniversalClusterService] Individual sleeve {cluster[0].Id.IntegerValue} (no proximate neighbors)");
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                        $"✗ NO CLUSTER: Individual sleeve {cluster[0].Id.IntegerValue} (no proximate neighbors within {UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm)\n");
                 }
             }
             
@@ -1135,9 +1224,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 else
                 {
-                    // Log non-proximate analysis
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
-                        $"✗ NO BOUNDING-BOX-PROXIMITY: Sleeve {currentSleeve.Id.IntegerValue} -> {candidateSleeve.Id.IntegerValue}: Bounding boxes do not overlap within {UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm\n");
+                    // Log non-proximate analysis (only for specific sleeves to reduce noise)
+                    if (currentSleeve.Id.IntegerValue == 897149 || currentSleeve.Id.IntegerValue == 897154 || currentSleeve.Id.IntegerValue == 897195 ||
+                        candidateSleeve.Id.IntegerValue == 897149 || candidateSleeve.Id.IntegerValue == 897154 || candidateSleeve.Id.IntegerValue == 897195)
+                    {
+                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
+                            $"✗ NO PROXIMITY: Sleeve {currentSleeve.Id.IntegerValue} <-> {candidateSleeve.Id.IntegerValue}: Bounding boxes do not overlap within {UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm\n");
+                    }
                 }
             }
             
@@ -1210,9 +1303,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     other.SleeveBoundingBoxMaxX, other.SleeveBoundingBoxMaxY, other.SleeveBoundingBoxMaxZ);
             }
             
-            // Log the calculated distance
-            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
+            // Log the calculated distance (only for specific sleeves to reduce noise)
+            bool shouldLogDistance = current.SleeveInstanceId == 897149 || current.SleeveInstanceId == 897154 || current.SleeveInstanceId == 897195 ||
+                                     other.SleeveInstanceId == 897149 || other.SleeveInstanceId == 897154 || other.SleeveInstanceId == 897195;
+            
+            if (shouldLogDistance)
+            {
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
                 $"[DISTANCE-DEBUG] Calculated distance: {UnitUtils.ConvertFromInternalUnits(minDistance, UnitTypeId.Millimeters):F1}mm, Tolerance: {UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm\n");
+            }
             
             return minDistance <= toleranceDist;
         }
@@ -1596,6 +1695,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             catch (Exception ex)
             {
                 DebugLogger.Error($"[UniversalClusterService] Error getting host type from clash zone: {ex.Message}");
+            }
+            return "Unknown";
+        }
+
+        /// <summary>
+        /// Get effective orientation for clustering based on host type
+        /// </summary>
+        private string GetEffectiveOrientationForClustering(ClashZone clashZone)
+        {
+            try
+            {
+                string hostType = GetHostTypeFromClashZone(clashZone);
+                
+                // For walls and framing, use HostOrientation (X/Y)
+                if (hostType == "Wall" || hostType == "Structural Framing")
+                {
+                    return clashZone.HostOrientation ?? "Unknown";
+                }
+                // For floors, use MEP element orientation
+                else if (hostType == "Floor")
+                {
+                    return clashZone.MepElementOrientationDirection ?? "Unknown";
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[UniversalClusterService] Error getting effective orientation for clustering: {ex.Message}");
             }
             return "Unknown";
         }
@@ -2065,8 +2191,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var clusterSymbol = allClusterSymbols.First();
             if (!clusterSymbol.IsActive) clusterSymbol.Activate();
 
-            // ✅ FIXED: Calculate cluster bounding box from XML data
-            var (width, height, depth, mid) = GetClusterBoundingBoxFromXml(cluster);
+            // ✅ HYBRID APPROACH: Use XML for clustering, Revit API for accurate bounding box
+            // Step 1: Convert XML cluster to actual Revit sleeves
+            List<FamilyInstance> actualSleeves = new List<FamilyInstance>();
+            foreach (var xmlSleeve in cluster)
+            {
+                try
+                {
+                    var sleeveId = new ElementId(xmlSleeve.SleeveInstanceId);
+                    var sleeve = doc.GetElement(sleeveId) as FamilyInstance;
+                    if (sleeve != null)
+                    {
+                        actualSleeves.Add(sleeve);
+                    }
+                    else
+                    {
+                        DebugLogger.Warning($"[ClusterService] Sleeve ID {xmlSleeve.SleeveInstanceId} not found in document for cluster");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Error($"[ClusterService] Error getting sleeve {xmlSleeve.SleeveInstanceId} from document: {ex.Message}");
+                }
+            }
+            
+            if (actualSleeves.Count == 0)
+            {
+                DebugLogger.Error($"[ClusterService] No actual sleeves found for cluster group, skipping placement.");
+                return;
+            }
+            
+            // Step 2: Use ClusterBoundingBoxServices to get accurate bounding box from actual sleeves
+            var (width, height, depth, mid) = ClusterBoundingBoxServices.GetClusterBoundingBox(actualSleeves);
+            
+            DebugLogger.Log($"[ClusterService] ✅ HYBRID APPROACH: Cluster bounding box from Revit API - Width={width:F3}, Height={height:F3}, Depth={depth:F3}");
 
             // ✅ FIXED: Get reference level from XML data (use first sleeve's level)
             Level? refLevel = GetReferenceLevelFromXml(doc, cluster[0]);
@@ -2079,24 +2237,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Place cluster sleeve
             FamilyInstance inst = doc.Create.NewFamilyInstance(mid, clusterSymbol, refLevel!, StructuralType.NonStructural);
 
-            // ✅ FIXED: Apply rotation based on XML data orientation
+            // ✅ FIXED: Apply rotation based on XML data orientation (for both Walls and Framing)
             double rotationAngle = 0.0;
-            if (groupKey.hostType == "Wall")
+            if (groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing")
             {
                 // Get orientation from XML data (stored in MepElementOrientationDirection)
                 string xmlOrientation = groupKey.orientation ?? "Unknown";
                 
                 // Apply rotation based on XML orientation data
                 if (xmlOrientation.Equals("X", StringComparison.OrdinalIgnoreCase))
-            {
-                rotationAngle = Math.PI / 2;  // 90° rotation for X-oriented walls
+                {
+                    rotationAngle = Math.PI / 2;  // 90° rotation for X-oriented walls/framing
                 }
                 else if (xmlOrientation.Equals("Y", StringComparison.OrdinalIgnoreCase))
                 {
-                    rotationAngle = 0.0;  // No rotation for Y-oriented walls
+                    rotationAngle = 0.0;  // No rotation for Y-oriented walls/framing
                 }
                 
-                DebugLogger.Log($"[ClusterService] Wall orientation from XML: '{xmlOrientation}', rotation angle: {rotationAngle * 180 / Math.PI}°");
+                DebugLogger.Log($"[ClusterService] {groupKey.hostType} orientation from XML: '{xmlOrientation}', rotation angle: {rotationAngle * 180 / Math.PI}°");
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                    $"[ROTATION] {groupKey.hostType} orientation: {xmlOrientation}, rotation: {rotationAngle * 180 / Math.PI}°\n");
             }
 
             if (rotationAngle != 0.0)
@@ -2108,7 +2268,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             // Set size parameters (swap dimensions if rotated for orientation alignment)
-            bool shouldSwapDimensions = (groupKey.hostType == "Wall" && rotationAngle != 0.0);
+            // ✅ FIX: Apply swap for both walls and framing when X-oriented
+            bool shouldSwapDimensions = ((groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing") && rotationAngle != 0.0);
             SetClusterSizeParameters(doc, inst, cluster, groupKey, width, height, depth, shouldSwapDimensions);
             
             // CRITICAL FIX: Set metadata parameters for cluster sleeve
@@ -2152,6 +2313,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             MarkClashZonesAsClusterResolvedWithSleeveId(cluster, inst.Id, xmlFilePath);
             
             DebugLogger.Log($"[ClusterService] About to delete {cluster.Count} individual sleeves for cluster sleeve {inst.Id.IntegerValue}");
+            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] About to delete {cluster.Count} individual sleeves for cluster sleeve {inst.Id.IntegerValue} (hostType={groupKey.hostType})\n");
 
             // Delete originals - collect ElementIds first, then delete in batch
             var sleevesToDelete = new List<ElementId>();
@@ -2163,6 +2325,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var sleeveElementId = new ElementId(s.SleeveInstanceId);
                     var sleeveElement = doc.GetElement(sleeveElementId);
                     
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] Checking sleeve {sleeveElementId.IntegerValue}: found={sleeveElement != null}, isFamilyInstance={sleeveElement is FamilyInstance}\n");
+                    
                     if (sleeveElement != null && sleeveElement is FamilyInstance sleeveInstance)
                     {
                         sleevesToDelete.Add(sleeveElementId);
@@ -2171,28 +2335,57 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     else
                     {
                         DebugLogger.Warning($"[ClusterService] Could not find sleeve {s.SleeveInstanceId} for deletion");
+                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] ✗ Sleeve {sleeveElementId.IntegerValue} not found or not a FamilyInstance\n");
                     }
                 }
                 catch (Exception ex)
                 {
                     DebugLogger.Error($"[ClusterService] Error preparing sleeve {s.SleeveInstanceId} for deletion: {ex.Message}");
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] ✗ Exception preparing sleeve: {ex.Message}\n");
                 }
             }
+            
+            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] Total sleeves queued for deletion: {sleevesToDelete.Count}\n");
             
             // Delete all sleeves in batch (within the same transaction)
             if (sleevesToDelete.Count > 0)
             {
                 try
                 {
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] Calling doc.Delete() for {sleevesToDelete.Count} sleeves (hostType={groupKey.hostType})\n");
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] Document modifiable: {doc.IsModifiable}\n");
                     doc.Delete(sleevesToDelete);
                     deleted = sleevesToDelete.Count;
                     DebugLogger.Log($"[ClusterService] Successfully deleted {deleted} individual sleeves in batch");
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] ✓ Successfully deleted {deleted} individual sleeves in batch (hostType={groupKey.hostType})\n");
+                    
+                    // ✅ VERIFY: Check if sleeves were actually deleted
+                    int stillExists = 0;
+                    foreach (var sleeveId in sleevesToDelete)
+                    {
+                        var stillThere = doc.GetElement(sleeveId);
+                        if (stillThere != null)
+                        {
+                            stillExists++;
+                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] ⚠️ WARNING: Sleeve {sleeveId.IntegerValue} still exists after deletion attempt!\n");
+                        }
+                    }
+                    if (stillExists > 0)
+                    {
+                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] ⚠️ WARNING: {stillExists} sleeves still exist after deletion attempt!\n");
+                    }
                 }
                 catch (Exception ex)
                 {
                     DebugLogger.Error($"[ClusterService] Error deleting sleeves in batch: {ex.Message}");
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] ✗ Error deleting sleeves: {ex.Message} (hostType={groupKey.hostType})\n");
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] Stack trace: {ex.StackTrace}\n");
                     deleted = 0;
                 }
+            }
+            else
+            {
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] ⚠️ No sleeves to delete (sleevesToDelete.Count=0) for hostType={groupKey.hostType}\n");
             }
         }
 
@@ -2257,23 +2450,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var firstSleeve = cluster[0];
                 double hostThickness = openingDepth;  // Default fallback to calculated depth
                 
-                // Try to get thickness from clash zone using SleeveInstanceId
-                var clashZone = GetClashZoneBySleeveInstanceId(firstSleeve.SleeveInstanceId);
-                if (clashZone != null)
-                {
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                        $"[CLUSTER-DEPTH] Found ClashZone for SleeveInstanceId={firstSleeve.SleeveInstanceId}, StructThickness={clashZone.StructuralElementThickness:F6}ft ({UnitUtils.ConvertFromInternalUnits(clashZone.StructuralElementThickness, UnitTypeId.Millimeters):F1}mm)\n");
-                    
-                    if (clashZone.StructuralElementThickness > 0)
-                    {
-                        hostThickness = clashZone.StructuralElementThickness;
-                    }
-                }
-                else
-                {
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                        $"[CLUSTER-DEPTH] ClashZone NOT FOUND for SleeveInstanceId={firstSleeve.SleeveInstanceId}, using calculated depth\n");
-                }
+                // ✅ FIXED: Cluster sleeve should use individual sleeve thickness, not structural element thickness
+                // For all host types, use the calculated depth from individual sleeves
+                hostThickness = openingDepth;
+                DebugLogger.Log($"[ClusterService] Cluster sleeve: Using individual sleeve depth {UnitUtils.ConvertFromInternalUnits(hostThickness, UnitTypeId.Millimeters):F1}mm for {groupKey.hostType}");
                 
                 // ✅ FIXED: Use calculated depth as final fallback (no Revit API calls needed)
                 if (hostThickness <= 0.0)

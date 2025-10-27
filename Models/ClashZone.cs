@@ -481,6 +481,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public double StructuralElementThickness { get; set; } = 0.0;
         
         /// <summary>
+        /// Wall thickness (for walls only)
+        /// </summary>
+        public double WallThickness { get; set; } = 0.0;
+        
+        /// <summary>
+        /// Structural framing parameter 'b' thickness (for structural framing only)
+        /// </summary>
+        public double FramingThickness { get; set; } = 0.0;
+        
+        /// <summary>
         /// Pre-calculated structural element normal/direction for orientation calculation
         /// For walls: wall normal vector
         /// For floors: not needed (use MEP orientation)

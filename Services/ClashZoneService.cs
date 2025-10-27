@@ -406,6 +406,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         var newClashZone = CreateClashZone(mepElement, structuralElement, intersectionPoint, boundingBox, document, clearanceSettings);
                         newClashZone.IsCurrentClash = true; // ✅ DEBUG: Mark as current refresh clash
+                        
+                        // ✅ GLOBAL XML: Check if sleeve already exists in global XML
+                        var categoryName = GetElementCategoryName(mepElement);
+                        var globalManager = new GlobalFlagManager(categoryName);
+                        var sleeveState = globalManager.CheckSleeveExistence(document, mepElement.Id, structuralElement.Id);
+                        
+                        if (sleeveState.ExistsInGlobal)
+                        {
+                            if (sleeveState.HasClusterSleeve)
+                            {
+                                // Cluster sleeve exists - mark as cluster resolved
+                                newClashZone.IsClusterResolved = true;
+                                newClashZone.ClusterSleeveInstanceId = sleeveState.Placement.ClusterSleeveId;
+                                _log($"[GLOBAL-XML] Existing cluster sleeve found: {sleeveState.Placement.ClusterSleeveId} for MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                            }
+                            else if (sleeveState.HasIndividualSleeve)
+                            {
+                                // Individual sleeve exists - mark as resolved
+                                newClashZone.IsResolved = true;
+                                newClashZone.SleeveInstanceId = sleeveState.Placement.IndividualSleeveId;
+                                _log($"[GLOBAL-XML] Existing individual sleeve found: {sleeveState.Placement.IndividualSleeveId} for MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                            }
+                            else
+                            {
+                                // Global XML says sleeve exists, but Revit says it doesn't - reset flags
+                                newClashZone.IsResolved = false;
+                                newClashZone.IsClusterResolved = false;
+                                newClashZone.SleeveInstanceId = -1;
+                                newClashZone.ClusterSleeveInstanceId = -1;
+                                _log($"[GLOBAL-XML] Global XML entry exists but sleeve not found in Revit - resetting flags for MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                            }
+                        }
+                        
                         newClashZones.Add(newClashZone);
                         _clashZoneStorage.ClashZones.Add(newClashZone);
                         _log($"New clash zone detected: MEP={mepElement.Id}, Structural={structuralElement.Id}");
@@ -1064,9 +1097,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             continue;
                         }
                         
-                        // ✅ SIMPLIFIED: Only use flags for duplicate avoidance - no expensive spatial checking
-                        // If flags are set correctly, we trust them - no need to verify sleeve existence
-                        _log($"[ResetResolvedFlag] Using flag-based approach for clash zone {clashZone.Id} ({clashZone.MepElementCategory}): IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}");
+                        // ✅ CHEAP APPROACH: Check sleeve existence using ElementId only (no expensive spatial checking)
+                        _log($"[ResetResolvedFlag] Using ElementId-based approach for clash zone {clashZone.Id} ({clashZone.MepElementCategory}): IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}");
+                        
+                        // Check if individual sleeve exists (if marked as resolved)
+                        bool individualSleeveExists = false;
+                        if (needsIndividualCheck && clashZone.SleeveInstanceId > 0)
+                        {
+                            var individualSleeveId = new ElementId(clashZone.SleeveInstanceId);
+                            var individualSleeve = document.GetElement(individualSleeveId);
+                            individualSleeveExists = individualSleeve != null;
+                            
+                            _log($"[ResetResolvedFlag] Checking individual sleeve for clash zone {clashZone.Id} ({clashZone.MepElementCategory}): exists={individualSleeveExists}, IsResolved={clashZone.IsResolved}, SleeveId={clashZone.SleeveInstanceId}");
+                            
+                            if (!individualSleeveExists && !needsClusterCheck)
+                            {
+                                // Individual sleeve deleted - reset individual flags only
+                                clashZone.IsResolved = false;
+                                clashZone.SleeveInstanceId = -1;
+                                clashZone.SleeveFamilyName = string.Empty;
+                                clashZone.LastUpdated = DateTime.Now;
+                                resetCount++;
+                                _log($"[ResetResolvedFlag] ✓ Reset individual flags to FALSE for clash zone {clashZone.Id} ({clashZone.MepElementCategory}) - individual sleeve deleted, allowing re-placement");
+                            }
+                            else if (individualSleeveExists)
+                            {
+                                _log($"[ResetResolvedFlag] Individual sleeve still exists (ID: {clashZone.SleeveInstanceId}) - keeping IsResolved=true");
+                            }
+                        }
                         
                         // Check if cluster sleeve exists (if marked as cluster resolved)
                         bool clusterSleeveExists = false;
@@ -1260,6 +1318,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 StructuralElementType = structuralElementType,
                 HostOrientation = GetHostOrientation(structuralElement), // Pre-calculate orientation (X/Y for walls/framing)
                 StructuralElementThickness = GetElementThickness(structuralElement),
+                WallThickness = GetWallThickness(structuralElement),
+                FramingThickness = GetFramingThickness(structuralElement),
                 
                 StructuralElementNormal = GetStructuralElementNormal(structuralElement), // Pre-calculate normal/direction for orientation
                 WallDirection = wallDirection, // Pre-calculate wall direction for robust X-wall/Y-wall detection
@@ -1849,6 +1909,125 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             catch
             {
                 return 0.1; // Default fallback
+            }
+        }
+        
+        /// <summary>
+        /// Get wall thickness (for walls only)
+        /// </summary>
+        private double GetWallThickness(Element element)
+        {
+            try
+            {
+                if (element is Wall wall)
+                {
+                    double thickness = wall.Width;
+                    DebugLogger.Info($"[WALL-THICKNESS] Wall {element.Id.IntegerValue}: thickness={UnitUtils.ConvertFromInternalUnits(thickness, UnitTypeId.Millimeters):F1}mm");
+                    return thickness;
+                }
+                return 0.0; // Not a wall
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[GetWallThickness] Error: {ex.Message}");
+                return 0.0;
+            }
+        }
+        
+        /// <summary>
+        /// Get structural framing parameter 'b' thickness (for structural framing only)
+        /// </summary>
+        private double GetFramingThickness(Element element)
+        {
+            try
+            {
+                if ((element?.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming))
+                {
+                    // Structural framing: read TYPE parameter 'b' (case-insensitive) regardless of instance/type wrapper
+                    try
+                    {
+                        // Resolve the type element from any element (FamilyInstance or not)
+                        ElementId typeId = ElementId.InvalidElementId;
+                        try { typeId = (element as FamilyInstance)?.GetTypeId() ?? element.GetTypeId(); } catch { }
+                        var typeElem = element.Document?.GetElement(typeId);
+
+                        if (typeElem == null)
+                        {
+                            DebugLogger.Warning($"[FRAMING-THICKNESS] Could not get type element for framing {element.Id.IntegerValue}");
+                            return 0.0;
+                        }
+
+                        Parameter p = null;
+                        double bVal = 0.0;
+
+                        // Try multiple parameter names for breadth/depth
+                        string[] possibleNames = { "b", "B", "Breadth", "Depth", "Width", "Height", "d", "D" };
+
+                        foreach (var paramName in possibleNames)
+                        {
+                            try
+                            {
+                                p = typeElem.LookupParameter(paramName);
+                                if (p != null && !p.IsReadOnly)
+                                {
+                                    bVal = p.AsDouble();
+                                    if (bVal > 0)
+                                    {
+                                        DebugLogger.Info($"[FRAMING-THICKNESS] Found parameter '{paramName}' = {bVal:F6}ft ({UnitUtils.ConvertFromInternalUnits(bVal, UnitTypeId.Millimeters):F1}mm) on framing {element.Id.IntegerValue}");
+                                        break;
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                DebugLogger.Warning($"[FRAMING-THICKNESS] Error reading parameter '{paramName}': {ex.Message}");
+                            }
+                        }
+
+                        // Log all available parameters for debugging if not found
+                        if (bVal <= 0.0)
+                        {
+                            try
+                            {
+                                var parts = new System.Collections.Generic.List<string>();
+                                foreach (Parameter tp in typeElem.Parameters)
+                                {
+                                    var name = tp?.Definition?.Name ?? "<null>";
+                                    string val = string.Empty;
+                                    if (tp.StorageType == StorageType.Double)
+                                    {
+                                        double d = tp.AsDouble();
+                                        double mm = UnitUtils.ConvertFromInternalUnits(d, UnitTypeId.Millimeters);
+                                        val = mm.ToString("F1") + "mm";
+                                    }
+                                    else
+                                    {
+                                        val = tp.AsString() ?? tp.AsValueString() ?? string.Empty;
+                                    }
+                                    parts.Add(name + ":" + val);
+                                }
+                                DebugLogger.Info($"[FRAMING-THICKNESS-PARAMS] typeId={typeId.IntegerValue}: {string.Join(", ", parts)}");
+                            }
+                            catch (Exception ex)
+                            {
+                                DebugLogger.Warning($"[FRAMING-THICKNESS] Error logging parameters: {ex.Message}");
+                            }
+                        }
+
+                        return bVal > 0.0 ? bVal : 0.0;
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLogger.Warning($"[FRAMING-THICKNESS] Error getting framing thickness: {ex.Message}");
+                        return 0.0;
+                    }
+                }
+                return 0.0; // Not structural framing
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[GetFramingThickness] Error: {ex.Message}");
+                return 0.0;
             }
         }
         
