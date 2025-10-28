@@ -46,16 +46,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// Get clash zone by ID from current cache
-        /// </summary>
-        public ClashZone GetClashZoneById(Guid clashZoneId)
-        {
-            // This is a simplified implementation - in a real scenario, you'd need to maintain a cache
-            // For now, we'll return null to avoid compilation errors
-            return null;
-        }
-
-        /// <summary>
         /// Execute multiple filters with memory management
         /// </summary>
         public void ExecuteMultipleFilters(List<OpeningFilter> filters, bool showProgress = true)
@@ -88,11 +78,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     ExecuteDisciplineWithMemoryManagement(discipline.Key, discipline.Value, showProgress);
                 }
 
-                // ✅ NEW ARCHITECTURE: Orchestrator stops at cluster command
-                // Mark/parameter operations are now handled manually via Parameter Service UI
+                // Execute marking for all disciplines at the end
                 System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] ✅ ORCHESTRATOR COMPLETED - STOPPING AT CLUSTER COMMAND ✅\n");
-                DebugLogger.Info("[OpeningCommandOrchestrator] ✅ ORCHESTRATOR COMPLETED - STOPPING AT CLUSTER COMMAND ✅");
+                    $"[{DateTime.Now:HH:mm:ss}] 🔥 STARTING MARKING PHASE 🔥\n");
+                DebugLogger.Info("[OpeningCommandOrchestrator] 🔥 STARTING MARKING PHASE 🔥");
+                
+                // ✅ PROPER ARCHITECTURE: Call MarkParameterCommand with UI values
+                // MarkParameterCommand handles "ALL" by processing each category with correct UI discipline prefixes
+                
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🔥 Calling MarkParameterCommand for ALL categories with UI values 🔥\n");
+                
+                // ✅ FIX: Pass MarkPrefixSettings to MarkParameterCommand so it can use UI discipline prefixes
+                var markingCommand = new MarkParameterCommand("ALL", _markPrefixes.ProjectPrefix, "ALL", _markPrefixes.RemarkAll, _markPrefixes);
+                markingCommand.Execute(new UIApplication(_document.Application));
+                
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ✅ MarkParameterCommand completed for ALL categories\n");
+                
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🔥 MARKING PHASE COMPLETED 🔥\n");
+                DebugLogger.Info("[OpeningCommandOrchestrator] 🔥 MARKING PHASE COMPLETED 🔥");
 
                 DebugLogger.Info("[OpeningCommandOrchestrator] All filters executed successfully");
             }
@@ -254,17 +260,74 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ PERFORMANCE FIX: Get XML file path for this category to avoid loading all 22 XML files
                 string xmlFilePath = GetXmlFilePathForFilter(filter);
                 
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] xmlFilePath = {xmlFilePath ?? "NULL"}\n");
+                
                 // Use UniversalClusterService directly (service-based architecture)
+                List<FamilyInstance> placedClusterSleeves = new List<FamilyInstance>();
+                
                 using (var tx = new Transaction(_document, $"Cluster {categoryString} Openings"))
                 {
                     tx.Start();
                     
                     var clusterService = new UniversalClusterService();
-                    var (placedCount, deletedCount) = clusterService.ClusterSleeves(_document, categoryString, _uiDocument, xmlFilePath, filter.Name);
+                    // ✅ FIX: Pass filter name to clustering service so it can set it on cluster sleeves
+                    var (placedCount, deletedCount) = clusterService.ClusterSleeves(_document, categoryString, _uiDocument, xmlFilePath, filter.Name, placedClusterSleeves);
                     
                     tx.Commit();
                     
                     DebugLogger.Info($"[OpeningCommandOrchestrator] ✓ Clustering complete for {categoryString}: {placedCount} clusters placed, {deletedCount} individual sleeves deleted");
+                }
+                
+                // ✅ PERFORMANCE FIX: After placing cluster sleeves, regenerate document and save their bounding boxes to XML
+                // This uses SleeveCoordinateService to update coordinates (same as individual sleeves)
+                if (placedClusterSleeves.Count > 0)
+                {
+                    DebugLogger.Info($"[OpeningCommandOrchestrator] Regenerating document and updating coordinates for {placedClusterSleeves.Count} cluster sleeves");
+                    
+                    // Step 1: Regenerate document to ensure bounding boxes are available
+                    _document.Regenerate();
+                    
+                    // Step 2: Wait for regeneration to complete
+                    System.Threading.Thread.Sleep(200);
+                    
+                    // Step 3: Save cluster sleeve bounding boxes to XML
+                    try
+                    {
+                        DebugLogger.Info($"[OpeningCommandOrchestrator] About to call UpdateSleeveCoordinatesInXml with xmlFilePath: {xmlFilePath ?? "NULL"}");
+                        var coordinateService = new SleeveCoordinateService(_document);
+                        coordinateService.UpdateSleeveCoordinatesInXml(xmlFilePath);
+                        DebugLogger.Info($"[OpeningCommandOrchestrator] ✓ Updated sleeve coordinates for cluster sleeves");
+                    }
+                    catch (Exception coordEx)
+                    {
+                        DebugLogger.Error($"[OpeningCommandOrchestrator] Error updating coordinates: {coordEx.Message}");
+                    }
+                    
+                    // Step 4: Reload cache with updated cluster sleeve coordinates
+                    try
+                    {
+                        var clusterServiceReload = new UniversalClusterService();
+                        clusterServiceReload.LoadClashZoneCacheForCleanup(xmlFilePath, categoryString, _document, filter.Name);
+                        DebugLogger.Info($"[OpeningCommandOrchestrator] ✓ Reloaded cache with cluster sleeve coordinates");
+                        
+                        // Step 5: NOW run cleanup with updated cache (uses XML, not expensive Revit API)
+                        using (var cleanupTx = new Transaction(_document, $"Cleanup sleeves within clusters"))
+                        {
+                            cleanupTx.Start();
+                            var additionalDeleted = clusterServiceReload.CleanupSleevesWithinClustersAfterXmlSave(_document, placedClusterSleeves);
+                            cleanupTx.Commit();
+                            
+                            if (additionalDeleted > 0)
+                            {
+                                DebugLogger.Info($"[OpeningCommandOrchestrator] ✓ Cleaned up {additionalDeleted} additional sleeves within cluster bounding boxes");
+                            }
+                        }
+                    }
+                    catch (Exception cleanupEx)
+                    {
+                        DebugLogger.Error($"[OpeningCommandOrchestrator] Error in cleanup: {cleanupEx.Message}");
+                    }
                 }
             }
             catch (Exception ex)
@@ -362,21 +425,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var cz = clashZones[i];
                     System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
                         $"[{DateTime.Now:HH:mm:ss}] 🔍 ClashZone {i}: IsResolved={cz.IsResolved}, IsClusterResolved={cz.IsClusterResolved}, ClusterSleeveInstanceId={cz.ClusterSleeveInstanceId}\n");
-                    
-                    // ⚠️ CRITICAL: Log comprehensive flag state for debugging
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] [ORCHESTRATOR-LOAD] ClashZone {cz.Id}: MEP={cz.MepElementId.IntegerValue}, Structural={cz.StructuralElementId.IntegerValue}\n");
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] [ORCHESTRATOR-LOAD] FLAGS: IsResolved={cz.IsResolved}, IsClusterResolved={cz.IsClusterResolved}, IsCurrentClash={cz.IsCurrentClash}\n");
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] [ORCHESTRATOR-LOAD] PARAMS: SleeveInstanceId={cz.SleeveInstanceId}, ClusterSleeveInstanceId={cz.ClusterSleeveInstanceId}\n");
                 }
-                    
-                    // ✅ DEBUG: Log current vs old clash zone statistics
-                    int currentClashCount = clashZones.Count(cz => cz.IsCurrentClash);
-                    int oldClashCount = clashZones.Count(cz => !cz.IsCurrentClash);
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] 📊 CLASH ZONE STATISTICS: Total={clashZones.Count}, Current={currentClashCount}, Old={oldClashCount}\n");
                     
                     DebugLogger.Info($"[OpeningCommandOrchestrator] Successfully loaded {clashZones.Count} clash zones from {xmlFilePath}");
                 }
@@ -434,10 +483,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         _ => "Ducts"
                     };
                     
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] About to create UniversalSleevePlacementCommand for category: {categoryString}\n");
+                    // ✅ CRITICAL FIX: Get the filter name with .xml extension for XML file matching
+                    string categoryName = filter.Category switch
+                    {
+                        Models.MepCategory.Ducts => "ducts",
+                        Models.MepCategory.DuctAccessories => "duct_accessories",
+                        Models.MepCategory.Pipes => "pipes",
+                        Models.MepCategory.CableTrays => "cable_trays",
+                        _ => "ducts"
+                    };
+                    string combinedFilterName = $"{filter.Name}_{categoryName}.xml"; // Added .xml
                     
-                    var universalCommand = new UniversalSleevePlacementCommand(_document, clashZones, categoryString, filter.Name, _uiClearances);
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] About to create UniversalSleevePlacementCommand for category: {categoryString}, filter: {combinedFilterName}\n");
+                    
+                    var universalCommand = new UniversalSleevePlacementCommand(_document, clashZones, categoryString, combinedFilterName, _uiClearances);
                     
                     System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
                         $"[{DateTime.Now:HH:mm:ss}] UniversalSleevePlacementCommand created successfully, about to execute\n");

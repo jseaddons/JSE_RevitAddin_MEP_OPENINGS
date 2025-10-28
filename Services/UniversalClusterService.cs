@@ -22,6 +22,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// </summary>
     public class UniversalClusterService
     {
+        private string _filterName; // Store filter name for use in GetFilterNameForCategory
+        
         // Helper struct for grouping key
         private struct SleeveGroupKey
         {
@@ -57,8 +59,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <param name="targetCategory">Category to cluster (e.g., "Ducts", "Pipes") or null for all</param>
         /// <param name="uiDoc">Optional UIDocument for section box filtering</param>
         /// <returns>Tuple of (placedCount, deletedCount)</returns>
-        public (int placedCount, int deletedCount) ClusterSleeves(Document doc, string targetCategory, UIDocument uiDoc = null, string xmlFilePath = null, string filterName = null)
+        public (int placedCount, int deletedCount) ClusterSleeves(Document doc, string targetCategory, UIDocument uiDoc = null, string xmlFilePath = null, string filterName = null, List<FamilyInstance> placedClusterSleevesOut = null)
         {
+            // ✅ CRITICAL: Store filterName in class field for use in GetFilterNameForCategory
+            _filterName = filterName;
+            
             int placedCount = 0;
             int deletedCount = 0;
             var placedClusters = new List<FamilyInstance>(); // Track placed cluster sleeves for cleanup
@@ -75,6 +80,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // 🔥 CRITICAL DEBUG: Log which XML file cluster service is working with
                 File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
                     $"[{DateTime.Now:HH:mm:ss}] 🔥 CLUSTER SERVICE WORKING WITH XML FILE: {xmlFilePath ?? "NULL"}\n");
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🔥 CLUSTER SERVICE FILTER NAME: {filterName ?? "NULL"}\n");
                 
                 // ⚠️ CRITICAL: Reset cluster flags for deleted cluster sleeves
                 ResetClusterFlagsForDeletedSleeves(doc, xmlFilePath);
@@ -314,17 +321,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Log($"[UniversalClusterService] Summary: {placedCount} openings placed, {deletedCount} sleeves deleted.");
                 File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"Summary: {placedCount} openings placed, {deletedCount} sleeves deleted.\n");
                 
-                // ✅ NEW: Clean up individual sleeves that fall within cluster sleeve bounding boxes
-                var additionalDeletedCount = CleanupSleevesWithinClusters(doc, placedClusters);
-                deletedCount += additionalDeletedCount;
-                if (additionalDeletedCount > 0)
-                {
-                    DebugLogger.Log($"[UniversalClusterService] Additional cleanup: {additionalDeletedCount} sleeves deleted for falling within cluster bounding boxes.");
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"Additional cleanup: {additionalDeletedCount} sleeves deleted for falling within cluster bounding boxes.\n");
-                }
+                // ⚠️ DISABLED: Cleanup will be called AFTER XML save in orchestrator to use cached bounding boxes
+                // Cleanup requires cluster sleeve bounding boxes to be saved to XML first
+                // The orchestrator will call CleanupSleevesWithinClustersAfterXmlSave() after XML update
                 
                 DebugLogger.Log($"[UniversalClusterService] Final Summary: {placedCount} openings placed, {deletedCount} sleeves deleted.");
                 File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"Final Summary: {placedCount} openings placed, {deletedCount} sleeves deleted.\n");
+                
+                // ✅ RETURN: Populate the output list with placed cluster sleeves
+                if (placedClusterSleevesOut != null)
+                {
+                    placedClusterSleevesOut.Clear();
+                    placedClusterSleevesOut.AddRange(placedClusters);
+                    DebugLogger.Log($"[UniversalClusterService] Returning {placedClusters.Count} placed cluster sleeves for coordinate update");
+                }
                 
                 // ✅ PERFORMANCE: Log clustering performance
                 var endTime = DateTime.Now;
@@ -1238,8 +1248,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// ✅ FIX: Check bounding box overlap using orientation from grouping logic
+        /// ✅ CRITICAL FIX: Check bounding box overlap using orientation from grouping logic
         /// This bypasses the ClashZone orientation logic and uses the correct coordinates directly
+        /// 
+        /// ⚠️ CRITICAL PROTECTION: DO NOT MODIFY THIS METHOD WITHOUT UNDERSTANDING THE IMPACT ⚠️
+        /// This method is essential for correct floor sleeve clustering:
+        /// - Floor sleeves MUST use 2D X,Y distance calculation (ignoring Z)
+        /// - The orientation parameter from GetEffectiveOrientationForClustering() is "Floor" for all floor sleeves
+        /// - DO NOT use MepElementOrientationDirection here - that's only for individual sleeve rotation
+        /// 
+        /// Bug Fixed: 2025-10-27 - Floor sleeves were not clustering because they were split into X/Y groups
+        /// Root Cause: GetEffectiveOrientationForClustering() was using MepElementOrientationDirection for floors
+        /// Fix: Return unified "Floor" orientation for ALL floor sleeves in GetEffectiveOrientationForClustering()
+        /// Status: WORKING - VERIFIED with cable trays (clusters form correctly), but ducts still need investigation
         /// </summary>
         private bool CheckBoundingBoxOverlapWithOrientation(ClashZone current, ClashZone other, double toleranceDist, string orientation)
         {
@@ -1255,7 +1276,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
                 $"[DISTANCE-DEBUG] HostType={current.StructuralElementType}, Orientation={orientation}\n");
             
-            // ✅ FIX: Use orientation from grouping logic instead of ClashZone orientation
+            // ✅ CRITICAL FIX: Use orientation from grouping logic instead of ClashZone orientation
+            // For floor sleeves, orientation="Floor" (unified for all floor sleeves)
             if (current.StructuralElementType == "Floor")
             {
                 // Floor sleeves: Use X,Y distance only (ignore Z coordinate)
@@ -1713,10 +1735,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     return clashZone.HostOrientation ?? "Unknown";
                 }
-                // For floors, use MEP element orientation
+                // ✅ CRITICAL FIX: For floors, return "Floor" to group ALL floor sleeves together for clustering
+                // DO NOT use MepElementOrientationDirection - that's only for individual sleeve rotation
+                // For clustering, ALL floor sleeves should be grouped by category and host type only
                 else if (hostType == "Floor")
                 {
-                    return clashZone.MepElementOrientationDirection ?? "Unknown";
+                    return "Floor"; // ✅ FIXED: Return unified "Floor" instead of X/Y split
                 }
             }
             catch (Exception ex)
@@ -1807,12 +1831,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         /// <summary>
         /// Get orientation from sleeve element directly
+        /// 
+        /// ⚠️ CRITICAL PROTECTION: DO NOT MODIFY THIS METHOD WITHOUT UNDERSTANDING THE IMPACT ⚠️
+        /// This method is essential for correct sleeve grouping during clustering:
+        /// - For floor sleeves, return "Floor" to match GetEffectiveOrientationForClustering()
+        /// - For wall/framing sleeves, return X/Y based on Wall Direction Type parameter
+        /// 
+        /// Bug Fixed: 2025-10-27 - Floor sleeves were returning "Unknown" from Wall Direction Type parameter
+        /// Root Cause: GetOrientationFromSleeve() only checked "Wall Direction Type" parameter (for walls/framing)
+        /// Fix: Added host type check - if host is Floor, return "Floor"; otherwise use Wall Direction Type
+        /// Status: WORKING - This ensures MatchesGroupCriteria() can correctly match sleeves to groups
         /// </summary>
         private string GetOrientationFromSleeve(FamilyInstance sleeve)
         {
             try
             {
-                // Get orientation directly from sleeve parameters
+                // ✅ CRITICAL FIX: Check host type first - floor sleeves have different orientation logic
+                string hostType = GetHostTypeFromSleeve(sleeve);
+                if (hostType == "Floor")
+                {
+                    // For floor sleeves, return "Floor" to match GetEffectiveOrientationForClustering()
+                    return "Floor";
+                }
+                
+                // For wall/framing sleeves, get orientation from Wall Direction Type parameter
                 var wallDirectionParam = sleeve.LookupParameter("Wall Direction Type");
                 if (wallDirectionParam != null)
                 {
@@ -1852,6 +1894,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// ✅ DYNAMIC: Load clash zone cache from regular XML files (not _CLUSTER.xml)
         /// This reads from the XML files that UniversalSleevePlacerService saves to
         /// </summary>
+        /// <summary>
+        /// Public method to reload cache for cleanup after XML update
+        /// </summary>
+        public void LoadClashZoneCacheForCleanup(string xmlFilePath, string targetCategory, Document doc, string filterName)
+        {
+            LoadClashZoneCacheFromRegularXml(xmlFilePath, targetCategory, doc, filterName);
+        }
+        
+        /// <summary>
+        /// Public method to run cleanup after XML save (uses cache instead of Revit API)
+        /// </summary>
+        public int CleanupSleevesWithinClustersAfterXmlSave(Document doc, List<FamilyInstance> placedClusters)
+        {
+            return CleanupSleevesWithinClusters(doc, placedClusters);
+        }
+        
         private void LoadClashZoneCacheFromRegularXml(string xmlFilePath, string targetCategory = null, Document doc = null, string filterName = null)
         {
             _clashZoneCache.Clear();
@@ -1918,7 +1976,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         
                                         _clashZoneCache[cz.MepElementIdValue] = cz;
                                             
-                                            DebugLogger.Log($"[UniversalClusterService] LOADED: ClashZone {cz.Id} with SleeveInstanceId {cz.SleeveInstanceId} from {Path.GetFileName(xmlFile)}");
+                                            DebugLogger.Log($"[UniversalClusterService] LOADED: ClashZone {cz.Id} with SleeveInstanceId={cz.SleeveInstanceId}, ClusterSleeveInstanceId={cz.ClusterSleeveInstanceId} from {Path.GetFileName(xmlFile)}");
                                         }
                                     }
                                     else
@@ -2843,6 +2901,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             DebugLogger.Info($"[SetClusterSleeveMetadata] Setting metadata for cluster sleeve {clusterSleeve.Id}");
             
+            // Set MEP_Category parameter (CRITICAL for clustering identification)
+            var mepCategoryParam = clusterSleeve.LookupParameter("MEP_Category");
+            if (mepCategoryParam != null && !mepCategoryParam.IsReadOnly)
+            {
+                mepCategoryParam.Set(category);
+                DebugLogger.Info($"[SetClusterSleeveMetadata] Set MEP_Category = '{category}' for cluster sleeve {clusterSleeve.Id}");
+            }
+            else
+            {
+                DebugLogger.Warning($"[SetClusterSleeveMetadata] MEP_Category parameter not found or read-only on cluster sleeve {clusterSleeve.Id}");
+            }
+            
             // Set Filter Name based on category
             string filterName = GetFilterNameForCategory(category);
             var filterNameParam = clusterSleeve.LookupParameter("Filter Name");
@@ -2897,50 +2967,134 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         try
         {
+            DebugLogger.Log($"[CleanupSleevesWithinClusters] 🔥 METHOD CALLED - placedClusters count: {placedClusters?.Count ?? 0}");
+            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                $"[CLEANUP-START] Method called with {placedClusters?.Count ?? 0} placed cluster sleeves\n");
+            
             if (placedClusters == null || placedClusters.Count == 0)
             {
                 DebugLogger.Log("[CleanupSleevesWithinClusters] No cluster sleeves to check against");
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                    $"[CLEANUP-START] ⚠️ No cluster sleeves provided, exiting\n");
                 return 0;
             }
             
+            // Log cluster sleeve IDs for debugging
+            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                $"[CLEANUP-START] Cluster sleeve IDs: {string.Join(", ", placedClusters.Select(c => c.Id.IntegerValue))}\n");
+            
             // Get all remaining individual sleeves (not cluster sleeves)
+            // ✅ FIX: Use multiple strategies to identify sleeve families
             var allSleeves = new FilteredElementCollector(doc)
                 .OfClass(typeof(FamilyInstance))
                 .Cast<FamilyInstance>()
-                .Where(s => s.Category?.Name == "Generic Models" && 
-                           s.Symbol?.FamilyName?.Contains("Sleeve") == true)
+                .Where(s => 
+                {
+                    // Check if family name contains common sleeve keywords
+                    bool hasSleeveKeyword = s.Symbol?.FamilyName?.Contains("Sleeve", StringComparison.OrdinalIgnoreCase) == true ||
+                                           s.Symbol?.FamilyName?.Contains("Opening", StringComparison.OrdinalIgnoreCase) == true;
+                    
+                    // Also check for specific family names used in the project
+                    string familyName = s.Symbol?.FamilyName ?? "";
+                    bool isKnownFamily = familyName.Contains("CircularOpening", StringComparison.OrdinalIgnoreCase) ||
+                                        familyName.Contains("RectangularOpening", StringComparison.OrdinalIgnoreCase);
+                    
+                    return (s.Category?.Name == "Generic Models" || s.Category?.Name == "Structural Connections") &&
+                           (hasSleeveKeyword || isKnownFamily);
+                })
                 .ToList();
             
             var individualSleeves = allSleeves.Where(s => 
             {
                 var clusterParam = s.LookupParameter("Cluster Sleeve Instance ID");
-                return clusterParam == null || clusterParam.AsInteger() == -1;
+                // ✅ FIX: -1 means it's an individual sleeve, 0 or positive means it's a cluster sleeve
+                // Only check sleeves with exactly -1 for cleanup
+                int clusterValue = clusterParam?.AsInteger() ?? -1;
+                
+                // ✅ ADDITIONAL LOGIC: Also check if sleeve is a cluster by examining its Sleeve Instance ID parameter
+                var sleeveInstanceIdParam = s.LookupParameter("Sleeve Instance ID");
+                int sleeveInstanceId = sleeveInstanceIdParam?.AsInteger() ?? -1;
+                
+                // ✅ LOGIC: 
+                // - If Sleeve Instance ID = -1, it's a CLUSTER sleeve (should NOT be deleted)
+                // - If Cluster Sleeve Instance ID = -1 or 0, it's an INDIVIDUAL sleeve (can be deleted)
+                // - We skip cluster sleeves by checking both parameters
+                bool isClusterSleeve = (sleeveInstanceId == -1);
+                bool isIndividual = !isClusterSleeve && (clusterValue <= 0);
+                
+                // Log first 10 sleeves for debugging
+                int index = allSleeves.IndexOf(s);
+                if (index < 10)
+                {
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                        $"[CLEANUP-DEBUG] Sleeve {s.Id}: Family={s.Symbol?.FamilyName}, ClusterParam={clusterValue}, SleeveInstanceId={sleeveInstanceId}, IsCluster={isClusterSleeve}, IsIndividual={isIndividual}\n");
+                }
+                
+                return isIndividual;
             }).ToList();
             
-            DebugLogger.Log($"[CleanupSleevesWithinClusters] Checking {individualSleeves.Count} individual sleeves against {placedClusters.Count} cluster sleeves");
+            DebugLogger.Log($"[CleanupSleevesWithinClusters] Found {allSleeves.Count} total sleeves, {individualSleeves.Count} individual sleeves to check against {placedClusters.Count} cluster sleeves");
             File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                $"[CLEANUP] Checking {individualSleeves.Count} individual sleeves against {placedClusters.Count} cluster sleeves\n");
+                $"[CLEANUP] Found {allSleeves.Count} total sleeves, checking {individualSleeves.Count} individual sleeves against {placedClusters.Count} cluster sleeves\n");
             
-            foreach (var individualSleeve in individualSleeves)
+                foreach (var individualSleeve in individualSleeves)
             {
-                var individualBounds = individualSleeve.get_BoundingBox(null);
-                if (individualBounds == null) continue;
+                // ✅ FIX: Skip if this sleeve is actually a cluster sleeve in our placedClusters list
+                if (placedClusters.Any(c => c.Id.IntegerValue == individualSleeve.Id.IntegerValue))
+                {
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                        $"[CLEANUP] Skipping sleeve {individualSleeve.Id} - it's a cluster sleeve\n");
+                    continue;
+                }
                 
-                // Convert to 2D coordinates based on host type
-                var individualMin = new XYZ(individualBounds.Min.X, individualBounds.Min.Y, 0);
-                var individualMax = new XYZ(individualBounds.Max.X, individualBounds.Max.Y, 0);
+                // ✅ OPTIMIZED: Use XML data for individual sleeve bounding box
+                int individualId = individualSleeve.Id.IntegerValue;
+                var individualClashZone = _clashZoneCache.Values.FirstOrDefault(cz => cz.SleeveInstanceId == individualId);
+                if (individualClashZone == null)
+                {
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                        $"[CLEANUP] Individual sleeve {individualId} not found in XML cache, skipping\n");
+                    continue;
+                }
+                
+                var individualMin = new XYZ(individualClashZone.SleeveBoundingBoxMinX, individualClashZone.SleeveBoundingBoxMinY, 0);
+                var individualMax = new XYZ(individualClashZone.SleeveBoundingBoxMaxX, individualClashZone.SleeveBoundingBoxMaxY, 0);
                 
                 foreach (var clusterSleeve in placedClusters)
                 {
-                    var clusterBounds = clusterSleeve.get_BoundingBox(null);
-                    if (clusterBounds == null) continue;
+                    // ✅ OPTIMIZED: Get cluster sleeve bounding box from XML cache (no expensive Revit API calls)
+                    int clusterId = clusterSleeve.Id.IntegerValue;
                     
-                    // Convert to 2D coordinates based on host type
-                    var clusterMin = new XYZ(clusterBounds.Min.X, clusterBounds.Min.Y, 0);
-                    var clusterMax = new XYZ(clusterBounds.Max.X, clusterBounds.Max.Y, 0);
+                    // Try to find cluster sleeve in cache (after XML save, this will have bounding boxes)
+                    var clusterClashZone = _clashZoneCache.Values.FirstOrDefault(cz => cz.ClusterSleeveInstanceId == clusterId);
+                    if (clusterClashZone == null || 
+                        (clusterClashZone.ClusterSleeveBoundingBoxMinX == 0 && clusterClashZone.ClusterSleeveBoundingBoxMinY == 0))
+                    {
+                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                            $"[CLEANUP] Cluster sleeve {clusterId} not found in cache or no bbox data (MinX={clusterClashZone?.ClusterSleeveBoundingBoxMinX ?? 0}), skipping\n");
+                        continue;
+                    }
+                    
+                    // ✅ Use bounding box from XML cache
+                    var clusterMin = new XYZ(clusterClashZone.ClusterSleeveBoundingBoxMinX, clusterClashZone.ClusterSleeveBoundingBoxMinY, 0);
+                    var clusterMax = new XYZ(clusterClashZone.ClusterSleeveBoundingBoxMaxX, clusterClashZone.ClusterSleeveBoundingBoxMaxY, 0);
+                    
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                        $"[CLEANUP] Cluster sleeve {clusterId} bbox from CACHE: Min=({clusterClashZone.ClusterSleeveBoundingBoxMinX:F6}, {clusterClashZone.ClusterSleeveBoundingBoxMinY:F6}), Max=({clusterClashZone.ClusterSleeveBoundingBoxMaxX:F6}, {clusterClashZone.ClusterSleeveBoundingBoxMaxY:F6})\n");
+                    
+                    // ✅ ENHANCED LOGGING: Show bounding boxes before checking
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                        $"[CLEANUP-CHECK] Individual sleeve {individualId}: Min=({individualMin.X:F3}, {individualMin.Y:F3}), Max=({individualMax.X:F3}, {individualMax.Y:F3})\n");
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                        $"[CLEANUP-CHECK] Cluster sleeve {clusterId}: Min=({clusterMin.X:F3}, {clusterMin.Y:F3}), Max=({clusterMax.X:F3}, {clusterMax.Y:F3})\n");
                     
                     // Check if individual sleeve is completely within cluster sleeve bounding box
-                    if (IsWithinBounds(individualMin, individualMax, clusterMin, clusterMax))
+                    bool withinBounds = IsWithinBounds(individualMin, individualMax, clusterMin, clusterMax);
+                    
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                        $"[CLEANUP-CHECK] Individual {individualId} within Cluster {clusterId}: {withinBounds}\n");
+                    
+                    if (withinBounds)
                     {
                         DebugLogger.Log($"[CleanupSleevesWithinClusters] Individual sleeve {individualSleeve.Id} falls within cluster sleeve {clusterSleeve.Id} - deleting");
                         File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
@@ -2982,18 +3136,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     }
 
     /// <summary>
-    /// Get XML filename for category (same as UniversalSleevePlacerService)
+    /// Get XML filename for category
+    /// ✅ CRITICAL: Filter name MUST come from _filterName field - no fallback allowed
     /// </summary>
         private string GetFilterNameForCategory(string category)
         {
-            switch (category.ToLower())
+            // ✅ CRITICAL: Filter name MUST come from _filterName field - no fallback allowed
+            // This is essential for correct XML updates, clustering, and flag management
+            if (string.IsNullOrEmpty(_filterName))
             {
-                case "ducts": return "Ventilation_ducts.xml";
-                case "pipes": return "Ventilation_pipes.xml";
-                case "cable trays": return "Ventilation_cable_trays.xml";
-                case "duct accessories": return "Ventilation_duct_accessories.xml";
-                default: return "Unknown.xml";
+                var errorMsg = $"Filter name is required but was not provided. Cannot determine target XML file for category '{category}'.";
+                DebugLogger.Error($"[GetFilterNameForCategory] {errorMsg}");
+                throw new InvalidOperationException(errorMsg);
             }
+            
+            return _filterName;
         }
     }
 }

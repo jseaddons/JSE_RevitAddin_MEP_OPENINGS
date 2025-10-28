@@ -79,7 +79,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Update sleeve coordinates in XML files with correct coordinates from model
         /// </summary>
-        public void UpdateSleeveCoordinatesInXml()
+        public void UpdateSleeveCoordinatesInXml(string xmlFilePath = null)
         {
             try
             {
@@ -92,14 +92,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 var coordinateUpdater = new SleeveCoordinateUpdater(_doc);
                 
-                // Load clash zones from XML files
-                var clashZones = LoadClashZonesFromXml();
+                // ✅ DYNAMIC: Load clash zones from specific XML file
+                var clashZones = LoadClashZonesFromXml(xmlFilePath);
                 
                 // Update coordinates
                 coordinateUpdater.UpdateSleeveCoordinates(clashZones);
                 
                 // Save updated XML
-                SaveClashZonesToXml(clashZones);
+                SaveClashZonesToXml(clashZones, xmlFilePath);
                 
                 System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
                     $"Updated coordinates for {sleeves.Count} sleeves\n");
@@ -111,18 +111,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
         
-        private List<ClashZone> LoadClashZonesFromXml()
+        private List<ClashZone> LoadClashZonesFromXml(string xmlFilePath = null)
         {
             var clashZones = new List<ClashZone>();
             
             try
             {
-                // Get all XML files from the correct filters directory (same as other services)
-                var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
-                var xmlFiles = Directory.GetFiles(filtersDirectory, "*.xml")
-                    .Where(f => f.Contains("_ducts.xml") || f.Contains("_pipes.xml") || f.Contains("_cable_trays.xml") || 
-                                f.Contains("_duct_accessories.xml") || f.Contains("_pipe_accessories.xml") || f.Contains("_cable_tray_accessories.xml"))
-                    .ToList();
+                // ✅ STRICT: Use ONLY the specified file path - no file searching allowed
+                if (string.IsNullOrEmpty(xmlFilePath) || !File.Exists(xmlFilePath))
+                {
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
+                        $"[LOAD-XML] ERROR: xmlFilePath not provided or file doesn't exist: {xmlFilePath}\n");
+                    return clashZones;
+                }
+                
+                var xmlFiles = new[] { xmlFilePath };
+                
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
+                    $"[LOAD-XML] Processing ONLY file: {xmlFilePath}\n");
                 
                 foreach (var xmlFile in xmlFiles)
                 {
@@ -168,6 +174,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 if (double.TryParse(node.SelectSingleNode("SleeveBoundingBoxMaxZ")?.InnerText, out double maxZ))
                                     clashZone.SleeveBoundingBoxMaxZ = maxZ;
                                 
+                                // ✅ NEW: Load cluster sleeve instance ID
+                                if (int.TryParse(node.SelectSingleNode("ClusterSleeveInstanceId")?.InnerText, out int clusterSleeveInstanceId))
+                                    clashZone.ClusterSleeveInstanceId = clusterSleeveInstanceId;
+                                
+                                // ✅ DEBUG: Log cluster data loading
+                                if (clashZone.ClusterSleeveInstanceId > 0)
+                                {
+                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
+                                        $"[LOAD-XML] Loaded ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId} from XML for ClashZone {clashZone.Id}\n");
+                                }
+                                
+                                // ✅ NEW: Load cluster sleeve bounding box coordinates
+                                if (double.TryParse(node.SelectSingleNode("ClusterSleeveBoundingBoxMinX")?.InnerText, out double clusterMinX))
+                                    clashZone.ClusterSleeveBoundingBoxMinX = clusterMinX;
+                                if (double.TryParse(node.SelectSingleNode("ClusterSleeveBoundingBoxMinY")?.InnerText, out double clusterMinY))
+                                    clashZone.ClusterSleeveBoundingBoxMinY = clusterMinY;
+                                if (double.TryParse(node.SelectSingleNode("ClusterSleeveBoundingBoxMinZ")?.InnerText, out double clusterMinZ))
+                                    clashZone.ClusterSleeveBoundingBoxMinZ = clusterMinZ;
+                                if (double.TryParse(node.SelectSingleNode("ClusterSleeveBoundingBoxMaxX")?.InnerText, out double clusterMaxX))
+                                    clashZone.ClusterSleeveBoundingBoxMaxX = clusterMaxX;
+                                if (double.TryParse(node.SelectSingleNode("ClusterSleeveBoundingBoxMaxY")?.InnerText, out double clusterMaxY))
+                                    clashZone.ClusterSleeveBoundingBoxMaxY = clusterMaxY;
+                                if (double.TryParse(node.SelectSingleNode("ClusterSleeveBoundingBoxMaxZ")?.InnerText, out double clusterMaxZ))
+                                    clashZone.ClusterSleeveBoundingBoxMaxZ = clusterMaxZ;
+                                
                                 clashZones.Add(clashZone);
                             }
                         }
@@ -191,17 +222,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return clashZones;
         }
         
-        private void SaveClashZonesToXml(List<ClashZone> clashZones)
+        private void SaveClashZonesToXml(List<ClashZone> clashZones, string xmlFilePath = null)
         {
             try
             {
-                // Group clash zones by their XML file (we need to determine which file each belongs to)
-                // For now, we'll update all XML files with the updated coordinates
-                var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
-                var xmlFiles = Directory.GetFiles(filtersDirectory, "*.xml")
-                    .Where(f => f.Contains("_ducts.xml") || f.Contains("_pipes.xml") || f.Contains("_cable_trays.xml") || 
-                                f.Contains("_duct_accessories.xml") || f.Contains("_pipe_accessories.xml") || f.Contains("_cable_tray_accessories.xml"))
-                    .ToList();
+                // ✅ STRICT: Use ONLY the specified file path - no file searching allowed
+                if (string.IsNullOrEmpty(xmlFilePath) || !File.Exists(xmlFilePath))
+                {
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
+                        $"[SAVE-XML] ERROR: xmlFilePath not provided or file doesn't exist: {xmlFilePath}\n");
+                    return;
+                }
+                
+                var xmlFiles = new[] { xmlFilePath };
+                
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
+                    $"[SAVE-XML] Saving to ONLY file: {xmlFilePath}\n");
                 
                 foreach (var xmlFile in xmlFiles)
                 {
@@ -223,7 +259,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     var matchingClashZone = clashZones.FirstOrDefault(cz => cz.Id == clashZoneId);
                                     if (matchingClashZone != null)
                                     {
-                                        // ✅ MASTER DEBUGGER FIX: Only update XML if sleeve exists and has valid coordinates
+                                        // ✅ CRITICAL FIX: Update cluster sleeve bounding boxes FIRST (independent of individual sleeve)
+                                        if (matchingClashZone.ClusterSleeveInstanceId > 0)
+                                        {
+                                            UpdateXmlNode(node, "ClusterSleeveInstanceId", matchingClashZone.ClusterSleeveInstanceId.ToString());
+                                            UpdateXmlNode(node, "ClusterSleeveBoundingBoxMinX", matchingClashZone.ClusterSleeveBoundingBoxMinX.ToString("F6"));
+                                            UpdateXmlNode(node, "ClusterSleeveBoundingBoxMinY", matchingClashZone.ClusterSleeveBoundingBoxMinY.ToString("F6"));
+                                            UpdateXmlNode(node, "ClusterSleeveBoundingBoxMinZ", matchingClashZone.ClusterSleeveBoundingBoxMinZ.ToString("F6"));
+                                            UpdateXmlNode(node, "ClusterSleeveBoundingBoxMaxX", matchingClashZone.ClusterSleeveBoundingBoxMaxX.ToString("F6"));
+                                            UpdateXmlNode(node, "ClusterSleeveBoundingBoxMaxY", matchingClashZone.ClusterSleeveBoundingBoxMaxY.ToString("F6"));
+                                            UpdateXmlNode(node, "ClusterSleeveBoundingBoxMaxZ", matchingClashZone.ClusterSleeveBoundingBoxMaxZ.ToString("F6"));
+                                            
+                                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
+                                                $"[XML-UPDATE-CLUSTER] Updated cluster sleeve {matchingClashZone.ClusterSleeveInstanceId} bbox\n");
+                                        }
+                                        
+                                        // ✅ MASTER DEBUGGER FIX: Update individual sleeve if exists and has valid coordinates
                                         if (matchingClashZone.SleeveInstanceId > 0 && 
                                             matchingClashZone.SleeveBoundingBoxMinX != 0 && 
                                             matchingClashZone.SleeveBoundingBoxMinY != 0)
@@ -629,8 +680,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     Directory.CreateDirectory(filtersDirectory);
                 
                 // ✅ MASTER DEBUGGER FIX: Create filename that matches clustering service expectations
-                var actualFilterName = filterName ?? "Ventilation"; // Fallback to "Ventilation" if not provided
-                var fileName = $"{actualFilterName}_{category.Replace(" ", "_").ToLower()}_CLUSTER.xml";
+                // ✅ CRITICAL: Filter name MUST be provided - no hardcoded fallback
+                if (string.IsNullOrEmpty(filterName))
+                {
+                    var errorMsg = "Filter name is required for cluster XML file creation.";
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
+                        $"[REGENERATE-CLUSTER-XML] ERROR: {errorMsg}\n");
+                    throw new InvalidOperationException(errorMsg);
+                }
+                var fileName = $"{filterName}_{category.Replace(" ", "_").ToLower()}_CLUSTER.xml";
                 
                 // ✅ CRITICAL: Also create the plural version that clustering service expects
                 var pluralCategory = category switch
@@ -640,7 +698,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     "Cable Trays" => "Cable Trays",
                     _ => category
                 };
-                var pluralFileName = $"{actualFilterName}_{pluralCategory.Replace(" ", "_").ToLower()}_CLUSTER.xml";
+                var pluralFileName = $"{filterName}_{pluralCategory.Replace(" ", "_").ToLower()}_CLUSTER.xml";
                 var filePath = Path.Combine(filtersDirectory, fileName);
                 
                 // Create XML document
@@ -819,7 +877,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     FamilyInstance matchedSleeve = null;
                     
-                    // ✅ MASTER DEBUGGER FIX: Try direct ID match first
+                    // ✅ DEBUG: Log if this clashZone has cluster information
+                    if (clashZone.ClusterSleeveInstanceId > 0)
+                    {
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
+                            $"[CLUSTER-CHECK] ClashZone has ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}, SleeveInstanceId={clashZone.SleeveInstanceId}\n");
+                    }
+                    
+                    // ✅ MASTER DEBUGGER FIX: Try direct ID match first (for individual sleeves)
                     if (clashZone.SleeveInstanceId > 0)
                     {
                         var sleeveElement = _doc.GetElement(new ElementId(clashZone.SleeveInstanceId));
@@ -827,7 +892,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             matchedSleeve = sleeve;
                             System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                                $"[DIRECT-ID-MATCH] Found sleeve {clashZone.SleeveInstanceId} by ID\n");
+                                $"[DIRECT-ID-MATCH] Found individual sleeve {clashZone.SleeveInstanceId} by ID\n");
+                        }
+                    }
+                    
+                    // ✅ NEW: Handle cluster sleeves
+                    if (matchedSleeve == null && clashZone.ClusterSleeveInstanceId > 0)
+                    {
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
+                            $"[CLUSTER-LOOKUP] Looking for cluster sleeve ID {clashZone.ClusterSleeveInstanceId} in Revit\n");
+                        
+                        var clusterSleeveElement = _doc.GetElement(new ElementId(clashZone.ClusterSleeveInstanceId));
+                        if (clusterSleeveElement == null)
+                        {
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
+                                $"[CLUSTER-LOOKUP] ERROR: Cluster sleeve ID {clashZone.ClusterSleeveInstanceId} NOT found in Revit!\n");
+                        }
+                        else if (clusterSleeveElement is FamilyInstance clusterSleeve && clusterSleeve.Symbol.FamilyName.Contains("Opening"))
+                        {
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
+                                $"[CLUSTER-LOOKUP] ✓ Found cluster sleeve {clashZone.ClusterSleeveInstanceId} in Revit (Family={clusterSleeve.Symbol.FamilyName})\n");
+                            
+                            // Get bounding box for cluster sleeve
+                            var bbox = clusterSleeve.get_BoundingBox(null);
+                            if (bbox != null)
+                            {
+                                // ✅ NEW: Update cluster sleeve bounding box coordinates
+                                clashZone.ClusterSleeveBoundingBoxMinX = bbox.Min.X;
+                                clashZone.ClusterSleeveBoundingBoxMinY = bbox.Min.Y;
+                                clashZone.ClusterSleeveBoundingBoxMinZ = bbox.Min.Z;
+                                clashZone.ClusterSleeveBoundingBoxMaxX = bbox.Max.X;
+                                clashZone.ClusterSleeveBoundingBoxMaxY = bbox.Max.Y;
+                                clashZone.ClusterSleeveBoundingBoxMaxZ = bbox.Max.Z;
+                                
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
+                                    $"[CLUSTER-SLEEVE] Updated cluster sleeve {clashZone.ClusterSleeveInstanceId} bbox: Min=({bbox.Min.X:F6}, {bbox.Min.Y:F6}), Max=({bbox.Max.X:F6}, {bbox.Max.Y:F6})\n");
+                            }
+                        }
+                        else if (clusterSleeveElement != null)
+                        {
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
+                                $"[CLUSTER-LOOKUP] Element {clashZone.ClusterSleeveInstanceId} is not a FamilyInstance with Opening name\n");
                         }
                     }
                     
