@@ -691,7 +691,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // ✅ PHASE 1 OPTIMIZATION: Use memory management for intersection results
                         var hits = MepIntersectionService.FindIntersections(
                             mep,
-                            mepTransform,
                             structuralElements,
                             _logger);
                         

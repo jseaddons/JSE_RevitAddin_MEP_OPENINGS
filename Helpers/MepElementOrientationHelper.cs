@@ -72,13 +72,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                 }
                 else if (matchesZDimension)
                 {
-                    DebugLogger.Log($"[MepElementOrientationHelper] Width parameter matches Z dimension → Z-ORIENTED (treating as Y-ORIENTED)");
-                    return ("Y-ORIENTED", XYZ.BasisY); // Treat Z-oriented as Y-oriented for rotation
+                    // Width parameter matches Z dimension - for vertical ducts, use the larger of X or Y dimensions
+                    if (bboxWidthMM > bboxHeightMM)
+                    {
+                        DebugLogger.Log($"[MepElementOrientationHelper] Width parameter matches Z dimension, bboxWidth ({bboxWidthMM:F1}mm) > bboxHeight ({bboxHeightMM:F1}mm) → X-ORIENTED");
+                        return ("X-ORIENTED", XYZ.BasisX);
+                    }
+                    else
+                    {
+                        DebugLogger.Log($"[MepElementOrientationHelper] Width parameter matches Z dimension, bboxHeight ({bboxHeightMM:F1}mm) >= bboxWidth ({bboxWidthMM:F1}mm) → Y-ORIENTED");
+                        return ("Y-ORIENTED", XYZ.BasisY);
+                    }
                 }
                 else
                 {
-                    DebugLogger.Log($"[MepElementOrientationHelper] WARNING: Width parameter doesn't match any dimension clearly. Using fallback Y-ORIENTED.");
-                    return ("Y-ORIENTED", XYZ.BasisY); // Default fallback
+                    // Width parameter doesn't match any dimension clearly - use the larger of X or Y
+                    if (bboxWidthMM > bboxHeightMM)
+                    {
+                        DebugLogger.Log($"[MepElementOrientationHelper] Width parameter doesn't match clearly, bboxWidth ({bboxWidthMM:F1}mm) > bboxHeight ({bboxHeightMM:F1}mm) → X-ORIENTED");
+                        return ("X-ORIENTED", XYZ.BasisX);
+                    }
+                    else
+                    {
+                        DebugLogger.Log($"[MepElementOrientationHelper] Width parameter doesn't match clearly, bboxHeight ({bboxHeightMM:F1}mm) >= bboxWidth ({bboxWidthMM:F1}mm) → Y-ORIENTED");
+                        return ("Y-ORIENTED", XYZ.BasisY);
+                    }
                 }
             }
             catch (Exception ex)

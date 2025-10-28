@@ -1962,8 +1962,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                                     }
                                     
-                                    // ✅ DYNAMIC: Only process clash zones with valid SleeveInstanceId (placed sleeves)
-                                    if (cz.SleeveInstanceId > 0)
+                                    // ✅ DYNAMIC: Process clash zones with valid SleeveInstanceId (placed sleeves) OR valid ClusterSleeveInstanceId (for cleanup)
+                                    if (cz.SleeveInstanceId > 0 || cz.ClusterSleeveInstanceId > 0)
                                     {
                                     // Cache by MEP element ID for fast lookup
                                     if (cz.MepElementIdValue > 0)
@@ -1981,7 +1981,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     }
                                     else
                                     {
-                                        DebugLogger.Log($"[UniversalClusterService] SKIP: ClashZone {cz.Id} has no SleeveInstanceId (not placed yet)");
+                                        DebugLogger.Log($"[UniversalClusterService] SKIP: ClashZone {cz.Id} has no SleeveInstanceId or ClusterSleeveInstanceId (not placed yet)");
                                     }
                                 }
                             }

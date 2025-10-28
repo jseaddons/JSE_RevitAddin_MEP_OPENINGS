@@ -14,6 +14,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         // Geometry cache to avoid re-processing same elements
         private static readonly Dictionary<string, Solid?> _geometryCache = new Dictionary<string, Solid?>();
         
+        // PHASE 2 OPTIMIZATION 1: Spatial partitioning service
+        private static readonly SpatialPartitioningService _spatialService = new SpatialPartitioningService(1.0); // 1ft grid
+        
         // PHASE 1 OPTIMIZATION 2: Category Whitelist (2x speedup)
         private static readonly BuiltInCategory[] MEP_CATEGORY_WHITELIST = {
             BuiltInCategory.OST_DuctCurves,
@@ -123,6 +126,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             log($"[BatchIntersection] Pre-computed {structuralData.Count} structural elements with geometry");
 
+            // PHASE 2 OPTIMIZATION 1: Build spatial hash grid
+            _spatialService.BuildGrid(structuralData);
+            var (totalCells, usedCells, avgElements) = _spatialService.GetStatistics();
+            log($"[SpatialHash] Built spatial grid: {usedCells} used cells, avg {avgElements:F1} elements per cell");
+
             // Process each MEP element against pre-computed structural data
             foreach (var (mepElement, mepTransform) in mepElements)
             {
@@ -156,9 +164,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 const double tolerance = 1.0; // 1.0ft tolerance - original working value
                 var expandedMin = new XYZ(mepBBox.Min.X - tolerance, mepBBox.Min.Y - tolerance, mepBBox.Min.Z - tolerance);
                 var expandedMax = new XYZ(mepBBox.Max.X + tolerance, mepBBox.Max.Y + tolerance, mepBBox.Max.Z + tolerance);
+                var expandedBBox = new BoundingBoxXYZ { Min = expandedMin, Max = expandedMax };
+
+                // PHASE 2 OPTIMIZATION 1: Use spatial hash to get nearby elements
+                var nearbyElements = _spatialService.GetNearbyElements(expandedBBox);
+                log($"[SpatialHash] MEP {mepElement.Id}: {nearbyElements.Count}/{structuralData.Count} nearby elements ({100.0 * nearbyElements.Count / structuralData.Count:F1}%)");
 
                 int spatiallyFiltered = 0;
-                foreach (var (structElement, structTransform, structBBox, solid) in structuralData)
+                foreach (var (structElement, structTransform, structBBox) in nearbyElements)
                 {
                     // Quick bounding box intersection test
                     if (!BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max))
@@ -167,6 +180,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         continue;
                     }
 
+                    // PHASE 2 OPTIMIZATION 2: Fast curve-in-bbox test
+                    if (!TestCurveInBoundingBox(line, structBBox, tolerance))
+                    {
+                        spatiallyFiltered++;
+                        continue; // Skip expensive solid intersection
+                    }
+
+                    // Get solid from structural data
+                    var solid = structuralData.First(sd => sd.element.Id == structElement.Id).solid;
                     if (solid == null) continue;
 
                     var intersectionPoints = GetIntersectionPoints(solid, line, log);
@@ -198,22 +220,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Delegate to batch processing with single element
             var batchResults = FindIntersectionsBatch(
                 new List<(Element, Transform?)> { (mepElement, null) },
-                structuralElements,
-                log);
-            
-            // Convert batch results to individual format
-            return batchResults.Select(r => (r.Item2, r.Item3, r.Item4)).ToList();
-        }
-
-        public static List<(Element, BoundingBoxXYZ, XYZ)> FindIntersections(
-            Element mepElement,
-            Transform? mepTransform,
-            List<(Element, Transform?)> structuralElements,
-            Action<string> log)
-        {
-            // Delegate to batch processing with single element and transform
-            var batchResults = FindIntersectionsBatch(
-                new List<(Element, Transform?)> { (mepElement, mepTransform) },
                 structuralElements,
                 log);
             
@@ -463,6 +469,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return !(max1.X < min2.X || min1.X > max2.X ||
                      max1.Y < min2.Y || min1.Y > max2.Y ||
                      max1.Z < min2.Z || min1.Z > max2.Z);
+        }
+        
+        /// <summary>
+        /// PHASE 2 OPTIMIZATION 2: Test if curve intersects bounding box
+        /// Fast pre-check before expensive solid intersection
+        /// </summary>
+        private static bool TestCurveInBoundingBox(Line curve, BoundingBoxXYZ bbox, double tolerance)
+        {
+            // Create outline for curve endpoints with tolerance
+            var curveMin = new XYZ(
+                Math.Min(curve.GetEndPoint(0).X, curve.GetEndPoint(1).X) - tolerance,
+                Math.Min(curve.GetEndPoint(0).Y, curve.GetEndPoint(1).Y) - tolerance,
+                Math.Min(curve.GetEndPoint(0).Z, curve.GetEndPoint(1).Z) - tolerance
+            );
+            var curveMax = new XYZ(
+                Math.Max(curve.GetEndPoint(0).X, curve.GetEndPoint(1).X) + tolerance,
+                Math.Max(curve.GetEndPoint(0).Y, curve.GetEndPoint(1).Y) + tolerance,
+                Math.Max(curve.GetEndPoint(0).Z, curve.GetEndPoint(1).Z) + tolerance
+            );
+            
+            var curveOutline = new Outline(curveMin, curveMax);
+            var structOutline = new Outline(bbox.Min, bbox.Max);
+            
+            return curveOutline.Intersects(structOutline, tolerance);
         }
 
         // Extracts a solid from a geometry object

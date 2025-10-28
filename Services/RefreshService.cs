@@ -259,15 +259,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 foreach (var damper in dampers)
                 {
-                    var standardParam = damper.LookupParameter("Standard");
-                    var msfdParam = damper.LookupParameter("MSFD");
+                    if (!(damper is FamilyInstance fi))
+                    {
+                        continue;
+                    }
+                    
+                    // ✅ CORRECT: Check family name for damper type indicators (not parameters)
+                    string familyTypeName = fi.Symbol?.Name ?? "";
+                    string typeNameUpper = familyTypeName.Trim().ToUpperInvariant();
+                    
+                    // ✅ DEBUG: Log damper family for first 5 dampers
+                    if (missingStandard.Count + missingMSFD.Count < 5)
+                    {
+                        DebugLogger.Info($"[DUCT_ACCESSORIES] Damper {damper.Id}: Family='{fi.Symbol?.Family?.Name ?? "N/A"}', Type='{familyTypeName}', Upper='{typeNameUpper}'");
+                    }
 
-                    if (standardParam == null || string.IsNullOrWhiteSpace(standardParam.AsString()))
+                    // Check if family name contains damper type keywords (case insensitive)
+                    bool hasMSFD = typeNameUpper.Contains("MSFD");
+                    bool hasStandard = typeNameUpper.Contains("STANDARD") || typeNameUpper.Contains("MSD") || typeNameUpper.Contains("MD") || typeNameUpper.Contains("MOTORIZED");
+                    
+                    if (!hasStandard)
                     {
                         missingStandard.Add(damper);
                     }
 
-                    if (msfdParam == null || string.IsNullOrWhiteSpace(msfdParam.AsString()))
+                    if (!hasMSFD)
                     {
                         missingMSFD.Add(damper);
                     }

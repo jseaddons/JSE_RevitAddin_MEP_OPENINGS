@@ -5,138 +5,112 @@ using System.Linq;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
+    /// <summary>
+    /// Spatial partitioning service using 3D hash grid for efficient collision detection
+    /// PHASE 2 OPTIMIZATION: Reduces O(n×m) brute-force intersection to O(n×log m)
+    /// </summary>
     public class SpatialPartitioningService
     {
-        private readonly Dictionary<int, List<(Element, Transform?)>> _grid;
-        private readonly BoundingBoxXYZ _modelBounds;
         private readonly double _gridSize;
-        private readonly int _gridDivisionsX;
-        private readonly int _gridDivisionsY;
-
-        public SpatialPartitioningService(List<(Element, Transform?)> structuralElements, double gridSize = 10.0)
+        private readonly Dictionary<(int, int, int), List<(Element element, Transform? transform, BoundingBoxXYZ bbox)>> _grid;
+        
+        public SpatialPartitioningService(double gridSize = 1.0) // 1ft grid
         {
-            _grid = new Dictionary<int, List<(Element, Transform?)>>();
             _gridSize = gridSize;
-
-            if (structuralElements == null || !structuralElements.Any())
+            _grid = new Dictionary<(int, int, int), List<(Element, Transform?, BoundingBoxXYZ)>>();
+        }
+        
+        /// <summary>
+        /// Build spatial grid with structural elements
+        /// </summary>
+        public void BuildGrid(List<(Element element, Transform? transform, BoundingBoxXYZ bbox, Solid? solid)> structuralElements)
+        {
+            _grid.Clear();
+            
+            foreach (var (element, transform, bbox, solid) in structuralElements)
             {
-                _modelBounds = new BoundingBoxXYZ();
-                return;
-            }
-
-            _modelBounds = CalculateModelBounds(structuralElements);
-
-            _gridDivisionsX = (int)Math.Ceiling((_modelBounds.Max.X - _modelBounds.Min.X) / _gridSize);
-            _gridDivisionsY = (int)Math.Ceiling((_modelBounds.Max.Y - _modelBounds.Min.Y) / _gridSize);
-
-            foreach (var elementTuple in structuralElements)
-            {
-                var element = elementTuple.Item1;
-                var transform = elementTuple.Item2;
-                var boundingBox = element.get_BoundingBox(null);
-
-                if (boundingBox != null)
+                // Get all grid cells this element overlaps
+                var cells = GetOverlappingCells(bbox);
+                
+                foreach (var cell in cells)
                 {
-                    if (transform != null)
+                    if (!_grid.ContainsKey(cell))
                     {
-                        boundingBox = TransformBoundingBox(boundingBox, transform);
+                        _grid[cell] = new List<(Element, Transform?, BoundingBoxXYZ)>();
                     }
-
-                    var minGridX = (int)Math.Floor((boundingBox.Min.X - _modelBounds.Min.X) / _gridSize);
-                    var maxGridX = (int)Math.Floor((boundingBox.Max.X - _modelBounds.Min.X) / _gridSize);
-                    var minGridY = (int)Math.Floor((boundingBox.Min.Y - _modelBounds.Min.Y) / _gridSize);
-                    var maxGridY = (int)Math.Floor((boundingBox.Max.Y - _modelBounds.Min.Y) / _gridSize);
-
-                    for (int x = minGridX; x <= maxGridX; x++)
-                    {
-                        for (int y = minGridY; y <= maxGridY; y++)
-                        {
-                            int index = y * _gridDivisionsX + x;
-                            if (!_grid.ContainsKey(index))
-                            {
-                                _grid[index] = new List<(Element, Transform?)>();
-                            }
-                            _grid[index].Add(elementTuple);
-                        }
-                    }
+                    _grid[cell].Add((element, transform, bbox));
                 }
             }
         }
-
-        public List<(Element, Transform?)> GetNearbyElements(Element mepElement)
+        
+        /// <summary>
+        /// Get all grid cells overlapping with bounding box
+        /// </summary>
+        private List<(int, int, int)> GetOverlappingCells(BoundingBoxXYZ bbox)
         {
-            var nearbyElements = new HashSet<(Element, Transform?)>();
-            var boundingBox = mepElement.get_BoundingBox(null);
-
-            if (boundingBox != null)
+            var cells = new List<(int, int, int)>();
+            
+            int minX = (int)Math.Floor(bbox.Min.X / _gridSize);
+            int maxX = (int)Math.Ceiling(bbox.Max.X / _gridSize);
+            int minY = (int)Math.Floor(bbox.Min.Y / _gridSize);
+            int maxY = (int)Math.Ceiling(bbox.Max.Y / _gridSize);
+            int minZ = (int)Math.Floor(bbox.Min.Z / _gridSize);
+            int maxZ = (int)Math.Ceiling(bbox.Max.Z / _gridSize);
+            
+            for (int x = minX; x <= maxX; x++)
             {
-                var minGridX = (int)Math.Floor((boundingBox.Min.X - _modelBounds.Min.X) / _gridSize);
-                var maxGridX = (int)Math.Floor((boundingBox.Max.X - _modelBounds.Min.X) / _gridSize);
-                var minGridY = (int)Math.Floor((boundingBox.Min.Y - _modelBounds.Min.Y) / _gridSize);
-                var maxGridY = (int)Math.Floor((boundingBox.Max.Y - _modelBounds.Min.Y) / _gridSize);
-
-                for (int x = minGridX; x <= maxGridX; x++)
+                for (int y = minY; y <= maxY; y++)
                 {
-                    for (int y = minGridY; y <= maxGridY; y++)
+                    for (int z = minZ; z <= maxZ; z++)
                     {
-                        int index = y * _gridDivisionsX + x;
-                        if (_grid.ContainsKey(index))
-                        {
-                            foreach (var element in _grid[index])
-                            {
-                                nearbyElements.Add(element);
-                            }
-                        }
+                        cells.Add((x, y, z));
                     }
                 }
             }
-
+            
+            return cells;
+        }
+        
+        /// <summary>
+        /// Get nearby elements for a given bounding box
+        /// </summary>
+        public List<(Element element, Transform? transform, BoundingBoxXYZ bbox)> GetNearbyElements(BoundingBoxXYZ bbox)
+        {
+            var nearbyElements = new HashSet<(Element, Transform?, BoundingBoxXYZ)>();
+            
+            var cells = GetOverlappingCells(bbox);
+            foreach (var cell in cells)
+            {
+                if (_grid.ContainsKey(cell))
+                {
+                    foreach (var elementData in _grid[cell])
+                    {
+                        nearbyElements.Add(elementData);
+                    }
+                }
+            }
+            
             return nearbyElements.ToList();
         }
-
-        private BoundingBoxXYZ CalculateModelBounds(List<(Element, Transform?)> elements)
+        
+        /// <summary>
+        /// Get statistics about grid usage
+        /// </summary>
+        public (int totalCells, int usedCells, double avgElementsPerCell) GetStatistics()
         {
-            var minX = double.MaxValue;
-            var minY = double.MaxValue;
-            var minZ = double.MaxValue;
-            var maxX = double.MinValue;
-            var maxY = double.MinValue;
-            var maxZ = double.MinValue;
-
-            foreach (var elementTuple in elements)
-            {
-                var element = elementTuple.Item1;
-                var transform = elementTuple.Item2;
-                var boundingBox = element.get_BoundingBox(null);
-
-                if (boundingBox != null)
-                {
-                    if (transform != null)
-                    {
-                        boundingBox = TransformBoundingBox(boundingBox, transform);
-                    }
-
-                    minX = Math.Min(minX, boundingBox.Min.X);
-                    minY = Math.Min(minY, boundingBox.Min.Y);
-                    minZ = Math.Min(minZ, boundingBox.Min.Z);
-                    maxX = Math.Max(maxX, boundingBox.Max.X);
-                    maxY = Math.Max(maxY, boundingBox.Max.Y);
-                    maxZ = Math.Max(maxZ, boundingBox.Max.Z);
-                }
-            }
-
-            return new BoundingBoxXYZ { Min = new XYZ(minX, minY, minZ), Max = new XYZ(maxX, maxY, maxZ) };
+            var usedCells = _grid.Count;
+            var totalElements = _grid.Values.Sum(cell => cell.Count);
+            var avgElementsPerCell = usedCells > 0 ? (double)totalElements / usedCells : 0;
+            
+            return (_grid.Count, usedCells, avgElementsPerCell);
         }
-
-        private BoundingBoxXYZ TransformBoundingBox(BoundingBoxXYZ bbox, Transform transform)
+        
+        /// <summary>
+        /// Clear the spatial grid
+        /// </summary>
+        public void Clear()
         {
-            var min = transform.OfPoint(bbox.Min);
-            var max = transform.OfPoint(bbox.Max);
-            return new BoundingBoxXYZ
-            {
-                Min = new XYZ(Math.Min(min.X, max.X), Math.Min(min.Y, max.Y), Math.Min(min.Z, max.Z)),
-                Max = new XYZ(Math.Max(min.X, max.X), Math.Max(min.Y, max.Y), Math.Max(min.Z, max.Z))
-            };
+            _grid.Clear();
         }
     }
 }

@@ -285,11 +285,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     DebugLogger.Info($"[OpeningCommandOrchestrator] Regenerating document and updating coordinates for {placedClusterSleeves.Count} cluster sleeves");
                     
-                    // Step 1: Regenerate document to ensure bounding boxes are available
-                    _document.Regenerate();
-                    
-                    // Step 2: Wait for regeneration to complete
-                    System.Threading.Thread.Sleep(200);
+                    try
+                    {
+                        // Step 1: Regenerate document to ensure bounding boxes are available
+                        _document.Regenerate();
+                        
+                        // Step 2: Wait for regeneration to complete
+                        System.Threading.Thread.Sleep(200);
+                    }
+                    catch (Exception regenEx)
+                    {
+                        DebugLogger.Warning($"[OpeningCommandOrchestrator] Could not regenerate document: {regenEx.Message}");
+                    }
                     
                     // Step 3: Save cluster sleeve bounding boxes to XML
                     try
@@ -508,6 +515,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         $"[{DateTime.Now:HH:mm:ss}] UniversalSleevePlacementCommand executed successfully\n");
                     
                     DebugLogger.Info($"[OpeningCommandOrchestrator] UniversalSleevePlacementCommand completed successfully");
+                    
+                    // ✅ CRITICAL: Save individual sleeve bounding boxes BEFORE clustering
+                    // Clustering proximity calculation REQUIRES individual sleeve bounding boxes from XML
+                    try
+                    {
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] Getting individual sleeve bounding boxes from Revit...\n");
+                        
+                        var coordinateService = new SleeveCoordinateService(_document);
+                        coordinateService.UpdateSleeveCoordinatesInXml(xmlFilePath);
+                        
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] ✅ Individual sleeve coordinates saved - clustering can now calculate proximity\n");
+                    }
+                    catch (Exception coordEx)
+                    {
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ Error saving individual coordinates: {coordEx.Message}\n");
+                    }
                 }
                 else
                 {

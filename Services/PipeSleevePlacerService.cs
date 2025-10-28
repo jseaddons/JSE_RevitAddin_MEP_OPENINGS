@@ -92,7 +92,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             var sleeveGrid = new SleeveSpatialGrid(allSleeves);
-            var spatialService = new SpatialPartitioningService(_structuralElements);
+            // Note: Spatial partitioning not used in PipeSleevePlacerService
 
             foreach (var tuple in _pipeTuples)
             {
@@ -118,16 +118,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     continue;
                 }
 
-                var nearbyStructuralElements = spatialService.GetNearbyElements(pipe);
-                if (!nearbyStructuralElements.Any())
-                {
-                    _log($"WARNING: Pipe {pipe.Id} no nearby structural elements found via spatial partitioning. Falling back to all structural elements.");
-                    
-                    // FALLBACK: Use all structural elements when spatial partitioning fails
-                    // This ensures the system works regardless of coordinate/precision issues
-                    nearbyStructuralElements = _structuralElements;
-                    _log($"Fallback: Using all {nearbyStructuralElements.Count} structural elements for pipe {pipe.Id}");
-                }
+                // Use all structural elements (spatial partitioning not used in PipeSleevePlacerService)
+                var nearbyStructuralElements = _structuralElements;
 
                 Line hostLine = pipeLine;
                 BoundingBoxXYZ? pipeBBox = null;
@@ -157,7 +149,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 else
                 {
                     _log($"[TransformDebug] Pipe {pipe.Id.IntegerValue} transformed to host line Start={hostLine.GetEndPoint(0)}, End={hostLine.GetEndPoint(1)}; pipeBBox={pipeBBox}");
-                    intersections = MepIntersectionService.FindIntersections(hostLine, pipeBBox, nearbyStructuralElements, _log);
+                    // Create a temporary pipe element wrapper for intersection detection
+                    intersections = new List<(Element, BoundingBoxXYZ, XYZ)>();
+                    foreach (var (structElem, structTransform) in nearbyStructuralElements)
+                    {
+                        // Basic intersection logic - simplified for transform case
+                        var structBbox = structElem.get_BoundingBox(null);
+                        if (structBbox != null && pipeBBox != null)
+                        {
+                            if (BoundingBoxesIntersect(pipeBBox, structBbox))
+                            {
+                                // Calculate intersection center
+                                var intersectionMin = new XYZ(
+                                    Math.Max(pipeBBox.Min.X, structBbox.Min.X),
+                                    Math.Max(pipeBBox.Min.Y, structBbox.Min.Y),
+                                    Math.Max(pipeBBox.Min.Z, structBbox.Min.Z));
+                                var intersectionMax = new XYZ(
+                                    Math.Min(pipeBBox.Max.X, structBbox.Max.X),
+                                    Math.Min(pipeBBox.Max.Y, structBbox.Max.Y),
+                                    Math.Min(pipeBBox.Max.Z, structBbox.Max.Z));
+                                
+                                if (intersectionMin.X <= intersectionMax.X && 
+                                    intersectionMin.Y <= intersectionMax.Y && 
+                                    intersectionMin.Z <= intersectionMax.Z)
+                                {
+                                    var center = new XYZ(
+                                        (intersectionMin.X + intersectionMax.X) / 2,
+                                        (intersectionMin.Y + intersectionMax.Y) / 2,
+                                        (intersectionMin.Z + intersectionMax.Z) / 2);
+                                    intersections.Add((structElem, new BoundingBoxXYZ { Min = intersectionMin, Max = intersectionMax }, center));
+                                }
+                            }
+                        }
+                    }
                 }
                 
                 _log($"Pipe {pipe.Id.IntegerValue}: Found {intersections?.Count ?? 0} intersections");

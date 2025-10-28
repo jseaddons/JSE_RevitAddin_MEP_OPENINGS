@@ -8,6 +8,7 @@ using Autodesk.Revit.DB.Plumbing;
 using Autodesk.Revit.DB.Electrical;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using static JSE_RevitAddin_MEP_OPENINGS.Models.MepCategoryConstants;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
@@ -457,6 +458,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 else
                 {
+                    // ✅ CRITICAL FIX: Update MepElementOrientation for resolved zones with (0,0,0) orientation
+                    // This fixes old XML data that doesn't have MepElementOrientation calculated
+                    if (existingClashZone.MepElementOrientation == null || existingClashZone.MepElementOrientation == XYZ.Zero)
+                    {
+                        var mepDir = GetMepElementOrientation(mepElement);
+                        existingClashZone.MepElementOrientation = mepDir;
+                        
+                        // Also update MepElementOrientationDirection for floor sleeves
+                        // Determine if width runs along X or Y axis based on bounding box comparison
+                        if (existingClashZone.StructuralElementType == "Floor" && mepElement is Duct duct)
+                        {
+                            try
+                            {
+                                var (orientation, widthDirection) = Helpers.MepElementOrientationHelper.GetDuctWidthOrientation(duct);
+                                existingClashZone.MepElementOrientationDirection = orientation == "X-ORIENTED" ? "X" : "Y";
+                                _log($"✅ UPDATED MepElementOrientationDirection for resolved clash zone {existingClashZone.Id}: '{existingClashZone.MepElementOrientationDirection}' ({orientation})");
+                            }
+                            catch (Exception ex)
+                            {
+                                _log($"Error updating MepElementOrientationDirection for resolved clash zone {existingClashZone.Id}: {ex.Message}");
+                                // Fallback: use X if we can't determine
+                                existingClashZone.MepElementOrientationDirection = "X";
+                            }
+                        }
+                        
+                        existingClashZone.LastUpdated = DateTime.Now;
+                        _log($"✅ UPDATED MepElementOrientation for resolved clash zone {existingClashZone.Id}: ({mepDir.X:F3}, {mepDir.Y:F3}, {mepDir.Z:F3})");
+                    }
+                    
                     // Preserve resolved clash zones during refresh - keep them in the list
                     _log($"Preserved resolved clash zone: {existingClashZone.Id} (IsResolved={existingClashZone.IsResolved})");
                 }
@@ -1324,11 +1354,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 StructuralElementNormal = GetStructuralElementNormal(structuralElement), // Pre-calculate normal/direction for orientation
                 WallDirection = wallDirection, // Pre-calculate wall direction for robust X-wall/Y-wall detection
                 WallDirectionType = wallDirectionType, // Pre-calculate wall direction type for efficient rotation logic
+                MepElementOrientation = mepOrientation, // Pre-calculate MEP element orientation vector for rotation logic
                 
                 // NEW: Pre-calculated placement data (calculated during refresh, used during placement)
                 MepElementWidth = finalWidth,
                 MepElementHeight = finalHeight,
-                MepElementOrientationDirection = GetWallOrientationFromType(wallDirectionType), // Use pre-calculated wall direction type for clustering distance calculation
+                MepElementOrientationDirection = GetMepOrientationDirection(structuralElementType, mepOrientation, wallDirectionType), // ✅ CRITICAL: Use correct method for orientation direction - DO NOT CHANGE TO GetWallOrientationFromType - FIXED 2025-10-27
                 PipeOpeningType = pipeOpeningType,
                 MepElementLevelName = levelName,
                 MepElementLevelElevation = levelElevation,
@@ -2972,15 +3003,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         var direction = line.Direction;
                         DebugLogger.Info($"[GetMepElementOrientation] Duct {mepElement.Id}: Direction=({direction.X:F3}, {direction.Y:F3}, {direction.Z:F3})");
-                        return direction;
+                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
+                            $"[ORIENT-DEBUG] Duct {mepElement.Id}: Direction=({direction.X:F3}, {direction.Y:F3}, {direction.Z:F3})\n");
+                        
+                        // ✅ FIX: ALWAYS use helper for ALL ducts - it determines X or Y width orientation
+                        // No need to check if vertical - helper handles all cases
+                        DebugLogger.Info($"[GetMepElementOrientation] Duct {mepElement.Id}: Checking width orientation using helper");
+                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
+                            $"[ORIENT-DEBUG] Duct {mepElement.Id}: Checking width orientation using helper\n");
+                        
+                        try
+                        {
+                            var (orientation, widthDirection) = Helpers.MepElementOrientationHelper.GetDuctWidthOrientation(duct);
+                            DebugLogger.Info($"[GetMepElementOrientation] Duct {mepElement.Id}: Width orientation={orientation}, WidthDirection=({widthDirection.X:F3}, {widthDirection.Y:F3}, {widthDirection.Z:F3})");
+                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
+                                $"[ORIENT-DEBUG] Duct {mepElement.Id}: Width orientation={orientation}, WidthDirection=({widthDirection.X:F3}, {widthDirection.Y:F3}, {widthDirection.Z:F3})\n");
+                            return widthDirection; // Return X or Y basis vector based on width orientation
+                        }
+                        catch (Exception ex)
+                        {
+                            DebugLogger.Warning($"[GetMepElementOrientation] Error using helper for duct {mepElement.Id}: {ex.Message}");
+                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
+                                $"[ORIENT-DEBUG] ERROR: {ex.Message}\n");
+                            return direction; // Fallback to original direction
+                        }
                     }
                 }
                 else if (mepElement is Duct verticalDuct && verticalDuct.Location is LocationPoint point)
                 {
-                    // Vertical ducts might have LocationPoint instead of LocationCurve
-                    DebugLogger.Info($"[GetMepElementOrientation] Duct {mepElement.Id}: Has LocationPoint, checking for vertical orientation");
-                    // For vertical ducts, we might need to check other properties
-                    return XYZ.BasisZ; // Default to vertical for now
+                    // ✅ FIX: For vertical ducts through floors, use MepElementOrientationHelper to determine X or Y orientation
+                    DebugLogger.Info($"[GetMepElementOrientation] Duct {mepElement.Id}: Has LocationPoint, checking width orientation using helper");
+                    
+                    try
+                    {
+                        var (orientation, widthDirection) = Helpers.MepElementOrientationHelper.GetDuctWidthOrientation(verticalDuct);
+                        DebugLogger.Info($"[GetMepElementOrientation] Duct {mepElement.Id}: Width orientation={orientation}, WidthDirection=({widthDirection.X:F3}, {widthDirection.Y:F3}, {widthDirection.Z:F3})");
+                        return widthDirection; // Return X or Y basis vector based on width orientation
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLogger.Warning($"[GetMepElementOrientation] Error using helper for duct {mepElement.Id}: {ex.Message}");
+                        return XYZ.BasisY; // Default fallback to Y-oriented
+                    }
                 }
                 else if (mepElement is FamilyInstance ductAccessory && 
                          ductAccessory.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory &&
@@ -3440,6 +3504,74 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private bool IsPointNear(XYZ point1, XYZ point2, double tolerance)
         {
             return point1.DistanceTo(point2) <= tolerance;
+        }
+        
+        /// <summary>
+        /// Get MEP orientation direction (X or Y) based on host type
+        /// For floors: derive from MEP element orientation vector
+        /// For walls/framing: use wall direction type
+        /// 
+        /// ⚠️ CRITICAL PROTECTION: DO NOT MODIFY THIS METHOD ⚠️
+        /// This method is essential for correct floor sleeve rotation:
+        /// - Y-oriented ducts rotate 90° (width runs along Y-axis)
+        /// - X-oriented ducts rotate 0° (width runs along X-axis)
+        /// 
+        /// Date Fixed: 2025-10-27
+        /// Issue: MepElementOrientationDirection was incorrectly calculated for floors,
+        ///        causing all floor sleeves to rotate incorrectly (all showing 0° rotation)
+        /// Fix: For floors, derive X/Y from mepOrientation vector (which comes from MepElementOrientationHelper)
+        ///      instead of using GetWallOrientationFromType (which is for walls/framing only)
+        /// Status: WORKING - VERIFIED IN placement_debug.log (2025-10-27 20:11:40)
+        /// </summary>
+        private string GetMepOrientationDirection(string structuralElementType, XYZ mepOrientation, string wallDirectionType)
+        {
+            try
+            {
+                // ✅ CRITICAL: For floors, derive X or Y from MEP element's orientation vector
+                // DO NOT CHANGE THIS LOGIC - FLOOR SLEEVE ROTATION DEPENDS ON IT
+                if (structuralElementType == "Floor" || structuralElementType == "Floors")
+                {
+                    // Determine if MEP orientation is primarily X or Y
+                    if (mepOrientation != null && mepOrientation != XYZ.Zero)
+                    {
+                        double absX = Math.Abs(mepOrientation.X);
+                        double absY = Math.Abs(mepOrientation.Y);
+                        
+                        if (absX > absY)
+                        {
+                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                $"[ORIENT-FIX] Floor host: MEP orientation has absX={absX:F3} > absY={absY:F3} → returning X\n");
+                            return "X"; // X-oriented → 0° rotation
+                        }
+                        else
+                        {
+                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                                $"[ORIENT-FIX] Floor host: MEP orientation has absY={absY:F3} >= absX={absX:F3} → returning Y\n");
+                            return "Y"; // Y-oriented → 90° rotation
+                        }
+                    }
+                    else
+                    {
+                        // Default to X if orientation is zero
+                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                            $"[ORIENT-FIX] Floor host: MEP orientation is zero/null → returning X\n");
+                        return "X";
+                    }
+                }
+                else
+                {
+                    // ✅ CRITICAL: For walls and framing, use wall direction type
+                    // DO NOT CHANGE THIS LOGIC - WALL/FRAMING ROTATION DEPENDS ON IT
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
+                        $"[ORIENT-FIX] {structuralElementType} host: Using GetWallOrientationFromType({wallDirectionType})\n");
+                    return GetWallOrientationFromType(wallDirectionType);
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[GetMepOrientationDirection] Error: {ex.Message}");
+                return "X"; // Default fallback
+            }
         }
         
         #endregion

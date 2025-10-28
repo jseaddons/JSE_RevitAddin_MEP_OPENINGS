@@ -46,6 +46,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\service_instantiation.log", 
                 $"[{DateTime.Now:HH:mm:ss}] 🔥 UniversalSleevePlacerService CONSTRUCTOR CALLED 🔥\n");
             System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\service_instantiation.log", 
+                $"[{DateTime.Now:HH:mm:ss}] FilterName parameter: '{filterName}'\n");
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\service_instantiation.log", 
+                $"[{DateTime.Now:HH:mm:ss}] _filterName field: '{_filterName}'\n");
+            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\service_instantiation.log", 
                 $"[{DateTime.Now:HH:mm:ss}] Strategy Type: {_strategy.GetType().Name}\n");
             System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\service_instantiation.log", 
                 $"[{DateTime.Now:HH:mm:ss}] Strategy Category: {_strategy.GetCategoryName()}\n");
@@ -865,31 +869,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
                         $"[{DateTime.Now:HH:mm:ss}] [XML-SAVE-BEFORE] About to save XML with {PlacedCount} placed sleeves\n");
                     
-                    SaveUpdatedXmlFiles();
+                    SaveUpdatedXmlFiles(clashZones);
                     
-                    // ✅ NEW: Get correct coordinates after ALL sleeves are placed
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
-                        $"[{DateTime.Now}] [COORDINATE-FIX] Calling SleeveCoordinateService to get correct coordinates\n");
-                    
-                    try
-                    {
-                        var coordinateService = new SleeveCoordinateService(_doc);
-                        coordinateService.LogAllSleeveCoordinates();
-                        coordinateService.UpdateSleeveCoordinatesInXml();
-
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
-                            $"[{DateTime.Now}] [COORDINATE-FIX] ✅ Successfully updated coordinates for {PlacedCount} sleeves\n");
-                    }
-                    catch (Exception coordEx)
-                    {
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
-                            $"[{DateTime.Now}] [COORDINATE-FIX] ❌ Error updating coordinates: {coordEx.Message}\n");
-                        DebugLogger.Error($"[UniversalSleevePlacer] Error updating coordinates: {coordEx.Message}");
-                    }
-                    
-                    // ✅ REMOVED: SleeveDataService call - SleeveCoordinateService will create _CLUSTER.xml files after placement
+                    // ⚠️ REMOVED: Don't update coordinates here because clustering will delete individual sleeves
+                    // Individual sleeve coordinates are saved via SaveUpdatedXmlFiles above
+                    // Cluster sleeve coordinates will be saved AFTER clustering in OpeningCommandOrchestrator
                     System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
-                        $"[{DateTime.Now}] [SLEEVE-DATA] Skipping SleeveDataService - SleeveCoordinateService will create _CLUSTER.xml files\n");
+                        $"[{DateTime.Now}] [COORDINATE-FIX] Individual sleeve XML saved - coordinates will be updated after clustering\n");
                     
                     // ⚠️ CRITICAL: Log flag states AFTER XML save
                     System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
@@ -2182,9 +2168,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (fileName.Contains("CONDITIONS", StringComparison.OrdinalIgnoreCase))
                         continue;
                         
-                    // Check if this file matches our target category
-                    if (fileName.Contains(targetFileName, StringComparison.OrdinalIgnoreCase) ||
-                        fileName.Contains(clashZone.MepElementCategory.Replace(" ", "_"), StringComparison.OrdinalIgnoreCase))
+                    // ✅ CRITICAL: Use EXACT match - no Contains() fallback to prevent wrong XML matching
+                    if (fileName.Equals(targetFileName, StringComparison.OrdinalIgnoreCase))
                     {
                         targetFile = xmlFile;
                         
@@ -2299,13 +2284,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// CRITICAL FIX: Save XML files with updated SleeveInstanceId values
         /// This ensures parameter transfer can find the sleeves in the XML
         /// </summary>
-        private void SaveUpdatedXmlFiles()
+        private void SaveUpdatedXmlFiles(List<ClashZone> updatedClashZones = null)
         {
             try
             {
                 DebugLogger.Info("[UniversalSleevePlacer] Saving updated XML files with SleeveInstanceId values...");
                 System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
-                    $"[{DateTime.Now}] [XML_SAVE] Starting SaveUpdatedXmlFiles method\n");
+                    $"[{DateTime.Now}] [XML_SAVE] Starting SaveUpdatedXmlFiles method with {updatedClashZones?.Count ?? 0} updated clash zones\n");
                 
                 var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
                     "JSE_MEP_Openings", "Projects", "Default", "Filters");
@@ -2344,11 +2329,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             continue;
                         }
                         
+                        // ✅ CRITICAL FIX: Merge in-memory updated clash zones with XML data
+                        if (updatedClashZones != null && updatedClashZones.Count > 0)
+                        {
+                            DebugLogger.Info($"[UniversalSleevePlacer] Merging {updatedClashZones.Count} in-memory clash zones into XML file");
+                            
+                            foreach (var updatedZone in updatedClashZones)
+                            {
+                                // Find matching zone in the loaded XML by ID
+                                var matchingZone = filter.ClashZoneStorage.ClashZones.FirstOrDefault(z => z.Id == updatedZone.Id);
+                                if (matchingZone != null)
+                                {
+                                    // ✅ CRITICAL: Copy updated values from in-memory zone to XML zone
+                                    // This ensures IsResolved, SleeveInstanceId, and other flags are preserved
+                                    matchingZone.IsResolved = updatedZone.IsResolved;
+                                    matchingZone.SleeveInstanceId = updatedZone.SleeveInstanceId;
+                                    matchingZone.SleeveFamilyName = updatedZone.SleeveFamilyName;
+                                    matchingZone.IsClusterResolved = updatedZone.IsClusterResolved;
+                                    matchingZone.ClusterSleeveInstanceId = updatedZone.ClusterSleeveInstanceId;
+                                    
+                                    // Copy sleeve data
+                                    matchingZone.SleeveWidth = updatedZone.SleeveWidth;
+                                    matchingZone.SleeveHeight = updatedZone.SleeveHeight;
+                                    matchingZone.SleeveDiameter = updatedZone.SleeveDiameter;
+                                    matchingZone.SleevePlacementPointX = updatedZone.SleevePlacementPointX;
+                                    matchingZone.SleevePlacementPointY = updatedZone.SleevePlacementPointY;
+                                    matchingZone.SleevePlacementPointZ = updatedZone.SleevePlacementPointZ;
+                                    matchingZone.SleevePlacementPointActiveDocumentX = updatedZone.SleevePlacementPointActiveDocumentX;
+                                    matchingZone.SleevePlacementPointActiveDocumentY = updatedZone.SleevePlacementPointActiveDocumentY;
+                                    matchingZone.SleevePlacementPointActiveDocumentZ = updatedZone.SleevePlacementPointActiveDocumentZ;
+                                    
+                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log",
+                                        $"[{DateTime.Now:HH:mm:ss}] [MERGE] Zone {updatedZone.Id}: IsResolved={updatedZone.IsResolved}, SleeveInstanceId={updatedZone.SleeveInstanceId}\n");
+                                }
+                            }
+                        }
+                        
                         bool hasUpdates = false;
                         foreach (var zone in filter.ClashZoneStorage.ClashZones)
                         {
-                            // Check if this zone has a valid SleeveInstanceId (not -1)
-                            if (zone.SleeveInstanceId > 0)
+                            // Check if this zone has a valid SleeveInstanceId (not -1) OR has been resolved
+                            if (zone.SleeveInstanceId > 0 || zone.IsResolved == true || zone.IsClusterResolved == true)
                             {
                                 hasUpdates = true;
                                 DebugLogger.Info($"[UniversalSleevePlacer] Found valid SleeveInstanceId {zone.SleeveInstanceId} in {Path.GetFileName(xmlFile)}");
@@ -2418,17 +2439,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         /// <summary>
         /// Get XML filename for category
+        /// ✅ CRITICAL: Filter name MUST come from orchestrator - no fallback allowed
         /// </summary>
         private string GetFilterNameForCategory(string category)
         {
-            switch (category.ToLower())
+            // ✅ CRITICAL: Filter name MUST come from orchestrator - no fallback allowed
+            // This is essential for correct XML updates, clustering, and flag management
+            if (string.IsNullOrEmpty(_filterName))
             {
-                case "ducts": return "Ventilation_ducts.xml";
-                case "pipes": return "Ventilation_pipes.xml";
-                case "cable trays": return "Ventilation_cable_trays.xml";
-                case "duct accessories": return "Ventilation_duct_accessories.xml";
-                default: return "Unknown.xml";
+                var errorMsg = $"Filter name is required but was not provided. Cannot determine target XML file for category '{category}'.";
+                DebugLogger.Error($"[GetFilterNameForCategory] {errorMsg}");
+                throw new InvalidOperationException(errorMsg);
             }
+            
+            return _filterName;
         }
 
 // ============================================================================
@@ -2462,17 +2486,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             double rotationAngle = 0.0;
                             
-                            // ⚠️ SIMPLIFIED LOGIC FOR FLOORS: Focus on vertical elements only
-                            // All vertical elements (ducts, pipes, cable trays) use the same logic
-                            if (mepOrientation == "Y")
+                            // ⚠️ CABLETRAY FIX: Cable trays have INVERTED rotation logic compared to ducts
+                            // For cable trays: Y-orientation = 0°, X-orientation = 90°
+                            // For ducts/pipes: Y-orientation = 90°, X-orientation = 0°
+                            bool isCableTray = clashZone.MepElementCategory.Contains("Cable", StringComparison.OrdinalIgnoreCase);
+                            
+                            if (isCableTray)
                             {
-                                rotationAngle = Math.PI / 2; // 90 degrees
-                                DebugLogger.Info($"[UniversalSleevePlacer] VERTICAL {clashZone.MepElementCategory.ToUpper()} ON FLOOR: MEP orientation is Y - rotating sleeve 90°");
+                                // ⚠️ INVERTED LOGIC FOR CABLE TRAYS
+                                if (mepOrientation == "X")
+                                {
+                                    rotationAngle = Math.PI / 2; // 90 degrees
+                                    DebugLogger.Info($"[UniversalSleevePlacer] VERTICAL CABLETRAY ON FLOOR: MEP orientation is X - rotating sleeve 90°");
+                                }
+                                else
+                                {
+                                    rotationAngle = 0.0; // No rotation needed
+                                    DebugLogger.Info($"[UniversalSleevePlacer] VERTICAL CABLETRAY ON FLOOR: MEP orientation is Y - no rotation needed");
+                                }
                             }
                             else
                             {
-                                rotationAngle = 0.0; // No rotation needed
-                                DebugLogger.Info($"[UniversalSleevePlacer] VERTICAL {clashZone.MepElementCategory.ToUpper()} ON FLOOR: MEP orientation is X - no rotation needed");
+                                // ⚠️ STANDARD LOGIC FOR DUCTS/PIPES
+                                if (mepOrientation == "Y")
+                                {
+                                    rotationAngle = Math.PI / 2; // 90 degrees
+                                    DebugLogger.Info($"[UniversalSleevePlacer] VERTICAL {clashZone.MepElementCategory.ToUpper()} ON FLOOR: MEP orientation is Y - rotating sleeve 90°");
+                                }
+                                else
+                                {
+                                    rotationAngle = 0.0; // No rotation needed
+                                    DebugLogger.Info($"[UniversalSleevePlacer] VERTICAL {clashZone.MepElementCategory.ToUpper()} ON FLOOR: MEP orientation is X - no rotation needed");
+                                }
                             }
                             
                             double rotationAngleDegrees = rotationAngle * 180 / Math.PI;
@@ -2636,9 +2681,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             {
                                 needsRotation = false;
                                 DebugLogger.Warning($"[UniversalSleevePlacer] Fallback: Y-WALL detected - no rotation");
-                            }
-                            else
-                            {
+                        }
+                        else
+                        {
                                 // Ultimate fallback
                                 needsRotation = false;
                                 DebugLogger.Warning($"[UniversalSleevePlacer] Unknown orientation - using fallback");

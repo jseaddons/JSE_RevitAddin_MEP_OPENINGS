@@ -180,6 +180,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public int ClusterSleeveInstanceId { get; set; } = -1;
 
         /// <summary>
+        /// ✅ NEW: Cluster sleeve bounding box coordinates (for XML-serializable cleanup detection)
+        /// These are saved after placing cluster sleeves to enable cheap cleanup of individual sleeves within clusters
+        /// </summary>
+        public double ClusterSleeveBoundingBoxMinX { get; set; } = 0.0;
+        public double ClusterSleeveBoundingBoxMinY { get; set; } = 0.0;
+        public double ClusterSleeveBoundingBoxMinZ { get; set; } = 0.0;
+        public double ClusterSleeveBoundingBoxMaxX { get; set; } = 0.0;
+        public double ClusterSleeveBoundingBoxMaxY { get; set; } = 0.0;
+        public double ClusterSleeveBoundingBoxMaxZ { get; set; } = 0.0;
+
+        /// <summary>
         /// The placed sleeve instance ID (integer value for serialization and tracking)
         /// </summary>
         public int SleeveInstanceId { get; set; } = -1;
