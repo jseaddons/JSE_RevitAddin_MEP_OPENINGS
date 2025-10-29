@@ -74,6 +74,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void ConditionalAppendAllText(string filePath, string content)
         {
+            // ✅ DEPLOYMENT MODE: Skip all logging if deployment mode is enabled
+            if (DeploymentConfiguration.DeploymentMode)
+                return;
+                
             if (!DisableAllHardcodedLogging)
             {
                 File.AppendAllText(filePath, content);

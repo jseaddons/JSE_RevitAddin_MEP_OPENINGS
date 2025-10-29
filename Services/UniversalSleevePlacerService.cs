@@ -29,7 +29,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly ISleevePlacementStrategy _strategy;
         private readonly Dictionary<string, double> _clearanceSettings;
         private readonly string _filterName;
-        
+
         // ⚠️ QUICK WIN: Pre-cached family symbols (load once, reuse many times)
         private static Dictionary<string, FamilySymbol> _familySymbolCache = new Dictionary<string, FamilySymbol>();
 
@@ -456,7 +456,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var categoryName = clashZone.MepElementCategory;
                             if (!globalManagersByCategory.TryGetValue(categoryName, out var globalManager))
                             {
-                                globalManager = new GlobalFlagManager(categoryName);
+                                // ✅ MEMORY OPTIMIZATION: Use static singleton to avoid reloading XML (works across all service instances)
+                                globalManager = GlobalFlagManager.GetOrCreate(categoryName);
                                 globalManagersByCategory[categoryName] = globalManager;
                             }
                             var sleeveState = globalManager.CheckSleeveExistence(_doc, clashZone.MepElementId, clashZone.StructuralElementId);
@@ -550,7 +551,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 						
 						// ✅ PERFORMANCE OPTIMIZATION: Removed excessive file logging
 						
-                        if (isPipesCategory)
+						if (isPipesCategory)
 						{
 							// ✅ Pipes: Raw dimensions + CONDITIONS clearance
 							var rawDiameter = clashZone.MepElementWidth; // Raw diameter from ClashZone
@@ -732,14 +733,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 }
                             }
                             
-                            if (nearestLevel == null)
-                            {
-                                DebugLogger.Warning($"[UniversalSleevePlacer] No level found for placement point");
-                                SkippedCount++;
+                        if (nearestLevel == null)
+                        {
+                            DebugLogger.Warning($"[UniversalSleevePlacer] No level found for placement point");
+                            SkippedCount++;
                                 sleeveTimer.Stop();
-                                continue;
-                            }
-                            
+                            continue;
+                        }
+                        
                             DebugLogger.Info($"[UniversalSleevePlacer] Found nearest level '{nearestLevel.Name}' (Elevation={nearestLevel.Elevation:F3}) for Floor at Z={adjustedPlacementPoint.Z:F3}");
                         }
                         levelTimer.Stop();
@@ -879,7 +880,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var categoryName = clashZone.MepElementCategory;
                             if (!globalManagersByCategory.TryGetValue(categoryName, out var globalManager))
                             {
-                                globalManager = new GlobalFlagManager(categoryName);
+                                // ✅ MEMORY OPTIMIZATION: Use static singleton to avoid reloading XML (works across all service instances)
+                                globalManager = GlobalFlagManager.GetOrCreate(categoryName);
                                 globalManagersByCategory[categoryName] = globalManager;
                             }
                             

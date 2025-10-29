@@ -14,6 +14,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// Set to false to disable all logging globally.
     /// Default enabled here to allow runtime diagnostics for cable tray placement.
     /// Toggle to false if you want to silence logs.
+    /// NOTE: DeploymentConfiguration.DeploymentMode automatically disables all logging.
     /// </summary>
     public static bool IsEnabled = true;
     
@@ -55,6 +56,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// </summary>
     private static bool IsLoggingEnabledForCurrentService()
     {
+        // ✅ DEPLOYMENT MODE: Disable all logging if deployment mode is enabled
+        // (DebugLogger doesn't handle memory profiling, so safe to disable completely)
+        if (DeploymentConfiguration.DeploymentMode)
+            return false;
+            
         if (!IsEnabled) return false;
         return LoggingConfiguration.IsLoggingEnabled(CurrentService);
     }

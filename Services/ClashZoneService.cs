@@ -24,6 +24,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         // ⚠️ CRITICAL: Memory manager for timeout/memory limit protection (can be null if not provided)
         private MemoryManager _memoryManager;
         
+        // ✅ MEMORY PROFILING: Profiler for tracking actual memory usage per clash zone
+        private MemoryProfiler _memoryProfiler;
+        
         public ClashZoneService(ClashZoneStorage clashZoneStorage, Action<string> log)
         {
             _clashZoneStorage = clashZoneStorage;
@@ -36,6 +39,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public void SetMemoryManager(MemoryManager memoryManager)
         {
             _memoryManager = memoryManager;
+        }
+        
+        /// <summary>
+        /// Set memory profiler for tracking actual vs theoretical memory usage
+        /// </summary>
+        public void SetMemoryProfiler(MemoryProfiler memoryProfiler)
+        {
+            _memoryProfiler = memoryProfiler;
         }
         
         /// <summary>
@@ -615,6 +626,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         _clashZoneStorage.ClashZones.Add(newClashZone);
                         _log($"Replaced invalid clash zone: MEP={mepElement.Id}, Structural={structuralElement.Id}");
                         if (isDuctWall) ductWallClashZonesCreated++;
+                        
+                        // ✅ MEMORY PROFILING: Track memory AFTER clash zone is added (correct timing)
+                        if (_memoryProfiler != null)
+                        {
+                            _memoryProfiler.RecordClashZoneProcessing(newClashZones.Count, prioritizedIntersections.Count);
+                        }
                     }
                     else
                 {
@@ -626,8 +643,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         newClashZone.IsCurrentClash = true; // ✅ DEBUG: Mark as current refresh clash
                         
                         // ✅ GLOBAL XML: Check if sleeve already exists in global XML
+                        // ✅ MEMORY OPTIMIZATION: Use singleton to avoid reloading XML multiple times
                         var categoryName = GetElementCategoryName(mepElement);
-                        var globalManager = new GlobalFlagManager(categoryName);
+                        var globalManager = GlobalFlagManager.GetOrCreate(categoryName);
                         var sleeveState = globalManager.CheckSleeveExistence(document, mepElement.Id, structuralElement.Id);
                         
                         if (sleeveState.ExistsInGlobal)
@@ -661,6 +679,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         _clashZoneStorage.ClashZones.Add(newClashZone);
                         _log($"New clash zone detected: MEP={mepElement.Id}, Structural={structuralElement.Id}");
                         if (isDuctWall) ductWallClashZonesCreated++;
+                        
+                        // ✅ MEMORY PROFILING: Track memory AFTER clash zone is added (correct timing)
+                        if (_memoryProfiler != null)
+                        {
+                            _memoryProfiler.RecordClashZoneProcessing(newClashZones.Count, prioritizedIntersections.Count);
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -718,6 +742,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // CRITICAL FIX: Remove duplicate clash zones (same MEP + structural element)
             RemoveDuplicateClashZones();
             
+            // ✅ MEMORY OPTIMIZATION: Force FULL GC after clash zone detection to release temporary objects
+            System.GC.Collect(2, System.GCCollectionMode.Forced, true);
+            System.GC.WaitForPendingFinalizers();
+            System.GC.Collect(2, System.GCCollectionMode.Forced, true);
+            
+            // ✅ MEMORY PROFILING: Final snapshot before returning
+            if (_memoryProfiler != null)
+            {
+                _memoryProfiler.TakeSnapshot("DETECT_NEW_CLASH_ZONES_COMPLETE", newClashZones.Count);
+            }
+            
             // Update storage metadata
             _clashZoneStorage.LastUpdated = DateTime.Now;
             _clashZoneStorage.DocumentPath = documentPath;
@@ -743,22 +778,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _log($"[DEBUG-COUNT] ═══ TOTAL FILTERED OUT: {ductWallBeforePriority - ductWallClashZonesCreated} Duct-Wall intersections ═══");
             _log($"[DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════");
             
-            // Also write to refresh log for easy viewing
-            var refreshLogPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Logs", $"refresh_{DateTime.Now:yyyy-MM-dd}.log");
-            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════\n");
-            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] DUCT-WALL CLASH ZONES OPTIMIZATION PIPELINE SUMMARY\n");
-            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════\n");
-            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] STEP 1 - BEFORE OPTIMIZATION: {ductWallBeforePriority} Duct-Wall intersections\n");
-            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] STEP 2 - AFTER PRIORITY SORT: {ductWallAfterPriority} (changed: {ductWallAfterPriority - ductWallBeforePriority:+0;-0;=0})\n");
-            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] STEP 3 - AFTER VALIDATION: {ductWallAfterValidation} (✅ passed, ❌ skipped: {ductWallSkippedInvalid})\n");
-            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] STEP 4 - AFTER DAMPER CHECK: {ductWallAfterDamperCheck} (✅ passed, ❌ skipped: {ductWallSkippedDamper})\n");
-            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] STEP 5 - AFTER PENETRATION FILTER: {ductWallAfterPenetration} (✅ passed, ❌ skipped: {ductWallSkippedPenetration})\n");
-            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] STEP 6 - AFTER EXISTING CHECK: {ductWallAfterExistingCheck} (✅ passed, ❌ skipped: {ductWallSkippedExisting})\n");
-            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] STEP 7 - FINAL CLASH ZONES CREATED: {ductWallClashZonesCreated} Duct-Wall clash zones\n");
-            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] VERIFICATION: {ductWallAfterExistingCheck} should equal {ductWallClashZonesCreated}\n");
-            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] VERIFICATION: Total processed ({totalProcessed}) = Passed ({ductWallAfterValidation}) + Skipped ({totalSkipped})\n");
-            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] ═══ TOTAL FILTERED OUT: {ductWallBeforePriority - ductWallClashZonesCreated} Duct-Wall intersections ═══\n");
-            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════\n");
+            // ✅ CRASH-SAFE: Use SafeFileLogger instead of hardcoded path
+            // SafeFileLogger automatically creates directories and handles missing paths gracefully
+            string refreshLogName = $"refresh_{DateTime.Now:yyyy-MM-dd}.log";
+            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════");
+            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DEBUG-COUNT] DUCT-WALL CLASH ZONES OPTIMIZATION PIPELINE SUMMARY");
+            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════");
+            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DEBUG-COUNT] STEP 1 - BEFORE OPTIMIZATION: {ductWallBeforePriority} Duct-Wall intersections");
+            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DEBUG-COUNT] STEP 2 - AFTER PRIORITY SORT: {ductWallAfterPriority} (changed: {ductWallAfterPriority - ductWallBeforePriority:+0;-0;=0})");
+            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DEBUG-COUNT] STEP 3 - AFTER VALIDATION: {ductWallAfterValidation} (✅ passed, ❌ skipped: {ductWallSkippedInvalid})");
+            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DEBUG-COUNT] STEP 4 - AFTER DAMPER CHECK: {ductWallAfterDamperCheck} (✅ passed, ❌ skipped: {ductWallSkippedDamper})");
+            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DEBUG-COUNT] STEP 5 - AFTER PENETRATION FILTER: {ductWallAfterPenetration} (✅ passed, ❌ skipped: {ductWallSkippedPenetration})");
+            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DEBUG-COUNT] STEP 6 - AFTER EXISTING CHECK: {ductWallAfterExistingCheck} (✅ passed, ❌ skipped: {ductWallSkippedExisting})");
+            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DEBUG-COUNT] STEP 7 - FINAL CLASH ZONES CREATED: {ductWallClashZonesCreated} Duct-Wall clash zones");
+            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DEBUG-COUNT] VERIFICATION: {ductWallAfterExistingCheck} should equal {ductWallClashZonesCreated}");
+            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DEBUG-COUNT] VERIFICATION: Total processed ({totalProcessed}) = Passed ({ductWallAfterValidation}) + Skipped ({totalSkipped})");
+            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DEBUG-COUNT] ═══ TOTAL FILTERED OUT: {ductWallBeforePriority - ductWallClashZonesCreated} Duct-Wall intersections ═══");
+            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════");
             
             return newClashZones;
         }

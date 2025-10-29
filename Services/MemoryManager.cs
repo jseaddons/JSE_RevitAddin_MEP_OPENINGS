@@ -24,18 +24,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private bool _disposed = false;
         private CancellationTokenSource _cancellationTokenSource;
 
-        // Default limits
+        // Default limits (fallback if memory detection fails)
         // ⚠️ NOTE: Even with 64GB system RAM, individual Revit processes have practical limits
-        // Modern Revit (64-bit) can typically use 6-8GB per process before issues
-        // We set a conservative 6GB limit to prevent crashes while allowing large models
-        private const long DEFAULT_MAX_MEMORY_MB = 6144; // 6GB limit (reasonable for large models)
+        // Modern Revit (64-bit) can typically use 8-20GB per process depending on available RAM
+        // Default is conservative 6GB, but CalculateOptimalMemoryLimit() uses 70% of available RAM (up to 20GB)
+        private const long DEFAULT_MAX_MEMORY_MB = 6144; // 6GB default (fallback only - actual uses 70% of available RAM)
         private const int DEFAULT_TIMEOUT_MINUTES = 5;
 
         /// <summary>
-        /// Automatically calculates optimal memory limit based on system RAM
-        /// Formula: 10% of total RAM, capped at 12GB (for Revit process limits)
-        /// Minimum: 4GB (for systems with < 40GB RAM)
-        /// Uses Win32 API to detect RAM without requiring System.Management assembly
+        /// Automatically calculates optimal memory limit based on AVAILABLE (free) system RAM
+        /// Formula: 70% of available/free RAM (not total RAM)
+        /// This allows using more memory when the system has free RAM available
+        /// Cap at 20GB (reasonable Revit process limit)
+        /// Minimum: 2GB (to ensure it works on systems with low free memory)
+        /// Uses Win32 API to detect available RAM without requiring System.Management assembly
         /// </summary>
         [DllImport("kernel32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -47,7 +49,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             public uint dwLength;
             public uint dwMemoryLoad;
             public ulong ullTotalPhys;
-            public ulong ullAvailPhys;
+            public ulong ullAvailPhys;  // ✅ AVAILABLE/FREE physical memory
             public ulong ullTotalPageFile;
             public ulong ullAvailPageFile;
             public ulong ullTotalVirtual;
@@ -59,7 +61,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                // Get total system RAM in bytes using Win32 API (no external dependencies)
+                // Get memory status using Win32 API (no external dependencies)
                 MEMORYSTATUSEX memStatus = new MEMORYSTATUSEX();
                 memStatus.dwLength = (uint)Marshal.SizeOf(typeof(MEMORYSTATUSEX));
                 
@@ -68,19 +70,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     long totalRamBytes = (long)memStatus.ullTotalPhys;
                     long totalRamMB = totalRamBytes / (1024 * 1024);
                     
-                    // Formula: 10% of total RAM, with reasonable bounds
-                    long optimalMB = (long)(totalRamMB * 0.10);
+                    // ✅ KEY CHANGE: Use AVAILABLE (free) RAM, not total RAM
+                    long availRamBytes = (long)memStatus.ullAvailPhys;
+                    long availRamMB = availRamBytes / (1024 * 1024);
                     
-                    // Cap at 12GB (Revit process practical limit)
-                    long maxMB = 12 * 1024; // 12GB
+                    // ✅ Formula: 70% of AVAILABLE RAM (as requested by user)
+                    long optimalMB = (long)(availRamMB * 0.70);
+                    
+                    // Cap at 20GB (reasonable Revit process limit, increased from 12GB for high-RAM systems)
+                    long maxMB = 20 * 1024; // 20GB
                     optimalMB = Math.Min(optimalMB, maxMB);
                     
-                    // Minimum: 4GB for systems with < 40GB RAM
-                    long minMB = 4 * 1024; // 4GB
+                    // Minimum: 2GB (to ensure it works even when free memory is low)
+                    long minMB = 2 * 1024; // 2GB
                     optimalMB = Math.Max(optimalMB, minMB);
                     
                     SafeFileLogger.SafeAppendText("memory_manager.log", 
-                        $"System RAM detected: {totalRamMB / 1024}GB. Calculated optimal limit: {optimalMB / 1024}GB (10% of RAM, capped at 12GB)");
+                        $"Memory detection - Total RAM: {totalRamMB / 1024}GB, Available RAM: {availRamMB / 1024}GB. " +
+                        $"Calculated optimal limit: {optimalMB / 1024}GB (70% of available RAM, capped at 20GB, min 2GB)");
                     
                     return optimalMB;
                 }

@@ -621,7 +621,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     try
                                     {
                                         var categoryName = clashZone.MepElementCategory;
-                                        var globalManager = new GlobalFlagManager(categoryName);
+                                        // ✅ MEMORY OPTIMIZATION: Use singleton to avoid reloading XML multiple times
+                                        var globalManager = GlobalFlagManager.GetOrCreate(categoryName);
                                         
                                         // Get filter filename from XML file path
                                         string filterName = Path.GetFileName(xmlFile ?? "unknown_filter.xml");

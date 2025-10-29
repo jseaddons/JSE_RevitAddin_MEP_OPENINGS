@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -13,11 +14,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// </summary>
     public class GlobalFlagManager
     {
+        // ✅ MEMORY OPTIMIZATION: Thread-safe singleton cache per category to avoid reloading XML
+        private static readonly ConcurrentDictionary<string, GlobalFlagManager> _instanceCache = new ConcurrentDictionary<string, GlobalFlagManager>();
+        private static readonly object _saveLock = new object(); // Lock for XML saves to prevent concurrent writes
+        
         private readonly string _globalXmlPath;
         private GlobalFlagStorage _storage;
+        private readonly string _categoryName;
 
         public GlobalFlagManager(string categoryName)
         {
+            _categoryName = categoryName ?? throw new ArgumentNullException(nameof(categoryName));
+            
             // Use same path as regular filter files, but with _global prefix
             var filtersDirectory = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
@@ -30,6 +38,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _globalXmlPath = Path.Combine(filtersDirectory, $"{categoryName}_global.xml");
             
             LoadGlobalFlags();
+        }
+
+        /// <summary>
+        /// ✅ MEMORY OPTIMIZATION: Get or create a GlobalFlagManager instance for the given category.
+        /// Uses singleton pattern with thread-safe caching to avoid reloading XML files.
+        /// </summary>
+        /// <param name="categoryName">The category name (e.g., "Ducts", "Pipes")</param>
+        /// <returns>A shared GlobalFlagManager instance for this category</returns>
+        public static GlobalFlagManager GetOrCreate(string categoryName)
+        {
+            if (string.IsNullOrWhiteSpace(categoryName))
+                throw new ArgumentException("Category name cannot be null or empty", nameof(categoryName));
+
+            // ✅ Thread-safe: ConcurrentDictionary.GetOrAdd ensures only one instance per category
+            return _instanceCache.GetOrAdd(categoryName, cat => new GlobalFlagManager(cat));
+        }
+
+        /// <summary>
+        /// ✅ MEMORY OPTIMIZATION: Clear the cache for a specific category (e.g., after external file changes).
+        /// This forces a reload of the XML file on next GetOrCreate call.
+        /// </summary>
+        /// <param name="categoryName">The category to clear from cache</param>
+        public static void ClearCache(string categoryName)
+        {
+            if (string.IsNullOrWhiteSpace(categoryName))
+                return;
+
+            if (_instanceCache.TryRemove(categoryName, out var manager))
+            {
+                // Optional: Trigger reload on next access by clearing the instance
+                // The instance will be recreated on next GetOrCreate call
+            }
+        }
+
+        /// <summary>
+        /// ✅ MEMORY OPTIMIZATION: Clear all cached instances (use sparingly, e.g., on application shutdown).
+        /// </summary>
+        public static void ClearAllCache()
+        {
+            _instanceCache.Clear();
         }
 
         /// <summary>
@@ -159,20 +207,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         /// <summary>
         /// Save global flags to XML
+        /// ✅ THREAD-SAFETY: Uses lock to prevent concurrent writes from multiple instances
         /// </summary>
         private void SaveGlobalFlags()
         {
-            try
+            lock (_saveLock)
             {
-                var serializer = new XmlSerializer(typeof(GlobalFlagStorage));
-                using (var writer = new FileStream(_globalXmlPath, FileMode.Create))
+                try
                 {
-                    serializer.Serialize(writer, _storage);
+                    var serializer = new XmlSerializer(typeof(GlobalFlagStorage));
+                    using (var writer = new FileStream(_globalXmlPath, FileMode.Create))
+                    {
+                        serializer.Serialize(writer, _storage);
+                    }
+                    
+                    // ✅ CRITICAL: After saving, invalidate other instances in cache that might have stale data
+                    // This ensures next GetOrCreate for this category will reload fresh data
+                    // Note: We don't clear the cache entry itself because the current instance's _storage
+                    // is now up-to-date. Other code paths using GetOrCreate will get the cached instance
+                    // which already has the latest data loaded.
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Error($"[GlobalFlagManager] Error saving global flags for category '{_categoryName}': {ex.Message}");
                 }
             }
-            catch (Exception ex)
+        }
+
+        /// <summary>
+        /// ✅ MEMORY OPTIMIZATION: Reload the XML file (useful when external changes are made).
+        /// </summary>
+        public void Reload()
+        {
+            lock (_saveLock)
             {
-                DebugLogger.Error($"[GlobalFlagManager] Error saving global flags: {ex.Message}");
+                LoadGlobalFlags();
             }
         }
     }

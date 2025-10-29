@@ -1,0 +1,337 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Runtime;
+using System.Text;
+
+namespace JSE_RevitAddin_MEP_OPENINGS.Services
+{
+    /// <summary>
+    /// Memory profiler for tracking actual memory usage per clash zone during refresh operations.
+    /// Compares theoretical estimates with practical measurements.
+    /// </summary>
+    public class MemoryProfiler
+    {
+        private readonly List<MemorySnapshot> _snapshots = new List<MemorySnapshot>();
+        private readonly Process _process;
+        private long _initialManagedMemory;
+        private long _initialProcessMemory;
+        private int _clashZoneCount = 0;
+        private const int LOG_INTERVAL = 50; // Log every 50 clash zones
+        private readonly string _logFileName;
+
+        public MemoryProfiler(string logFileName = "memory_profiling.log")
+        {
+            _logFileName = logFileName;
+            _process = Process.GetCurrentProcess();
+            
+            // Force GC before initial measurement for accurate baseline
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            
+            _initialManagedMemory = GC.GetTotalMemory(false);
+            _initialProcessMemory = _process.WorkingSet64;
+            
+            // Log initial state
+            TakeSnapshot("INITIAL_STATE", 0);
+        }
+
+        /// <summary>
+        /// Takes a memory snapshot at a specific point in execution
+        /// </summary>
+        public void TakeSnapshot(string phase, int clashZoneCount)
+        {
+            try
+            {
+                // ✅ MEMORY OPTIMIZATION: Force full GC before measurement for more accurate readings
+                GC.Collect(2, GCCollectionMode.Forced, true);
+                GC.WaitForPendingFinalizers();
+                GC.Collect(2, GCCollectionMode.Forced, true);
+                
+                long managedMemory = GC.GetTotalMemory(false);
+                long processMemory = _process.WorkingSet64;
+                
+                var snapshot = new MemorySnapshot
+                {
+                    Phase = phase,
+                    ClashZoneCount = clashZoneCount,
+                    Timestamp = DateTime.Now,
+                    ManagedMemoryBytes = managedMemory,
+                    ProcessMemoryBytes = processMemory,
+                    ManagedMemoryMB = managedMemory / (1024.0 * 1024.0),
+                    ProcessMemoryMB = processMemory / (1024.0 * 1024.0),
+                    MemoryDeltaMB = (managedMemory - _initialManagedMemory) / (1024.0 * 1024.0),
+                    ProcessMemoryDeltaMB = (processMemory - _initialProcessMemory) / (1024.0 * 1024.0)
+                };
+
+                // Calculate memory per clash zone if we have zones
+                if (clashZoneCount > 0)
+                {
+                    snapshot.MemoryPerClashZoneBytes = (managedMemory - _initialManagedMemory) / clashZoneCount;
+                    snapshot.MemoryPerClashZoneMB = snapshot.MemoryPerClashZoneBytes / (1024.0 * 1024.0);
+                    snapshot.ProcessMemoryPerClashZoneMB = snapshot.ProcessMemoryDeltaMB / clashZoneCount;
+                }
+
+                _snapshots.Add(snapshot);
+                
+                // Log significant milestones or at intervals
+                if (clashZoneCount % LOG_INTERVAL == 0 || phase.Contains("START") || phase.Contains("END") || phase.Contains("ERROR"))
+                {
+                    LogSnapshot(snapshot);
+                }
+            }
+            catch (Exception ex)
+            {
+                SafeFileLogger.SafeAppendText(_logFileName, 
+                    $"[{DateTime.Now}] ERROR taking memory snapshot in phase '{phase}': {ex.Message}\n");
+            }
+        }
+
+        /// <summary>
+        /// Records memory usage during clash zone detection loop
+        /// </summary>
+        public void RecordClashZoneProcessing(int processedCount, int totalCount)
+        {
+            _clashZoneCount = processedCount;
+            
+            if (processedCount % LOG_INTERVAL == 0 || processedCount == 1 || processedCount == totalCount)
+            {
+                TakeSnapshot($"PROCESSING_CLASH_ZONES", processedCount);
+            }
+        }
+
+        /// <summary>
+        /// Logs a snapshot to file
+        /// </summary>
+        private void LogSnapshot(MemorySnapshot snapshot)
+        {
+            try
+            {
+                var log = new StringBuilder();
+                log.AppendLine($"[{snapshot.Timestamp:yyyy-MM-dd HH:mm:ss.fff}] ═══ MEMORY SNAPSHOT ═══");
+                log.AppendLine($"Phase: {snapshot.Phase}");
+                log.AppendLine($"Clash Zones: {snapshot.ClashZoneCount}");
+                log.AppendLine($"Managed Memory: {snapshot.ManagedMemoryMB:F2} MB (Delta: {snapshot.MemoryDeltaMB:F2} MB)");
+                log.AppendLine($"Process Memory: {snapshot.ProcessMemoryMB:F2} MB (Delta: {snapshot.ProcessMemoryDeltaMB:F2} MB)");
+                
+                if (snapshot.ClashZoneCount > 0)
+                {
+                    log.AppendLine($"Memory per Clash Zone: {snapshot.MemoryPerClashZoneMB:F4} MB ({snapshot.MemoryPerClashZoneBytes} bytes)");
+                    log.AppendLine($"Process Memory per Clash Zone: {snapshot.ProcessMemoryPerClashZoneMB:F4} MB");
+                    
+                    // Compare with theoretical estimate
+                    // Theoretical: Base ClashZone object only (~3 KB)
+                    // Realistic: Base (3 KB) + Parameter snapshots (2-4 KB) + Processing overhead (5-10 KB) ≈ ~15 KB = 0.015 MB
+                    double theoreticalMB = 0.003; // ~3 KB per clash zone (base object only)
+                    double realisticMB = 0.015;   // ~15 KB per clash zone (base + parameters + processing)
+                    
+                    double efficiencyRatioTheoretical = theoreticalMB / snapshot.MemoryPerClashZoneMB;
+                    double efficiencyRatioRealistic = realisticMB / snapshot.MemoryPerClashZoneMB;
+                    
+                    log.AppendLine($"Theoretical (base object only): {theoreticalMB:F4} MB per clash zone");
+                    log.AppendLine($"Realistic (base + params + overhead): {realisticMB:F4} MB per clash zone");
+                    log.AppendLine($"Actual Memory: {snapshot.MemoryPerClashZoneMB:F4} MB per clash zone");
+                    log.AppendLine($"Vs Theoretical: {(snapshot.MemoryPerClashZoneMB / theoreticalMB):F1}x");
+                    log.AppendLine($"Vs Realistic: {(snapshot.MemoryPerClashZoneMB / realisticMB):F1}x");
+                    
+                    if (efficiencyRatioTheoretical < 0.5)
+                    {
+                        log.AppendLine($"⚠️ NOTE: Actual is {(snapshot.MemoryPerClashZoneMB / theoreticalMB):F1}x theoretical (expected - includes parameters & processing)");
+                    }
+                    
+                    if (snapshot.MemoryPerClashZoneMB > realisticMB * 3.0) // More than 3x realistic
+                    {
+                        log.AppendLine($"⚠️ WARNING: Memory usage is {(snapshot.MemoryPerClashZoneMB / realisticMB):F1}x higher than realistic estimate - potential leak");
+                    }
+                    else
+                    {
+                        log.AppendLine($"✓ Memory usage is within acceptable range for processing complexity");
+                    }
+                }
+                
+                log.AppendLine($"═══════════════════════════════════════");
+                
+                // Get the actual log directory path and write directly to verify
+                string logDir = SafeFileLogger.GetLogDirectory();
+                string logPath = Path.Combine(logDir, _logFileName);
+                
+                // Append to file directly (with fallback if SafeAppendText fails)
+                try
+                {
+                    SafeFileLogger.SafeAppendText(_logFileName, log.ToString());
+                    
+                    // Verify file was written
+                    if (File.Exists(logPath))
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[MemoryProfiler] ✅ Memory log written to: {logPath}");
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[MemoryProfiler] ⚠️ Memory log file not found at: {logPath}");
+                    }
+                }
+                catch (Exception writeEx)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[MemoryProfiler] Error writing to SafeFileLogger: {writeEx.Message}");
+                    // Try direct write as fallback
+                    try
+                    {
+                        File.AppendAllText(logPath, log.ToString());
+                    }
+                    catch { }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MemoryProfiler] Error logging snapshot: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Generates a final summary report
+        /// </summary>
+        public void GenerateFinalReport(int totalClashZones)
+        {
+            try
+            {
+                if (_snapshots.Count == 0)
+                {
+                    SafeFileLogger.SafeAppendText(_logFileName, 
+                        $"[{DateTime.Now}] No snapshots recorded - cannot generate report\n");
+                    return;
+                }
+
+                var finalSnapshot = _snapshots[_snapshots.Count - 1];
+                
+                var report = new StringBuilder();
+                report.AppendLine();
+                report.AppendLine($"═══════════════════════════════════════════════════════════════");
+                report.AppendLine($"                    FINAL MEMORY REPORT");
+                report.AppendLine($"═══════════════════════════════════════════════════════════════");
+                report.AppendLine($"Total Clash Zones Processed: {totalClashZones}");
+                report.AppendLine($"Total Snapshots: {_snapshots.Count}");
+                report.AppendLine();
+                
+                report.AppendLine($"Initial Memory:");
+                report.AppendLine($"  Managed: {(_initialManagedMemory / (1024.0 * 1024.0)):F2} MB");
+                report.AppendLine($"  Process: {(_initialProcessMemory / (1024.0 * 1024.0)):F2} MB");
+                report.AppendLine();
+                
+                report.AppendLine($"Final Memory:");
+                report.AppendLine($"  Managed: {finalSnapshot.ManagedMemoryMB:F2} MB");
+                report.AppendLine($"  Process: {finalSnapshot.ProcessMemoryMB:F2} MB");
+                report.AppendLine();
+                
+                report.AppendLine($"Memory Increase:");
+                report.AppendLine($"  Managed: {finalSnapshot.MemoryDeltaMB:F2} MB");
+                report.AppendLine($"  Process: {finalSnapshot.ProcessMemoryDeltaMB:F2} MB");
+                report.AppendLine();
+
+                if (totalClashZones > 0)
+                {
+                    report.AppendLine($"Average Memory per Clash Zone:");
+                    report.AppendLine($"  Managed: {finalSnapshot.MemoryPerClashZoneMB:F4} MB ({finalSnapshot.MemoryPerClashZoneBytes} bytes)");
+                    report.AppendLine($"  Process: {finalSnapshot.ProcessMemoryPerClashZoneMB:F4} MB");
+                    report.AppendLine();
+                    
+                    // Compare with theoretical and realistic estimates
+                    double theoreticalMB = 0.003; // ~3 KB per clash zone (base object only)
+                    double realisticMB = 0.015;   // ~15 KB per clash zone (base + parameters + processing overhead)
+                    
+                    double multiplierTheoretical = finalSnapshot.MemoryPerClashZoneMB / theoreticalMB;
+                    double multiplierRealistic = finalSnapshot.MemoryPerClashZoneMB / realisticMB;
+                    
+                    report.AppendLine($"Theoretical (base object only): {theoreticalMB:F4} MB per clash zone");
+                    report.AppendLine($"Realistic (base + params + overhead): {realisticMB:F4} MB per clash zone");
+                    report.AppendLine($"Actual Memory: {finalSnapshot.MemoryPerClashZoneMB:F4} MB per clash zone");
+                    report.AppendLine($"");
+                    report.AppendLine($"Multiplier vs Theoretical: {multiplierTheoretical:F1}x (expected to be high)");
+                    report.AppendLine($"Multiplier vs Realistic: {multiplierRealistic:F1}x");
+                    report.AppendLine($"");
+                    
+                    // Break down the memory usage
+                    report.AppendLine($"Memory Breakdown (Estimated):");
+                    report.AppendLine($"  • Base ClashZone object: ~3 KB");
+                    report.AppendLine($"  • Parameter snapshots (MEP + Host): ~2-4 KB");
+                    report.AppendLine($"  • Processing overhead (geometry, lookups): ~5-10 KB");
+                    report.AppendLine($"  • Revit API caches: ~5-10 KB");
+                    report.AppendLine($"  • String/logging overhead: ~5-10 KB");
+                    report.AppendLine($"  • .NET GC overhead: ~5-10 KB");
+                    report.AppendLine($"  • TOTAL Expected: ~25-47 KB per clash zone");
+                    report.AppendLine($"");
+                    
+                    if (multiplierRealistic > 3.0)
+                    {
+                        report.AppendLine($"⚠️ WARNING: Memory usage is {multiplierRealistic:F1}x higher than realistic estimate");
+                        report.AppendLine($"   This suggests potential memory leak, inefficient allocation, or");
+                        report.AppendLine($"   excessive logging/string operations not being released.");
+                    }
+                    else if (multiplierRealistic > 2.0)
+                    {
+                        report.AppendLine($"⚠️ NOTE: Memory usage is {multiplierRealistic:F1}x realistic estimate");
+                        report.AppendLine($"   Consider reducing logging or forcing GC more frequently.");
+                    }
+                    else
+                    {
+                        report.AppendLine($"✓ Memory usage is within acceptable range for processing complexity");
+                    }
+                    report.AppendLine();
+                }
+
+                // Log peak memory usage
+                var peakSnapshot = _snapshots.OrderByDescending(s => s.ManagedMemoryMB).FirstOrDefault();
+                if (peakSnapshot != null)
+                {
+                    report.AppendLine($"Peak Memory Usage:");
+                    report.AppendLine($"  Phase: {peakSnapshot.Phase}");
+                    report.AppendLine($"  Managed: {peakSnapshot.ManagedMemoryMB:F2} MB");
+                    report.AppendLine($"  Process: {peakSnapshot.ProcessMemoryMB:F2} MB");
+                    report.AppendLine($"  Clash Zones: {peakSnapshot.ClashZoneCount}");
+                    report.AppendLine();
+                }
+
+                report.AppendLine($"═══════════════════════════════════════════════════════════════");
+                report.AppendLine();
+                
+                SafeFileLogger.SafeAppendText(_logFileName, report.ToString());
+            }
+            catch (Exception ex)
+            {
+                SafeFileLogger.SafeAppendText(_logFileName, 
+                    $"[{DateTime.Now}] ERROR generating final report: {ex.Message}\n");
+            }
+        }
+
+        /// <summary>
+        /// Gets the latest memory stats
+        /// </summary>
+        public string GetLatestStats()
+        {
+            if (_snapshots.Count == 0)
+                return "No snapshots yet";
+                
+            var latest = _snapshots[_snapshots.Count - 1];
+            return $"Phase: {latest.Phase}, Zones: {latest.ClashZoneCount}, " +
+                   $"Memory: {latest.MemoryPerClashZoneMB:F4} MB/zone ({latest.ClashZoneCount} zones)";
+        }
+
+        private class MemorySnapshot
+        {
+            public string Phase { get; set; }
+            public int ClashZoneCount { get; set; }
+            public DateTime Timestamp { get; set; }
+            public long ManagedMemoryBytes { get; set; }
+            public long ProcessMemoryBytes { get; set; }
+            public double ManagedMemoryMB { get; set; }
+            public double ProcessMemoryMB { get; set; }
+            public double MemoryDeltaMB { get; set; }
+            public double ProcessMemoryDeltaMB { get; set; }
+            public long MemoryPerClashZoneBytes { get; set; }
+            public double MemoryPerClashZoneMB { get; set; }
+            public double ProcessMemoryPerClashZoneMB { get; set; }
+        }
+    }
+}

@@ -26,19 +26,79 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 _logDirectory = InitializeLogDirectory();
                 _logDirectoryInitialized = true;
+                
+                // Log the directory location to debug output for troubleshooting
+                System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Log directory initialized: {_logDirectory}");
+                System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Directory exists: {Directory.Exists(_logDirectory)}");
+                
                 return _logDirectory;
+            }
+        }
+        
+        /// <summary>
+        /// Forces initialization of AppData Logs directory (for deployment scenarios)
+        /// This ensures the directory exists even if project directory takes priority
+        /// </summary>
+        public static void EnsureAppDataLogsDirectory()
+        {
+            try
+            {
+                string appDataPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "JSE_MEP_Openings",
+                    "Logs"
+                );
+                
+                if (TryCreateDirectory(appDataPath))
+                {
+                    System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] ✅ Ensured AppData Logs directory exists: {appDataPath}");
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] ⚠️ Failed to create AppData Logs directory: {appDataPath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Error ensuring AppData Logs directory: {ex.Message}");
             }
         }
 
         private static string InitializeLogDirectory()
         {
-            // Priority 1: Try to use project directory (for development)
+            // ✅ PRIORITY 1: Use AppData\Roaming for deployment scenarios (preferred for team deployment)
+            // This ensures all deployed instances write logs to the same location
+            try
+            {
+                string appDataPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "JSE_MEP_Openings",
+                    "Logs"
+                );
+
+                if (TryCreateDirectory(appDataPath))
+                {
+                    System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Using AppData\\Roaming Logs directory: {appDataPath}");
+                    return appDataPath;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Could not use AppData\\Roaming: {ex.Message}");
+            }
+
+            // Priority 2: Try to use project directory (for development only)
+            // Only use this if assembly is actually in the project directory
             try
             {
                 string assemblyLocation = Assembly.GetExecutingAssembly().Location;
                 string assemblyDir = Path.GetDirectoryName(assemblyLocation);
                 
-                if (!string.IsNullOrEmpty(assemblyDir))
+                // Check if assembly is in project directory (development scenario)
+                bool isDevelopmentPath = assemblyLocation.Contains(@"JSE_CSharp_Projects\JSE_MEPOPENING_23") ||
+                                         assemblyLocation.Contains(@"JSE_RevitAddin_MEP_OPENINGS");
+                
+                if (isDevelopmentPath && !string.IsNullOrEmpty(assemblyDir))
                 {
                     // Navigate up to find project root
                     string projectRoot = assemblyDir;
@@ -46,7 +106,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         if (Directory.Exists(Path.Combine(projectRoot, "Log")))
                         {
-                            return Path.Combine(projectRoot, "Log");
+                            string logDir = Path.Combine(projectRoot, "Log");
+                            System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Using project Log directory (development): {logDir}");
+                            return logDir;
                         }
                         projectRoot = Directory.GetParent(projectRoot)?.FullName;
                     }
@@ -58,7 +120,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         logDir = Path.GetFullPath(logDir); // Resolve .. paths
                         
                         if (TryCreateDirectory(logDir))
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Using project Log directory (development): {logDir}");
                             return logDir;
+                        }
                     }
                 }
             }
@@ -66,23 +131,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 // Silently continue to fallback options
                 System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Could not use project directory: {ex.Message}");
-            }
-
-            // Priority 2: Use AppData (always available on all Windows systems)
-            try
-            {
-                string appDataPath = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "JSE_MEP_Openings",
-                    "Logs"
-                );
-
-                if (TryCreateDirectory(appDataPath))
-                    return appDataPath;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Could not use AppData: {ex.Message}");
             }
 
             // Priority 3: Use Temp directory (last resort - always writable)
@@ -125,9 +173,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (string.IsNullOrEmpty(path))
                     return false;
 
+                // Directory.CreateDirectory will create all parent directories if they don't exist
+                // This ensures JSE_MEP_Openings is created if it doesn't exist
                 if (!Directory.Exists(path))
                 {
                     Directory.CreateDirectory(path);
+                    System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Created directory: {path}");
                 }
 
                 // Verify we can write to it
@@ -137,8 +188,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Failed to create directory {path}: {ex.Message}");
                 return false;
             }
         }
@@ -148,6 +200,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void SafeAppendText(string fileName, string message)
         {
+            // ✅ DEPLOYMENT MODE: Skip all logging if deployment mode is enabled
+            // EXCEPT: Memory profiling logs (for testing memory savings)
+            if (DeploymentConfiguration.DeploymentMode && !fileName.Contains("memory_profiling"))
+                return;
+                
             try
             {
                 if (string.IsNullOrEmpty(fileName) || string.IsNullOrEmpty(message))
@@ -157,10 +214,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 string logPath = Path.Combine(logDir, fileName);
 
                 // Ensure directory exists (should already exist, but double-check)
+                // Directory.CreateDirectory will create all parent directories if they don't exist
                 string directory = Path.GetDirectoryName(logPath);
                 if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
                 {
-                    Directory.CreateDirectory(directory);
+                    try
+                    {
+                        Directory.CreateDirectory(directory); // Creates parent directories too
+                        System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Created log directory: {directory}");
+                    }
+                    catch (Exception dirEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Failed to create directory {directory}: {dirEx.Message}");
+                        // Continue - will be caught by outer exception handler
+                    }
                 }
 
                 // Append with timestamp
@@ -185,16 +252,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     string logDir = GetLogDirectory();
                     string logPath = Path.Combine(logDir, fileName);
                     string directory = Path.GetDirectoryName(logPath);
-                    if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+                    if (!string.IsNullOrEmpty(directory))
                     {
+                        // Directory.CreateDirectory creates all parent directories if they don't exist
                         Directory.CreateDirectory(directory);
+                        System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Recreated directory: {directory}");
                         File.AppendAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}\n");
                     }
                 }
-                catch
+                catch (Exception retryEx)
                 {
                     // Final failure - log to debug only
-                    System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Failed to write log: {fileName}");
+                    System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Failed to recreate directory and write log {fileName}: {retryEx.Message}");
                 }
             }
             catch (Exception ex)
@@ -274,7 +343,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 catch { }
 
-                return $"Log Directory: {logDir}\nExists: {exists}\nWritable: {writable}";
+                // Also check AppData directory status
+                string appDataPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "JSE_MEP_Openings",
+                    "Logs"
+                );
+                bool appDataExists = Directory.Exists(appDataPath);
+                
+                return $"Log Directory: {logDir}\nExists: {exists}\nWritable: {writable}\n\n" +
+                       $"AppData Logs Directory: {appDataPath}\nAppData Exists: {appDataExists}";
             }
             catch (Exception ex)
             {
