@@ -2354,6 +2354,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             bool shouldSwapDimensions = ((groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing") && rotationAngle != 0.0);
             SetClusterSizeParameters(doc, inst, cluster, groupKey, width, height, depth, shouldSwapDimensions);
             
+            // ✅ DEBUG: Log before calling SetClusterSleeveMetadata
+            DebugLogger.Info($"[PlaceClusterSleeve] About to call SetClusterSleeveMetadata for cluster sleeve {inst.Id}, targetCategory='{targetCategory}'");
+            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                $"[PlaceClusterSleeve] About to call SetClusterSleeveMetadata for cluster sleeve {inst.Id}, targetCategory='{targetCategory}'\n");
+            
             // CRITICAL FIX: Set metadata parameters for cluster sleeve
             SetClusterSleeveMetadata(inst, targetCategory);
 
@@ -2927,19 +2932,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     {
         try
         {
-            DebugLogger.Info($"[SetClusterSleeveMetadata] Setting metadata for cluster sleeve {clusterSleeve.Id}");
+            DebugLogger.Info($"[SetClusterSleeveMetadata] Setting metadata for cluster sleeve {clusterSleeve.Id}, category='{category}'");
+            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                $"[SetClusterSleeveMetadata] Setting metadata for cluster sleeve {clusterSleeve.Id}, category='{category}'\n");
             
-            // Set MEP_Category parameter (CRITICAL for clustering identification)
+            // ✅ OPTIONAL: Try to set MEP_Category parameter if it exists (not critical - XML has category info per sleeve)
+            // Note: Opening families don't have MEP_Category parameter - XML stores category per clash zone
+            // Parameter transfer uses MEP Element ID and XML category to find correct XML file
             var mepCategoryParam = clusterSleeve.LookupParameter("MEP_Category");
             if (mepCategoryParam != null && !mepCategoryParam.IsReadOnly)
             {
+                // Parameter exists and is writable - set it for convenience
                 mepCategoryParam.Set(category);
                 DebugLogger.Info($"[SetClusterSleeveMetadata] Set MEP_Category = '{category}' for cluster sleeve {clusterSleeve.Id}");
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                    $"[SetClusterSleeveMetadata] ✓ Set MEP_Category = '{category}' for cluster sleeve {clusterSleeve.Id}\n");
             }
-            else
-            {
-                DebugLogger.Warning($"[SetClusterSleeveMetadata] MEP_Category parameter not found or read-only on cluster sleeve {clusterSleeve.Id}");
-            }
+            // ✅ NOTE: If parameter doesn't exist, that's OK - XML lookup will use MEP Element ID and category from XML
             
             // Set Filter Name based on category
             string filterName = GetFilterNameForCategory(category);
@@ -3099,6 +3108,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Try to find clash zone in cache for flag updates later
                 var individualClashZone = _clashZoneCache.Values.FirstOrDefault(cz => 
                     cz.SleeveInstanceId == individualId || cz.AfterClusterSleevePlacedSleeveInstanceId == individualId);
+                
+                // ✅ OPTIMIZATION: Skip sleeves that were already deleted in Stage 1
+                if (individualClashZone != null && individualClashZone.SleeveInstanceId == -1)
+                {
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
+                        $"[CLEANUP-SKIP] Individual sleeve {individualId} already deleted in Stage 1 (SleeveInstanceId=-1), skipping\n");
+                    continue;
+                }
                 
                 // ✅ CRITICAL FIX: Get individual sleeve's host type to filter matching cluster sleeves
                 var individualHostTypeParam = individualSleeve.LookupParameter("Host Type");

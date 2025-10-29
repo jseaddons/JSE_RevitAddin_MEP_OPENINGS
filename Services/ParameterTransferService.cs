@@ -633,6 +633,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var result = new ParameterTransferResult();
             var allResults = new List<ParameterTransferResult>();
 
+            // ✅ FIX: Track unique sleeves that were successfully transferred (not per mapping)
+            var successfullyTransferredSleeveIds = new HashSet<int>();
+
             try
             {
                 // Check if any sleeves exist in the model
@@ -680,10 +683,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     switch (mapping.TransferType)
                     {
                         case TransferType.ReferenceToOpening:
-                            mappingResult = TransferFromReferenceElementsInTransaction(doc, openingIds, mapping, filterIndex);
+                            mappingResult = TransferFromReferenceElementsInTransaction(doc, openingIds, mapping, filterIndex, successfullyTransferredSleeveIds);
                             break;
                         case TransferType.HostToOpening:
-                            mappingResult = TransferFromHostElementsInTransaction(doc, openingIds, mapping, filterIndex);
+                            mappingResult = TransferFromHostElementsInTransaction(doc, openingIds, mapping, filterIndex, successfullyTransferredSleeveIds);
                             break;
                         case TransferType.LevelToOpening:
                             mappingResult = TransferFromLevelsInTransaction(doc, openingIds, mapping);
@@ -714,11 +717,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 // Combine results
                 result.Success = allResults.All(r => r.Success);
-                result.TransferredCount = allResults.Sum(r => r.TransferredCount);
+                
+                // ✅ FIX: Count unique sleeves transferred, not per-mapping transfers
+                // Use the tracking set to get actual unique sleeve count
+                int uniqueSleeveCount = successfullyTransferredSleeveIds?.Count ?? 0;
+                
+                // Also keep the parameter count for backward compatibility
+                int parameterTransferCount = allResults.Sum(r => r.TransferredCount);
+                
+                // Use unique sleeve count if available, otherwise use parameter count
+                result.TransferredCount = uniqueSleeveCount > 0 ? uniqueSleeveCount : parameterTransferCount;
                 result.FailedCount = allResults.Sum(r => r.FailedCount);
                 result.Errors = allResults.SelectMany(r => r.Errors).ToList();
                 result.Warnings = allResults.SelectMany(r => r.Warnings).ToList();
+                
+                // Improved message showing unique sleeves
+                if (uniqueSleeveCount > 0)
+                {
+                    result.Message = $"Transfer completed: {uniqueSleeveCount} sleeves processed ({parameterTransferCount} parameter transfers), {result.FailedCount} failed.";
+                }
+                else
+                {
                 result.Message = $"Transfer completed: {result.TransferredCount} successful, {result.FailedCount} failed.";
+                }
             }
             catch (Exception ex)
             {
@@ -734,20 +755,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             Document doc,
             List<ElementId> openingIds,
             ParameterMapping mapping,
-            Dictionary<string, Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)>> filterIndex)
+            Dictionary<string, Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)>> filterIndex,
+            HashSet<int> successfullyTransferredSleeveIds = null)
         {
             // Delegate to core with a resolver for MEP bags
-            return TransferFromElementsWithSnapshot(doc, openingIds, mapping, filterIndex, useHost:false);
+            return TransferFromElementsWithSnapshot(doc, openingIds, mapping, filterIndex, useHost:false, successfullyTransferredSleeveIds);
         }
 
         public ParameterTransferResult TransferFromHostElementsInTransaction(
             Document doc,
             List<ElementId> openingIds,
             ParameterMapping mapping,
-            Dictionary<string, Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)>> filterIndex)
+            Dictionary<string, Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)>> filterIndex,
+            HashSet<int> successfullyTransferredSleeveIds = null)
         {
             // Delegate to core with a resolver for HOST bags
-            return TransferFromElementsWithSnapshot(doc, openingIds, mapping, filterIndex, useHost:true);
+            return TransferFromElementsWithSnapshot(doc, openingIds, mapping, filterIndex, useHost:true, successfullyTransferredSleeveIds);
         }
 
         private ParameterTransferResult TransferFromElementsWithSnapshot(
@@ -755,7 +778,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             List<ElementId> openingIds,
             ParameterMapping mapping,
             Dictionary<string, Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)>> filterIndex,
-            bool useHost)
+            bool useHost,
+            HashSet<int> successfullyTransferredSleeveIds = null)
         {
             var result = new ParameterTransferResult();
             var transferredCount = 0;
@@ -810,11 +834,70 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // CRITICAL FIX: Check if this is a cluster sleeve
                     // For cluster sleeves, Sleeve Instance ID = -1, and we need to look up ClusterSleeveInstanceId in the XML
                     bool isClusterSleeve = (sleeveId == -1);
+                    string mepCategory = null; // Store MEP category for cluster sleeves to find correct XML file
+                    
+                    // ✅ EARLY READ: Get MEP_Category BEFORE checking cluster sleeve (needed for XML lookup)
+                    if (isClusterSleeve)
+                    {
+                        var mepCategoryParamEarly = opening.LookupParameter("MEP_Category");
+                        if (mepCategoryParamEarly != null && !mepCategoryParamEarly.IsReadOnly)
+                        {
+                            mepCategory = mepCategoryParamEarly.AsString();
+                            DebugLogger.Info($"[TRANSFER] Early read: Cluster sleeve {openingId} has MEP_Category = '{mepCategory}'");
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                $"[{DateTime.Now}] [TRANSFER] Early read: Cluster sleeve {openingId} has MEP_Category = '{mepCategory}'\n");
+                        }
+                        else
+                        {
+                            DebugLogger.Warning($"[TRANSFER] Early read: Cluster sleeve {openingId} MEP_Category parameter is null or read-only");
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                $"[{DateTime.Now}] [TRANSFER] Early read: Cluster sleeve {openingId} MEP_Category parameter is null or read-only\n");
+                        }
+                    }
+                    
+                    // Get Cluster Sleeve Instance ID parameter for XML lookup (for cluster sleeves only)
                     if (isClusterSleeve)
                     {
                         DebugLogger.Info($"[TRANSFER] Sleeve {openingId} is a cluster sleeve (Sleeve Instance ID = -1), will look up Cluster Sleeve Instance ID");
                         System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
                             $"[{DateTime.Now}] [TRANSFER] Sleeve {openingId} is a cluster sleeve (Sleeve Instance ID = -1)\n");
+                        
+                        // MEP_Category was already read early (above), now use it if we have it
+                        if (string.IsNullOrEmpty(mepCategory))
+                        {
+                            DebugLogger.Warning($"[TRANSFER] Cluster sleeve {openingId} MEP_Category is still NULL/EMPTY - trying multiple methods");
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                $"[{DateTime.Now}] [TRANSFER] Cluster sleeve {openingId} MEP_Category is still NULL/EMPTY - trying multiple methods\n");
+                            
+                            // ✅ FALLBACK METHOD 1: Try to read MEP_Category using different parameter lookup methods
+                            var paramNames = new[] { "MEP_Category", "MEP Category", "MEPCategory", "MepCategory" };
+                            foreach (var paramName in paramNames)
+                            {
+                                var altParam = opening.LookupParameter(paramName);
+                                if (altParam != null && !altParam.IsReadOnly && altParam.HasValue)
+                                {
+                                    var altValue = altParam.AsString();
+                                    if (!string.IsNullOrEmpty(altValue))
+                                    {
+                                        mepCategory = altValue;
+                                        DebugLogger.Info($"[TRANSFER] Fallback: Found MEP_Category = '{mepCategory}' using parameter name '{paramName}'");
+                                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                            $"[{DateTime.Now}] [TRANSFER] Fallback: Found MEP_Category = '{mepCategory}' using parameter name '{paramName}'\n");
+                                        break;
+                                    }
+                                }
+                            }
+                            
+                            // ✅ FALLBACK METHOD 2: Try ALL possible XML files that match the filter name and check which one contains this cluster sleeve ID
+                            // This is more reliable than guessing from Filter Name
+                            if (string.IsNullOrEmpty(mepCategory))
+                            {
+                                DebugLogger.Info($"[TRANSFER] Fallback: Will try to find cluster sleeve {sleeveId} in all matching XML files");
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                    $"[{DateTime.Now}] [TRANSFER] Fallback: Will try to find cluster sleeve {sleeveId} in all matching XML files\n");
+                                // We'll handle this in the XML lookup section below
+                            }
+                        }
                         
                         // Get Cluster Sleeve Instance ID parameter for XML lookup
                         var clusterInstanceIdParam = opening.LookupParameter("Cluster Sleeve Instance ID");
@@ -840,46 +923,199 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     // DIRECT LOOKUP - Handle both individual and cluster sleeves
                     // ✅ FIX: Try exact match first, then try to find matching XML file by prefix
+                    // ✅ CRITICAL FIX: For cluster sleeves, use MEP_Category to find correct XML file (e.g., "Duct Accessories" → "*_duct_accessories.xml")
                     Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)> filterData = null;
+                    string matchingKey = null; // ✅ FIX: Declare matchingKey early so it can be used in the MEP_Category NULL block
                     
-                    if (filterIndex.TryGetValue(xmlFileName, out filterData))
+                    // ✅ CRITICAL: For cluster sleeves, skip exact match and go straight to category-based lookup
+                    // This prevents matching "Ventilation" to "Ventilation_ducts.xml" when it should be "Ventilation_duct_accessories.xml"
+                    if (!isClusterSleeve && filterIndex.TryGetValue(xmlFileName, out filterData))
                     {
-                        DebugLogger.Info($"[TRANSFER] Found exact match for '{xmlFileName}'");
+                        DebugLogger.Info($"[TRANSFER] Found exact match for '{xmlFileName}' (individual sleeve)");
                     }
-                    else
+                    else if (isClusterSleeve)
                     {
-                        // ✅ FIX: Try to find XML file that starts with the filter name (for cluster sleeves with just filter name like "Ventilation")
-                        // Look for keys like "Ventilation_ducts.xml", "Ventilation_pipes.xml", etc.
-                        // For cluster sleeves, Filter Name might be just "Ventilation" but XML file is "Ventilation_ducts.xml"
-                        var matchingKey = filterIndex.Keys.FirstOrDefault(k => 
-                            k.StartsWith(xmlFileName + "_", StringComparison.OrdinalIgnoreCase) || 
-                            (xmlFileName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) && k.Equals(xmlFileName, StringComparison.OrdinalIgnoreCase)) ||
-                            (!xmlFileName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) && k.Contains($"_{xmlFileName}_", StringComparison.OrdinalIgnoreCase)));
-                        
-                        if (matchingKey != null)
+                        DebugLogger.Info($"[TRANSFER] Cluster sleeve - skipping exact match, will use category-based lookup");
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                            $"[{DateTime.Now}] [TRANSFER] Cluster sleeve {openingId} - skipping exact match for '{xmlFileName}', using category-based lookup\n");
+                    }
+                    
+                    if (filterData == null)
+                    {
+                        string categorySuffix = null;
+                        // ✅ CRITICAL FIX: For cluster sleeves, determine XML suffix based on MEP_Category
+                        if (isClusterSleeve)
                         {
-                            filterData = filterIndex[matchingKey];
-                            DebugLogger.Info($"[TRANSFER] Found matching XML file '{matchingKey}' for filter name '{xmlFileName}'");
-                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                                $"[{DateTime.Now}] [TRANSFER] Found matching XML file '{matchingKey}' for filter name '{xmlFileName}'\n");
-                        }
-                        else
-                        {
-                            // Try more flexible matching - check if any key contains the filter name
-                            matchingKey = filterIndex.Keys.FirstOrDefault(k => 
-                                k.Contains(xmlFileName, StringComparison.OrdinalIgnoreCase));
-                            if (matchingKey != null)
+                            // ✅ EXPECTED: MEP_Category parameter doesn't exist on opening families - XML stores category per clash zone
+                            // Parameter transfer uses MEP Element ID + XML category to find correct XML file
+                            if (string.IsNullOrEmpty(mepCategory))
                             {
-                                filterData = filterIndex[matchingKey];
-                                DebugLogger.Info($"[TRANSFER] Found flexible match XML file '{matchingKey}' for filter name '{xmlFileName}'");
+                                DebugLogger.Info($"[TRANSFER] Cluster sleeve {openingId}: MEP_Category parameter not available (expected - families don't have this parameter) - using XML category lookup");
                                 System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                                    $"[{DateTime.Now}] [TRANSFER] Found flexible match XML file '{matchingKey}' for filter name '{xmlFileName}'\n");
+                                    $"[{DateTime.Now}] [TRANSFER] Cluster sleeve {openingId}: MEP_Category not available (expected) - checking Ventilation_duct_accessories.xml FIRST for cluster sleeve {sleeveId}\n");
+                                
+                                // ✅ CORE BUG FIX: When MEP_Category is missing, assume "Duct Accessories" and check _duct_accessories.xml FIRST
+                                // This is because damper cluster sleeves are ALWAYS in _duct_accessories.xml, not _ducts.xml
+                                var expectedDuctAccessoriesFile = $"{xmlFileName}_duct_accessories.xml";
+                                
+                                DebugLogger.Info($"[TRANSFER] 🔍 CORE FIX: Checking {expectedDuctAccessoriesFile} FIRST (default for damper clusters when MEP_Category is missing)");
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                    $"[{DateTime.Now}] [TRANSFER] 🔍 CORE FIX: Checking {expectedDuctAccessoriesFile} FIRST for cluster sleeve {sleeveId}\n");
+                                
+                                if (filterIndex.TryGetValue(expectedDuctAccessoriesFile, out var candidateData))
+                                {
+                                    if (candidateData.ContainsKey(sleeveId))
+                                    {
+                                        filterData = candidateData;
+                                        matchingKey = expectedDuctAccessoriesFile;
+                                        DebugLogger.Info($"[TRANSFER] ✅ FOUND! Cluster sleeve {sleeveId} in {expectedDuctAccessoriesFile}");
+                                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                            $"[{DateTime.Now}] [TRANSFER] ✅ FOUND! Cluster sleeve {sleeveId} in {expectedDuctAccessoriesFile} (contains {candidateData.Count} sleeves)\n");
+                                    }
+                                    else
+                                    {
+                                        DebugLogger.Warning($"[TRANSFER] Cluster sleeve {sleeveId} NOT in {expectedDuctAccessoriesFile} (contains {candidateData.Count} sleeves, sample IDs: {string.Join(", ", candidateData.Keys.Take(10))})");
+                                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                            $"[{DateTime.Now}] [TRANSFER] Cluster sleeve {sleeveId} NOT in {expectedDuctAccessoriesFile} (sample IDs: {string.Join(", ", candidateData.Keys.Take(10))})\n");
+                                    }
+                                }
+                                else
+                                {
+                                    DebugLogger.Warning($"[TRANSFER] {expectedDuctAccessoriesFile} not found in filterIndex");
+                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                        $"[{DateTime.Now}] [TRANSFER] {expectedDuctAccessoriesFile} not found. Available files: {string.Join(", ", filterIndex.Keys.Where(k => k.Contains("Ventilation", StringComparison.OrdinalIgnoreCase)).Take(5))}\n");
+                                }
+                                
+                                // If still not found, try other matching files as fallback
+                                if (filterData == null)
+                                {
+                                    var matchingFiles = filterIndex.Keys.Where(k => 
+                                        k.StartsWith(xmlFileName + "_", StringComparison.OrdinalIgnoreCase)).ToList();
+                                    
+                                    DebugLogger.Info($"[TRANSFER] Fallback: Searching remaining {matchingFiles.Count} matching XML files for cluster sleeve {sleeveId}");
+                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                        $"[{DateTime.Now}] [TRANSFER] Fallback: Searching remaining {matchingFiles.Count} matching XML files for cluster sleeve {sleeveId}: {string.Join(", ", matchingFiles)}\n");
+                                    
+                                    foreach (var candidateFile in matchingFiles)
+                                    {
+                                        if (candidateFile.Equals(expectedDuctAccessoriesFile, StringComparison.OrdinalIgnoreCase))
+                                            continue; // Already checked
+                                            
+                                        if (filterIndex.TryGetValue(candidateFile, out var fallbackData))
+                                        {
+                                            if (fallbackData.ContainsKey(sleeveId))
+                                            {
+                                                filterData = fallbackData;
+                                                matchingKey = candidateFile;
+                                                DebugLogger.Info($"[TRANSFER] ✅ Found cluster sleeve {sleeveId} in fallback XML file '{matchingKey}'");
+                                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                                    $"[{DateTime.Now}] [TRANSFER] ✅ Found cluster sleeve {sleeveId} in fallback XML file '{matchingKey}'\n");
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    
+                                    if (filterData == null)
+                                    {
+                                        DebugLogger.Warning($"[TRANSFER] Cluster sleeve {sleeveId} not found in ANY matching XML file");
+                                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                            $"[{DateTime.Now}] [TRANSFER] Cluster sleeve {sleeveId} not found in ANY matching XML file\n");
+                                    }
+                                }
                             }
                             else
                             {
-                                DebugLogger.Warning($"[TRANSFER] No matching XML file found for filter name '{xmlFileName}'. Available keys (first 5): {string.Join(", ", filterIndex.Keys.Take(5))}");
+                                DebugLogger.Info($"[TRANSFER] Cluster sleeve {openingId}: MEP_Category = '{mepCategory}'");
                                 System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                                    $"[{DateTime.Now}] [TRANSFER] No matching XML file found for filter name '{xmlFileName}'. Available keys (first 5): {string.Join(", ", filterIndex.Keys.Take(5))}\n");
+                                    $"[{DateTime.Now}] [TRANSFER] Cluster sleeve {openingId}: MEP_Category = '{mepCategory}'\n");
+                                
+                                // Map MEP category to XML file suffix (MUST CHECK Duct Accessories FIRST before Ducts)
+                                if (mepCategory.Contains("Duct Accessory", StringComparison.OrdinalIgnoreCase) || 
+                                    mepCategory.Contains("DuctAccessory", StringComparison.OrdinalIgnoreCase) ||
+                                    mepCategory.Equals("Duct Accessories", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    categorySuffix = "_duct_accessories";
+                                }
+                                else if (mepCategory.Contains("Duct", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    categorySuffix = "_ducts";
+                                }
+                                else if (mepCategory.Contains("Pipe", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    categorySuffix = "_pipes";
+                                }
+                                else if (mepCategory.Contains("Cable", StringComparison.OrdinalIgnoreCase) || 
+                                         mepCategory.Contains("Tray", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    categorySuffix = "_cable_trays";
+                                }
+                            }
+                            
+                            DebugLogger.Info($"[TRANSFER] Cluster sleeve category '{mepCategory}' → suffix '{categorySuffix}'");
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                $"[{DateTime.Now}] [TRANSFER] Cluster sleeve category '{mepCategory}' → suffix '{categorySuffix}'\n");
+                        }
+                        
+                        // ✅ FIX: Try to find XML file that matches filter name + category suffix (for damper cluster sleeves)
+                        // Note: matchingKey was already declared above
+                        
+                        if (!string.IsNullOrEmpty(categorySuffix))
+                        {
+                            // First try: filter name + category suffix (e.g., "Ventilation" + "_duct_accessories" → "Ventilation_duct_accessories.xml")
+                            var expectedFileName = $"{xmlFileName}{categorySuffix}.xml";
+                            DebugLogger.Info($"[TRANSFER] Looking for category-specific XML file: '{expectedFileName}'");
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                $"[{DateTime.Now}] [TRANSFER] Looking for category-specific XML file: '{expectedFileName}'\n");
+                            
+                            if (filterIndex.TryGetValue(expectedFileName, out filterData))
+                            {
+                                matchingKey = expectedFileName;
+                                DebugLogger.Info($"[TRANSFER] ✅ Found category-specific XML file '{matchingKey}' for cluster sleeve");
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                    $"[{DateTime.Now}] [TRANSFER] ✅ Found category-specific XML file '{matchingKey}' for cluster sleeve\n");
+                            }
+                            else
+                            {
+                                DebugLogger.Warning($"[TRANSFER] Category-specific XML file '{expectedFileName}' not found in filterIndex");
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                    $"[{DateTime.Now}] [TRANSFER] Category-specific XML file '{expectedFileName}' not found. Available keys: {string.Join(", ", filterIndex.Keys.Take(10))}\n");
+                            }
+                        }
+                        
+                        if (matchingKey == null && !isClusterSleeve)
+                        {
+                            // Fallback: Try to find XML file that starts with the filter name (for individual sleeves)
+                            // Look for keys like "Ventilation_ducts.xml", "Ventilation_pipes.xml", etc.
+                            matchingKey = filterIndex.Keys.FirstOrDefault(k => 
+                                k.StartsWith(xmlFileName + "_", StringComparison.OrdinalIgnoreCase) || 
+                                (xmlFileName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) && k.Equals(xmlFileName, StringComparison.OrdinalIgnoreCase)) ||
+                                (!xmlFileName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) && k.Contains($"_{xmlFileName}_", StringComparison.OrdinalIgnoreCase)));
+                            
+                            if (matchingKey != null)
+                            {
+                                filterData = filterIndex[matchingKey];
+                                DebugLogger.Info($"[TRANSFER] Found fallback matching XML file '{matchingKey}' for filter name '{xmlFileName}'");
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                    $"[{DateTime.Now}] [TRANSFER] Found fallback matching XML file '{matchingKey}' for filter name '{xmlFileName}'\n");
+                            }
+                            else
+                            {
+                                // Try more flexible matching - check if any key contains the filter name
+                                matchingKey = filterIndex.Keys.FirstOrDefault(k => 
+                                    k.Contains(xmlFileName, StringComparison.OrdinalIgnoreCase));
+                                if (matchingKey != null)
+                                {
+                                    filterData = filterIndex[matchingKey];
+                                    DebugLogger.Info($"[TRANSFER] Found flexible match XML file '{matchingKey}' for filter name '{xmlFileName}'");
+                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                        $"[{DateTime.Now}] [TRANSFER] Found flexible match XML file '{matchingKey}' for filter name '{xmlFileName}'\n");
+                                }
+                                else
+                                {
+                                    DebugLogger.Warning($"[TRANSFER] No matching XML file found for filter name '{xmlFileName}'. Available keys (first 5): {string.Join(", ", filterIndex.Keys.Take(5))}");
+                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                        $"[{DateTime.Now}] [TRANSFER] No matching XML file found for filter name '{xmlFileName}'. Available keys (first 5): {string.Join(", ", filterIndex.Keys.Take(5))}\n");
+                                }
                             }
                         }
                     }
@@ -908,6 +1144,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     if (ok)
                                     {
                                         transferredCount++;
+                                        successfullyTransferredSleeveIds?.Add(openingId.IntegerValue); // Track unique sleeve
                                         DebugLogger.Info($"[TRANSFER] ✓ Successfully transferred aggregated parameter to cluster sleeve {sleeveId}");
                                         System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
                                             $"[{DateTime.Now}] [TRANSFER] ✓ Successfully transferred aggregated parameter to cluster sleeve {sleeveId}\n");
@@ -956,6 +1193,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     if (ok)
                                     {
                                         transferredCount++;
+                                        successfullyTransferredSleeveIds?.Add(openingId.IntegerValue); // Track unique sleeve
                                         DebugLogger.Info($"[TRANSFER] ✓ Successfully transferred to sleeve {sleeveId}");
                                         System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
                                             $"[{DateTime.Now}] [TRANSFER] ✓ Successfully transferred to sleeve {sleeveId}\n");
@@ -983,9 +1221,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     else
                     {
-                            DebugLogger.Warning($"[TRANSFER] Sleeve ID {sleeveId} not found in XML '{xmlFileName}'");
+                            // ✅ FIX: Log family name for debugging floor sleeves issue
+                            var famName = opening is FamilyInstance fi ? (fi.Symbol?.Family?.Name ?? "Unknown") : "Unknown";
+                            var availableIds = filterData != null ? string.Join(", ", filterData.Keys.Take(10)) : "none";
+                            DebugLogger.Warning($"[TRANSFER] Sleeve ID {sleeveId} ({famName}) not found in XML '{xmlFileName}'. Available IDs in XML: [{availableIds}...]");
                             System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                                $"[{DateTime.Now}] [TRANSFER] Sleeve ID {sleeveId} not found in XML '{xmlFileName}'\n");
+                                $"[{DateTime.Now}] [TRANSFER] Sleeve ID {sleeveId} ({famName}) not found in XML '{xmlFileName}'. Filter data contains {filterData?.Count ?? 0} sleeves: [{availableIds}...]\n");
                         }
                     }
                     else
@@ -1422,18 +1663,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         {
                                             if (!string.IsNullOrEmpty(param.Value))
                                             {
+                                                // ✅ FIX: For Size parameter, extract only the first part before dash (format: "1350x1000-1350x1000" → "1350x1000")
+                                                // ✅ SAFE: If Size is already correct format (no dash), it passes through unchanged
+                                                string cleanValue = param.Value;
+                                                if (param.Key.Equals("Size", StringComparison.OrdinalIgnoreCase) && param.Value.Contains("-"))
+                                                {
+                                                    // Extract first part before dash (e.g., "1350x1000-1350x1000" → "1350x1000")
+                                                    var parts = param.Value.Split(new[] { '-' }, 2);
+                                                    if (parts.Length > 0 && !string.IsNullOrEmpty(parts[0]))
+                                                    {
+                                                        cleanValue = parts[0].Trim();
+                                                        DebugLogger.Info($"[PARAM_TRANSFER] Cleaned Size parameter: '{param.Value}' → '{cleanValue}'");
+                                                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                                            $"[{DateTime.Now}] [PARAM_TRANSFER] Cleaned Size: '{param.Value}' → '{cleanValue}'\n");
+                                                    }
+                                                }
+                                                // ✅ Note: If Size doesn't contain "-", cleanValue = param.Value (unchanged) - handles both formats correctly
+                                                
                                                 if (aggregatedMepParams.ContainsKey(param.Key))
                                                 {
-                                                    // Append to existing value with comma separation
+                                                    // Append to existing value with comma separation (check for unique values only)
                                                     var existingValue = aggregatedMepParams[param.Key];
-                                                    if (!existingValue.Contains(param.Value))
+                                                    
+                                                    // ✅ FIX: Split existing value by comma and check if cleanValue already exists
+                                                    var existingParts = existingValue.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                                                        .Select(p => p.Trim())
+                                                        .ToList();
+                                                    
+                                                    if (!existingParts.Any(e => e.Equals(cleanValue, StringComparison.OrdinalIgnoreCase)))
                                                     {
-                                                        aggregatedMepParams[param.Key] = $"{existingValue}, {param.Value}";
+                                                        aggregatedMepParams[param.Key] = $"{existingValue}, {cleanValue}";
                                                     }
                                                 }
                                                 else
                                                 {
-                                                    aggregatedMepParams[param.Key] = param.Value;
+                                                    aggregatedMepParams[param.Key] = cleanValue;
                                                 }
                                             }
                                         }
@@ -1941,9 +2205,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Info($"[AGGREGATE] Getting aggregated parameters for cluster sleeve {clusterSleeveId}, parameter '{parameterName}', useHost={useHost}");
                 
                 // The parameters are already aggregated in the filter index
+                DebugLogger.Info($"[AGGREGATE] Looking for cluster sleeve {clusterSleeveId} in filterData with {filterData.Count} entries");
+                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                    $"[{DateTime.Now}] [AGGREGATE] Looking for cluster sleeve {clusterSleeveId} in filterData with {filterData.Count} entries\n");
+                
+                // ✅ DEBUG: Log all cluster sleeve IDs in filterData
+                var clusterIdsInData = filterData.Keys.Where(k => k > 100000).Take(10).ToList(); // Cluster IDs are typically large numbers
+                if (clusterIdsInData.Count > 0)
+                {
+                    DebugLogger.Info($"[AGGREGATE] Sample cluster sleeve IDs in filterData: {string.Join(", ", clusterIdsInData)}");
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                        $"[{DateTime.Now}] [AGGREGATE] Sample cluster sleeve IDs in filterData: {string.Join(", ", clusterIdsInData)}\n");
+                }
+                
                 if (filterData.TryGetValue(clusterSleeveId, out var paramBags))
                 {
                     var sourceParams = useHost ? paramBags.host : paramBags.mep;
+                    DebugLogger.Info($"[AGGREGATE] Found cluster sleeve {clusterSleeveId}, has {sourceParams.Count} {(useHost ? "host" : "MEP")} parameters");
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                        $"[{DateTime.Now}] [AGGREGATE] Found cluster sleeve {clusterSleeveId}, has {sourceParams.Count} {(useHost ? "host" : "MEP")} parameters: {string.Join(", ", sourceParams.Keys.Take(10))}\n");
+                    
                     if (sourceParams.TryGetValue(parameterName, out var paramValue) && !string.IsNullOrEmpty(paramValue))
                     {
                         DebugLogger.Info($"[AGGREGATE] Found aggregated parameter '{parameterName}' = '{paramValue}' for cluster sleeve {clusterSleeveId}");
@@ -1951,13 +2232,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     else
                     {
-                        DebugLogger.Warning($"[AGGREGATE] Parameter '{parameterName}' not found in aggregated data for cluster sleeve {clusterSleeveId}");
+                        DebugLogger.Warning($"[AGGREGATE] Parameter '{parameterName}' not found in aggregated data for cluster sleeve {clusterSleeveId}. Available params: {string.Join(", ", sourceParams.Keys)}");
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                            $"[{DateTime.Now}] [AGGREGATE] Parameter '{parameterName}' not found. Available: {string.Join(", ", sourceParams.Keys)}\n");
                         return null;
                     }
                 }
                 else
                 {
-                    DebugLogger.Warning($"[AGGREGATE] Cluster sleeve {clusterSleeveId} not found in filter data");
+                    DebugLogger.Warning($"[AGGREGATE] Cluster sleeve {clusterSleeveId} not found in filter data (checked {filterData.Count} entries)");
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                        $"[{DateTime.Now}] [AGGREGATE] Cluster sleeve {clusterSleeveId} NOT FOUND in filterData. Sample keys: {string.Join(", ", filterData.Keys.Take(10))}\n");
                     return null;
                 }
             }

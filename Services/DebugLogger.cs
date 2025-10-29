@@ -15,7 +15,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// Default enabled here to allow runtime diagnostics for cable tray placement.
     /// Toggle to false if you want to silence logs.
     /// </summary>
-    public static bool IsEnabled = false; // ✅ DEFAULT: Disabled for deployment
+    public static bool IsEnabled = true;
     
     /// <summary>
     /// Current service name for logging context
@@ -232,28 +232,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void InitCustomLogFileOverwrite(string logFileName)
         {
-            // ✅ Don't do anything if TYPE_YOUR_LOGGING is disabled
+            // IMMEDIATE DEBUG - Write to file directly to ensure this method is called
+            string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+            try
+            {
+                string debugPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt";
+                File.AppendAllText(debugPath, $"[{DateTime.Now}] InitCustomLogFileOverwrite called with: {logFileName} (timestamp: {timestamp})\n");
+            }
+            catch { }
+
             if (!IsEnabled)
             {
+                try
+                {
+                    string debugPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt";
+                    File.AppendAllText(debugPath, $"[{DateTime.Now}] DebugLogger.IsEnabled = false\n");
+                }
+                catch { }
                 return;
             }
 
             try
             {
-                string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-                
-                // ✅ Use application data directory instead of hardcoded path
-                string logDir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "JSE_MEP_Openings", 
-                    "Logs");
-                
+                // Use timestamped log files to avoid overwriting
+                string hardcodedLogDir = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log";
+                LogFilePath = Path.Combine(hardcodedLogDir, $"{logFileName}_{timestamp}.log");
+
+                // Ensure directory exists
+                string logDir = Path.GetDirectoryName(LogFilePath) ?? @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log";
                 if (!Directory.Exists(logDir))
                 {
                     Directory.CreateDirectory(logDir);
+                    System.Diagnostics.Debug.WriteLine($"Created log directory: {logDir}");
                 }
-                
-                LogFilePath = Path.Combine(logDir, $"{logFileName}_{timestamp}.log");
 
                 System.Diagnostics.Debug.WriteLine($"Log file path set to: {LogFilePath}");
 
@@ -264,7 +275,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     $"JSE_RevitAddin_MEP_OPENINGS Debug Log: {logFileName}\n" +
                     $"Build Version: {_cachedVersion}\n" +
                     $"Build Timestamp: {buildTimestamp}\n" +
-                    $"Assembly: {_cachedAssemblyPath}\n" +
+                    $"Wrote: {_cachedAssemblyPath}\n" +
                     $"Log Path: {LogFilePath}\n" +
                     $"====================================================\n";
 
@@ -272,20 +283,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 // Test log to verify the custom file was created
                 Info($"Custom log file initialized: {LogFilePath}");
+
+                // Additional debug output
+                System.Diagnostics.Debug.WriteLine($"SUCCESS: Custom log file created at {LogFilePath}");
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"ERROR in InitCustomLogFileOverwrite: {ex.Message}");
 
-                // Log to fallback log file with timestamp (use app data, not hardcoded path)
+                // Log to fallback log file with timestamp
                 try
                 {
                     string fallbackTimestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-                    string logDir = Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                        "JSE_MEP_Openings", 
-                        "Logs");
-                    string fallbackLog = Path.Combine(logDir, $"fallback_debug_{fallbackTimestamp}.log");
+                    string fallbackLog = Path.Combine(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log", $"fallback_debug_{fallbackTimestamp}.log");
                     File.AppendAllText(fallbackLog, $"[{DateTime.Now}] ERROR initializing custom log '{logFileName}': {ex.Message}\n{ex.StackTrace}\n");
                     System.Diagnostics.Debug.WriteLine($"Fallback log written to: {fallbackLog}");
                 }

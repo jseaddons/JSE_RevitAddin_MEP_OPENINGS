@@ -39,6 +39,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public bool RemarkAll { get; set; } = false;
         
         /// <summary>
+        /// ✅ NEW: Number format for running numbers (default: "000" = 001, 002, 003...)
+        /// Options: "00" (01, 02...), "000" (001, 002...), "0000" (0001, 0002...)
+        /// </summary>
+        public string NumberFormat { get; set; } = "000";
+        
+        /// <summary>
+        /// ✅ NEW: Individual remark checkboxes for each prefix category
+        /// </summary>
+        public bool RemarkProjectPrefix { get; set; } = false;
+        public bool RemarkDuctPrefix { get; set; } = false;
+        public bool RemarkPipePrefix { get; set; } = false;
+        public bool RemarkCableTrayPrefix { get; set; } = false;
+        public bool RemarkDamperPrefix { get; set; } = false;
+        
+        /// <summary>
         /// ✅ NEW: System Type overrides for Ducts (System Type → Prefix mapping)
         /// Tier 2: Overrides discipline prefix when System Type matches
         /// Example: "Supply Air" → "V" (overrides "DCT")

@@ -77,7 +77,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         public (int processedCount, int errorCount) ApplyMepMarkToClusters(
-            Document doc, string category, string projectPrefix, string disciplinePrefix, bool remarkAll = false)
+            Document doc, string category, string projectPrefix, string disciplinePrefix, bool remarkAll = false, string numberFormat = "000")
         {
             int processedCount = 0;
             int errorCount = 0;
@@ -142,8 +142,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             File.AppendAllText(mepmarkLogPath, $"OVERWRITE sleeve {sleeve.Id}: changing '{existingMark}' → (RemarkAll=true)\n");
                         }
                         
-                        string markValue = GenerateMarkValue(disciplinePrefix, actualIndex);
-                        string fullMarkValue = $"{projectPrefix}{markValue}";
+                        string markValue = GenerateMarkValue(disciplinePrefix, actualIndex, numberFormat);
+                        
+                        // ✅ Only add project prefix if it's not blank
+                        string fullMarkValue = string.IsNullOrWhiteSpace(projectPrefix) 
+                            ? markValue 
+                            : $"{projectPrefix}{markValue}";
                         
                         SetMarkParameter(sleeve, fullMarkValue);
                         processedCount++;
@@ -449,7 +453,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                string expectedPrefix = $"{projectPrefix}{disciplinePrefix}";
+                // ✅ Only include project prefix if it's not blank
+                string expectedPrefix = string.IsNullOrWhiteSpace(projectPrefix)
+                    ? disciplinePrefix
+                    : $"{projectPrefix}{disciplinePrefix}";
                 int maxNumber = 0;
                 
                 // ✅ OPTIMIZED: Only get sleeve family instances (performance optimization)
@@ -497,11 +504,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
-        /// Generate mark value based on discipline prefix and number
+        /// Generate mark value based on discipline prefix, number, and format
         /// </summary>
-        private string GenerateMarkValue(string disciplinePrefix, int number)
+        private string GenerateMarkValue(string disciplinePrefix, int number, string numberFormat = "000")
         {
-            return $"{disciplinePrefix}{number:000}";
+            // Format number based on user selection: "00", "000", or "0000"
+            string formattedNumber = numberFormat switch
+            {
+                "00" => $"{number:00}",
+                "000" => $"{number:000}",
+                "0000" => $"{number:0000}",
+                _ => $"{number:000}" // Default to "000"
+            };
+            return $"{disciplinePrefix}{formattedNumber}";
         }
         
         /// <summary>

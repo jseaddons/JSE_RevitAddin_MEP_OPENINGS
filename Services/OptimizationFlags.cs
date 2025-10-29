@@ -78,6 +78,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         #endregion
         
+        #region Sleeve Placement Safety Flags (NEW)
+        
+        /// <summary>
+        /// Enable optimized XML batch saves (single write instead of per-sleeve)
+        /// Default: true (safe to enable - already implemented)
+        /// </summary>
+        public static bool UseOptimizedXmlSaves { get; set; } = true;
+        
+        /// <summary>
+        /// Enable XML save validation with backup/restore
+        /// Default: true (safe to enable - critical for data integrity)
+        /// </summary>
+        public static bool UseXmlValidation { get; set; } = true;
+        
+        /// <summary>
+        /// Enable pre-cached family symbols (load once, reuse many times)
+        /// Default: true (safe to enable - significant performance gain)
+        /// </summary>
+        public static bool UseFamilySymbolCache { get; set; } = true;
+        
+        /// <summary>
+        /// Enable incremental cache updates instead of full rebuilds
+        /// Default: true (safe to enable - already partially implemented)
+        /// </summary>
+        public static bool UseIncrementalCache { get; set; } = true;
+        
+        #endregion
+        
         #region Configuration Methods
         
         /// <summary>
@@ -105,6 +133,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Load Phase 3 flags (experimental defaults)
                 UseIncrementalDetection = GetConfigValue("UseIncrementalDetection", false);
                 UseDiagnosticMode = GetConfigValue("UseDiagnosticMode", true);
+                
+                // Load Sleeve Placement flags (safe defaults)
+                UseOptimizedXmlSaves = GetConfigValue("UseOptimizedXmlSaves", true);
+                UseXmlValidation = GetConfigValue("UseXmlValidation", true);
+                UseFamilySymbolCache = GetConfigValue("UseFamilySymbolCache", true);
+                UseIncrementalCache = GetConfigValue("UseIncrementalCache", true);
                 
                 DebugLogger.Info($"[OptimizationFlags] Loaded configuration successfully");
             }
@@ -169,6 +203,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Phase 3: Conservative defaults
             UseIncrementalDetection = false;
             UseDiagnosticMode = true;
+            
+            // Sleeve Placement: Safe defaults (all enabled)
+            UseOptimizedXmlSaves = true;
+            UseXmlValidation = true;
+            UseFamilySymbolCache = true;
+            UseIncrementalCache = true;
             
             DebugLogger.Info($"[OptimizationFlags] Reset to safe defaults");
         }

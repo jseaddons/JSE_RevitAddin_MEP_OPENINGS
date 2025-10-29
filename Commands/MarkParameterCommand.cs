@@ -71,8 +71,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             tx.Start();
                             
                             var markService = new MarkParameterService();
+                            var numberFormat = _markPrefixes?.NumberFormat ?? "000";
                             var (processedCount, errorCount) = markService.ApplyMepMarkToClusters(
-                                doc, category, _projectPrefix, disciplinePrefix, _remarkAll);
+                                doc, category, _projectPrefix, disciplinePrefix, _remarkAll, numberFormat);
                             
                             tx.Commit();
                             
@@ -90,8 +91,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         tx.Start();
                         
                         var markService = new MarkParameterService();
+                        var numberFormat = _markPrefixes?.NumberFormat ?? "000";
                         var (processedCount, errorCount) = markService.ApplyMepMarkToClusters(
-                            doc, _targetCategory, _projectPrefix, _disciplinePrefix, _remarkAll);
+                            doc, _targetCategory, _projectPrefix, _disciplinePrefix, _remarkAll, numberFormat);
                         
                         tx.Commit();
                         

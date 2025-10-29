@@ -3943,9 +3943,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         {
             try
             {
-                // 🚨 DEBUG: Direct file logging to debug OK button click
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\ok_button_debug.log", 
-                    $"[{DateTime.Now}] 🚨 OK BUTTON CLICKED! Starting sleeve placement...\n");
+                // 🚨 DEBUG: Direct file logging to debug OK button click (SAFE - won't crash)
+                SafeFileLogger.SafeAppendText("ok_button_debug.log", 
+                    "🚨 OK BUTTON CLICKED! Starting sleeve placement...");
                 
                 // Parameter Transfer button removed - functionality moved to Transfer All button
 
@@ -3990,9 +3990,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 // Raise external event (non-blocking)
                 _sleevePlacementEvent.Raise();
 
-                // 🚨 DEBUG: Direct file logging after external event
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\ok_button_debug.log", 
-                    $"[{DateTime.Now}] 🚨 EXTERNAL EVENT RAISED! Categories: {string.Join(", ", selectedCategories)}\n");
+                // 🚨 DEBUG: Direct file logging after external event (SAFE - won't crash)
+                SafeFileLogger.SafeAppendText("ok_button_debug.log", 
+                    $"🚨 EXTERNAL EVENT RAISED! Categories: {string.Join(", ", selectedCategories)}");
 
                 DebugLogger.Info($"[EmergencyMainDialog] External event raised for categories: {string.Join(", ", selectedCategories)}");
 
@@ -6101,17 +6101,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     // Gate: Enable OK only if there are unresolved clash zones after refresh
                     try
                     {
-                        DebugLogger.Info("[OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto");
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Inside try block - about to call LoadFilterAuto\n");
+                        DebugLogger.Info("[OK_BUTTON_DEBUG] Inside try block - about to load clash zones");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Inside try block - about to load clash zones\n");
                         
-                        var loaded = _filterManagementService?.LoadFilterAuto(GetSelectedFilterItems().FirstOrDefault());
+                        // ✅ CRITICAL FIX: Try loading from filter XML first, then fallback to profile configuration
+                        var selectedFilterName = GetSelectedFilterItems().FirstOrDefault();
+                        var zones = new List<Models.ClashZone>();
                         
-                        DebugLogger.Info("[OK_BUTTON_DEBUG] LoadFilterAuto completed");
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] LoadFilterAuto completed\n");
+                        // Try loading from filter XML file
+                        if (!string.IsNullOrEmpty(selectedFilterName))
+                        {
+                            var loaded = _filterManagementService?.LoadFilterAuto(selectedFilterName);
+                            if (loaded?.ClashZoneStorage?.ClashZones != null)
+                            {
+                                zones = loaded.ClashZoneStorage.ClashZones;
+                                DebugLogger.Info($"[OK_BUTTON_DEBUG] Loaded {zones.Count} zones from filter XML: {selectedFilterName}");
+                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Loaded {zones.Count} zones from filter XML: {selectedFilterName}\n");
+                            }
+                        }
                         
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] About to extract zones\n");
-                        var zones = loaded?.ClashZoneStorage?.ClashZones ?? new List<Models.ClashZone>();
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Zones extracted: {zones.Count}\n");
+                        // Fallback: Load from profile configuration if filter XML has no zones
+                        if (zones.Count == 0)
+                        {
+                            var currentProfile = _appProfileService?.GetCurrentProfile();
+                            if (currentProfile?.Configuration?.ClashZoneStorage?.ClashZones != null)
+                            {
+                                zones = currentProfile.Configuration.ClashZoneStorage.ClashZones;
+                                DebugLogger.Info($"[OK_BUTTON_DEBUG] Loaded {zones.Count} zones from profile configuration");
+                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Loaded {zones.Count} zones from profile configuration\n");
+                            }
+                        }
+                        
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Final zones count: {zones.Count}\n");
                         
                         // DEBUG: Log OK button enabling logic
                         JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Total zones loaded: {zones.Count}\n");

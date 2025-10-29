@@ -1107,21 +1107,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     var transferService = new ParameterTransferService();
                     
                     // Get all openings (individual + cluster) in the document
-                    // Use same pattern as MarkParameterService to find opening families
-                    var openings = new FilteredElementCollector(_document)
+                    // Only match the 4 specific opening families: RectangularOpeningOnWall, RectangularOpeningOnSlab, CircularOpeningOnWall, CircularOpeningOnSlab
+                    var allOpeningInstances = new FilteredElementCollector(_document)
                         .OfClass(typeof(FamilyInstance))
                         .Cast<FamilyInstance>()
-                        .Where(fi =>
-                        {
+                        .Where(fi => {
                             var famName = fi.Symbol?.Family?.Name ?? string.Empty;
-                            // Match opening families: RectangularOpeningOnWall, RectangularOpeningOnSlab, etc.
+                            // Match only the 4 specific opening families
                             return famName.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0
                                 || famName.IndexOf("OpeningOnSlab", StringComparison.OrdinalIgnoreCase) >= 0;
                         })
-                        .Select(fi => fi.Id)
                         .ToList();
                     
+                    // Log family names for debugging
+                    var familyNames = allOpeningInstances
+                        .Select(fi => fi.Symbol?.Family?.Name ?? "Unknown")
+                        .Distinct()
+                        .ToList();
+                    DebugLogger.Info($"[ParameterServiceDialogV2] Found opening families: {string.Join(", ", familyNames)}");
+                    
+                    var openings = allOpeningInstances.Select(fi => fi.Id).ToList();
+                    
                     DebugLogger.Info($"[ParameterServiceDialogV2] Found {openings.Count} opening sleeves in document for parameter transfer");
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                        $"[{DateTime.Now}] [ParameterServiceDialogV2] Found {openings.Count} opening sleeves: {string.Join(", ", familyNames)}\n");
                     
                     if (openings.Count == 0)
                     {
