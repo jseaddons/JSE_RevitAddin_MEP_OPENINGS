@@ -39,6 +39,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public bool RemarkAll { get; set; } = false;
         
         /// <summary>
+        /// ✅ NEW: System Type overrides for Ducts (System Type → Prefix mapping)
+        /// Tier 2: Overrides discipline prefix when System Type matches
+        /// Example: "Supply Air" → "V" (overrides "DCT")
+        /// </summary>
+        public Dictionary<string, string> DuctSystemTypeOverrides { get; set; } = new Dictionary<string, string>();
+        
+        /// <summary>
+        /// ✅ NEW: Service Type overrides for Cable Trays (Service Type → Prefix mapping)
+        /// Tier 2: Overrides discipline prefix when Service Type matches
+        /// Example: "Power" → "P" (overrides "ELE")
+        /// </summary>
+        public Dictionary<string, string> CableTrayServiceTypeOverrides { get; set; } = new Dictionary<string, string>();
+        
+        /// <summary>
         /// Get discipline prefix for a specific category
         /// </summary>
         public string GetDisciplinePrefix(string category)
@@ -51,6 +65,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
                 "Duct Accessories" => DamperPrefix,
                 _ => "OPN" // Generic fallback
             };
+        }
+        
+        /// <summary>
+        /// ✅ NEW: Two-tier prefix resolution - checks System Type override first, then falls back to discipline prefix
+        /// </summary>
+        public string GetPrefixForElement(string category, string systemType = null, string serviceType = null)
+        {
+            // Tier 2: Check System Type override first (if applicable)
+            if (category == "Ducts" && !string.IsNullOrEmpty(systemType) && DuctSystemTypeOverrides.ContainsKey(systemType))
+            {
+                return DuctSystemTypeOverrides[systemType]; // Override: System Type prefix
+            }
+            
+            if (category == "Cable Trays" && !string.IsNullOrEmpty(serviceType) && CableTrayServiceTypeOverrides.ContainsKey(serviceType))
+            {
+                return CableTrayServiceTypeOverrides[serviceType]; // Override: Service Type prefix
+            }
+            
+            // Tier 1: Fallback to discipline prefix
+            return GetDisciplinePrefix(category);
         }
     }
 }

@@ -289,7 +289,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             $"[HIER-CHECK] ClashZone {clashZone.Id}: IsClusterResolved={clashZone.IsClusterResolved}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}\n");
                         
                         // STEP 0: Check if cluster sleeve actually exists (prevent individual sleeves over cluster sleeves)
-                        if (clashZone.ClusterSleeveInstanceId > 0)
+                        if (clashZone.IsClusterResolved || clashZone.ClusterSleeveInstanceId > 0)
                         {
                             DebugLogger.Info($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} has cluster sleeve {clashZone.ClusterSleeveInstanceId} - preventing individual sleeve placement");
                             File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 

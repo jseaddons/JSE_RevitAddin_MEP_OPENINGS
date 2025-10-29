@@ -180,6 +180,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public int ClusterSleeveInstanceId { get; set; } = -1;
 
         /// <summary>
+        /// ✅ STORAGE: Original SleeveInstanceId stored BEFORE cluster placement sets it to -1
+        /// This allows cleanup to find individual sleeves even after they're marked as cluster-resolved
+        /// </summary>
+        public int AfterClusterSleevePlacedSleeveInstanceId { get; set; } = -1;
+
+        /// <summary>
         /// ✅ NEW: Cluster sleeve bounding box coordinates (for XML-serializable cleanup detection)
         /// These are saved after placing cluster sleeves to enable cheap cleanup of individual sleeves within clusters
         /// </summary>

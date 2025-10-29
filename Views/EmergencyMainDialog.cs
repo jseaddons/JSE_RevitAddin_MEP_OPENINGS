@@ -6017,11 +6017,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             System.Diagnostics.Debug.WriteLine($"[ON_REFRESH_CLICK] === REFRESH BUTTON CLICKED AT {DateTime.Now} ===");
             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] === ON_REFRESH_CLICK STARTED ===\n");
 
+            // ✅ TIMING: Start timing measurement
+            var refreshStopwatch = System.Diagnostics.Stopwatch.StartNew();
+            var startTime = DateTime.Now;
+            
             try
             {
+                
                 DebugLogger.Info("=== REFRESH BUTTON CLICKED ===");
-                System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] About to call RefreshService.ExecuteRefresh() method");
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] About to call RefreshService.ExecuteRefresh() method\n");
+                System.Diagnostics.Debug.WriteLine($"[ON_REFRESH_CLICK] === START TIME: {startTime:HH:mm:ss.fff} ===");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_timing.log", 
+                    $"[{startTime:HH:mm:ss.fff}] === REFRESH CLICK STARTED ===\n");
 
                 // Use RefreshService instead of inline method
                 var document = GetCurrentDocument();
@@ -6057,6 +6063,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     refreshService.LoadExistingClashZoneData();
                     
                     refreshService.ExecuteRefresh(selectedFilterItems, selectedMepCategories, selectedReferenceFiles, selectedHostFiles, clearanceSettings);
+                    
+                    // ✅ TIMING: Stop timing and log elapsed time
+                    refreshStopwatch.Stop();
+                    var endTime = DateTime.Now;
+                    var elapsedMs = refreshStopwatch.ElapsedMilliseconds;
+                    var elapsedSeconds = elapsedMs / 1000.0;
+                    
+                    DebugLogger.Info($"=== REFRESH COMPLETED in {elapsedSeconds:F2} seconds ({elapsedMs}ms) ===");
+                    System.Diagnostics.Debug.WriteLine($"[ON_REFRESH_CLICK] === REFRESH COMPLETED in {elapsedSeconds:F2} seconds === END TIME: {endTime:HH:mm:ss.fff} ===");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_timing.log", 
+                        $"[{endTime:HH:mm:ss.fff}] === REFRESH COMPLETED ===\n" +
+                        $"Duration: {elapsedSeconds:F2} seconds ({elapsedMs}ms)\n" +
+                        $"Start: {startTime:HH:mm:ss.fff} → End: {endTime:HH:mm:ss.fff}\n\n");
                     
                     // ⚠️ CRITICAL FIX: Skip parameter dropdown updates during refresh to prevent sleeve deletion
                     // Parameter dropdowns don't need to be updated during refresh operations
@@ -6150,14 +6169,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     }
                     catch (Exception ex)
                     {
-                System.Diagnostics.Debug.WriteLine($"[ON_REFRESH_CLICK] ERROR: {ex.Message}");
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] ERROR in OnRefreshClick: {ex.Message}\n");
+                        // ✅ TIMING: Stop timing even on error
+                        var endTime = DateTime.Now;
+                        var elapsedMs = refreshStopwatch.ElapsedMilliseconds;
+                        var elapsedSeconds = elapsedMs / 1000.0;
+                        
+                        System.Diagnostics.Debug.WriteLine($"[ON_REFRESH_CLICK] ERROR: {ex.Message} (completed in {elapsedSeconds:F2}s)");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] ERROR in OnRefreshClick: {ex.Message}\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_timing.log", 
+                            $"[{endTime:HH:mm:ss.fff}] === REFRESH FAILED ===\n" +
+                            $"Duration: {elapsedSeconds:F2} seconds ({elapsedMs}ms)\n" +
+                            $"Error: {ex.Message}\n\n");
 
-                _statusLabel.Text = $"Error during refresh: {ex.Message}";
-                    _progressBar.Visible = false;
-                _refreshButton.Enabled = true;
-                DebugLogger.Error($"Error in OnRefreshClick: {ex.Message}");
-            }
+                        _statusLabel.Text = $"Error during refresh: {ex.Message}";
+                        _progressBar.Visible = false;
+                        _refreshButton.Enabled = true;
+                        DebugLogger.Error($"Error in OnRefreshClick (took {elapsedSeconds:F2}s): {ex.Message}");
+                    }
         }
         
         private void PerformBasicRefresh()

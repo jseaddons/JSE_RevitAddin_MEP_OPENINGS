@@ -542,9 +542,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             List<Element> wallElements, 
             Document doc)
         {
-            var intersections = new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
-
-            _logger($"Using MepIntersectionService for clash detection with {mepElements.Count} MEP elements...");
+            _logger($"Using optimized MepIntersectionService.FindIntersectionsBatch with {mepElements.Count} MEP elements...");
 
             // Get all linked documents for transform lookup
             var links = new FilteredElementCollector(doc)
@@ -552,6 +550,58 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 .Cast<RevitLinkInstance>()
                 .ToList();
 
+            // ✅ PHASE 2 OPTIMIZATION: Prepare MEP and structural elements for batch processing
+            var mepElementsWithTransforms = new List<(Element, Transform?)>();
+            foreach (var mep in mepElements)
+            {
+                try
+                {
+                    bool isDamper = false;
+                    if (mep is FamilyInstance fi)
+                    {
+                        string familyName = fi.Symbol?.Family?.Name ?? "";
+                        isDamper = familyName.IndexOf("Damper", StringComparison.OrdinalIgnoreCase) >= 0;
+                    }
+
+                    var mepLink = links.FirstOrDefault(link => link.GetLinkDocument()?.Title == mep.Document.Title);
+                    Transform? mepTransform = mepLink != null ? MepIntersectionService.GetCachedTransform(mep.Document, links) : null;
+                    mepElementsWithTransforms.Add((mep, mepTransform));
+                }
+                catch (Exception ex)
+                {
+                    _logger($"Error preparing MEP element {mep.Id}: {ex.Message}");
+                }
+            }
+
+            var structuralElementsWithTransforms = new List<(Element, Transform?)>();
+            foreach (var wall in wallElements)
+            {
+                try
+                {
+                    var wallLink = links.FirstOrDefault(link => link.GetLinkDocument()?.Title == wall.Document.Title);
+                    Transform? wallTransform = wallLink != null ? MepIntersectionService.GetCachedTransform(wall.Document, links) : null;
+                    structuralElementsWithTransforms.Add((wall, wallTransform));
+                }
+                catch (Exception ex)
+                {
+                    _logger($"Error preparing structural element {wall.Id}: {ex.Message}");
+                }
+            }
+
+            // ✅ PHASE 2 OPTIMIZATION: Use batch processing with spatial hash grid and curve-in-bbox test
+            _logger($"[PHASE2] Calling MepIntersectionService.FindIntersectionsBatch with {mepElementsWithTransforms.Count} MEP and {structuralElementsWithTransforms.Count} structural elements");
+            var intersections = MepIntersectionService.FindIntersectionsBatch(
+                mepElementsWithTransforms,
+                structuralElementsWithTransforms,
+                _logger);
+            
+            _logger($"[PHASE2] Optimized batch processing completed: {intersections.Count} intersections found");
+            return intersections;
+        }
+
+        // OLD CODE BELOW - Replaced with optimized FindIntersectionsBatch method
+        // Keeping for reference, but never executed
+        /*
             foreach (var mep in mepElements)
             {
                 try
@@ -725,6 +775,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _logger($"FindIntersectionsInternal completed: {intersections.Count} intersections found");
             return intersections;
         }
+        */ // End of old code block
 
         /// <summary>
         /// METHOD 3: Check for damper presence at duct end points

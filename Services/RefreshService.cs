@@ -265,18 +265,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     
                     // ✅ CORRECT: Check family name for damper type indicators (not parameters)
-                    string familyTypeName = fi.Symbol?.Name ?? "";
-                    string typeNameUpper = familyTypeName.Trim().ToUpperInvariant();
+                    string familyName = fi.Symbol?.Family?.Name ?? "";
+                    string typeName = fi.Symbol?.Name ?? "";
+                    string nameToCheck = familyName + " " + typeName; // Check both family and type names
+                    string nameUpper = nameToCheck.Trim().ToUpperInvariant();
                     
                     // ✅ DEBUG: Log damper family for first 5 dampers
                     if (missingStandard.Count + missingMSFD.Count < 5)
                     {
-                        DebugLogger.Info($"[DUCT_ACCESSORIES] Damper {damper.Id}: Family='{fi.Symbol?.Family?.Name ?? "N/A"}', Type='{familyTypeName}', Upper='{typeNameUpper}'");
+                        DebugLogger.Info($"[DUCT_ACCESSORIES] Damper {damper.Id}: Family='{familyName}', Type='{typeName}', Combined='{nameUpper}'");
                     }
 
-                    // Check if family name contains damper type keywords (case insensitive)
-                    bool hasMSFD = typeNameUpper.Contains("MSFD");
-                    bool hasStandard = typeNameUpper.Contains("STANDARD") || typeNameUpper.Contains("MSD") || typeNameUpper.Contains("MD") || typeNameUpper.Contains("MOTORIZED");
+                    // Check if family/type name contains damper type keywords (case insensitive)
+                    bool hasMSFD = nameUpper.Contains("MSFD");
+                    bool hasStandard = nameUpper.Contains("STANDARD") || nameUpper.Contains("MSD") || nameUpper.Contains("MD") || nameUpper.Contains("MOTORIZED");
                     
                     if (!hasStandard)
                     {
@@ -292,28 +294,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Report results
                 if (missingStandard.Count > 0 || missingMSFD.Count > 0)
                 {
-                    var message = "The following damper parameter validation issues were found:\n\n";
+                    var message = "The following damper family name validation issues were found:\n\n";
                     
                     if (missingStandard.Count > 0)
                     {
-                        message += $"• {missingStandard.Count} dampers missing 'Standard' parameter\n";
-                        DebugLogger.Warning($"[DUCT_ACCESSORIES] {missingStandard.Count} dampers missing 'Standard' parameter");
-                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DUCT_ACCESSORIES] WARNING: {missingStandard.Count} dampers missing 'Standard' parameter\n");
+                        message += $"• {missingStandard.Count} dampers missing 'Standard' keyword in family name\n";
+                        DebugLogger.Warning($"[DUCT_ACCESSORIES] {missingStandard.Count} dampers missing 'Standard' keyword in family name");
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DUCT_ACCESSORIES] WARNING: {missingStandard.Count} dampers missing 'Standard' keyword in family name\n");
                     }
                     
                     if (missingMSFD.Count > 0)
                     {
-                        message += $"• {missingMSFD.Count} dampers missing 'MSFD' parameter\n";
-                        DebugLogger.Warning($"[DUCT_ACCESSORIES] {missingMSFD.Count} dampers missing 'MSFD' parameter");
-                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DUCT_ACCESSORIES] WARNING: {missingMSFD.Count} dampers missing 'MSFD' parameter\n");
+                        message += $"• {missingMSFD.Count} dampers missing 'MSFD' keyword in family name\n";
+                        DebugLogger.Warning($"[DUCT_ACCESSORIES] {missingMSFD.Count} dampers missing 'MSFD' keyword in family name");
+                        File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DUCT_ACCESSORIES] WARNING: {missingMSFD.Count} dampers missing 'MSFD' keyword in family name\n");
                     }
 
-                    message += "\nPlease add the missing parameters to the dampers in the linked mechanical file before proceeding with intersection detection.";
+                    message += "\nPlease update the damper family names in the linked mechanical file to include 'MSFD' or 'Standard' keywords before proceeding with intersection detection.";
                     message += "\n\nDo you want to continue anyway?";
 
                     var result = System.Windows.Forms.MessageBox.Show(
                         message,
-                        "Damper Parameter Validation Failed",
+                        "Damper Family Name Validation Failed",
                         System.Windows.Forms.MessageBoxButtons.YesNo,
                         System.Windows.Forms.MessageBoxIcon.Warning);
 

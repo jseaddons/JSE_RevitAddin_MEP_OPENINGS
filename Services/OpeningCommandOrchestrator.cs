@@ -78,27 +78,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     ExecuteDisciplineWithMemoryManagement(discipline.Key, discipline.Value, showProgress);
                 }
 
-                // Execute marking for all disciplines at the end
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 🔥 STARTING MARKING PHASE 🔥\n");
-                DebugLogger.Info("[OpeningCommandOrchestrator] 🔥 STARTING MARKING PHASE 🔥");
+                // ⚠️ DISABLED: Marking phase removed from OK click as it's handled by separate UI
+                // System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                //     $"[{DateTime.Now:HH:mm:ss}] 🔥 STARTING MARKING PHASE 🔥\n");
+                // DebugLogger.Info("[OpeningCommandOrchestrator] 🔥 STARTING MARKING PHASE 🔥");
                 
-                // ✅ PROPER ARCHITECTURE: Call MarkParameterCommand with UI values
-                // MarkParameterCommand handles "ALL" by processing each category with correct UI discipline prefixes
+                // // ✅ PROPER ARCHITECTURE: Call MarkParameterCommand with UI values
+                // // MarkParameterCommand handles "ALL" by processing each category with correct UI discipline prefixes
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 🔥 Calling MarkParameterCommand for ALL categories with UI values 🔥\n");
+                // System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                //     $"[{DateTime.Now:HH:mm:ss}] 🔥 Calling MarkParameterCommand for ALL categories with UI values 🔥\n");
                 
-                // ✅ FIX: Pass MarkPrefixSettings to MarkParameterCommand so it can use UI discipline prefixes
-                var markingCommand = new MarkParameterCommand("ALL", _markPrefixes.ProjectPrefix, "ALL", _markPrefixes.RemarkAll, _markPrefixes);
-                markingCommand.Execute(new UIApplication(_document.Application));
+                // // ✅ FIX: Pass MarkPrefixSettings to MarkParameterCommand so it can use UI discipline prefixes
+                // var markingCommand = new MarkParameterCommand("ALL", _markPrefixes.ProjectPrefix, "ALL", _markPrefixes.RemarkAll, _markPrefixes);
+                // markingCommand.Execute(new UIApplication(_document.Application));
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] ✅ MarkParameterCommand completed for ALL categories\n");
+                // System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                //     $"[{DateTime.Now:HH:mm:ss}] ✅ MarkParameterCommand completed for ALL categories\n");
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 🔥 MARKING PHASE COMPLETED 🔥\n");
-                DebugLogger.Info("[OpeningCommandOrchestrator] 🔥 MARKING PHASE COMPLETED 🔥");
+                // System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                //     $"[{DateTime.Now:HH:mm:ss}] 🔥 MARKING PHASE COMPLETED 🔥\n");
+                // DebugLogger.Info("[OpeningCommandOrchestrator] 🔥 MARKING PHASE COMPLETED 🔥");
 
                 DebugLogger.Info("[OpeningCommandOrchestrator] All filters executed successfully");
             }
@@ -315,14 +315,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     try
                     {
                         var clusterServiceReload = new UniversalClusterService();
+                        // Load cache for the specific category being processed
                         clusterServiceReload.LoadClashZoneCacheForCleanup(xmlFilePath, categoryString, _document, filter.Name);
-                        DebugLogger.Info($"[OpeningCommandOrchestrator] ✓ Reloaded cache with cluster sleeve coordinates");
+                        DebugLogger.Info($"[OpeningCommandOrchestrator] ✓ Reloaded cache with cluster sleeve coordinates for {categoryString}");
                         
                         // Step 5: NOW run cleanup with updated cache (uses XML, not expensive Revit API)
                         using (var cleanupTx = new Transaction(_document, $"Cleanup sleeves within clusters"))
                         {
                             cleanupTx.Start();
-                            var additionalDeleted = clusterServiceReload.CleanupSleevesWithinClustersAfterXmlSave(_document, placedClusterSleeves);
+                            var additionalDeleted = clusterServiceReload.CleanupSleevesWithinClustersAfterXmlSave(_document, placedClusterSleeves, xmlFilePath);
                             cleanupTx.Commit();
                             
                             if (additionalDeleted > 0)

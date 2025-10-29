@@ -45,6 +45,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.TextBox _damperPrefixTextBox = null!;
         private WinForms.CheckBox _remarkAllCheckBox = null!;
 
+        // ✅ NEW: Collapsible System Type Overrides section
+        private WinForms.Panel _systemTypeOverridesPanel = null!;
+        private WinForms.Label _systemTypeOverridesHeader = null!;
+        private WinForms.Panel _ductSystemTypeGridPanel = null!;
+        private WinForms.Panel _cableTraySystemTypeGridPanel = null!;
+        private List<SystemTypeMappingRow> _ductSystemTypeRows = new List<SystemTypeMappingRow>();
+        private List<SystemTypeMappingRow> _cableTraySystemTypeRows = new List<SystemTypeMappingRow>();
+        private bool _systemTypeOverridesExpanded = false;
+
         private Services.HostParameterService _hostParameterService;
         
         // Selection tracking for parameter filtering
@@ -101,34 +110,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             _parameterFilterPanel.Controls.Add(title);
 
-            // Add Transfer All button
+            // ✅ NEW: Single "Transfer Parameters" button (merges Transfer All + Apply Marks)
             _transferAllHeaderBtn = new WinForms.Button
             {
-                Text = "Transfer All →",
-                Size = new System.Drawing.Size(110, 30),
-                Location = new System.Drawing.Point(_parameterFilterPanel.Width - 120, 10),
+                Text = "Transfer Parameters",
+                Size = new System.Drawing.Size(150, 30),
+                Location = new System.Drawing.Point(_parameterFilterPanel.Width - 170, 10),
                 Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Right,
                 BackColor = System.Drawing.Color.FromArgb(100, 150, 200),
                 ForeColor = System.Drawing.Color.White,
                 FlatStyle = WinForms.FlatStyle.Flat,
                 Enabled = true // Always enabled in standalone dialog
             };
-            _transferAllHeaderBtn.Click += OnTransferAllClick;
+            _transferAllHeaderBtn.Click += OnTransferAllAndApplyMarksClick;
             _parameterFilterPanel.Controls.Add(_transferAllHeaderBtn);
-
-            // Add Parameter button
-            _addParameterButton = new WinForms.Button
-            {
-                Text = "+ Add Parameter",
-                Size = new System.Drawing.Size(120, 30),
-                Location = new System.Drawing.Point(_parameterFilterPanel.Width - 250, 10),
-                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Right,
-                BackColor = System.Drawing.Color.FromArgb(230, 255, 230),
-                FlatStyle = WinForms.FlatStyle.Flat,
-                Enabled = true // Always enabled in standalone dialog
-            };
-            _addParameterButton.Click += OnAddParameterClick;
-            _parameterFilterPanel.Controls.Add(_addParameterButton);
 
             // Create master tabs
             _masterParameterTabs = new WinForms.TabControl
@@ -310,7 +305,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Tag = "custom_opening_param",
                 Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Right
             };
-            customParamTextBox.TextChanged += (_, __) => {
+            customParamTextBox.TextChanged += (_, __) =>
+            {
                 // When user types in custom parameter, clear the dropdown selection
                 if (!string.IsNullOrEmpty(customParamTextBox.Text))
                 {
@@ -329,7 +325,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 FlatStyle = WinForms.FlatStyle.Flat,
                 Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Right
             };
-            removeBtn.Click += (_, __) => {
+            removeBtn.Click += (_, __) =>
+            {
                 servicePanel.Controls.Remove(row);
                 RepositionServiceParameterRows(servicePanel);
             };
@@ -350,119 +347,119 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // Create marking panel at bottom with more height to accommodate all prefixes
             var markingPanel = new WinForms.Panel
             {
-                Location = new System.Drawing.Point(10, _parameterFilterPanel.Height - 150),
-                Size = new System.Drawing.Size(_parameterFilterPanel.Width - 20, 140),
+                Location = new System.Drawing.Point(10, _parameterFilterPanel.Height - 120),
+                Size = new System.Drawing.Size(_parameterFilterPanel.Width - 20, 110),
                 BackColor = System.Drawing.Color.FromArgb(240, 248, 255),
                 BorderStyle = WinForms.BorderStyle.FixedSingle,
                 Anchor = WinForms.AnchorStyles.Bottom | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right
             };
             _parameterFilterPanel.Controls.Add(markingPanel);
 
-            // Project Prefix
+            // ✅ IMPROVED: Project Prefix with more space
             var projectPrefixLabel = new WinForms.Label
             {
                 Text = "Project Prefix:",
                 Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular),
                 Location = new System.Drawing.Point(10, 8),
-                Size = new System.Drawing.Size(80, 18)
+                Size = new System.Drawing.Size(90, 18)
             };
             markingPanel.Controls.Add(projectPrefixLabel);
 
             _projectPrefixTextBox = new WinForms.TextBox
             {
-                Location = new System.Drawing.Point(95, 6),
-                Size = new System.Drawing.Size(70, 20),
+                Location = new System.Drawing.Point(105, 6),
+                Size = new System.Drawing.Size(120, 20),
                 Text = "SLEEVE_",
                 Tag = "project_prefix"
             };
             _projectPrefixTextBox.TextChanged += OnPrefixChanged;
             markingPanel.Controls.Add(_projectPrefixTextBox);
 
-            // Duct Prefix
+            // ✅ FIXED: 1 ROW x 4 COLUMNS - Duct Prefix
             var ductPrefixLabel = new WinForms.Label
             {
-                Text = "Duct Prefix:",
-                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular),
-                Location = new System.Drawing.Point(10, 35),
-                Size = new System.Drawing.Size(80, 18)
+                Text = "Duct:",
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Regular),
+                Location = new System.Drawing.Point(10, 32),
+                Size = new System.Drawing.Size(40, 15)
             };
             markingPanel.Controls.Add(ductPrefixLabel);
 
             _ductPrefixTextBox = new WinForms.TextBox
             {
-                Location = new System.Drawing.Point(95, 33),
-                Size = new System.Drawing.Size(50, 20),
-                Text = "D",
+                Location = new System.Drawing.Point(45, 30),
+                Size = new System.Drawing.Size(40, 20),
+                Text = "M",
                 Tag = "duct_prefix"
             };
             _ductPrefixTextBox.TextChanged += OnPrefixChanged;
             markingPanel.Controls.Add(_ductPrefixTextBox);
 
-            // Pipe Prefix
+            // Column 2: Pipe Prefix
             var pipePrefixLabel = new WinForms.Label
             {
-                Text = "Pipe Prefix:",
-                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular),
-                Location = new System.Drawing.Point(10, 62),
-                Size = new System.Drawing.Size(80, 18)
+                Text = "Pipe:",
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Regular),
+                Location = new System.Drawing.Point(100, 32),
+                Size = new System.Drawing.Size(35, 15)
             };
             markingPanel.Controls.Add(pipePrefixLabel);
 
             _pipePrefixTextBox = new WinForms.TextBox
             {
-                Location = new System.Drawing.Point(95, 60),
-                Size = new System.Drawing.Size(50, 20),
+                Location = new System.Drawing.Point(135, 30),
+                Size = new System.Drawing.Size(40, 20),
                 Text = "P",
                 Tag = "pipe_prefix"
             };
             _pipePrefixTextBox.TextChanged += OnPrefixChanged;
             markingPanel.Controls.Add(_pipePrefixTextBox);
 
-            // Cable Tray Prefix
+            // Column 3: Cable Tray Prefix
             var cableTrayPrefixLabel = new WinForms.Label
             {
-                Text = "Cable Tray Prefix:",
-                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular),
-                Location = new System.Drawing.Point(10, 89),
-                Size = new System.Drawing.Size(80, 18)
+                Text = "Cable Tray:",
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Regular),
+                Location = new System.Drawing.Point(190, 32),
+                Size = new System.Drawing.Size(65, 15)
             };
             markingPanel.Controls.Add(cableTrayPrefixLabel);
 
             _cableTrayPrefixTextBox = new WinForms.TextBox
             {
-                Location = new System.Drawing.Point(95, 87),
-                Size = new System.Drawing.Size(50, 20),
+                Location = new System.Drawing.Point(255, 30),
+                Size = new System.Drawing.Size(40, 20),
                 Text = "E",
                 Tag = "cabletray_prefix"
             };
             _cableTrayPrefixTextBox.TextChanged += OnPrefixChanged;
             markingPanel.Controls.Add(_cableTrayPrefixTextBox);
 
-            // Damper Prefix (for duct accessories/dampers)
+            // Column 4: Damper Prefix
             var damperPrefixLabel = new WinForms.Label
             {
                 Text = "Damper:",
-                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular),
-                Location = new System.Drawing.Point(10, 116),
-                Size = new System.Drawing.Size(60, 18)
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Regular),
+                Location = new System.Drawing.Point(310, 32),
+                Size = new System.Drawing.Size(55, 15)
             };
             markingPanel.Controls.Add(damperPrefixLabel);
 
             _damperPrefixTextBox = new WinForms.TextBox
             {
-                Location = new System.Drawing.Point(95, 114),
-                Size = new System.Drawing.Size(50, 20),
+                Location = new System.Drawing.Point(365, 30),
+                Size = new System.Drawing.Size(40, 20),
                 Text = "DMP",
                 Tag = "damper_prefix"
             };
             _damperPrefixTextBox.TextChanged += OnPrefixChanged;
             markingPanel.Controls.Add(_damperPrefixTextBox);
 
-            // Re-mark all checkbox - positioned to the right of the prefix textboxes
+            // Re-mark all checkbox and Apply button on right side
             _remarkAllCheckBox = new WinForms.CheckBox
             {
-                Location = new System.Drawing.Point(160, 6),
-                Size = new System.Drawing.Size(110, 20),
+                Location = new System.Drawing.Point(420, 6),
+                Size = new System.Drawing.Size(90, 20),
                 Text = "Re-mark all",
                 Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Regular),
                 Checked = false,
@@ -470,12 +467,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             markingPanel.Controls.Add(_remarkAllCheckBox);
 
-            // Apply Marks button - positioned below the prefix textboxes
+            // Apply Marks button
             var applyMarksButton = new WinForms.Button
             {
                 Text = "Apply Marks",
-                Location = new System.Drawing.Point(160, 35),
-                Size = new System.Drawing.Size(100, 25),
+                Location = new System.Drawing.Point(420, 28),
+                Size = new System.Drawing.Size(90, 25),
                 BackColor = System.Drawing.Color.FromArgb(100, 150, 200),
                 ForeColor = System.Drawing.Color.White,
                 FlatStyle = WinForms.FlatStyle.Flat,
@@ -483,6 +480,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             applyMarksButton.Click += OnApplyMarksClick;
             markingPanel.Controls.Add(applyMarksButton);
+
+            // ✅ NEW: Create collapsible System Type Overrides section
+            CreateSystemTypeOverridesSection(markingPanel);
 
             // Legacy hidden textbox
             _sleeveParameterPrefixTextBox = new WinForms.TextBox
@@ -504,7 +504,349 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         }
 
         /// <summary>
-        /// Check sleeve status in the model and update Transfer All button accordingly
+        /// ✅ NEW: Create collapsible System Type Overrides section with grids for Ducts and Cable Trays
+        /// </summary>
+        private void CreateSystemTypeOverridesSection(WinForms.Panel parentPanel)
+        {
+            // Create outer panel for the collapsible section
+            _systemTypeOverridesPanel = new WinForms.Panel
+            {
+                Location = new System.Drawing.Point(10, 88),
+                Size = new System.Drawing.Size(parentPanel.Width - 20, 0), // Height 0 when collapsed
+                BackColor = System.Drawing.Color.FromArgb(235, 245, 255),
+                BorderStyle = WinForms.BorderStyle.FixedSingle,
+                Visible = false // Start hidden
+            };
+            parentPanel.Controls.Add(_systemTypeOverridesPanel);
+
+            // Clickable header label with ▼/▲ indicator
+            _systemTypeOverridesHeader = new WinForms.Label
+            {
+                Text = "▼ System Type Overrides (Advanced)",
+                Location = new System.Drawing.Point(5, 58),
+                Size = new System.Drawing.Size(250, 18),
+                BackColor = System.Drawing.Color.FromArgb(220, 235, 250),
+                Padding = new WinForms.Padding(5, 2, 0, 0),
+                Cursor = WinForms.Cursors.Hand,
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 8.5F, System.Drawing.FontStyle.Regular)
+            };
+            _systemTypeOverridesHeader.Click += (s, e) => ToggleSystemTypeOverrides();
+            parentPanel.Controls.Add(_systemTypeOverridesHeader);
+
+            // TODO: Add grid panels inside when expanding
+            // Will be implemented next
+        }
+
+        /// <summary>
+        /// ✅ NEW: Toggle expansion of System Type Overrides section
+        /// </summary>
+        private void ToggleSystemTypeOverrides()
+        {
+            _systemTypeOverridesExpanded = !_systemTypeOverridesExpanded;
+
+            if (_systemTypeOverridesExpanded)
+            {
+                // Expand: Show panel, change header
+                _systemTypeOverridesHeader.Text = "▲ System Type Overrides (Advanced)";
+                _systemTypeOverridesPanel.Visible = true;
+                _systemTypeOverridesPanel.Height = 200; // Adjust height as needed
+
+                // Populate grids when first expanded
+                if (_ductSystemTypeGridPanel == null)
+                {
+                    CreateSystemTypeGridPanels();
+                }
+            }
+            else
+            {
+                // Collapse: Hide panel, change header
+                _systemTypeOverridesHeader.Text = "▼ System Type Overrides (Advanced)";
+                _systemTypeOverridesPanel.Visible = false;
+                _systemTypeOverridesPanel.Height = 0;
+            }
+        }
+
+        /// <summary>
+        /// ✅ NEW: Create grid panels for Ducts and Cable Trays System Type overrides
+        /// </summary>
+        private void CreateSystemTypeGridPanels()
+        {
+            // Section label
+            var sectionLabel = new WinForms.Label
+            {
+                Text = "Override discipline prefix based on System/Service Type:",
+                Location = new System.Drawing.Point(5, 5),
+                Size = new System.Drawing.Size(350, 15),
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Regular)
+            };
+            _systemTypeOverridesPanel.Controls.Add(sectionLabel);
+
+            // For Ducts
+            var ductLabel = new WinForms.Label
+            {
+                Text = "For Ducts (System Type):",
+                Location = new System.Drawing.Point(5, 25),
+                Size = new System.Drawing.Size(150, 15),
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 7.5F, System.Drawing.FontStyle.Bold)
+            };
+            _systemTypeOverridesPanel.Controls.Add(ductLabel);
+
+            _ductSystemTypeGridPanel = new WinForms.Panel
+            {
+                Location = new System.Drawing.Point(5, 45),
+                Size = new System.Drawing.Size(_systemTypeOverridesPanel.Width - 15, 50),
+                BorderStyle = WinForms.BorderStyle.FixedSingle,
+                AutoScroll = true
+            };
+            _systemTypeOverridesPanel.Controls.Add(_ductSystemTypeGridPanel);
+
+            // Add row button for Ducts
+            var addDuctButton = new WinForms.Button
+            {
+                Text = "+ Add Duct System Type",
+                Location = new System.Drawing.Point(5, 100),
+                Size = new System.Drawing.Size(140, 22),
+                BackColor = System.Drawing.Color.FromArgb(230, 255, 230),
+                FlatStyle = WinForms.FlatStyle.Flat,
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 7.5F, System.Drawing.FontStyle.Regular)
+            };
+            addDuctButton.Click += (s, e) => AddSystemTypeMappingRow("Ducts");
+            _systemTypeOverridesPanel.Controls.Add(addDuctButton);
+
+            // For Cable Trays
+            var cableTrayLabel = new WinForms.Label
+            {
+                Text = "For Cable Trays (Service Type):",
+                Location = new System.Drawing.Point(5, 130),
+                Size = new System.Drawing.Size(150, 15),
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 7.5F, System.Drawing.FontStyle.Bold)
+            };
+            _systemTypeOverridesPanel.Controls.Add(cableTrayLabel);
+
+            _cableTraySystemTypeGridPanel = new WinForms.Panel
+            {
+                Location = new System.Drawing.Point(5, 150),
+                Size = new System.Drawing.Size(_systemTypeOverridesPanel.Width - 15, 50),
+                BorderStyle = WinForms.BorderStyle.FixedSingle,
+                AutoScroll = true
+            };
+            _systemTypeOverridesPanel.Controls.Add(_cableTraySystemTypeGridPanel);
+
+            // Add row button for Cable Trays
+            var addCableTrayButton = new WinForms.Button
+            {
+                Text = "+ Add Cable Tray Service Type",
+                Location = new System.Drawing.Point(5, 205),
+                Size = new System.Drawing.Size(160, 22),
+                BackColor = System.Drawing.Color.FromArgb(230, 255, 230),
+                FlatStyle = WinForms.FlatStyle.Flat,
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 7.5F, System.Drawing.FontStyle.Regular)
+            };
+            addCableTrayButton.Click += (s, e) => AddSystemTypeMappingRow("Cable Trays");
+            _systemTypeOverridesPanel.Controls.Add(addCableTrayButton);
+        }
+
+        /// <summary>
+        /// ✅ NEW: Add a new row to the System Type mapping grid
+        /// </summary>
+        private void AddSystemTypeMappingRow(string category)
+        {
+            var gridPanel = category == "Ducts" ? _ductSystemTypeGridPanel : _cableTraySystemTypeGridPanel;
+            var rowsList = category == "Ducts" ? _ductSystemTypeRows : _cableTraySystemTypeRows;
+
+            int rowIndex = rowsList.Count;
+            int rowHeight = 25;
+            int top = rowIndex * (rowHeight + 2);
+
+            var row = new WinForms.Panel
+            {
+                Location = new System.Drawing.Point(2, top),
+                Size = new System.Drawing.Size(gridPanel.Width - 6, rowHeight),
+                BackColor = System.Drawing.Color.White
+            };
+            gridPanel.Controls.Add(row);
+
+            // System Type dropdown
+            var systemTypeCombo = new WinForms.ComboBox
+            {
+                Location = new System.Drawing.Point(2, 2),
+                Size = new System.Drawing.Size(180, 20),
+                DropDownStyle = WinForms.ComboBoxStyle.DropDown,
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Regular)
+            };
+            PopulateSystemTypeDropdown(systemTypeCombo, category);
+            row.Controls.Add(systemTypeCombo);
+
+            // Prefix input
+            var prefixTextBox = new WinForms.TextBox
+            {
+                Location = new System.Drawing.Point(190, 2),
+                Size = new System.Drawing.Size(60, 20),
+                Text = "",
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Regular)
+            };
+            row.Controls.Add(prefixTextBox);
+
+            // Delete button
+            var deleteButton = new WinForms.Button
+            {
+                Text = "×",
+                Location = new System.Drawing.Point(255, 1),
+                Size = new System.Drawing.Size(20, 20),
+                BackColor = System.Drawing.Color.FromArgb(255, 230, 230),
+                FlatStyle = WinForms.FlatStyle.Flat
+            };
+            deleteButton.Click += (s, e) =>
+            {
+                gridPanel.Controls.Remove(row);
+                rowsList.RemoveAll(r => r.RowPanel == row);
+                RepositionSystemTypeRows(category);
+            };
+            row.Controls.Add(deleteButton);
+
+            // Track row
+            var mappingRow = new SystemTypeMappingRow
+            {
+                RowPanel = row,
+                SystemTypeCombo = systemTypeCombo,
+                PrefixTextBox = prefixTextBox,
+                DeleteButton = deleteButton,
+                Category = category
+            };
+            rowsList.Add(mappingRow);
+
+            // Update prefix when system type changes
+            systemTypeCombo.SelectedIndexChanged += (s, e) =>
+            {
+                SaveSystemTypeMappings();
+            };
+            prefixTextBox.TextChanged += (s, e) =>
+            {
+                SaveSystemTypeMappings();
+            };
+        }
+
+        /// <summary>
+        /// ✅ NEW: Populate System Type dropdown with values from document
+        /// </summary>
+        private void PopulateSystemTypeDropdown(WinForms.ComboBox comboBox, string category)
+        {
+            comboBox.Items.Clear();
+            comboBox.Items.Add("<Select System Type>");
+
+            if (_document == null) return;
+
+            try
+            {
+                var collector = new FilteredElementCollector(_document);
+                List<string> systemTypes = new List<string>();
+
+                if (category == "Ducts")
+                {
+                    // Get System Type values from ducts
+                    var ducts = collector.OfClass(typeof(Autodesk.Revit.DB.Mechanical.Duct)).Cast<Autodesk.Revit.DB.Mechanical.Duct>();
+                    foreach (var duct in ducts)
+                    {
+                        // Get System Type from the duct's MEPSystem
+                        var mepSystem = duct.MEPSystem;
+                        if (mepSystem != null)
+                        {
+                            var systemType = mepSystem.GetType().Name;
+                            if (!string.IsNullOrEmpty(systemType) && !systemTypes.Contains(systemType))
+                            {
+                                systemTypes.Add(systemType);
+                            }
+                        }
+                    }
+                }
+                else if (category == "Cable Trays")
+                {
+                    // Get Service Type values from cable trays
+                    var cableTrays = collector.OfClass(typeof(Autodesk.Revit.DB.Electrical.CableTray)).Cast<Autodesk.Revit.DB.Electrical.CableTray>();
+                    foreach (var cableTray in cableTrays)
+                    {
+                        // Get Service Type from the cable tray's MEPSystem
+                        var mepSystem = cableTray.MEPSystem;
+                        if (mepSystem != null)
+                        {
+                            var serviceType = mepSystem.GetType().Name;
+                            if (!string.IsNullOrEmpty(serviceType) && !systemTypes.Contains(serviceType))
+                            {
+                                systemTypes.Add(serviceType);
+                            }
+                        }
+                    }
+                }
+
+                systemTypes.Sort();
+                comboBox.Items.AddRange(systemTypes.ToArray());
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[SystemTypeDropdown] Error populating: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// ✅ NEW: Reposition System Type rows after deletion
+        /// </summary>
+        private void RepositionSystemTypeRows(string category)
+        {
+            var gridPanel = category == "Ducts" ? _ductSystemTypeGridPanel : _cableTraySystemTypeGridPanel;
+            var rowsList = category == "Ducts" ? _ductSystemTypeRows : _cableTraySystemTypeRows;
+
+            int rowHeight = 25;
+            for (int i = 0; i < rowsList.Count; i++)
+            {
+                rowsList[i].RowPanel.Location = new System.Drawing.Point(2, i * (rowHeight + 2));
+            }
+        }
+
+        /// <summary>
+        /// ✅ NEW: Save System Type mappings to MarkPrefixSettings
+        /// </summary>
+        private void SaveSystemTypeMappings()
+        {
+            try
+            {
+                var markPrefixes = GetCurrentMarkPrefixes();
+
+                // Clear existing mappings
+                markPrefixes.DuctSystemTypeOverrides.Clear();
+                markPrefixes.CableTrayServiceTypeOverrides.Clear();
+
+                // Save Duct mappings
+                foreach (var row in _ductSystemTypeRows)
+                {
+                    var systemType = row.SystemTypeCombo.SelectedItem?.ToString();
+                    var prefix = row.PrefixTextBox.Text?.Trim();
+
+                    if (!string.IsNullOrEmpty(systemType) && systemType != "<Select System Type>" && !string.IsNullOrEmpty(prefix))
+                    {
+                        markPrefixes.DuctSystemTypeOverrides[systemType] = prefix;
+                    }
+                }
+
+                // Save Cable Tray mappings
+                foreach (var row in _cableTraySystemTypeRows)
+                {
+                    var serviceType = row.SystemTypeCombo.SelectedItem?.ToString();
+                    var prefix = row.PrefixTextBox.Text?.Trim();
+
+                    if (!string.IsNullOrEmpty(serviceType) && serviceType != "<Select System Type>" && !string.IsNullOrEmpty(prefix))
+                    {
+                        markPrefixes.CableTrayServiceTypeOverrides[serviceType] = prefix;
+                    }
+                }
+                DebugLogger.Info($"[SaveSystemTypeMappings] Saved {markPrefixes.DuctSystemTypeOverrides.Count} duct overrides and {markPrefixes.CableTrayServiceTypeOverrides.Count} cable tray overrides");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[SaveSystemTypeMappings] Error: {ex.Message}");
+            }
+        }
+
+        /// <summary প্রয়োজন        /// Check sleeve status in the model and update Transfer All button accordingly
         /// </summary>
         private void UpdateTransferAllButtonStatus()
         {
@@ -579,6 +921,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             catch
             {
                 return "Unknown";
+            }
+        }
+
+        /// <summary>
+        /// ✅ NEW: Merged handler - Transfer All parameters AND Apply Marks in one click
+        /// </summary>
+        private void OnTransferAllAndApplyMarksClick(object sender, EventArgs e)
+        {
+            try
+            {
+                // First: Transfer parameters
+                OnTransferAllClick(sender, e);
+                
+                // Second: Apply marks
+                OnApplyMarksClick(sender, e);
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[TransferAllAndApplyMarks] Error: {ex.Message}");
             }
         }
 
@@ -1356,6 +1717,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 System.Diagnostics.Debug.WriteLine($"[PARAMETER_SERVICE] Error refreshing reference parameter rows: {ex.Message}");
             }
+        }
+
+        // ✅ NEW: Helper class to represent a System Type mapping row in the UI
+        private class SystemTypeMappingRow
+        {
+            public WinForms.Panel RowPanel { get; set; } = null!;
+            public WinForms.ComboBox SystemTypeCombo { get; set; } = null!;
+            public WinForms.TextBox PrefixTextBox { get; set; } = null!;
+            public WinForms.Button DeleteButton { get; set; } = null!;
+            public string Category { get; set; } = "";
         }
     }
 }
