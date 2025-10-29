@@ -839,11 +839,56 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         $"[{DateTime.Now}] [TRANSFER] Sleeve {openingId}: XML='{xmlFileName}', ID={sleeveId}\n");
                     
                     // DIRECT LOOKUP - Handle both individual and cluster sleeves
-                    if (filterIndex.TryGetValue(xmlFileName, out var filterData))
+                    // ✅ FIX: Try exact match first, then try to find matching XML file by prefix
+                    Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)> filterData = null;
+                    
+                    if (filterIndex.TryGetValue(xmlFileName, out filterData))
                     {
-                        DebugLogger.Info($"[TRANSFER] Found filter data for '{xmlFileName}' with {filterData.Count} sleeves");
+                        DebugLogger.Info($"[TRANSFER] Found exact match for '{xmlFileName}'");
+                    }
+                    else
+                    {
+                        // ✅ FIX: Try to find XML file that starts with the filter name (for cluster sleeves with just filter name like "Ventilation")
+                        // Look for keys like "Ventilation_ducts.xml", "Ventilation_pipes.xml", etc.
+                        // For cluster sleeves, Filter Name might be just "Ventilation" but XML file is "Ventilation_ducts.xml"
+                        var matchingKey = filterIndex.Keys.FirstOrDefault(k => 
+                            k.StartsWith(xmlFileName + "_", StringComparison.OrdinalIgnoreCase) || 
+                            (xmlFileName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) && k.Equals(xmlFileName, StringComparison.OrdinalIgnoreCase)) ||
+                            (!xmlFileName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) && k.Contains($"_{xmlFileName}_", StringComparison.OrdinalIgnoreCase)));
+                        
+                        if (matchingKey != null)
+                        {
+                            filterData = filterIndex[matchingKey];
+                            DebugLogger.Info($"[TRANSFER] Found matching XML file '{matchingKey}' for filter name '{xmlFileName}'");
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                $"[{DateTime.Now}] [TRANSFER] Found matching XML file '{matchingKey}' for filter name '{xmlFileName}'\n");
+                        }
+                        else
+                        {
+                            // Try more flexible matching - check if any key contains the filter name
+                            matchingKey = filterIndex.Keys.FirstOrDefault(k => 
+                                k.Contains(xmlFileName, StringComparison.OrdinalIgnoreCase));
+                            if (matchingKey != null)
+                            {
+                                filterData = filterIndex[matchingKey];
+                                DebugLogger.Info($"[TRANSFER] Found flexible match XML file '{matchingKey}' for filter name '{xmlFileName}'");
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                    $"[{DateTime.Now}] [TRANSFER] Found flexible match XML file '{matchingKey}' for filter name '{xmlFileName}'\n");
+                            }
+                            else
+                            {
+                                DebugLogger.Warning($"[TRANSFER] No matching XML file found for filter name '{xmlFileName}'. Available keys (first 5): {string.Join(", ", filterIndex.Keys.Take(5))}");
+                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
+                                    $"[{DateTime.Now}] [TRANSFER] No matching XML file found for filter name '{xmlFileName}'. Available keys (first 5): {string.Join(", ", filterIndex.Keys.Take(5))}\n");
+                            }
+                        }
+                    }
+                    
+                    if (filterData != null)
+                    {
+                        DebugLogger.Info($"[TRANSFER] Found filter data with {filterData.Count} sleeves");
                         System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                            $"[{DateTime.Now}] [TRANSFER] Found filter data for '{xmlFileName}' with {filterData.Count} sleeves\n");
+                            $"[{DateTime.Now}] [TRANSFER] Found filter data with {filterData.Count} sleeves\n");
                         
                         // CRITICAL FIX: Handle cluster sleeves differently
                         if (isClusterSleeve)
