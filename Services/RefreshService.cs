@@ -718,7 +718,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Recalculation summary: Updated={updatedCount}, Skipped={skippedCount}, Errors={errorCount}\n");
             }
 
-            _clashZoneService = new ClashZoneService(existingClashZones, msg => DebugLogger.Info(msg));
+            // ✅ CRITICAL FIX: ClashZoneService logging must write to refresh log file
+            _clashZoneService = new ClashZoneService(existingClashZones, msg => 
+            {
+                DebugLogger.Info($"[CLASH_DEBUG] {msg}");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] {msg}\n");
+            });
             
             DebugLogger.Info($"[CLASH_DEBUG] ClashZoneService reinitialized with {existingCount} existing zones from XML");
             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ClashZoneService reinitialized with {existingCount} existing zones from XML\n");
@@ -861,7 +866,56 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             DebugLogger.Info($"[CLASH_DEBUG] Intersection breakdown by category: {string.Join(", ", intersectionBreakdown.Select(kv => $"{kv.Key}={kv.Value}"))}");
             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Intersection breakdown by category: {string.Join(", ", intersectionBreakdown.Select(kv => $"{kv.Key}={kv.Value}"))}\n");
 
-            var newClashZones = _clashZoneService.DetectNewClashZones(currentIntersections, _document, clearanceSettings, selectedMepCategories);
+            // ✅ DEBUG: Log Duct-Wall intersections BEFORE optimization
+            var ductWallIntersections = currentIntersections.Where(i => 
+            {
+                var mepCat = GetElementCategory(i.Item1);
+                var structType = i.Item2.Category?.Name ?? "";
+                return (mepCat == "Ducts" || mepCat == "Duct Curves" || mepCat == "Duct Accessories") 
+                    && (structType == "Walls" || structType == "Wall");
+            }).ToList();
+            DebugLogger.Info($"[CLASH_DEBUG] ═══ BEFORE OPTIMIZATION: {ductWallIntersections.Count} Duct-Wall intersections found ═══");
+            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ═══ BEFORE OPTIMIZATION: {ductWallIntersections.Count} Duct-Wall intersections (Total intersections: {currentIntersections.Count}) ═══\n");
+
+            // ✅ CRITICAL FIX: Wrap DetectNewClashZones in try-catch to handle any exceptions
+            List<Models.ClashZone> newClashZones = null;
+            try
+            {
+                DebugLogger.Info($"[CLASH_DEBUG] About to call DetectNewClashZones...");
+                System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] About to call DetectNewClashZones...\n");
+                
+                newClashZones = _clashZoneService.DetectNewClashZones(currentIntersections, _document, clearanceSettings, selectedMepCategories);
+                
+                DebugLogger.Info($"[CLASH_DEBUG] ✅ DetectNewClashZones RETURNED: {newClashZones?.Count ?? 0} clash zones");
+                System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ✅ DetectNewClashZones RETURNED: {newClashZones?.Count ?? 0} clash zones\n");
+                System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] DetectNewClashZones completed successfully\n");
+            }
+            catch (Exception detectEx)
+            {
+                DebugLogger.Error($"[CLASH_DEBUG] ❌ ERROR in DetectNewClashZones: {detectEx.Message}");
+                DebugLogger.Error($"[CLASH_DEBUG] Stack trace: {detectEx.StackTrace}");
+                System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ❌ ERROR in DetectNewClashZones: {detectEx.Message}\n");
+                System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Stack trace: {detectEx.StackTrace}\n");
+                newClashZones = new List<Models.ClashZone>(); // Set to empty list to continue
+            }
+            
+            // ✅ CRITICAL DEBUG: Log immediately after DetectNewClashZones returns (or exception)
+            DebugLogger.Info($"[CLASH_DEBUG] After DetectNewClashZones: {newClashZones?.Count ?? 0} clash zones");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] After DetectNewClashZones: {newClashZones?.Count ?? 0} clash zones\n");
+
+            // ✅ DEBUG: Log Duct-Wall clash zones AFTER optimization
+            if (newClashZones != null && newClashZones.Count > 0)
+            {
+                var ductWallClashZones = newClashZones.Where(cz => 
+                {
+                    var mepCat = cz.MepElementCategory ?? "";
+                    var structType = cz.StructuralElementType ?? "";
+                    return (mepCat == "Ducts" || mepCat == "Duct Curves" || mepCat == "Duct Accessories") 
+                        && (structType == "Wall");
+                }).Count();
+                DebugLogger.Info($"[CLASH_DEBUG] ═══ AFTER OPTIMIZATION: {ductWallClashZones} Duct-Wall clash zones created (from {ductWallIntersections.Count} intersections) ═══");
+                System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ═══ AFTER OPTIMIZATION: {ductWallClashZones} Duct-Wall clash zones created (from {ductWallIntersections.Count} intersections) ═══\n");
+            }
 
             // === Parameter Snapshot (whitelist-based) ===
             try
@@ -908,6 +962,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             DebugLogger.Info($"[CLASH_DEBUG] DetectNewClashZones completed - {newClashZones?.Count ?? 0} new clash zones detected");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] DetectNewClashZones completed - {newClashZones?.Count ?? 0} new clash zones detected\n");
+            
             // Enforce UI host-type filter on new clashes
             try
             {
@@ -926,25 +982,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     var eligible = newClashZones.Count(cz => cz.IsEligibleByCurrentUi);
                     DebugLogger.Info($"[CLASH_DEBUG] UI host filter marked NEW zones eligible: {eligible}/{newClashZones.Count}");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] UI host filter marked NEW zones eligible: {eligible}/{newClashZones.Count}\n");
                 }
             }
-            catch { }
-            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] DetectNewClashZones completed - {newClashZones?.Count ?? 0} new clash zones detected\n");
+            catch (Exception uiFilterEx)
+            {
+                DebugLogger.Warning($"[CLASH_DEBUG] UI host filter failed: {uiFilterEx.Message}");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] UI host filter failed: {uiFilterEx.Message}\n");
+            }
+            
+            DebugLogger.Info($"[CLASH_DEBUG] About to start Step 8: Save results");
+            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] About to start Step 8: Save results\n");
+            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] newClashZones count: {newClashZones?.Count ?? 0}\n");
 
             // Step 8: Save results
             _progressBar.Value = 70;
             _statusLabel.Text = "Saving results...";
-
-            var total = newClashZones?.Count ?? 0;
-            var resolved = 0; // TODO: Implement resolved clash zone tracking
-            var unresolved = total; // All new zones are unresolved initially
-            var newZones = newClashZones?.Count ?? 0;
-
-            DebugLogger.Info($"[CLASH_DEBUG] Statistics - Total: {total}, Resolved: {resolved}, Unresolved: {unresolved}, New: {newZones}");
-            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Statistics - Total: {total}, Resolved: {resolved}, Unresolved: {unresolved}, New: {newZones}\n");
+            
+            DebugLogger.Info($"[CLASH_DEBUG] Step 8 started - Progress bar set to 70");
+            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Step 8 started - Progress bar set to 70\n");
 
             // Save to enabled filter
             var enabledFilter = filtersToProcess.FirstOrDefault(f => f.IsEnabled);
+            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Looking for enabled filter... filtersToProcess.Count={filtersToProcess.Count}\n");
             DebugLogger.Info($"[CLASH_DEBUG] Found {filtersToProcess.Count} filters to process");
             DebugLogger.Info($"[CLASH_DEBUG] Enabled filter: {(enabledFilter != null ? enabledFilter.Name : "NULL")}");
             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Found {filtersToProcess.Count} filters to process\n");
@@ -992,6 +1052,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 DebugLogger.Info($"[PARAM_SNAPSHOT] Persisting {mergedZones.Count} zones (new={newClashZones?.Count ?? 0}, existing={allClashZones?.Count ?? 0}) with snapshot bags where available");
 
+                // ✅ CRITICAL DEBUG: Calculate statistics AFTER merge is complete
+                var existingCountBeforeMerge = existingClashZones?.ClashZones?.Count ?? 0;
+                var newZonesCount = newClashZones?.Count ?? 0;
+                var mergedTotal = mergedZones.Count;
+                var resolvedCount = mergedZones.Count(cz => cz.IsResolved);
+                var unresolvedCount = mergedZones.Count(cz => !cz.IsResolved);
+                
+                DebugLogger.Info($"[CLASH_DEBUG] Merge Statistics - Existing: {existingCountBeforeMerge}, New: {newZonesCount}, Merged Total: {mergedTotal}, Resolved: {resolvedCount}, Unresolved: {unresolvedCount}");
+                System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Merge Statistics - Existing: {existingCountBeforeMerge}, New: {newZonesCount}, Merged Total: {mergedTotal}, Resolved: {resolvedCount}, Unresolved: {unresolvedCount}\n");
+
                 var clashZoneStorage = new Models.ClashZoneStorage
                 {
                     ClashZones = mergedZones,
@@ -1027,8 +1097,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DebugLogger.Info("[CLASH_DEBUG] Created new profile configuration during Refresh");
                 }
 
-                // TODO: Set clash zone storage in profile configuration
-                // currentProfile.Configuration.ClashZoneStorage = clashZoneStorage;
+                // ✅ CRITICAL FIX: Set clash zone storage in profile configuration
+                // This ensures the OK button can find clash zones after refresh
+                System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] About to set clash zone storage to profile configuration...\n");
+                currentProfile.Configuration.ClashZoneStorage = clashZoneStorage;
+                DebugLogger.Info($"[CLASH_DEBUG] Saved {clashZoneStorage.ClashZones.Count} clash zones to profile configuration");
+                System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Saved {clashZoneStorage.ClashZones.Count} clash zones to profile configuration\n");
+                
+                // Save the profile to persist changes
+                try
+                {
+                    System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] About to call SaveCurrentProfile()...\n");
+                    _appProfileService.SaveCurrentProfile();
+                    DebugLogger.Info("[CLASH_DEBUG] Profile saved successfully after setting clash zone storage");
+                    System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Profile saved successfully\n");
+                }
+                catch (Exception saveEx)
+                {
+                    DebugLogger.Error($"[CLASH_DEBUG] Failed to save profile: {saveEx.Message}");
+                    System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ERROR saving profile: {saveEx.Message}\n");
+                    System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Profile save exception: {saveEx.StackTrace}\n");
+                }
 
                 // TODO: Persist current opening conditions (e.g., clearance values) into profile configuration
                 // if (currentProfile.Configuration.OpeningSettings == null)
@@ -1047,8 +1136,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     // Save main filter file (for UI compatibility)
                     var mainFilePath = Path.Combine(filterDir, $"{targetFilter.Name}.xml");
+                    System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] About to save main filter to: {mainFilePath}\n");
+                    System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Filter has {targetFilter.ClashZoneStorage?.ClashZones?.Count ?? 0} clash zones\n");
                     _filterManagementService.SaveFilterToXmlFile(targetFilter, mainFilePath);
                     DebugLogger.Info($"[CLASH_DEBUG] Persisted main filter '{targetFilter.Name}' to XML file: {mainFilePath}");
+                    System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Persisted main filter '{targetFilter.Name}' to XML file: {mainFilePath}\n");
 
                     // CRITICAL FIX: Save category-specific XML files RIGHT HERE after main filter is saved
                     DebugLogger.Info($"[CLASH_DEBUG] ===== SAVING CATEGORY-SPECIFIC XML FILES =====");
@@ -1070,55 +1162,61 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             DebugLogger.Info($"[CLASH_DEBUG] FilterClashZonesByCategory returned {categoryClashZones.Count} clash zones for category: '{category}'");
                             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] FilterClashZonesByCategory returned {categoryClashZones.Count} clash zones for category: '{category}'\n");
 
+                            // ✅ CRITICAL FIX: Always create category-specific XML files, even if empty
+                            // This ensures consistency and helps with debugging
+                            // Filter clearance settings for this specific category
+                            var categoryClearances = FilterClearancesByCategory(targetFilter.OpeningSettings?.ClearanceSettings, category);
+                            
+                            var categoryFilter = new Models.OpeningFilter
+                            {
+                                Name = $"{targetFilter.Name}_{category.ToLower().Replace(" ", "_")}",
+                                Category = targetFilter.Category,
+                                OpeningType = targetFilter.OpeningType,
+                                IsEnabled = true,
+                                LastModified = DateTime.Now,
+                                SelectedMepCategoryNames = new List<string> { category },
+                                SelectedReferenceFiles = targetFilter.SelectedReferenceFiles,
+                                SelectedHostFiles = targetFilter.SelectedHostFiles,
+                                OpeningSettings = new Models.OpeningSettings
+                                {
+                                    ClearanceSettings = categoryClearances,
+                                    SelectedMepType = GetCategorySpecificMepType(category)
+                                },
+                                ClashZoneStorage = new Models.ClashZoneStorage
+                                {
+                                    ClashZones = categoryClashZones, // Can be empty
+                                    CreatedAt = targetFilter.ClashZoneStorage?.CreatedAt ?? DateTime.Now,
+                                    LastUpdated = DateTime.Now,
+                                    DocumentPath = targetFilter.ClashZoneStorage?.DocumentPath ?? _document.PathName,
+                                    DocumentHash = targetFilter.ClashZoneStorage?.DocumentHash ?? (_document.PathName ?? "Unknown"),
+                                    AlgorithmVersion = targetFilter.ClashZoneStorage?.AlgorithmVersion ?? "1.0"
+                                }
+                            };
+
+                            // Save category-specific XML file
+                            var categoryFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters", $"{categoryFilter.Name}.xml");
+                            
                             if (categoryClashZones.Count > 0)
                             {
-                                // Filter clearance settings for this specific category
-                                var categoryClearances = FilterClearancesByCategory(targetFilter.OpeningSettings?.ClearanceSettings, category);
-                                
-                                var categoryFilter = new Models.OpeningFilter
-                                {
-                                    Name = $"{targetFilter.Name}_{category.ToLower().Replace(" ", "_")}",
-                                    Category = targetFilter.Category,
-                                    OpeningType = targetFilter.OpeningType,
-                                    IsEnabled = true,
-                                    LastModified = DateTime.Now,
-                                    SelectedMepCategoryNames = new List<string> { category },
-                                    SelectedReferenceFiles = targetFilter.SelectedReferenceFiles,
-                                    SelectedHostFiles = targetFilter.SelectedHostFiles,
-                                    OpeningSettings = new Models.OpeningSettings
-                                    {
-                                        ClearanceSettings = categoryClearances,
-                                        SelectedMepType = GetCategorySpecificMepType(category)
-                                    },
-                                    ClashZoneStorage = new Models.ClashZoneStorage
-                                    {
-                                        ClashZones = categoryClashZones,
-                                        CreatedAt = targetFilter.ClashZoneStorage.CreatedAt,
-                                        LastUpdated = DateTime.Now,
-                                        DocumentPath = targetFilter.ClashZoneStorage.DocumentPath,
-                                        DocumentHash = targetFilter.ClashZoneStorage.DocumentHash,
-                                        AlgorithmVersion = targetFilter.ClashZoneStorage.AlgorithmVersion
-                                    }
-                                };
-
-                                // Save category-specific XML file
-                                var categoryFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters", $"{categoryFilter.Name}.xml");
-                                
                                 // 🔥 CRITICAL DEBUG: Log flags BEFORE saving to XML
                                 int clusterResolvedBeforeSave = categoryClashZones.Count(cz => cz.IsClusterResolved);
                                 int individualResolvedBeforeSave = categoryClashZones.Count(cz => cz.IsResolved);
                                 DebugLogger.Info($"[CLASH_DEBUG] BEFORE SAVING TO XML: {categoryClashZones.Count} clash zones, IsClusterResolved=True: {clusterResolvedBeforeSave}, IsResolved=True: {individualResolvedBeforeSave}");
                                 File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", 
                                     $"[{DateTime.Now}] [CLASH_DEBUG] BEFORE SAVING TO XML: {categoryClashZones.Count} clash zones, IsClusterResolved=True: {clusterResolvedBeforeSave}, IsResolved=True: {individualResolvedBeforeSave}\n");
-                                
-                                _filterManagementService.SaveFilterToXmlFile(categoryFilter, categoryFilePath);
+                            }
+                            
+                            _filterManagementService.SaveFilterToXmlFile(categoryFilter, categoryFilePath);
 
+                            if (categoryClashZones.Count > 0)
+                            {
                                 DebugLogger.Info($"[CLASH_DEBUG] Saved {categoryClashZones.Count} clash zones for category '{category}' to: {categoryFilePath}");
                                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Saved {categoryClashZones.Count} clash zones for category '{category}'\n");
                             }
                             else
                             {
-                                DebugLogger.Info($"[CLASH_DEBUG] No clash zones found for category '{category}'");
+                                DebugLogger.Info($"[CLASH_DEBUG] Created empty XML file for category '{category}' (no clash zones detected): {categoryFilePath}");
+                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Created empty XML file for category '{category}' (no clash zones detected)\n");
                             }
                         }
                     }
@@ -1136,7 +1234,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 DebugLogger.Info($"[CLASH_DEBUG] Saved clash zones to filter '{targetFilter.Name}'");
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] SUCCESS: Saved {total} clash zones to filter '{targetFilter.Name}' and profile configuration\n");
+                var savedCount = clashZoneStorage?.ClashZones?.Count ?? 0;
+                System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] SUCCESS: Saved {savedCount} clash zones to filter '{targetFilter.Name}' and profile configuration\n");
             }
             else
             {
@@ -1146,10 +1245,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             // Step 9: Update UI with results
             _progressBar.Value = 100;
-            _statusLabel.Text = $"Clash zones: {total} total, {unresolved} unresolved, {newZones} new";
+            
+            // ✅ CRITICAL FIX: Calculate final statistics from saved filter data
+            int finalTotal = 0;
+            int finalUnresolved = 0;
+            int finalNewZones = 0;
+            
+            if (enabledFilter != null && enabledFilter.ClashZoneStorage != null && enabledFilter.ClashZoneStorage.ClashZones != null)
+            {
+                finalTotal = enabledFilter.ClashZoneStorage.ClashZones.Count;
+                finalUnresolved = enabledFilter.ClashZoneStorage.ClashZones.Count(cz => !cz.IsResolved);
+                finalNewZones = newClashZones?.Count ?? 0;
+            }
+            
+            _statusLabel.Text = $"Clash zones: {finalTotal} total, {finalUnresolved} unresolved, {finalNewZones} new";
 
-            DebugLogger.Info($"[CLASH_DEBUG] Clash zone refresh complete: {total} total, {unresolved} unresolved, {newZones} new");
-            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] REFRESH COMPLETE: {total} total zones, {unresolved} unresolved, {newZones} new\n");
+            DebugLogger.Info($"[CLASH_DEBUG] Clash zone refresh complete: {finalTotal} total, {finalUnresolved} unresolved, {finalNewZones} new");
+            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] REFRESH COMPLETE: {finalTotal} total zones, {finalUnresolved} unresolved, {finalNewZones} new\n");
+            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] === REFRESH METHOD COMPLETED ===\n");
 
             // Step 10: Update parameter dropdowns
             _progressBar.Value = 90;
@@ -1162,6 +1275,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _refreshButton.Enabled = true;
 
             DebugLogger.Info("[REFRESH] Refresh process completed successfully");
+            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [REFRESH] Refresh process completed successfully\n");
         }
 
         #region Helper Methods
@@ -2013,3 +2127,4 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
     }
 }
+

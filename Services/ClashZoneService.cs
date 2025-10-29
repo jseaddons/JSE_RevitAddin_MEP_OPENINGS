@@ -191,17 +191,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _log($"Detecting new clash zones for document: {documentPath}");
             _log($"Current intersections count: {currentIntersections.Count}");
             
+            // ✅ DEBUG: Initialize counters BEFORE priority sorting (must be accessible for summary logging)
+            int ductWallBeforePriority = 0;
+            int ductWallAfterPriority = 0;
+            
+            // ✅ DEBUG: Log Duct-Wall count BEFORE priority sorting
+            ductWallBeforePriority = enhancedIntersections.Where(i => 
+            {
+                var mepCat = GetElementCategoryName(i.Item1);
+                var structType = i.Item2.Category?.Name ?? "";
+                return (mepCat == "Ducts" || mepCat == "Duct Curves" || mepCat == "Duct Accessories") 
+                    && (structType == "Walls" || structType == "Wall");
+            }).Count();
+            _log($"[DEBUG-COUNT] BEFORE PRIORITY SORT: {ductWallBeforePriority} Duct-Wall intersections");
+            
             // FOOLPROOF METHOD: Always process dampers first, then ducts (category-based priority)
             List<(Element, Element, BoundingBoxXYZ, XYZ)> prioritizedIntersections;
             try
             {
                 prioritizedIntersections = PrioritizeIntersectionsByCategory(enhancedIntersections);
                 _log($"[PRIORITY] Processed {prioritizedIntersections.Count} intersections in priority order");
+                
+                // ✅ DEBUG: Log Duct-Wall count AFTER priority sorting
+                ductWallAfterPriority = prioritizedIntersections.Where(i => 
+                {
+                    var mepCat = GetElementCategoryName(i.Item1);
+                    var structType = i.Item2.Category?.Name ?? "";
+                    return (mepCat == "Ducts" || mepCat == "Duct Curves" || mepCat == "Duct Accessories") 
+                        && (structType == "Walls" || structType == "Wall");
+                }).Count();
+                _log($"[DEBUG-COUNT] AFTER PRIORITY SORT: {ductWallAfterPriority} Duct-Wall intersections");
             }
             catch (Exception ex)
             {
                 _log($"[ERROR] Failed in priority method: {ex.Message}");
                 prioritizedIntersections = enhancedIntersections;
+                // If priority sort failed, after count equals before count
+                ductWallAfterPriority = ductWallBeforePriority;
             }
             
             // DEBUG: Log each intersection being processed in priority order
@@ -213,50 +239,85 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             _log($"Existing clash zones count: {_clashZoneStorage.ClashZones.Count}");
             
+            // ✅ DEBUG: Initialize counters for tracking Duct-Wall clash zones through filters
+            int ductWallAfterValidation = 0;
+            int ductWallAfterDamperCheck = 0;
+            int ductWallAfterPenetration = 0;
+            int ductWallAfterExistingCheck = 0;
+            int ductWallClashZonesCreated = 0;
+            int ductWallSkippedInvalid = 0;
+            int ductWallSkippedDamper = 0;
+            int ductWallSkippedPenetration = 0;
+            int ductWallSkippedExisting = 0;
+            
             foreach (var (mepElement, structuralElement, boundingBox, intersectionPoint) in prioritizedIntersections)
             {
+                // ✅ DEBUG: Check if this is Duct-Wall for tracking
+                bool isDuctWall = false;
+                try
+                {
+                    var mepCat = GetElementCategoryName(mepElement);
+                    var structType = structuralElement?.Category?.Name ?? "";
+                    isDuctWall = (mepCat == "Ducts" || mepCat == "Duct Curves" || mepCat == "Duct Accessories") 
+                        && (structType == "Walls" || structType == "Wall");
+                }
+                catch { }
+                
                 // CRITICAL FIX: Validate elements before creating clash zones
                 if (mepElement == null || structuralElement == null)
                 {
-                    _log($"SKIP: Invalid elements - MEP={mepElement?.Id}, Structural={structuralElement?.Id}");
+                    _log($"[OPTIMIZATION] ❌ SKIP VALIDATION: Invalid elements - MEP={mepElement?.Id}, Structural={structuralElement?.Id}");
+                    if (isDuctWall) ductWallSkippedInvalid++;
                     continue;
                 }
+                
+                _log($"[OPTIMIZATION] ✅ PASS VALIDATION: MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                if (isDuctWall) ductWallAfterValidation++;
 
                 // Method 3 is now implemented in IntersectionDetectionService.cs
                 // Ducts with dampers at their ends are filtered out at intersection level
 
-                // CRITICAL FIX: Check if elements are still valid in the document
+                // ✅ CRITICAL FIX: Check if elements are still valid in the document
+                // ⚠️ OPTIMIZATION SAFETY: Since intersections come from IntersectionDetectionService which already validated elements,
+                // we should trust them and NOT skip unless we're absolutely certain the element is deleted
                 try
                 {
                     var mepElementCheck = document.GetElement(mepElement.Id);
                     var structuralElementCheck = document.GetElement(structuralElement.Id);
                     
-                    // For linked elements, GetElement might return null even if element exists
-                    // Check if element is from a linked document
-                    bool mepIsLinked = mepElementCheck == null && mepElement.Id.IntegerValue > 0;
-                    bool structuralIsLinked = structuralElementCheck == null && structuralElement.Id.IntegerValue > 0;
+                    // ✅ OPTIMIZATION SAFETY: Be very conservative - only skip if we're CERTAIN element was deleted
+                    // Linked elements return null from GetElement but are still valid
+                    // Since intersections were already validated, we trust the element exists unless proven otherwise
                     
-                    if (mepElementCheck == null && !mepIsLinked)
+                    // Only skip if we can PROVE the element was deleted (check for negative/invalid IDs)
+                    if (mepElement.Id.IntegerValue <= 0)
                     {
-                        _log($"SKIP: MEP element no longer valid in document - MEP={mepElement.Id}");
+                        _log($"SKIP: Invalid MEP element ID - MEP={mepElement.Id}");
+                        if (isDuctWall) ductWallSkippedInvalid++;
                         continue;
                     }
                     
-                    if (structuralElementCheck == null && !structuralIsLinked)
+                    if (structuralElement.Id.IntegerValue <= 0)
                     {
-                        _log($"SKIP: Structural element no longer valid in document - Structural={structuralElement.Id}");
+                        _log($"SKIP: Invalid structural element ID - Structural={structuralElement.Id}");
+                        if (isDuctWall) ductWallSkippedInvalid++;
                         continue;
                     }
                     
-                    if (mepIsLinked || structuralIsLinked)
+                    // ✅ OPTIMIZATION SAFETY: Log linked elements but DON'T skip them
+                    // GetElement returns null for linked elements, but they're still valid for clash zone creation
+                    if (mepElementCheck == null || structuralElementCheck == null)
                     {
-                        _log($"INFO: Processing linked elements - MEP={mepElement.Id} (linked={mepIsLinked}), Structural={structuralElement.Id} (linked={structuralIsLinked})");
+                        _log($"INFO: Processing linked element(s) - MEP={mepElement.Id} (found={mepElementCheck != null}), Structural={structuralElement.Id} (found={structuralElementCheck != null})");
+                        // Continue processing - linked elements are valid
                     }
                 }
                 catch (Exception ex)
                 {
-                    _log($"SKIP: Error validating elements - MEP={mepElement.Id}, Structural={structuralElement.Id}, Error={ex.Message}");
-                    continue;
+                    // ✅ OPTIMIZATION SAFETY: Log error but DON'T skip unless we're certain
+                    // Errors in validation shouldn't prevent clash zone creation
+                    _log($"WARN: Error validating elements - MEP={mepElement.Id}, Structural={structuralElement.Id}, Error={ex.Message} - Continuing anyway");
+                    // Continue processing - assume elements are valid if validation fails
                 }
 
                 // DIAGNOSTIC: Log detailed geometry information to determine if penetration is real
@@ -296,15 +357,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     _log($"[DUCT-DAMPER] Checking element {mepElement.Id} with category '{mepCat}' against {damperLocations.Count} damper locations");
                     if (string.Equals(mepCat, "Ducts", StringComparison.OrdinalIgnoreCase))
                     {
-                        if (IsDuctNearDamper(mepElement, damperLocations))
+                        // ✅ CRITICAL FIX: Check if duct is near damper on the SAME wall
+                        if (IsDuctNearDamperOnSameWall(mepElement, structuralElement.Id, damperLocations))
                         {
-                            _log($"SKIP: Duct {mepElement.Id} - damper present in same intersection, prioritizing damper sleeve");
+                            _log($"[OPTIMIZATION] ❌ SKIP DAMPER CHECK: Duct {mepElement.Id} - damper present on same wall ({structuralElement.Id}), prioritizing damper sleeve");
+                            if (isDuctWall) ductWallSkippedDamper++;
                             continue;
                         }
                         else
                         {
-                            _log($"[DUCT-DAMPER] Duct {mepElement.Id} - no damper nearby, proceeding with sleeve placement");
+                            _log($"[OPTIMIZATION] ✅ PASS DAMPER CHECK: Duct {mepElement.Id} - no damper nearby on wall {structuralElement.Id}, proceeding with sleeve placement");
+                            if (isDuctWall) ductWallAfterDamperCheck++;
                         }
+                    }
+                    else
+                    {
+                        // Not a duct, so damper check doesn't apply - count it as passed
+                        if (isDuctWall) ductWallAfterDamperCheck++;
                     }
                 }
                 catch (Exception ex)
@@ -346,28 +415,84 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var nLen = Math.Sqrt(hostNormal.X * hostNormal.X + hostNormal.Y * hostNormal.Y + hostNormal.Z * hostNormal.Z);
 
                         double penetrationRatio = 1.0; // default pass-through if not computable
+                        bool isPerpendicularPenetration = false;
+                        double dot = 0.0; // ✅ FIX: Declare dot outside if block for logging
+                        
                         if (hostThickness > 1e-6 && crossSize > 1e-6 && dLen > 1e-6 && nLen > 1e-6)
                         {
                             var dNorm = new XYZ(mepDir.X / dLen, mepDir.Y / dLen, mepDir.Z / dLen);
                             var nNorm = new XYZ(hostNormal.X / nLen, hostNormal.Y / nLen, hostNormal.Z / nLen);
-                            var dot = Math.Abs(dNorm.X * nNorm.X + dNorm.Y * nNorm.Y + dNorm.Z * nNorm.Z);
-                            penetrationRatio = (hostThickness * dot) / crossSize;
+                            dot = Math.Abs(dNorm.X * nNorm.X + dNorm.Y * nNorm.Y + dNorm.Z * nNorm.Z);
                             
                             _log($"[DEBUG]   Normalized MEP Dir: ({dNorm.X:F3}, {dNorm.Y:F3}, {dNorm.Z:F3})");
                             _log($"[DEBUG]   Normalized Host Normal: ({nNorm.X:F3}, {nNorm.Y:F3}, {nNorm.Z:F3})");
                             _log($"[DEBUG]   Dot Product: {dot:F3}");
                             _log($"[DEBUG]   Cross Size: {crossSize:F3}");
+                            
+                            // ✅ CRITICAL FIX: Detect perpendicular penetrations (duct running parallel to wall face)
+                            // When dot < 0.1, the MEP element is nearly perpendicular to wall normal (parallel to wall face)
+                            // This is a VALID penetration - the element goes through the wall at 90 degrees
+                            const double PerpendicularThreshold = 0.1;
+                            if (dot < PerpendicularThreshold)
+                            {
+                                isPerpendicularPenetration = true;
+                                // For perpendicular penetrations, check if cross-section is significant relative to wall thickness
+                                // If crossSize >= 10% of wall thickness, it's a valid penetration
+                                penetrationRatio = crossSize / hostThickness;
+                                _log($"[DEBUG]   PERPENDICULAR PENETRATION detected (dot={dot:F3} < {PerpendicularThreshold})");
+                                _log($"[DEBUG]   Using cross-section/thickness ratio: {penetrationRatio:F3}");
+                            }
+                            else
+                            {
+                                // Normal angled penetration - use standard formula
+                                penetrationRatio = (hostThickness * dot) / crossSize;
+                            }
                         }
 
-                        // Threshold: require at least 5% penetration of cross-section (reduced for cable trays)
-                        const double MinPenetrationRatio = 0.05;
-                        _log($"[DEBUG] Penetration check: ratio={penetrationRatio:F3}, threshold={MinPenetrationRatio:F2}, hostThickness={hostThickness:F3}, crossSize={crossSize:F3}");
-                        if (penetrationRatio < MinPenetrationRatio)
+                        // Threshold: require at least 1% penetration of cross-section OR 10% cross-section/thickness for perpendicular
+                        const double MinPenetrationRatio = 0.01;
+                        const double MinPerpendicularRatio = 0.10; // For perpendicular penetrations
+                        
+                        _log($"[DEBUG] Penetration check: ratio={penetrationRatio:F3}, threshold={MinPenetrationRatio:F2}, hostThickness={hostThickness:F3}, crossSize={crossSize:F3}, perpendicular={isPerpendicularPenetration}");
+                        
+                        bool shouldSkip = false;
+                        if (isPerpendicularPenetration)
                         {
-                            _log($"SKIP: Insufficient penetration (ratio={penetrationRatio:F3} < {MinPenetrationRatio:F2}) for {hostTypeName}. MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                            // For perpendicular penetrations, require cross-section to be at least 10% of wall thickness
+                            shouldSkip = penetrationRatio < MinPerpendicularRatio;
+                            if (shouldSkip)
+                            {
+                                _log($"[OPTIMIZATION] ❌ SKIP PENETRATION: Insufficient perpendicular penetration (crossSize/thickness={penetrationRatio:F3} < {MinPerpendicularRatio:F2}) for {hostTypeName}. MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                                _log($"[OPTIMIZATION]   Details: crossSize={crossSize:F3}ft, hostThickness={hostThickness:F3}ft, ratio={penetrationRatio:F3}");
+                            }
+                        }
+                        else
+                        {
+                            // For angled penetrations, use original threshold
+                            shouldSkip = penetrationRatio < MinPenetrationRatio;
+                            if (shouldSkip)
+                            {
+                                _log($"[OPTIMIZATION] ❌ SKIP PENETRATION: Insufficient penetration (ratio={penetrationRatio:F3} < {MinPenetrationRatio:F2}) for {hostTypeName}. MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                                _log($"[OPTIMIZATION]   Details: hostThickness={hostThickness:F3}ft, crossSize={crossSize:F3}ft, dot={dot:F3}, ratio={penetrationRatio:F3}");
+                            }
+                        }
+                        
+                        if (shouldSkip)
+                        {
+                            if (isDuctWall) ductWallSkippedPenetration++;
                             continue;
                         }
-                        _log($"[DEBUG] Penetration check PASSED: ratio={penetrationRatio:F3} >= {MinPenetrationRatio:F2}");
+                        
+                        // Log pass message with correct threshold
+                        if (isPerpendicularPenetration)
+                        {
+                            _log($"[OPTIMIZATION] ✅ PASS PENETRATION (perpendicular): ratio={penetrationRatio:F3} >= {MinPerpendicularRatio:F2}");
+                        }
+                        else
+                        {
+                            _log($"[OPTIMIZATION] ✅ PASS PENETRATION: ratio={penetrationRatio:F3} >= {MinPenetrationRatio:F2}");
+                        }
+                        if (isDuctWall) ductWallAfterPenetration++;
                     }
                     else if (hostTypeName == "Structural Framing")
                     {
@@ -381,6 +506,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 // Check if this clash zone already exists
                 var existingClashZone = FindExistingClashZone(mepElement.Id, structuralElement.Id, intersectionPoint);
+
+                if (existingClashZone == null)
+                {
+                    _log($"[OPTIMIZATION] ✅ PASS EXISTING CHECK: No existing clash zone found for MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                    if (isDuctWall) ductWallAfterExistingCheck++;
+                }
+                else
+                {
+                    _log($"[OPTIMIZATION] ❌ SKIP EXISTING CHECK: Clash zone already exists for MEP={mepElement.Id}, Structural={structuralElement.Id} (Existing ID: {existingClashZone.Id})");
+                    if (isDuctWall) ductWallSkippedExisting++;
+                }
 
                 if (existingClashZone == null)
                 {
@@ -398,6 +534,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         newClashZones.Add(newClashZone);
                         _clashZoneStorage.ClashZones.Add(newClashZone);
                         _log($"Replaced invalid clash zone: MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                        if (isDuctWall) ductWallClashZonesCreated++;
                     }
                     else
                 {
@@ -443,6 +580,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         newClashZones.Add(newClashZone);
                         _clashZoneStorage.ClashZones.Add(newClashZone);
                         _log($"New clash zone detected: MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                        if (isDuctWall) ductWallClashZonesCreated++;
                     }
                     catch (Exception ex)
                     {
@@ -506,6 +644,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _clashZoneStorage.DocumentHash = documentHash;
             
             _log($"Clash zone detection complete. New zones: {newClashZones.Count}");
+            // ✅ DEBUG: Log final summary of Duct-Wall clash zones through optimization pipeline
+            _log($"[DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════");
+            _log($"[DEBUG-COUNT] DUCT-WALL CLASH ZONES OPTIMIZATION PIPELINE SUMMARY");
+            _log($"[DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════");
+            _log($"[DEBUG-COUNT] STEP 1 - BEFORE OPTIMIZATION (Priority Sort): {ductWallBeforePriority} Duct-Wall intersections");
+            _log($"[DEBUG-COUNT] STEP 2 - AFTER PRIORITY SORT: {ductWallAfterPriority} Duct-Wall intersections (changed: {ductWallAfterPriority - ductWallBeforePriority:+0;-0;=0})");
+            _log($"[DEBUG-COUNT] STEP 3 - AFTER VALIDATION: {ductWallAfterValidation} Duct-Wall intersections (✅ passed, ❌ skipped: {ductWallSkippedInvalid})");
+            _log($"[DEBUG-COUNT] STEP 4 - AFTER DAMPER CHECK: {ductWallAfterDamperCheck} Duct-Wall intersections (✅ passed, ❌ skipped: {ductWallSkippedDamper})");
+            _log($"[DEBUG-COUNT] STEP 5 - AFTER PENETRATION FILTER: {ductWallAfterPenetration} Duct-Wall intersections (✅ passed, ❌ skipped: {ductWallSkippedPenetration})");
+            _log($"[DEBUG-COUNT] STEP 6 - AFTER EXISTING CHECK: {ductWallAfterExistingCheck} Duct-Wall intersections (✅ passed, ❌ skipped: {ductWallSkippedExisting})");
+            _log($"[DEBUG-COUNT] STEP 7 - FINAL CLASH ZONES CREATED: {ductWallClashZonesCreated} Duct-Wall clash zones");
+            _log($"[DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════");
+            _log($"[DEBUG-COUNT] VERIFICATION: {ductWallAfterExistingCheck} should equal {ductWallClashZonesCreated} (after existing check = final created)");
+            var totalSkipped = ductWallSkippedInvalid + ductWallSkippedDamper + ductWallSkippedPenetration + ductWallSkippedExisting;
+            var totalProcessed = ductWallAfterValidation + totalSkipped;
+            _log($"[DEBUG-COUNT] VERIFICATION: Total processed ({totalProcessed}) = Passed ({ductWallAfterValidation}) + Skipped ({totalSkipped})");
+            _log($"[DEBUG-COUNT] ═══ TOTAL FILTERED OUT: {ductWallBeforePriority - ductWallClashZonesCreated} Duct-Wall intersections ═══");
+            _log($"[DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════");
+            
+            // Also write to refresh log for easy viewing
+            var refreshLogPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Logs", $"refresh_{DateTime.Now:yyyy-MM-dd}.log");
+            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════\n");
+            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] DUCT-WALL CLASH ZONES OPTIMIZATION PIPELINE SUMMARY\n");
+            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════\n");
+            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] STEP 1 - BEFORE OPTIMIZATION: {ductWallBeforePriority} Duct-Wall intersections\n");
+            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] STEP 2 - AFTER PRIORITY SORT: {ductWallAfterPriority} (changed: {ductWallAfterPriority - ductWallBeforePriority:+0;-0;=0})\n");
+            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] STEP 3 - AFTER VALIDATION: {ductWallAfterValidation} (✅ passed, ❌ skipped: {ductWallSkippedInvalid})\n");
+            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] STEP 4 - AFTER DAMPER CHECK: {ductWallAfterDamperCheck} (✅ passed, ❌ skipped: {ductWallSkippedDamper})\n");
+            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] STEP 5 - AFTER PENETRATION FILTER: {ductWallAfterPenetration} (✅ passed, ❌ skipped: {ductWallSkippedPenetration})\n");
+            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] STEP 6 - AFTER EXISTING CHECK: {ductWallAfterExistingCheck} (✅ passed, ❌ skipped: {ductWallSkippedExisting})\n");
+            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] STEP 7 - FINAL CLASH ZONES CREATED: {ductWallClashZonesCreated} Duct-Wall clash zones\n");
+            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] VERIFICATION: {ductWallAfterExistingCheck} should equal {ductWallClashZonesCreated}\n");
+            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] VERIFICATION: Total processed ({totalProcessed}) = Passed ({ductWallAfterValidation}) + Skipped ({totalSkipped})\n");
+            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] ═══ TOTAL FILTERED OUT: {ductWallBeforePriority - ductWallClashZonesCreated} Duct-Wall intersections ═══\n");
+            System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════\n");
+            
             return newClashZones;
         }
         
@@ -2805,19 +2979,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         /// <summary>
         /// Check if a duct is near a damper using pre-calculated locations (Efficient O(n) lookup)
+        /// ✅ CRITICAL FIX: Now checks SAME WALL requirement before proximity check
         /// </summary>
-        private bool IsDuctNearDamper(Element ductElement, List<(ElementId damperId, BoundingBoxXYZ bbox, ElementId wallId)> damperLocations)
+        private bool IsDuctNearDamperOnSameWall(Element ductElement, ElementId wallId, List<(ElementId damperId, BoundingBoxXYZ bbox, ElementId wallId)> damperLocations)
         {
             try
             {
-                const double proximityTolerance = 0.02; // 1/4 inch tolerance (as requested)
+                // ✅ INCREASED TOLERANCE: Changed from 0.02ft (0.24") to 0.5ft (6") for better reliability
+                // This accounts for small gaps between connected duct and damper elements
+                const double proximityTolerance = 0.5; // 6 inches tolerance for connected duct-damper pairs
                 
                 // Get duct bounding box
                 var ductBbox = ductElement.get_BoundingBox(null);
-                if (ductBbox == null) return false;
+                if (ductBbox == null)
+                {
+                    _log($"[DUCT-DAMPER] Duct {ductElement.Id} has no bounding box - cannot check damper proximity");
+                    return false;
+                }
                 
-                // Check pre-calculated damper locations (Efficient O(n) lookup)
-                foreach (var (damperId, damperBbox, wallId) in damperLocations)
+                // ✅ CRITICAL FIX: Filter dampers by SAME WALL first (major optimization and correctness fix)
+                var dampersOnSameWall = damperLocations.Where(d => d.wallId == wallId).ToList();
+                _log($"[DUCT-DAMPER] Checking duct {ductElement.Id} on wall {wallId} against {dampersOnSameWall.Count} dampers on same wall (total dampers: {damperLocations.Count})");
+                
+                if (dampersOnSameWall.Count == 0)
+                {
+                    _log($"[DUCT-DAMPER] No dampers on wall {wallId} - duct {ductElement.Id} will proceed");
+                    return false;
+                }
+                
+                // Check pre-calculated damper locations on SAME WALL (Efficient O(n) lookup)
+                foreach (var (damperId, damperBbox, _) in dampersOnSameWall)
                 {
                     // Skip if it's the same element
                     if (damperId == ductElement.Id) continue;
@@ -2827,18 +3018,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     if (distance <= proximityTolerance)
                     {
-                        _log($"[DUCT-DAMPER] Duct {ductElement.Id} is {distance:F4}ft from Damper {damperId} (tolerance: {proximityTolerance}ft = 1/4\")");
+                        _log($"[DUCT-DAMPER] ✓ MATCH: Duct {ductElement.Id} is {distance:F4}ft from Damper {damperId} on wall {wallId} (tolerance: {proximityTolerance}ft = 6\")");
                         return true;
+                    }
+                    else
+                    {
+                        _log($"[DUCT-DAMPER] Distance check: Duct {ductElement.Id} is {distance:F4}ft from Damper {damperId} (tolerance: {proximityTolerance}ft) - too far");
                     }
                 }
                 
+                _log($"[DUCT-DAMPER] No dampers found within {proximityTolerance}ft of duct {ductElement.Id} on wall {wallId}");
                 return false;
             }
             catch (Exception ex)
             {
                 _log($"Error checking duct-damper proximity: {ex.Message}");
+                _log($"Stack trace: {ex.StackTrace}");
                 return false;
             }
+        }
+        
+        /// <summary>
+        /// [DEPRECATED] Old method - kept for backward compatibility but should not be used
+        /// Use IsDuctNearDamperOnSameWall instead
+        /// </summary>
+        private bool IsDuctNearDamper(Element ductElement, List<(ElementId damperId, BoundingBoxXYZ bbox, ElementId wallId)> damperLocations)
+        {
+            // This method doesn't check same wall - use IsDuctNearDamperOnSameWall instead
+            _log($"[WARNING] IsDuctNearDamper called without wall check - this is deprecated");
+            return false;
         }
         
         /// <summary>
