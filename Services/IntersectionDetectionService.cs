@@ -12,6 +12,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     public class IntersectionDetectionService
     {
         private readonly Action<string> _logger;
+        
+        // ⚠️ CRITICAL: Memory manager for timeout/memory protection (can be null)
+        private MemoryManager _memoryManager;
+        
+        // ⚠️ CRITICAL: Element collection limits to prevent crashes on large files
+        private const int MAX_ELEMENTS_TO_PROCESS = 10000;
+        private const int WARNING_THRESHOLD = 5000;
+        private const int MEMORY_CHECK_INTERVAL = 500; // Check memory every N elements
 
         public IntersectionDetectionService(Action<string> logger)
         {
@@ -20,6 +28,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ PHASE 1 OPTIMIZATION: Enable optimization flags
             OptimizationFlags.EnablePhase1Optimizations();
             _logger($"[IntersectionDetectionService] Phase 1 optimizations enabled: {OptimizationFlags.GetOptimizationStatus()}");
+        }
+        
+        /// <summary>
+        /// Set memory manager for timeout/memory protection during intersection detection
+        /// </summary>
+        public void SetMemoryManager(MemoryManager memoryManager)
+        {
+            _memoryManager = memoryManager;
+            _logger($"[IntersectionDetectionService] Memory manager set: MaxMemory={memoryManager?.CurrentMemoryMB ?? 0}MB, Timeout={memoryManager?.RemainingTime:mm\\:ss ?? TimeSpan.Zero:mm\\:ss}");
         }
 
         /// <summary>
@@ -234,16 +251,126 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Step 5: Host Categories Filter - Only collect selected host types
             _logger($"[5-STEP-FILTER] Step 5 (Host Categories): Selected host types: {string.Join(", ", allowedHostElementTypes ?? new List<string>())}");
 
+            // ⚠️ CRITICAL: Check memory/timeout before starting heavy collection
+            if (_memoryManager != null)
+            {
+                try
+                {
+                    _memoryManager.CheckLimits();
+                }
+                catch (TimeoutException ex)
+                {
+                    _logger($"[MEMORY-MGR] ⏱ TIMEOUT before element collection: {ex.Message}");
+                    SafeFileLogger.SafeAppendText("intersection_timeouts.log", $"Timeout before element collection: {ex.Message}");
+                    return; // Return empty results instead of crashing
+                }
+                catch (OutOfMemoryException ex)
+                {
+                    _logger($"[MEMORY-MGR] 💾 MEMORY LIMIT before element collection: {ex.Message}");
+                    SafeFileLogger.SafeAppendText("intersection_memory.log", $"Memory limit before element collection: {ex.Message}");
+                    return; // Return empty results instead of crashing
+                }
+            }
+            
             // Collect from host
+            int totalCollected = 0;
             foreach (var cat in mepCats)
             {
-                mepElements.AddRange(
-                    new FilteredElementCollector(doc)
-                        .OfCategory(cat)
-                        .WhereElementIsNotElementType()
-                        .WherePasses(new BoundingBoxIntersectsFilter(hostOutline))
-                        .ToElements()
-                );
+                // ⚠️ CRITICAL: Check element limit BEFORE collecting
+                if (totalCollected >= MAX_ELEMENTS_TO_PROCESS)
+                {
+                    _logger($"[ELEMENT-LIMIT] ⚠️ Stopped at {totalCollected} elements (limit: {MAX_ELEMENTS_TO_PROCESS})");
+                    SafeFileLogger.SafeAppendText("intersection_limits.log", 
+                        $"Element limit exceeded: Collected {totalCollected} elements, limit is {MAX_ELEMENTS_TO_PROCESS}. " +
+                        $"Please reduce section box or use more specific filters.");
+                    break; // Stop collection
+                }
+                
+                var collector = new FilteredElementCollector(doc)
+                    .OfCategory(cat)
+                    .WhereElementIsNotElementType();
+                
+                // ✅ FIX: Use BoundingBoxIntersectsFilter but also add fallback manual check
+                // BoundingBoxIntersectsFilter can miss elements on exact boundaries or with edge cases
+                var filteredByOutline = collector
+                    .WherePasses(new BoundingBoxIntersectsFilter(hostOutline))
+                    .ToElements()
+                    .ToList();
+                
+                // ⚠️ CRITICAL: Enforce element limit
+                int beforeAdd = mepElements.Count;
+                int toAdd = Math.Min(filteredByOutline.Count, MAX_ELEMENTS_TO_PROCESS - totalCollected);
+                mepElements.AddRange(filteredByOutline.Take(toAdd));
+                totalCollected += mepElements.Count - beforeAdd;
+                
+                // ⚠️ CRITICAL: Check memory every N elements
+                if (_memoryManager != null && totalCollected % MEMORY_CHECK_INTERVAL == 0)
+                {
+                    try
+                    {
+                        _memoryManager.CheckLimits();
+                        _logger($"[MEMORY-MGR] Check passed at {totalCollected} elements: {_memoryManager.GetStatus()}");
+                    }
+                    catch (TimeoutException ex)
+                    {
+                        _logger($"[MEMORY-MGR] ⏱ TIMEOUT at {totalCollected} elements: {ex.Message}");
+                        SafeFileLogger.SafeAppendText("intersection_timeouts.log", 
+                            $"Timeout during element collection: Collected {totalCollected} elements. {ex.Message}");
+                        break; // Stop collection
+                    }
+                    catch (OutOfMemoryException ex)
+                    {
+                        _logger($"[MEMORY-MGR] 💾 MEMORY LIMIT at {totalCollected} elements: {ex.Message}");
+                        SafeFileLogger.SafeAppendText("intersection_memory.log", 
+                            $"Memory limit during element collection: Collected {totalCollected} elements. {ex.Message}");
+                        break; // Stop collection
+                    }
+                }
+                
+                // Warn at threshold
+                if (totalCollected >= WARNING_THRESHOLD && totalCollected < WARNING_THRESHOLD + toAdd)
+                {
+                    _logger($"[ELEMENT-WARNING] ⚠️ Large dataset: {totalCollected}+ elements collected - this may take a while");
+                }
+                
+                // ✅ FALLBACK: Manually check elements with expanded outline to catch any missed by filter
+                // BoundingBoxIntersectsFilter can miss elements on exact boundaries, so we use an expanded outline
+                double tolerance = 0.1; // 0.1 feet (~30mm) expansion for fallback check
+                var expandedMin = new XYZ(modelMin.X - tolerance, modelMin.Y - tolerance, modelMin.Z - tolerance);
+                var expandedMax = new XYZ(modelMax.X + tolerance, modelMax.Y + tolerance, modelMax.Z + tolerance);
+                var expandedOutline = new Outline(expandedMin, expandedMax);
+                
+                var expandedFiltered = new FilteredElementCollector(doc)
+                    .OfCategory(cat)
+                    .WhereElementIsNotElementType()
+                    .WherePasses(new BoundingBoxIntersectsFilter(expandedOutline))
+                    .ToElements();
+                
+                var filteredIds = new HashSet<int>(filteredByOutline.Select(e => e.Id.IntegerValue));
+                var missedElements = expandedFiltered
+                    .Where(e => !filteredIds.Contains(e.Id.IntegerValue))
+                    .Where(e => {
+                        try
+                        {
+                            var bbox = e.get_BoundingBox(null);
+                            if (bbox == null) return false;
+                            // Manual intersection check with tolerance
+                            return BoundingBoxesIntersectWithTolerance(
+                                modelMin, modelMax, 
+                                bbox.Min, bbox.Max, 
+                                tolerance: 0.01); // 0.01 feet tolerance (~3mm)
+                        }
+                        catch { return false; }
+                    })
+                    .ToList();
+                
+                if (missedElements.Count > 0)
+                {
+                    _logger($"⚠️ Found {missedElements.Count} {cat} elements missed by BoundingBoxIntersectsFilter in host document, adding them manually");
+                    filteredByOutline = filteredByOutline.Concat(missedElements).ToList();
+                }
+                
+                mepElements.AddRange(filteredByOutline);
             }
             _logger($"Collected {mepElements.Count} MEP elements from host document after category filter");
 
@@ -322,13 +449,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     foreach (var cat in mepCats)
                     {
-                        mepElements.AddRange(
-                            new FilteredElementCollector(linkDoc)
-                                .OfCategory(cat)
-                                .WhereElementIsNotElementType()
-                                .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
-                                .ToElements()
-                        );
+                        var collector = new FilteredElementCollector(linkDoc)
+                            .OfCategory(cat)
+                            .WhereElementIsNotElementType();
+                        
+                        // ✅ FIX: Use BoundingBoxIntersectsFilter but also add fallback manual check
+                        // BoundingBoxIntersectsFilter can miss elements on exact boundaries or with edge cases
+                        var filteredByOutline = collector
+                            .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
+                            .ToElements()
+                            .ToList();
+                        
+                        // ✅ FALLBACK: Manually check elements with expanded outline to catch any missed by filter
+                        // BoundingBoxIntersectsFilter can miss elements on exact boundaries, so we use an expanded outline
+                        double tolerance = 0.1; // 0.1 feet (~30mm) expansion for fallback check
+                        var expandedActualMin = new XYZ(actualMin.X - tolerance, actualMin.Y - tolerance, actualMin.Z - tolerance);
+                        var expandedActualMax = new XYZ(actualMax.X + tolerance, actualMax.Y + tolerance, actualMax.Z + tolerance);
+                        var expandedLinkOutline = new Outline(expandedActualMin, expandedActualMax);
+                        
+                        var expandedFiltered = new FilteredElementCollector(linkDoc)
+                            .OfCategory(cat)
+                            .WhereElementIsNotElementType()
+                            .WherePasses(new BoundingBoxIntersectsFilter(expandedLinkOutline))
+                            .ToElements();
+                        
+                        var filteredIds = new HashSet<int>(filteredByOutline.Select(e => e.Id.IntegerValue));
+                        var missedElements = expandedFiltered
+                            .Where(e => !filteredIds.Contains(e.Id.IntegerValue))
+                            .Where(e => {
+                                try
+                                {
+                                    var bbox = e.get_BoundingBox(null);
+                                    if (bbox == null) return false;
+                                    // Manual intersection check with tolerance
+                                    return BoundingBoxesIntersectWithTolerance(
+                                        actualMin, actualMax, 
+                                        bbox.Min, bbox.Max, 
+                                        tolerance: 0.01); // 0.01 feet tolerance (~3mm)
+                                }
+                                catch { return false; }
+                            })
+                            .ToList();
+                        
+                        if (missedElements.Count > 0)
+                        {
+                            _logger($"⚠️ Found {missedElements.Count} {cat} elements missed by BoundingBoxIntersectsFilter in link '{linkDoc.Title}', adding them manually");
+                            filteredByOutline = filteredByOutline.Concat(missedElements).ToList();
+                        }
+                        
+                        mepElements.AddRange(filteredByOutline);
                     }
                     _logger($"Collected {mepElements.Count} total MEP elements after processing reference link '{linkDoc.Title}'");
                 }
@@ -681,17 +850,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         _logger($"DEBUG: Processing MEP {mep.Id} ({mep.Category?.Name}) with line from {mepLine.GetEndPoint(0)} to {mepLine.GetEndPoint(1)}");
 
                         // ✅ METHOD 3: Check for damper presence at duct end points BEFORE processing intersections
+                        // NOTE: Do NOT skip the entire duct - only skip intersections at the damper end
+                        // This ensures all ducts in the section box are processed for intersections
                         if (mep.Category?.Name == "Ducts" || mep.Category?.Name == "Duct Curves")
                         {
                             _logger($"[METHOD3] Checking duct {mep.Id} for damper presence at end points");
                             
-                            if (CheckForDamperAtDuctEnd(doc, mep, mepLine, mepTransform))
+                            // Don't skip the duct entirely - process all intersections
+                            // The damper check can be used later to filter specific intersections if needed
+                            bool hasDamper = CheckForDamperAtDuctEnd(doc, mep, mepLine, mepTransform);
+                            if (hasDamper)
                             {
-                                _logger($"[METHOD3] SKIP: Duct {mep.Id} - Damper found at duct end, skipping intersection detection");
-                                continue; // Skip this duct entirely - no intersections will be created
+                                _logger($"[METHOD3] NOTE: Duct {mep.Id} has damper at end, but still processing intersections for other parts of duct");
                             }
-                            
-                            _logger($"[METHOD3] No damper found at duct {mep.Id} end points - proceeding with intersection detection");
+                            else
+                            {
+                                _logger($"[METHOD3] No damper found at duct {mep.Id} end points - proceeding with intersection detection");
+                            }
                         }
 
                         Line mepLineInHostShared;
@@ -900,6 +1075,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
+        /// <summary>
+        /// Check if two bounding boxes intersect with a tolerance
+        /// This is more lenient than BoundingBoxIntersectsFilter which can miss edge cases
+        /// </summary>
+        private bool BoundingBoxesIntersectWithTolerance(XYZ box1Min, XYZ box1Max, XYZ box2Min, XYZ box2Max, double tolerance = 0.01)
+        {
+            // Expand box1 by tolerance
+            XYZ expandedMin = new XYZ(box1Min.X - tolerance, box1Min.Y - tolerance, box1Min.Z - tolerance);
+            XYZ expandedMax = new XYZ(box1Max.X + tolerance, box1Max.Y + tolerance, box1Max.Z + tolerance);
+            
+            // Check if box2 intersects with expanded box1
+            return !(box2Max.X < expandedMin.X || box2Min.X > expandedMax.X ||
+                     box2Max.Y < expandedMin.Y || box2Min.Y > expandedMax.Y ||
+                     box2Max.Z < expandedMin.Z || box2Min.Z > expandedMax.Z);
+        }
+        
         /// <summary>
         /// Check if an element is a damper based on type and family name
         /// </summary>

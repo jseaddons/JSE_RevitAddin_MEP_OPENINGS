@@ -24,6 +24,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private ClashZoneService _clashZoneService; // Not readonly - reinitialized during refresh with existing zones
         private readonly IntersectionDetectionService _intersectionService;
         private readonly CrashSafeExecutor _crashSafeExecutor; // ⚠️ CRITICAL: Provides timeout and crash protection
+        private MemoryManager _memoryManager; // ⚠️ CRITICAL: Provides memory management and timeout protection
 
         // UI References (passed from main dialog)
         private System.Windows.Forms.Label _statusLabel;
@@ -44,6 +45,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             // Initialize crash-safe executor for timeout protection
             _crashSafeExecutor = new CrashSafeExecutor();
+            
+            // ⚠️ CRITICAL: Initialize memory manager for large/unclean files (5 min timeout)
+            // Memory limit is auto-calculated based on system RAM (10% of total RAM, capped at 12GB)
+            // For 64GB system: ~6.4GB limit (10% of 64GB, capped at 12GB)
+            _memoryManager = new MemoryManager(maxMemoryMB: null, timeoutMinutes: 5);
         }
 
         /// <summary>
@@ -356,8 +362,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         /// <summary>
         /// Main refresh execution method - extracted from EmergencyMainDialog
+        /// ⚠️ CRITICAL: Wrapped with crash-safe executor for timeout/memory protection
         /// </summary>
         public void ExecuteRefresh(List<string> selectedFilterItems, List<string> selectedMepCategories, List<string> selectedReferenceFiles, List<string> selectedHostFiles, Dictionary<string, double> clearanceSettings)
+        {
+            // ⚠️ CRITICAL: Wrap entire refresh operation with crash-safe executor
+            // This ensures 5-minute timeout, graceful error handling, and prevents crashes
+            var result = _crashSafeExecutor.ExecuteWithTimeout(() =>
+            {
+                return ExecuteRefreshInternal(selectedFilterItems, selectedMepCategories, selectedReferenceFiles, selectedHostFiles, clearanceSettings);
+            }, "Refresh Operation");
+            
+            // Always ensure UI is reset even if operation failed/cancelled
+            if (result != Autodesk.Revit.UI.Result.Succeeded)
+            {
+                try
+                {
+                    _progressBar.Visible = false;
+                    _refreshButton.Enabled = true;
+                    if (result == Autodesk.Revit.UI.Result.Failed)
+                    {
+                        _statusLabel.Text = "Refresh operation failed. Check logs for details.";
+                    }
+                    else if (result == Autodesk.Revit.UI.Result.Cancelled)
+                    {
+                        _statusLabel.Text = "Refresh operation cancelled due to timeout or resource limits.";
+                    }
+                }
+                catch { } // Fail silently on UI updates
+            }
+        }
+        
+        /// <summary>
+        /// Internal refresh implementation - called by crash-safe wrapper
+        /// </summary>
+        private Autodesk.Revit.UI.Result ExecuteRefreshInternal(List<string> selectedFilterItems, List<string> selectedMepCategories, List<string> selectedReferenceFiles, List<string> selectedHostFiles, Dictionary<string, double> clearanceSettings)
         {
             // Create timestamped refresh log file for debugging
             string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
@@ -400,6 +439,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             DebugLogger.Info("=== REFRESH METHOD STARTED ===");
             System.Diagnostics.Debug.WriteLine("[REFRESH] DebugLogger.Info called");
+            
+            // ⚠️ CRITICAL: Reset memory manager timer for this refresh operation
+            if (_memoryManager != null)
+            {
+                // Dispose old instance and create new one for this refresh
+                _memoryManager?.Dispose();
+                _memoryManager = new MemoryManager(maxMemoryMB: null, timeoutMinutes: 5); // Auto-detect optimal limit
+                // Log after initialization so we can access CurrentMemoryMB
+                if (_memoryManager != null)
+                {
+                    SafeFileLogger.SafeAppendText("refresh_memory.log", 
+                        $"Memory manager reset for new refresh operation. Limit: {_memoryManager.CurrentMemoryMB / 1024}GB (auto-calculated from system RAM), Timeout: 5 minutes");
+                }
+            }
 
             // Step 1: Use passed filter selections from UI (optional - can work without filters)
             DebugLogger.Info($"[CLASH_DEBUG] Selected filter items: {string.Join(", ", selectedFilterItems)}");
@@ -420,7 +473,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 _statusLabel.Text = "Refresh cancelled - No filter selected";
                 _progressBar.Value = 0;
-                return; // STOP - don't proceed without a filter
+                return Autodesk.Revit.UI.Result.Cancelled; // STOP - don't proceed without a filter
             }
 
             // Step 2: Process filters and detect intersections
@@ -459,7 +512,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     "Please create a filter in the Filter Management section before running Refresh.\n\n" +
                     "Filters define which MEP categories and reference files to process.");
                 
-                return; // Stop refresh - don't proceed without a filter
+                return Autodesk.Revit.UI.Result.Failed; // Stop refresh - don't proceed without a filter
             }
 
             // ⚠️ CRITICAL: Ensure shared parameters are loaded into the project before any parameter operations
@@ -496,7 +549,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 _statusLabel.Text = "No active document";
                 _progressBar.Visible = false;
                 _refreshButton.Enabled = true;
-                return;
+                return Autodesk.Revit.UI.Result.Failed;
             }
 
             DebugLogger.Info($"[CLASH_DEBUG] Document: {_document.Title}");
@@ -519,7 +572,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     _statusLabel.Text = "Damper parameter validation failed";
                     _progressBar.Visible = false;
                     _refreshButton.Enabled = true;
-                    return;
+                    return Autodesk.Revit.UI.Result.Failed;
                 }
             }
 
@@ -549,6 +602,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 try { JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] {msg}\n"); } catch { }
             });
 
+            // ⚠️ CRITICAL: Check memory/timeout limits before heavy operation
+            try
+            {
+                _memoryManager.CheckLimits();
+            }
+            catch (TimeoutException ex)
+            {
+                SafeFileLogger.SafeAppendText("refresh_timeouts.log", $"Timeout before intersection detection: {ex.Message}");
+                _statusLabel.Text = $"Operation timeout: {ex.Message}";
+                _progressBar.Visible = false;
+                _refreshButton.Enabled = true;
+                System.Windows.Forms.MessageBox.Show(
+                    ex.Message,
+                    "Operation Timeout",
+                    System.Windows.Forms.MessageBoxButtons.OK,
+                    System.Windows.Forms.MessageBoxIcon.Warning);
+                return Autodesk.Revit.UI.Result.Cancelled;
+            }
+            catch (OutOfMemoryException ex)
+            {
+                SafeFileLogger.SafeAppendText("refresh_memory.log", $"Memory limit before intersection detection: {ex.Message}");
+                _statusLabel.Text = $"Memory limit exceeded: Please try with a smaller file";
+                _progressBar.Visible = false;
+                _refreshButton.Enabled = true;
+                System.Windows.Forms.MessageBox.Show(
+                    ex.Message,
+                    "Memory Limit Exceeded",
+                    System.Windows.Forms.MessageBoxButtons.OK,
+                    System.Windows.Forms.MessageBoxIcon.Warning);
+                return Autodesk.Revit.UI.Result.Failed;
+            }
+
             // Use passed MEP categories, reference files, and host filters from UI (UI PRECEDENCE)
             var currentIntersections = intersectionService.FindIntersections(
                 _document,
@@ -557,6 +642,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 selectedReferenceFiles,
                 selectedHostFiles,
                 allowedHostTypesUI.ToList());
+
+            // ⚠️ CRITICAL: Check limits after intersection detection
+            try
+            {
+                _memoryManager.CheckLimits();
+            }
+            catch (TimeoutException ex)
+            {
+                SafeFileLogger.SafeAppendText("refresh_timeouts.log", $"Timeout after intersection detection: {ex.Message}");
+                _statusLabel.Text = $"Operation timeout after finding {currentIntersections.Count} intersections";
+                _progressBar.Visible = false;
+                _refreshButton.Enabled = true;
+                System.Windows.Forms.MessageBox.Show(
+                    $"Found {currentIntersections.Count} intersections but operation timed out.\n\n{ex.Message}",
+                    "Operation Timeout",
+                    System.Windows.Forms.MessageBoxButtons.OK,
+                    System.Windows.Forms.MessageBoxIcon.Warning);
+                return Autodesk.Revit.UI.Result.Cancelled;
+            }
+            catch (OutOfMemoryException ex)
+            {
+                SafeFileLogger.SafeAppendText("refresh_memory.log", $"Memory limit after intersection detection: {ex.Message}");
+                _statusLabel.Text = $"Memory limit exceeded after finding {currentIntersections.Count} intersections";
+                _progressBar.Visible = false;
+                _refreshButton.Enabled = true;
+                System.Windows.Forms.MessageBox.Show(
+                    $"Found {currentIntersections.Count} intersections but memory limit exceeded.\n\n{ex.Message}",
+                    "Memory Limit Exceeded",
+                    System.Windows.Forms.MessageBoxButtons.OK,
+                    System.Windows.Forms.MessageBoxIcon.Warning);
+                return Autodesk.Revit.UI.Result.Failed;
+            }
 
             DebugLogger.Info($"[CLASH_DEBUG] INTERSECTION DETECTION COMPLETE: {currentIntersections.Count} intersections found");
             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] INTERSECTION DETECTION COMPLETE: {currentIntersections.Count} intersections found\n");
@@ -881,8 +998,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             List<Models.ClashZone> newClashZones = null;
             try
             {
+                // ⚠️ CRITICAL: Check memory/timeout before heavy processing
+                _memoryManager.CheckLimits();
+                
                 DebugLogger.Info($"[CLASH_DEBUG] About to call DetectNewClashZones...");
                 System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] About to call DetectNewClashZones...\n");
+                
+                // ⚠️ CRITICAL: Pass memory manager to clash zone service for timeout/memory protection
+                _clashZoneService.SetMemoryManager(_memoryManager);
                 
                 newClashZones = _clashZoneService.DetectNewClashZones(currentIntersections, _document, clearanceSettings, selectedMepCategories);
                 
@@ -890,13 +1013,75 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ✅ DetectNewClashZones RETURNED: {newClashZones?.Count ?? 0} clash zones\n");
                 System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] DetectNewClashZones completed successfully\n");
             }
+            catch (TimeoutException timeoutEx)
+            {
+                SafeFileLogger.SafeAppendText("refresh_timeouts.log", $"Timeout during DetectNewClashZones: {timeoutEx.Message}");
+                DebugLogger.Error($"[CLASH_DEBUG] ⏱ TIMEOUT in DetectNewClashZones: {timeoutEx.Message}");
+                System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ⏱ TIMEOUT in DetectNewClashZones: {timeoutEx.Message}\n");
+                
+                _statusLabel.Text = "Operation timed out during clash zone detection. Try with smaller file.";
+                _progressBar.Visible = false;
+                _refreshButton.Enabled = true;
+                
+                System.Windows.Forms.MessageBox.Show(
+                    $"Operation timed out after 5 minutes during clash zone detection.\n\n" +
+                    $"Found {currentIntersections.Count} intersections but could not process all.\n\n" +
+                    $"Please:\n• Try with a smaller file or section box\n• Process fewer categories at once\n• Contact support if issue persists",
+                    "Operation Timeout",
+                    System.Windows.Forms.MessageBoxButtons.OK,
+                    System.Windows.Forms.MessageBoxIcon.Warning);
+                
+                // Cleanup and return gracefully
+                _memoryManager?.ForceCleanup();
+                return Autodesk.Revit.UI.Result.Cancelled;
+            }
+            catch (OutOfMemoryException memEx)
+            {
+                SafeFileLogger.SafeAppendText("refresh_memory.log", $"Memory limit during DetectNewClashZones: {memEx.Message}");
+                DebugLogger.Error($"[CLASH_DEBUG] 💾 MEMORY LIMIT in DetectNewClashZones: {memEx.Message}");
+                System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] 💾 MEMORY LIMIT in DetectNewClashZones: {memEx.Message}\n");
+                
+                _statusLabel.Text = "Memory limit exceeded. Try with smaller file.";
+                _progressBar.Visible = false;
+                _refreshButton.Enabled = true;
+                
+                System.Windows.Forms.MessageBox.Show(
+                    $"Memory limit exceeded during clash zone detection.\n\n" +
+                    $"Found {currentIntersections.Count} intersections but memory is insufficient.\n\n" +
+                    $"Please:\n• Close other applications\n• Try with a smaller file\n• Process fewer categories\n• Contact support if issue persists",
+                    "Memory Limit Exceeded",
+                    System.Windows.Forms.MessageBoxButtons.OK,
+                    System.Windows.Forms.MessageBoxIcon.Warning);
+                
+                // Cleanup and return gracefully
+                _memoryManager?.ForceCleanup();
+                return Autodesk.Revit.UI.Result.Cancelled;
+            }
             catch (Exception detectEx)
             {
+                SafeFileLogger.SafeAppendText("refresh_errors.log", $"Error in DetectNewClashZones: {detectEx.Message}\n{detectEx.StackTrace}");
                 DebugLogger.Error($"[CLASH_DEBUG] ❌ ERROR in DetectNewClashZones: {detectEx.Message}");
                 DebugLogger.Error($"[CLASH_DEBUG] Stack trace: {detectEx.StackTrace}");
                 System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] ❌ ERROR in DetectNewClashZones: {detectEx.Message}\n");
                 System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] Stack trace: {detectEx.StackTrace}\n");
+                
+                // Show user-friendly error instead of crashing
+                _statusLabel.Text = $"Error during clash detection: {detectEx.Message}";
+                _progressBar.Visible = false;
+                _refreshButton.Enabled = true;
+                
+                System.Windows.Forms.MessageBox.Show(
+                    $"An error occurred during clash zone detection.\n\n" +
+                    $"Error: {detectEx.Message}\n\n" +
+                    $"Please check the log file for details or contact support.",
+                    "Detection Error",
+                    System.Windows.Forms.MessageBoxButtons.OK,
+                    System.Windows.Forms.MessageBoxIcon.Error);
+                
                 newClashZones = new List<Models.ClashZone>(); // Set to empty list to continue
+                
+                // Graceful exit instead of continuing with empty results
+                return Autodesk.Revit.UI.Result.Failed;
             }
             
             // ✅ CRITICAL DEBUG: Log immediately after DetectNewClashZones returns (or exception)
@@ -1276,6 +1461,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             DebugLogger.Info("[REFRESH] Refresh process completed successfully");
             System.IO.File.AppendAllText(refreshLogPath, $"[{DateTime.Now}] [REFRESH] Refresh process completed successfully\n");
+            
+            // ⚠️ CRITICAL: Force memory cleanup after refresh completes
+            try
+            {
+                _memoryManager?.ForceCleanup();
+                SafeFileLogger.SafeAppendText("refresh_memory.log", 
+                    $"Refresh completed. Final memory: {_memoryManager?.CurrentMemoryMB ?? 0}MB, Elapsed: {_memoryManager?.ElapsedTime:mm\\:ss ?? TimeSpan.Zero:mm\\:ss}");
+            }
+            catch (Exception cleanupEx)
+            {
+                SafeFileLogger.SafeAppendText("refresh_memory.log", $"Error during final cleanup: {cleanupEx.Message}");
+            }
+            
+            return Autodesk.Revit.UI.Result.Succeeded;
         }
 
         #region Helper Methods

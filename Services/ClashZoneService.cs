@@ -21,10 +21,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly ClashZoneStorage _clashZoneStorage;
         private readonly Action<string> _log;
         
+        // ⚠️ CRITICAL: Memory manager for timeout/memory limit protection (can be null if not provided)
+        private MemoryManager _memoryManager;
+        
         public ClashZoneService(ClashZoneStorage clashZoneStorage, Action<string> log)
         {
             _clashZoneStorage = clashZoneStorage;
             _log = log;
+        }
+        
+        /// <summary>
+        /// Set memory manager for timeout/memory protection during clash zone detection
+        /// </summary>
+        public void SetMemoryManager(MemoryManager memoryManager)
+        {
+            _memoryManager = memoryManager;
         }
         
         /// <summary>
@@ -140,6 +151,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             _log($"[METHOD3] DEBUG: DetectNewClashZones called with {currentIntersections?.Count ?? 0} intersections");
             
+            // ⚠️ CRITICAL: Check memory/timeout before starting heavy processing
+            if (_memoryManager != null)
+            {
+                try
+                {
+                    _memoryManager.CheckLimits();
+                    _log($"[MEMORY-MGR] Initial check passed: {_memoryManager.GetStatus()}");
+                }
+                catch (TimeoutException ex)
+                {
+                    _log($"[MEMORY-MGR] ⏱ TIMEOUT before processing: {ex.Message}");
+                    SafeFileLogger.SafeAppendText("clash_zone_timeouts.log", $"Timeout before DetectNewClashZones processing: {ex.Message}");
+                    throw; // Re-throw to let caller handle gracefully
+                }
+                catch (OutOfMemoryException ex)
+                {
+                    _log($"[MEMORY-MGR] 💾 MEMORY LIMIT before processing: {ex.Message}");
+                    SafeFileLogger.SafeAppendText("clash_zone_memory.log", $"Memory limit before DetectNewClashZones processing: {ex.Message}");
+                    throw; // Re-throw to let caller handle gracefully
+                }
+            }
+            
             // Add build timestamp to refresh_debug.log
             try
             {
@@ -250,8 +283,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             int ductWallSkippedPenetration = 0;
             int ductWallSkippedExisting = 0;
             
+            int processedCount = 0;
+            const int MEMORY_CHECK_INTERVAL = 100; // Check memory every 100 intersections
+            
             foreach (var (mepElement, structuralElement, boundingBox, intersectionPoint) in prioritizedIntersections)
             {
+                processedCount++;
+                
+                // ⚠️ CRITICAL: Check memory/timeout every N intersections to prevent crashes on large files
+                if (_memoryManager != null && processedCount % MEMORY_CHECK_INTERVAL == 0)
+                {
+                    try
+                    {
+                        _memoryManager.CheckLimits();
+                        _log($"[MEMORY-MGR] Check passed at intersection {processedCount}/{prioritizedIntersections.Count} - {_memoryManager.GetStatus()}");
+                    }
+                    catch (TimeoutException ex)
+                    {
+                        _log($"[MEMORY-MGR] ⏱ TIMEOUT at intersection {processedCount}/{prioritizedIntersections.Count}: {ex.Message}");
+                        SafeFileLogger.SafeAppendText("clash_zone_timeouts.log", 
+                            $"Timeout during DetectNewClashZones: Processed {processedCount}/{prioritizedIntersections.Count} intersections. {ex.Message}");
+                        
+                        // Return partial results instead of crashing
+                        _log($"[MEMORY-MGR] Returning {newClashZones.Count} clash zones processed before timeout");
+                        return newClashZones;
+                    }
+                    catch (OutOfMemoryException ex)
+                    {
+                        _log($"[MEMORY-MGR] 💾 MEMORY LIMIT at intersection {processedCount}/{prioritizedIntersections.Count}: {ex.Message}");
+                        SafeFileLogger.SafeAppendText("clash_zone_memory.log", 
+                            $"Memory limit during DetectNewClashZones: Processed {processedCount}/{prioritizedIntersections.Count} intersections. {ex.Message}");
+                        
+                        // Try to free memory once
+                        try
+                        {
+                            _memoryManager.ForceCleanup();
+                            
+                            // Check again after cleanup
+                            _memoryManager.CheckLimits();
+                            _log($"[MEMORY-MGR] Memory cleanup succeeded, continuing...");
+                        }
+                        catch
+                        {
+                            // If cleanup didn't help, return partial results
+                            _log($"[MEMORY-MGR] Memory cleanup failed, returning {newClashZones.Count} clash zones processed");
+                            return newClashZones;
+                        }
+                    }
+                }
+                
                 // ✅ DEBUG: Check if this is Duct-Wall for tracking
                 bool isDuctWall = false;
                 try
