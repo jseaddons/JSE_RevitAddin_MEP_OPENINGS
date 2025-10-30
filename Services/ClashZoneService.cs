@@ -190,8 +190,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var asm = System.Reflection.Assembly.GetExecutingAssembly();
                 var ver = System.Diagnostics.FileVersionInfo.GetVersionInfo(asm.Location)?.FileVersion ?? "?";
                 var ts = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log",
-                    $"[BUILD] {ts} Assembly={System.IO.Path.GetFileName(asm.Location)} Version={ver} Path={asm.Location}\n");
+                DebugLogger.Info($"[CLASH_DEBUG] [BUILD] {ts} Assembly={System.IO.Path.GetFileName(asm.Location)} Version={ver} Path={asm.Location}\n");
             }
             catch { }
             if (_clashZoneStorage == null)
@@ -411,10 +410,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Continue processing - assume elements are valid if validation fails
                 }
 
-                // DIAGNOSTIC: Log detailed geometry information to determine if penetration is real
-                _log($"=== GEOMETRY ANALYSIS ===");
-                _log($"MEP Element: {mepElement.Name} (ID: {mepElement.Id})");
-                _log($"Structural Element: {structuralElement.Name} (ID: {structuralElement.Id})");
+                // DIAGNOSTIC: Log detailed geometry information only when enabled
+                if (OptimizationFlags.UseDiagnosticMode)
+                {
+                    _log($"=== GEOMETRY ANALYSIS ===");
+                    _log($"MEP Element: {mepElement.Name} (ID: {mepElement.Id})");
+                    _log($"Structural Element: {structuralElement.Name} (ID: {structuralElement.Id})");
+                }
                 
                 // Get MEP element bounding box
                 var mepBBox = mepElement.get_BoundingBox(null);
@@ -622,6 +624,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         var newClashZone = CreateClashZone(mepElement, structuralElement, intersectionPoint, boundingBox, document, clearanceSettings);
                         newClashZone.IsCurrentClash = true; // ✅ DEBUG: Mark as current refresh clash
+                        // ✅ MEMORY: Drop heavy API objects immediately after populating numeric fields
+                        newClashZone.ClearRevitApiObjects();
                         newClashZones.Add(newClashZone);
                         _clashZoneStorage.ClashZones.Add(newClashZone);
                         _log($"Replaced invalid clash zone: MEP={mepElement.Id}, Structural={structuralElement.Id}");
@@ -641,6 +645,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         var newClashZone = CreateClashZone(mepElement, structuralElement, intersectionPoint, boundingBox, document, clearanceSettings);
                         newClashZone.IsCurrentClash = true; // ✅ DEBUG: Mark as current refresh clash
+                        // ✅ MEMORY: Drop heavy API objects immediately after populating numeric fields
+                        newClashZone.ClearRevitApiObjects();
                         
                         // ✅ GLOBAL XML: Check if sleeve already exists in global XML
                         // ✅ MEMORY OPTIMIZATION: Use singleton to avoid reloading XML multiple times
@@ -796,6 +802,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DEBUG-COUNT] ═══ TOTAL FILTERED OUT: {ductWallBeforePriority - ductWallClashZonesCreated} Duct-Wall intersections ═══");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════");
             
+            try
+            {
+                // ✅ MEMORY: Clear geometry caches at the end of detection
+                MepIntersectionService.ClearGeometryCache();
+            }
+            catch { }
             return newClashZones;
         }
         
@@ -1473,12 +1485,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 // Note: IsClustered flag removed - using MarkedForClusteringSleeveProcess instead
                                 
                                 // ⚠️ CRITICAL: Log flag state AFTER reset
-                                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
-                                    $"[{DateTime.Now:HH:mm:ss}] [RESET-ALL] ClashZone {clashZone.Id}: Cluster sleeve deleted, ALL flags reset\n");
-                                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
-                                    $"[{DateTime.Now:HH:mm:ss}] [RESET-ALL] FLAGS: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}\n");
-                                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
-                                    $"[{DateTime.Now:HH:mm:ss}] [RESET-ALL] PARAMS: SleeveInstanceId={clashZone.SleeveInstanceId}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}\n");
+                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [RESET-ALL] ClashZone {clashZone.Id}: Cluster sleeve deleted, ALL flags reset\n");
+                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [RESET-ALL] FLAGS: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}\n");
+                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [RESET-ALL] PARAMS: SleeveInstanceId={clashZone.SleeveInstanceId}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}\n");
                                 
                                 clashZone.LastUpdated = DateTime.Now;
                                 resetCount++;
@@ -1499,10 +1508,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // ⚠️ CRITICAL: Log flag states AFTER reset operation completion
                     if (resetCount > 0)
                     {
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] [RESET-COMPLETE] Reset operation completed for {resetCount} clash zones\n");
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] [RESET-COMPLETE] XML will be saved with updated flag states\n");
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [RESET-COMPLETE] Reset operation completed for {resetCount} clash zones\n");
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [RESET-COMPLETE] XML will be saved with updated flag states\n");
                     }
                 }
             }
@@ -2395,8 +2402,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // DEBUG: Log System Abbreviation for duct accessories
                     if (mepElement.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
                     {
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_capture_debug.log", 
-                            $"[{DateTime.Now}] [GET_SYSTEM_ABBREV] DUCT ACCESSORY {mepElement.Id}: System Abbreviation = '{value}'\n");
+                        DebugLogger.Info($"[{DateTime.Now}] [GET_SYSTEM_ABBREV] DUCT ACCESSORY {mepElement.Id}: System Abbreviation = '{value}'\n");
                     }
                     
                     return value;
@@ -2415,8 +2421,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // DEBUG: Log System Name fallback for duct accessories
                         if (mepElement.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
                         {
-                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_capture_debug.log", 
-                                $"[{DateTime.Now}] [GET_SYSTEM_ABBREV] DUCT ACCESSORY {mepElement.Id}: System Name fallback '{systemName}' → '{abbreviation}'\n");
+                            DebugLogger.Info($"[{DateTime.Now}] [GET_SYSTEM_ABBREV] DUCT ACCESSORY {mepElement.Id}: System Name fallback '{systemName}' → '{abbreviation}'\n");
                         }
                         
                         return abbreviation;
@@ -2426,8 +2431,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // DEBUG: Log no System Abbreviation found for duct accessories
                 if (mepElement.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
                 {
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_capture_debug.log", 
-                        $"[{DateTime.Now}] [GET_SYSTEM_ABBREV] DUCT ACCESSORY {mepElement.Id}: No System Abbreviation or System Name found\n");
+                    DebugLogger.Info($"[{DateTime.Now}] [GET_SYSTEM_ABBREV] DUCT ACCESSORY {mepElement.Id}: No System Abbreviation or System Name found\n");
                 }
                 
                 return string.Empty;
@@ -2505,8 +2509,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // ALSO log to placement_debug.log for immediate visibility
                             try
                             {
-                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
-                                    $"[WALL-DIR-CALC] Wall {wall.Id.IntegerValue}: Direction=({wallDirection.X:F3},{wallDirection.Y:F3},{wallDirection.Z:F3})\n");
+                                DebugLogger.Info($"[WALL-DIR-CALC] Wall {wall.Id.IntegerValue}: Direction=({wallDirection.X:F3},{wallDirection.Y:F3},{wallDirection.Z:F3})\n");
                             }
                             catch { }
                             
@@ -2626,8 +2629,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // ALSO log to placement_debug.log for immediate visibility
                             try
                             {
-                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
-                                    $"[WALL-DIR] Wall {wall.Id.IntegerValue}: Direction=({wallDirection.X:F3},{wallDirection.Y:F3},{wallDirection.Z:F3}), Normal=({wallNormal.X:F3},{wallNormal.Y:F3},{wallNormal.Z:F3})\n");
+                                DebugLogger.Info($"[WALL-DIR] Wall {wall.Id.IntegerValue}: Direction=({wallDirection.X:F3},{wallDirection.Y:F3},{wallDirection.Z:F3}), Normal=({wallNormal.X:F3},{wallNormal.Y:F3},{wallNormal.Z:F3})\n");
                             }
                             catch { }
                             
@@ -3327,28 +3329,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         var direction = line.Direction;
                         DebugLogger.Info($"[GetMepElementOrientation] Duct {mepElement.Id}: Direction=({direction.X:F3}, {direction.Y:F3}, {direction.Z:F3})");
-                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
-                            $"[ORIENT-DEBUG] Duct {mepElement.Id}: Direction=({direction.X:F3}, {direction.Y:F3}, {direction.Z:F3})\n");
+                        DebugLogger.Info($"[ORIENT-DEBUG] Duct {mepElement.Id}: Direction=({direction.X:F3}, {direction.Y:F3}, {direction.Z:F3})\n");
                         
                         // ✅ FIX: ALWAYS use helper for ALL ducts - it determines X or Y width orientation
                         // No need to check if vertical - helper handles all cases
                         DebugLogger.Info($"[GetMepElementOrientation] Duct {mepElement.Id}: Checking width orientation using helper");
-                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
-                            $"[ORIENT-DEBUG] Duct {mepElement.Id}: Checking width orientation using helper\n");
+                        DebugLogger.Info($"[ORIENT-DEBUG] Duct {mepElement.Id}: Checking width orientation using helper\n");
                         
                         try
                         {
                             var (orientation, widthDirection) = Helpers.MepElementOrientationHelper.GetDuctWidthOrientation(duct);
                             DebugLogger.Info($"[GetMepElementOrientation] Duct {mepElement.Id}: Width orientation={orientation}, WidthDirection=({widthDirection.X:F3}, {widthDirection.Y:F3}, {widthDirection.Z:F3})");
-                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
-                                $"[ORIENT-DEBUG] Duct {mepElement.Id}: Width orientation={orientation}, WidthDirection=({widthDirection.X:F3}, {widthDirection.Y:F3}, {widthDirection.Z:F3})\n");
+                            DebugLogger.Info($"[ORIENT-DEBUG] Duct {mepElement.Id}: Width orientation={orientation}, WidthDirection=({widthDirection.X:F3}, {widthDirection.Y:F3}, {widthDirection.Z:F3})\n");
                             return widthDirection; // Return X or Y basis vector based on width orientation
                         }
                         catch (Exception ex)
                         {
                             DebugLogger.Warning($"[GetMepElementOrientation] Error using helper for duct {mepElement.Id}: {ex.Message}");
-                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", 
-                                $"[ORIENT-DEBUG] ERROR: {ex.Message}\n");
+                            DebugLogger.Info($"[ORIENT-DEBUG] ERROR: {ex.Message}\n");
                             return direction; // Fallback to original direction
                         }
                     }
@@ -3723,8 +3721,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 // 🔥 CRITICAL DEBUG: Force direct file logging to trace strategy analysis
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\strategy_analysis.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] Analyzing element {mepElement.Id} with category '{mepCategory}'\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Analyzing element {mepElement.Id} with category '{mepCategory}'\n");
                 
                 // Use appropriate strategy based on category
                 ISleevePlacementStrategy strategy = mepCategory switch
@@ -3736,14 +3733,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     _ => new DuctPlacementStrategy() // Default fallback
                 };
 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\strategy_analysis.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] Using strategy: {strategy.GetType().Name}\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Using strategy: {strategy.GetType().Name}\n");
 
                 // Get MEP element size with insulation information
                 var mepElementSize = strategy.GetMepElementSize(mepElement);
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\strategy_analysis.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] ✅ Strategy analysis complete: Shape='{mepElementSize.Shape}', IsInsulated={mepElementSize.IsInsulated}, InsulationThickness={mepElementSize.InsulationThickness:F6}ft\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Strategy analysis complete: Shape='{mepElementSize.Shape}', IsInsulated={mepElementSize.IsInsulated}, InsulationThickness={mepElementSize.InsulationThickness:F6}ft\n");
                 
                 DebugLogger.Info($"[ClashZoneService] Strategy '{strategy.GetType().Name}' analyzed element {mepElement.Id}: Shape='{mepElementSize.Shape}', IsInsulated={mepElementSize.IsInsulated}");
                 
@@ -3751,8 +3746,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\strategy_analysis.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] ❌ ERROR in strategy analysis: {ex.Message}\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ❌ ERROR in strategy analysis: {ex.Message}\n");
                 DebugLogger.Error($"[ClashZoneService] Error getting MEP element size with strategy: {ex.Message}");
                 return new MepElementSize(); // Return empty size on error
             }
@@ -3863,22 +3857,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         if (absX > absY)
                         {
-                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
-                                $"[ORIENT-FIX] Floor host: MEP orientation has absX={absX:F3} > absY={absY:F3} → returning X\n");
+                            DebugLogger.Info($"[ORIENT-FIX] Floor host: MEP orientation has absX={absX:F3} > absY={absY:F3} → returning X\n");
                             return "X"; // X-oriented → 0° rotation
                         }
                         else
                         {
-                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
-                                $"[ORIENT-FIX] Floor host: MEP orientation has absY={absY:F3} >= absX={absX:F3} → returning Y\n");
+                            DebugLogger.Info($"[ORIENT-FIX] Floor host: MEP orientation has absY={absY:F3} >= absX={absX:F3} → returning Y\n");
                             return "Y"; // Y-oriented → 90° rotation
                         }
                     }
                     else
                     {
                         // Default to X if orientation is zero
-                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
-                            $"[ORIENT-FIX] Floor host: MEP orientation is zero/null → returning X\n");
+                        DebugLogger.Info($"[ORIENT-FIX] Floor host: MEP orientation is zero/null → returning X\n");
                         return "X";
                     }
                 }
@@ -3886,8 +3877,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     // ✅ CRITICAL: For walls and framing, use wall direction type
                     // DO NOT CHANGE THIS LOGIC - WALL/FRAMING ROTATION DEPENDS ON IT
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
-                        $"[ORIENT-FIX] {structuralElementType} host: Using GetWallOrientationFromType({wallDirectionType})\n");
+                    DebugLogger.Info($"[ORIENT-FIX] {structuralElementType} host: Using GetWallOrientationFromType({wallDirectionType})\n");
                     return GetWallOrientationFromType(wallDirectionType);
                 }
             }

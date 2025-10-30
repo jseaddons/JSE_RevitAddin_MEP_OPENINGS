@@ -125,23 +125,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             try
             {
                 // 🔍 DIAGNOSTIC: Log constructor start IMMEDIATELY to file (bypass DebugLogger)
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                    $"[{DateTime.Now}] 🔍 Constructor: EmergencyMainDialog constructor STARTED\n");
+                DebugLogger.Info($"[{DateTime.Now}] 🔍 Constructor: EmergencyMainDialog constructor STARTED\n");
                 
                 // 🔍 DIAGNOSTIC: Log parameters
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                    $"[{DateTime.Now}] 🔍 Constructor: appProfileService = {(appProfileService != null ? "NOT NULL" : "NULL")}\n");
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                    $"[{DateTime.Now}] 🔍 Constructor: document = {(document != null ? "NOT NULL" : "NULL")}\n");
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                    $"[{DateTime.Now}] 🔍 Constructor: uiDocument = {(uiDocument != null ? "NOT NULL" : "NULL")}\n");
+                // ✅ DEPLOYMENT MODE: Skip hardcoded log writes if deployment mode is enabled
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 Constructor: appProfileService = {(appProfileService != null ? "NOT NULL" : "NULL")}\n");
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 Constructor: document = {(document != null ? "NOT NULL" : "NULL")}\n");
+                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
+                        $"[{DateTime.Now}] 🔍 Constructor: uiDocument = {(uiDocument != null ? "NOT NULL" : "NULL")}\n");
+                }
             }
             catch (Exception ex)
             {
                 try
                 {
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 Constructor: ERROR in initial logging: {ex.Message}\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 Constructor: ERROR in initial logging: {ex.Message}\n");
                 }
                 catch { }
             }
@@ -150,11 +152,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _document = document;
             _uiDocument = uiDocument;
             
+            // Ensure per-project Filters directory exists as soon as the dialog opens
+            try
+            {
+                if (_document != null)
+                {
+                    // Provide project title to services that rely on environment for default paths
+                    try { Environment.SetEnvironmentVariable("JSE_ACTIVE_DOC_TITLE", _document.Title ?? string.Empty); } catch { }
+
+                    ProjectPathService.EnsureFiltersDirectory(_document);
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Info($"EmergencyMainDialog: EnsureFiltersDirectory failed: {ex.Message}");
+            }
+            
             // Close all log files to free file handles
             try
             {
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                    $"[{DateTime.Now}] 🔍 Constructor: About to close log files\n");
+                DebugLogger.Info($"[{DateTime.Now}] 🔍 Constructor: About to close log files\n");
             }
             catch { }
             
@@ -163,8 +180,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             
             try
             {
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                    $"[{DateTime.Now}] 🔍 Constructor: Closed all log files\n");
+                DebugLogger.Info($"[{DateTime.Now}] 🔍 Constructor: Closed all log files\n");
             }
             catch { }
             
@@ -222,8 +238,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         .Cast<FamilyInstance>()
                         .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                         .Count();
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 Constructor: Sleeves BEFORE InitializeComponent: {sleevesBeforeInit}\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 Constructor: Sleeves BEFORE InitializeComponent: {sleevesBeforeInit}\n");
                 }
                 
                 DebugLogger.Info("About to call InitializeComponent()");
@@ -238,8 +253,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         .Cast<FamilyInstance>()
                         .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                         .Count();
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 Constructor: Sleeves AFTER InitializeComponent: {sleevesAfterInit}\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 Constructor: Sleeves AFTER InitializeComponent: {sleevesAfterInit}\n");
                 }
             }
             catch (Exception ex)
@@ -259,8 +273,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         .Cast<FamilyInstance>()
                         .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                         .Count();
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 Constructor: Sleeves BEFORE LoadProfileInfo: {sleevesBeforeProfile}\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 Constructor: Sleeves BEFORE LoadProfileInfo: {sleevesBeforeProfile}\n");
                 }
                 
                 DebugLogger.Info("About to call LoadProfileInfo()");
@@ -275,8 +288,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         .Cast<FamilyInstance>()
                         .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                         .Count();
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 Constructor: Sleeves AFTER LoadProfileInfo: {sleevesAfterProfile}\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 Constructor: Sleeves AFTER LoadProfileInfo: {sleevesAfterProfile}\n");
                 }
             }
             catch (Exception ex)
@@ -312,15 +324,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         .Cast<FamilyInstance>()
                         .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                         .Count();
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 Constructor: Sleeves BEFORE External Event init: {sleevesBeforeExternal}\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 Constructor: Sleeves BEFORE External Event init: {sleevesBeforeExternal}\n");
                 }
                 
                 _sleevePlacementHandler = new SleevePlacementExternalEvent();
                 
                 // 🔥 CRITICAL DEBUG: Verify DLL is being loaded with current build
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\dll_load_timestamp.log", 
-                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] 🔥 DLL LOADED - SleevePlacementExternalEvent constructed\n");
+                DebugLogger.Info($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] 🔥 DLL LOADED - SleevePlacementExternalEvent constructed\n");
                 
                 _sleevePlacementHandler.PlacementCompleted += () =>
                 {
@@ -344,8 +354,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         .Cast<FamilyInstance>()
                         .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                         .Count();
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 Constructor: Sleeves AFTER External Event init: {sleevesAfterExternal}\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 Constructor: Sleeves AFTER External Event init: {sleevesAfterExternal}\n");
                 }
             }
             catch (Exception ex)
@@ -495,8 +504,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         .Cast<FamilyInstance>()
                         .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                         .Count();
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 InitializeComponent START: {sleevesAtStart} sleeves\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 InitializeComponent START: {sleevesAtStart} sleeves\n");
                 }
             }
             catch { }
@@ -779,8 +787,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         .Cast<FamilyInstance>()
                         .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                         .Count();
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 BEFORE InitializePanelContent: {sleevesBeforePanelContent} sleeves\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 BEFORE InitializePanelContent: {sleevesBeforePanelContent} sleeves\n");
                 }
             }
             catch { }
@@ -797,8 +804,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         .Cast<FamilyInstance>()
                         .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                         .Count();
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 AFTER InitializePanelContent: {sleevesAfterPanelContent} sleeves\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 AFTER InitializePanelContent: {sleevesAfterPanelContent} sleeves\n");
                 }
             }
             catch { }
@@ -819,8 +825,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         .Cast<FamilyInstance>()
                         .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                         .Count();
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 InitializeComponent END (before ResumeLayout): {sleevesBeforeResume} sleeves\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 InitializeComponent END (before ResumeLayout): {sleevesBeforeResume} sleeves\n");
                 }
             }
             catch { }
@@ -832,17 +837,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             
             try
             {
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                    $"[{DateTime.Now}] 🔍 Constructor: EmergencyMainDialog constructor COMPLETED successfully\n");
+                DebugLogger.Info($"[{DateTime.Now}] 🔍 Constructor: EmergencyMainDialog constructor COMPLETED successfully\n");
             }
             catch (Exception ex)
             {
                 try
                 {
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 Constructor: CRITICAL ERROR in constructor: {ex.Message}\n");
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 Constructor: Stack trace: {ex.StackTrace}\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 Constructor: CRITICAL ERROR in constructor: {ex.Message}\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 Constructor: Stack trace: {ex.StackTrace}\n");
                 }
                 catch { }
                 throw; // Re-throw to see the error
@@ -861,8 +863,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         .Cast<FamilyInstance>()
                         .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                         .Count();
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 InitializePanelContent START: {sleevesAtStart} sleeves\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 InitializePanelContent START: {sleevesAtStart} sleeves\n");
                 }
             }
             catch { }
@@ -880,8 +881,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         .Cast<FamilyInstance>()
                         .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                         .Count();
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 AFTER CreateFiltersPanel: {sleevesAfterFilters} sleeves\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 AFTER CreateFiltersPanel: {sleevesAfterFilters} sleeves\n");
                 }
             }
             catch { }
@@ -899,8 +899,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         .Cast<FamilyInstance>()
                         .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                         .Count();
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 AFTER CreateMainContentPanel: {sleevesAfterMainContent} sleeves\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 AFTER CreateMainContentPanel: {sleevesAfterMainContent} sleeves\n");
                 }
             }
             catch { }
@@ -918,8 +917,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         .Cast<FamilyInstance>()
                         .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                         .Count();
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 AFTER CreateFourSectionLayout: {sleevesAfterFourSection} sleeves\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 AFTER CreateFourSectionLayout: {sleevesAfterFourSection} sleeves\n");
                 }
             }
             catch { }
@@ -937,8 +935,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         .Cast<FamilyInstance>()
                         .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                         .Count();
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 AFTER InitializeRightPanel: {sleevesAfterRightPanel} sleeves\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 AFTER InitializeRightPanel: {sleevesAfterRightPanel} sleeves\n");
                 }
             }
             catch { }
@@ -1021,8 +1018,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         .Cast<FamilyInstance>()
                         .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                         .Count();
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 BEFORE SeedDefaultFilters: {sleevesBeforeSeed} sleeves\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 BEFORE SeedDefaultFilters: {sleevesBeforeSeed} sleeves\n");
                 }
             }
             catch { }
@@ -1042,8 +1038,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         .Cast<FamilyInstance>()
                         .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                         .Count();
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 AFTER SeedDefaultFilters: {sleevesAfterSeed} sleeves\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 AFTER SeedDefaultFilters: {sleevesAfterSeed} sleeves\n");
                 }
             }
             catch { }
@@ -1929,8 +1924,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         .Cast<FamilyInstance>()
                         .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                         .Count();
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 BEFORE CreateClearancePanels: {sleevesBeforeClearance} sleeves\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 BEFORE CreateClearancePanels: {sleevesBeforeClearance} sleeves\n");
                 }
             }
             catch { }
@@ -1947,8 +1941,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         .Cast<FamilyInstance>()
                         .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                         .Count();
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 AFTER CreateClearancePanels: {sleevesAfterClearance} sleeves\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 AFTER CreateClearancePanels: {sleevesAfterClearance} sleeves\n");
                 }
             }
             catch { }
@@ -3520,8 +3513,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // 🔍 DIAGNOSTIC: Log LoadRealLinkedFiles start
             try
             {
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                    $"[{DateTime.Now}] 🔍 LoadRealLinkedFiles: STARTED\n");
+                DebugLogger.Info($"[{DateTime.Now}] 🔍 LoadRealLinkedFiles: STARTED\n");
                 
                 // Count sleeves BEFORE LoadRealLinkedFiles
                 var sleevesBeforeCount = new FilteredElementCollector(document)
@@ -3529,8 +3521,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     .Cast<FamilyInstance>()
                     .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                     .Count();
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                    $"[{DateTime.Now}] 🔍 LoadRealLinkedFiles: Sleeves BEFORE: {sleevesBeforeCount}\n");
+                DebugLogger.Info($"[{DateTime.Now}] 🔍 LoadRealLinkedFiles: Sleeves BEFORE: {sleevesBeforeCount}\n");
             }
             catch { }
             
@@ -3591,10 +3582,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         .Cast<FamilyInstance>()
                         .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                         .Count();
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 LoadRealLinkedFiles: Sleeves AFTER: {sleevesAfterCount}\n");
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 LoadRealLinkedFiles: COMPLETED\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 LoadRealLinkedFiles: Sleeves AFTER: {sleevesAfterCount}\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 LoadRealLinkedFiles: COMPLETED\n");
                 }
                 catch { }
                 
@@ -3943,9 +3932,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         {
             try
             {
-                // 🚨 DEBUG: Direct file logging to debug OK button click (SAFE - won't crash)
-                SafeFileLogger.SafeAppendText("ok_button_debug.log", 
-                    "🚨 OK BUTTON CLICKED! Starting sleeve placement...");
+                var __okStart = DateTime.Now;
+                SafeFileLogger.SafeAppendText("performance.log", $"OK_START {__okStart:O}");
                 
                 // Parameter Transfer button removed - functionality moved to Transfer All button
 
@@ -3990,14 +3978,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 // Raise external event (non-blocking)
                 _sleevePlacementEvent.Raise();
 
-                // 🚨 DEBUG: Direct file logging after external event (SAFE - won't crash)
-                SafeFileLogger.SafeAppendText("ok_button_debug.log", 
-                    $"🚨 EXTERNAL EVENT RAISED! Categories: {string.Join(", ", selectedCategories)}");
-
                 DebugLogger.Info($"[EmergencyMainDialog] External event raised for categories: {string.Join(", ", selectedCategories)}");
 
                 // UI will be restored by PlacementCompleted callback
                 this.Hide(); // Hide instead of Close to keep dialog in memory for status updates
+                var __okEnd = DateTime.Now;
+                var __okMs = (long)(__okEnd - __okStart).TotalMilliseconds;
+                SafeFileLogger.SafeAppendText("performance.log", $"OK_END {__okEnd:O} DURATION_MS {__okMs}");
             }
             catch (Exception ex)
             {
@@ -5086,8 +5073,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         .Cast<FamilyInstance>()
                         .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                         .Count();
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 RestoreClashZonesFromUIState: Sleeves BEFORE: {sleevesBeforeRestore}\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 RestoreClashZonesFromUIState: Sleeves BEFORE: {sleevesBeforeRestore}\n");
                 }
                 
                 DebugLogger.Info("[CLASH_RESTORE] Restoring clash zones from UI state");
@@ -5184,8 +5170,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         .Cast<FamilyInstance>()
                         .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                         .Count();
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 RestoreClashZonesFromUIState: Sleeves AFTER: {sleevesAfterRestore}\n");
+                    DebugLogger.Info($"[{DateTime.Now}] 🔍 RestoreClashZonesFromUIState: Sleeves AFTER: {sleevesAfterRestore}\n");
                 }
             }
             catch (Exception ex)
@@ -5202,8 +5187,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             .Cast<FamilyInstance>()
                             .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                             .Count();
-                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                            $"[{DateTime.Now}] 🔍 RestoreClashZonesFromUIState: Sleeves AFTER ERROR: {sleevesAfterError}\n");
+                        DebugLogger.Info($"[{DateTime.Now}] 🔍 RestoreClashZonesFromUIState: Sleeves AFTER ERROR: {sleevesAfterError}\n");
                     }
                 }
                 catch { }

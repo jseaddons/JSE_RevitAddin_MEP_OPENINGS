@@ -60,41 +60,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 // 🔥 CRITICAL DEBUG: Force direct file logging to bypass any logger issues
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: {DateTime.Now:yyyy-MM-dd HH:mm:ss} 🔥🔥🔥\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: {DateTime.Now:yyyy-MM-dd HH:mm:ss} 🔥🔥🔥\n");
                 
                 // 🔥 CRITICAL DEBUG: Force direct file logging to trace execution
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] STEP 1: Execute method started\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 1: Execute method started\n");
                 
                 // ✅ DEBUG: Add immediate logging to confirm Execute is called
                 DebugLogger.Info("[SleevePlacementExternalEvent] ===== EXECUTE METHOD CALLED =====");
                 DebugLogger.Info($"[SleevePlacementExternalEvent] _selectedCategories is null: {_selectedCategories == null}");
                 DebugLogger.Info($"[SleevePlacementExternalEvent] _markPrefixes is null: {_markPrefixes == null}");
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] STEP 2: _selectedCategories is null: {_selectedCategories == null}\n");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] STEP 3: _markPrefixes is null: {_markPrefixes == null}\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 2: _selectedCategories is null: {_selectedCategories == null}\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 3: _markPrefixes is null: {_markPrefixes == null}\n");
                 
                 // ✅ CORRECTED: Defensive null check with fallback
                 if (_markPrefixes == null)
                 {
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] STEP 4: Mark prefixes null, using defaults\n");
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 4: Mark prefixes null, using defaults\n");
                     DebugLogger.Warning("[SleevePlacementExternalEvent] Mark prefixes not set, using defaults");
                     _markPrefixes = new MarkPrefixSettings();
                 }
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] STEP 5: Starting sleeve placement process\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 5: Starting sleeve placement process\n");
                 DebugLogger.Info("[SleevePlacementExternalEvent] Starting sleeve placement process");
                 
                 _uiDocument = app.ActiveUIDocument;
                 _document = _uiDocument.Document;
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] STEP 6: Got UI document and document\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 6: Got UI document and document\n");
                 
                 // Log document details for debugging
                 DebugLogger.Info($"[SleevePlacementExternalEvent] Active document - Path: {_document.PathName}");
@@ -102,15 +95,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Info($"[SleevePlacementExternalEvent] Active document - IsLinked: {_document.IsLinked}");
                 DebugLogger.Info($"[SleevePlacementExternalEvent] Active document - IsWorkshared: {_document.IsWorkshared}");
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] STEP 7: Document: {_document.Title}, IsLinked: {_document.IsLinked}\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 7: Document: {_document.Title}, IsLinked: {_document.IsLinked}\n");
                 
                 // Ensure we're working with the host document, not a linked file
                 // Sleeves must be placed in the host document where structural elements are located
                 if (_document.IsLinked)
                 {
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] STEP 8: ❌ DOCUMENT IS LINKED - RETURNING EARLY\n");
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 8: ❌ DOCUMENT IS LINKED - RETURNING EARLY\n");
                     var msg = "Cannot place sleeves: Currently active document is a linked file.\n\n" +
                              "Please activate the host document (main project file) and try again.\n" +
                              "Sleeves must be placed in the host document, not in linked files.";
@@ -119,8 +110,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return;
                 }
 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] STEP 9: ✅ Document is not linked, continuing\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 9: ✅ Document is not linked, continuing\n");
 
                 // ✅ CRITICAL FIX: Check for null _selectedCategories
                 if (_selectedCategories == null)
@@ -147,8 +137,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     throw; // Re-throw to be caught by outer try-catch
                 }
 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] STEP 10: About to create orchestrator\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 10: About to create orchestrator\n");
                 
                 // ✅ ARCHITECTURE COMPLIANCE: Use OpeningCommandOrchestrator for proper command execution
                 DebugLogger.Info("[SleevePlacementExternalEvent] Creating OpeningCommandOrchestrator for proper architecture compliance");
@@ -156,37 +145,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var clearanceSettings = GetClearanceSettingsFromUI();
                 var orchestrator = new OpeningCommandOrchestrator(_document, _uiDocument, clearanceSettings, _markPrefixes);
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] STEP 11: Orchestrator created successfully with clearances and mark prefixes\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 11: Orchestrator created successfully with clearances and mark prefixes\n");
                 
                 DebugLogger.Info($"[SleevePlacementExternalEvent] Set {clearanceSettings.Count} UI clearance settings and mark prefixes in orchestrator");
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] STEP 12: Set UI clearances in orchestrator\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 12: Set UI clearances in orchestrator\n");
                 
                 // ✅ Convert categories to filters for orchestrator
                 var filters = ConvertCategoriesToFilters(_selectedCategories);
                 DebugLogger.Info($"[SleevePlacementExternalEvent] Converted {_selectedCategories.Count} categories to {filters.Count} filters");
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] STEP 13: Converted {_selectedCategories.Count} categories to {filters.Count} filters\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 13: Converted {_selectedCategories.Count} categories to {filters.Count} filters\n");
                 
                 // ✅ Execute through orchestrator (proper architecture)
                 DebugLogger.Info("[SleevePlacementExternalEvent] Executing through OpeningCommandOrchestrator...");
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] STEP 14: About to execute orchestrator\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 14: About to execute orchestrator\n");
                 
                 orchestrator.ExecuteMultipleFilters(filters, showProgress: true);
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] STEP 15: ✅ Orchestrator execution completed\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 15: ✅ Orchestrator execution completed\n");
                 
                 DebugLogger.Info("[SleevePlacementExternalEvent] Orchestrator execution completed");
                 
                 // ✅ SIMPLIFIED: Coordinate saving now handled directly in UniversalSleevePlacerService
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\external_event_execute.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] STEP 16: ✅ Coordinate saving completed in UniversalSleevePlacerService\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 16: ✅ Coordinate saving completed in UniversalSleevePlacerService\n");
                 
                 DebugLogger.Info("[SleevePlacementExternalEvent] Coordinate saving completed in UniversalSleevePlacerService");
                 
@@ -395,8 +378,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 // DEBUG: Log pattern generation
                 DebugLogger.Info($"[SleevePlacementExternalEvent] Category: '{category}' → Pattern: '{categoryPattern}'");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                    $"[{DateTime.Now}] [PATTERN_DEBUG] Category: '{category}' → Pattern: '{categoryPattern}'\n");
+                DebugLogger.Info($"[{DateTime.Now}] [PATTERN_DEBUG] Category: '{category}' → Pattern: '{categoryPattern}'\n");
                 
                 // First try: Look for files with the current filter name
                 var filterPattern = $"{_selectedFilterName}_{categoryPattern}.xml";
@@ -404,8 +386,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 // DEBUG: Log pattern matching
                 DebugLogger.Info($"[SleevePlacementExternalEvent] Looking for pattern: '{filterPattern}', Found: {filterFiles.Length} files");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                    $"[{DateTime.Now}] [PATTERN_DEBUG] Looking for: '{filterPattern}', Found: {filterFiles.Length} files\n");
+                DebugLogger.Info($"[{DateTime.Now}] [PATTERN_DEBUG] Looking for: '{filterPattern}', Found: {filterFiles.Length} files\n");
                 
                 // If no exact match, try common variations
                 if (filterFiles.Length == 0)
@@ -448,8 +429,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             filterFiles = varFiles;
                             DebugLogger.Info($"[SleevePlacementExternalEvent] Found variation: '{variation}', Found: {varFiles.Length} files");
-                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                                $"[{DateTime.Now}] [PATTERN_DEBUG] Found variation: '{variation}', Found: {varFiles.Length} files\n");
+                            DebugLogger.Info($"[{DateTime.Now}] [PATTERN_DEBUG] Found variation: '{variation}', Found: {varFiles.Length} files\n");
                             break;
                         }
                     }

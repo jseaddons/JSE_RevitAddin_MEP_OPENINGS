@@ -33,12 +33,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         public void Execute(UIApplication app)
         {
             // 🔥 CRITICAL DEBUG: Direct file logging to trace MarkParameterCommand execution
-            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                $"[{DateTime.Now:HH:mm:ss}] 🔥 MarkParameterCommand.Execute CALLED 🔥\n");
-            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                $"[{DateTime.Now:HH:mm:ss}] Target Category: {_targetCategory}\n");
-            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                $"[{DateTime.Now:HH:mm:ss}] Project Prefix: '{_projectPrefix}', Discipline Prefix: '{_disciplinePrefix}', RemarkAll: {_remarkAll}\n");
+            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥 MarkParameterCommand.Execute CALLED 🔥\n");
+            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Target Category: {_targetCategory}\n");
+            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Project Prefix: '{_projectPrefix}', Discipline Prefix: '{_disciplinePrefix}', RemarkAll: {_remarkAll}\n");
             
             try
             {
@@ -51,8 +48,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 // ✅ FIX: Handle "ALL" category by processing each category individually
                 if (_targetCategory.Equals("ALL", StringComparison.OrdinalIgnoreCase))
                 {
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] Processing ALL categories individually\n");
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Processing ALL categories individually\n");
                     
                     // Get all available categories from XML files
                     var availableCategories = GetAllAvailableCategories();
@@ -63,8 +59,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     foreach (var category in availableCategories)
                     {
                         var disciplinePrefix = _markPrefixes?.GetDisciplinePrefix(category) ?? GetDisciplinePrefixForCategory(category);
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] Processing category: {category}, discipline: {disciplinePrefix}\n");
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Processing category: {category}, discipline: {disciplinePrefix}\n");
                         
                         using (var tx = new Transaction(doc, $"Mark {category} Clusters"))
                         {
@@ -78,8 +73,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             tx.Commit();
                             
                             DebugLogger.Info($"[MarkParameterCommand] ✓ MEPMARK complete for {category}: {processedCount} clusters processed, {errorCount} errors");
-                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                                $"[{DateTime.Now:HH:mm:ss}] ✅ Category {category}: {processedCount} processed, {errorCount} errors\n");
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Category {category}: {processedCount} processed, {errorCount} errors\n");
                         }
                     }
                 }

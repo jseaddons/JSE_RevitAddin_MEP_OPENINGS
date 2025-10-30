@@ -72,9 +72,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         /// <summary>
         /// Enable diagnostic mode for performance monitoring
-        /// Default: true (safe to enable)
+        /// Default: false (reduce memory bloat from verbose logs)
         /// </summary>
-        public static bool UseDiagnosticMode { get; set; } = true;
+        public static bool UseDiagnosticMode { get; set; } = false;
         
         #endregion
         
@@ -202,7 +202,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             // Phase 3: Conservative defaults
             UseIncrementalDetection = false;
-            UseDiagnosticMode = true;
+            UseDiagnosticMode = false;
             
             // Sleeve Placement: Safe defaults (all enabled)
             UseOptimizedXmlSaves = true;

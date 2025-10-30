@@ -23,11 +23,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         private readonly ISet<string> _commonHostKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "Fire Rating","Room Name","Room Number"
+            // Per user request: only capture Fire Rating for host elements
+            "Fire Rating"
         };
 
         /// <summary>
         /// Build a whitelist for the current run by combining curated keys and previously learned keys from storage.
+        /// ✅ MEMORY OPTIMIZATION: Cap learned parameters at 20 to prevent unbounded growth.
         /// </summary>
         public HashSet<string> BuildWhitelist(ClashZoneStorage storage, IEnumerable<(Element mep, Element host)> sample)
         {
@@ -38,15 +40,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             if (storage?.ParameterKeyWhitelist != null)
             {
-                foreach (var k in storage.ParameterKeyWhitelist) keys.Add(k);
+                // ✅ MEMORY OPTIMIZATION: Limit to first 50 user-defined parameters
+                var limitedWhitelist = storage.ParameterKeyWhitelist.Take(50).ToList();
+                foreach (var k in limitedWhitelist) keys.Add(k);
             }
             if (storage?.LearnedParameterKeys != null)
             {
-                foreach (var k in storage.LearnedParameterKeys) keys.Add(k);
+                // ✅ MEMORY OPTIMIZATION: Cap learned parameters at 20 to prevent unbounded growth
+                var limitedLearned = storage.LearnedParameterKeys.Take(20).ToList();
+                foreach (var k in limitedLearned) keys.Add(k);
             }
 
-            // Merge disk-learned keys (project-level)
-            foreach (var k in LoadLearnedKeysFromDisk()) keys.Add(k);
+            // Merge disk-learned keys (project-level) - also limit these
+            var diskKeys = LoadLearnedKeysFromDisk();
+            foreach (var k in diskKeys.Take(20)) keys.Add(k);
+
+            // ✅ MEMORY OPTIMIZATION: Log total whitelist size for debugging
+            if (keys.Count > 30)
+            {
+                DebugLogger.Warning($"[PARAM_SNAPSHOT] ⚠️ Large parameter whitelist detected: {keys.Count} parameters. This may increase memory usage significantly.");
+            }
 
             return keys;
         }
@@ -62,18 +75,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // DEBUG: Log all available parameters for duct accessories
             if (element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_capture_debug.log", 
-                    $"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: Starting parameter capture\n");
+                DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: Starting parameter capture\n");
                 
                 var allParams = element.Parameters.Cast<Parameter>().Where(p => p != null && !string.IsNullOrEmpty(p.Definition?.Name)).ToList();
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_capture_debug.log", 
-                    $"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: Found {allParams.Count} total parameters\n");
+                DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: Found {allParams.Count} total parameters\n");
                 
                 foreach (var param in allParams.Take(10)) // Log first 10 parameters
                 {
                     var paramValue = ConvertParameterToString(element, param);
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_capture_debug.log", 
-                        $"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: Parameter '{param.Definition.Name}' = '{paramValue}'\n");
+                    DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: Parameter '{param.Definition.Name}' = '{paramValue}'\n");
                 }
             }
 
@@ -102,22 +112,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // DEBUG: Log System Abbreviation search for duct accessories
                     if (element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
                     {
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_capture_debug.log", 
-                            $"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: System Abbreviation fallback search - Parameter found: {p != null}\n");
+                        DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: System Abbreviation fallback search - Parameter found: {p != null}\n");
                         
                         if (p != null)
                         {
                             var testValue = ConvertParameterToString(element, p);
-                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_capture_debug.log", 
-                                $"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: System Abbreviation value = '{testValue}'\n");
+                            DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: System Abbreviation value = '{testValue}'\n");
                         }
                     }
                 }
                 if (p == null) 
                 {
                     // DEBUG: Log missing parameters
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_capture_debug.log", 
-                        $"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Parameter '{key}' not found\n");
+                    DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Parameter '{key}' not found\n");
                     continue;
                 }
 
@@ -125,16 +132,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (string.IsNullOrWhiteSpace(value)) 
                 {
                     // DEBUG: Log empty parameter values
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_capture_debug.log", 
-                        $"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Parameter '{key}' found but value is empty\n");
+                    DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Parameter '{key}' found but value is empty\n");
                     continue;
                 }
 
+                // ✅ MEMORY OPTIMIZATION: Truncate very long parameter values to prevent memory bloat
+                // Long parameter values (e.g., comments, descriptions) can be 500+ bytes
+                const int MAX_PARAM_VALUE_LENGTH = 200; // Cap at 200 bytes to prevent bloat
+                if (value != null && value.Length > MAX_PARAM_VALUE_LENGTH)
+                {
+                    value = value.Substring(0, MAX_PARAM_VALUE_LENGTH) + "...[truncated]";
+                }
+                
                 result.Add(new SerializableKeyValue { Key = key, Value = value });
                 
-                // DEBUG: Log successful parameter capture
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_capture_debug.log", 
-                    $"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Captured '{key}' = '{value}'\n");
+                // DEBUG: Log successful parameter capture (only in non-deployment mode)
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Captured '{key}' = '{value}'\n");
+                }
             }
 
             return result;

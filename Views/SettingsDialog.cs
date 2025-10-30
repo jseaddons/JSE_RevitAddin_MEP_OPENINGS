@@ -67,7 +67,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // Also log to file
             try
             {
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\settings_debug.log", $"[{DateTime.Now}] [SettingsDialog] Loaded settings: ResetApprovalStatus={_settings.ResetApprovalStatus}, CutOpeningWithHosts={_settings.CutOpeningWithHosts}\n");
+                DebugLogger.Info($"[{DateTime.Now}] [SettingsDialog] Loaded settings: ResetApprovalStatus={_settings.ResetApprovalStatus}, CutOpeningWithHosts={_settings.CutOpeningWithHosts}\n");
             }
             catch { }
             
@@ -515,7 +515,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 // Also log to file
                 try
                 {
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\settings_debug.log", $"[{DateTime.Now}] [SettingsDialog] Saving settings: ResetApprovalStatus={_settings.ResetApprovalStatus}, CutOpeningWithHosts={_settings.CutOpeningWithHosts}\n");
+                    DebugLogger.Info($"[{DateTime.Now}] [SettingsDialog] Saving settings: ResetApprovalStatus={_settings.ResetApprovalStatus}, CutOpeningWithHosts={_settings.CutOpeningWithHosts}\n");
                 }
                 catch { }
                 

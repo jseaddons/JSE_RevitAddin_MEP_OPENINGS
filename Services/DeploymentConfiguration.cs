@@ -13,15 +13,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     {
         /// <summary>
         /// Set to true for production deployment to disable all logging.
-        /// This reduces memory usage by 15-30 KB per clash zone (logging strings).
+        /// This reduces memory usage by only ~13% (not significant enough).
         /// 
         /// When enabled:
         /// - All SafeFileLogger calls are skipped (no I/O)
         /// - All DebugLogger calls are skipped (no file writes)
         /// - All BatchedLogger calls are skipped (no string allocations)
-        /// - Memory per clash zone should drop from ~83 KB to ~55-65 KB
+        /// - Memory savings: Only ~13% (not worth losing debug capabilities)
         /// </summary>
-        public static bool DeploymentMode { get; set; } = true; // ✅ TESTING: Enabled to disable logging except memory profiling
+        public static bool DeploymentMode { get; set; } = true; // ✅ ENABLED: Disable DebugLogger/BatchedLogger; SafeFileLogger still allows Refresh_* and [MEMORY_DEBUG]
     }
 }
 

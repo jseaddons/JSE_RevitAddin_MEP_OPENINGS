@@ -71,8 +71,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_coordinates.log",
-                    $"Exception: {ex.Message}\n");
+                DebugLogger.Info($"[DEBUG] Exception: {ex.Message}\n");
             }
         }
         
@@ -101,13 +100,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Save updated XML
                 SaveClashZonesToXml(clashZones, xmlFilePath);
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                    $"Updated coordinates for {sleeves.Count} sleeves\n");
+                DebugLogger.Info($"[DEBUG] Updated coordinates for {sleeves.Count} sleeves\n");
             }
             catch (Exception ex)
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                    $"Exception: {ex.Message}\n");
+                DebugLogger.Info($"[DEBUG] Exception: {ex.Message}\n");
             }
         }
         
@@ -120,15 +117,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ STRICT: Use ONLY the specified file path - no file searching allowed
                 if (string.IsNullOrEmpty(xmlFilePath) || !File.Exists(xmlFilePath))
                 {
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                        $"[LOAD-XML] ERROR: xmlFilePath not provided or file doesn't exist: {xmlFilePath}\n");
+                    DebugLogger.Info($"[LOAD-XML] ERROR: xmlFilePath not provided or file doesn't exist: {xmlFilePath}\n");
                     return clashZones;
                 }
                 
                 var xmlFiles = new[] { xmlFilePath };
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                    $"[LOAD-XML] Processing ONLY file: {xmlFilePath}\n");
+                DebugLogger.Info($"[LOAD-XML] Processing ONLY file: {xmlFilePath}\n");
                 
                 foreach (var xmlFile in xmlFiles)
                 {
@@ -181,8 +176,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 // ✅ DEBUG: Log cluster data loading
                                 if (clashZone.ClusterSleeveInstanceId > 0)
                                 {
-                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                                        $"[LOAD-XML] Loaded ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId} from XML for ClashZone {clashZone.Id}\n");
+                                    DebugLogger.Info($"[LOAD-XML] Loaded ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId} from XML for ClashZone {clashZone.Id}\n");
                                 }
                                 
                                 // ✅ NEW: Load cluster sleeve bounding box coordinates
@@ -203,20 +197,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                         }
                         
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                            $"Loaded {clashNodes?.Count ?? 0} clash zones from {Path.GetFileName(xmlFile)}\n");
+                        DebugLogger.Info($"[DEBUG] Loaded {clashNodes?.Count ?? 0} clash zones from {Path.GetFileName(xmlFile)}\n");
                     }
                     catch (Exception ex)
                     {
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                            $"Error loading {xmlFile}: {ex.Message}\n");
+                        DebugLogger.Info($"[DEBUG] Error loading {xmlFile}: {ex.Message}\n");
                     }
                 }
             }
             catch (Exception ex)
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                    $"Error in LoadClashZonesFromXml: {ex.Message}\n");
+                DebugLogger.Info($"[DEBUG] Error in LoadClashZonesFromXml: {ex.Message}\n");
             }
             
             return clashZones;
@@ -229,15 +220,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ STRICT: Use ONLY the specified file path - no file searching allowed
                 if (string.IsNullOrEmpty(xmlFilePath) || !File.Exists(xmlFilePath))
                 {
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                        $"[SAVE-XML] ERROR: xmlFilePath not provided or file doesn't exist: {xmlFilePath}\n");
+                    DebugLogger.Info($"[SAVE-XML] ERROR: xmlFilePath not provided or file doesn't exist: {xmlFilePath}\n");
                     return;
                 }
                 
                 var xmlFiles = new[] { xmlFilePath };
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                    $"[SAVE-XML] Saving to ONLY file: {xmlFilePath}\n");
+                DebugLogger.Info($"[SAVE-XML] Saving to ONLY file: {xmlFilePath}\n");
                 
                 foreach (var xmlFile in xmlFiles)
                 {
@@ -270,8 +259,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                             UpdateXmlNode(node, "ClusterSleeveBoundingBoxMaxY", matchingClashZone.ClusterSleeveBoundingBoxMaxY.ToString("F6"));
                                             UpdateXmlNode(node, "ClusterSleeveBoundingBoxMaxZ", matchingClashZone.ClusterSleeveBoundingBoxMaxZ.ToString("F6"));
                                             
-                                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                                                $"[XML-UPDATE-CLUSTER] Updated cluster sleeve {matchingClashZone.ClusterSleeveInstanceId} bbox\n");
+                                            DebugLogger.Info($"[XML-UPDATE-CLUSTER] Updated cluster sleeve {matchingClashZone.ClusterSleeveInstanceId} bbox\n");
                                         }
                                         
                                         // ✅ MASTER DEBUGGER FIX: Update individual sleeve if exists and has valid coordinates
@@ -290,46 +278,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                             UpdateXmlNode(node, "SleeveBoundingBoxMaxY", matchingClashZone.SleeveBoundingBoxMaxY.ToString("F6"));
                                             UpdateXmlNode(node, "SleeveBoundingBoxMaxZ", matchingClashZone.SleeveBoundingBoxMaxZ.ToString("F6"));
                                             
-                                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                                                $"[XML-UPDATE] Updated ClashZone {clashZoneId} with SleeveInstanceId {matchingClashZone.SleeveInstanceId} and correct coordinates\n");
+                                            DebugLogger.Info($"[XML-UPDATE] Updated ClashZone {clashZoneId} with SleeveInstanceId {matchingClashZone.SleeveInstanceId} and correct coordinates\n");
                                         }
                                         else
                                         {
-                                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                                                $"[XML-SKIP] Skipped ClashZone {clashZoneId} - SleeveInstanceId={matchingClashZone.SleeveInstanceId}, BBoxMinX={matchingClashZone.SleeveBoundingBoxMinX}\n");
+                                            DebugLogger.Info($"[XML-SKIP] Skipped ClashZone {clashZoneId} - SleeveInstanceId={matchingClashZone.SleeveInstanceId}, BBoxMinX={matchingClashZone.SleeveBoundingBoxMinX}\n");
                                         }
                                     }
                                     else
                                     {
-                                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                                            $"[XML-NO-MATCH] No matching clash zone found for Id {clashZoneId}\n");
+                                        DebugLogger.Info($"[XML-NO-MATCH] No matching clash zone found for Id {clashZoneId}\n");
                                     }
                                 }
                                 else
                                 {
-                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                                            $"[XML-NO-ID] ClashZone node has no valid Id\n");
+                                    DebugLogger.Info($"[XML-NO-ID] ClashZone node has no valid Id\n");
                                 }
                             }
                             
                             // Save the updated XML
                             xmlDoc.Save(xmlFile);
                             
-                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                                $"Updated coordinates in {Path.GetFileName(xmlFile)}\n");
+                            DebugLogger.Info($"[DEBUG] Updated coordinates in {Path.GetFileName(xmlFile)}\n");
                         }
                     }
                     catch (Exception ex)
                     {
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                            $"Error updating {xmlFile}: {ex.Message}\n");
+                        DebugLogger.Info($"[DEBUG] Error updating {xmlFile}: {ex.Message}\n");
                     }
                 }
             }
             catch (Exception ex)
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                    $"Error in SaveClashZonesToXml: {ex.Message}\n");
+                DebugLogger.Info($"[DEBUG] Error in SaveClashZonesToXml: {ex.Message}\n");
             }
         }
         
@@ -357,8 +338,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                    $"[REGENERATE-CLUSTER-XML] Starting regeneration after sleeve placement\n");
+                DebugLogger.Info($"[REGENERATE-CLUSTER-XML] Starting regeneration after sleeve placement\n");
                 
                 // ✅ CRITICAL: Load clash zone cache first
                 LoadClashZoneCache();
@@ -366,8 +346,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ CRITICAL: Wait for Revit to update the model
                 System.Threading.Thread.Sleep(500); // Reduced to 0.5 seconds since timing is working
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
-                    $"[COORDINATE-SERVICE] {DateTime.Now:HH:mm:ss.fff} - Starting coordinate collection after 0.5-second wait\n");
+                DebugLogger.Info($"[COORDINATE-SERVICE] {DateTime.Now:HH:mm:ss.fff} - Starting coordinate collection after 0.5-second wait\n");
                 
                 // ✅ MASTER FIX: Collect ALL sleeves with actual Revit coordinates
                 var allSleeves = new FilteredElementCollector(_doc)
@@ -376,11 +355,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     .Where(s => s.Symbol.FamilyName.Contains("Opening"))
                     .ToList();
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                    $"[REGENERATE-CLUSTER-XML] Found {allSleeves.Count} sleeves in Revit model\n");
+                DebugLogger.Info($"[REGENERATE-CLUSTER-XML] Found {allSleeves.Count} sleeves in Revit model\n");
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
-                    $"[COORDINATE-SERVICE] {DateTime.Now:HH:mm:ss.fff} - Found {allSleeves.Count} total sleeves in Revit model\n");
+                DebugLogger.Info($"[COORDINATE-SERVICE] {DateTime.Now:HH:mm:ss.fff} - Found {allSleeves.Count} total sleeves in Revit model\n");
                 
                 // Group sleeves by category for separate XML files
                 var groupedSleeves = allSleeves.GroupBy(s => GetSleeveCategory(s)).ToList();
@@ -390,11 +367,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var category = group.Key;
                     var sleeves = group.ToList();
                     
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
-                        $"[COORDINATE-SERVICE] {DateTime.Now:HH:mm:ss.fff} - Processing {sleeves.Count} sleeves for category: {category}\n");
+                    DebugLogger.Info($"[COORDINATE-SERVICE] {DateTime.Now:HH:mm:ss.fff} - Processing {sleeves.Count} sleeves for category: {category}\n");
                     
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                        $"[REGENERATE-CLUSTER-XML] Processing {sleeves.Count} sleeves for category: {category}\n");
+                    DebugLogger.Info($"[REGENERATE-CLUSTER-XML] Processing {sleeves.Count} sleeves for category: {category}\n");
                     
                     // Create SleeveDataList with actual Revit coordinates
                     var sleeveDataList = new List<SleeveData>();
@@ -402,8 +377,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     foreach (var sleeve in sleeves)
                     {
                         // ✅ CRITICAL LOGGING: Log each sleeve found after wait time
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
-                            $"[SLEEVE-FOUND] {DateTime.Now:HH:mm:ss.fff} - RevitElementId = {sleeve.Id.IntegerValue}, Category = {category}, Family = {sleeve.Symbol.FamilyName}\n");
+                        DebugLogger.Info($"[SLEEVE-FOUND] {DateTime.Now:HH:mm:ss.fff} - RevitElementId = {sleeve.Id.IntegerValue}, Category = {category}, Family = {sleeve.Symbol.FamilyName}\n");
                         
                         var bbox = sleeve.get_BoundingBox(null);
                         if (bbox != null)
@@ -432,8 +406,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             
                             sleeveDataList.Add(sleeveData);
                             
-                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                                $"[REGENERATE-CLUSTER-XML] Sleeve {sleeve.Id.IntegerValue}: Min=({bbox.Min.X:F6}, {bbox.Min.Y:F6}, {bbox.Min.Z:F6}), Max=({bbox.Max.X:F6}, {bbox.Max.Y:F6}, {bbox.Max.Z:F6})\n");
+                            DebugLogger.Info($"[REGENERATE-CLUSTER-XML] Sleeve {sleeve.Id.IntegerValue}: Min=({bbox.Min.X:F6}, {bbox.Min.Y:F6}, {bbox.Min.Z:F6}), Max=({bbox.Max.X:F6}, {bbox.Max.Y:F6}, {bbox.Max.Z:F6})\n");
                         }
                     }
                     
@@ -441,20 +414,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     SaveSleeveDataToClusterXml(sleeveDataList, category, filterName);
                     
                     // ✅ CRITICAL LOGGING: Log summary for this category
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
-                        $"[CATEGORY-SUMMARY] {DateTime.Now:HH:mm:ss.fff} - Category '{category}': Saved {sleeveDataList.Count} sleeves to _CLUSTER.xml\n");
+                    DebugLogger.Info($"[CATEGORY-SUMMARY] {DateTime.Now:HH:mm:ss.fff} - Category '{category}': Saved {sleeveDataList.Count} sleeves to _CLUSTER.xml\n");
                 }
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
-                    $"[COORDINATE-SERVICE] {DateTime.Now:HH:mm:ss.fff} - COMPLETED: Processed {groupedSleeves.Count} categories\n");
+                DebugLogger.Info($"[COORDINATE-SERVICE] {DateTime.Now:HH:mm:ss.fff} - COMPLETED: Processed {groupedSleeves.Count} categories\n");
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                    $"[REGENERATE-CLUSTER-XML] Completed regeneration for {groupedSleeves.Count} categories\n");
+                DebugLogger.Info($"[REGENERATE-CLUSTER-XML] Completed regeneration for {groupedSleeves.Count} categories\n");
             }
             catch (Exception ex)
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                    $"[REGENERATE-CLUSTER-XML] ERROR: {ex.Message}\n");
+                DebugLogger.Info($"[REGENERATE-CLUSTER-XML] ERROR: {ex.Message}\n");
             }
         }
         
@@ -473,8 +442,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var mepCategory = mepElement.Category?.Name;
                         
                         // ✅ CRITICAL DEBUGGING: Log MEP element details
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
-                            $"[CATEGORY-DEBUG] Sleeve {sleeve.Id.IntegerValue}: MEP_ElementId={mepElementId.AsInteger()}, MEP_Category='{mepCategory}', MEP_Type='{mepElement.GetType().Name}'\n");
+                        DebugLogger.Info($"[CATEGORY-DEBUG] Sleeve {sleeve.Id.IntegerValue}: MEP_ElementId={mepElementId.AsInteger()}, MEP_Category='{mepCategory}', MEP_Type='{mepElement.GetType().Name}'\n");
                         
                         if (!string.IsNullOrEmpty(mepCategory))
                         {
@@ -483,8 +451,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             if (mepCategory.Contains("Duct")) return "Ducts";
                             if (mepCategory.Contains("Cable")) return "Cable Trays";
                             
-                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                                $"[CATEGORY-DEBUG] Sleeve {sleeve.Id.IntegerValue}: MEP Category='{mepCategory}', Family='{sleeve.Symbol.FamilyName}'\n");
+                            DebugLogger.Info($"[CATEGORY-DEBUG] Sleeve {sleeve.Id.IntegerValue}: MEP Category='{mepCategory}', Family='{sleeve.Symbol.FamilyName}'\n");
                         }
                     }
                 }
@@ -493,8 +460,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var familyName = sleeve.Symbol.FamilyName.ToLower();
                 
                 // ✅ CRITICAL DEBUGGING: Log fallback logic
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
-                    $"[CATEGORY-FALLBACK] Sleeve {sleeve.Id.IntegerValue}: FamilyName='{familyName}', Using fallback logic\n");
+                DebugLogger.Info($"[CATEGORY-FALLBACK] Sleeve {sleeve.Id.IntegerValue}: FamilyName='{familyName}', Using fallback logic\n");
                 
                 if (familyName.Contains("duct")) return "Ducts";
                 if (familyName.Contains("pipe")) return "Pipes";
@@ -504,22 +470,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Check if this sleeve was placed for a specific MEP category by looking at nearby elements
                 var category = DetermineCategoryFromContext(sleeve);
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
-                    $"[CATEGORY-CONTEXT] Sleeve {sleeve.Id.IntegerValue}: Determined category from context: '{category}'\n");
+                DebugLogger.Info($"[CATEGORY-CONTEXT] Sleeve {sleeve.Id.IntegerValue}: Determined category from context: '{category}'\n");
                 
                 return category;
             }
             catch (Exception ex)
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                    $"[CATEGORY-ERROR] Sleeve {sleeve.Id.IntegerValue}: {ex.Message}\n");
+                DebugLogger.Info($"[CATEGORY-ERROR] Sleeve {sleeve.Id.IntegerValue}: {ex.Message}\n");
                 
                 // ✅ CRITICAL FIX: Try context-based detection even in error case
                 try
                 {
                     var category = DetermineCategoryFromContext(sleeve);
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
-                        $"[CATEGORY-ERROR-RECOVERY] Sleeve {sleeve.Id.IntegerValue}: Recovered with context category: '{category}'\n");
+                    DebugLogger.Info($"[CATEGORY-ERROR-RECOVERY] Sleeve {sleeve.Id.IntegerValue}: Recovered with context category: '{category}'\n");
                     return category;
                 }
                 catch
@@ -541,20 +504,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (mepCategoryParam != null)
                 {
                     var categoryValue = mepCategoryParam.AsString();
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
-                        $"[CATEGORY-PARAM-CHECK] Sleeve {sleeve.Id.IntegerValue}: MEP_Category parameter exists, value='{categoryValue}', IsReadOnly={mepCategoryParam.IsReadOnly}\n");
+                    DebugLogger.Info($"[CATEGORY-PARAM-CHECK] Sleeve {sleeve.Id.IntegerValue}: MEP_Category parameter exists, value='{categoryValue}', IsReadOnly={mepCategoryParam.IsReadOnly}\n");
                     
                     if (!string.IsNullOrEmpty(categoryValue))
                     {
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
-                            $"[CATEGORY-PARAM-SUCCESS] Sleeve {sleeve.Id.IntegerValue}: Using MEP_Category parameter: '{categoryValue}'\n");
+                        DebugLogger.Info($"[CATEGORY-PARAM-SUCCESS] Sleeve {sleeve.Id.IntegerValue}: Using MEP_Category parameter: '{categoryValue}'\n");
                         return categoryValue;
                     }
                 }
                 else
                 {
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
-                        $"[CATEGORY-PARAM-MISSING] Sleeve {sleeve.Id.IntegerValue}: MEP_Category parameter not found\n");
+                    DebugLogger.Info($"[CATEGORY-PARAM-MISSING] Sleeve {sleeve.Id.IntegerValue}: MEP_Category parameter not found\n");
                 }
                 
                 // Method 2: Check sleeve family name more intelligently
@@ -562,8 +522,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (familyName.Contains("circular") || familyName.Contains("round"))
                 {
                     // Circular openings are typically for pipes
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
-                        $"[CATEGORY-CIRCULAR] Sleeve {sleeve.Id.IntegerValue}: Circular family detected, assuming Pipes\n");
+                    DebugLogger.Info($"[CATEGORY-CIRCULAR] Sleeve {sleeve.Id.IntegerValue}: Circular family detected, assuming Pipes\n");
                     return "Pipes";
                 }
                 
@@ -577,15 +536,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (hostCategory.Contains("wall"))
                         {
                             // Wall-hosted sleeves are often for pipes
-                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
-                                $"[CATEGORY-WALL] Sleeve {sleeve.Id.IntegerValue}: Wall-hosted, assuming Pipes\n");
+                            DebugLogger.Info($"[CATEGORY-WALL] Sleeve {sleeve.Id.IntegerValue}: Wall-hosted, assuming Pipes\n");
                             return "Pipes";
                         }
                         else if (hostCategory.Contains("floor") || hostCategory.Contains("slab"))
                         {
                             // Floor-hosted sleeves are often for ducts
-                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
-                                $"[CATEGORY-FLOOR] Sleeve {sleeve.Id.IntegerValue}: Floor-hosted, assuming Ducts\n");
+                            DebugLogger.Info($"[CATEGORY-FLOOR] Sleeve {sleeve.Id.IntegerValue}: Floor-hosted, assuming Ducts\n");
                             return "Ducts";
                         }
                     }
@@ -602,20 +559,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Small openings (< 0.5m) are typically pipes
                     if (avgSize < 0.5)
                     {
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
-                            $"[CATEGORY-SIZE] Sleeve {sleeve.Id.IntegerValue}: Small size ({avgSize:F2}m), assuming Pipes\n");
+                        DebugLogger.Info($"[CATEGORY-SIZE] Sleeve {sleeve.Id.IntegerValue}: Small size ({avgSize:F2}m), assuming Pipes\n");
                         return "Pipes";
                     }
                 }
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
-                    $"[CATEGORY-CONTEXT-FAILED] Sleeve {sleeve.Id.IntegerValue}: All context methods failed, using Unknown\n");
+                DebugLogger.Info($"[CATEGORY-CONTEXT-FAILED] Sleeve {sleeve.Id.IntegerValue}: All context methods failed, using Unknown\n");
                 return "Unknown";
             }
             catch (Exception ex)
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
-                    $"[CATEGORY-CONTEXT-ERROR] Sleeve {sleeve.Id.IntegerValue}: Context detection error: {ex.Message}\n");
+                DebugLogger.Info($"[CATEGORY-CONTEXT-ERROR] Sleeve {sleeve.Id.IntegerValue}: Context detection error: {ex.Message}\n");
                 return "Unknown";
             }
         }
@@ -647,14 +601,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var clashZone = FindClashZoneByMepElementId(mepElementIdValue);
                     if (clashZone != null)
                     {
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                            $"[ORIENTATION-DEBUG] Sleeve {sleeve.Id.IntegerValue}: Found clash zone, Orientation='{clashZone.MepElementOrientationDirection}'\n");
+                        DebugLogger.Info($"[ORIENTATION-DEBUG] Sleeve {sleeve.Id.IntegerValue}: Found clash zone, Orientation='{clashZone.MepElementOrientationDirection}'\n");
                         return clashZone.MepElementOrientationDirection ?? "";
                     }
                     else
                     {
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                            $"[ORIENTATION-DEBUG] Sleeve {sleeve.Id.IntegerValue}: No clash zone found for MEP_ElementId {mepElementIdValue}\n");
+                        DebugLogger.Info($"[ORIENTATION-DEBUG] Sleeve {sleeve.Id.IntegerValue}: No clash zone found for MEP_ElementId {mepElementIdValue}\n");
                     }
                 }
                 
@@ -662,8 +614,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                    $"[ORIENTATION-ERROR] Sleeve {sleeve.Id.IntegerValue}: {ex.Message}\n");
+                DebugLogger.Info($"[ORIENTATION-ERROR] Sleeve {sleeve.Id.IntegerValue}: {ex.Message}\n");
                 return ""; // Safe default
             }
         }
@@ -684,8 +635,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (string.IsNullOrEmpty(filterName))
                 {
                     var errorMsg = "Filter name is required for cluster XML file creation.";
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                        $"[REGENERATE-CLUSTER-XML] ERROR: {errorMsg}\n");
+                    DebugLogger.Info($"[REGENERATE-CLUSTER-XML] ERROR: {errorMsg}\n");
                     throw new InvalidOperationException(errorMsg);
                 }
                 var fileName = $"{filterName}_{category.Replace(" ", "_").ToLower()}_CLUSTER.xml";
@@ -741,13 +691,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var pluralFilePath = Path.Combine(filtersDirectory, pluralFileName);
                 xmlDoc.Save(pluralFilePath);
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                    $"[REGENERATE-CLUSTER-XML] Saved {sleeveDataList.Count} sleeves to {fileName} and {pluralFileName}\n");
+                DebugLogger.Info($"[REGENERATE-CLUSTER-XML] Saved {sleeveDataList.Count} sleeves to {fileName} and {pluralFileName}\n");
             }
             catch (Exception ex)
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                    $"[REGENERATE-CLUSTER-XML] Save error: {ex.Message}\n");
+                DebugLogger.Info($"[REGENERATE-CLUSTER-XML] Save error: {ex.Message}\n");
             }
         }
         
@@ -775,17 +723,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     .ToList();
                 
                 // ✅ CRITICAL DEBUGGING: Log file discovery
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
-                    $"[CLASH-CACHE-DEBUG] Filters directory: {filtersDirectory}\n");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
-                    $"[CLASH-CACHE-DEBUG] Found {allXmlFiles.Length} total XML files\n");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
-                    $"[CLASH-CACHE-DEBUG] Filtered to {xmlFiles.Count} relevant files\n");
+                DebugLogger.Info($"[CLASH-CACHE-DEBUG] Filters directory: {filtersDirectory}\n");
+                DebugLogger.Info($"[CLASH-CACHE-DEBUG] Found {allXmlFiles.Length} total XML files\n");
+                DebugLogger.Info($"[CLASH-CACHE-DEBUG] Filtered to {xmlFiles.Count} relevant files\n");
                 
                 foreach (var file in xmlFiles)
                 {
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_instance_id_debug.log",
-                        $"[CLASH-CACHE-DEBUG] Processing file: {Path.GetFileName(file)}\n");
+                    DebugLogger.Info($"[CLASH-CACHE-DEBUG] Processing file: {Path.GetFileName(file)}\n");
                 }
                 
                 foreach (var xmlFile in xmlFiles)
@@ -814,23 +758,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                         }
                         
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                            $"Loaded {clashNodes?.Count ?? 0} clash zones from {Path.GetFileName(xmlFile)}\n");
+                        DebugLogger.Info($"[DEBUG] Loaded {clashNodes?.Count ?? 0} clash zones from {Path.GetFileName(xmlFile)}\n");
                     }
                     catch (Exception ex)
                     {
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                            $"Error loading {xmlFile}: {ex.Message}\n");
+                        DebugLogger.Info($"[DEBUG] Error loading {xmlFile}: {ex.Message}\n");
                     }
                 }
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                    $"[CLASH-CACHE] Loaded {_clashZoneCache.Count} clash zones for orientation lookup\n");
+                DebugLogger.Info($"[CLASH-CACHE] Loaded {_clashZoneCache.Count} clash zones for orientation lookup\n");
             }
             catch (Exception ex)
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                    $"[CLASH-CACHE] Error loading clash zone cache: {ex.Message}\n");
+                DebugLogger.Info($"[CLASH-CACHE] Error loading clash zone cache: {ex.Message}\n");
             }
         }
         
@@ -858,8 +798,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         public void UpdateSleeveCoordinates(List<ClashZone> clashZones)
         {
-            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                $"Processing {clashZones.Count} clash zones for coordinate update\n");
+            DebugLogger.Info($"[DEBUG] Processing {clashZones.Count} clash zones for coordinate update\n");
             
             // Get all sleeves in the model for position matching
             var allSleeves = new FilteredElementCollector(_doc)
@@ -868,8 +807,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 .Where(s => s.Symbol.FamilyName.Contains("Opening"))
                 .ToList();
             
-            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                $"Found {allSleeves.Count} sleeves in model for position matching\n");
+            DebugLogger.Info($"[DEBUG] Found {allSleeves.Count} sleeves in model for position matching\n");
             
             foreach (var clashZone in clashZones)
             {
@@ -880,8 +818,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // ✅ DEBUG: Log if this clashZone has cluster information
                     if (clashZone.ClusterSleeveInstanceId > 0)
                     {
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                            $"[CLUSTER-CHECK] ClashZone has ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}, SleeveInstanceId={clashZone.SleeveInstanceId}\n");
+                        DebugLogger.Info($"[CLUSTER-CHECK] ClashZone has ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}, SleeveInstanceId={clashZone.SleeveInstanceId}\n");
                     }
                     
                     // ✅ MASTER DEBUGGER FIX: Try direct ID match first (for individual sleeves)
@@ -891,27 +828,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (sleeveElement is FamilyInstance sleeve && sleeve.Symbol.FamilyName.Contains("Opening"))
                         {
                             matchedSleeve = sleeve;
-                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                                $"[DIRECT-ID-MATCH] Found individual sleeve {clashZone.SleeveInstanceId} by ID\n");
+                            DebugLogger.Info($"[DIRECT-ID-MATCH] Found individual sleeve {clashZone.SleeveInstanceId} by ID\n");
                         }
                     }
                     
                     // ✅ NEW: Handle cluster sleeves
                     if (matchedSleeve == null && clashZone.ClusterSleeveInstanceId > 0)
                     {
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                            $"[CLUSTER-LOOKUP] Looking for cluster sleeve ID {clashZone.ClusterSleeveInstanceId} in Revit\n");
+                        DebugLogger.Info($"[CLUSTER-LOOKUP] Looking for cluster sleeve ID {clashZone.ClusterSleeveInstanceId} in Revit\n");
                         
                         var clusterSleeveElement = _doc.GetElement(new ElementId(clashZone.ClusterSleeveInstanceId));
                         if (clusterSleeveElement == null)
                         {
-                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                                $"[CLUSTER-LOOKUP] ERROR: Cluster sleeve ID {clashZone.ClusterSleeveInstanceId} NOT found in Revit!\n");
+                            DebugLogger.Info($"[CLUSTER-LOOKUP] ERROR: Cluster sleeve ID {clashZone.ClusterSleeveInstanceId} NOT found in Revit!\n");
                         }
                         else if (clusterSleeveElement is FamilyInstance clusterSleeve && clusterSleeve.Symbol.FamilyName.Contains("Opening"))
                         {
-                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                                $"[CLUSTER-LOOKUP] ✓ Found cluster sleeve {clashZone.ClusterSleeveInstanceId} in Revit (Family={clusterSleeve.Symbol.FamilyName})\n");
+                            DebugLogger.Info($"[CLUSTER-LOOKUP] ✓ Found cluster sleeve {clashZone.ClusterSleeveInstanceId} in Revit (Family={clusterSleeve.Symbol.FamilyName})\n");
                             
                             // Get bounding box for cluster sleeve
                             var bbox = clusterSleeve.get_BoundingBox(null);
@@ -925,14 +858,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 clashZone.ClusterSleeveBoundingBoxMaxY = bbox.Max.Y;
                                 clashZone.ClusterSleeveBoundingBoxMaxZ = bbox.Max.Z;
                                 
-                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                                    $"[CLUSTER-SLEEVE] Updated cluster sleeve {clashZone.ClusterSleeveInstanceId} bbox: Min=({bbox.Min.X:F6}, {bbox.Min.Y:F6}), Max=({bbox.Max.X:F6}, {bbox.Max.Y:F6})\n");
+                                DebugLogger.Info($"[CLUSTER-SLEEVE] Updated cluster sleeve {clashZone.ClusterSleeveInstanceId} bbox: Min=({bbox.Min.X:F6}, {bbox.Min.Y:F6}), Max=({bbox.Max.X:F6}, {bbox.Max.Y:F6})\n");
                             }
                         }
                         else if (clusterSleeveElement != null)
                         {
-                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                                $"[CLUSTER-LOOKUP] Element {clashZone.ClusterSleeveInstanceId} is not a FamilyInstance with Opening name\n");
+                            DebugLogger.Info($"[CLUSTER-LOOKUP] Element {clashZone.ClusterSleeveInstanceId} is not a FamilyInstance with Opening name\n");
                         }
                     }
                     
@@ -954,8 +885,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 {
                                     matchedSleeve = sleeve;
                                     clashZone.SleeveInstanceId = sleeve.Id.IntegerValue; // ✅ FIX: Update the instance ID
-                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                                        $"[POSITION-MATCH] Found sleeve {sleeve.Id.IntegerValue} by position (distance: {distance:F6}ft)\n");
+                                    DebugLogger.Info($"[POSITION-MATCH] Found sleeve {sleeve.Id.IntegerValue} by position (distance: {distance:F6}ft)\n");
                                     break;
                                 }
                             }
@@ -971,25 +901,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // ✅ CORRECT: Update bounding box and instance ID
                             clashZone.SetSleeveBoundingBox(bbox);
                             
-                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                                $"[UPDATED] Sleeve {clashZone.SleeveInstanceId}: Min=({bbox.Min.X:F6}, {bbox.Min.Y:F6}, {bbox.Min.Z:F6}), Max=({bbox.Max.X:F6}, {bbox.Max.Y:F6}, {bbox.Max.Z:F6})\n");
+                            DebugLogger.Info($"[UPDATED] Sleeve {clashZone.SleeveInstanceId}: Min=({bbox.Min.X:F6}, {bbox.Min.Y:F6}, {bbox.Min.Z:F6}), Max=({bbox.Max.X:F6}, {bbox.Max.Y:F6}, {bbox.Max.Z:F6})\n");
                         }
                         else
                         {
-                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                                $"[NO-BBOX] Sleeve {clashZone.SleeveInstanceId} has no bounding box\n");
+                            DebugLogger.Info($"[NO-BBOX] Sleeve {clashZone.SleeveInstanceId} has no bounding box\n");
                         }
                     }
                     else
                     {
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                            $"[NO-MATCH] ClashZone {clashZone.Id} - no matching sleeve found (SleeveInstanceId={clashZone.SleeveInstanceId}, PlacePoint=({clashZone.SleevePlacementPointX:F3}, {clashZone.SleevePlacementPointY:F3}, {clashZone.SleevePlacementPointZ:F3}))\n");
+                        DebugLogger.Info($"[NO-MATCH] ClashZone {clashZone.Id} - no matching sleeve found (SleeveInstanceId={clashZone.SleeveInstanceId}, PlacePoint=({clashZone.SleevePlacementPointX:F3}, {clashZone.SleevePlacementPointY:F3}, {clashZone.SleevePlacementPointZ:F3}))\n");
                     }
                 }
                 catch (Exception ex)
                 {
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\coordinate_update.log",
-                        $"[ERROR] Clash zone error: {ex.Message}\n");
+                    DebugLogger.Info($"[ERROR] Clash zone error: {ex.Message}\n");
                 }
             }
         }

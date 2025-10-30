@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug R21")]
 [assembly: System.Reflection.AssemblyDescriptionAttribute("OPENING PLACEMENT")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f2e67b9e989a4208e278ea34e190027641c6cb8c")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+41be9795da0078dbe989aa8870aa3e4365525b57")]
 [assembly: System.Reflection.AssemblyProductAttribute("JSE_RevitAddin_MEP_OPENINGS")]
 [assembly: System.Reflection.AssemblyTitleAttribute("JSE_RevitAddin_MEP_OPENINGS")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

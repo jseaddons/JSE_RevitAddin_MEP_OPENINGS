@@ -948,8 +948,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             try
             {
                 // Write directly to file for debugging
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                    $"[{DateTime.Now}] [TRANSFER_ALL] Transfer All button clicked\n");
+                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER_ALL] Transfer All button clicked\n");
                 
                 DebugLogger.Info("[TRANSFER_ALL] Transfer All button clicked");
                 
@@ -961,16 +960,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 }
                 
                 DebugLogger.Info($"[TRANSFER_ALL] Active master tab: {activeMasterTab.Text}");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                    $"[{DateTime.Now}] [TRANSFER_ALL] Active master tab: {activeMasterTab.Text}\n");
+                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER_ALL] Active master tab: {activeMasterTab.Text}\n");
                 
                 var subTabs = activeMasterTab.Controls.OfType<WinForms.TabControl>().FirstOrDefault();
                 var activeServiceTab = subTabs?.SelectedTab;
                 var servicePanel = activeServiceTab?.Controls.OfType<WinForms.Panel>().FirstOrDefault();
                 
                 DebugLogger.Info($"[TRANSFER_ALL] Active service tab: {activeServiceTab?.Text}");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                    $"[{DateTime.Now}] [TRANSFER_ALL] Active service tab: {activeServiceTab?.Text}\n");
+                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER_ALL] Active service tab: {activeServiceTab?.Text}\n");
                 
                 if (servicePanel != null)
                 {
@@ -1018,14 +1015,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             try
             {
                 DebugLogger.Info("[TRANSFER_ALL] Starting TransferAllMappingsFromPanel");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                    $"[{DateTime.Now}] [TRANSFER_ALL] Starting TransferAllMappingsFromPanel\n");
+                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER_ALL] Starting TransferAllMappingsFromPanel\n");
                 
                 // Get all opening instances
                 var openingIds = GetAllOpeningInstanceIds(_document);
                 DebugLogger.Info($"[TRANSFER_ALL] Found {openingIds.Count} opening instances");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                    $"[{DateTime.Now}] [TRANSFER_ALL] Found {openingIds.Count} opening instances\n");
+                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER_ALL] Found {openingIds.Count} opening instances\n");
                 
                 // NO VALIDATION - proceed with transfer regardless
                 DebugLogger.Info("[TRANSFER_ALL] Proceeding with transfer - no validation checks");
@@ -1033,8 +1028,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 // Get parameter mappings from the panel
                 var mappings = GetParameterMappingsFromPanel(servicePanel);
                 DebugLogger.Info($"[TRANSFER_ALL] Found {mappings.Count} parameter mappings");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                    $"[{DateTime.Now}] [TRANSFER_ALL] Found {mappings.Count} parameter mappings\n");
+                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER_ALL] Found {mappings.Count} parameter mappings\n");
                 
                 if (mappings.Count == 0)
                 {
@@ -1048,8 +1042,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 foreach (var mapping in mappings)
                 {
                     DebugLogger.Info($"[TRANSFER_ALL] Mapping: {mapping.SourceParameter} -> {mapping.TargetParameter}");
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                        $"[{DateTime.Now}] [TRANSFER_ALL] Mapping: {mapping.SourceParameter} -> {mapping.TargetParameter}\n");
+                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER_ALL] Mapping: {mapping.SourceParameter} -> {mapping.TargetParameter}\n");
                 }
 
                 // Transfer parameters
@@ -1061,17 +1054,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 };
 
                 DebugLogger.Info($"[TRANSFER_ALL] Calling ExecuteTransferConfiguration with category: {config.SourceCategoryName}");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                    $"[{DateTime.Now}] [TRANSFER_ALL] Calling ExecuteTransferConfiguration with category: {config.SourceCategoryName}\n");
+                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER_ALL] Calling ExecuteTransferConfiguration with category: {config.SourceCategoryName}\n");
 
                 var result = transferService.ExecuteTransferConfiguration(_document, openingIds, config);
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                    $"[{DateTime.Now}] [TRANSFER_ALL] ExecuteTransferConfiguration completed\n");
+                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER_ALL] ExecuteTransferConfiguration completed\n");
                 
                 DebugLogger.Info($"[TRANSFER_ALL] Transfer result: Success={result.Success}, TransferredCount={result.TransferredCount}, FailedCount={result.FailedCount}");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                    $"[{DateTime.Now}] [TRANSFER_ALL] Transfer result: Success={result.Success}, TransferredCount={result.TransferredCount}, FailedCount={result.FailedCount}\n");
+                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER_ALL] Transfer result: Success={result.Success}, TransferredCount={result.TransferredCount}, FailedCount={result.FailedCount}\n");
                 
                 if (result.Success)
                 {

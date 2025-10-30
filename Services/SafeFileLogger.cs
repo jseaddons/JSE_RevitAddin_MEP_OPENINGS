@@ -104,19 +104,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     string projectRoot = assemblyDir;
                     for (int i = 0; i < 5 && projectRoot != null; i++)
                     {
+                        // ✅ FIX: Check for "Logs" (plural) not "Log" (singular)
+                        if (Directory.Exists(Path.Combine(projectRoot, "Logs")))
+                        {
+                            string logDir = Path.Combine(projectRoot, "Logs");
+                            System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Using project Logs directory (development): {logDir}");
+                            return logDir;
+                        }
+                        // Also check for "Log" (singular) for backward compatibility
                         if (Directory.Exists(Path.Combine(projectRoot, "Log")))
                         {
                             string logDir = Path.Combine(projectRoot, "Log");
-                            System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Using project Log directory (development): {logDir}");
+                            System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Using project Log directory (development - fallback): {logDir}");
                             return logDir;
                         }
                         projectRoot = Directory.GetParent(projectRoot)?.FullName;
                     }
                     
-                    // If project structure found, create Log directory
+                    // If project structure found, create Logs directory
                     if (assemblyDir != null)
                     {
-                        string logDir = Path.Combine(assemblyDir, "..", "..", "..", "Log");
+                        string logDir = Path.Combine(assemblyDir, "..", "..", "..", "Logs");
                         logDir = Path.GetFullPath(logDir); // Resolve .. paths
                         
                         if (TryCreateDirectory(logDir))
@@ -201,8 +209,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public static void SafeAppendText(string fileName, string message)
         {
             // ✅ DEPLOYMENT MODE: Skip all logging if deployment mode is enabled
-            // EXCEPT: Memory profiling logs (for testing memory savings)
-            if (DeploymentConfiguration.DeploymentMode && !fileName.Contains("memory_profiling"))
+            // EXCEPT: performance logs (refresh/OK timing only)
+            if (DeploymentConfiguration.DeploymentMode && !string.Equals(fileName, "performance.log", StringComparison.OrdinalIgnoreCase))
                 return;
                 
             try

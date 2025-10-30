@@ -3,8 +3,8 @@ Script to replace ALL hardcoded File.AppendAllText calls with DebugLogger.Info c
 so they respect DeploymentMode flag.
 
 Scans all .cs files in Services directory and replaces:
-- File.AppendAllText(@"C:\...\refresh_debug.log", ...)
-- File.AppendAllText(@"C:\...\logger_debug.txt", ...)
+- File.AppendAllText(@"C:\\...\\refresh_debug.log", ...)
+- File.AppendAllText(@"C:\\...\\logger_debug.txt", ...)
 - Any other hardcoded log file writes
 
 With: DebugLogger.Info(...)
@@ -167,13 +167,13 @@ def main():
         if changes > 0:
             total_changes += changes
             files_changed.append((rel_path, changes))
-            print(f"✅ {rel_path}: {changes} replacements")
+            print(f"[OK] {rel_path}: {changes} replacements")
     
     print(f"\n{'='*60}")
     if total_changes > 0:
-        print(f"✅ Total: {total_changes} hardcoded File.AppendAllText calls replaced")
-        print(f"✅ {len(files_changed)} files modified")
-        print(f"✅ All logging now respects DeploymentMode flag")
+        print(f"[OK] Total: {total_changes} hardcoded File.AppendAllText calls replaced")
+        print(f"[OK] {len(files_changed)} files modified")
+        print(f"[OK] All logging now respects DeploymentMode flag")
         print(f"\nModified files:")
         for file_path, count in files_changed:
             print(f"  - {file_path} ({count} changes)")

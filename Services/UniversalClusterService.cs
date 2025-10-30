@@ -23,6 +23,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     public class UniversalClusterService
     {
         private string _filterName; // Store filter name for use in GetFilterNameForCategory
+        private Document _doc; // Active document context for path resolution
         
         // Helper struct for grouping key
         private struct SleeveGroupKey
@@ -61,6 +62,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <returns>Tuple of (placedCount, deletedCount)</returns>
         public (int placedCount, int deletedCount) ClusterSleeves(Document doc, string targetCategory, UIDocument uiDoc = null, string xmlFilePath = null, string filterName = null, List<FamilyInstance> placedClusterSleevesOut = null)
         {
+            // Store document for helper methods
+            _doc = doc;
             // ✅ CRITICAL: Store filterName in class field for use in GetFilterNameForCategory
             _filterName = filterName;
             
@@ -212,12 +215,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var clashZone = GetClashZoneBySleeveInstanceId(sleeveInstanceId);
                     if (clashZone != null)
                     {
-                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-START] Sleeve {sleeveInstanceId}: MEP={clashZone.MepElementIdValue}, ClashZone={clashZone.Id}\n");
-                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
-                                $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-START] FLAGS: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}\n");
-                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
-                                $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-START] PARAMS: SleeveInstanceId={clashZone.SleeveInstanceId}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}\n");
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-START] Sleeve {sleeveInstanceId}: MEP={clashZone.MepElementIdValue}, ClashZone={clashZone.Id}\n");
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-START] FLAGS: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}\n");
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-START] PARAMS: SleeveInstanceId={clashZone.SleeveInstanceId}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}\n");
                     }
                 }
 
@@ -275,7 +275,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // ⚠️ CRITICAL: Check if cluster already exists using flag management
                             if (IsClusterAlreadyExists(cluster, groupKey))
                             {
-                                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"SKIP: Cluster already exists for {cluster.Count} sleeves - skipping placement\n");
+                                DebugLogger.Info($"[DEBUG] SKIP: Cluster already exists for {cluster.Count} sleeves - skipping placement\n");
                                 continue;
                             }
 
@@ -319,14 +319,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 DebugLogger.Log($"[UniversalClusterService] Summary: {placedCount} openings placed, {deletedCount} sleeves deleted.");
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"Summary: {placedCount} openings placed, {deletedCount} sleeves deleted.\n");
+                DebugLogger.Info($"[DEBUG] Summary: {placedCount} openings placed, {deletedCount} sleeves deleted.\n");
                 
                 // ⚠️ DISABLED: Cleanup will be called AFTER XML save in orchestrator to use cached bounding boxes
                 // Cleanup requires cluster sleeve bounding boxes to be saved to XML first
                 // The orchestrator will call CleanupSleevesWithinClustersAfterXmlSave() after XML update
                 
                 DebugLogger.Log($"[UniversalClusterService] Final Summary: {placedCount} openings placed, {deletedCount} sleeves deleted.");
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"Final Summary: {placedCount} openings placed, {deletedCount} sleeves deleted.\n");
+                DebugLogger.Info($"[DEBUG] Final Summary: {placedCount} openings placed, {deletedCount} sleeves deleted.\n");
                 
                 // ✅ RETURN: Populate the output list with placed cluster sleeves
                 if (placedClusterSleevesOut != null)
@@ -340,16 +340,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var endTime = DateTime.Now;
                 var duration = endTime - startTime;
                 DebugLogger.Info($"[UniversalClusterService] ⚡ Clustering completed in {duration.TotalSeconds:F1} seconds");
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"⚡ PERFORMANCE: Clustering completed in {duration.TotalSeconds:F1} seconds\n");
+                DebugLogger.Info($"[DEBUG] ⚡ PERFORMANCE: Clustering completed in {duration.TotalSeconds:F1} seconds\n");
                 
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"===== CLUSTER DEBUG SESSION ENDED {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n\n");
+                DebugLogger.Info($"[DEBUG] ===== CLUSTER DEBUG SESSION ENDED {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n\n");
             }
             catch (Exception ex)
             {
                 DebugLogger.Error($"[UniversalClusterService] Clustering failed: {ex.Message}");
                 DebugLogger.Error($"[UniversalClusterService] Stack trace: {ex.StackTrace}");
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"ERROR: {ex.Message}\n");
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"Stack trace: {ex.StackTrace}\n");
+                DebugLogger.Info($"[DEBUG] ERROR: {ex.Message}\n");
+                DebugLogger.Info($"[DEBUG] Stack trace: {ex.StackTrace}\n");
                 throw;
             }
 
@@ -530,7 +530,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var clashZone = GetClashZoneBySleeveInstanceId(sleeveInstanceId);
                     if (clashZone != null && clashZone.IsClusterResolved && clashZone.ClusterSleeveInstanceId > 0)
                     {
-                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"Cluster already exists: ClashZone {clashZone.Id} is cluster-resolved (cluster sleeve ID: {clashZone.ClusterSleeveInstanceId})\n");
+                        DebugLogger.Info($"[DEBUG] Cluster already exists: ClashZone {clashZone.Id} is cluster-resolved (cluster sleeve ID: {clashZone.ClusterSleeveInstanceId})\n");
                         return true;
                     }
                 }
@@ -560,7 +560,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                var filtersDirectory = ProjectPathService.GetFiltersDirectory(_doc);
                 
                 if (!Directory.Exists(filtersDirectory))
                     return;
@@ -643,22 +643,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     }
                                     
                                     // ⚠️ CRITICAL: Log flag state AFTER cluster sleeve placement
-                                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
-                                        $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-PLACED] ClashZone {clashZone.Id}: Cluster sleeve {clusterSleeveId.IntegerValue} placed\n");
-                                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
-                                        $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-PLACED] FLAGS: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}\n");
-                                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
-                                        $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-PLACED] PARAMS: SleeveInstanceId={clashZone.SleeveInstanceId}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}\n");
+                                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-PLACED] ClashZone {clashZone.Id}: Cluster sleeve {clusterSleeveId.IntegerValue} placed\n");
+                                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-PLACED] FLAGS: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}\n");
+                                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-PLACED] PARAMS: SleeveInstanceId={clashZone.SleeveInstanceId}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}\n");
                                     
                                     updated = true;
                                     markedCount++;
                                     
-                                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"Marked ClashZone {clashZone.Id} as cluster-resolved with cluster sleeve {clusterSleeveId.IntegerValue} (cleared individual flags)\n");
+                                    DebugLogger.Info($"[DEBUG] Marked ClashZone {clashZone.Id} as cluster-resolved with cluster sleeve {clusterSleeveId.IntegerValue} (cleared individual flags)\n");
                                 }
                                 else
                                 {
-                                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                                        $"✗ Clash zone not found for SleeveInstanceId={sleeveInstanceId}\n");
+                                    DebugLogger.Info($"[DEBUG] ✗ Clash zone not found for SleeveInstanceId={sleeveInstanceId}\n");
                                 }
                             }
                             
@@ -666,8 +662,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             if (updated)
                             {
                                 // ⚠️ CRITICAL: Log flag states BEFORE XML save after clustering
-                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
-                                    $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-XML-SAVE-BEFORE] About to save XML after clustering\n");
+                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-XML-SAVE-BEFORE] About to save XML after clustering\n");
                                 
                                 try
                                 {
@@ -677,23 +672,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     }
                                     
                                     // ⚠️ CRITICAL: Log flag states AFTER XML save after clustering
-                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", 
-                                        $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-XML-SAVE-AFTER] XML save completed after clustering\n");
+                                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-XML-SAVE-AFTER] XML save completed after clustering\n");
                                     
                                     // 🔥 CRITICAL DEBUG: Log XML file save
-                                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                                        $"[{DateTime.Now:HH:mm:ss}] 💾 XML FILE SAVED: {xmlFile} with {markedCount} cluster-resolved clash zones\n");
+                                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 💾 XML FILE SAVED: {xmlFile} with {markedCount} cluster-resolved clash zones\n");
                                 }
                                 catch (Exception ex)
                                 {
-                                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                                        $"[{DateTime.Now:HH:mm:ss}] ❌ ERROR SAVING XML FILE: {xmlFile} - {ex.Message}\n");
+                                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ❌ ERROR SAVING XML FILE: {xmlFile} - {ex.Message}\n");
                                 }
                             }
                             else
                             {
-                                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ NO CHANGES MADE - XML FILE NOT SAVED: {xmlFile}\n");
+                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ⚠️ NO CHANGES MADE - XML FILE NOT SAVED: {xmlFile}\n");
                             }
                         }
                     }
@@ -705,7 +696,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (markedCount > 0)
                 {
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"Marked {markedCount} clash zones as cluster-resolved\n");
+                    DebugLogger.Info($"[DEBUG] Marked {markedCount} clash zones as cluster-resolved\n");
                 }
             }
             catch (Exception ex)
@@ -721,7 +712,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                var filtersDirectory = ProjectPathService.GetFiltersDirectory(_doc);
                 
                 if (!Directory.Exists(filtersDirectory))
                     return;
@@ -767,7 +758,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         clashZone.LastUpdated = DateTime.Now;
                                         resetCount++;
                                         modified = true;
-                                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"Reset cluster flag for ClashZone {clashZone.Id} - ClusterSleeveInstanceId was {clashZone.ClusterSleeveInstanceId} (invalid)\n");
+                                        DebugLogger.Info($"[DEBUG] Reset cluster flag for ClashZone {clashZone.Id} - ClusterSleeveInstanceId was {clashZone.ClusterSleeveInstanceId} (invalid)\n");
                                     }
                                     else
                                     {
@@ -783,7 +774,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                             clashZone.LastUpdated = DateTime.Now;
                                             resetCount++;
                                             modified = true;
-                                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"Reset cluster flag for ClashZone {clashZone.Id} - cluster sleeve {clashZone.ClusterSleeveInstanceId} was deleted\n");
+                                            DebugLogger.Info($"[DEBUG] Reset cluster flag for ClashZone {clashZone.Id} - cluster sleeve {clashZone.ClusterSleeveInstanceId} was deleted\n");
                                         }
                                     }
                                 }
@@ -801,7 +792,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         clashZone.LastUpdated = DateTime.Now;
                                         resetCount++;
                                         modified = true;
-                                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"Reset individual sleeve flag for ClashZone {clashZone.Id} - SleeveInstanceId was {clashZone.SleeveInstanceId} (invalid)\n");
+                                        DebugLogger.Info($"[DEBUG] Reset individual sleeve flag for ClashZone {clashZone.Id} - SleeveInstanceId was {clashZone.SleeveInstanceId} (invalid)\n");
                                     }
                                     else
                                     {
@@ -818,7 +809,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                             clashZone.LastUpdated = DateTime.Now;
                                             resetCount++;
                                             modified = true;
-                                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"Reset individual sleeve flag for ClashZone {clashZone.Id} - sleeve {clashZone.SleeveInstanceId} was deleted\n");
+                                            DebugLogger.Info($"[DEBUG] Reset individual sleeve flag for ClashZone {clashZone.Id} - sleeve {clashZone.SleeveInstanceId} was deleted\n");
                                         }
                                     }
                                 }
@@ -831,24 +822,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 {
                                     serializer.Serialize(writer, filter);
                                 }
-                                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"✓ Saved reset flags to {Path.GetFileName(xmlFile)}\n");
+                                DebugLogger.Info($"[DEBUG] ✓ Saved reset flags to {Path.GetFileName(xmlFile)}\n");
                             }
                         }
                     }
                     catch (Exception ex)
                     {
                         DebugLogger.Error($"[UniversalClusterService] Error processing XML file {xmlFile}: {ex.Message}");
-                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"✗ Error resetting flags in {Path.GetFileName(xmlFile)}: {ex.Message}\n");
+                        DebugLogger.Info($"[DEBUG] ✗ Error resetting flags in {Path.GetFileName(xmlFile)}: {ex.Message}\n");
                     }
                 }
 
                 if (resetCount > 0)
                 {
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"✓ Reset flags for {resetCount} deleted sleeves (cluster + individual)\n");
+                    DebugLogger.Info($"[DEBUG] ✓ Reset flags for {resetCount} deleted sleeves (cluster + individual)\n");
                 }
                 else
                 {
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"✓ No deleted sleeves found - all flags preserved\n");
+                    DebugLogger.Info($"[DEBUG] ✓ No deleted sleeves found - all flags preserved\n");
                 }
             }
             catch (Exception ex)
@@ -910,8 +901,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var groupClusters = new List<List<dynamic>>();
                 
                 DebugLogger.Log($"[UniversalClusterService] Processing group {group.Key.hostType}_{group.Key.systemType} with {xmlSleeves.Count} sleeves");
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
-                    $"GROUP: {group.Key.hostType}_{group.Key.systemType} - {xmlSleeves.Count} sleeves\n");
+                DebugLogger.Info($"[DEBUG] GROUP: {group.Key.hostType}_{group.Key.systemType} - {xmlSleeves.Count} sleeves\n");
                 
                 // ✅ FIXED: Use bounding box overlap algorithm with XML data
                 var clusters = CalculateClustersUsingXmlData(xmlSleeves, toleranceDist, group.Key.orientation);
@@ -920,8 +910,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     groupClusters.AddRange(clusters);
                     DebugLogger.Log($"[UniversalClusterService] Formed {clusters.Count} clusters using XML data");
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
-                        $"✓ CLUSTERS FORMED: {clusters.Count} clusters using XML data\n");
+                    DebugLogger.Info($"[DEBUG] ✓ CLUSTERS FORMED: {clusters.Count} clusters using XML data\n");
                     
                     // Log cluster details
                     foreach (var cluster in clusters)
@@ -932,8 +921,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 else
                 {
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
-                        $"ℹ️ NO CLUSTERS: No proximate sleeves found in this group\n");
+                    DebugLogger.Info($"[DEBUG] ℹ️ NO CLUSTERS: No proximate sleeves found in this group\n");
                 }
                 
                 clustersByGroup[group.Key] = groupClusters;
@@ -1014,8 +1002,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return (0, 0, 0, XYZ.Zero);
 
                 // ✅ DEBUG: Log individual sleeve bounding boxes
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                    $"\n[CLUSTER-BBOX] Individual sleeves in cluster ({cluster.Count} sleeves):\n");
+                DebugLogger.Info($"\n[CLUSTER-BBOX] Individual sleeves in cluster ({cluster.Count} sleeves):\n");
                 
                 foreach (var sleeve in cluster)
                 {
@@ -1186,8 +1173,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 else
                 {
                     DebugLogger.Log($"[UniversalClusterService] Individual sleeve {cluster[0].Id.IntegerValue} (no proximate neighbors)");
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                        $"✗ NO CLUSTER: Individual sleeve {cluster[0].Id.IntegerValue} (no proximate neighbors within {UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm)\n");
+                    DebugLogger.Info($"✗ NO CLUSTER: Individual sleeve {cluster[0].Id.IntegerValue} (no proximate neighbors within {UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm)\n");
                 }
             }
             
@@ -1234,8 +1220,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     proximateSleeves.Add(candidateSleeve);
                     
                     // Log proximity analysis
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
-                        $"✓ BOUNDING-BOX-PROXIMITY: Sleeve {currentSleeve.Id.IntegerValue} -> {candidateSleeve.Id.IntegerValue}: Bounding boxes overlap within {UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm\n");
+                    DebugLogger.Info($"[DEBUG] ✓ BOUNDING-BOX-PROXIMITY: Sleeve {currentSleeve.Id.IntegerValue} -> {candidateSleeve.Id.IntegerValue}: Bounding boxes overlap within {UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm\n");
                 }
                 else
                 {
@@ -1243,8 +1228,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (currentSleeve.Id.IntegerValue == 897149 || currentSleeve.Id.IntegerValue == 897154 || currentSleeve.Id.IntegerValue == 897195 ||
                         candidateSleeve.Id.IntegerValue == 897149 || candidateSleeve.Id.IntegerValue == 897154 || candidateSleeve.Id.IntegerValue == 897195)
                     {
-                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
-                            $"✗ NO PROXIMITY: Sleeve {currentSleeve.Id.IntegerValue} <-> {candidateSleeve.Id.IntegerValue}: Bounding boxes do not overlap within {UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm\n");
+                        DebugLogger.Info($"[DEBUG] ✗ NO PROXIMITY: Sleeve {currentSleeve.Id.IntegerValue} <-> {candidateSleeve.Id.IntegerValue}: Bounding boxes do not overlap within {UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm\n");
                     }
                 }
             }
@@ -1274,12 +1258,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             double minDistance;
             
             // ✅ DEBUG: Log coordinates and orientation
-            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
-                $"[DISTANCE-DEBUG] Rect1: Min=({current.SleeveBoundingBoxMinX:F3}, {current.SleeveBoundingBoxMinY:F3}), Max=({current.SleeveBoundingBoxMaxX:F3}, {current.SleeveBoundingBoxMaxY:F3})\n");
-            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
-                $"[DISTANCE-DEBUG] Rect2: Min=({other.SleeveBoundingBoxMinX:F3}, {other.SleeveBoundingBoxMinY:F3}), Max=({other.SleeveBoundingBoxMaxX:F3}, {other.SleeveBoundingBoxMaxY:F3})\n");
-            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
-                $"[DISTANCE-DEBUG] HostType={current.StructuralElementType}, Orientation={orientation}\n");
+            DebugLogger.Info($"[DISTANCE-DEBUG] Rect1: Min=({current.SleeveBoundingBoxMinX:F3}, {current.SleeveBoundingBoxMinY:F3}), Max=({current.SleeveBoundingBoxMaxX:F3}, {current.SleeveBoundingBoxMaxY:F3})\n");
+            DebugLogger.Info($"[DISTANCE-DEBUG] Rect2: Min=({other.SleeveBoundingBoxMinX:F3}, {other.SleeveBoundingBoxMinY:F3}), Max=({other.SleeveBoundingBoxMaxX:F3}, {other.SleeveBoundingBoxMaxY:F3})\n");
+            DebugLogger.Info($"[DISTANCE-DEBUG] HostType={current.StructuralElementType}, Orientation={orientation}\n");
             
             // ✅ CRITICAL FIX: Use orientation from grouping logic instead of ClashZone orientation
             // For floor sleeves, orientation="Floor" (unified for all floor sleeves)
@@ -1302,12 +1283,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 else if (orientation == "Y")
                 {
                     // Wall/Framing sleeves (Y orientation): Use Y,Z distance only (ignore X coordinate)
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
-                        $"[DISTANCE-DEBUG] Using Y,Z coordinates for Y-oriented walls\n");
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
-                        $"[DISTANCE-DEBUG] Rect1 YZ: Min=({current.SleeveBoundingBoxMinY:F3}, {current.SleeveBoundingBoxMinZ:F3}), Max=({current.SleeveBoundingBoxMaxY:F3}, {current.SleeveBoundingBoxMaxZ:F3})\n");
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
-                        $"[DISTANCE-DEBUG] Rect2 YZ: Min=({other.SleeveBoundingBoxMinY:F3}, {other.SleeveBoundingBoxMinZ:F3}), Max=({other.SleeveBoundingBoxMaxY:F3}, {other.SleeveBoundingBoxMaxZ:F3})\n");
+                    DebugLogger.Info($"[DISTANCE-DEBUG] Using Y,Z coordinates for Y-oriented walls\n");
+                    DebugLogger.Info($"[DISTANCE-DEBUG] Rect1 YZ: Min=({current.SleeveBoundingBoxMinY:F3}, {current.SleeveBoundingBoxMinZ:F3}), Max=({current.SleeveBoundingBoxMaxY:F3}, {current.SleeveBoundingBoxMaxZ:F3})\n");
+                    DebugLogger.Info($"[DISTANCE-DEBUG] Rect2 YZ: Min=({other.SleeveBoundingBoxMinY:F3}, {other.SleeveBoundingBoxMinZ:F3}), Max=({other.SleeveBoundingBoxMaxY:F3}, {other.SleeveBoundingBoxMaxZ:F3})\n");
                     minDistance = CalculateMinimumDistance2D(
                         current.SleeveBoundingBoxMinY, current.SleeveBoundingBoxMinZ, current.SleeveBoundingBoxMaxY, current.SleeveBoundingBoxMaxZ,
                         other.SleeveBoundingBoxMinY, other.SleeveBoundingBoxMinZ, other.SleeveBoundingBoxMaxY, other.SleeveBoundingBoxMaxZ);
@@ -1336,8 +1314,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             if (shouldLogDistance)
             {
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
-                $"[DISTANCE-DEBUG] Calculated distance: {UnitUtils.ConvertFromInternalUnits(minDistance, UnitTypeId.Millimeters):F1}mm, Tolerance: {UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm\n");
+                DebugLogger.Info($"[DISTANCE-DEBUG] Calculated distance: {UnitUtils.ConvertFromInternalUnits(minDistance, UnitTypeId.Millimeters):F1}mm, Tolerance: {UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm\n");
             }
             
             return minDistance <= toleranceDist;
@@ -1638,7 +1615,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             try
             {
-                var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                var filtersDirectory = ProjectPathService.GetFiltersDirectory(_doc);
                 
                 if (!Directory.Exists(filtersDirectory))
                 {
@@ -1941,7 +1918,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             try
             {
-                var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                var filtersDirectory = ProjectPathService.GetFiltersDirectory(_doc);
                 
                 if (!Directory.Exists(filtersDirectory))
                 {
@@ -2067,7 +2044,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 DebugLogger.Warning($"[UniversalClusterService] MEP Element ID {mepElementId} not found in cache (cache size: {_clashZoneCache?.Count ?? 0})");
 
-                var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                var filtersDirectory = ProjectPathService.GetFiltersDirectory(_doc);
 
                 if (!Directory.Exists(filtersDirectory))
                     return null;
@@ -2338,8 +2315,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 
                 DebugLogger.Log($"[ClusterService] {groupKey.hostType} orientation from XML: '{xmlOrientation}', rotation angle: {rotationAngle * 180 / Math.PI}°");
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                    $"[ROTATION] {groupKey.hostType} orientation: {xmlOrientation}, rotation: {rotationAngle * 180 / Math.PI}°\n");
+                DebugLogger.Info($"[ROTATION] {groupKey.hostType} orientation: {xmlOrientation}, rotation: {rotationAngle * 180 / Math.PI}°\n");
             }
 
             if (rotationAngle != 0.0)
@@ -2357,15 +2333,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             // ✅ DEBUG: Log before calling SetClusterSleeveMetadata
             DebugLogger.Info($"[PlaceClusterSleeve] About to call SetClusterSleeveMetadata for cluster sleeve {inst.Id}, targetCategory='{targetCategory}'");
-            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                $"[PlaceClusterSleeve] About to call SetClusterSleeveMetadata for cluster sleeve {inst.Id}, targetCategory='{targetCategory}'\n");
+            DebugLogger.Info($"[PlaceClusterSleeve] About to call SetClusterSleeveMetadata for cluster sleeve {inst.Id}, targetCategory='{targetCategory}'\n");
             
             // CRITICAL FIX: Set metadata parameters for cluster sleeve
             SetClusterSleeveMetadata(inst, targetCategory);
 
             // ✅ FIXED: Set MEP_ElementId on cluster sleeve using XML data
             var firstSleeve = cluster.FirstOrDefault();
-            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[MEP_ElementId] First sleeve ID: {firstSleeve?.SleeveInstanceId}\n");
+            DebugLogger.Info($"[MEP_ElementId] First sleeve ID: {firstSleeve?.SleeveInstanceId}\n");
             
             if (firstSleeve != null)
             {
@@ -2374,24 +2349,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (clashZone != null && clashZone.MepElementIdValue > 0)
                 {
                     long mepElementId = clashZone.MepElementIdValue;
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[MEP_ElementId] Value from XML: {mepElementId}\n");
+                    DebugLogger.Info($"[MEP_ElementId] Value from XML: {mepElementId}\n");
                     
                     var clusterMepElementIdParam = inst.LookupParameter("MEP_ElementId");
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[MEP_ElementId] Parameter found on cluster: {clusterMepElementIdParam != null}, ReadOnly: {clusterMepElementIdParam?.IsReadOnly}\n");
+                    DebugLogger.Info($"[MEP_ElementId] Parameter found on cluster: {clusterMepElementIdParam != null}, ReadOnly: {clusterMepElementIdParam?.IsReadOnly}\n");
                     
                     if (clusterMepElementIdParam != null && !clusterMepElementIdParam.IsReadOnly)
                     {
                         clusterMepElementIdParam.Set(mepElementId);
-                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"✓ Set MEP_ElementId = {mepElementId} on cluster sleeve {inst.Id}\n");
+                        DebugLogger.Info($"[DEBUG] ✓ Set MEP_ElementId = {mepElementId} on cluster sleeve {inst.Id}\n");
                     }
                     else
                     {
-                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"✗ Cannot set MEP_ElementId on cluster sleeve {inst.Id} (param null or readonly)\n");
+                        DebugLogger.Info($"[DEBUG] ✗ Cannot set MEP_ElementId on cluster sleeve {inst.Id} (param null or readonly)\n");
                     }
                 }
                 else
                 {
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"✗ MEP_ElementId not found in XML for sleeve {firstSleeve.SleeveInstanceId}\n");
+                    DebugLogger.Info($"[DEBUG] ✗ MEP_ElementId not found in XML for sleeve {firstSleeve.SleeveInstanceId}\n");
                 }
             }
 
@@ -2401,7 +2376,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             MarkClashZonesAsClusterResolvedWithSleeveId(cluster, inst.Id, xmlFilePath);
             
             DebugLogger.Log($"[ClusterService] About to delete {cluster.Count} individual sleeves for cluster sleeve {inst.Id.IntegerValue}");
-            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] About to delete {cluster.Count} individual sleeves for cluster sleeve {inst.Id.IntegerValue} (hostType={groupKey.hostType})\n");
+            DebugLogger.Info($"[DELETE] About to delete {cluster.Count} individual sleeves for cluster sleeve {inst.Id.IntegerValue} (hostType={groupKey.hostType})\n");
 
             // Delete originals - collect ElementIds first, then delete in batch
             var sleevesToDelete = new List<ElementId>();
@@ -2413,7 +2388,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var sleeveElementId = new ElementId(s.SleeveInstanceId);
                     var sleeveElement = doc.GetElement(sleeveElementId);
                     
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] Checking sleeve {sleeveElementId.IntegerValue}: found={sleeveElement != null}, isFamilyInstance={sleeveElement is FamilyInstance}\n");
+                    DebugLogger.Info($"[DELETE] Checking sleeve {sleeveElementId.IntegerValue}: found={sleeveElement != null}, isFamilyInstance={sleeveElement is FamilyInstance}\n");
                     
                     if (sleeveElement != null && sleeveElement is FamilyInstance sleeveInstance)
                     {
@@ -2423,29 +2398,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     else
                     {
                         DebugLogger.Warning($"[ClusterService] Could not find sleeve {s.SleeveInstanceId} for deletion");
-                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] ✗ Sleeve {sleeveElementId.IntegerValue} not found or not a FamilyInstance\n");
+                        DebugLogger.Info($"[DELETE] ✗ Sleeve {sleeveElementId.IntegerValue} not found or not a FamilyInstance\n");
                     }
                 }
                 catch (Exception ex)
                 {
                     DebugLogger.Error($"[ClusterService] Error preparing sleeve {s.SleeveInstanceId} for deletion: {ex.Message}");
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] ✗ Exception preparing sleeve: {ex.Message}\n");
+                    DebugLogger.Info($"[DELETE] ✗ Exception preparing sleeve: {ex.Message}\n");
                 }
             }
             
-            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] Total sleeves queued for deletion: {sleevesToDelete.Count}\n");
+            DebugLogger.Info($"[DELETE] Total sleeves queued for deletion: {sleevesToDelete.Count}\n");
             
             // Delete all sleeves in batch (within the same transaction)
             if (sleevesToDelete.Count > 0)
             {
                 try
                 {
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] Calling doc.Delete() for {sleevesToDelete.Count} sleeves (hostType={groupKey.hostType})\n");
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] Document modifiable: {doc.IsModifiable}\n");
+                    DebugLogger.Info($"[DELETE] Calling doc.Delete() for {sleevesToDelete.Count} sleeves (hostType={groupKey.hostType})\n");
+                    DebugLogger.Info($"[DELETE] Document modifiable: {doc.IsModifiable}\n");
                     doc.Delete(sleevesToDelete);
                     deleted = sleevesToDelete.Count;
                     DebugLogger.Log($"[ClusterService] Successfully deleted {deleted} individual sleeves in batch");
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] ✓ Successfully deleted {deleted} individual sleeves in batch (hostType={groupKey.hostType})\n");
+                    DebugLogger.Info($"[DELETE] ✓ Successfully deleted {deleted} individual sleeves in batch (hostType={groupKey.hostType})\n");
                     
                     // ✅ VERIFY: Check if sleeves were actually deleted
                     int stillExists = 0;
@@ -2455,25 +2430,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (stillThere != null)
                         {
                             stillExists++;
-                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] ⚠️ WARNING: Sleeve {sleeveId.IntegerValue} still exists after deletion attempt!\n");
+                            DebugLogger.Info($"[DELETE] ⚠️ WARNING: Sleeve {sleeveId.IntegerValue} still exists after deletion attempt!\n");
                         }
                     }
                     if (stillExists > 0)
                     {
-                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] ⚠️ WARNING: {stillExists} sleeves still exist after deletion attempt!\n");
+                        DebugLogger.Info($"[DELETE] ⚠️ WARNING: {stillExists} sleeves still exist after deletion attempt!\n");
                     }
                 }
                 catch (Exception ex)
                 {
                     DebugLogger.Error($"[ClusterService] Error deleting sleeves in batch: {ex.Message}");
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] ✗ Error deleting sleeves: {ex.Message} (hostType={groupKey.hostType})\n");
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] Stack trace: {ex.StackTrace}\n");
+                    DebugLogger.Info($"[DELETE] ✗ Error deleting sleeves: {ex.Message} (hostType={groupKey.hostType})\n");
+                    DebugLogger.Info($"[DELETE] Stack trace: {ex.StackTrace}\n");
                     deleted = 0;
                 }
             }
             else
             {
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", $"[DELETE] ⚠️ No sleeves to delete (sleevesToDelete.Count=0) for hostType={groupKey.hostType}\n");
+                DebugLogger.Info($"[DELETE] ⚠️ No sleeves to delete (sleevesToDelete.Count=0) for hostType={groupKey.hostType}\n");
             }
         }
 
@@ -2550,8 +2525,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DebugLogger.Log($"[ClusterService] Using calculated depth as fallback: {UnitUtils.ConvertFromInternalUnits(hostThickness, UnitTypeId.Millimeters):F1}mm");
                 }
                 
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                    $"[CLUSTER-DIM] Sleeve {inst.Id}: Calculated Depth = {UnitUtils.ConvertFromInternalUnits(openingDepth, UnitTypeId.Millimeters):F1}mm, Final HostThickness = {UnitUtils.ConvertFromInternalUnits(hostThickness, UnitTypeId.Millimeters):F1}mm\n");
+                DebugLogger.Info($"[CLUSTER-DIM] Sleeve {inst.Id}: Calculated Depth = {UnitUtils.ConvertFromInternalUnits(openingDepth, UnitTypeId.Millimeters):F1}mm, Final HostThickness = {UnitUtils.ConvertFromInternalUnits(hostThickness, UnitTypeId.Millimeters):F1}mm\n");
                     
                 // Set the mapped dimensions (use hostThickness for depth instead of openingDepth)
                 if (widthParam != null && !widthParam.IsReadOnly) widthParam.Set(openingWidth);
@@ -2664,8 +2638,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Info($"[UniversalClusterService] Cluster ID: {clusterInstance.Id.IntegerValue}, Original sleeves: {originalSleeves.Count}, SystemType: {systemType}");
                 
                 // ✅ DEBUG: Log the category mapping
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_management_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] UpdateClashZoneFlagsForCluster: systemType='{systemType}', clusterId={clusterInstance.Id.IntegerValue}\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] UpdateClashZoneFlagsForCluster: systemType='{systemType}', clusterId={clusterInstance.Id.IntegerValue}\n");
 
                 // Map systemType to category (Ducts → ducts, Pipes → pipes, etc.)
                 // systemType comes from GetCategoryFromMepElementId which returns clashZone.MepElementCategory (plural)
@@ -2685,8 +2658,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Info($"[UniversalClusterService] Loading clash zones for category: {category}");
                 
                 // ✅ DEBUG: Log the category mapping result
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_management_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] Category mapping: '{systemType}' → '{category}'\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Category mapping: '{systemType}' → '{category}'\n");
 
                 // Load clash zones from XML
                 var clashZones = LoadClashZonesFromRegularXml(null, category, doc);
@@ -2858,14 +2830,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 
                 DebugLogger.Info($"[UniversalClusterService] Saved {updatedCount} MarkedForClusteringSleeveProcess flags and preserved IsCurrentClash flags to XML");
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
-                    $"SAVED FLAGS: {updatedCount} MarkedForClusteringSleeveProcess flags saved, IsCurrentClash flags preserved\n");
+                DebugLogger.Info($"[DEBUG] SAVED FLAGS: {updatedCount} MarkedForClusteringSleeveProcess flags saved, IsCurrentClash flags preserved\n");
             }
             catch (Exception ex)
             {
                 DebugLogger.Error($"[UniversalClusterService] Error saving cluster flags: {ex.Message}");
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
-                    $"ERROR SAVING FLAGS: {ex.Message}\n");
+                DebugLogger.Info($"[DEBUG] ERROR SAVING FLAGS: {ex.Message}\n");
             }
         }
 
@@ -2934,8 +2904,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         try
         {
             DebugLogger.Info($"[SetClusterSleeveMetadata] Setting metadata for cluster sleeve {clusterSleeve.Id}, category='{category}'");
-            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                $"[SetClusterSleeveMetadata] Setting metadata for cluster sleeve {clusterSleeve.Id}, category='{category}'\n");
+            DebugLogger.Info($"[SetClusterSleeveMetadata] Setting metadata for cluster sleeve {clusterSleeve.Id}, category='{category}'\n");
             
             // ✅ OPTIONAL: Try to set MEP_Category parameter if it exists (not critical - XML has category info per sleeve)
             // Note: Opening families don't have MEP_Category parameter - XML stores category per clash zone
@@ -2946,8 +2915,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Parameter exists and is writable - set it for convenience
                 mepCategoryParam.Set(category);
                 DebugLogger.Info($"[SetClusterSleeveMetadata] Set MEP_Category = '{category}' for cluster sleeve {clusterSleeve.Id}");
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                    $"[SetClusterSleeveMetadata] ✓ Set MEP_Category = '{category}' for cluster sleeve {clusterSleeve.Id}\n");
+                DebugLogger.Info($"[SetClusterSleeveMetadata] ✓ Set MEP_Category = '{category}' for cluster sleeve {clusterSleeve.Id}\n");
             }
             // ✅ NOTE: If parameter doesn't exist, that's OK - XML lookup will use MEP Element ID and category from XML
             
@@ -3006,14 +2974,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         try
         {
             DebugLogger.Log($"[CleanupSleevesWithinClusters] 🔥 METHOD CALLED - placedClusters count: {placedClusters?.Count ?? 0}");
-            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                $"[CLEANUP-START] Method called with {placedClusters?.Count ?? 0} placed cluster sleeves\n");
+            DebugLogger.Info($"[CLEANUP-START] Method called with {placedClusters?.Count ?? 0} placed cluster sleeves\n");
             
             if (placedClusters == null || placedClusters.Count == 0)
             {
                 DebugLogger.Log("[CleanupSleevesWithinClusters] No cluster sleeves to check against");
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                    $"[CLEANUP-START] ⚠️ No cluster sleeves provided, exiting\n");
+                DebugLogger.Info($"[CLEANUP-START] ⚠️ No cluster sleeves provided, exiting\n");
                 return 0;
             }
             
@@ -3065,32 +3031,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 bool isIndividual = !isClusterSleeve && (clusterValue <= 0);
                 
                 // ✅ DEBUG: Log ALL sleeves to find missing ones
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                    $"[CLEANUP-DEBUG-ALL] Sleeve {s.Id}: Family={s.Symbol?.FamilyName}, ClusterParam={clusterValue}, SleeveInstanceId={sleeveInstanceId}, IsCluster={isClusterSleeve}, IsIndividual={isIndividual}\n");
+                DebugLogger.Info($"[CLEANUP-DEBUG-ALL] Sleeve {s.Id}: Family={s.Symbol?.FamilyName}, ClusterParam={clusterValue}, SleeveInstanceId={sleeveInstanceId}, IsCluster={isClusterSleeve}, IsIndividual={isIndividual}\n");
                 
                 return isIndividual;
             }).ToList();
             
             DebugLogger.Log($"[CleanupSleevesWithinClusters] Found {allSleeves.Count} total sleeves, {individualSleeves.Count} individual sleeves to check against {placedClusters.Count} cluster sleeves");
-            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                $"[CLEANUP] Found {allSleeves.Count} total sleeves, checking {individualSleeves.Count} individual sleeves against {placedClusters.Count} cluster sleeves\n");
+            DebugLogger.Info($"[CLEANUP] Found {allSleeves.Count} total sleeves, checking {individualSleeves.Count} individual sleeves against {placedClusters.Count} cluster sleeves\n");
             
             // ✅ BATCH DELETION: Collect all sleeves to delete first, then delete in one batch
             var sleevesToDelete = new List<(ElementId sleeveId, int clusterId, Models.ClashZone clashZone)>();
             
-            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                $"[CLEANUP-BATCH] Scanning {individualSleeves.Count} individual sleeves for deletion candidates\n");
+            DebugLogger.Info($"[CLEANUP-BATCH] Scanning {individualSleeves.Count} individual sleeves for deletion candidates\n");
             
             foreach (var individualSleeve in individualSleeves)
             {
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                    $"[CLEANUP-LOOP] Processing individual sleeve {individualSleeve.Id}\n");
+                DebugLogger.Info($"[CLEANUP-LOOP] Processing individual sleeve {individualSleeve.Id}\n");
                 
                 // ✅ FIX: Skip if this sleeve is actually a cluster sleeve in our placedClusters list
                 if (placedClusters.Any(c => c.Id.IntegerValue == individualSleeve.Id.IntegerValue))
                 {
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                        $"[CLEANUP] Skipping sleeve {individualSleeve.Id} - it's a cluster sleeve\n");
+                    DebugLogger.Info($"[CLEANUP] Skipping sleeve {individualSleeve.Id} - it's a cluster sleeve\n");
                     continue;
                 }
                 
@@ -3099,8 +3060,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var bbox = individualSleeve.get_BoundingBox(null);
                 if (bbox == null)
                 {
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                        $"[CLEANUP] Individual sleeve {individualId} has no bounding box, skipping\n");
+                    DebugLogger.Info($"[CLEANUP] Individual sleeve {individualId} has no bounding box, skipping\n");
                     continue;
                 }
                 var individualMin = bbox.Min;
@@ -3113,8 +3073,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ OPTIMIZATION: Skip sleeves that were already deleted in Stage 1
                 if (individualClashZone != null && individualClashZone.SleeveInstanceId == -1)
                 {
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                        $"[CLEANUP-SKIP] Individual sleeve {individualId} already deleted in Stage 1 (SleeveInstanceId=-1), skipping\n");
+                    DebugLogger.Info($"[CLEANUP-SKIP] Individual sleeve {individualId} already deleted in Stage 1 (SleeveInstanceId=-1), skipping\n");
                     continue;
                 }
                 
@@ -3138,8 +3097,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         individualHostType != clusterHostType)
                     {
                         // Skip comparison if host types don't match (Floor vs Wall, etc.)
-                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                            $"[CLEANUP-SKIP] Individual sleeve {individualSleeve.Id} (hostType={individualHostType}) skipped cluster {clusterId} (hostType={clusterHostType})\n");
+                        DebugLogger.Info($"[CLEANUP-SKIP] Individual sleeve {individualSleeve.Id} (hostType={individualHostType}) skipped cluster {clusterId} (hostType={clusterHostType})\n");
                         continue;
                     }
                     
@@ -3149,8 +3107,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (clusterClashZone == null || 
                         (clusterClashZone.ClusterSleeveBoundingBoxMinX == 0 && clusterClashZone.ClusterSleeveBoundingBoxMinY == 0))
                     {
-                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                            $"[CLEANUP] Cluster sleeve {clusterId} not found in cache or no bbox data (MinX={clusterClashZone?.ClusterSleeveBoundingBoxMinX ?? 0}), skipping\n");
+                        DebugLogger.Info($"[CLEANUP] Cluster sleeve {clusterId} not found in cache or no bbox data (MinX={clusterClashZone?.ClusterSleeveBoundingBoxMinX ?? 0}), skipping\n");
                         continue;
                     }
                     
@@ -3158,26 +3115,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var clusterMin = new XYZ(clusterClashZone.ClusterSleeveBoundingBoxMinX, clusterClashZone.ClusterSleeveBoundingBoxMinY, clusterClashZone.ClusterSleeveBoundingBoxMinZ);
                     var clusterMax = new XYZ(clusterClashZone.ClusterSleeveBoundingBoxMaxX, clusterClashZone.ClusterSleeveBoundingBoxMaxY, clusterClashZone.ClusterSleeveBoundingBoxMaxZ);
                     
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                        $"[CLEANUP] Cluster sleeve {clusterId} bbox from CACHE: Min=({clusterClashZone.ClusterSleeveBoundingBoxMinX:F6}, {clusterClashZone.ClusterSleeveBoundingBoxMinY:F6}), Max=({clusterClashZone.ClusterSleeveBoundingBoxMaxX:F6}, {clusterClashZone.ClusterSleeveBoundingBoxMaxY:F6})\n");
+                    DebugLogger.Info($"[CLEANUP] Cluster sleeve {clusterId} bbox from CACHE: Min=({clusterClashZone.ClusterSleeveBoundingBoxMinX:F6}, {clusterClashZone.ClusterSleeveBoundingBoxMinY:F6}), Max=({clusterClashZone.ClusterSleeveBoundingBoxMaxX:F6}, {clusterClashZone.ClusterSleeveBoundingBoxMaxY:F6})\n");
                     
                     // ✅ ENHANCED LOGGING: Show bounding boxes before checking (with Z coordinates for floors)
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                        $"[CLEANUP-CHECK] Individual sleeve {individualId}: Min=({individualMin.X:F3}, {individualMin.Y:F3}, {individualMin.Z:F3}), Max=({individualMax.X:F3}, {individualMax.Y:F3}, {individualMax.Z:F3})\n");
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                        $"[CLEANUP-CHECK] Cluster sleeve {clusterId}: Min=({clusterMin.X:F3}, {clusterMin.Y:F3}, {clusterMin.Z:F3}), Max=({clusterMax.X:F3}, {clusterMax.Y:F3}, {clusterMax.Z:F3})\n");
+                    DebugLogger.Info($"[CLEANUP-CHECK] Individual sleeve {individualId}: Min=({individualMin.X:F3}, {individualMin.Y:F3}, {individualMin.Z:F3}), Max=({individualMax.X:F3}, {individualMax.Y:F3}, {individualMax.Z:F3})\n");
+                    DebugLogger.Info($"[CLEANUP-CHECK] Cluster sleeve {clusterId}: Min=({clusterMin.X:F3}, {clusterMin.Y:F3}, {clusterMin.Z:F3}), Max=({clusterMax.X:F3}, {clusterMax.Y:F3}, {clusterMax.Z:F3})\n");
                     
                     // Check if individual sleeve is completely within cluster sleeve bounding box
                     bool withinBounds = IsWithinBounds(individualMin, individualMax, clusterMin, clusterMax);
                     
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                        $"[CLEANUP-CHECK] Individual {individualId} within Cluster {clusterId}: {withinBounds}\n");
+                    DebugLogger.Info($"[CLEANUP-CHECK] Individual {individualId} within Cluster {clusterId}: {withinBounds}\n");
                     
                     if (withinBounds)
                     {
                         DebugLogger.Log($"[CleanupSleevesWithinClusters] Individual sleeve {individualSleeve.Id} falls within cluster sleeve {clusterSleeve.Id} - marking for deletion");
-                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                            $"[CLEANUP-MARK] Individual sleeve {individualSleeve.Id} falls within cluster sleeve {clusterSleeve.Id} - marking for deletion\n");
+                        DebugLogger.Info($"[CLEANUP-MARK] Individual sleeve {individualSleeve.Id} falls within cluster sleeve {clusterSleeve.Id} - marking for deletion\n");
                         
                         markedForDeletion = true;
                         deletingClusterId = clusterId;
@@ -3215,8 +3167,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             clashZone.ClusterSleeveInstanceId = clusterId;
                             clashZone.SleeveInstanceId = -1;
                         }
-                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                            $"[CLEANUP-FLAGS] Updated flags for {sleeveId.IntegerValue}: IsResolved=True, IsClusterResolved=True, ClusterSleeveId={clusterId}\n");
+                        DebugLogger.Info($"[CLEANUP-FLAGS] Updated flags for {sleeveId.IntegerValue}: IsResolved=True, IsClusterResolved=True, ClusterSleeveId={clusterId}\n");
                     }
                 }
                 catch (Exception ex)
@@ -3267,10 +3218,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         double coverage = (individualVolume > 0) ? (overlapVolume / individualVolume) * 100.0 : 0.0;
         
         // Log coverage for debugging
-        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-            $"[CLEANUP-COVERAGE] Individual: W={individualMax.X - individualMin.X:F3}, H={individualMax.Y - individualMin.Y:F3}, D={individualMax.Z - individualMin.Z:F3}, Vol={individualVolume:F6}\n");
-        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-            $"[CLEANUP-COVERAGE] Overlap: W={overlapMaxX - overlapMinX:F3}, H={overlapMaxY - overlapMinY:F3}, D={overlapMaxZ - overlapMinZ:F3}, Vol={overlapVolume:F6}, Coverage={coverage:F1}%\n");
+        DebugLogger.Info($"[CLEANUP-COVERAGE] Individual: W={individualMax.X - individualMin.X:F3}, H={individualMax.Y - individualMin.Y:F3}, D={individualMax.Z - individualMin.Z:F3}, Vol={individualVolume:F6}\n");
+        DebugLogger.Info($"[CLEANUP-COVERAGE] Overlap: W={overlapMaxX - overlapMinX:F3}, H={overlapMaxY - overlapMinY:F3}, D={overlapMaxZ - overlapMinZ:F3}, Vol={overlapVolume:F6}, Coverage={coverage:F1}%\n");
         
         // Return true if coverage is 75% or more
         return coverage >= 75.0;
@@ -3350,14 +3299,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 
                 DebugLogger.Info($"[SaveUpdatedFlagsToXml] ✅ Saved {updatedCount} updated flag changes to {xmlFilePath}");
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                    $"[SAVE-XML] Updated {updatedCount} clash zone flags after cleanup\n");
+                DebugLogger.Info($"[SAVE-XML] Updated {updatedCount} clash zone flags after cleanup\n");
             }
             catch (Exception ex)
             {
                 DebugLogger.Error($"[SaveUpdatedFlagsToXml] Error: {ex.Message}");
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log", 
-                    $"[SAVE-XML-ERROR] {ex.Message}\n");
+                DebugLogger.Info($"[SAVE-XML-ERROR] {ex.Message}\n");
             }
         }
     }

@@ -1350,8 +1350,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     };
                     
                     // Debug: Log the prefix values being used
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\ui_mark_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss}] Apply Marks - Project: '{projectPrefix}', Duct: '{ductPrefix}', Pipe: '{pipePrefix}', CableTray: '{cableTrayPrefix}', Damper: '{damperPrefix}', Format: '{numberFormat}'\n");
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Apply Marks - Project: '{projectPrefix}', Duct: '{ductPrefix}', Pipe: '{pipePrefix}', CableTray: '{cableTrayPrefix}', Damper: '{damperPrefix}', Format: '{numberFormat}'\n");
                     
                     // Apply Marks: Mark ALL sleeves regardless of checkbox state
                     // remarkAll=false means skip sleeves that already have marks

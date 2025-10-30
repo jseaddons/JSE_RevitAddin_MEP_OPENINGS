@@ -238,6 +238,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void InitCustomLogFileOverwrite(string logFileName)
         {
+            // ✅ DEPLOYMENT MODE: Skip all logging if deployment mode is enabled
+            if (DeploymentConfiguration.DeploymentMode)
+                return;
+            
             // IMMEDIATE DEBUG - Write to file directly to ensure this method is called
             string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
             try

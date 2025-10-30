@@ -51,21 +51,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public void ExecuteMultipleFilters(List<OpeningFilter> filters, bool showProgress = true)
         {
             // 🔥 CRITICAL DEBUG: Direct file logging to trace orchestrator execution
-            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                $"[{DateTime.Now:HH:mm:ss}] 🔥 ExecuteMultipleFilters CALLED 🔥\n");
+            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥 ExecuteMultipleFilters CALLED 🔥\n");
             
             DebugLogger.Info("[OpeningCommandOrchestrator] 🔥 ExecuteMultipleFilters CALLED 🔥");
             
             if (filters == null || filters.Count == 0)
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] ❌ No filters provided\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ❌ No filters provided\n");
                 DebugLogger.Warning("[OpeningCommandOrchestrator] No filters provided");
                 return;
             }
 
-            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                $"[{DateTime.Now:HH:mm:ss}] Starting execution of {filters.Count} filters\n");
+            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Starting execution of {filters.Count} filters\n");
             DebugLogger.Info($"[OpeningCommandOrchestrator] Starting execution of {filters.Count} filters");
 
             try
@@ -239,8 +236,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 // 🔥 CRITICAL DEBUG: Log clustering attempt
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 🔥 ExecuteClusteringForCategory CALLED for category: {filter.Category} 🔥\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥 ExecuteClusteringForCategory CALLED for category: {filter.Category} 🔥\n");
                 
                 // Convert MepCategory enum to string for cluster command
                 string categoryString = filter.Category switch
@@ -252,8 +248,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     _ => "Ducts"
                 };
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 🔥 Starting clustering for category: {categoryString} 🔥\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥 Starting clustering for category: {categoryString} 🔥\n");
                 
                 DebugLogger.Info($"[OpeningCommandOrchestrator] Starting clustering for category: {categoryString}");
                 
@@ -340,8 +335,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] ❌ ERROR in ExecuteClusteringForCategory: {ex.Message}\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ❌ ERROR in ExecuteClusteringForCategory: {ex.Message}\n");
                 DebugLogger.Error($"[OpeningCommandOrchestrator] Error clustering {filter.Category}: {ex.Message}");
                 DebugLogger.Error($"[OpeningCommandOrchestrator] Stack trace: {ex.StackTrace}");
                 // Don't throw - clustering failure shouldn't stop the entire process
@@ -385,19 +379,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Info($"[OpeningCommandOrchestrator] Looking for clash zones in: {xmlFilePath}");
                 
                 // 🔥 CRITICAL DEBUG: Force direct file logging to trace orchestrator execution
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 🔍 INDIVIDUAL SLEEVE SERVICE READING FROM: {xmlFilePath}\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔍 INDIVIDUAL SLEEVE SERVICE READING FROM: {xmlFilePath}\n");
 
                 if (!File.Exists(xmlFilePath))
                 {
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] ❌ XML file not found: {xmlFilePath}\n");
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ❌ XML file not found: {xmlFilePath}\n");
                     DebugLogger.Warning($"[OpeningCommandOrchestrator] XML file not found: {xmlFilePath}");
                     return new List<ClashZone>();
                 }
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] ✅ XML file found: {xmlFilePath}\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ XML file found: {xmlFilePath}\n");
 
                 // Load clash zones from XML
                 var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
@@ -405,8 +396,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 // 🔥 CRITICAL DEBUG: Log raw XML content before deserialization
                 string rawXmlContent = File.ReadAllText(xmlFilePath);
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 🔍 RAW XML CONTENT (first 1000 chars): {rawXmlContent.Substring(0, Math.Min(1000, rawXmlContent.Length))}\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔍 RAW XML CONTENT (first 1000 chars): {rawXmlContent.Substring(0, Math.Min(1000, rawXmlContent.Length))}\n");
                 
                 using (var reader = new StreamReader(xmlFilePath))
                 {
@@ -418,29 +408,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (loadedFilter?.ClashZoneStorage?.ClashZones != null)
                 {
                     clashZones = loadedFilter.ClashZoneStorage.ClashZones;
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] ✅ Successfully loaded {clashZones.Count} clash zones from {xmlFilePath}\n");
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Successfully loaded {clashZones.Count} clash zones from {xmlFilePath}\n");
                     
                 // 🔥 CRITICAL DEBUG: Check flag values immediately after deserialization
                 int clusterResolvedCount = clashZones.Count(cz => cz.IsClusterResolved);
                 int individualResolvedCount = clashZones.Count(cz => cz.IsResolved);
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 📊 FLAGS AFTER XML DESERIALIZATION: IsClusterResolved=True: {clusterResolvedCount}, IsResolved=True: {individualResolvedCount}\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 📊 FLAGS AFTER XML DESERIALIZATION: IsClusterResolved=True: {clusterResolvedCount}, IsResolved=True: {individualResolvedCount}\n");
                 
                 // 🔥 CRITICAL DEBUG: Log individual clash zone flag values to identify the issue
                 for (int i = 0; i < clashZones.Count && i < 5; i++) // Log first 5 clash zones
                 {
                     var cz = clashZones[i];
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] 🔍 ClashZone {i}: IsResolved={cz.IsResolved}, IsClusterResolved={cz.IsClusterResolved}, ClusterSleeveInstanceId={cz.ClusterSleeveInstanceId}\n");
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔍 ClashZone {i}: IsResolved={cz.IsResolved}, IsClusterResolved={cz.IsClusterResolved}, ClusterSleeveInstanceId={cz.ClusterSleeveInstanceId}\n");
                 }
                     
                     DebugLogger.Info($"[OpeningCommandOrchestrator] Successfully loaded {clashZones.Count} clash zones from {xmlFilePath}");
                 }
                 else
                 {
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] ❌ No clash zones found in XML file: {xmlFilePath}\n");
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ❌ No clash zones found in XML file: {xmlFilePath}\n");
                     DebugLogger.Warning($"[OpeningCommandOrchestrator] No clash zones found in XML file: {xmlFilePath}");
                 }
 
@@ -461,12 +447,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 // 🔥 CRITICAL DEBUG: Direct file logging to trace orchestrator execution
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 🔥 ExecuteUniversalSleevePlacement CALLED 🔥\n");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] Filter Category: {filter.Category}\n");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] UI Clearances Count: {_uiClearances?.Count ?? 0}\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥 ExecuteUniversalSleevePlacement CALLED 🔥\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Filter Category: {filter.Category}\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] UI Clearances Count: {_uiClearances?.Count ?? 0}\n");
                 
                 DebugLogger.Info($"[OpeningCommandOrchestrator] Executing UniversalSleevePlacementCommand for {filter.Category}");
 
@@ -478,8 +461,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     // 🔥 CRITICAL DEBUG: Log which XML file we're passing clash zones from
                     string xmlFilePath = GetXmlFilePathForFilter(filter);
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] 🔍 PASSING CLASH ZONES FROM XML FILE: {xmlFilePath}\n");
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔍 PASSING CLASH ZONES FROM XML FILE: {xmlFilePath}\n");
                     
                     // ✅ CRITICAL FIX: Convert enum to proper string format for strategy creation
                     string categoryString = filter.Category switch
@@ -502,18 +484,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     };
                     string combinedFilterName = $"{filter.Name}_{categoryName}.xml"; // Added .xml
                     
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] About to create UniversalSleevePlacementCommand for category: {categoryString}, filter: {combinedFilterName}\n");
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] About to create UniversalSleevePlacementCommand for category: {categoryString}, filter: {combinedFilterName}\n");
                     
                     var universalCommand = new UniversalSleevePlacementCommand(_document, clashZones, categoryString, combinedFilterName, _uiClearances);
                     
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] UniversalSleevePlacementCommand created successfully, about to execute\n");
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] UniversalSleevePlacementCommand created successfully, about to execute\n");
                     
                     universalCommand.Execute(_uiDocument.Application);
                     
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] UniversalSleevePlacementCommand executed successfully\n");
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] UniversalSleevePlacementCommand executed successfully\n");
                     
                     DebugLogger.Info($"[OpeningCommandOrchestrator] UniversalSleevePlacementCommand completed successfully");
                     
@@ -521,19 +500,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Clustering proximity calculation REQUIRES individual sleeve bounding boxes from XML
                     try
                     {
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] Getting individual sleeve bounding boxes from Revit...\n");
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Getting individual sleeve bounding boxes from Revit...\n");
                         
                         var coordinateService = new SleeveCoordinateService(_document);
                         coordinateService.UpdateSleeveCoordinatesInXml(xmlFilePath);
                         
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] ✅ Individual sleeve coordinates saved - clustering can now calculate proximity\n");
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Individual sleeve coordinates saved - clustering can now calculate proximity\n");
                     }
                     catch (Exception coordEx)
                     {
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ Error saving individual coordinates: {coordEx.Message}\n");
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ⚠️ Error saving individual coordinates: {coordEx.Message}\n");
                     }
                 }
                 else
@@ -543,10 +519,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] ❌ EXCEPTION in ExecuteUniversalSleevePlacement: {ex.Message}\n");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] Stack trace: {ex.StackTrace}\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ❌ EXCEPTION in ExecuteUniversalSleevePlacement: {ex.Message}\n");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Stack trace: {ex.StackTrace}\n");
                 DebugLogger.Error($"[OpeningCommandOrchestrator] Error executing UniversalSleevePlacementCommand: {ex.Message}");
                 throw;
             }

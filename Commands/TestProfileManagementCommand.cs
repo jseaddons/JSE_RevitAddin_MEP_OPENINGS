@@ -23,23 +23,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             // IMMEDIATE LOGGING - Create timestamped file as soon as command starts
             string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
             string logPath = $@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\command_started_{timestamp}.log";
-            try
+            // ✅ DEPLOYMENT MODE: Skip hardcoded log writes if deployment mode is enabled
+            if (!DeploymentConfiguration.DeploymentMode)
             {
-                File.AppendAllText(logPath, $"[{DateTime.Now}] TestProfileManagementCommand.Execute() STARTED (DIRECT ADD-IN LOAD)\n");
-                File.AppendAllText(logPath, $"[{DateTime.Now}] Log file: command_started_{timestamp}.log\n");
-                File.AppendAllText(logPath, $"[{DateTime.Now}] commandData: {commandData != null}\n");
-                File.AppendAllText(logPath, $"[{DateTime.Now}] commandData.Application: {commandData?.Application != null}\n");
-                File.AppendAllText(logPath, $"[{DateTime.Now}] Loading method: DIRECT ADD-IN MANAGER\n");
-            }
-            catch (Exception ex)
-            {
-                // If even this fails, try a different location with timestamp
                 try
                 {
-                    File.AppendAllText($@"C:\temp\revit_command_{timestamp}.log", $"[{DateTime.Now}] Command started but main log failed: {ex.Message}\n");
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] TestProfileManagementCommand.Execute() STARTED (DIRECT ADD-IN LOAD)\n");
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] Log file: command_started_{timestamp}.log\n");
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] commandData: {commandData != null}\n");
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] commandData.Application: {commandData?.Application != null}\n");
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] Loading method: DIRECT ADD-IN MANAGER\n");
                 }
-                catch { }
-                return Result.Failed;
+                catch (Exception ex)
+                {
+                    // If even this fails, try a different location with timestamp
+                    try
+                    {
+                        File.AppendAllText($@"C:\temp\revit_command_{timestamp}.log", $"[{DateTime.Now}] Command started but main log failed: {ex.Message}\n");
+                    }
+                    catch { }
+                    return Result.Failed;
+                }
             }
 
             try
@@ -62,20 +66,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 // CRITICAL: Update the profile service for the current document BEFORE checking IsProfileSetupRequired
                 // This ensures we're looking at the correct project-specific profiles
                 System.Diagnostics.Debug.WriteLine("About to call UpdateForCurrentDocument");
-                File.AppendAllText(logPath, $"[{DateTime.Now}] About to call UpdateForCurrentDocument\n");
+                // ✅ DEPLOYMENT MODE: Skip log writes if deployment mode is enabled
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] About to call UpdateForCurrentDocument\n");
+                }
                 appProfileService.UpdateForCurrentDocument(doc.PathName);
                 System.Diagnostics.Debug.WriteLine("UpdateForCurrentDocument call completed");
-                File.AppendAllText(logPath, $"[{DateTime.Now}] UpdateForCurrentDocument call completed\n");
+                // ✅ DEPLOYMENT MODE: Skip log writes if deployment mode is enabled
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] UpdateForCurrentDocument call completed\n");
 
-                // Add basic logging to see which path we take
+                    // Add basic logging to see which path we take
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] ApplicationProfileService.Instance created\n");
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] Document path: {doc.PathName}\n");
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] IsProfileSetupRequired: {appProfileService.IsProfileSetupRequired}\n");
+                }
+                
+                // Add basic logging to see which path we take (to Debug output only)
                 System.Diagnostics.Debug.WriteLine("=== TestProfileManagementCommand STARTED ===");
                 System.Diagnostics.Debug.WriteLine($"Document path: {doc.PathName}");
                 System.Diagnostics.Debug.WriteLine($"IsProfileSetupRequired: {appProfileService.IsProfileSetupRequired}");
-
-                // Log to file as well
-                File.AppendAllText(logPath, $"[{DateTime.Now}] ApplicationProfileService.Instance created\n");
-                File.AppendAllText(logPath, $"[{DateTime.Now}] Document path: {doc.PathName}\n");
-                File.AppendAllText(logPath, $"[{DateTime.Now}] IsProfileSetupRequired: {appProfileService.IsProfileSetupRequired}\n");
 
                 // Note: Removed WPF Application creation to prevent "Cannot create more than one System.Windows.Application instance" error
 
@@ -84,13 +96,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 {
                     // No profiles exist - show CREATE PROFILE dialog first
                     System.Diagnostics.Debug.WriteLine("No profiles found - showing CREATE PROFILE dialog");
-                    File.AppendAllText(logPath, $"[{DateTime.Now}] No profiles found - showing CREATE PROFILE dialog\n");
+                    // ✅ DEPLOYMENT MODE: Skip log writes if deployment mode is enabled
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(logPath, $"[{DateTime.Now}] No profiles found - showing CREATE PROFILE dialog\n");
+                    }
                     
                     using (var createProfileDialog = new Views.EmergencyProfileSetup(appProfileService.ProfileService, appProfileService.StatusManager))
                     {
                         var createResult = createProfileDialog.ShowDialog();
                         System.Diagnostics.Debug.WriteLine($"Create profile dialog result: {createResult}");
-                        File.AppendAllText(logPath, $"[{DateTime.Now}] Create profile dialog result: {createResult}\n");
+                        // ✅ DEPLOYMENT MODE: Skip log writes if deployment mode is enabled
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            File.AppendAllText(logPath, $"[{DateTime.Now}] Create profile dialog result: {createResult}\n");
+                        }
                         
                         if (createResult == System.Windows.Forms.DialogResult.OK && createProfileDialog.CreatedProfile != null)
                         {
@@ -100,11 +120,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             // CRITICAL: Save the profile to ensure persistence
                             appProfileService.SaveCurrentProfile();
                             System.Diagnostics.Debug.WriteLine($"Profile saved: {createProfileDialog.CreatedProfile.Name}");
-                            File.AppendAllText(logPath, $"[{DateTime.Now}] Profile saved: {createProfileDialog.CreatedProfile.Name}\n");
+                            // ✅ DEPLOYMENT MODE: Skip log writes if deployment mode is enabled
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                File.AppendAllText(logPath, $"[{DateTime.Now}] Profile saved: {createProfileDialog.CreatedProfile.Name}\n");
+                            }
                             
                             // Then show main dialog
                             System.Diagnostics.Debug.WriteLine("Opening main dialog after profile creation");
-                            File.AppendAllText(logPath, $"[{DateTime.Now}] Opening main dialog after profile creation\n");
+                            // ✅ DEPLOYMENT MODE: Skip log writes if deployment mode is enabled
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                File.AppendAllText(logPath, $"[{DateTime.Now}] Opening main dialog after profile creation\n");
+                            }
                             
                             ShowMainDialog(appProfileService, doc, uiDoc, logPath);
                         }
@@ -114,57 +142,77 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 {
                     // Profiles exist - show PROFILE MANAGEMENT dialog first
                     System.Diagnostics.Debug.WriteLine("Profiles exist - showing PROFILE MANAGEMENT dialog");
-                    File.AppendAllText(logPath, $"[{DateTime.Now}] Profiles exist - showing PROFILE MANAGEMENT dialog\n");
+                    // ✅ DEPLOYMENT MODE: Skip log writes if deployment mode is enabled
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(logPath, $"[{DateTime.Now}] Profiles exist - showing PROFILE MANAGEMENT dialog\n");
+                    }
                     
                     using (var profileMgmtDialog = new Views.EmergencyProfileManagementDialog(appProfileService))
                     {
                         var result = profileMgmtDialog.ShowDialog();
                         System.Diagnostics.Debug.WriteLine($"Profile management dialog result: {result}");
-                        File.AppendAllText(logPath, $"[{DateTime.Now}] Profile management dialog result: {result}\n");
+                        // ✅ DEPLOYMENT MODE: Skip log writes if deployment mode is enabled
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            File.AppendAllText(logPath, $"[{DateTime.Now}] Profile management dialog result: {result}\n");
+                        }
                         
                         if (result == System.Windows.Forms.DialogResult.OK && profileMgmtDialog.ShouldOpenMainDialog)
                         {
                             // Then show main dialog
                             System.Diagnostics.Debug.WriteLine("Opening main dialog after profile management");
-                            File.AppendAllText(logPath, $"[{DateTime.Now}] Opening main dialog after profile management\n");
+                            // ✅ DEPLOYMENT MODE: Skip log writes if deployment mode is enabled
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                File.AppendAllText(logPath, $"[{DateTime.Now}] Opening main dialog after profile management\n");
                             
-                            // 🔍 DIAGNOSTIC: Count sleeves BEFORE ShowMainDialog
-                            try
-                            {
-                                var sleevesBeforeShowMain = new FilteredElementCollector(doc)
-                                    .OfClass(typeof(FamilyInstance))
-                                    .Cast<FamilyInstance>()
-                                    .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
-                                    .Count();
-                                File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Sleeves BEFORE ShowMainDialog: {sleevesBeforeShowMain}\n");
-                            }
-                            catch (Exception ex)
-                            {
-                                File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Error counting sleeves BEFORE ShowMainDialog: {ex.Message}\n");
+                                // 🔍 DIAGNOSTIC: Count sleeves BEFORE ShowMainDialog
+                                try
+                                {
+                                    var sleevesBeforeShowMain = new FilteredElementCollector(doc)
+                                        .OfClass(typeof(FamilyInstance))
+                                        .Cast<FamilyInstance>()
+                                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                                        .Count();
+                                    File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Sleeves BEFORE ShowMainDialog: {sleevesBeforeShowMain}\n");
+                                }
+                                catch (Exception ex)
+                                {
+                                    File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Error counting sleeves BEFORE ShowMainDialog: {ex.Message}\n");
+                                }
                             }
                             
                             ShowMainDialog(appProfileService, doc, uiDoc, logPath);
                             
-                            // 🔍 DIAGNOSTIC: Count sleeves AFTER ShowMainDialog
-                            try
+                            // ✅ DEPLOYMENT MODE: Skip log writes if deployment mode is enabled
+                            if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                var sleevesAfterShowMain = new FilteredElementCollector(doc)
-                                    .OfClass(typeof(FamilyInstance))
-                                    .Cast<FamilyInstance>()
-                                    .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
-                                    .Count();
-                                File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Sleeves AFTER ShowMainDialog: {sleevesAfterShowMain}\n");
-                            }
-                            catch (Exception ex)
-                            {
-                                File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Error counting sleeves AFTER ShowMainDialog: {ex.Message}\n");
+                                // 🔍 DIAGNOSTIC: Count sleeves AFTER ShowMainDialog
+                                try
+                                {
+                                    var sleevesAfterShowMain = new FilteredElementCollector(doc)
+                                        .OfClass(typeof(FamilyInstance))
+                                        .Cast<FamilyInstance>()
+                                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                                        .Count();
+                                    File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Sleeves AFTER ShowMainDialog: {sleevesAfterShowMain}\n");
+                                }
+                                catch (Exception ex)
+                                {
+                                    File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Error counting sleeves AFTER ShowMainDialog: {ex.Message}\n");
+                                }
                             }
                         }
                     }
                 }
                 
                 // Log success
-                File.AppendAllText(logPath, $"[{DateTime.Now}] Complete flow tested successfully\n");
+                // ✅ DEPLOYMENT MODE: Skip log writes if deployment mode is enabled
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] Complete flow tested successfully\n");
+                }
                 
                 // Note: Not cleaning up singleton to avoid potential issues
                 
@@ -194,61 +242,78 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         {
             try
             {
-                // 🔍 DIAGNOSTIC: Count sleeves BEFORE EmergencyMainDialog constructor
-                try
+                // ✅ DEPLOYMENT MODE: Wrap diagnostic logging in deployment mode check
+                if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    var sleevesBeforeConstructor = new FilteredElementCollector(doc)
-                        .OfClass(typeof(FamilyInstance))
-                        .Cast<FamilyInstance>()
-                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
-                        .Count();
-                    File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Sleeves BEFORE EmergencyMainDialog constructor: {sleevesBeforeConstructor}\n");
-                }
-                catch (Exception ex)
-                {
-                    File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Error counting sleeves BEFORE constructor: {ex.Message}\n");
+                    // 🔍 DIAGNOSTIC: Count sleeves BEFORE EmergencyMainDialog constructor
+                    try
+                    {
+                        var sleevesBeforeConstructor = new FilteredElementCollector(doc)
+                            .OfClass(typeof(FamilyInstance))
+                            .Cast<FamilyInstance>()
+                            .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                            .Count();
+                        File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Sleeves BEFORE EmergencyMainDialog constructor: {sleevesBeforeConstructor}\n");
+                    }
+                    catch (Exception ex)
+                    {
+                        File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Error counting sleeves BEFORE constructor: {ex.Message}\n");
+                    }
                 }
                 
                 // Show modal to ensure dialog is visible and blocks until user closes it
                 var mainDialog = new Views.EmergencyMainDialog(appProfileService, doc, uiDoc);
                 
-                // 🔍 DIAGNOSTIC: Count sleeves AFTER EmergencyMainDialog constructor (before ShowDialog)
-                try
+                // ✅ DEPLOYMENT MODE: Wrap diagnostic logging in deployment mode check
+                if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    var sleevesAfterConstructor = new FilteredElementCollector(doc)
-                        .OfClass(typeof(FamilyInstance))
-                        .Cast<FamilyInstance>()
-                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
-                        .Count();
-                    File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Sleeves AFTER EmergencyMainDialog constructor: {sleevesAfterConstructor}\n");
-                }
-                catch (Exception ex)
-                {
-                    File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Error counting sleeves AFTER constructor: {ex.Message}\n");
+                    // 🔍 DIAGNOSTIC: Count sleeves AFTER EmergencyMainDialog constructor (before ShowDialog)
+                    try
+                    {
+                        var sleevesAfterConstructor = new FilteredElementCollector(doc)
+                            .OfClass(typeof(FamilyInstance))
+                            .Cast<FamilyInstance>()
+                            .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                            .Count();
+                        File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Sleeves AFTER EmergencyMainDialog constructor: {sleevesAfterConstructor}\n");
+                    }
+                    catch (Exception ex)
+                    {
+                        File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Error counting sleeves AFTER constructor: {ex.Message}\n");
+                    }
                 }
                 
                 var dialogResult = mainDialog.ShowDialog();
-                File.AppendAllText(logPath, $"[{DateTime.Now}] Main dialog shown modal with result: {dialogResult}\n");
                 
-                // 🔍 DIAGNOSTIC: Count sleeves AFTER ShowDialog completes
-                try
+                // ✅ DEPLOYMENT MODE: Wrap diagnostic logging in deployment mode check
+                if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    var sleevesAfterShowDialog = new FilteredElementCollector(doc)
-                        .OfClass(typeof(FamilyInstance))
-                        .Cast<FamilyInstance>()
-                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
-                        .Count();
-                    File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Sleeves AFTER ShowDialog completes: {sleevesAfterShowDialog}\n");
-                }
-                catch (Exception ex)
-                {
-                    File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Error counting sleeves AFTER ShowDialog: {ex.Message}\n");
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] Main dialog shown modal with result: {dialogResult}\n");
+                    
+                    // 🔍 DIAGNOSTIC: Count sleeves AFTER ShowDialog completes
+                    try
+                    {
+                        var sleevesAfterShowDialog = new FilteredElementCollector(doc)
+                            .OfClass(typeof(FamilyInstance))
+                            .Cast<FamilyInstance>()
+                            .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                            .Count();
+                        File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Sleeves AFTER ShowDialog completes: {sleevesAfterShowDialog}\n");
+                    }
+                    catch (Exception ex)
+                    {
+                        File.AppendAllText(logPath, $"[{DateTime.Now}] 🔍 Error counting sleeves AFTER ShowDialog: {ex.Message}\n");
+                    }
                 }
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"ShowMainDialog ERROR: {ex.Message}");
-                File.AppendAllText(logPath, $"[{DateTime.Now}] ShowMainDialog ERROR: {ex.Message}\n");
+                // ✅ DEPLOYMENT MODE: Skip log writes if deployment mode is enabled
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] ShowMainDialog ERROR: {ex.Message}\n");
+                }
                 
                 // Show error to user
                 try

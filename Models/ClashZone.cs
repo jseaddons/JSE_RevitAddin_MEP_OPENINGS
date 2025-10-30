@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Xml.Serialization;
 using Autodesk.Revit.DB;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Models
 {
@@ -695,6 +696,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         }
         
         /// <summary>
+        /// ✅ MEMORY OPTIMIZATION: Clear all Revit API objects (XYZ, BoundingBoxXYZ) after coordinates are extracted
+        /// Call this after clash zone is created and all coordinates are saved to XML-serializable properties
+        /// </summary>
+        public void ClearRevitApiObjects()
+        {
+            IntersectionPoint = null;
+            ClashBoundingBox = null;
+            SleevePlacementPoint = null;
+            SleevePlacementPointActiveDocument = null;
+            WallDirection = null;
+            StructuralElementNormal = null;
+            MepElementOrientation = null;
+            // Note: ElementId objects are value types (structs), so no need to clear them
+        }
+        
+        /// <summary>
         /// ✅ CORRECT: Calculate minimum distance between two rectangles and check if within tolerance
         /// Uses 2D coordinates based on host type and orientation
         /// </summary>
@@ -705,12 +722,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
             double minDistance;
             
             // ✅ DEBUG: Log orientation values
-            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
-                $"[DISTANCE-DEBUG] Rect1: Min=({SleeveBoundingBoxMinX:F3}, {SleeveBoundingBoxMinY:F3}), Max=({SleeveBoundingBoxMaxX:F3}, {SleeveBoundingBoxMaxY:F3})\n");
-            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
-                $"[DISTANCE-DEBUG] Rect2: Min=({other.SleeveBoundingBoxMinX:F3}, {other.SleeveBoundingBoxMinY:F3}), Max=({other.SleeveBoundingBoxMaxX:F3}, {other.SleeveBoundingBoxMaxY:F3})\n");
-            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
-                $"[DISTANCE-DEBUG] HostType={StructuralElementType}, Orientation={MepElementOrientationDirection}\n");
+            DebugLogger.Info($"[DISTANCE-DEBUG] Rect1: Min=({SleeveBoundingBoxMinX:F3}, {SleeveBoundingBoxMinY:F3}), Max=({SleeveBoundingBoxMaxX:F3}, {SleeveBoundingBoxMaxY:F3})\n");
+            DebugLogger.Info($"[DISTANCE-DEBUG] Rect2: Min=({other.SleeveBoundingBoxMinX:F3}, {other.SleeveBoundingBoxMinY:F3}), Max=({other.SleeveBoundingBoxMaxX:F3}, {other.SleeveBoundingBoxMaxY:F3})\n");
+            DebugLogger.Info($"[DISTANCE-DEBUG] HostType={StructuralElementType}, Orientation={MepElementOrientationDirection}\n");
             
             // ✅ CORRECT ALGORITHM: Calculate actual minimum distance between rectangles
             if (StructuralElementType == "Floor")
@@ -771,17 +785,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
             bool yOverlap = maxY1 >= minY2 && minY1 <= maxY2;
             
             // Debug logging
-            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
-                $"[DISTANCE-DEBUG] Rect1: Min=({minX1:F3}, {minY1:F3}), Max=({maxX1:F3}, {maxY1:F3})\n");
-            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
-                $"[DISTANCE-DEBUG] Rect2: Min=({minX2:F3}, {minY2:F3}), Max=({maxX2:F3}, {maxY2:F3})\n");
-            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
-                $"[DISTANCE-DEBUG] X-overlap: {xOverlap}, Y-overlap: {yOverlap}\n");
+            DebugLogger.Info($"[DISTANCE-DEBUG] Rect1: Min=({minX1:F3}, {minY1:F3}), Max=({maxX1:F3}, {maxY1:F3})\n");
+            DebugLogger.Info($"[DISTANCE-DEBUG] Rect2: Min=({minX2:F3}, {minY2:F3}), Max=({maxX2:F3}, {maxY2:F3})\n");
+            DebugLogger.Info($"[DISTANCE-DEBUG] X-overlap: {xOverlap}, Y-overlap: {yOverlap}\n");
             
             if (xOverlap && yOverlap)
             {
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
-                    $"[DISTANCE-DEBUG] Result: OVERLAP (distance = 0)\n");
+                DebugLogger.Info($"[DISTANCE-DEBUG] Result: OVERLAP (distance = 0)\n");
                 return 0.0; // Rectangles overlap
             }
             
@@ -790,8 +800,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
             double dy = Math.Max(0, Math.Max(minY1 - maxY2, minY2 - maxY1));
             double distance = Math.Sqrt(dx * dx + dy * dy);
             
-            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log",
-                $"[DISTANCE-DEBUG] dx={dx:F3}, dy={dy:F3}, distance={distance:F3} feet ({distance * 304.8:F1}mm)\n");
+            DebugLogger.Info($"[DISTANCE-DEBUG] dx={dx:F3}, dy={dy:F3}, distance={distance:F3} feet ({distance * 304.8:F1}mm)\n");
             
             return distance;
         }

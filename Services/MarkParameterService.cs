@@ -169,8 +169,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 throw;
             }
             
-            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", $"MEPMARK session completed: {processedCount} processed, {errorCount} errors\n");
-            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", $"===== MEPMARK DEBUG SESSION ENDED {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n\n");
+            DebugLogger.Info($"[DEBUG] MEPMARK session completed: {processedCount} processed, {errorCount} errors\n");
+            DebugLogger.Info($"[DEBUG] ===== MEPMARK DEBUG SESSION ENDED {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n\n");
             
             return (processedCount, errorCount);
         }
@@ -200,13 +200,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (mepElementIdParam != null)
                 {
                     long mepElementId = mepElementIdParam.AsInteger();
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", 
-                        $"[INDIVIDUAL-DEBUG] Checking sleeve {sleeve.Id}: MEP_ElementId={mepElementId}\n");
+                    DebugLogger.Info($"[INDIVIDUAL-DEBUG] Checking sleeve {sleeve.Id}: MEP_ElementId={mepElementId}\n");
                     
                     // Find matching clash zone
                     var clashZone = GetClashZoneByMepElementId(mepElementId);
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", 
-                        $"[INDIVIDUAL-DEBUG] Sleeve {sleeve.Id}: ClashZone={clashZone != null}, Category={clashZone?.MepElementCategory}\n");
+                    DebugLogger.Info($"[INDIVIDUAL-DEBUG] Sleeve {sleeve.Id}: ClashZone={clashZone != null}, Category={clashZone?.MepElementCategory}\n");
                     
                     if (clashZone != null && clashZone.MepElementCategory == category)
                     {
@@ -216,21 +214,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                clashZone.ClusterSleeveInstanceId > 0 && 
                                                sleeve.Id.IntegerValue == clashZone.ClusterSleeveInstanceId);
                         
-                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", 
-                            $"[INDIVIDUAL-DEBUG] Sleeve {sleeve.Id}: isClusterSleeve={isClusterSleeve} (IsClusterResolved={clashZone.IsClusterResolved}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId})\n");
+                        DebugLogger.Info($"[INDIVIDUAL-DEBUG] Sleeve {sleeve.Id}: isClusterSleeve={isClusterSleeve} (IsClusterResolved={clashZone.IsClusterResolved}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId})\n");
                         
                         if (!isClusterSleeve)
                         {
                             individualSleeves.Add(sleeve);
-                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", 
-                                $"✓ Found individual sleeve {sleeve.Id} for category '{category}'\n");
+                            DebugLogger.Info($"[DEBUG] ✓ Found individual sleeve {sleeve.Id} for category '{category}'\n");
                         }
                     }
                 }
             }
 
-            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", 
-                $"Found {individualSleeves.Count} individual sleeves for category '{category}'\n");
+            DebugLogger.Info($"[DEBUG] Found {individualSleeves.Count} individual sleeves for category '{category}'\n");
             return individualSleeves;
         }
 
@@ -262,7 +257,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 })
                 .ToList();
 
-            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", $"Found {allClusterSleeves.Count} total opening sleeves (after family name filter)\n");
+            DebugLogger.Info($"[DEBUG] Found {allClusterSleeves.Count} total opening sleeves (after family name filter)\n");
 
             // ✅ NEW APPROACH: Find cluster sleeves using IsClusterResolved flag
             var categorySleeves = new List<FamilyInstance>();
@@ -279,17 +274,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     // ⚠️ DIAGNOSTIC: Log exactly why sleeves are rejected
                     if (clashZone == null)
-                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log",
-                            $"REJECT {sleeve.Id}: no clash-zone for MEPid {mepElementId}\n");
+                        DebugLogger.Info($"[DEBUG] REJECT {sleeve.Id}: no clash-zone for MEPid {mepElementId}\n");
                     else if (!clashZone.IsClusterResolved)
-                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log",
-                            $"REJECT {sleeve.Id}: IsClusterResolved=false\n");
+                        DebugLogger.Info($"[DEBUG] REJECT {sleeve.Id}: IsClusterResolved=false\n");
                     else if (clashZone.ClusterSleeveInstanceId != sleeve.Id.IntegerValue)
-                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log",
-                            $"REJECT {sleeve.Id}: ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId} != {sleeve.Id.IntegerValue}\n");
+                        DebugLogger.Info($"[DEBUG] REJECT {sleeve.Id}: ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId} != {sleeve.Id.IntegerValue}\n");
                     else if (clashZone.MepElementCategory != category)
-                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log",
-                            $"REJECT {sleeve.Id}: category='{clashZone.MepElementCategory}' != '{category}'\n");
+                        DebugLogger.Info($"[DEBUG] REJECT {sleeve.Id}: category='{clashZone.MepElementCategory}' != '{category}'\n");
                     
                     if (clashZone != null && clashZone.IsClusterResolved && clashZone.ClusterSleeveInstanceId > 0)
                     {
@@ -300,18 +291,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             if (clashZone.MepElementCategory == category)
                             {
                                 categorySleeves.Add(sleeve);
-                                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", $"✓ Found cluster sleeve {sleeve.Id} for category '{category}' (cluster sleeve ID: {clashZone.ClusterSleeveInstanceId})\n");
+                                DebugLogger.Info($"[DEBUG] ✓ Found cluster sleeve {sleeve.Id} for category '{category}' (cluster sleeve ID: {clashZone.ClusterSleeveInstanceId})\n");
                             }
                         }
                     }
                 }
                 else
                 {
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", $"Sleeve {sleeve.Id} missing MEP_ElementId parameter\n");
+                    DebugLogger.Info($"[DEBUG] Sleeve {sleeve.Id} missing MEP_ElementId parameter\n");
                 }
             }
 
-            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", $"Found {categorySleeves.Count} cluster sleeves for category '{category}'\n");
+            DebugLogger.Info($"[DEBUG] Found {categorySleeves.Count} cluster sleeves for category '{category}'\n");
             return categorySleeves;
         }
 
@@ -350,12 +341,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (!Directory.Exists(filtersDirectory))
                 {
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", $"[CACHE] Filters directory not found: {filtersDirectory}\n");
+                    DebugLogger.Info($"[CACHE] Filters directory not found: {filtersDirectory}\n");
                     return;
                 }
 
                 var xmlFiles = Directory.GetFiles(filtersDirectory, "*.xml");
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", $"[CACHE] Loading {xmlFiles.Length} XML files into cache...\n");
+                DebugLogger.Info($"[CACHE] Loading {xmlFiles.Length} XML files into cache...\n");
 
                 int totalClashZones = 0;
                 foreach (var xmlFile in xmlFiles)
@@ -382,12 +373,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     catch (Exception ex)
                     {
-                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", $"[CACHE] Error loading {Path.GetFileName(xmlFile)}: {ex.Message}\n");
+                        DebugLogger.Info($"[CACHE] Error loading {Path.GetFileName(xmlFile)}: {ex.Message}\n");
                         continue;
                     }
                 }
 
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", $"[CACHE] ✓ Cached {totalClashZones} clash zones from {xmlFiles.Length} files\n");
+                DebugLogger.Info($"[CACHE] ✓ Cached {totalClashZones} clash zones from {xmlFiles.Length} files\n");
             }
             catch (Exception ex)
             {
@@ -435,7 +426,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                     DebugLogger.Warning($"[MarkParameterService] No category found for MEP Element ID {mepElementId} in {xmlFiles.Length} XML files");
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", $"WARNING: No category found for MEP Element ID {mepElementId} in {xmlFiles.Length} XML files\n");
+                    DebugLogger.Info($"[DEBUG] WARNING: No category found for MEP Element ID {mepElementId} in {xmlFiles.Length} XML files\n");
                     return "Unknown";
             }
             catch (Exception ex)
@@ -527,8 +518,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Resolve parameter name case/space/underscore-insensitively
             var markParam = ResolveMarkParameter(element);
 
-            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", 
-                $"[SET-DEBUG] Element {element.Id}: ResolvedParam='{markParam?.Definition?.Name}', Value='{markValue}', Doc.IsModifiable={element.Document.IsModifiable}\n");
+            DebugLogger.Info($"[SET-DEBUG] Element {element.Id}: ResolvedParam='{markParam?.Definition?.Name}', Value='{markValue}', Doc.IsModifiable={element.Document.IsModifiable}\n");
 
             if (markParam != null && !markParam.IsReadOnly && markParam.StorageType == StorageType.String)
             {
@@ -546,8 +536,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 if (string.Equals(readBack, markValue, StringComparison.Ordinal))
                 {
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", 
-                        $"[SET-SUCCESS] Applied '{markValue}' to element {element.Id} using '{markParam.Definition?.Name}'\n");
+                    DebugLogger.Info($"[SET-SUCCESS] Applied '{markValue}' to element {element.Id} using '{markParam.Definition?.Name}'\n");
                 }
                 else
                 {
@@ -559,8 +548,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             else
             {
                 var readonlyInfo = markParam != null ? $"Param='{markParam.Definition?.Name}', Readonly={markParam.IsReadOnly}, Type={markParam.StorageType}" : "Param=null";
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\mepmark_debug.log", 
-                    $"[SET-FAIL] Element {element.Id}: {readonlyInfo}\n");
+                DebugLogger.Info($"[SET-FAIL] Element {element.Id}: {readonlyInfo}\n");
                 throw new InvalidOperationException($"Cannot set MEP Mark parameter on element {element.Id.IntegerValue}: parameter missing or not writable");
             }
         }

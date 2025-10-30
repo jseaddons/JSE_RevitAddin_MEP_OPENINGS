@@ -60,8 +60,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             try
             {
                 // 🚨 DEBUG: Direct file logging to bypass DebugLogger issues
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\universal_command_debug.log", 
-                    $"[{DateTime.Now}] 🚨 UniversalSleevePlacementCommand.Execute STARTED for category '{_category}' with {_clashZones.Count} clash zones\n");
+                DebugLogger.Info($"[{DateTime.Now}] 🚨 UniversalSleevePlacementCommand.Execute STARTED for category '{_category}' with {_clashZones.Count} clash zones\n");
                 
                 DebugLogger.Info($"{_logPrefix} Starting sleeve placement for {_clashZones.Count} clash zones");
                 
@@ -264,8 +263,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             try
             {
                 // 🚨 DEBUG: Direct file logging to bypass DebugLogger issues
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\universal_command_debug.log", 
-                    $"[{DateTime.Now}] 🚨 FilterClashZonesByAllCriteria STARTED with {clashZones.Count} clash zones\n");
+                DebugLogger.Info($"[{DateTime.Now}] 🚨 FilterClashZonesByAllCriteria STARTED with {clashZones.Count} clash zones\n");
                 
                 // Get selected host types from UI
                 var selectedHostTypes = FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>();
@@ -296,8 +294,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     // 🚨 DEBUG: Log first few clash zones to see their file names
                     if (clashZones.IndexOf(cz) < 3)
                     {
-                        File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\universal_command_debug.log", 
-                            $"[{DateTime.Now}] 🚨 ClashZone {cz.Id}: SourceDocKey='{cz.SourceDocKey}', StructuralElementDocumentTitle='{cz.StructuralElementDocumentTitle}'\n");
+                        DebugLogger.Info($"[{DateTime.Now}] 🚨 ClashZone {cz.Id}: SourceDocKey='{cz.SourceDocKey}', StructuralElementDocumentTitle='{cz.StructuralElementDocumentTitle}'\n");
                     }
                     
                     // 🚨 TROUBLESHOOTING: Re-enabling filters one by one
@@ -362,8 +359,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 }).ToList();
                 
                 // 🚨 DEBUG: Direct file logging to bypass DebugLogger issues
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\universal_command_debug.log", 
-                    $"[{DateTime.Now}] 🚨 FILTERING COMPLETED: {clashZones.Count} -> {filteredZones.Count} clash zones\n");
+                DebugLogger.Info($"[{DateTime.Now}] 🚨 FILTERING COMPLETED: {clashZones.Count} -> {filteredZones.Count} clash zones\n");
                 
                 DebugLogger.Info($"{_logPrefix} FINAL 5-FILTER SYSTEM: MEP category + host type + reference files + host files + 3D section box filters applied: {clashZones.Count} -> {filteredZones.Count} clash zones");
                 return filteredZones;
