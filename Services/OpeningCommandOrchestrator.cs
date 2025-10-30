@@ -255,7 +255,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ PERFORMANCE FIX: Get XML file path for this category to avoid loading all 22 XML files
                 string xmlFilePath = GetXmlFilePathForFilter(filter);
                 
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                if (!DeploymentConfiguration.DeploymentMode) System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
                     $"[{DateTime.Now:HH:mm:ss}] xmlFilePath = {xmlFilePath ?? "NULL"}\n");
                 
                 // Use UniversalClusterService directly (service-based architecture)

@@ -125,7 +125,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     .ToList();
                 _logger($"Filtered intersections inside oriented section box: {intersections.Count}");
 
-                _logger($"=== INTERSECTION RESULTS ===");
+                if (OptimizationFlags.UseDiagnosticMode)
+                    _logger($"=== INTERSECTION RESULTS ===");
                 _logger($"Total intersections found: {intersections.Count}");
 
                 return intersections;

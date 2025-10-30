@@ -12,6 +12,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// </summary>
     public static class OptimizationFlags
     {
+        // Use minimal per-category global index during Refresh to avoid loading full XMLs
+        public static bool UseGlobalCategoryIndexForRefresh { get; set; } = true;
         #region Phase 1 Foundation Flags (40% gain)
         
         /// <summary>

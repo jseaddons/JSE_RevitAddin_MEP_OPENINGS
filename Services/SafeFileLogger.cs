@@ -208,10 +208,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void SafeAppendText(string fileName, string message)
         {
-            // ✅ DEPLOYMENT MODE: Skip all logging if deployment mode is enabled
-            // EXCEPT: performance logs (refresh/OK timing only)
-            if (DeploymentConfiguration.DeploymentMode && !string.Equals(fileName, "performance.log", StringComparison.OrdinalIgnoreCase))
-                return;
+            // ✅ DEPLOYMENT MODE: Allow only specific logs
+            // Allowed: performance.log, Refresh_*.log, refresh_memory_profiling_*.log
+            if (DeploymentConfiguration.DeploymentMode)
+            {
+                bool isPerformance = string.Equals(fileName, "performance.log", StringComparison.OrdinalIgnoreCase);
+                bool isRefresh = fileName.StartsWith("Refresh_", StringComparison.OrdinalIgnoreCase) && fileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase);
+                bool isRefreshMemory = fileName.StartsWith("refresh_memory_profiling_", StringComparison.OrdinalIgnoreCase) && fileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase);
+                if (!isPerformance && !isRefresh && !isRefreshMemory)
+                    return;
+            }
                 
             try
             {

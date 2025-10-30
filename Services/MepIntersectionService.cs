@@ -114,7 +114,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             Action<string> log)
         {
             var results = new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
-            log($"[BatchIntersection] Processing {mepElements.Count} MEP elements against {structuralElements.Count} structural elements");
+            if (OptimizationFlags.UseDiagnosticMode)
+                if (OptimizationFlags.UseDiagnosticMode)
+                    log($"[BatchIntersection] Processing {mepElements.Count} MEP elements against {structuralElements.Count} structural elements");
 
             // Pre-compute structural element bounding boxes and geometry once
             var structuralData = new List<(Element element, Transform? transform, BoundingBoxXYZ bbox, Solid? solid)>();
@@ -158,12 +160,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 structuralData.Add((structElement, structTransform, structBBox, solid));
             }
 
-            log($"[BatchIntersection] Pre-computed {structuralData.Count} structural elements with geometry");
+            if (OptimizationFlags.UseDiagnosticMode)
+                if (OptimizationFlags.UseDiagnosticMode)
+                    log($"[BatchIntersection] Pre-computed {structuralData.Count} structural elements with geometry");
 
             // PHASE 2 OPTIMIZATION 1: Build spatial hash grid
             _spatialService.BuildGrid(structuralData);
             var (totalCells, usedCells, avgElements) = _spatialService.GetStatistics();
-            log($"[SpatialHash] Built spatial grid: {usedCells} used cells, avg {avgElements:F1} elements per cell");
+            if (OptimizationFlags.UseDiagnosticMode)
+                log($"[SpatialHash] Built spatial grid: {usedCells} used cells, avg {avgElements:F1} elements per cell");
 
             // Process each MEP element against pre-computed structural data
             foreach (var (mepElement, mepTransform) in mepElements)
@@ -202,7 +207,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 // PHASE 2 OPTIMIZATION 1: Use spatial hash to get nearby elements
                 var nearbyElements = _spatialService.GetNearbyElements(expandedBBox);
-                log($"[SpatialHash] MEP {mepElement.Id}: {nearbyElements.Count}/{structuralData.Count} nearby elements ({100.0 * nearbyElements.Count / structuralData.Count:F1}%)");
+                if (OptimizationFlags.UseDiagnosticMode)
+                    log($"[SpatialHash] MEP {mepElement.Id}: {nearbyElements.Count}/{structuralData.Count} nearby elements ({100.0 * nearbyElements.Count / structuralData.Count:F1}%)");
 
                 int spatiallyFiltered = 0;
                 foreach (var (structElement, structTransform, structBBox) in nearbyElements)
@@ -237,11 +243,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (spatiallyFiltered > 0)
                 {
-                    log($"[BatchIntersection] MEP {mepElement.Id}: spatially filtered {spatiallyFiltered}/{structuralData.Count} structural elements");
+                    if (OptimizationFlags.UseDiagnosticMode)
+                        log($"[BatchIntersection] MEP {mepElement.Id}: spatially filtered {spatiallyFiltered}/{structuralData.Count} structural elements");
                 }
             }
 
-            log($"[BatchIntersection] Found {results.Count} total intersections");
+            if (OptimizationFlags.UseDiagnosticMode)
+                log($"[BatchIntersection] Found {results.Count} total intersections");
             return results;
         }
 
@@ -553,7 +561,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 int faceCount = solid.Faces.Size;
-                log?.Invoke($"[Intersect] Solid face count = {faceCount}");
+                if (OptimizationFlags.UseDiagnosticMode)
+                    log?.Invoke($"[Intersect] Solid face count = {faceCount}");
                 foreach (Face face in solid.Faces)
                 {
                     if (face == null) continue;
@@ -567,7 +576,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                         if (intersectionPoints.Count > 0)
                         {
-                            log?.Invoke($"[Intersect] Found {intersectionPoints.Count} intersection point(s). First: {intersectionPoints[0]}");
+                            if (OptimizationFlags.UseDiagnosticMode)
+                                log?.Invoke($"[Intersect] Found {intersectionPoints.Count} intersection point(s). First: {intersectionPoints[0]}");
                             // early exit optional? keep collecting for bbox
                         }
                     }
@@ -575,7 +585,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                log?.Invoke($"[Intersect] Exception while computing intersections: {ex.Message}");
+                if (OptimizationFlags.UseDiagnosticMode)
+                    log?.Invoke($"[Intersect] Exception while computing intersections: {ex.Message}");
             }
             return intersectionPoints;
         }
@@ -1084,7 +1095,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 hostDamperBBox.Max.Y + tolerance,
                 hostDamperBBox.Max.Z + tolerance);
 
-            log($"[DamperIntersection] Processing element {damperElement.Id} with bbox Min=({hostDamperBBox.Min.X:F2}, {hostDamperBBox.Min.Y:F2}, {hostDamperBBox.Min.Z:F2}) Max=({hostDamperBBox.Max.X:F2}, {hostDamperBBox.Max.Y:F2}, {hostDamperBBox.Max.Z:F2})");
+            if (OptimizationFlags.UseDiagnosticMode)
+                log($"[DamperIntersection] Processing element {damperElement.Id} with bbox Min=({hostDamperBBox.Min.X:F2}, {hostDamperBBox.Min.Y:F2}, {hostDamperBBox.Min.Z:F2}) Max=({hostDamperBBox.Max.X:F2}, {hostDamperBBox.Max.Y:F2}, {hostDamperBBox.Max.Z:F2})");
 
             foreach (var tuple in structuralElements)
             {
@@ -1108,7 +1120,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (!BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max))
                         continue;
 
-                    log($"[DamperIntersection] Intersection candidate: damper {damperElement.Id} with structural {structuralElement.Id}");
+                    if (OptimizationFlags.UseDiagnosticMode)
+                        log($"[DamperIntersection] Intersection candidate: damper {damperElement.Id} with structural {structuralElement.Id}");
 
                     var intersectionMin = new XYZ(
                         Math.Max(hostDamperBBox.Min.X, structBBox.Min.X),
@@ -1234,7 +1247,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     p2 = new XYZ(p1.X + 1.0, p1.Y, p1.Z);
                 }
 
-                log($"[MepIntersectionService] Fallback line derived from bounding box for element {element.Id}.");
+                if (OptimizationFlags.UseDiagnosticMode)
+                    log($"[MepIntersectionService] Fallback line derived from bounding box for element {element.Id}.");
                 return Line.CreateBound(p1, p2);
             }
             catch (Exception ex)

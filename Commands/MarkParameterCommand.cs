@@ -52,7 +52,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     
                     // Get all available categories from XML files
                     var availableCategories = GetAllAvailableCategories();
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    if (!DeploymentConfiguration.DeploymentMode) System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
                         $"[{DateTime.Now:HH:mm:ss}] Found {availableCategories.Count} categories: {string.Join(", ", availableCategories)}\n");
                     
                     // Process each category with its specific discipline prefix from UI

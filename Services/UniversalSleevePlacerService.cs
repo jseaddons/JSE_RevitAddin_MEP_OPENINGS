@@ -999,6 +999,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     // ⚠️ CRITICAL: Log flag states AFTER XML save
                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [XML-SAVE-AFTER] XML save completed for {PlacedCount} placed sleeves\n");
+
+                    // ✅ GLOBAL FLAGS: Upsert IsResolved/IsClusterResolved into per-category global index (with instance IDs)
+                    try
+                    {
+                        var updatesByCategory = clashZones
+                            .GroupBy(cz => cz.MepElementCategory)
+                            .ToDictionary(g => g.Key, g => g.Select(cz => (cz.Id, cz.IsResolved, cz.IsClusterResolved, cz.SleeveInstanceId, cz.ClusterSleeveInstanceId)));
+
+                        foreach (var kvp in updatesByCategory)
+                        {
+                            var categoryName = kvp.Key;
+                            var updates = kvp.Value;
+                            GlobalIndexService.UpsertFlagsWithIds(_doc, categoryName, updates);
+                        }
+                    }
+                    catch (Exception upEx)
+                    {
+                        DebugLogger.Warning($"[GLOBAL_INDEX] Upsert after individual placement failed: {upEx.Message}");
+                    }
                 }
                 else
                 {
@@ -1018,7 +1037,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     try
                     {
                         System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", batchLogs.ToString());
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", batchLogs.ToString());
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", batchLogs.ToString());
                     }
                     catch { } // Don't fail placement if logging fails
                 }

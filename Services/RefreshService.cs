@@ -12,6 +12,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// </summary>
     public class RefreshService
     {
+        // Static serializers to avoid repeated XmlSerializer type metadata allocations per refresh
+        private static readonly System.Xml.Serialization.XmlSerializer OpeningFilterSerializer =
+            new System.Xml.Serialization.XmlSerializer(typeof(Models.OpeningFilter));
         // ⚠️ CRASH-SAFE LIMITS ⚠️
         private const int MAX_ELEMENTS_TO_PROCESS = 10000;
         private const int WARNING_THRESHOLD = 5000;
@@ -95,7 +98,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 DebugLogger.Info($"[RefreshService] Loading existing clash zone data from: {mostRecentFile}");
 
-                var serializer = new System.Xml.Serialization.XmlSerializer(typeof(Models.OpeningFilter));
+                // Reuse a static serializer to avoid per-refresh type cache allocations
+                var serializer = OpeningFilterSerializer;
                 using (var reader = new StreamReader(mostRecentFile))
                 {
                     var filter = (Models.OpeningFilter)serializer.Deserialize(reader);
@@ -511,6 +515,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] Memory profiling log: refresh_memory_profiling_{timestamp}.log\n");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] All logs will be written to: {actualLogDir}\n");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] ════════════════════════════════════\n");
+            // Extra memory snapshot to pinpoint early allocations
+            try { _memoryProfiler.TakeSnapshot("AFTER_LOG_INFO", 0); } catch { }
             
             // ✅ REMOVED: Log directory prompt (user knows where logs are now)
             // Log directory info is still written to refresh log file for reference
@@ -749,9 +755,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Log intersection details to timestamped file
             if (currentIntersections.Count > 0)
             {
-                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] INTERSECTION DETECTION RESULTS:\n");
+                if (OptimizationFlags.UseDiagnosticMode)
+                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] INTERSECTION DETECTION RESULTS:\n");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] Total intersections found: {currentIntersections.Count}\n");
-                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] Intersection details:\n");
+                if (OptimizationFlags.UseDiagnosticMode)
+                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] Intersection details:\n");
 
                 // Log first 20 intersections
                 int logCount = Math.Min(20, currentIntersections.Count);
@@ -790,6 +798,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // This preserves IsResolved and IsClusterResolved flags from previous placement/clustering
             // Ensure per-project filters directory exists
             try { ProjectPathService.EnsureFiltersDirectory(_document); } catch { }
+            // Validate and auto-heal global flags per selected category before proceeding
+            var __globalsResolved = new HashSet<Guid>();
+            try
+            {
+                foreach (var cat in selectedMepCategories ?? new List<string>())
+                {
+                    var (resolvedSet, clusterResolvedSet) = GlobalIndexService.ValidateAndFixFlags(_document, cat);
+                    foreach (var gid in resolvedSet) __globalsResolved.Add(gid);
+                    foreach (var gid in clusterResolvedSet) __globalsResolved.Add(gid);
+                }
+            }
+            catch { }
+
             var existingClashZones = LoadExistingClashZonesFromFilterXml(selectedFilterItems, selectedMepCategories);
             __logPhaseMem("AFTER_XML_LOAD", existingClashZones?.ClashZones, null, null);
             var existingCount = existingClashZones?.ClashZones?.Count ?? 0;
@@ -1174,6 +1195,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
             DebugLogger.Info($"[CLASH_DEBUG] ✅ DetectNewClashZones RETURNED: {newClashZones?.Count ?? 0} clash zones");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ✅ DetectNewClashZones RETURNED: {newClashZones?.Count ?? 0} clash zones\n");
+                // Skip zones flagged resolved in per-category globals
+                if (__globalsResolved != null && __globalsResolved.Count > 0 && newClashZones != null)
+                {
+                    int before = newClashZones.Count;
+                    newClashZones = newClashZones.Where(cz => !__globalsResolved.Contains(cz.Id)).ToList();
+                    int filtered = before - newClashZones.Count;
+                    if (filtered > 0)
+                    {
+                        DebugLogger.Info($"[CLASH_DEBUG] Skipped {filtered} zones due to global resolved flags");
+                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Skipped {filtered} zones due to global resolved flags\n");
+                    }
+                }
             __logPhaseMem("AFTER_DETECT", newClashZones, existingClashZones?.ClashZones, null);
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] DetectNewClashZones completed successfully\n");
             }
@@ -1658,6 +1691,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             {
                                 DebugLogger.Info($"[CLASH_DEBUG] Saved {categoryClashZones.Count} clash zones for category '{category}' to: {categoryFilePath}");
                                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Saved {categoryClashZones.Count} clash zones for category '{category}'\n");
+                                if (OptimizationFlags.UseGlobalCategoryIndexForRefresh)
+                                {
+                                    // Write minimal per-category index for refresh-only dedupe/flags
+                                    GlobalIndexService.EnsureEntries(_document, category, categoryClashZones.Select(cz => cz.Id));
+                                }
                             }
                             else
                             {
@@ -1901,9 +1939,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 for (int i = 0; i < Math.Min(5, clashZones.Count); i++)
                 {
                     var cz = clashZones[i];
-                    DebugLogger.Info($"[CLASH_DEBUG] Sample zone {i}: MEP ID={cz.MepElementId}, Cat='{cz.MepElementCategory}', Structural={cz.StructuralElementType}");
-                    SafeFileLogger.SafeAppendText(refreshLogName, 
-                        $"[{DateTime.Now}] [CLASH_DEBUG] Sample zone {i}: MEP ID={cz.MepElementId}, Cat='{cz.MepElementCategory}', Structural={cz.StructuralElementType}\n");
+                    if (OptimizationFlags.UseDiagnosticMode)
+                    {
+                        DebugLogger.Info($"[CLASH_DEBUG] Sample zone {i}: MEP ID={cz.MepElementId}, Cat='{cz.MepElementCategory}', Structural={cz.StructuralElementType}");
+                        SafeFileLogger.SafeAppendText(refreshLogName,
+                            $"[{DateTime.Now}] [CLASH_DEBUG] Sample zone {i}: MEP ID={cz.MepElementId}, Cat='{cz.MepElementCategory}', Structural={cz.StructuralElementType}\n");
+                    }
                 }
 
                 // Count zones by structural type for debugging
@@ -2420,7 +2461,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (string.IsNullOrEmpty(latestFile)) return null;
 
-                var serializer = new System.Xml.Serialization.XmlSerializer(typeof(Models.OpeningFilter));
+                            // Reuse a static serializer to avoid per-refresh type cache allocations
+                            var serializer = OpeningFilterSerializer;
                 using (var reader = new StreamReader(latestFile))
                 {
                     return (Models.OpeningFilter)serializer.Deserialize(reader);
@@ -2438,6 +2480,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         private Models.ClashZoneStorage LoadExistingClashZonesFromFilterXml(List<string> selectedFilterNames, List<string> selectedCategories)
         {
+            if (OptimizationFlags.UseGlobalCategoryIndexForRefresh)
+            {
+                DebugLogger.Info("[CLASH_DEBUG] Using per-category global index; skipping full XML load");
+                return new Models.ClashZoneStorage { ClashZones = new List<Models.ClashZone>(), LastUpdated = DateTime.Now };
+            }
             var mergedStorage = new Models.ClashZoneStorage
             {
                 ClashZones = new List<Models.ClashZone>(),
