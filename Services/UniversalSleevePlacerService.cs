@@ -1498,6 +1498,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return (familyName, typeName, isCircular);
         }
         
+        // Ensure XML-serializable coordinates are populated before saving
+        private static void NormalizeIntersectionCoordinates(ClashZone zone)
+        {
+            if (zone == null) return;
+            bool hasIntersectionObj = zone.IntersectionPoint != null;
+            bool hasSleevePoint = zone.SleevePlacementPoint != null;
+            
+            // Prefer explicit IntersectionPoint object if available
+            if (hasIntersectionObj)
+            {
+                zone.IntersectionPointX = zone.IntersectionPoint.X;
+                zone.IntersectionPointY = zone.IntersectionPoint.Y;
+                zone.IntersectionPointZ = zone.IntersectionPoint.Z;
+            }
+            else if (hasSleevePoint)
+            {
+                // Fall back to sleeve placement
+                zone.IntersectionPointX = zone.SleevePlacementPoint.X;
+                zone.IntersectionPointY = zone.SleevePlacementPoint.Y;
+                zone.IntersectionPointZ = zone.SleevePlacementPoint.Z;
+            }
+            else if (zone.ClashBoundingBox != null)
+            {
+                // Final fallback: center of clash bounding box
+                var bb = zone.ClashBoundingBox;
+                var center = (bb.Min + bb.Max) / 2.0;
+                zone.IntersectionPointX = center.X;
+                zone.IntersectionPointY = center.Y;
+                zone.IntersectionPointZ = center.Z;
+            }
+        }
+        
         /// <summary>
         /// ⚠️ QUICK WIN: Pre-cache family symbols for all clash zones (load once, reuse many times)
         /// Expected gain: 2-3 seconds for 500 sleeves
@@ -2602,6 +2634,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Log AFTER values
                     DebugLogger.Info($"[XML-IMMEDIATE-UPDATE] AFTER: W={UnitUtils.ConvertFromInternalUnits(zone.SleeveWidth, UnitTypeId.Millimeters):F1}mm, H={UnitUtils.ConvertFromInternalUnits(zone.SleeveHeight, UnitTypeId.Millimeters):F1}mm, ActiveDocX={zone.SleevePlacementPointActiveDocumentX:F3}\n");
                     
+                    // Normalize coordinates to avoid 0,0,0 in XML
+                    foreach (var z in filter.ClashZoneStorage.ClashZones)
+                    {
+                        NormalizeIntersectionCoordinates(z);
+                    }
+                    
                     // Save the file immediately
                     filter.LastModified = DateTime.Now;
                     using (var writer = new StreamWriter(targetFile))
@@ -2758,8 +2796,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             int expectedUpdatedCount = updatedClashZones?.Count ?? 0;
                             var expectedUpdatedIds = updatedClashZones?.Select(cz => cz.Id).ToList() ?? new List<Guid>();
                             
+                            // Normalize coordinates for all zones before saving
+                            foreach (var z in filter.ClashZoneStorage.ClashZones)
+                            {
+                                NormalizeIntersectionCoordinates(z);
+                            }
+
                             filter.LastModified = DateTime.Now;
-                            
+
                             using (var writer = new StreamWriter(xmlFile))
                             {
                                 serializer.Serialize(writer, filter);
