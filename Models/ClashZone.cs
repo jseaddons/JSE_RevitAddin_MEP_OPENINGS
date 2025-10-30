@@ -63,7 +63,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// </summary>
         public double IntersectionPointX
         {
-            get => IntersectionPoint?.X ?? 0.0;
+            get => IntersectionPoint != null ? IntersectionPoint.X : (SleevePlacementPoint?.X ?? 0.0);
             set { 
                 if (IntersectionPoint == null) 
                     IntersectionPoint = new XYZ(value, 0, 0); 
@@ -77,7 +77,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// </summary>
         public double IntersectionPointY
         {
-            get => IntersectionPoint?.Y ?? 0.0;
+            get => IntersectionPoint != null ? IntersectionPoint.Y : (SleevePlacementPoint?.Y ?? 0.0);
             set { 
                 if (IntersectionPoint == null) 
                     IntersectionPoint = new XYZ(0, value, 0); 
@@ -91,7 +91,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// </summary>
         public double IntersectionPointZ
         {
-            get => IntersectionPoint?.Z ?? 0.0;
+            get => IntersectionPoint != null ? IntersectionPoint.Z : (SleevePlacementPoint?.Z ?? 0.0);
             set { 
                 if (IntersectionPoint == null) 
                     IntersectionPoint = new XYZ(0, 0, value); 
@@ -121,6 +121,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// The diameter/size of the MEP element at this clash point
         /// </summary>
         public double MepElementSize { get; set; }
+        
+        // Suppress legacy field in XML output
+        public bool ShouldSerializeMepElementSize()
+        {
+            return false;
+        }
         
         /// <summary>
         /// ✅ NEW: Detailed MEP element size information with insulation data
@@ -888,4 +894,3 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public List<string> LearnedParameterKeys { get; set; } = new List<string>();
     }
 }
-

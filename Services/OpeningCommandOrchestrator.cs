@@ -351,22 +351,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         private string GetXmlFilePathForFilter(OpeningFilter filter)
         {
-            // Convert MepCategory enum back to string for file naming
+            // Use actual project filters directory (matches Refresh saves)
+            var filtersDir = ProjectPathService.GetFiltersDirectory(_document);
+
             string categoryName = filter.Category switch
             {
-                Models.MepCategory.Ducts => "Ducts",
-                Models.MepCategory.DuctAccessories => "Duct Accessories", 
-                Models.MepCategory.Pipes => "Pipes",
-                Models.MepCategory.CableTrays => "Cable Trays",
-                _ => "Ducts"
+                Models.MepCategory.Ducts => "ducts",
+                Models.MepCategory.DuctAccessories => "duct_accessories",
+                Models.MepCategory.Pipes => "pipes",
+                Models.MepCategory.CableTrays => "cable_trays",
+                _ => filter.Category.ToString().ToLower().Replace(" ", "_")
             };
 
-            // Construct XML file path (same logic as LoadClashZonesForFilter)
-            string filterName = filter.Name;
-            string xmlFileName = $"{filterName}_{categoryName.Replace(" ", "_").ToLower()}.xml";
-            string xmlFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters", xmlFileName);
-            
-            return xmlFilePath;
+            string xmlFileName = $"{filter.Name}_{categoryName}.xml";
+            return Path.Combine(filtersDir, xmlFileName);
         }
 
         private List<ClashZone> LoadClashZonesForFilter(OpeningFilter filter)
@@ -447,6 +445,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 // 🔥 CRITICAL DEBUG: Direct file logging to trace orchestrator execution
+                var tracePath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_event_trace.log";
+                try { System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] CLICK_OK: Begin placement for category={filter.Category}, filter={filter.Name}\n"); } catch { }
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥 ExecuteUniversalSleevePlacement CALLED 🔥\n");
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Filter Category: {filter.Category}\n");
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] UI Clearances Count: {_uiClearances?.Count ?? 0}\n");
@@ -456,6 +456,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ CRITICAL FIX: Load clash zones from XML file
                 var clashZones = LoadClashZonesForFilter(filter);
                 DebugLogger.Info($"[OpeningCommandOrchestrator] Loaded {clashZones.Count} clash zones for {filter.Category}");
+                try { System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] LOAD_XML: zones={clashZones.Count}\n"); } catch { }
 
                 if (clashZones.Count > 0)
                 {
@@ -487,10 +488,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] About to create UniversalSleevePlacementCommand for category: {categoryString}, filter: {combinedFilterName}\n");
                     
                     var universalCommand = new UniversalSleevePlacementCommand(_document, clashZones, categoryString, combinedFilterName, _uiClearances);
+                    try { System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] COMMAND_CREATED: category={categoryString}, xml={xmlFilePath}\n"); } catch { }
                     
                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] UniversalSleevePlacementCommand created successfully, about to execute\n");
                     
                     universalCommand.Execute(_uiDocument.Application);
+                    try { System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] COMMAND_EXECUTED\n"); } catch { }
                     
                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] UniversalSleevePlacementCommand executed successfully\n");
                     

@@ -32,6 +32,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
+        /// Overload: allow callers to specify the exact project filters directory
+        /// </summary>
+        public ConditionsService(string projectFiltersDirectory, Action<string> log = null)
+        {
+            _log = log ?? (msg => { });
+            _projectDirectory = string.IsNullOrWhiteSpace(projectFiltersDirectory)
+                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters")
+                : projectFiltersDirectory;
+            if (!Directory.Exists(_projectDirectory))
+            {
+                Directory.CreateDirectory(_projectDirectory);
+            }
+        }
+
+        /// <summary>
         /// Save opening conditions to XML file
         /// File name: FilterName_CONDITIONS.xml (e.g., Ventilation_ducts_CONDITIONS.xml)
         /// </summary>

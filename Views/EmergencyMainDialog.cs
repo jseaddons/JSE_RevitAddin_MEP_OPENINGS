@@ -3934,6 +3934,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 var __okStart = DateTime.Now;
                 SafeFileLogger.SafeAppendText("performance.log", $"OK_START {__okStart:O}");
+                try { SafeFileLogger.SafeAppendText("placement_event_trace.log", $"[{DateTime.Now:HH:mm:ss}] CLICK_OK: handler entered\n"); } catch { }
                 
                 // Parameter Transfer button removed - functionality moved to Transfer All button
 
@@ -3974,11 +3975,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
                 // Hide UI while processing to show prompts clearly
                 this.Hide();
+                try { SafeFileLogger.SafeAppendText("placement_event_trace.log", $"[{DateTime.Now:HH:mm:ss}] CLICK_OK: raising external event\n"); } catch { }
 
                 // Raise external event (non-blocking)
                 _sleevePlacementEvent.Raise();
 
                 DebugLogger.Info($"[EmergencyMainDialog] External event raised for categories: {string.Join(", ", selectedCategories)}");
+                try { SafeFileLogger.SafeAppendText("placement_event_trace.log", $"[{DateTime.Now:HH:mm:ss}] CLICK_OK: external event raised\n"); } catch { }
 
                 // UI will be restored by PlacementCompleted callback
                 this.Hide(); // Hide instead of Close to keep dialog in memory for status updates
@@ -3989,6 +3992,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             catch (Exception ex)
             {
                 DebugLogger.Error($"[EmergencyMainDialog] Exception in OnOkClick: {ex.Message}");
+                try { SafeFileLogger.SafeAppendText("placement_event_trace.log", $"[{DateTime.Now:HH:mm:ss}] CLICK_OK: exception {ex.Message}\n"); } catch { }
                 MessageBox.Show($"Error starting sleeve placement: {ex.Message}", "Error", 
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }

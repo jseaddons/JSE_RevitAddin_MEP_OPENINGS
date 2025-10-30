@@ -64,6 +64,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 
                 DebugLogger.Info($"{_logPrefix} Starting sleeve placement for {_clashZones.Count} clash zones");
                 
+                // Fallback: if no clash zones were passed, load from filter XML saved during refresh
+                if (_clashZones == null || _clashZones.Count == 0)
+                {
+                    try
+                    {
+                        var filtersDir = ProjectPathService.GetFiltersDirectory(_doc);
+                        var path = Path.Combine(filtersDir, _filterName);
+                        if (!File.Exists(path))
+                        {
+                            // try without extension
+                            var withoutExt = Path.Combine(filtersDir, Path.GetFileNameWithoutExtension(_filterName) + ".xml");
+                            path = File.Exists(withoutExt) ? withoutExt : path;
+                        }
+                        if (File.Exists(path))
+                        {
+                            var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
+                            using (var reader = new StreamReader(path))
+                            {
+                                var filter = (OpeningFilter)serializer.Deserialize(reader);
+                                if (filter?.ClashZoneStorage?.ClashZones != null)
+                                {
+                                    _clashZones.Clear();
+                                    _clashZones.AddRange(filter.ClashZoneStorage.ClashZones);
+                                    DebugLogger.Info($"{_logPrefix} Fallback loaded {_clashZones.Count} clash zones from {path}");
+                                }
+                            }
+                        }
+                        else
+                        {
+                            DebugLogger.Warning($"{_logPrefix} Fallback XML not found: {path}");
+                        }
+                    }
+                    catch (Exception loadEx)
+                    {
+                        DebugLogger.Error($"{_logPrefix} Fallback load from filter XML failed: {loadEx.Message}");
+                    }
+                }
+                
                 // ---- 1. VALIDATION: Check document state (NO transaction) ----
                 if (!ValidateDocument())
                 {
@@ -87,7 +125,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         t.SetFailureHandlingOptions(options);
                         DebugLogger.Info($"{_logPrefix} Transaction started with UniversalWarningSwallower enabled");
                         
-                        // Place all sleeves in single transaction (zero linked file access!)
+                    // Ensure diagnostics are enabled for this run
+                    try { OptimizationFlags.UseDiagnosticMode = true; DeploymentConfiguration.DeploymentMode = false; } catch { }
+
+                    // Place all sleeves in single transaction (zero linked file access!)
                         var placerService = new UniversalSleevePlacerService(_doc, _conditions, _strategy, _clearanceSettings, _filterName);
                         
                         // 🛡️ ARCHITECTURE FIX: Apply comprehensive filtering before placement
@@ -97,8 +138,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         // 3. Selected reference linked files
                         // 4. Selected host linked files
                         // 5. Within active 3D section box
-                        var filteredClashZones = FilterClashZonesByAllCriteria(_clashZones);
+                    var filteredClashZones = FilterClashZonesByAllCriteria(_clashZones);
+
+                    // Log eligibility vs flags before calling placement
+                    try
+                    {
+                        var eligLog = new System.Text.StringBuilder();
+                        int total = filteredClashZones?.Count ?? 0;
+                        int isRes = filteredClashZones?.Count(cz => cz.IsResolved) ?? 0;
+                        int isCluster = filteredClashZones?.Count(cz => cz.IsClusterResolved) ?? 0;
+                        int eligible = filteredClashZones?.Count(cz => !cz.IsResolved && !cz.IsClusterResolved) ?? 0;
+                        eligLog.AppendLine($"[{DateTime.Now}] [PLACEMENT-ELIGIBILITY] Total={total}, IsResolved={isRes}, IsClusterResolved={isCluster}, Eligible={eligible}");
+                        foreach (var cz in filteredClashZones.Take(50))
+                        {
+                            eligLog.AppendLine($"  CZ {cz.Id} Flags: IsResolved={cz.IsResolved}, IsClusterResolved={cz.IsClusterResolved}, SleeveId={cz.SleeveInstanceId}, ClusterSleeveId={cz.ClusterSleeveInstanceId}");
+                        }
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_eligibility.log", eligLog.ToString());
+                    }
+                    catch { }
                         
+                        // Log how many zones are about to be processed for placement
+                        try { System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_run.log", $"[{DateTime.Now}] CALL PlaceAllSleevesInTransaction: filtered={filteredClashZones?.Count ?? 0}\n"); } catch { }
                         var result = placerService.PlaceAllSleevesInTransaction(filteredClashZones);
                         
                         // Commit and check status
@@ -108,9 +168,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             DebugLogger.Info($"{_logPrefix} ✓ Transaction committed successfully - Placed: {result.PlacedCount}, Skipped: {result.SkippedCount}");
                             
                             // Show success feedback
-                            string message = result.PlacedCount > 0
-                                ? $"✓ Successfully placed {result.PlacedCount} {_category} sleeve(s)\n✗ Skipped {result.SkippedCount} (already resolved)"
-                                : $"No {_category} sleeves placed\n✗ All {result.SkippedCount} were already resolved";
+                            string message;
+                            if (result.PlacedCount > 0)
+                            {
+                                message = $"✓ Successfully placed {result.PlacedCount} {_category} sleeve(s)\n✗ Skipped {result.SkippedCount} (already resolved)";
+                            }
+                            else if (result.ErrorCount > 0)
+                            {
+                                message = $"No {_category} sleeves placed\n✗ {result.ErrorCount} error(s) occurred (see sleeve_placement_errors.log)";
+                            }
+                            else
+                            {
+                                message = $"No {_category} sleeves placed\n✗ All {result.SkippedCount} were already resolved";
+                            }
                             
                             MessageBox.Show(message, $"{_category} Sleeve Placement Complete", 
                                 MessageBoxButtons.OK, 
@@ -194,7 +264,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         {
             try
             {
-                var conditionsService = new ConditionsService(msg => DebugLogger.Info(msg));
+                // Use the actual project filters directory so CONDITIONS.xml sits next to the filter XMLs
+                var projectFiltersDir = ProjectPathService.GetFiltersDirectory(_doc);
+                var conditionsService = new ConditionsService(projectFiltersDir, msg => DebugLogger.Info(msg));
+                try { System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", $"[{DateTime.Now:HH:mm:ss}] CONDITIONS_DIR={projectFiltersDir}\n"); } catch { }
                 
                 // 🛡️ ARCHITECTURE FIX: Use BOTH filter name AND category for unique CONDITIONS XML
                 // This allows different clearance/opening types per category within the same filter
@@ -224,6 +297,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 DebugLogger.Info($"{_logPrefix} Expected CONDITIONS file: '{expectedFileName}'");
                 
                 _conditions = conditionsService.LoadConditions(combinedKey);
+                
+                // Ensure CONDITIONS.xml exists in the project Filters directory; create if missing
+                try
+                {
+                    var expectedPath = conditionsService.GetConditionsFilePath(combinedKey);
+                    if (!System.IO.File.Exists(expectedPath))
+                    {
+                        // Initialize sane defaults tied to this filter/category key
+                        if (_conditions == null)
+                            _conditions = new OpeningConditions();
+                        _conditions.FilterName = combinedKey;
+                        _conditions.Category = _category;
+                        // Save immediately so subsequent runs find it
+                        conditionsService.SaveConditions(_conditions, combinedKey);
+                        DebugLogger.Info($"{_logPrefix} CONDITIONS.xml created at: {expectedPath}");
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", $"[{DateTime.Now:HH:mm:ss}] CONDITIONS_CREATED={expectedPath}\n");
+                    }
+                    else
+                    {
+                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", $"[{DateTime.Now:HH:mm:ss}] CONDITIONS_EXISTS={expectedPath}\n");
+                    }
+                }
+                catch { }
                 
                 if (_conditions != null)
                 {
@@ -289,6 +385,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 DebugLogger.Info($"{_logPrefix} UI selected reference files: [{string.Join(", ", selectedReferenceFiles)}]");
                 DebugLogger.Info($"{_logPrefix} UI selected host files: [{string.Join(", ", selectedHostFiles)}]");
                 
+                int afterCategory = 0, afterHostType = 0, afterRefFile = 0, afterHostFile = 0, afterSection = 0;
                 var filteredZones = clashZones.Where(cz =>
                 {
                     // 🚨 DEBUG: Log first few clash zones to see their file names
@@ -306,6 +403,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         DebugLogger.Info($"{_logPrefix} Filtered out ClashZone {cz.Id}: MEP category '{cz.MepElementCategory}' doesn't match command category '{_category}'");
                         return false;
                     }
+                    afterCategory++;
                     
                     // Filter 2: Host type filtering - RE-ENABLED FOR FINAL TESTING
                     bool hostTypeMatch = selectedHostTypes.Count == 0 || 
@@ -318,6 +416,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         DebugLogger.Info($"{_logPrefix} Filtered out ClashZone {cz.Id}: Host type '{cz.StructuralElementType}' not in selected types [{string.Join(", ", selectedHostTypes)}]");
                         return false;
                     }
+                    afterHostType++;
                     
                     // Filter 3: Reference linked file filtering - RE-ENABLED WITH DETAILED LOGGING
                     bool referenceFileMatch = selectedReferenceFiles.Count == 0 || 
@@ -328,6 +427,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         DebugLogger.Info($"{_logPrefix} Filtered out ClashZone {cz.Id}: Reference file '{cz.SourceDocKey}' not in selected files [{string.Join(", ", selectedReferenceFiles)}]");
                         return false;
                     }
+                    afterRefFile++;
                     
                     // Filter 4: Host linked file filtering - RE-ENABLED WITH DETAILED LOGGING
                     bool hostFileMatch = selectedHostFiles.Count == 0 || 
@@ -338,6 +438,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         DebugLogger.Info($"{_logPrefix} Filtered out ClashZone {cz.Id}: Host file '{cz.StructuralElementDocumentTitle}' not in selected files [{string.Join(", ", selectedHostFiles)}]");
                         return false;
                     }
+                    afterHostFile++;
                     
                     // Filter 5: 3D section box filtering - DISABLED FOR DEBUG
                     // bool sectionBoxMatch = IsClashZoneVisibleInCurrentSectionBox(cz);
@@ -348,18 +449,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     // }
                     
                     // 🚨 TEMPORARY: Only apply 3D section box filter (most likely to be correct)
-                    bool sectionBoxMatch = IsClashZoneVisibleInCurrentSectionBox(cz);
+                    // Section box filtering DISABLED for placement: we already have precise clash zones
+                    bool sectionBoxMatch = true; // IsClashZoneVisibleInCurrentSectionBox(cz);
                     if (!sectionBoxMatch)
                     {
                         DebugLogger.Info($"{_logPrefix} Filtered out ClashZone {cz.Id}: Not visible in current 3D section box");
                         return false;
                     }
+                    afterSection++;
                     
                     return true;
                 }).ToList();
                 
                 // 🚨 DEBUG: Direct file logging to bypass DebugLogger issues
                 DebugLogger.Info($"[{DateTime.Now}] 🚨 FILTERING COMPLETED: {clashZones.Count} -> {filteredZones.Count} clash zones\n");
+                try
+                {
+                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_filter_breakdown.log",
+                        $"[{DateTime.Now}] Counts: afterCategory={afterCategory}, afterHostType={afterHostType}, afterRefFile={afterRefFile}, afterHostFile={afterHostFile}, afterSection={afterSection}, final={filteredZones.Count}\n");
+                }
+                catch { }
                 
                 DebugLogger.Info($"{_logPrefix} FINAL 5-FILTER SYSTEM: MEP category + host type + reference files + host files + 3D section box filters applied: {clashZones.Count} -> {filteredZones.Count} clash zones");
                 return filteredZones;
@@ -393,23 +502,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     return true; // Can't get bounds = all visible
                 }
 
-                // Check if clash zone intersection point is within section box
-                var intersectionPoint = clashZone.IntersectionPoint;
-                
-                bool isVisible = intersectionPoint.X >= sectionBox.Min.X && intersectionPoint.X <= sectionBox.Max.X &&
-                               intersectionPoint.Y >= sectionBox.Min.Y && intersectionPoint.Y <= sectionBox.Max.Y &&
-                               intersectionPoint.Z >= sectionBox.Min.Z && intersectionPoint.Z <= sectionBox.Max.Z;
-                
-                if (isVisible)
+                // Tolerance to avoid precision misses (in feet ~ 30mm)
+                const double tol = 0.1;
+
+                // Prefer checking the clash zone's intersection bounding box if present
+                var czBox = clashZone.ClashBoundingBox;
+                if (czBox != null)
                 {
-                    DebugLogger.Info($"{_logPrefix} ClashZone {clashZone.Id} is visible in section box at ({intersectionPoint.X:F2}, {intersectionPoint.Y:F2}, {intersectionPoint.Z:F2})");
+                    // Expand section box slightly by tol
+                    bool overlaps =
+                        (czBox.Min.X <= sectionBox.Max.X + tol) && (czBox.Max.X >= sectionBox.Min.X - tol) &&
+                        (czBox.Min.Y <= sectionBox.Max.Y + tol) && (czBox.Max.Y >= sectionBox.Min.Y - tol) &&
+                        (czBox.Min.Z <= sectionBox.Max.Z + tol) && (czBox.Max.Z >= sectionBox.Min.Z - tol);
+
+                    DebugLogger.Info($"{_logPrefix} SectionBox test (BBox) CZ={clashZone.Id} overlaps={overlaps}  czMin=({czBox.Min.X:F2},{czBox.Min.Y:F2},{czBox.Min.Z:F2}) czMax=({czBox.Max.X:F2},{czBox.Max.Y:F2},{czBox.Max.Z:F2}) sbMin=({sectionBox.Min.X:F2},{sectionBox.Min.Y:F2},{sectionBox.Min.Z:F2}) sbMax=({sectionBox.Max.X:F2},{sectionBox.Max.Y:F2},{sectionBox.Max.Z:F2})");
+                    return overlaps;
                 }
-                else
-                {
-                    DebugLogger.Info($"{_logPrefix} ClashZone {clashZone.Id} is outside section box at ({intersectionPoint.X:F2}, {intersectionPoint.Y:F2}, {intersectionPoint.Z:F2})");
-                }
-                
-                return isVisible;
+
+                // Fallback to single point test with tolerance
+                var p = clashZone.IntersectionPoint;
+                bool inside =
+                    p.X >= sectionBox.Min.X - tol && p.X <= sectionBox.Max.X + tol &&
+                    p.Y >= sectionBox.Min.Y - tol && p.Y <= sectionBox.Max.Y + tol &&
+                    p.Z >= sectionBox.Min.Z - tol && p.Z <= sectionBox.Max.Z + tol;
+
+                DebugLogger.Info($"{_logPrefix} SectionBox test (Point) CZ={clashZone.Id} inside={inside} at ({p.X:F2}, {p.Y:F2}, {p.Z:F2}) sbMin=({sectionBox.Min.X:F2},{sectionBox.Min.Y:F2},{sectionBox.Min.Z:F2}) sbMax=({sectionBox.Max.X:F2},{sectionBox.Max.Y:F2},{sectionBox.Max.Z:F2})");
+                return inside;
             }
             catch (Exception ex)
             {

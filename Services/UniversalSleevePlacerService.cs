@@ -209,11 +209,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// WRITE phase - Transaction MUST be started by caller (Command)
         /// Matches MD pattern: Section 2, Lines 72-80
         /// </summary>
-        public (int PlacedCount, int SkippedCount) PlaceAllSleevesInTransaction(List<ClashZone> clashZones)
+        public (int PlacedCount, int SkippedCount, int ErrorCount) PlaceAllSleevesInTransaction(List<ClashZone> clashZones)
         {
             // ⏱️ TIMING: Start overall placement timer
             var overallTimer = System.Diagnostics.Stopwatch.StartNew();
             var detailedTimingLog = new System.Text.StringBuilder();
+            // Diagnostics: per-run placement log in AppData
+            var placementLogName = SafeFileLogger.GetLogFilePath($"sleeve_placement_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.log");
+            // Also mirror a one-line header into project Log for visibility even if AppData not checked
+            try { System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_run.log", $"[{DateTime.Now}] ENTER PlaceAllSleeves: incoming={clashZones?.Count ?? 0}\n"); } catch { }
             
             PlacedCount = 0;
             SkippedCount = 0;
@@ -240,8 +244,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // 🔥 CRITICAL DEBUG: Log flag status from the clash zones passed to this method
             int clusterResolvedCount = clashZones.Count(cz => cz.IsClusterResolved);
             int individualResolvedCount = clashZones.Count(cz => cz.IsResolved);
+            int eligibleCount = clashZones.Count(cz => !cz.IsResolved && !cz.IsClusterResolved);
             batchLogs.AppendLine($"[{DateTime.Now:HH:mm:ss}] 🔥 UNIVERSAL SLEEVE PLACER RECEIVED: {clashZones.Count} clash zones");
             batchLogs.AppendLine($"[{DateTime.Now:HH:mm:ss}] 📊 FLAGS RECEIVED: IsClusterResolved=True: {clusterResolvedCount}, IsResolved=True: {individualResolvedCount}");
+            SafeFileLogger.SafeAppendText(placementLogName, $"[{DateTime.Now}] START: Total={clashZones.Count}, AlreadyResolved={individualResolvedCount}, ClusterResolved={clusterResolvedCount}, Eligible={eligibleCount}\n");
             
             // 🛡️ FAIL-SAFE: Check document state before starting
             if (!_doc.IsModifiable)
@@ -253,7 +259,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (clashZones == null || clashZones.Count == 0)
             {
                 DebugLogger.Warning($"[UniversalSleevePlacer] No clash zones provided");
-                return (0, 0);
+                return (0, 0, 0);
             }
             
             // DEBUG: Log all incoming ClashZone objects to trace XML loading
@@ -317,6 +323,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     try
                     {
                         DebugLogger.Info($"[UniversalSleevePlacer] Processing ClashZone {clashZone.Id}: MEP={clashZone.MepElementId.IntegerValue}, Structural={clashZone.StructuralElementId.IntegerValue}");
+                        // SAFETY: Heal missing placement/intersection coordinates from linked host if zeros
+                        TryFixPlacementPointFromLink(clashZone);
+
+                        // Abort early if we still don't have a valid point
+                        if (Math.Abs(clashZone.SleevePlacementPointX) < 1e-9 && Math.Abs(clashZone.SleevePlacementPointY) < 1e-9 && Math.Abs(clashZone.SleevePlacementPointZ) < 1e-9)
+                        {
+                            var msg = $"[UniversalSleevePlacer] ERROR: ClashZone {clashZone.Id} has no valid placement point (IntersectionPoint still zero). MEP={clashZone.MepElementIdValue}, Structural={clashZone.StructuralElementIdValue}";
+                            DebugLogger.Error(msg);
+                            if (PlacedCount + SkippedCount < 50) batchLogs.AppendLine($"✗ ERROR: {msg}");
+                            try { SafeFileLogger.SafeAppendText("sleeve_placement_errors.log", $"[{DateTime.Now}] {msg}\n"); } catch { }
+                            ErrorCount++;
+                            continue;
+                        }
                         
                         // ✅ PERFORMANCE OPTIMIZATION: Batch file logging instead of individual writes
                         // Only log to batch - will write once at end (or every 50 clash zones)
@@ -331,6 +350,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             DebugLogger.Info($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} has cluster sleeve {clashZone.ClusterSleeveInstanceId} - preventing individual sleeve placement");
                             if (PlacedCount + SkippedCount < 50) batchLogs.AppendLine($"✓ SKIP ClashZone {clashZone.Id}: has cluster sleeve {clashZone.ClusterSleeveInstanceId}");
+                            SafeFileLogger.SafeAppendText(placementLogName, $"[{DateTime.Now}] SKIP Cluster: ClashZone={clashZone.Id}, ClusterSleeveId={clashZone.ClusterSleeveInstanceId}\n");
                             SkippedCount++;
                             sleeveTimer.Stop();
                             continue;
@@ -417,6 +437,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             {
                                 // Individual sleeve exists - skip
                                 DebugLogger.Info($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} already has individual sleeve {clashZone.SleeveInstanceId}");
+                                SafeFileLogger.SafeAppendText(placementLogName, $"[{DateTime.Now}] SKIP IndividualExists: ClashZone={clashZone.Id}, SleeveId={clashZone.SleeveInstanceId}\n");
                                 SkippedCount++;
                                 continue;
                             }
@@ -1027,7 +1048,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             catch (Exception ex)
             {
                 DebugLogger.Error($"[UniversalSleevePlacer] Error in placement loop: {ex.Message}");
-                throw;
+                try { SafeFileLogger.SafeAppendText("sleeve_placement_errors.log", $"[{DateTime.Now}] {ex}\n"); } catch { }
+                ErrorCount += 1;
             }
             finally
             {
@@ -1039,14 +1061,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log", batchLogs.ToString());
                         if (!DeploymentConfiguration.DeploymentMode)
                             System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\flag_state_debug.log", batchLogs.ToString());
+                        // Also write summary to AppData placement log
+                        SafeFileLogger.SafeAppendText(placementLogName, $"[{DateTime.Now}] SUMMARY: Placed={PlacedCount}, Skipped={SkippedCount}, Errors={ErrorCount}\n");
+                        // Write a pointer file in project Log to locate the AppData placement log easily
+                        System.IO.File.WriteAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_placement_latest.txt", placementLogName);
                     }
                     catch { } // Don't fail placement if logging fails
                 }
             }
             
-            DebugLogger.Info($"[UniversalSleevePlacer] 🎯 PLACEMENT COMPLETED: Placed={PlacedCount}, Skipped={SkippedCount}");
+            DebugLogger.Info($"[UniversalSleevePlacer] 🎯 PLACEMENT COMPLETED: Placed={PlacedCount}, Skipped={SkippedCount}, Errors={ErrorCount}");
             
-            return (PlacedCount, SkippedCount);
+            return (PlacedCount, SkippedCount, ErrorCount);
         }
         
         /// <summary>
@@ -1243,6 +1269,81 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var element = xmlDoc.CreateElement(name);
             element.InnerText = value;
             parent.AppendChild(element);
+        }
+
+        private void TryFixPlacementPointFromLink(ClashZone cz)
+        {
+            try
+            {
+                bool hasZeroPoint = (Math.Abs(cz.IntersectionPointX) < 1e-9 && Math.Abs(cz.IntersectionPointY) < 1e-9 && Math.Abs(cz.IntersectionPointZ) < 1e-9);
+                if (!hasZeroPoint) return;
+
+                // Find the link instance by document title saved in clash zone
+                var linkInstances = new FilteredElementCollector(_doc)
+                    .OfClass(typeof(RevitLinkInstance))
+                    .Cast<RevitLinkInstance>()
+                    .ToList();
+
+                foreach (var link in linkInstances)
+                {
+                    var linkDoc = link.GetLinkDocument();
+                    if (linkDoc == null) continue;
+                    if (!string.Equals(linkDoc.Title, cz.StructuralElementDocumentTitle, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    // Get structural element in link doc
+                    var sid = new ElementId(cz.StructuralElementIdValue);
+                    var structEl = linkDoc.GetElement(sid);
+                    if (structEl == null) break;
+
+                    var sbbox = structEl.get_BoundingBox(null);
+                    if (sbbox == null) break;
+
+                    // Transform bbox into host coordinates
+                    var T = link.GetTotalTransform();
+                    var min = T.OfPoint(sbbox.Min);
+                    var max = T.OfPoint(sbbox.Max);
+                    var center = new XYZ((min.X + max.X) / 2.0, (min.Y + max.Y) / 2.0, (min.Z + max.Z) / 2.0);
+
+                    cz.SleevePlacementPoint = center;
+                    cz.SleevePlacementPointX = center.X;
+                    cz.SleevePlacementPointY = center.Y;
+                    cz.SleevePlacementPointZ = center.Z;
+                    // Also backfill the generic intersection point fields for downstream consumers
+                    cz.IntersectionPointX = center.X;
+                    cz.IntersectionPointY = center.Y;
+                    cz.IntersectionPointZ = center.Z;
+
+                    // Log and exit after first success
+                    DebugLogger.Info($"[UniversalSleevePlacer] [FIXUP] ClashZone {cz.Id}: Reconstructed placement point from link '{linkDoc.Title}' element {sid.IntegerValue} → ({center.X:F2},{center.Y:F2},{center.Z:F2})");
+                    try { SafeFileLogger.SafeAppendText("sleeve_placement_fixups.log", $"[{DateTime.Now}] FIXUP {cz.Id} → ({center.X},{center.Y},{center.Z}) from {linkDoc.Title}:{sid.IntegerValue}\n"); } catch { }
+                    return;
+                }
+
+                // If no link match, attempt using active doc structural element
+                var hostStruct = _doc.GetElement(new ElementId(cz.StructuralElementIdValue));
+                if (hostStruct != null)
+                {
+                    var sbbox = hostStruct.get_BoundingBox(null);
+                    if (sbbox != null)
+                    {
+                        var center = new XYZ((sbbox.Min.X + sbbox.Max.X) / 2.0, (sbbox.Min.Y + sbbox.Max.Y) / 2.0, (sbbox.Min.Z + sbbox.Max.Z) / 2.0);
+                        cz.SleevePlacementPoint = center;
+                        cz.SleevePlacementPointX = center.X;
+                        cz.SleevePlacementPointY = center.Y;
+                        cz.SleevePlacementPointZ = center.Z;
+                        cz.IntersectionPointX = center.X;
+                        cz.IntersectionPointY = center.Y;
+                        cz.IntersectionPointZ = center.Z;
+                        DebugLogger.Info($"[UniversalSleevePlacer] [FIXUP] ClashZone {cz.Id}: Reconstructed placement point from host structural element {hostStruct.Id.IntegerValue} → ({center.X:F2},{center.Y:F2},{center.Z:F2})");
+                        try { SafeFileLogger.SafeAppendText("sleeve_placement_fixups.log", $"[{DateTime.Now}] FIXUP {cz.Id} → ({center.X},{center.Y},{center.Z}) from HOST:{hostStruct.Id.IntegerValue}\n"); } catch { }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[UniversalSleevePlacer] FIXUP error for ClashZone {cz.Id}: {ex.Message}");
+            }
         }
 
     // Helper method to define category priority for sorting

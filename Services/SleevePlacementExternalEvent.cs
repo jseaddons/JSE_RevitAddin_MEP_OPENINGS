@@ -59,6 +59,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
+                SafeFileLogger.SafeAppendText("placement_event_trace.log", $"[{DateTime.Now:HH:mm:ss}] EXTERNAL_EVENT: entered\n");
                 // 🔥 CRITICAL DEBUG: Force direct file logging to bypass any logger issues
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: {DateTime.Now:yyyy-MM-dd HH:mm:ss} 🔥🔥🔥\n");
                 
@@ -179,10 +180,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 DebugLogger.Error($"[SleevePlacementExternalEvent] Exception: {ex.Message}");
                 DebugLogger.Error($"[SleevePlacementExternalEvent] Stack trace: {ex.StackTrace}");
+                SafeFileLogger.SafeAppendText("placement_fatal.log", $"[{DateTime.Now:HH:mm:ss}] {ex}\n");
                 TaskDialog.Show("Error", $"Failed to complete sleeve placement: {ex.Message}");
             }
             finally
             {
+                SafeFileLogger.SafeAppendText("placement_event_trace.log", $"[{DateTime.Now:HH:mm:ss}] EXTERNAL_EVENT: exited\n");
                 try { PlacementCompleted?.Invoke(); } catch { }
             }
         }
@@ -281,7 +284,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 DebugLogger.Info("[SleevePlacementExternalEvent] Loading cluster configuration from filters...");
                 
-                var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                var filtersDirectory = ProjectPathService.GetFiltersDirectory(_document);
                 
                 // Search for any filter XML file to extract advanced settings
                 var xmlFiles = Directory.GetFiles(filtersDirectory, "*.xml");
@@ -371,7 +374,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return (clashZones, xmlFilePath);
                 }
                 
-                var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                var filtersDirectory = ProjectPathService.GetFiltersDirectory(_document);
                 
                 // Search for files matching pattern: prioritize filter name first, then fallback
                 var categoryPattern = category.ToLower().Replace(" ", "_");

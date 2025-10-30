@@ -1495,32 +1495,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // This preserves flags (IsResolved, IsClusterResolved) from previous runs
                 var allClashZones = existingClashZones?.ClashZones ?? new List<Models.ClashZone>(); // Use existing loaded clash zones
                 // Merge existing + new zones (avoid duplicates by Id) BEFORE saving, so snapshot bags persist to XML
-                var mergedZones = new List<Models.ClashZone>();
-                var existingById = new Dictionary<Guid, Models.ClashZone>();
-                foreach (var z in allClashZones)
-                {
-                    if (!existingById.ContainsKey(z.Id))
-                    {
-                        existingById[z.Id] = z;
-                        mergedZones.Add(z);
-                    }
-                }
+                   var existingById = allClashZones.ToDictionary(z => z.Id, z => z);
+               
+
                 foreach (var nz in newClashZones ?? new List<Models.ClashZone>())
+
                 {
                     if (!existingById.ContainsKey(nz.Id))
                     {
                         existingById[nz.Id] = nz;
-                        mergedZones.Add(nz);
+                        allClashZones.Add(nz); // Only one list!
                     }
                     else
                     {
-                        // Update existing entry with any newly computed snapshot fields
                         var ez = existingById[nz.Id];
                         ez.SourceDocKey = nz.SourceDocKey;
                         ez.HostDocKey = nz.HostDocKey;
                         ez.MepParameterValues = nz.MepParameterValues;
                         ez.HostParameterValues = nz.HostParameterValues;
-                        // Overwrite critical geometry/thickness fields from the latest refresh
                         if (nz.StructuralElementThickness > 0)
                             ez.StructuralElementThickness = nz.StructuralElementThickness;
                         if (nz.StructuralElementNormal != null)
@@ -1528,23 +1520,72 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
 
-                DebugLogger.Info($"[PARAM_SNAPSHOT] Persisting {mergedZones.Count} zones (new={newClashZones?.Count ?? 0}, existing={allClashZones?.Count ?? 0}) with snapshot bags where available");
-                __logPhaseMem("BEFORE_PERSIST", mergedZones, newClashZones, allClashZones);
+                // ---------------------------------------------------------------------
+                // 1. ENSURE ONLY ONE MASTER CLASH ZONE LIST
+                // ---------------------------------------------------------------------
+                if (existingClashZones != null && !object.ReferenceEquals(existingClashZones.ClashZones, allClashZones))
+                    existingClashZones.ClashZones = allClashZones;
+                newClashZones = null;
 
-                // ✅ CRITICAL DEBUG: Calculate statistics AFTER merge is complete
-                var existingCountBeforeMerge = existingClashZones?.ClashZones?.Count ?? 0;
-                var newZonesCount = newClashZones?.Count ?? 0;
-                var mergedTotal = mergedZones.Count;
-                var resolvedCount = mergedZones.Count(cz => cz.IsResolved);
-                var unresolvedCount = mergedZones.Count(cz => !cz.IsResolved);
-                
-                DebugLogger.Info($"[CLASH_DEBUG] Merge Statistics - Existing: {existingCountBeforeMerge}, New: {newZonesCount}, Merged Total: {mergedTotal}, Resolved: {resolvedCount}, Unresolved: {unresolvedCount}");
-                __logPhaseMem("AFTER_PERSIST_STATS", mergedZones, null, null);
-                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Merge Statistics - Existing: {existingCountBeforeMerge}, New: {newZonesCount}, Merged Total: {mergedTotal}, Resolved: {resolvedCount}, Unresolved: {unresolvedCount}\n");
+                // ---------------------------------------------------------------------
+                // 2. DEFER CLEARING REVIT API OBJECTS UNTIL AFTER PERSISTENCE
+                // IntersectionPointX/Y/Z and serialized bbox getters depend on non-null objects.
+                // We'll clear after XML files are saved to avoid writing zeros.
 
+                // ---------------------------------------------------------------------
+                // 3. INTERN STRING FIELDS IN PARAM SNAPSHOTS (saves memory)
+                var internPool = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var cz in allClashZones)
+                {
+                    if (cz.MepParameterValues != null)
+                        foreach (var kv in cz.MepParameterValues)
+                        {
+                            if (!internPool.Add(kv.Key)) kv.Key = internPool.First(s => s == kv.Key);
+                            if (!internPool.Add(kv.Value)) kv.Value = internPool.First(s => s == kv.Value);
+                        }
+                    if (cz.HostParameterValues != null)
+                        foreach (var kv in cz.HostParameterValues)
+                        {
+                            if (!internPool.Add(kv.Key)) kv.Key = internPool.First(s => s == kv.Key);
+                            if (!internPool.Add(kv.Value)) kv.Value = internPool.First(s => s == kv.Value);
+                        }
+                }
+
+                // ---------------------------------------------------------------------
+                // 4. FORCE GC AND TAKE SNAPSHOTS
+                _memoryProfiler?.TakeSnapshot("BEFORE_GC_MERGE", allClashZones.Count);
+                GC.Collect(2, GCCollectionMode.Forced, true);
+                GC.WaitForPendingFinalizers();
+                GC.Collect(2, GCCollectionMode.Forced, true);
+                _memoryProfiler?.TakeSnapshot("AFTER_GC_MERGE", allClashZones.Count);
+
+                // Detailed memory diagnostics after GC
+                try
+                {
+                    var managedBytes = GC.GetTotalMemory(false);
+                    var uniqueIds = new HashSet<Guid>();
+                    foreach (var _cz in allClashZones)
+                        uniqueIds.Add(_cz.Id);
+                    var uniqueCount = uniqueIds.Count;
+                    double duplicationFactor = uniqueCount == 0 ? 0.0 : (double)allClashZones.Count / uniqueCount;
+                    var managedMb = managedBytes / (1024.0 * 1024.0);
+                    var diagLine = $"[MEMORY_DEBUG] PHASE=AFTER_GC_MERGE: managed={managedMb:F1} MB, counts: totalZones={allClashZones.Count}, uniqueZones={uniqueCount}, duplicationFactor={duplicationFactor:F2}" + Environment.NewLine;
+                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] {diagLine}");
+                }
+                catch { }
+
+                // ---------------------------------------------------------------------
+                // 5. BATCHED LOGGER (Optional: activate if using string-heavy logging)
+                batchedLogger?.Dispose();
+                batchedLogger = new BatchedLogger(msg => SafeFileLogger.SafeAppendText(refreshLogName, msg), batchSize: 100, flushIntervalSeconds: 1);
+
+                // ---------------------------------------------------------------------
+                // 6. MEMORY SNAPSHOT & LOG
+                DebugLogger.Info($"[PARAM_SNAPSHOT] Persisting {allClashZones.Count} zones (cleared, deduped, interned)");
+                batchedLogger.Log($"[{DateTime.Now}] [MEMORY_DEBUG] AFTER_MERGE_NO_DUP: {allClashZones.Count} zones, post-GC memory snapshot taken{Environment.NewLine}");
                 var clashZoneStorage = new Models.ClashZoneStorage
                 {
-                    ClashZones = mergedZones,
+                    ClashZones = allClashZones,
                     CreatedAt = DateTime.Now,
                     LastUpdated = DateTime.Now,
                     DocumentPath = _document.PathName,
@@ -1718,6 +1759,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 DebugLogger.Info($"[CLASH_DEBUG] Saved clash zones to filter '{targetFilter.Name}'");
+                
+                // AFTER PERSISTENCE: Now safe to clear heavy Revit API objects so future runs use less memory
+                try
+                {
+                    foreach (var cz in allClashZones)
+                        cz.ClearRevitApiObjects();
+                }
+                catch { }
                 var savedCount = clashZoneStorage?.ClashZones?.Count ?? 0;
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] SUCCESS: Saved {savedCount} clash zones to filter '{targetFilter.Name}' and profile configuration\n");
             }
@@ -1809,6 +1858,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Non-fatal: Log the error but don't fail the entire refresh
                 SafeFileLogger.SafeAppendText("refresh_batch_log_error.log", 
                     $"[{DateTime.Now}] Error flushing batched logs: {flushEx.Message}\n");
+            }
+            
+            // ✅ FINAL ROOT CLEANUP: release large references and compact LOH
+            try
+            {
+                // Release large in-method collections/services
+                currentIntersections = null;
+
+                // Compact LOH once and force Gen2 collection
+                System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+                GC.Collect(2, GCCollectionMode.Forced, true);
+                GC.WaitForPendingFinalizers();
+                GC.Collect(2, GCCollectionMode.Forced, true);
+
+                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [MEMORY_DEBUG] FINAL_CLEANUP: LOH compacted and Gen2 GC forced\n");
+            }
+            catch (Exception finalGcEx)
+            {
+                SafeFileLogger.SafeAppendText("refresh_memory.log", $"Final GC/cleanup error: {finalGcEx}\n");
             }
             
             return Autodesk.Revit.UI.Result.Succeeded;

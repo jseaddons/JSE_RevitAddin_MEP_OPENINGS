@@ -23,8 +23,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
             var root = Path.Combine(appData, "JSE_MEP_Openings", "Projects");
-            var projectName = Sanitize(doc?.Title ?? "Default");
-            return Path.Combine(root, projectName);
+
+            // Prefer actual file name from PathName (handles detached/renamed titles)
+            string pathName = doc?.PathName;
+            string nameFromPath = null;
+            if (!string.IsNullOrWhiteSpace(pathName))
+            {
+                try
+                {
+                    nameFromPath = Path.GetFileNameWithoutExtension(pathName);
+                }
+                catch { }
+            }
+
+            var sourceName = !string.IsNullOrWhiteSpace(nameFromPath) ? nameFromPath : (doc?.Title ?? "Default");
+            var projectName = Sanitize(sourceName);
+
+            var projectRoot = Path.Combine(root, projectName);
+            // Lightweight trace for debugging where files go
+            try { System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", $"[{DateTime.Now:HH:mm:ss}] PROJECT_ROOT={projectRoot} (source='{sourceName}')\n"); } catch { }
+            return projectRoot;
         }
 
         public static string GetFiltersDirectory(Document doc)
@@ -39,5 +57,3 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
     }
 }
-
-

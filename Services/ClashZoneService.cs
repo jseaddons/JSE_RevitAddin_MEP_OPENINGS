@@ -1619,6 +1619,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // MepIntersectionService.GetBoundingBoxCenter() averages entry/exit points to get mid-depth
             // NOTE: For partial penetrations that pass the 20% filter, intersection point is used as-is
             // (the working code doesn't have special handling for partial penetrations)
+            // SAFETY: Some projects reported (0,0,0) due to missing transform at persistence time.
+            // If we see a zero/near-zero point, fix up from the intersection bbox center or MEP bbox center.
+            if (intersectionPoint == null || (Math.Abs(intersectionPoint.X) < 1e-9 && Math.Abs(intersectionPoint.Y) < 1e-9 && Math.Abs(intersectionPoint.Z) < 1e-9))
+            {
+                try
+                {
+                    XYZ fix = null;
+                    if (boundingBox != null)
+                    {
+                        fix = new XYZ(
+                            (boundingBox.Min.X + boundingBox.Max.X) / 2.0,
+                            (boundingBox.Min.Y + boundingBox.Max.Y) / 2.0,
+                            (boundingBox.Min.Z + boundingBox.Max.Z) / 2.0);
+                    }
+                    if (fix == null)
+                    {
+                        var mepBBoxFix = mepElement.get_BoundingBox(null);
+                        if (mepBBoxFix != null)
+                        {
+                            fix = new XYZ(
+                                (mepBBoxFix.Min.X + mepBBoxFix.Max.X) / 2.0,
+                                (mepBBoxFix.Min.Y + mepBBoxFix.Max.Y) / 2.0,
+                                (mepBBoxFix.Min.Z + mepBBoxFix.Max.Z) / 2.0);
+                        }
+                    }
+                    if (fix != null)
+                    {
+                        _log($"[FIXUP] IntersectionPoint was 0,0,0 → using center {fix} (bbox/meppbbox)");
+                        intersectionPoint = fix;
+                    }
+                }
+                catch { }
+            }
             XYZ placementPoint = intersectionPoint;
 
             var clashZone = new ClashZone
@@ -1681,6 +1714,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // DEBUG: Log the pre-calculated data
             _log($"[DEBUG] Created ClashZone {clashZone.Id}:");
             _log($"[DEBUG]   IntersectionPoint: {intersectionPoint} (used as placement point)");
+            if (intersectionPoint == null || (Math.Abs(intersectionPoint.X) < 1e-9 && Math.Abs(intersectionPoint.Y) < 1e-9 && Math.Abs(intersectionPoint.Z) < 1e-9))
+            {
+                _log($"[WARN]   IntersectionPoint is zero/invalid at save time. BBox null? {boundingBox == null}");
+            }
             _log($"[DEBUG]   SleevePlacementPoint: {intersectionPoint} (same as intersection point)");
             _log($"[DEBUG]   MepElementWidth: {finalWidth}, MepElementHeight: {finalHeight}");
             _log($"[DEBUG]   MepElementOrientation: {mepOrientation}");
