@@ -50,11 +50,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var projectDir = Path.GetDirectoryName(projectPath);
                     var projectProfilesDir = Path.Combine(projectDir ?? "", "JSE_MEP_Profiles");
                     
-                    // Test if we can create the directory
-                    if (!Directory.Exists(projectProfilesDir))
-                    {
-                        Directory.CreateDirectory(projectProfilesDir);
-                    }
+                    // ✅ CRITICAL FIX: Use step-by-step directory creation
+                    EnsureDirectoryStructure(projectProfilesDir);
                     
                     _profileDirectory = projectProfilesDir;
                     System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Using project directory: {_profileDirectory}");
@@ -68,10 +65,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     _profileDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
                                                    "JSE_MEP_Openings", "Projects", projectName);
                     
-                    // Ensure the fallback directory exists
-                    if (!Directory.Exists(_profileDirectory))
+                    // ✅ CRITICAL FIX: Use step-by-step directory creation for fallback too
+                    try
                     {
-                        Directory.CreateDirectory(_profileDirectory);
+                        EnsureDirectoryStructure(_profileDirectory);
+                    }
+                    catch (Exception fallbackEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Cannot create AppData fallback directory: {fallbackEx.Message}");
+                        // Continue anyway - error will be logged but won't prevent service initialization
                     }
                 }
             }
@@ -80,34 +82,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Fallback to AppData only for testing
                 _profileDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
                                                "JSE_MEP_Openings", currentProject);
-                
-                // Ensure the directory exists
-                if (!Directory.Exists(_profileDirectory))
-                {
-                    Directory.CreateDirectory(_profileDirectory);
-                }
             }
             
             _profileFilePath = Path.Combine(_profileDirectory, $"profiles_{currentProject}.xml");
             _availableProfiles = new List<UserProfile>();
 
-            // Ensure directory exists with better error handling
+            // ✅ CRITICAL FIX: Ensure all parent directories are created step-by-step with proper error handling
+            // This fixes issues where users with 3-digit IDs (jse***) can't create the folder
             try
             {
-                if (!Directory.Exists(_profileDirectory))
-                {
-                    Directory.CreateDirectory(_profileDirectory);
-                    System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Created directory: {_profileDirectory}");
-                }
-                else
-                {
-                    System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Directory already exists: {_profileDirectory}");
-                }
+                EnsureDirectoryStructure(_profileDirectory);
+                System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Directory verified/created: {_profileDirectory}");
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"ProfileManagementService: ERROR creating directory {_profileDirectory}: {ex.Message}");
-                throw new InvalidOperationException($"Cannot create profile directory at {_profileDirectory}. Please check permissions.", ex);
+                System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Stack trace: {ex.StackTrace}");
+                // Don't throw - allow the service to continue with a fallback path or empty profile list
+                // This prevents the UI from failing to appear
+                System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Continuing with potentially invalid directory path");
             }
 
             LoadProfiles();
@@ -132,6 +125,108 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             foreach (var profile in _availableProfiles)
             {
                 System.Diagnostics.Debug.WriteLine($"ProfileManagementService constructor: Loaded profile: {profile.Name}");
+            }
+        }
+
+        /// <summary>
+        /// ✅ CRITICAL FIX: Ensures directory structure is created step-by-step
+        /// This fixes issues where Directory.CreateDirectory() fails silently for some users (e.g., 3-digit user IDs)
+        /// Creates: AppData\Roaming\JSE_MEP_Openings\Projects\[ProjectName] (or AppData\Roaming\JSE_MEP_Openings\Default)
+        /// </summary>
+        private void EnsureDirectoryStructure(string targetDirectory)
+        {
+            if (string.IsNullOrEmpty(targetDirectory))
+            {
+                System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Target directory is null/empty, skipping creation");
+                return;
+            }
+
+            try
+            {
+                // Get AppData base path first
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                
+                // Step 1: Ensure base JSE_MEP_Openings folder exists
+                var baseFolder = Path.Combine(appData, "JSE_MEP_Openings");
+                if (!Directory.Exists(baseFolder))
+                {
+                    try
+                    {
+                        Directory.CreateDirectory(baseFolder);
+                        System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Created base folder: {baseFolder}");
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new InvalidOperationException($"Cannot create base folder {baseFolder}. User may lack permissions. Error: {ex.Message}", ex);
+                    }
+                }
+
+                // Step 2: If target is under Projects subfolder, ensure Projects folder exists
+                if (targetDirectory.Contains("Projects", StringComparison.OrdinalIgnoreCase))
+                {
+                    var projectsFolder = Path.Combine(baseFolder, "Projects");
+                    if (!Directory.Exists(projectsFolder))
+                    {
+                        try
+                        {
+                            Directory.CreateDirectory(projectsFolder);
+                            System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Created Projects folder: {projectsFolder}");
+                        }
+                        catch (Exception ex)
+                        {
+                            throw new InvalidOperationException($"Cannot create Projects folder {projectsFolder}. Error: {ex.Message}", ex);
+                        }
+                    }
+                }
+
+                // Step 3: Create the final target directory (Directory.CreateDirectory creates parents automatically)
+                if (!Directory.Exists(targetDirectory))
+                {
+                    try
+                    {
+                        Directory.CreateDirectory(targetDirectory);
+                        System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Created target directory: {targetDirectory}");
+                    }
+                    catch (UnauthorizedAccessException ex)
+                    {
+                        throw new InvalidOperationException($"Access denied creating directory: {targetDirectory}. Please check folder permissions. User: {Environment.UserName}", ex);
+                    }
+                    catch (DirectoryNotFoundException ex)
+                    {
+                        throw new InvalidOperationException($"Parent directory not found for: {targetDirectory}", ex);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new InvalidOperationException($"Failed to create directory: {targetDirectory}. Error: {ex.Message}", ex);
+                    }
+                }
+
+                // Step 4: Verify the directory exists and is writable
+                if (!Directory.Exists(targetDirectory))
+                {
+                    throw new InvalidOperationException($"Directory creation failed: {targetDirectory} does not exist after creation attempt. User: {Environment.UserName}");
+                }
+
+                // Test write access
+                var testFile = Path.Combine(targetDirectory, $"write_test_{Guid.NewGuid():N}.tmp");
+                try
+                {
+                    File.WriteAllText(testFile, "test");
+                    File.Delete(testFile);
+                    System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Directory write test passed: {targetDirectory}");
+                }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException($"Directory exists but is not writable: {targetDirectory}. User may lack write permissions. Error: {ex.Message}", ex);
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                throw; // Re-throw InvalidOperationException as-is
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Unexpected error creating directory structure for: {targetDirectory}. User: {Environment.UserName}. Error: {ex.Message}", ex);
             }
         }
 
@@ -520,6 +615,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 System.Diagnostics.Debug.WriteLine($"SaveProfiles: Saving {_availableProfiles.Count} profiles to: {_profileFilePath}");
+                
+                // ✅ CRITICAL FIX: Ensure directory exists before saving (handles cases where initial creation failed)
+                try
+                {
+                    EnsureDirectoryStructure(_profileDirectory);
+                }
+                catch (Exception dirEx)
+                {
+                    System.Diagnostics.Debug.WriteLine($"SaveProfiles: WARNING - Directory creation failed: {dirEx.Message}. Attempting to save anyway.");
+                }
                 
                 // Use conditional logging instead of hardcoded file writes
                 var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";

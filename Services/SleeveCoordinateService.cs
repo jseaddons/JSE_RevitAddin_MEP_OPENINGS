@@ -6,6 +6,8 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 
+using JSE_RevitAddin_MEP_OPENINGS.Services;
+
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
     /// <summary>
@@ -715,7 +717,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 _clashZoneCache.Clear();
                 
-                var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                var filtersDirectory = ProjectPathService.GetFiltersDirectory(_doc);
                 var allXmlFiles = Directory.GetFiles(filtersDirectory, "*.xml");
                 var xmlFiles = allXmlFiles
                     .Where(f => f.Contains("_ducts.xml") || f.Contains("_pipes.xml") || f.Contains("_cable_trays.xml") || 

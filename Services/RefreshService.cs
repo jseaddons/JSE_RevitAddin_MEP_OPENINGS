@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Models;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -40,7 +42,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _document = document ?? throw new ArgumentNullException(nameof(document));
             _uiDocument = uiDocument ?? throw new ArgumentNullException(nameof(uiDocument));
             _appProfileService = appProfileService ?? throw new ArgumentNullException(nameof(appProfileService));
-            _filterManagementService = new FilterManagementService(msg => DebugLogger.Info(msg), msg => DebugLogger.Error(msg));
+            _filterManagementService = new FilterManagementService(_document, msg => DebugLogger.Info(msg), msg => DebugLogger.Error(msg));
             
             // ⚠️ CRITICAL FIX: Initialize with EMPTY storage in constructor ⚠️
             // The existing clash zones will be loaded during ExecuteRefresh from the current profile
@@ -74,7 +76,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                var filtersDirectory = (_document != null)
+                    ? ProjectPathService.GetFiltersDirectory(_document)
+                    : ProjectPathService.GetFiltersDirectory(_document);
                 
                 if (!Directory.Exists(filtersDirectory))
                 {
@@ -708,10 +712,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 return Autodesk.Revit.UI.Result.Failed;
             }
 
+            // ✅ CRITICAL FIX: Get 3D view or find/create one if ActiveView is not 3D
+            View3D view3D = _document.ActiveView as View3D;
+            if (view3D == null)
+            {
+                // Try to find any existing 3D view
+                var all3DViews = new FilteredElementCollector(_document)
+                    .OfClass(typeof(View3D))
+                    .Cast<View3D>()
+                    .Where(v => !v.IsTemplate && v.CanBePrinted)
+                    .FirstOrDefault();
+                
+                if (all3DViews != null)
+                {
+                    DebugLogger.Warning($"[CLASH_DEBUG] Active view is not 3D. Using existing 3D view: {all3DViews.Name}");
+                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Active view is not 3D. Using existing 3D view: {all3DViews.Name}\n");
+                    view3D = all3DViews;
+                }
+                else
+                {
+                    DebugLogger.Error("[CLASH_DEBUG] ERROR: No 3D view found in document. Please create a 3D view and try again.");
+                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] ERROR: No 3D view available for intersection detection\n");
+                    _statusLabel.Text = "Error: No 3D view found. Please create a 3D view.";
+                    _progressBar.Value = 0;
+                    return Autodesk.Revit.UI.Result.Failed;
+                }
+            }
+            
             // Use passed MEP categories, reference files, and host filters from UI (UI PRECEDENCE)
             var currentIntersections = intersectionService.FindIntersections(
                 _document,
-                _document.ActiveView as View3D,
+                view3D,
                 selectedMepCategories,
                 selectedReferenceFiles,
                 selectedHostFiles,
@@ -1659,6 +1690,74 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var mainFilePath = Path.Combine(filterDir, $"{targetFilter.Name}.xml");
                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] About to save main filter to: {mainFilePath}\n");
                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Filter has {targetFilter.ClashZoneStorage?.ClashZones?.Count ?? 0} clash zones\n");
+                    
+                    // ✅ CRITICAL FIX: Normalize IntersectionPointX/Y/Z before saving (prevents 0,0,0 in XML)
+                    if (targetFilter?.ClashZoneStorage?.ClashZones != null)
+                    {
+                        foreach (var z in targetFilter.ClashZoneStorage.ClashZones)
+                        {
+                            if (z == null) continue;
+                            bool hasIP = z.IntersectionPoint != null;
+                            bool isIPZero = hasIP && Math.Abs(z.IntersectionPoint.X) < 1e-9 && Math.Abs(z.IntersectionPoint.Y) < 1e-9 && Math.Abs(z.IntersectionPoint.Z) < 1e-9;
+                            bool hasSPP = z.SleevePlacementPoint != null;
+                            bool isSPPZero = hasSPP && Math.Abs(z.SleevePlacementPoint.X) < 1e-9 && Math.Abs(z.SleevePlacementPoint.Y) < 1e-9 && Math.Abs(z.SleevePlacementPoint.Z) < 1e-9;
+                            
+                            // ✅ CRITICAL FIX: Use same priority order as UniversalSleevePlacerService
+                            // Check XML-serialized properties FIRST (these are always set during refresh)
+                            bool hasValidXmlX = Math.Abs(z.IntersectionPointX) > 1e-9;
+                            bool hasValidXmlY = Math.Abs(z.IntersectionPointY) > 1e-9;
+                            bool hasValidXmlZ = Math.Abs(z.IntersectionPointZ) > 1e-9;
+                            bool hasValidXml = hasValidXmlX || hasValidXmlY || hasValidXmlZ;
+                            
+                            bool hasValidSppXmlX = Math.Abs(z.SleevePlacementPointX) > 1e-9;
+                            bool hasValidSppXmlY = Math.Abs(z.SleevePlacementPointY) > 1e-9;
+                            bool hasValidSppXmlZ = Math.Abs(z.SleevePlacementPointZ) > 1e-9;
+                            bool hasValidSppXml = hasValidSppXmlX || hasValidSppXmlY || hasValidSppXmlZ;
+                            
+                            if (hasValidXml)
+                            {
+                                // XML values are already correct - ensure IntersectionPoint object matches
+                                if (z.IntersectionPoint == null || 
+                                    (Math.Abs(z.IntersectionPoint.X - z.IntersectionPointX) > 1e-9 ||
+                                     Math.Abs(z.IntersectionPoint.Y - z.IntersectionPointY) > 1e-9 ||
+                                     Math.Abs(z.IntersectionPoint.Z - z.IntersectionPointZ) > 1e-9))
+                                {
+                                    z.IntersectionPoint = new XYZ(z.IntersectionPointX, z.IntersectionPointY, z.IntersectionPointZ);
+                                }
+                            }
+                            else if (hasValidSppXml)
+                            {
+                                z.IntersectionPointX = z.SleevePlacementPointX;
+                                z.IntersectionPointY = z.SleevePlacementPointY;
+                                z.IntersectionPointZ = z.SleevePlacementPointZ;
+                                if (z.IntersectionPoint == null)
+                                {
+                                    z.IntersectionPoint = new XYZ(z.IntersectionPointX, z.IntersectionPointY, z.IntersectionPointZ);
+                                }
+                            }
+                            else if (hasIP && !isIPZero)
+                            {
+                                z.IntersectionPointX = z.IntersectionPoint.X;
+                                z.IntersectionPointY = z.IntersectionPoint.Y;
+                                z.IntersectionPointZ = z.IntersectionPoint.Z;
+                            }
+                            else if (hasSPP && !isSPPZero)
+                            {
+                                z.IntersectionPointX = z.SleevePlacementPoint.X;
+                                z.IntersectionPointY = z.SleevePlacementPoint.Y;
+                                z.IntersectionPointZ = z.SleevePlacementPoint.Z;
+                            }
+                            else if (z.ClashBoundingBox != null)
+                            {
+                                var center = (z.ClashBoundingBox.Min + z.ClashBoundingBox.Max) / 2.0;
+                                z.IntersectionPointX = center.X;
+                                z.IntersectionPointY = center.Y;
+                                z.IntersectionPointZ = center.Z;
+                            }
+                        }
+                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Normalized IntersectionPointX/Y/Z for {targetFilter.ClashZoneStorage.ClashZones.Count} zones before saving\n");
+                    }
+                    
                     _filterManagementService.SaveFilterToXmlFile(targetFilter, mainFilePath);
                     DebugLogger.Info($"[CLASH_DEBUG] Persisted main filter '{targetFilter.Name}' to XML file: {mainFilePath}");
                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Persisted main filter '{targetFilter.Name}' to XML file: {mainFilePath}\n");
@@ -1688,9 +1787,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 // Filter clearance settings for this specific category
                                 var categoryClearances = FilterClearancesByCategory(targetFilter.OpeningSettings?.ClearanceSettings, category);
                                 
+                                // ✅ CRITICAL FIX: Normalize category name consistently to avoid duplicates and case issues
+                                // Maps: "Ducts" → "ducts", "Duct Accessories" → "duct_accessories", etc.
+                                string normalizedCategory = MepCategoryConstants.GetXmlSuffix(category);
+                                
+                                // ✅ CRITICAL FIX: Extract base filter name (remove any existing category suffix)
+                                // This prevents duplicates like "Ventilation_ducts_ducts" or "Ventilation_duct_accessories_accessories"
+                                string baseFilterName = ExtractBaseFilterName(targetFilter.Name, normalizedCategory);
+                                
+                                // Always create: {baseFilterName}_{normalizedCategory}
+                                // This ensures consistent naming: "Ventilation_ducts", "Ventilation_duct_accessories"
+                                string filterFileName = $"{baseFilterName}_{normalizedCategory}";
+                                
                                 var categoryFilter = new Models.OpeningFilter
                                 {
-                                    Name = $"{targetFilter.Name}_{category.ToLower().Replace(" ", "_")}",
+                                    Name = filterFileName,
                                     Category = targetFilter.Category,
                                     OpeningType = targetFilter.OpeningType,
                                     IsEnabled = true,
@@ -1717,6 +1828,83 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 // Save category-specific XML file
                                 var categoryFilePath = Path.Combine(ProjectPathService.GetFiltersDirectory(_document), $"{categoryFilter.Name}.xml");
                                 
+                                // ✅ CRITICAL: Normalize IntersectionPointX/Y/Z for category-specific zones BEFORE saving
+                                if (categoryClashZones != null && categoryClashZones.Count > 0)
+                                {
+                                    foreach (var z in categoryClashZones)
+                                    {
+                                        if (z == null) continue;
+                                        bool hasIP = z.IntersectionPoint != null;
+                                        bool isIPZero = hasIP && Math.Abs(z.IntersectionPoint.X) < 1e-9 && Math.Abs(z.IntersectionPoint.Y) < 1e-9 && Math.Abs(z.IntersectionPoint.Z) < 1e-9;
+                                        bool hasSPP = z.SleevePlacementPoint != null;
+                                        bool isSPPZero = hasSPP && Math.Abs(z.SleevePlacementPoint.X) < 1e-9 && Math.Abs(z.SleevePlacementPoint.Y) < 1e-9 && Math.Abs(z.SleevePlacementPoint.Z) < 1e-9;
+                                        
+                                        // ✅ CRITICAL FIX: Use same priority order - check XML values FIRST
+                                        bool hasValidXmlX = Math.Abs(z.IntersectionPointX) > 1e-9;
+                                        bool hasValidXmlY = Math.Abs(z.IntersectionPointY) > 1e-9;
+                                        bool hasValidXmlZ = Math.Abs(z.IntersectionPointZ) > 1e-9;
+                                        bool hasValidXml = hasValidXmlX || hasValidXmlY || hasValidXmlZ;
+                                        
+                                        bool hasValidSppXmlX = Math.Abs(z.SleevePlacementPointX) > 1e-9;
+                                        bool hasValidSppXmlY = Math.Abs(z.SleevePlacementPointY) > 1e-9;
+                                        bool hasValidSppXmlZ = Math.Abs(z.SleevePlacementPointZ) > 1e-9;
+                                        bool hasValidSppXml = hasValidSppXmlX || hasValidSppXmlY || hasValidSppXmlZ;
+                                        
+                                        if (hasValidXml)
+                                        {
+                                            // XML values already correct
+                                            if (z.IntersectionPoint == null || 
+                                                (Math.Abs(z.IntersectionPoint.X - z.IntersectionPointX) > 1e-9 ||
+                                                 Math.Abs(z.IntersectionPoint.Y - z.IntersectionPointY) > 1e-9 ||
+                                                 Math.Abs(z.IntersectionPoint.Z - z.IntersectionPointZ) > 1e-9))
+                                            {
+                                                z.IntersectionPoint = new XYZ(z.IntersectionPointX, z.IntersectionPointY, z.IntersectionPointZ);
+                                            }
+                                        }
+                                        else if (hasValidSppXml)
+                                        {
+                                            z.IntersectionPointX = z.SleevePlacementPointX;
+                                            z.IntersectionPointY = z.SleevePlacementPointY;
+                                            z.IntersectionPointZ = z.SleevePlacementPointZ;
+                                            if (z.IntersectionPoint == null)
+                                            {
+                                                z.IntersectionPoint = new XYZ(z.IntersectionPointX, z.IntersectionPointY, z.IntersectionPointZ);
+                                            }
+                                        }
+                                        else if (hasIP && !isIPZero)
+                                        {
+                                            z.IntersectionPointX = z.IntersectionPoint.X;
+                                            z.IntersectionPointY = z.IntersectionPoint.Y;
+                                            z.IntersectionPointZ = z.IntersectionPoint.Z;
+                                        }
+                                        else if (hasSPP && !isSPPZero)
+                                        {
+                                            z.IntersectionPointX = z.SleevePlacementPoint.X;
+                                            z.IntersectionPointY = z.SleevePlacementPoint.Y;
+                                            z.IntersectionPointZ = z.SleevePlacementPoint.Z;
+                                        }
+                                        else if (z.ClashBoundingBox != null)
+                                        {
+                                            var center = (z.ClashBoundingBox.Min + z.ClashBoundingBox.Max) / 2.0;
+                                            z.IntersectionPointX = center.X;
+                                            z.IntersectionPointY = center.Y;
+                                            z.IntersectionPointZ = center.Z;
+                                        }
+                                    }
+                                    // Log sample zones to placement_debug before save (using SafeFileLogger path)
+                                    try
+                                    {
+                                        var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                                        var sample = categoryClashZones.Take(2).ToList();
+                                        for (int i = 0; i < sample.Count; i++)
+                                        {
+                                            var s = sample[i];
+                                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] REFRESH-CATEGORY BEFORE SAVE: {Path.GetFileName(categoryFilePath)} Zone={s.Id} IP=({s.IntersectionPointX},{s.IntersectionPointY},{s.IntersectionPointZ}) IP_OBJ={(s.IntersectionPoint != null ? $"({s.IntersectionPoint.X},{s.IntersectionPoint.Y},{s.IntersectionPoint.Z})" : "NULL")} SPP={(s.SleevePlacementPoint != null ? $"({s.SleevePlacementPoint.X},{s.SleevePlacementPoint.Y},{s.SleevePlacementPoint.Z})" : "NULL")}\n");
+                                        }
+                                    }
+                                    catch (Exception logEx) { DebugLogger.Error($"[REFRESH-LOG-ERROR] {logEx.Message}"); }
+                                }
+                                
                             if (categoryClashZones.Count > 0)
                             {
                                 // 🔥 CRITICAL DEBUG: Log flags BEFORE saving to XML
@@ -1727,6 +1915,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                                 
                                 _filterManagementService.SaveFilterToXmlFile(categoryFilter, categoryFilePath);
+                                
+                                // ✅ POST-SAVE VERIFICATION: Read back XML and log what was actually written
+                                if (categoryClashZones.Count > 0 && File.Exists(categoryFilePath))
+                                {
+                                    try
+                                    {
+                                        var verifySerializer = new System.Xml.Serialization.XmlSerializer(typeof(Models.OpeningFilter));
+                                        using (var verifyReader = new StreamReader(categoryFilePath))
+                                        {
+                                            var verifyFilter = (Models.OpeningFilter)verifySerializer.Deserialize(verifyReader);
+                                            if (verifyFilter?.ClashZoneStorage?.ClashZones != null)
+                                            {
+                                                var sample = verifyFilter.ClashZoneStorage.ClashZones.Take(2).ToList();
+                                                var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                                                for (int i = 0; i < sample.Count; i++)
+                                                {
+                                                    var s = sample[i];
+                                                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] REFRESH-CATEGORY AFTER SAVE: {Path.GetFileName(categoryFilePath)} Zone={s.Id} IP_XML=({s.IntersectionPointX},{s.IntersectionPointY},{s.IntersectionPointZ})\n");
+                                                }
+                                            }
+                                        }
+                                    }
+                                    catch (Exception verifyEx)
+                                    {
+                                        try
+                                        {
+                                            var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] REFRESH-CATEGORY VERIFY ERROR: {verifyEx.Message}\n");
+                                        }
+                                        catch { }
+                                    }
+                                }
 
                             if (categoryClashZones.Count > 0)
                             {
@@ -2727,6 +2947,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Error($"[RefreshService] Error transforming coordinates: {ex.Message}");
                 return point; // Return original point as fallback
             }
+        }
+
+        /// <summary>
+        /// Extracts the base filter name by removing any existing category suffix.
+        /// This prevents duplicates like "Ventilation_ducts_ducts" or "Ventilation_duct_accessories_accessories"
+        /// </summary>
+        private string ExtractBaseFilterName(string filterName, string normalizedCategory)
+        {
+            if (string.IsNullOrWhiteSpace(filterName)) return filterName;
+            if (string.IsNullOrWhiteSpace(normalizedCategory)) return filterName;
+            
+            // Check if filter name ends with the category suffix
+            string suffixPattern = $"_{normalizedCategory}";
+            if (filterName.EndsWith(suffixPattern, StringComparison.OrdinalIgnoreCase))
+            {
+                return filterName.Substring(0, filterName.Length - suffixPattern.Length);
+            }
+            
+            return filterName;
         }
     }
 }

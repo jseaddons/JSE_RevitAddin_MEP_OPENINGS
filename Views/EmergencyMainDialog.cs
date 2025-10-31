@@ -113,6 +113,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         };
         // ═══════════════════════════════════════════════════════════════
         
+        // Store clearance values per category to persist user changes when switching categories
+        // Format: Dictionary<category, Dictionary<textboxTag, value>>
+        private Dictionary<string, Dictionary<string, string>> _categoryClearanceValues = new Dictionary<string, Dictionary<string, string>>();
+        private string _currentCategory = string.Empty; // Track current category for persistence
+        
         private LinkedFileService? _linkedFileService;
         private List<LinkedFileInfo> _linkedFiles = new List<LinkedFileInfo>();
         private Document? _activeDocument;
@@ -375,6 +380,91 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     try
                     {
                         DebugLogger.Info("=== DIALOG SHOWN EVENT TRIGGERED ===");
+                        
+                        // ✅ FAMILY VALIDATION: Check for required opening families
+                        var familyService = new FamilyLoadingService(document);
+                        var missingFamilies = familyService.GetMissingFamilies();
+                        
+                        if (missingFamilies.Count > 0)
+                        {
+                            var missingList = string.Join("\n  • ", missingFamilies);
+                            var resourcesPath = familyService.ResourcesPath;
+                            
+                            var dialog = new TaskDialog("Missing Required Families")
+                            {
+                                MainIcon = TaskDialogIcon.TaskDialogIconWarning,
+                                MainInstruction = "Required Opening Families Not Loaded",
+                                MainContent = $"The following opening families are required but not loaded in this project:\n\n  • {missingList}\n\n" +
+                                             $"Please load these families using:\n" +
+                                             $"  Insert → Load Family",
+                                CommonButtons = TaskDialogCommonButtons.Ok,
+                                Title = "Family Loading Required"
+                            };
+                            
+                            DebugLogger.Warning($"[EmergencyMainDialog] Missing families detected: {missingList}");
+                            DebugLogger.Info($"[EmergencyMainDialog] Resources path: {resourcesPath}");
+                            
+                            // ✅ CRITICAL FIX: Hide main dialog, show TaskDialog, then close UI so user can load families
+                            this.Hide();
+                            try
+                            {
+                                // Show TaskDialog (will appear on top since main dialog is hidden)
+                                dialog.Show();
+                                
+                                // ✅ AUTO-LOAD: Attempt to automatically load families if Resources folder is deployed
+                                // Resources folder is copied by installer to: [Addins Folder]\Resources\
+                                if (familyService.IsResourcesFolderValid())
+                                {
+                                    DebugLogger.Info("[EmergencyMainDialog] Resources folder found - attempting to auto-load missing families...");
+                                    bool loaded = familyService.LoadAllRequiredFamilies();
+                                    
+                                    if (loaded)
+                                    {
+                                        // Re-check after loading
+                                        var stillMissing = familyService.GetMissingFamilies();
+                                        if (stillMissing.Count == 0)
+                                        {
+                                            // All families loaded successfully - show success and restore UI
+                                            var successDialog = new TaskDialog("Families Loaded")
+                                            {
+                                                MainIcon = TaskDialogIcon.TaskDialogIconInformation,
+                                                MainInstruction = "Opening Families Loaded Successfully",
+                                                MainContent = "All required opening families have been automatically loaded into your project.",
+                                                CommonButtons = TaskDialogCommonButtons.Ok,
+                                                Title = "Success"
+                                            };
+                                            successDialog.Show();
+                                            this.Show();
+                                            this.BringToFront();
+                                            this.Activate();
+                                            return; // Exit early - UI restored, no need to close
+                                        }
+                                        else
+                                        {
+                                            // Auto-load partially succeeded but some families still missing
+                                            DebugLogger.Warning($"[EmergencyMainDialog] Auto-load incomplete: {stillMissing.Count} families still missing - closing UI for manual loading");
+                                        }
+                                    }
+                                    else
+                                    {
+                                        DebugLogger.Warning("[EmergencyMainDialog] Auto-load failed - closing UI for manual loading");
+                                    }
+                                }
+                                else
+                                {
+                                    // Resources folder not found - user must load families manually
+                                    DebugLogger.Info($"[EmergencyMainDialog] Resources folder not found at: {familyService.ResourcesPath} - user must load families manually");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                DebugLogger.Error($"[EmergencyMainDialog] Error during family loading: {ex.Message}");
+                            }
+                            
+                            // Close UI so user can load families manually (either auto-load didn't work or user needs to load manually)
+                            this.DialogResult = WinForms.DialogResult.Cancel;
+                            this.Close();
+                        }
                         
                         // 🔍 DIAGNOSTIC: Count sleeves BEFORE LoadRealLinkedFiles
                         var sleevesBeforeCount = new FilteredElementCollector(document)
@@ -1976,36 +2066,45 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         /// </summary>
         private void UpdateClearanceVisibilityForCategory(string category)
         {
+            // ✅ SAVE: Save current clearance values before switching categories
+            if (!string.IsNullOrEmpty(_currentCategory))
+            {
+                SaveCurrentClearanceValues();
+            }
+            
             // Hide all
             _clearancePanel.Visible = false;
             _cableTrayPanel.Visible = false;
             _damperPanel.Visible = false;
             _pipePanel.Visible = false;
 
+            // Update current category
+            _currentCategory = category;
+
             if (category.Equals("Cable Trays", StringComparison.OrdinalIgnoreCase))
             {
                 _cableTrayPanel.Visible = true;
-                SetDefaultClearanceValues("Cable Trays");
+                RestoreClearanceValues("Cable Trays");
             }
             else if (category.Equals("Duct Accessories", StringComparison.OrdinalIgnoreCase))
             {
                 _damperPanel.Visible = true;
-                SetDefaultClearanceValues("Duct Accessories");
+                RestoreClearanceValues("Duct Accessories");
             }
             else if (category.Equals("Ducts", StringComparison.OrdinalIgnoreCase))
             {
                 _clearancePanel.Visible = true;
-                SetDefaultClearanceValues("Ducts");
+                RestoreClearanceValues("Ducts");
             }
             else if (category.Equals("Pipes", StringComparison.OrdinalIgnoreCase))
             {
                 _pipePanel.Visible = true;
-                SetDefaultClearanceValues("Pipes");
+                RestoreClearanceValues("Pipes");
             }
             else
             {
                 _clearancePanel.Visible = true; // default
-                SetDefaultClearanceValues("Default");
+                RestoreClearanceValues("Default");
             }
         }
 
@@ -2625,11 +2724,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
             else
             {
-                // Lock - disable editing
+                // Lock - disable editing AND SAVE THE VALUE
                 lockBtn.Text = "🔒";
                 lockBtn.BackColor = System.Drawing.Color.LightGreen;
                 textBox.Enabled = false;
                 textBox.BackColor = System.Drawing.Color.LightGray;
+                
+                // ✅ SAVE: When locking, save the current clearance value for this category
+                SaveCurrentClearanceValues();
             }
         }
         private void SetDefaultClearanceValues(string category)
@@ -2756,6 +2858,109 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         }
                     }
                 }
+            }
+        }
+
+        /// <summary>
+        /// Save current clearance values from the visible panel to the category storage dictionary
+        /// </summary>
+        private void SaveCurrentClearanceValues()
+        {
+            if (string.IsNullOrEmpty(_currentCategory))
+                return;
+
+            try
+            {
+                // Initialize category dictionary if it doesn't exist
+                if (!_categoryClearanceValues.ContainsKey(_currentCategory))
+                {
+                    _categoryClearanceValues[_currentCategory] = new Dictionary<string, string>();
+                }
+
+                var categoryValues = _categoryClearanceValues[_currentCategory];
+
+                // Save values from the currently visible panel
+                WinForms.Panel activePanel = null;
+                if (_clearancePanel.Visible)
+                    activePanel = _clearancePanel;
+                else if (_cableTrayPanel.Visible)
+                    activePanel = _cableTrayPanel;
+                else if (_damperPanel.Visible)
+                    activePanel = _damperPanel;
+                else if (_pipePanel.Visible)
+                    activePanel = _pipePanel;
+
+                if (activePanel != null)
+                {
+                    foreach (var control in activePanel.Controls)
+                    {
+                        if (control is WinForms.TextBox textBox && textBox.Tag != null)
+                        {
+                            string tag = textBox.Tag.ToString() ?? "";
+                            categoryValues[tag] = textBox.Text;
+                            DebugLogger.Info($"[SaveCurrentClearanceValues] Saved {_currentCategory}.{tag} = {textBox.Text}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[SaveCurrentClearanceValues] Error: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Restore clearance values for a category from storage, or set defaults if not saved
+        /// </summary>
+        private void RestoreClearanceValues(string category)
+        {
+            try
+            {
+                // Check if we have saved values for this category
+                if (_categoryClearanceValues.ContainsKey(category) && _categoryClearanceValues[category].Count > 0)
+                {
+                    // Restore saved values
+                    var savedValues = _categoryClearanceValues[category];
+                    WinForms.Panel activePanel = null;
+                    
+                    if (category.Equals("Cable Trays", StringComparison.OrdinalIgnoreCase))
+                        activePanel = _cableTrayPanel;
+                    else if (category.Equals("Duct Accessories", StringComparison.OrdinalIgnoreCase))
+                        activePanel = _damperPanel;
+                    else if (category.Equals("Ducts", StringComparison.OrdinalIgnoreCase))
+                        activePanel = _clearancePanel;
+                    else if (category.Equals("Pipes", StringComparison.OrdinalIgnoreCase))
+                        activePanel = _pipePanel;
+                    else
+                        activePanel = _clearancePanel; // default
+
+                    if (activePanel != null)
+                    {
+                        foreach (var control in activePanel.Controls)
+                        {
+                            if (control is WinForms.TextBox textBox && textBox.Tag != null)
+                            {
+                                string tag = textBox.Tag.ToString() ?? "";
+                                if (savedValues.ContainsKey(tag))
+                                {
+                                    textBox.Text = savedValues[tag];
+                                    DebugLogger.Info($"[RestoreClearanceValues] Restored {category}.{tag} = {savedValues[tag]}");
+                                }
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    // No saved values - use defaults
+                    SetDefaultClearanceValues(category);
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[RestoreClearanceValues] Error: {ex.Message}");
+                // Fallback to defaults on error
+                SetDefaultClearanceValues(category);
             }
         }
 
@@ -3694,7 +3899,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         {
             try
             {
-                var conditionsService = new ConditionsService(msg => DebugLogger.Info(msg));
+                // Use project-specific Filters directory
+                string projectFiltersDir = _document != null ? ProjectPathService.GetFiltersDirectory(_document) : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                var conditionsService = new ConditionsService(projectFiltersDir, msg => DebugLogger.Info(msg));
                 
                 // Get selected filters
                 var selectedFilters = GetSelectedFilters();
@@ -3713,8 +3920,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     
                     // 🛡️ ARCHITECTURE FIX: Save CONDITIONS XML using combined key (FilterName_Category)
                     // This allows different clearance/opening types per category within the same filter
-                    // ✅ STANDARDIZED: Use normalized category names to match clash zone file naming
-                    string normalizedCategory = NormalizeCategoryName(filter.Category.ToString());
+                    // ✅ STANDARDIZED: Use MepCategoryConstants.GetXmlSuffix() for consistent naming (same as RefreshService)
+                    string normalizedCategory = MepCategoryConstants.GetXmlSuffix(filter.Category.ToString());
                     string combinedKey = $"{filter.Name}_{normalizedCategory}";
                     bool saved = conditionsService.SaveConditions(conditions, combinedKey);
                     if (saved)
@@ -3866,19 +4073,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             return preferences;
         }
 
-        /// <summary>
-        /// ✅ STANDARDIZED: Normalize category names to match clash zone file naming
-        /// Converts "Duct Accessories" → "duct_accessories", "Ducts" → "ducts", etc.
-        /// </summary>
-        private string NormalizeCategoryName(string categoryName)
-        {
-            if (string.IsNullOrEmpty(categoryName))
-                return "unknown";
-                
-            return categoryName
-                .Replace(" ", "_")           // "Duct Accessories" → "Duct_Accessories"
-                .ToLowerInvariant();          // "Duct_Accessories" → "duct_accessories"
-        }
+        // ✅ REMOVED: NormalizeCategoryName - Now using MepCategoryConstants.GetXmlSuffix() for consistency
 
         /// <summary>
         /// Read mark prefix settings from UI textboxes
@@ -3935,6 +4130,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 var __okStart = DateTime.Now;
                 SafeFileLogger.SafeAppendText("performance.log", $"OK_START {__okStart:O}");
                 try { SafeFileLogger.SafeAppendText("placement_event_trace.log", $"[{DateTime.Now:HH:mm:ss}] CLICK_OK: handler entered\n"); } catch { }
+                
+                // ✅ SAVE: Save current clearance values before OK button processing
+                SaveCurrentClearanceValues();
                 
                 // Parameter Transfer button removed - functionality moved to Transfer All button
 

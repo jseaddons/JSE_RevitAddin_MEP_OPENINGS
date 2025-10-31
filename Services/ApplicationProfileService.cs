@@ -180,6 +180,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Fallback to original logic
                     var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_check_debug.log";
                     JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Exception in profile check: {ex.Message}\n");
+                    // ✅ CRITICAL FIX: Handle null _profileService (can happen if directory creation failed)
+                    if (_profileService == null)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"ApplicationProfileService: ProfileService is null, returning true (profile setup required)");
+                        return true; // Show profile creation dialog if service failed to initialize
+                    }
                     return !_profileService.AvailableProfiles.Any() || _currentProfile == null;
                 }
             } 

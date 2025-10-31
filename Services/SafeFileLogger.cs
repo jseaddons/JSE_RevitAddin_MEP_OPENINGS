@@ -70,11 +70,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // This ensures all deployed instances write logs to the same location
             try
             {
-                string appDataPath = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "JSE_MEP_Openings",
-                    "Logs"
-                );
+                // ✅ CRITICAL FIX: Create base folder first, then Logs subfolder
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                var baseFolder = Path.Combine(appData, "JSE_MEP_Openings");
+                
+                // Ensure base folder exists first
+                if (!Directory.Exists(baseFolder))
+                {
+                    try
+                    {
+                        Directory.CreateDirectory(baseFolder);
+                        System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Created base folder: {baseFolder}");
+                    }
+                    catch (Exception baseEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Cannot create base folder {baseFolder}: {baseEx.Message}");
+                    }
+                }
+                
+                string appDataPath = Path.Combine(baseFolder, "Logs");
 
                 if (TryCreateDirectory(appDataPath))
                 {
@@ -215,7 +229,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 bool isPerformance = string.Equals(fileName, "performance.log", StringComparison.OrdinalIgnoreCase);
                 bool isRefresh = fileName.StartsWith("Refresh_", StringComparison.OrdinalIgnoreCase) && fileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase);
                 bool isRefreshMemory = fileName.StartsWith("refresh_memory_profiling_", StringComparison.OrdinalIgnoreCase) && fileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase);
-                if (!isPerformance && !isRefresh && !isRefreshMemory)
+                bool isSleevePlacement = fileName.StartsWith("sleeve_placement_", StringComparison.OrdinalIgnoreCase) && fileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase);
+                if (!isPerformance && !isRefresh && !isRefreshMemory && !isSleevePlacement)
                     return;
             }
                 

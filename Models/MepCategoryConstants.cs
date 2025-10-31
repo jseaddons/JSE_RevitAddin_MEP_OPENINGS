@@ -22,16 +22,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         
         /// <summary>
         /// Get XML file suffix for a category name
+        /// Handles both enum values (e.g., "DuctAccessories") and display names (e.g., "Duct Accessories")
         /// </summary>
         public static string GetXmlSuffix(string category)
         {
-            return category switch
+            if (string.IsNullOrWhiteSpace(category))
+                return "";
+            
+            // ✅ CRITICAL: Normalize first to handle enum values (e.g., "DuctAccessories" → "Duct Accessories")
+            string normalized = Normalize(category);
+            
+            return normalized switch
             {
                 DUCTS => DUCTS_XML_SUFFIX,
                 PIPES => PIPES_XML_SUFFIX,
                 CABLE_TRAYS => CABLE_TRAYS_XML_SUFFIX,
                 DUCT_ACCESSORIES => DUCT_ACCESSORIES_XML_SUFFIX,
-                _ => category?.ToLower().Replace(" ", "_") ?? ""
+                _ => normalized.ToLower().Replace(" ", "_")
             };
         }
         
@@ -91,8 +98,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
                 normalized.Equals("Cabletray", System.StringComparison.OrdinalIgnoreCase))
                 return CABLE_TRAYS;
             
+            // ✅ CRITICAL FIX: Handle enum values FIRST (e.g., "DuctAccessories" from MepCategory enum)
+            if (normalized.Equals("DuctAccessories", System.StringComparison.OrdinalIgnoreCase))
+                return DUCT_ACCESSORIES;
+            if (normalized.Equals("CableTrays", System.StringComparison.OrdinalIgnoreCase))
+                return CABLE_TRAYS;
+            
+            // Handle display name variations
             if (normalized.Equals("Duct Accessory", System.StringComparison.OrdinalIgnoreCase) ||
                 normalized.Equals("DuctAccessory", System.StringComparison.OrdinalIgnoreCase) ||
+                normalized.Equals("Duct Accessories", System.StringComparison.OrdinalIgnoreCase) ||
                 normalized.Equals("Damper", System.StringComparison.OrdinalIgnoreCase) ||
                 normalized.Equals("Dampers", System.StringComparison.OrdinalIgnoreCase))
                 return DUCT_ACCESSORIES;

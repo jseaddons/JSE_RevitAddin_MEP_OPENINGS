@@ -406,6 +406,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (loadedFilter?.ClashZoneStorage?.ClashZones != null)
                 {
                     clashZones = loadedFilter.ClashZoneStorage.ClashZones;
+                    // ✅ CRITICAL FIX: Reconstruct SleevePlacementPoint and IntersectionPoint from XML-serializable properties
+                    foreach (var cz in clashZones)
+                    {
+                        cz.EnsureSleevePlacementPointReconstructed();
+                        // Also reconstruct IntersectionPoint if needed
+                        if (cz.IntersectionPoint == null && (Math.Abs(cz.IntersectionPointX) > 1e-9 || Math.Abs(cz.IntersectionPointY) > 1e-9 || Math.Abs(cz.IntersectionPointZ) > 1e-9))
+                        {
+                            cz.IntersectionPoint = new XYZ(cz.IntersectionPointX, cz.IntersectionPointY, cz.IntersectionPointZ);
+                        }
+                    }
                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Successfully loaded {clashZones.Count} clash zones from {xmlFilePath}\n");
                     
                 // 🔥 CRITICAL DEBUG: Check flag values immediately after deserialization
@@ -445,7 +455,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 // 🔥 CRITICAL DEBUG: Direct file logging to trace orchestrator execution
-                var tracePath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_event_trace.log";
+                var tracePath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
                 try { System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] CLICK_OK: Begin placement for category={filter.Category}, filter={filter.Name}\n"); } catch { }
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥 ExecuteUniversalSleevePlacement CALLED 🔥\n");
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Filter Category: {filter.Category}\n");
@@ -545,8 +555,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 DebugLogger.Error($"[OpeningCommandOrchestrator] Error executing {command.GetType().Name}: {ex.Message}");
                 throw;
-            }
-        }
+    }
+}
 
     }
 }

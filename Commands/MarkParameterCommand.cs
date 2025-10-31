@@ -51,8 +51,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Processing ALL categories individually\n");
                     
                     // Get all available categories from XML files
-                    var availableCategories = GetAllAvailableCategories();
-                    if (!DeploymentConfiguration.DeploymentMode) System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\orchestrator_debug.log", 
+                    var availableCategories = GetAllAvailableCategories(doc);
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        string orchestratorLogPath = SafeFileLogger.GetLogFilePath("orchestrator_debug.log");
+                        System.IO.File.AppendAllText(orchestratorLogPath, 
                         $"[{DateTime.Now:HH:mm:ss}] Found {availableCategories.Count} categories: {string.Join(", ", availableCategories)}\n");
                     
                     // Process each category with its specific discipline prefix from UI
@@ -66,9 +69,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             tx.Start();
                             
                             var markService = new MarkParameterService();
-                            var numberFormat = _markPrefixes?.NumberFormat ?? "000";
                             var (processedCount, errorCount) = markService.ApplyMepMarkToClusters(
-                                doc, category, _projectPrefix, disciplinePrefix, _remarkAll, numberFormat);
+                                doc, category, _projectPrefix, disciplinePrefix, _remarkAll);
                             
                             tx.Commit();
                             
@@ -85,9 +87,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         tx.Start();
                         
                         var markService = new MarkParameterService();
-                        var numberFormat = _markPrefixes?.NumberFormat ?? "000";
                         var (processedCount, errorCount) = markService.ApplyMepMarkToClusters(
-                            doc, _targetCategory, _projectPrefix, _disciplinePrefix, _remarkAll, numberFormat);
+                            doc, _targetCategory, _projectPrefix, _disciplinePrefix, _remarkAll);
                         
                         tx.Commit();
                         
@@ -107,13 +108,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         /// <summary>
         /// Get all available categories from XML files
         /// </summary>
-        private List<string> GetAllAvailableCategories()
+        private List<string> GetAllAvailableCategories(Document doc)
         {
             var categories = new List<string>();
             
             try
             {
-                var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                var filtersDirectory = ProjectPathService.GetFiltersDirectory(doc);
                 
                 if (!Directory.Exists(filtersDirectory))
                 {

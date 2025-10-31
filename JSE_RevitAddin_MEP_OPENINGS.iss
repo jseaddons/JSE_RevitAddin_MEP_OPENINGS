@@ -33,6 +33,18 @@ Source: "bin\Release R24\Release R24\JSE_RevitAddin_MEP_OPENINGS.addin"; DestDir
 Source: "bin\Release R23\Release R23\JSE_RevitAddin_MEP_OPENINGS.dll"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2023"; Flags: ignoreversion
 Source: "bin\Release R23\Release R23\JSE_RevitAddin_MEP_OPENINGS.addin"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2023"; Flags: ignoreversion
 
+; ✅ RESOURCES FOLDER: Copy opening family files for auto-load functionality
+; Resources folder must be next to DLL for auto-load to work
+Source: "Resources\RectangularOpeningOnWall.rfa"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2024\Resources"; Flags: ignoreversion
+Source: "Resources\CircularOpeningOnWall.rfa"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2024\Resources"; Flags: ignoreversion
+Source: "Resources\RectangularOpeningOnSlab.rfa"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2024\Resources"; Flags: ignoreversion
+Source: "Resources\CircularOpeningOnSlab.rfa"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2024\Resources"; Flags: ignoreversion
+; Also copy to 2023 folder
+Source: "Resources\RectangularOpeningOnWall.rfa"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2023\Resources"; Flags: ignoreversion
+Source: "Resources\CircularOpeningOnWall.rfa"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2023\Resources"; Flags: ignoreversion
+Source: "Resources\RectangularOpeningOnSlab.rfa"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2023\Resources"; Flags: ignoreversion
+Source: "Resources\CircularOpeningOnSlab.rfa"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2023\Resources"; Flags: ignoreversion
+
 
 [Icons]
 Name: "{autoprograms}\MEP OPENING Uninstall"; Filename: "{uninstallexe}"

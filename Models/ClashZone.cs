@@ -58,15 +58,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         [XmlIgnore]
         public XYZ IntersectionPoint { get; set; }
         
+        // ✅ CRITICAL FIX: Backing fields to store X/Y/Z independently of XYZ object
+        // This prevents XML serialization from reading 0 when IntersectionPoint is (0,0,0) or null
+        private double _intersectionPointX = 0.0;
+        private double _intersectionPointY = 0.0;
+        private double _intersectionPointZ = 0.0;
+        
         /// <summary>
         /// XML serializable intersection point X coordinate
         /// </summary>
         public double IntersectionPointX
         {
-            get => IntersectionPoint != null ? IntersectionPoint.X : (SleevePlacementPoint?.X ?? 0.0);
-            set { 
+            get 
+            {
+                // ✅ CRITICAL FIX: Always return backing field (persists independently of XYZ object)
+                // If backing field is still default (0.0), try to sync from XYZ object ONCE
+                if (_intersectionPointX == 0.0 && IntersectionPoint != null && (Math.Abs(IntersectionPoint.X) > 1e-9 || Math.Abs(IntersectionPoint.Y) > 1e-9 || Math.Abs(IntersectionPoint.Z) > 1e-9))
+                {
+                    _intersectionPointX = IntersectionPoint.X;
+                    _intersectionPointY = IntersectionPoint.Y;
+                    _intersectionPointZ = IntersectionPoint.Z;
+                }
+                return _intersectionPointX;
+            }
+            set 
+            { 
+                _intersectionPointX = value; // ✅ CRITICAL: Always store in backing field FIRST
                 if (IntersectionPoint == null) 
-                    IntersectionPoint = new XYZ(value, 0, 0); 
+                    IntersectionPoint = new XYZ(value, _intersectionPointY, _intersectionPointZ); 
                 else 
                     IntersectionPoint = new XYZ(value, IntersectionPoint.Y, IntersectionPoint.Z); 
             }
@@ -77,10 +96,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// </summary>
         public double IntersectionPointY
         {
-            get => IntersectionPoint != null ? IntersectionPoint.Y : (SleevePlacementPoint?.Y ?? 0.0);
-            set { 
+            get 
+            {
+                // Sync backing fields if needed (see IntersectionPointX getter)
+                if (_intersectionPointY == 0.0 && IntersectionPoint != null && (Math.Abs(IntersectionPoint.X) > 1e-9 || Math.Abs(IntersectionPoint.Y) > 1e-9 || Math.Abs(IntersectionPoint.Z) > 1e-9))
+                {
+                    _intersectionPointX = IntersectionPoint.X;
+                    _intersectionPointY = IntersectionPoint.Y;
+                    _intersectionPointZ = IntersectionPoint.Z;
+                }
+                return _intersectionPointY;
+            }
+            set 
+            { 
+                _intersectionPointY = value; // ✅ CRITICAL: Always store in backing field FIRST
                 if (IntersectionPoint == null) 
-                    IntersectionPoint = new XYZ(0, value, 0); 
+                    IntersectionPoint = new XYZ(_intersectionPointX, value, _intersectionPointZ); 
                 else 
                     IntersectionPoint = new XYZ(IntersectionPoint.X, value, IntersectionPoint.Z); 
             }
@@ -91,10 +122,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// </summary>
         public double IntersectionPointZ
         {
-            get => IntersectionPoint != null ? IntersectionPoint.Z : (SleevePlacementPoint?.Z ?? 0.0);
-            set { 
+            get 
+            {
+                // Sync backing fields if needed (see IntersectionPointX getter)
+                if (_intersectionPointZ == 0.0 && IntersectionPoint != null && (Math.Abs(IntersectionPoint.X) > 1e-9 || Math.Abs(IntersectionPoint.Y) > 1e-9 || Math.Abs(IntersectionPoint.Z) > 1e-9))
+                {
+                    _intersectionPointX = IntersectionPoint.X;
+                    _intersectionPointY = IntersectionPoint.Y;
+                    _intersectionPointZ = IntersectionPoint.Z;
+                }
+                return _intersectionPointZ;
+            }
+            set 
+            { 
+                _intersectionPointZ = value; // ✅ CRITICAL: Always store in backing field FIRST
                 if (IntersectionPoint == null) 
-                    IntersectionPoint = new XYZ(0, 0, value); 
+                    IntersectionPoint = new XYZ(_intersectionPointX, _intersectionPointY, value); 
                 else 
                     IntersectionPoint = new XYZ(IntersectionPoint.X, IntersectionPoint.Y, value); 
             }

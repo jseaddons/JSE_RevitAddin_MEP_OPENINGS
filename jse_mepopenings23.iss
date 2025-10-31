@@ -39,6 +39,12 @@ end;
 Source: "bin\Debug R23\Debug R23\JSE_RevitAddin_MEP_OPENINGS.dll"; DestDir: "{app}"; Flags: ignoreversion
 ; Copy the .addin file to the addins folder
 Source: "JSE_RevitAddin_MEP_OPENINGS.addin"; DestDir: "{app}"; Flags: ignoreversion
+; ✅ RESOURCES FOLDER: Copy opening family files for auto-load functionality
+; Resources folder must be next to DLL for auto-load to work
+Source: "Resources\RectangularOpeningOnWall.rfa"; DestDir: "{app}\Resources"; Flags: ignoreversion
+Source: "Resources\CircularOpeningOnWall.rfa"; DestDir: "{app}\Resources"; Flags: ignoreversion
+Source: "Resources\RectangularOpeningOnSlab.rfa"; DestDir: "{app}\Resources"; Flags: ignoreversion
+Source: "Resources\CircularOpeningOnSlab.rfa"; DestDir: "{app}\Resources"; Flags: ignoreversion
 
 [Icons]
 ; No Start Menu or Desktop icons

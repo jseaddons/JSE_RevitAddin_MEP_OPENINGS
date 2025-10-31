@@ -6,6 +6,8 @@ using System.IO;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 
+using JSE_RevitAddin_MEP_OPENINGS.Services;
+
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
     /// <summary>
@@ -218,7 +220,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         // === Learned Keys (Project-level Persistence) ===
         private static string GetLearnedKeysFilePath()
         {
-            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
+            // Use null for document since this is a static method - will use default path
+            var dir = ProjectPathService.GetFiltersDirectory(null);
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
             return Path.Combine(dir, "learned_parameter_keys.xml");
         }

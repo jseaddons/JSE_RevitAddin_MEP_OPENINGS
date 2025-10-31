@@ -39,13 +39,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return false;
                 }
 
-                // List of required universal opening families
+                // List of required universal opening families (actual file names in Resources folder)
                 var requiredFamilies = new[]
                 {
-                    "OpeningOnWall-Rectangular.rfa",
-                    "OpeningOnWall-Circular.rfa", 
-                    "OpeningOnSlab-Rectangular.rfa",
-                    "OpeningOnSlab-Circular.rfa"
+                    "RectangularOpeningOnWall.rfa",
+                    "CircularOpeningOnWall.rfa", 
+                    "RectangularOpeningOnSlab.rfa",
+                    "CircularOpeningOnSlab.rfa"
                 };
 
                 int loadedCount = 0;
@@ -160,13 +160,54 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             var requiredFamilies = new[]
             {
-                "OpeningOnWall-Rectangular.rfa",
-                "OpeningOnWall-Circular.rfa", 
-                "OpeningOnSlab-Rectangular.rfa",
-                "OpeningOnSlab-Circular.rfa"
+                "RectangularOpeningOnWall.rfa",
+                "CircularOpeningOnWall.rfa", 
+                "RectangularOpeningOnSlab.rfa",
+                "CircularOpeningOnSlab.rfa"
             };
 
             return requiredFamilies.All(family => File.Exists(Path.Combine(_resourcesPath, family)));
+        }
+
+        /// <summary>
+        /// STRICT: Checks which required families are missing from the document
+        /// Returns list of missing family names (the EXACT names expected by UniversalSleevePlacerService)
+        /// NO FALLBACK - Only checks the 4 exact family names:
+        /// - RectangularOpeningOnWall
+        /// - CircularOpeningOnWall
+        /// - RectangularOpeningOnSlab
+        /// - CircularOpeningOnSlab
+        /// </summary>
+        public List<string> GetMissingFamilies()
+        {
+            var missingFamilies = new List<string>();
+            
+            // ✅ STRICT: Only these 4 exact family names - NO variations, NO fallbacks
+            var requiredFamilyNames = new[]
+            {
+                "RectangularOpeningOnWall",
+                "CircularOpeningOnWall",
+                "RectangularOpeningOnSlab",
+                "CircularOpeningOnSlab"
+            };
+
+            foreach (var familyName in requiredFamilyNames)
+            {
+                if (!IsFamilyAlreadyLoaded(familyName))
+                {
+                    missingFamilies.Add(familyName);
+                }
+            }
+
+            return missingFamilies;
+        }
+
+        /// <summary>
+        /// Public method to check if a family is loaded (for external validation)
+        /// </summary>
+        public bool IsFamilyLoaded(string familyName)
+        {
+            return IsFamilyAlreadyLoaded(familyName);
         }
     }
 }

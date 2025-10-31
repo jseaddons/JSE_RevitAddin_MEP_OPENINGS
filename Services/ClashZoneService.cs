@@ -643,7 +643,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     _log($"[DEBUG] About to create clash zone: MEP={mepElement.Id}, Structural={structuralElement.Id}");
                     try
                     {
+                        // ✅ CRITICAL DEBUG: Log intersection point BEFORE creating ClashZone
+                        bool isZeroPoint = Math.Abs(intersectionPoint.X) < 1e-9 && Math.Abs(intersectionPoint.Y) < 1e-9 && Math.Abs(intersectionPoint.Z) < 1e-9;
+                        if (isZeroPoint)
+                        {
+                            _log($"[⚠️ ZERO POINT WARNING] Creating ClashZone with ZERO intersection point: MEP={mepElement.Id}, Structural={structuralElement.Id}, Point=({intersectionPoint.X},{intersectionPoint.Y},{intersectionPoint.Z})");
+                            try 
+                            { 
+                                var debugPath = SafeFileLogger.GetLogFilePath("refresh_intersection_debug.log");
+                                File.AppendAllText(debugPath, $"[{DateTime.Now}] ⚠️ ZERO POINT: MEP={mepElement.Id}, Structural={structuralElement.Id}, Point=({intersectionPoint.X},{intersectionPoint.Y},{intersectionPoint.Z}), Document={document?.Title}\n");
+                            } 
+                            catch { }
+                        }
+                        
                         var newClashZone = CreateClashZone(mepElement, structuralElement, intersectionPoint, boundingBox, document, clearanceSettings);
+                        
+                        // ✅ CRITICAL DEBUG: Verify coordinates AFTER creation
+                        bool xmlIsZero = Math.Abs(newClashZone.IntersectionPointX) < 1e-9 && Math.Abs(newClashZone.IntersectionPointY) < 1e-9 && Math.Abs(newClashZone.IntersectionPointZ) < 1e-9;
+                        if (xmlIsZero)
+                        {
+                            _log($"[⚠️ XML ZERO WARNING] ClashZone created with ZERO XML coordinates: ID={newClashZone.Id}, MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                            try 
+                            { 
+                                var debugPath = SafeFileLogger.GetLogFilePath("refresh_intersection_debug.log");
+                                File.AppendAllText(debugPath, $"[{DateTime.Now}] ⚠️ XML ZERO: Zone={newClashZone.Id}, MEP={mepElement.Id}, Structural={structuralElement.Id}, IP_XML=({newClashZone.IntersectionPointX},{newClashZone.IntersectionPointY},{newClashZone.IntersectionPointZ})\n");
+                            } 
+                            catch { }
+                        }
+                        
                         newClashZone.IsCurrentClash = true; // ✅ DEBUG: Mark as current refresh clash
                         // ✅ MEMORY: Drop heavy API objects immediately after populating numeric fields
                         newClashZone.ClearRevitApiObjects();
@@ -1654,12 +1681,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             XYZ placementPoint = intersectionPoint;
 
+            // ✅ CRITICAL DEBUG: Verify intersection point is NOT zero before creating ClashZone
+            bool isInputZero = Math.Abs(intersectionPoint.X) < 1e-9 && Math.Abs(intersectionPoint.Y) < 1e-9 && Math.Abs(intersectionPoint.Z) < 1e-9;
+            if (isInputZero)
+            {
+                _log($"[⚠️ CREATE-WARNING] IntersectionPoint is ZERO when creating ClashZone: MEP={mepElement.Id}, Structural={structuralElement.Id}, Point=({intersectionPoint.X},{intersectionPoint.Y},{intersectionPoint.Z})");
+                try 
+                { 
+                    var debugPath = SafeFileLogger.GetLogFilePath("refresh_intersection_debug.log");
+                    File.AppendAllText(debugPath, $"[{DateTime.Now}] ⚠️ CREATE-WARNING: IntersectionPoint ZERO - MEP={mepElement.Id}, Structural={structuralElement.Id}, Point=({intersectionPoint.X},{intersectionPoint.Y},{intersectionPoint.Z}), Doc={document?.Title}\n");
+                } 
+                catch { }
+            }
+            
             var clashZone = new ClashZone
             {
                 MepElementId = mepElement.Id,
                 StructuralElementId = structuralElement.Id,
                 IntersectionPoint = intersectionPoint,
                 SleevePlacementPoint = intersectionPoint, // ✅ CRITICAL: Initialize with intersection point for distance calculation
+                IntersectionPointX = intersectionPoint.X, // ✅ CRITICAL FIX: Explicitly set for XML serialization
+                IntersectionPointY = intersectionPoint.Y, // ✅ CRITICAL FIX: Explicitly set for XML serialization
+                IntersectionPointZ = intersectionPoint.Z, // ✅ CRITICAL FIX: Explicitly set for XML serialization
+                // Log first few zones to placement_debug to verify creation
+                // (moved after object creation for safety)
                 SleevePlacementPointX = intersectionPoint.X, // XML serializable
                 SleevePlacementPointY = intersectionPoint.Y, // XML serializable  
                 SleevePlacementPointZ = intersectionPoint.Z, // XML serializable

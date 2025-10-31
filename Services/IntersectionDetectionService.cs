@@ -54,11 +54,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 _logger("=== INTERSECTION DETECTION STARTED ===");
                 _logger($"Document: {document.Title}");
+                
+                // ✅ CRITICAL FIX: Check if view3D is null
+                if (view3D == null)
+                {
+                    _logger("ERROR: Active view is not a 3D view. Please activate a 3D view and try again.");
+                    return new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
+                }
+                
                 _logger($"View: {view3D.Name}");
 
                 // STEP 1: Get section box in model coordinates
                 BoundingBoxXYZ sectionBox = view3D.GetSectionBox();
+                
+                // ✅ CRITICAL FIX: Check if section box is null (some views don't have section box)
+                if (sectionBox == null)
+                {
+                    _logger("ERROR: View does not have a section box. Cannot detect intersections.");
+                    return new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
+                }
+                
+                // ✅ CRITICAL FIX: Check if section box components are null
+                if (sectionBox.Min == null || sectionBox.Max == null)
+                {
+                    _logger("ERROR: Section box Min or Max is null. Cannot detect intersections.");
+                    return new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
+                }
+                
                 Transform sectionTransform = sectionBox.Transform;
+                
+                // ✅ CRITICAL FIX: Check if Transform is null
+                if (sectionTransform == null)
+                {
+                    _logger("ERROR: Section box Transform is null. Cannot detect intersections.");
+                    return new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
+                }
 
                 List<XYZ> corners = new List<XYZ>
                 {

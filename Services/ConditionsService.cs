@@ -31,15 +31,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
-        /// <summary>
-        /// Overload: allow callers to specify the exact project filters directory
-        /// </summary>
-        public ConditionsService(string projectFiltersDirectory, Action<string> log = null)
+        public ConditionsService(string projectDirectory, Action<string> log = null)
         {
             _log = log ?? (msg => { });
-            _projectDirectory = string.IsNullOrWhiteSpace(projectFiltersDirectory)
-                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters")
-                : projectFiltersDirectory;
+            _projectDirectory = projectDirectory ?? throw new ArgumentNullException(nameof(projectDirectory));
+            
+            // Ensure directory exists
             if (!Directory.Exists(_projectDirectory))
             {
                 Directory.CreateDirectory(_projectDirectory);

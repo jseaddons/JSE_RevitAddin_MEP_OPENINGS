@@ -668,6 +668,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 
                                 try
                                 {
+                                    // Normalize coordinates before saving to avoid 0,0,0 in XML
+                                    if (filter?.ClashZoneStorage?.ClashZones != null)
+                                    {
+                                        foreach (var z in filter.ClashZoneStorage.ClashZones)
+                                        {
+                                            if (z == null) continue;
+                                            bool hasIP = z.IntersectionPoint != null;
+                                            bool isIPZero = hasIP && Math.Abs(z.IntersectionPoint.X) < 1e-9 && Math.Abs(z.IntersectionPoint.Y) < 1e-9 && Math.Abs(z.IntersectionPoint.Z) < 1e-9;
+                                            bool hasSPP = z.SleevePlacementPoint != null;
+                                            bool isSPPZero = hasSPP && Math.Abs(z.SleevePlacementPoint.X) < 1e-9 && Math.Abs(z.SleevePlacementPoint.Y) < 1e-9 && Math.Abs(z.SleevePlacementPoint.Z) < 1e-9;
+                                            
+                                            if (hasIP && !isIPZero)
+                                            {
+                                                z.IntersectionPointX = z.IntersectionPoint.X;
+                                                z.IntersectionPointY = z.IntersectionPoint.Y;
+                                                z.IntersectionPointZ = z.IntersectionPoint.Z;
+                                            }
+                                            else if (hasSPP && !isSPPZero)
+                                            {
+                                                z.IntersectionPointX = z.SleevePlacementPoint.X;
+                                                z.IntersectionPointY = z.SleevePlacementPoint.Y;
+                                                z.IntersectionPointZ = z.SleevePlacementPoint.Z;
+                                            }
+                                            else if (z.ClashBoundingBox != null)
+                                            {
+                                                var center = (z.ClashBoundingBox.Min + z.ClashBoundingBox.Max) / 2.0;
+                                                z.IntersectionPointX = center.X;
+                                                z.IntersectionPointY = center.Y;
+                                                z.IntersectionPointZ = center.Z;
+                                            }
+                                        }
+                                    }
                                     using (var writer = new StreamWriter(xmlFile))
                                     {
                                         serializer.Serialize(writer, filter);
@@ -820,6 +852,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // ✅ FIX: Only save if modifications were made, and reader is already closed
                             if (modified)
                             {
+                                // Normalize coordinates before saving to avoid 0,0,0 in XML
+                                if (filter?.ClashZoneStorage?.ClashZones != null)
+                                {
+                                    foreach (var z in filter.ClashZoneStorage.ClashZones)
+                                    {
+                                        if (z == null) continue;
+                                        bool hasIP = z.IntersectionPoint != null;
+                                        bool isIPZero = hasIP && Math.Abs(z.IntersectionPoint.X) < 1e-9 && Math.Abs(z.IntersectionPoint.Y) < 1e-9 && Math.Abs(z.IntersectionPoint.Z) < 1e-9;
+                                        bool hasSPP = z.SleevePlacementPoint != null;
+                                        bool isSPPZero = hasSPP && Math.Abs(z.SleevePlacementPoint.X) < 1e-9 && Math.Abs(z.SleevePlacementPoint.Y) < 1e-9 && Math.Abs(z.SleevePlacementPoint.Z) < 1e-9;
+                                        
+                                        if (hasIP && !isIPZero)
+                                        {
+                                            z.IntersectionPointX = z.IntersectionPoint.X;
+                                            z.IntersectionPointY = z.IntersectionPoint.Y;
+                                            z.IntersectionPointZ = z.IntersectionPoint.Z;
+                                        }
+                                        else if (hasSPP && !isSPPZero)
+                                        {
+                                            z.IntersectionPointX = z.SleevePlacementPoint.X;
+                                            z.IntersectionPointY = z.SleevePlacementPoint.Y;
+                                            z.IntersectionPointZ = z.SleevePlacementPoint.Z;
+                                        }
+                                        else if (z.ClashBoundingBox != null)
+                                        {
+                                            var center = (z.ClashBoundingBox.Min + z.ClashBoundingBox.Max) / 2.0;
+                                            z.IntersectionPointX = center.X;
+                                            z.IntersectionPointY = center.Y;
+                                            z.IntersectionPointZ = center.Z;
+                                        }
+                                    }
+                                }
                                 using (var writer = new StreamWriter(xmlFile))
                                 {
                                     serializer.Serialize(writer, filter);

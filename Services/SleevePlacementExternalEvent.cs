@@ -7,6 +7,7 @@ using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Commands;
 using static JSE_RevitAddin_MEP_OPENINGS.Models.MepCategoryConstants;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -57,14 +58,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         public void Execute(UIApplication app)
         {
+            // ✅ CRITICAL: Force direct file write to ensure we see this even if logger fails
             try
             {
-                SafeFileLogger.SafeAppendText("placement_event_trace.log", $"[{DateTime.Now:HH:mm:ss}] EXTERNAL_EVENT: entered\n");
+                var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: {DateTime.Now:yyyy-MM-dd HH:mm:ss} 🔥🔥🔥\n");
+            }
+            catch { }
+            
+            try
+            {
                 // 🔥 CRITICAL DEBUG: Force direct file logging to bypass any logger issues
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: {DateTime.Now:yyyy-MM-dd HH:mm:ss} 🔥🔥🔥\n");
                 
                 // 🔥 CRITICAL DEBUG: Force direct file logging to trace execution
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 1: Execute method started\n");
+                
+                // ✅ CRITICAL: Log to file immediately to verify Execute() reaches this point
+                try
+                {
+                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 1: Execute method started\n");
+                }
+                catch { }
                 
                 // ✅ DEBUG: Add immediate logging to confirm Execute is called
                 DebugLogger.Info("[SleevePlacementExternalEvent] ===== EXECUTE METHOD CALLED =====");
@@ -73,6 +89,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 2: _selectedCategories is null: {_selectedCategories == null}\n");
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 3: _markPrefixes is null: {_markPrefixes == null}\n");
+                
+                // ✅ CRITICAL: Log to file at each step
+                try
+                {
+                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 2: Categories null={_selectedCategories == null}, Count={_selectedCategories?.Count ?? 0}\n");
+                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 3: MarkPrefixes null={_markPrefixes == null}\n");
+                }
+                catch { }
                 
                 // ✅ CORRECTED: Defensive null check with fallback
                 if (_markPrefixes == null)
@@ -103,6 +128,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (_document.IsLinked)
                 {
                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 8: ❌ DOCUMENT IS LINKED - RETURNING EARLY\n");
+                    try
+                    {
+                        var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 8: ❌ DOCUMENT IS LINKED - RETURNING EARLY\n");
+                    }
+                    catch { }
                     var msg = "Cannot place sleeves: Currently active document is a linked file.\n\n" +
                              "Please activate the host document (main project file) and try again.\n" +
                              "Sleeves must be placed in the host document, not in linked files.";
@@ -112,14 +143,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 9: ✅ Document is not linked, continuing\n");
+                try
+                {
+                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9: ✅ Document is not linked, continuing\n");
+                }
+                catch { }
 
                 // ✅ CRITICAL FIX: Check for null _selectedCategories
                 if (_selectedCategories == null)
                 {
                     DebugLogger.Error("[SleevePlacementExternalEvent] _selectedCategories is null - cannot process");
+                    try
+                    {
+                        var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ _selectedCategories is NULL - RETURNING EARLY\n");
+                    }
+                    catch { }
                     TaskDialog.Show("Error", "No categories selected for processing");
                     return;
                 }
+                
+                // ✅ CRITICAL: Log categories count
+                try
+                {
+                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9.5: Categories count: {_selectedCategories.Count}, Categories: {string.Join(", ", _selectedCategories)}\n");
+                }
+                catch { }
 
                 // Log immediate feedback (non-blocking)
                 DebugLogger.Info($"[SleevePlacementExternalEvent] Processing {_selectedCategories.Count} categories: {string.Join(", ", _selectedCategories)}");
@@ -139,31 +190,84 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 10: About to create orchestrator\n");
+                try
+                {
+                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 10: About to create orchestrator\n");
+                }
+                catch { }
                 
                 // ✅ ARCHITECTURE COMPLIANCE: Use OpeningCommandOrchestrator for proper command execution
                 DebugLogger.Info("[SleevePlacementExternalEvent] Creating OpeningCommandOrchestrator for proper architecture compliance");
                 
                 var clearanceSettings = GetClearanceSettingsFromUI();
+                try
+                {
+                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 10.5: Clearance settings count: {clearanceSettings?.Count ?? 0}\n");
+                }
+                catch { }
+                
                 var orchestrator = new OpeningCommandOrchestrator(_document, _uiDocument, clearanceSettings, _markPrefixes);
                 
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 11: Orchestrator created successfully with clearances and mark prefixes\n");
+                try
+                {
+                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 11: Orchestrator created successfully\n");
+                }
+                catch { }
                 
                 DebugLogger.Info($"[SleevePlacementExternalEvent] Set {clearanceSettings.Count} UI clearance settings and mark prefixes in orchestrator");
                 
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 12: Set UI clearances in orchestrator\n");
                 
                 // ✅ Convert categories to filters for orchestrator
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 12.5: About to convert categories to filters\n");
+                try
+                {
+                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 12.5: About to convert {_selectedCategories.Count} categories to filters\n");
+                }
+                catch { }
+                
                 var filters = ConvertCategoriesToFilters(_selectedCategories);
                 DebugLogger.Info($"[SleevePlacementExternalEvent] Converted {_selectedCategories.Count} categories to {filters.Count} filters");
                 
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 13: Converted {_selectedCategories.Count} categories to {filters.Count} filters\n");
+                try
+                {
+                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 13: Converted to {filters.Count} filters\n");
+                    if (filters != null && filters.Count > 0)
+                    {
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 13.5: Filter names: {string.Join(", ", filters.Select(f => f.Name))}\n");
+                    }
+                }
+                catch { }
                 
                 // ✅ Execute through orchestrator (proper architecture)
                 DebugLogger.Info("[SleevePlacementExternalEvent] Executing through OpeningCommandOrchestrator...");
                 
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 14: About to execute orchestrator\n");
                 
+                // ✅ CRITICAL: Log before and after orchestrator call to see if it completes
+                try
+                {
+                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: {filters?.Count ?? 0}\n");
+                }
+                catch { }
+                
                 orchestrator.ExecuteMultipleFilters(filters, showProgress: true);
+                
+                // ✅ CRITICAL: Log after orchestrator returns to confirm it completed
+                try
+                {
+                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully\n");
+                }
+                catch { }
                 
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 15: ✅ Orchestrator execution completed\n");
                 
@@ -180,12 +284,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 DebugLogger.Error($"[SleevePlacementExternalEvent] Exception: {ex.Message}");
                 DebugLogger.Error($"[SleevePlacementExternalEvent] Stack trace: {ex.StackTrace}");
-                SafeFileLogger.SafeAppendText("placement_fatal.log", $"[{DateTime.Now:HH:mm:ss}] {ex}\n");
                 TaskDialog.Show("Error", $"Failed to complete sleeve placement: {ex.Message}");
             }
             finally
             {
-                SafeFileLogger.SafeAppendText("placement_event_trace.log", $"[{DateTime.Now:HH:mm:ss}] EXTERNAL_EVENT: exited\n");
                 try { PlacementCompleted?.Invoke(); } catch { }
             }
         }
@@ -284,7 +386,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 DebugLogger.Info("[SleevePlacementExternalEvent] Loading cluster configuration from filters...");
                 
-                var filtersDirectory = ProjectPathService.GetFiltersDirectory(_document);
+                // ✅ CRITICAL FIX: Use project-specific directory (matches Refresh saves)
+                // This was using hardcoded "Default" path
+                var filtersDirectory = _document != null 
+                    ? ProjectPathService.GetFiltersDirectory(_document)
+                    : ProjectPathService.GetFiltersDirectory(_document);
+                
+                DebugLogger.Info($"[SleevePlacementExternalEvent] Loading cluster config from: {filtersDirectory}");
+                
+                // ✅ Ensure directory exists before searching
+                if (!Directory.Exists(filtersDirectory))
+                {
+                    DebugLogger.Warning($"[SleevePlacementExternalEvent] Filters directory does not exist: {filtersDirectory} - using default cluster configuration");
+                    ClusterConfigurationManager.Instance.SetJoinOpeningsDistance(200.0, "Default (directory not found)");
+                    return;
+                }
                 
                 // Search for any filter XML file to extract advanced settings
                 var xmlFiles = Directory.GetFiles(filtersDirectory, "*.xml");
@@ -374,91 +490,64 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return (clashZones, xmlFilePath);
                 }
                 
-                var filtersDirectory = ProjectPathService.GetFiltersDirectory(_document);
+                // ✅ CRITICAL FIX: Use project-specific directory (matches Refresh saves)
+                var filtersDirectory = _document != null 
+                    ? ProjectPathService.GetFiltersDirectory(_document)
+                    : ProjectPathService.GetFiltersDirectory(_document);
                 
-                // Search for files matching pattern: prioritize filter name first, then fallback
-                var categoryPattern = category.ToLower().Replace(" ", "_");
-                
-                // DEBUG: Log pattern generation
-                DebugLogger.Info($"[SleevePlacementExternalEvent] Category: '{category}' → Pattern: '{categoryPattern}'");
-                DebugLogger.Info($"[{DateTime.Now}] [PATTERN_DEBUG] Category: '{category}' → Pattern: '{categoryPattern}'\n");
-                
-                // First try: Look for files with the current filter name
-                var filterPattern = $"{_selectedFilterName}_{categoryPattern}.xml";
-                var filterFiles = Directory.GetFiles(filtersDirectory, filterPattern);
-                
-                // DEBUG: Log pattern matching
-                DebugLogger.Info($"[SleevePlacementExternalEvent] Looking for pattern: '{filterPattern}', Found: {filterFiles.Length} files");
-                DebugLogger.Info($"[{DateTime.Now}] [PATTERN_DEBUG] Looking for: '{filterPattern}', Found: {filterFiles.Length} files\n");
-                
-                // If no exact match, try common variations
-                if (filterFiles.Length == 0)
+                // ✅ CRITICAL: Log which directory we're looking in
+                DebugLogger.Info($"[SleevePlacementExternalEvent] GetClashZonesForCategory: Looking in directory: {filtersDirectory}");
+                try
                 {
-                    // Try plural forms and common variations
-                    var variations = new List<string>();
-                    
-                    // Add plural variations
-                    if (categoryPattern.EndsWith("s"))
+                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] GetClashZonesForCategory: category='{category}', directory='{filtersDirectory}', filterName='{_selectedFilterName}'\n");
+                }
+                catch { }
+                
+                // ✅ CRITICAL FIX: Use MepCategoryConstants.GetXmlSuffix() for consistent naming
+                // This matches RefreshService normalization EXACTLY
+                var categoryPattern = GetXmlSuffix(category);
+                
+                // ✅ EXACT FILE NAME MATCH: Extract base filter name (remove any category suffix) to match RefreshService
+                // RefreshService saves as: {baseFilterName}_{normalizedCategory}.xml
+                // We must load as: {baseFilterName}_{categoryPattern}.xml
+                string baseFilterName = ExtractBaseFilterName(_selectedFilterName, categoryPattern);
+                
+                // ✅ EXACT FILE NAME MATCH: No variations, no case-insensitive, no fallbacks
+                var exactFileName = $"{baseFilterName}_{categoryPattern}.xml";
+                xmlFilePath = Path.Combine(filtersDirectory, exactFileName);
+                
+                DebugLogger.Info($"[SleevePlacementExternalEvent] Looking for EXACT file: '{exactFileName}'");
+                try
+                {
+                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] GetClashZonesForCategory: Looking for EXACT file: '{exactFileName}'\n");
+                }
+                catch { }
+                
+                // ✅ EXACT FILE EXISTENCE CHECK: No variations, no fallbacks
+                if (!File.Exists(xmlFilePath))
+                {
+                    DebugLogger.Warning($"[SleevePlacementExternalEvent] ❌ EXACT file not found: '{exactFileName}' in directory '{filtersDirectory}'");
+                    try
                     {
-                        variations.Add($"{_selectedFilterName}_{categoryPattern}.xml"); // Already tried
-                    }
-                    else
-                    {
-                        variations.Add($"{_selectedFilterName}_{categoryPattern}s.xml"); // Add 's'
-                    }
-                    
-                    // Add specific category mappings
-                    switch (categoryPattern)
-                    {
-                        case "duct":
-                            variations.Add($"{_selectedFilterName}_ducts.xml");
-                            break;
-                        case "duct_accessory":
-                            variations.Add($"{_selectedFilterName}_duct_accessories.xml");
-                            break;
-                        case "cable_tray":
-                            variations.Add($"{_selectedFilterName}_cable_trays.xml");
-                            break;
-                        case "pipe":
-                            variations.Add($"{_selectedFilterName}_pipes.xml");
-                            break;
-                    }
-                    
-                    // Try each variation
-                    foreach (var variation in variations)
-                    {
-                        var varFiles = Directory.GetFiles(filtersDirectory, variation);
-                        if (varFiles.Length > 0)
+                        var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                        if (!Directory.Exists(filtersDirectory))
                         {
-                            filterFiles = varFiles;
-                            DebugLogger.Info($"[SleevePlacementExternalEvent] Found variation: '{variation}', Found: {varFiles.Length} files");
-                            DebugLogger.Info($"[{DateTime.Now}] [PATTERN_DEBUG] Found variation: '{variation}', Found: {varFiles.Length} files\n");
-                            break;
+                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ GetClashZonesForCategory: Directory does not exist: {filtersDirectory}\n");
+                        }
+                        else
+                        {
+                            var allFiles = Directory.GetFiles(filtersDirectory, "*.xml");
+                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ GetClashZonesForCategory: EXACT file '{exactFileName}' not found. Directory has {allFiles.Length} XML files.\n");
+                            if (allFiles.Length > 0)
+                            {
+                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] GetClashZonesForCategory: Available files: {string.Join(", ", allFiles.Select(Path.GetFileName))}\n");
+                            }
                         }
                     }
-                }
-                
-                if (filterFiles.Length > 0)
-                {
-                    // Use the most recently modified file with the correct filter name
-                    xmlFilePath = filterFiles
-                        .OrderByDescending(f => File.GetLastWriteTime(f))
-                        .First();
-                    DebugLogger.Info($"[SleevePlacementExternalEvent] Found filter-specific XML file: {xmlFilePath}");
-                }
-                else
-                {
-                    // Fallback: Look for any file matching the category pattern
-                    var fallbackPattern = $"*_{categoryPattern}.xml";
-                    var matchingFiles = Directory.GetFiles(filtersDirectory, fallbackPattern);
-                    
-                    if (matchingFiles.Length > 0)
-                    {
-                        xmlFilePath = matchingFiles
-                            .OrderByDescending(f => File.GetLastWriteTime(f))
-                            .First();
-                        DebugLogger.Warning($"[SleevePlacementExternalEvent] Using fallback XML file (filter '{_selectedFilterName}' not found): {xmlFilePath}");
-                    }
+                    catch { }
+                    return (clashZones, string.Empty);
                 }
                 
                 if (!string.IsNullOrEmpty(xmlFilePath))
@@ -472,9 +561,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             clashZones.AddRange(filter.ClashZoneStorage.ClashZones);
                             DebugLogger.Info($"[SleevePlacementExternalEvent] Loaded {filter.ClashZoneStorage.ClashZones.Count} clash zones from {Path.GetFileName(xmlFilePath)}");
                             
+                            // ✅ CRITICAL: Log to file
+                            try
+                            {
+                                var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] GetClashZonesForCategory: Loaded {clashZones.Count} clash zones from {Path.GetFileName(xmlFilePath)}\n");
+                            }
+                            catch { }
+                            
                             // Debug: Check if document titles are populated
                             var clashZonesWithDocTitle = clashZones.Count(cz => !string.IsNullOrEmpty(cz.StructuralElementDocumentTitle));
                             DebugLogger.Info($"[SleevePlacementExternalEvent] Clash zones with document titles: {clashZonesWithDocTitle}/{clashZones.Count}");
+                        }
+                        else
+                        {
+                            // ✅ CRITICAL: Log if filter or clash zones are null
+                            try
+                            {
+                                var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ GetClashZonesForCategory: Filter or ClashZoneStorage is null in file {Path.GetFileName(xmlFilePath)}\n");
+                            }
+                            catch { }
+                            DebugLogger.Warning($"[SleevePlacementExternalEvent] Filter or ClashZoneStorage is null in file {xmlFilePath}");
                         }
                     }
                 }
@@ -567,6 +675,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Error($"[SleevePlacementExternalEvent] Error getting clearance settings for {category}: {ex.Message}");
                 return new Dictionary<string, double>();
             }
+        }
+        
+        /// <summary>
+        /// Extracts the base filter name by removing any existing category suffix.
+        /// E.g., "Ventilation_ducts" → "Ventilation" (if normalizedCategory is "ducts")
+        /// This matches RefreshService.ExtractBaseFilterName logic exactly.
+        /// </summary>
+        private string ExtractBaseFilterName(string filterName, string normalizedCategory)
+        {
+            if (string.IsNullOrWhiteSpace(filterName)) return filterName;
+            if (string.IsNullOrWhiteSpace(normalizedCategory)) return filterName;
+            
+            // Check if filter name ends with the category suffix
+            string suffixPattern = $"_{normalizedCategory}";
+            if (filterName.EndsWith(suffixPattern, StringComparison.OrdinalIgnoreCase))
+            {
+                return filterName.Substring(0, filterName.Length - suffixPattern.Length);
+            }
+            
+            return filterName;
         }
 
     }
