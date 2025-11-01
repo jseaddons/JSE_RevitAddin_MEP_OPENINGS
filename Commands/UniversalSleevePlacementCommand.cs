@@ -346,12 +346,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 // Use the actual project filters directory so CONDITIONS.xml sits next to the filter XMLs
                 var projectFiltersDir = ProjectPathService.GetFiltersDirectory(_doc);
                 var conditionsService = new ConditionsService(projectFiltersDir, msg => DebugLogger.Info(msg));
-                try 
-                { 
-                    string orchestratorLogPath = SafeFileLogger.GetLogFilePath("orchestrator_debug.log");
-                    System.IO.File.AppendAllText(orchestratorLogPath, $"[{DateTime.Now:HH:mm:ss}] CONDITIONS_DIR={projectFiltersDir}\n"); 
-                } 
-                catch { }
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    try 
+                    { 
+                        string orchestratorLogPath = SafeFileLogger.GetLogFilePath("orchestrator_debug.log");
+                        System.IO.File.AppendAllText(orchestratorLogPath, $"[{DateTime.Now:HH:mm:ss}] CONDITIONS_DIR={projectFiltersDir}\n"); 
+                    } 
+                    catch { }
+                }
                 
                 // 🛡️ ARCHITECTURE FIX: Use BOTH filter name AND category for unique CONDITIONS XML
                 // This allows different clearance/opening types per category within the same filter
@@ -396,13 +399,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         // Save immediately so subsequent runs find it
                         conditionsService.SaveConditions(_conditions, combinedKey);
                         DebugLogger.Info($"{_logPrefix} CONDITIONS.xml created at: {expectedPath}");
-                        string orchestratorLogPath2 = SafeFileLogger.GetLogFilePath("orchestrator_debug.log");
-                        System.IO.File.AppendAllText(orchestratorLogPath2, $"[{DateTime.Now:HH:mm:ss}] CONDITIONS_CREATED={expectedPath}\n");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            string orchestratorLogPath2 = SafeFileLogger.GetLogFilePath("orchestrator_debug.log");
+                            System.IO.File.AppendAllText(orchestratorLogPath2, $"[{DateTime.Now:HH:mm:ss}] CONDITIONS_CREATED={expectedPath}\n");
+                        }
                     }
                     else
                     {
-                        string orchestratorLogPath3 = SafeFileLogger.GetLogFilePath("orchestrator_debug.log");
-                        System.IO.File.AppendAllText(orchestratorLogPath3, $"[{DateTime.Now:HH:mm:ss}] CONDITIONS_EXISTS={expectedPath}\n");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            string orchestratorLogPath3 = SafeFileLogger.GetLogFilePath("orchestrator_debug.log");
+                            System.IO.File.AppendAllText(orchestratorLogPath3, $"[{DateTime.Now:HH:mm:ss}] CONDITIONS_EXISTS={expectedPath}\n");
+                        }
                     }
                 }
                 catch { }
@@ -481,10 +490,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 var selectedHostFiles = FilterUiStateProvider.GetSelectedHostFiles?.Invoke() ?? new List<string>();
                 
                 // 🚨 DEBUG: Direct file logging to bypass DebugLogger issues
-                if (!DeploymentConfiguration.DeploymentMode) File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\universal_command_debug.log", 
-                    $"[{DateTime.Now}] 🚨 UI selected reference files: [{string.Join(", ", selectedReferenceFiles)}]\n");
-                if (!DeploymentConfiguration.DeploymentMode) File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\universal_command_debug.log", 
-                    $"[{DateTime.Now}] 🚨 UI selected host files: [{string.Join(", ", selectedHostFiles)}]\n");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    string universalCommandDebugLogPath = SafeFileLogger.GetLogFilePath("universal_command_debug.log");
+                    System.IO.File.AppendAllText(universalCommandDebugLogPath, $"[{DateTime.Now}] 🚨 UI selected reference files: [{string.Join(", ", selectedReferenceFiles)}]\n");
+                    System.IO.File.AppendAllText(universalCommandDebugLogPath, $"[{DateTime.Now}] 🚨 UI selected host files: [{string.Join(", ", selectedHostFiles)}]\n");
+                }
                 
                 DebugLogger.Info($"{_logPrefix} UI selected reference files: [{string.Join(", ", selectedReferenceFiles)}]");
                 DebugLogger.Info($"{_logPrefix} UI selected host files: [{string.Join(", ", selectedHostFiles)}]");
@@ -589,8 +600,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 DebugLogger.Info($"[{DateTime.Now}] 🚨 FILTERING COMPLETED: {clashZones.Count} -> {filteredZones.Count} clash zones\n");
                 try
                 {
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_filter_breakdown.log",
-                        $"[{DateTime.Now}] Counts: afterCategory={afterCategory}, afterHostType={afterHostType}, afterRefFile={afterRefFile}, afterHostFile={afterHostFile}, afterSection={afterSection}, final={filteredZones.Count}\n");
+                    string placementFilterBreakdownLogPath = SafeFileLogger.GetLogFilePath("placement_filter_breakdown.log");
+                    System.IO.File.AppendAllText(placementFilterBreakdownLogPath, $"[{DateTime.Now}] Counts: afterCategory={afterCategory}, afterHostType={afterHostType}, afterRefFile={afterRefFile}, afterHostFile={afterHostFile}, afterSection={afterSection}, final={filteredZones.Count}\n");
                 }
                 catch { }
                 

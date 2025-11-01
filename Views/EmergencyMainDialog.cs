@@ -136,12 +136,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 // ✅ DEPLOYMENT MODE: Skip hardcoded log writes if deployment mode is enabled
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 Constructor: appProfileService = {(appProfileService != null ? "NOT NULL" : "NULL")}\n");
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 Constructor: document = {(document != null ? "NOT NULL" : "NULL")}\n");
-                    File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\constructor_debug.log", 
-                        $"[{DateTime.Now}] 🔍 Constructor: uiDocument = {(uiDocument != null ? "NOT NULL" : "NULL")}\n");
+                    string constructorDebugLogPath = SafeFileLogger.GetLogFilePath("constructor_debug.log");
+                    System.IO.File.AppendAllText(constructorDebugLogPath, $"[{DateTime.Now}] 🔍 Constructor: appProfileService = {(appProfileService != null ? "NOT NULL" : "NULL")}\n");
+                    System.IO.File.AppendAllText(constructorDebugLogPath, $"[{DateTime.Now}] 🔍 Constructor: document = {(document != null ? "NOT NULL" : "NULL")}\n");
+                    System.IO.File.AppendAllText(constructorDebugLogPath, $"[{DateTime.Now}] 🔍 Constructor: uiDocument = {(uiDocument != null ? "NOT NULL" : "NULL")}\n");
                 }
             }
             catch (Exception ex)

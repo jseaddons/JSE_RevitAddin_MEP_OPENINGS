@@ -36,63 +36,64 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥 MarkParameterCommand.Execute CALLED 🔥\n");
             DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Target Category: {_targetCategory}\n");
             DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Project Prefix: '{_projectPrefix}', Discipline Prefix: '{_disciplinePrefix}', RemarkAll: {_remarkAll}\n");
-            
+
             try
             {
                 DebugLogger.Info($"[MarkParameterCommand] Starting MEPMARK application for {_targetCategory}");
                 DebugLogger.Info($"[MarkParameterCommand] Project Prefix: '{_projectPrefix}', Discipline Prefix: '{_disciplinePrefix}'");
-                
+
                 var doc = app.ActiveUIDocument.Document;
                 var uiDoc = app.ActiveUIDocument;
-                
+
                 // ✅ FIX: Handle "ALL" category by processing each category individually
                 if (_targetCategory.Equals("ALL", StringComparison.OrdinalIgnoreCase))
                 {
                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Processing ALL categories individually\n");
-                    
+
                     // Get all available categories from XML files
                     var availableCategories = GetAllAvailableCategories(doc);
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         string orchestratorLogPath = SafeFileLogger.GetLogFilePath("orchestrator_debug.log");
-                        System.IO.File.AppendAllText(orchestratorLogPath, 
+                        System.IO.File.AppendAllText(orchestratorLogPath,
                         $"[{DateTime.Now:HH:mm:ss}] Found {availableCategories.Count} categories: {string.Join(", ", availableCategories)}\n");
-                    
-                    // Process each category with its specific discipline prefix from UI
-                    foreach (var category in availableCategories)
-                    {
-                        var disciplinePrefix = _markPrefixes?.GetDisciplinePrefix(category) ?? GetDisciplinePrefixForCategory(category);
-                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Processing category: {category}, discipline: {disciplinePrefix}\n");
-                        
-                        using (var tx = new Transaction(doc, $"Mark {category} Clusters"))
+
+                        // Process each category with its specific discipline prefix from UI
+                        foreach (var category in availableCategories)
                         {
-                            tx.Start();
-                            
-                            var markService = new MarkParameterService();
-                            var (processedCount, errorCount) = markService.ApplyMepMarkToClusters(
-                                doc, category, _projectPrefix, disciplinePrefix, _remarkAll);
-                            
-                            tx.Commit();
-                            
-                            DebugLogger.Info($"[MarkParameterCommand] ✓ MEPMARK complete for {category}: {processedCount} clusters processed, {errorCount} errors");
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Category {category}: {processedCount} processed, {errorCount} errors\n");
+                            var disciplinePrefix = _markPrefixes?.GetDisciplinePrefix(category) ?? GetDisciplinePrefixForCategory(category);
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Processing category: {category}, discipline: {disciplinePrefix}\n");
+
+                            using (var tx = new Transaction(doc, $"Mark {category} Clusters"))
+                            {
+                                tx.Start();
+
+                                var markService = new MarkParameterService();
+                                var (processedCount, errorCount) = markService.ApplyMepMarkToClusters(
+                                    doc, category, _projectPrefix, disciplinePrefix, _remarkAll);
+
+                                tx.Commit();
+
+                                DebugLogger.Info($"[MarkParameterCommand] ✓ MEPMARK complete for {category}: {processedCount} clusters processed, {errorCount} errors");
+                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Category {category}: {processedCount} processed, {errorCount} errors\n");
+                            }
                         }
                     }
-                }
-                else
-                {
-                    // Process single category
-                    using (var tx = new Transaction(doc, $"Mark {_targetCategory} Clusters"))
+                    else
                     {
-                        tx.Start();
-                        
-                        var markService = new MarkParameterService();
-                        var (processedCount, errorCount) = markService.ApplyMepMarkToClusters(
-                            doc, _targetCategory, _projectPrefix, _disciplinePrefix, _remarkAll);
-                        
-                        tx.Commit();
-                        
-                        DebugLogger.Info($"[MarkParameterCommand] ✓ MEPMARK complete for {_targetCategory}: {processedCount} clusters processed, {errorCount} errors");
+                        // Process single category
+                        using (var tx = new Transaction(doc, $"Mark {_targetCategory} Clusters"))
+                        {
+                            tx.Start();
+
+                            var markService = new MarkParameterService();
+                            var (processedCount, errorCount) = markService.ApplyMepMarkToClusters(
+                                doc, _targetCategory, _projectPrefix, _disciplinePrefix, _remarkAll);
+
+                            tx.Commit();
+
+                            DebugLogger.Info($"[MarkParameterCommand] ✓ MEPMARK complete for {_targetCategory}: {processedCount} clusters processed, {errorCount} errors");
+                        }
                     }
                 }
             }

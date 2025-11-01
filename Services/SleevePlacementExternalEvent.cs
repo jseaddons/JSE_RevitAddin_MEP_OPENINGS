@@ -535,13 +535,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!Directory.Exists(filtersDirectory))
                         {
                             File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ GetClashZonesForCategory: Directory does not exist: {filtersDirectory}\n");
-                        }
-                        else
-                        {
+                }
+                else
+                {
                             var allFiles = Directory.GetFiles(filtersDirectory, "*.xml");
                             File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ GetClashZonesForCategory: EXACT file '{exactFileName}' not found. Directory has {allFiles.Length} XML files.\n");
                             if (allFiles.Length > 0)
-                            {
+                    {
                                 File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] GetClashZonesForCategory: Available files: {string.Join(", ", allFiles.Select(Path.GetFileName))}\n");
                             }
                         }

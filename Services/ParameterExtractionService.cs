@@ -413,11 +413,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             var essentialParams = new HashSet<string>();
             
-            // Define essential parameter patterns
-            var essentialPatterns = new[]
-            {
-                "size", "system", "height", "reference level", "level", "ceiling level", 
-                "schedule level", "reference level elevation"
+            // ✅ PERFORMANCE FIX: Only load 4 essential parameters from Active Document on startup
+            // 1. MEP System Type
+            // 2. MEP Size
+            // 3. MEP System Abbreviation
+            // 4. Level
+            var requiredParams = new[] { 
+                "MEP System Type", 
+                "MEP Size", 
+                "MEP System Abbreviation", 
+                "Level" 
             };
 
             try
@@ -439,34 +444,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     if (symbol == null) continue;
 
-                    // Get parameters from symbol
+                    // Get only the 4 required parameters from symbol
                     foreach (Parameter p in symbol.Parameters)
                     {
                         if (string.IsNullOrEmpty(p.Definition?.Name)) continue;
                         
-                        var paramName = p.Definition.Name.ToLower();
+                        var paramName = p.Definition.Name;
                         
-                        // Check if parameter matches essential patterns
-                        bool isEssential = essentialPatterns.Any(pattern => 
-                            paramName.Contains(pattern.ToLower()));
-                        
-                        // Always include shared parameters (they have GUIDs)
-                        bool isSharedParameter = p.Id.IntegerValue > 0;
-                        
-                        if (isEssential || isSharedParameter)
+                        // Only add if it matches one of the 4 required parameters
+                        if (requiredParams.Any(req => string.Equals(paramName, req, StringComparison.OrdinalIgnoreCase)))
                         {
-                            essentialParams.Add(p.Definition.Name);
+                            essentialParams.Add(paramName);
                         }
                     }
                 }
 
-                // Also check existing instances for additional shared parameters
+                // Also check existing instances for the same 4 parameters
                 var existingInstances = new FilteredElementCollector(doc)
                     .OfClass(typeof(FamilyInstance))
                     .WhereElementIsNotElementType()
                     .Cast<FamilyInstance>()
                     .Where(fi => targetFamilies.Any(n => fi.Symbol.Family.Name.Contains(n)))
-                    .Take(5); // Limit to first 5 instances for performance
+                    .Take(1); // Only need 1 instance to find the parameters
 
                 foreach (var instance in existingInstances)
                 {
@@ -474,23 +473,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         if (string.IsNullOrEmpty(p.Definition?.Name)) continue;
                         
-                        var paramName = p.Definition.Name.ToLower();
+                        var paramName = p.Definition.Name;
                         
-                        // Check if parameter matches essential patterns
-                        bool isEssential = essentialPatterns.Any(pattern => 
-                            paramName.Contains(pattern.ToLower()));
-                        
-                        // Always include shared parameters
-                        bool isSharedParameter = p.Id.IntegerValue > 0;
-                        
-                        if (isEssential || isSharedParameter)
+                        // Only add if it matches one of the 4 required parameters
+                        if (requiredParams.Any(req => string.Equals(paramName, req, StringComparison.OrdinalIgnoreCase)))
                         {
-                            essentialParams.Add(p.Definition.Name);
+                            essentialParams.Add(paramName);
                         }
                     }
+                    break; // Only check first instance
                 }
 
-                System.Diagnostics.Debug.WriteLine($"[ESSENTIAL_PARAMS] Found {essentialParams.Count} essential opening parameters");
+                System.Diagnostics.Debug.WriteLine($"[ESSENTIAL_PARAMS] Found {essentialParams.Count} essential opening parameters (startup: only 4 required)");
                 return essentialParams.OrderBy(p => p).ToList();
             }
             catch (Exception ex)

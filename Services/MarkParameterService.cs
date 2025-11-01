@@ -89,7 +89,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 // ✅ FIX: Use SafeFileLogger for deployment-compatible log path
                 string mepmarkLogPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                
+                // ✅ BUILD TIME STAMP: Log to confirm latest DLL is loaded
+                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                var buildTime = System.IO.File.GetLastWriteTime(assembly.Location);
                 File.AppendAllText(mepmarkLogPath, $"\n===== MEPMARK DEBUG SESSION STARTED {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n");
+                File.AppendAllText(mepmarkLogPath, $"🔨 BUILD TIME: {buildTime:yyyy-MM-dd HH:mm:ss} (DLL: {Path.GetFileName(assembly.Location)})\n");
                 File.AppendAllText(mepmarkLogPath, $"Category: {category}\n");
                 File.AppendAllText(mepmarkLogPath, $"Project Prefix: {projectPrefix}\n");
                 File.AppendAllText(mepmarkLogPath, $"Discipline Prefix: {disciplinePrefix}\n");
@@ -179,10 +184,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Error($"[MarkParameterService] Error processing category '{category}': {ex.Message}");
                 throw;
             }
-            
-            string mepmarkLogPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
-            File.AppendAllText(mepmarkLogPath, $"MEPMARK session completed: {processedCount} processed, {errorCount} errors\n");
-            File.AppendAllText(mepmarkLogPath, $"===== MEPMARK DEBUG SESSION ENDED {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n\n");
+            finally
+            {
+                string mepmarkLogPathFinal = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                System.IO.File.AppendAllText(mepmarkLogPathFinal, $"MEPMARK session completed: {processedCount} processed, {errorCount} errors\n");
+                System.IO.File.AppendAllText(mepmarkLogPathFinal, $"===== MEPMARK DEBUG SESSION ENDED {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n\n");
+            }
             
             return (processedCount, errorCount);
         }
@@ -432,13 +439,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                            !fileName.EndsWith("_conditions.xml", StringComparison.OrdinalIgnoreCase);
                 }).ToList();
                 
-                File.AppendAllText(mepmarkLogPath, $"[CACHE-INIT] Found {allXmlFiles.Length} XML files total, {xmlFiles.Count} filter files (excluded {allXmlFiles.Length - xmlFiles.Count} global files)\n");
+                File.AppendAllText(mepmarkLogPath, $"[CACHE-INIT] Found {allXmlFiles.Length} XML files total, {xmlFiles.Count} filter files (excluded {allXmlFiles.Length - xmlFiles.Count} global/CONDITIONS files)\n");
                 
-                // ✅ ENHANCED: List all XML files found
-                foreach (var xmlFile in xmlFiles)
+                // ✅ ENHANCED: List all XML files found (including excluded ones for debugging)
+                File.AppendAllText(mepmarkLogPath, $"[CACHE-INIT] === ALL XML FILES IN DIRECTORY ===\n");
+                foreach (var xmlFile in allXmlFiles)
                 {
-                    File.AppendAllText(mepmarkLogPath, $"[CACHE-INIT]   - {Path.GetFileName(xmlFile)}\n");
+                    string fileName = Path.GetFileName(xmlFile);
+                    bool isExcluded = fileName.EndsWith("_global.xml", StringComparison.OrdinalIgnoreCase) ||
+                                     fileName.EndsWith("_CONDITIONS.xml", StringComparison.OrdinalIgnoreCase) ||
+                                     fileName.EndsWith("_conditions.xml", StringComparison.OrdinalIgnoreCase);
+                    File.AppendAllText(mepmarkLogPath, $"[CACHE-INIT]   {(isExcluded ? "❌ EXCLUDED" : "✓ INCLUDED")}: {fileName}\n");
                 }
+                
+                File.AppendAllText(mepmarkLogPath, $"[CACHE-INIT] === PROCESSING {xmlFiles.Count} FILTER FILES ===\n");
 
                 int totalClashZones = 0;
                 int filesProcessed = 0;
@@ -453,7 +467,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var filter = (OpeningFilter)serializer.Deserialize(reader);
                             if (filter?.ClashZoneStorage?.ClashZones != null)
                             {
-                                File.AppendAllText(mepmarkLogPath, $"[CACHE-INIT] Loading {Path.GetFileName(xmlFile)}: {filter.ClashZoneStorage.ClashZones.Count} clash zones\n");
+                                int clashZoneCount = filter.ClashZoneStorage.ClashZones.Count;
+                                File.AppendAllText(mepmarkLogPath, $"[CACHE-INIT] ✓ Loading {Path.GetFileName(xmlFile)}: {clashZoneCount} clash zones found\n");
+                                
+                                // ✅ DEBUG: Log first few clash zones to verify they have MEP element IDs
+                                if (clashZoneCount > 0)
+                                {
+                                    var firstZone = filter.ClashZoneStorage.ClashZones[0];
+                                    File.AppendAllText(mepmarkLogPath, 
+                                        $"[CACHE-INIT]   Sample Zone 0: MEP_ID={firstZone.MepElementId.IntegerValue}, " +
+                                        $"Category={firstZone.MepElementCategory}, " +
+                                        $"SleeveId={firstZone.SleeveInstanceId}, " +
+                                        $"ClusterId={firstZone.ClusterSleeveInstanceId}\n");
+                                }
                                 
                                 foreach (var clashZone in filter.ClashZoneStorage.ClashZones)
                                 {
@@ -493,7 +519,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 File.AppendAllText(mepmarkLogPath, $"[CACHE-INIT] ===== CACHE INITIALIZATION COMPLETE =====\n");
-                File.AppendAllText(mepmarkLogPath, $"[CACHE-INIT] ✓ Cached {totalClashZones} unique clash zones from {filesProcessed}/{xmlFiles.Length} files\n");
+                File.AppendAllText(mepmarkLogPath, $"[CACHE-INIT] ✓ Cached {totalClashZones} unique clash zones from {filesProcessed}/{xmlFiles.Count} files\n");
                 File.AppendAllText(mepmarkLogPath, $"[CACHE-INIT] Cache size: {_clashZoneCache.Count} entries\n\n");
             }
             catch (Exception ex)

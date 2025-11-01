@@ -186,17 +186,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
             try
             {
                 // 🔥 DEBUG: Log that we're entering the cable tray strategy method
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cabletray_clearance_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] GetCableTrayPlacementAdjustment START for ClashZone {clashZone.Id}\n");
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cabletray_clearance_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] clearanceSettings.Count = {uiClearanceSettings?.Count ?? 0}\n");
-                
-                if (uiClearanceSettings != null)
+                if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    foreach (var kvp in uiClearanceSettings)
+                    string cabletrayClearanceDebugLogPath = SafeFileLogger.GetLogFilePath("cabletray_clearance_debug.log");
+                    System.IO.File.AppendAllText(cabletrayClearanceDebugLogPath, $"[{DateTime.Now:HH:mm:ss}] GetCableTrayPlacementAdjustment START for ClashZone {clashZone.Id}\n");
+                    System.IO.File.AppendAllText(cabletrayClearanceDebugLogPath, $"[{DateTime.Now:HH:mm:ss}] clearanceSettings.Count = {uiClearanceSettings?.Count ?? 0}\n");
+                    
+                    if (uiClearanceSettings != null)
                     {
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cabletray_clearance_debug.log", 
-                            $"[{DateTime.Now:HH:mm:ss}]   Key='{kvp.Key}', Value={kvp.Value}mm\n");
+                        foreach (var kvp in uiClearanceSettings)
+                        {
+                            System.IO.File.AppendAllText(cabletrayClearanceDebugLogPath, $"[{DateTime.Now:HH:mm:ss}]   Key='{kvp.Key}', Value={kvp.Value}mm\n");
+                        }
                     }
                 }
                 

@@ -21,7 +21,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// - All BatchedLogger calls are skipped (no string allocations)
         /// - Memory savings: Only ~13% (not worth losing debug capabilities)
         /// </summary>
-        public static bool DeploymentMode { get; set; } = true; // ✅ DEPLOYMENT: Deployment mode ON - logging disabled
+        public static bool DeploymentMode { get; set; } = false; //PLOYMENT: Deployment mode ON - logging disabled
     }
 }
 

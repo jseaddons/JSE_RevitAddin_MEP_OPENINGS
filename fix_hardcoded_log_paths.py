@@ -80,16 +80,39 @@ def replace_hardcoded_log_paths(file_path):
     
     content = pattern2.sub(replace_match2, content)
     
-    # Pattern 3: File.AppendAllText(@"C:\...\Log\filename.log", variable_or_expression);
-    pattern3 = re.compile(
+    # Pattern 3: System.IO.File.AppendAllText(@"C:\...\Log\filename.log", variable_or_expression);
+    pattern3a = re.compile(
+        r'System\.IO\.File\.AppendAllText\(@\"([^\"]+\\[^"]+\.log)\",\s*([^;]+);',
+        re.MULTILINE
+    )
+    
+    def replace_match3a(match):
+        nonlocal changes_count
+        hardcoded_path = match.group(1)
+        log_content = match.group(2).strip()
+        
+        filename = extract_log_filename(hardcoded_path)
+        if not filename:
+            return match.group(0)  # Can't extract filename, skip
+        
+        changes_count += 1
+        var_name = filename.replace('.', '_').replace('-', '_').replace(' ', '_')
+        replacement = f'string {var_name}LogPath = SafeFileLogger.GetLogFilePath("{filename}");\n            System.IO.File.AppendAllText({var_name}LogPath, {log_content};'
+        
+        return replacement
+    
+    content = pattern3a.sub(replace_match3a, content)
+    
+    # Pattern 3b: File.AppendAllText(@"C:\...\Log\filename.log", variable_or_expression);
+    pattern3b = re.compile(
         r'File\.AppendAllText\(@\"([^\"]+\\[^"]+\.log)\",\s*([^;]+);',
         re.MULTILINE
     )
     
-    def replace_match3(match):
+    def replace_match3b(match):
         nonlocal changes_count
         hardcoded_path = match.group(1)
-        log_content = match.group(2)
+        log_content = match.group(2).strip()
         
         filename = extract_log_filename(hardcoded_path)
         if not filename:
@@ -101,18 +124,41 @@ def replace_hardcoded_log_paths(file_path):
         
         return replacement
     
-    content = pattern3.sub(replace_match3, content)
+    content = pattern3b.sub(replace_match3b, content)
     
-    # Pattern 4: File.WriteAllText(@"C:\...\Log\filename.log", ...)
-    pattern4 = re.compile(
+    # Pattern 4a: System.IO.File.WriteAllText(@"C:\...\Log\filename.log", ...)
+    pattern4a = re.compile(
+        r'System\.IO\.File\.WriteAllText\(@\"([^\"]+\\[^"]+\.log)\",\s*([^;]+);',
+        re.MULTILINE
+    )
+    
+    def replace_match4a(match):
+        nonlocal changes_count
+        hardcoded_path = match.group(1)
+        log_content = match.group(2).strip()
+        
+        filename = extract_log_filename(hardcoded_path)
+        if not filename:
+            return match.group(0)  # Can't extract filename, skip
+        
+        changes_count += 1
+        var_name = filename.replace('.', '_').replace('-', '_').replace(' ', '_')
+        replacement = f'string {var_name}LogPath = SafeFileLogger.GetLogFilePath("{filename}");\n            System.IO.File.WriteAllText({var_name}LogPath, {log_content};'
+        
+        return replacement
+    
+    content = pattern4a.sub(replace_match4a, content)
+    
+    # Pattern 4b: File.WriteAllText(@"C:\...\Log\filename.log", ...)
+    pattern4b = re.compile(
         r'File\.WriteAllText\(@\"([^\"]+\\[^"]+\.log)\",\s*([^;]+);',
         re.MULTILINE
     )
     
-    def replace_match4(match):
+    def replace_match4b(match):
         nonlocal changes_count
         hardcoded_path = match.group(1)
-        log_content = match.group(2)
+        log_content = match.group(2).strip()
         
         filename = extract_log_filename(hardcoded_path)
         if not filename:
@@ -124,7 +170,22 @@ def replace_hardcoded_log_paths(file_path):
         
         return replacement
     
-    content = pattern4.sub(replace_match4, content)
+    content = pattern4b.sub(replace_match4b, content)
+    
+    # Pattern 5: Fix the incorrect System.IO.string declarations that were created
+    pattern5 = re.compile(
+        r'System\.IO\.string\s+(\w+LogPath)\s*=\s*SafeFileLogger\.GetLogFilePath\("([^"]+)"\);',
+        re.MULTILINE
+    )
+    
+    def replace_match5(match):
+        nonlocal changes_count
+        var_name = match.group(1)
+        filename = match.group(2)
+        changes_count += 1
+        return f'string {var_name} = SafeFileLogger.GetLogFilePath("{filename}");'
+    
+    content = pattern5.sub(replace_match5, content)
     
     # Add using statement if SafeFileLogger is used but not imported
     if 'SafeFileLogger.GetLogFilePath' in content:

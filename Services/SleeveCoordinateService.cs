@@ -40,8 +40,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (sleeves.Count == 0)
                 {
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\sleeve_coordinates.log",
-                        "No sleeves found in model!\n");
+                    string sleeveCoordinatesLogPath = SafeFileLogger.GetLogFilePath("sleeve_coordinates.log");
+                    System.IO.File.AppendAllText(sleeveCoordinatesLogPath, "No sleeves found in model!\n");
                     return;
                 }
                 

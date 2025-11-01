@@ -649,9 +649,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Info($"[PARAM_TRANSFER] Found {openingIds.Count} sleeves in model - proceeding with parameter transfer");
                 // Build snapshot index (sleeveId -> (mepBag, hostBag)) from latest category XML
                 DebugLogger.Info($"[PARAM_TRANSFER] Building snapshot index for category: {config.SourceCategoryName}");
-                DebugLogger.Info($"[{DateTime.Now}] [PARAM_TRANSFER] Building snapshot index for category: {config.SourceCategoryName}\n");
+                string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [PARAM_TRANSFER] Building snapshot index for category: {config.SourceCategoryName}\n");
+                    string projectPath = ProjectPathService.GetProjectRoot(doc);
+                    string filtersPath = ProjectPathService.GetFiltersDirectory(doc);
+                    System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [PARAM_TRANSFER] Project path: {projectPath}\n");
+                    System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [PARAM_TRANSFER] Filters directory (XML path): {filtersPath}\n");
+                }
                 
-                var filterIndex = BuildFilterIndex();
+                // ✅ FIX: Pass document to BuildFilterIndex for project-specific path
+                var filterIndex = BuildFilterIndex(doc);
                 
                 // Add diagnostic calls to check XML content and filter index
                 DiagnoseXmlContent(config.SourceCategoryName);
@@ -953,15 +962,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     else
                                     {
                                         DebugLogger.Warning($"[TRANSFER] Cluster sleeve {sleeveId} NOT in {expectedDuctAccessoriesFile} (contains {candidateData.Count} sleeves, sample IDs: {string.Join(", ", candidateData.Keys.Take(10))})");
-                                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                                            $"[{DateTime.Now}] [TRANSFER] Cluster sleeve {sleeveId} NOT in {expectedDuctAccessoriesFile} (sample IDs: {string.Join(", ", candidateData.Keys.Take(10))})\n");
+                                        string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
+            System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [TRANSFER] Cluster sleeve {sleeveId} NOT in {expectedDuctAccessoriesFile} (sample IDs: {string.Join(", ", candidateData.Keys.Take(10))})\n");
                                     }
                                 }
                                 else
                                 {
                                     DebugLogger.Warning($"[TRANSFER] {expectedDuctAccessoriesFile} not found in filterIndex");
-                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                                        $"[{DateTime.Now}] [TRANSFER] {expectedDuctAccessoriesFile} not found. Available files: {string.Join(", ", filterIndex.Keys.Where(k => k.Contains("Ventilation", StringComparison.OrdinalIgnoreCase)).Take(5))}\n");
+                                    string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
+            System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [TRANSFER] {expectedDuctAccessoriesFile} not found. Available files: {string.Join(", ", filterIndex.Keys.Where(k => k.Contains("Ventilation", StringComparison.OrdinalIgnoreCase)).Take(5))}\n");
                                 }
                                 
                                 // If still not found, try other matching files as fallback
@@ -971,8 +980,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         k.StartsWith(xmlFileName + "_", StringComparison.OrdinalIgnoreCase)).ToList();
                                     
                                     DebugLogger.Info($"[TRANSFER] Fallback: Searching remaining {matchingFiles.Count} matching XML files for cluster sleeve {sleeveId}");
-                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                                        $"[{DateTime.Now}] [TRANSFER] Fallback: Searching remaining {matchingFiles.Count} matching XML files for cluster sleeve {sleeveId}: {string.Join(", ", matchingFiles)}\n");
+                                    string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
+            System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [TRANSFER] Fallback: Searching remaining {matchingFiles.Count} matching XML files for cluster sleeve {sleeveId}: {string.Join(", ", matchingFiles)}\n");
                                     
                                     foreach (var candidateFile in matchingFiles)
                                     {
@@ -1049,8 +1058,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             else
                             {
                                 DebugLogger.Warning($"[TRANSFER] Category-specific XML file '{expectedFileName}' not found in filterIndex");
-                                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                                    $"[{DateTime.Now}] [TRANSFER] Category-specific XML file '{expectedFileName}' not found. Available keys: {string.Join(", ", filterIndex.Keys.Take(10))}\n");
+                                string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
+            System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [TRANSFER] Category-specific XML file '{expectedFileName}' not found. Available keys: {string.Join(", ", filterIndex.Keys.Take(10))}\n");
                             }
                         }
                         
@@ -1083,8 +1092,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 else
                                 {
                                     DebugLogger.Warning($"[TRANSFER] No matching XML file found for filter name '{xmlFileName}'. Available keys (first 5): {string.Join(", ", filterIndex.Keys.Take(5))}");
-                                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                                        $"[{DateTime.Now}] [TRANSFER] No matching XML file found for filter name '{xmlFileName}'. Available keys (first 5): {string.Join(", ", filterIndex.Keys.Take(5))}\n");
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
+                                        System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [TRANSFER] No matching XML file found for filter name '{xmlFileName}'. Available keys: {string.Join(", ", filterIndex.Keys)}\n");
+                                        System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [TRANSFER] Filter index has {filterIndex.Count} entries\n");
+                                    }
                                 }
                             }
                         }
@@ -1140,8 +1153,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             
                             var sourceParams = useHost ? paramBags.host : paramBags.mep;
                             DebugLogger.Info($"[TRANSFER] Source params: {string.Join(", ", sourceParams.Keys)}");
-                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                                $"[{DateTime.Now}] [TRANSFER] Source params: {string.Join(", ", sourceParams.Keys)}\n");
+                            string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
+            System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [TRANSFER] Source params: {string.Join(", ", sourceParams.Keys)}\n");
                             
                             if (sourceParams.TryGetValue(mapping.SourceParameter, out var paramValue))
                             {
@@ -1529,14 +1542,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         #region Private Helper Methods
 
-        private Dictionary<string, Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)>> BuildFilterIndex()
+        private Dictionary<string, Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)>> BuildFilterIndex(Document doc = null)
         {
             var filterIndex = new Dictionary<string, Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)>>();
             try
             {
-                var filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                // ✅ FIX: Use project-specific path instead of hardcoded "Default"
+                string filtersDirectory;
+                if (doc != null)
+                {
+                    filtersDirectory = ProjectPathService.GetFiltersDirectory(doc);
+                }
+                else
+                {
+                    // Fallback for backward compatibility
+                    filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                }
+                
                 DebugLogger.Info($"[PARAM_TRANSFER] Looking for XML files in: {filtersDirectory}");
-                DebugLogger.Info($"[{DateTime.Now}] [PARAM_TRANSFER] Looking for XML files in: {filtersDirectory}\n");
+                string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [PARAM_TRANSFER] Looking for XML files in: {filtersDirectory}\n");
+                }
                 
                 if (!Directory.Exists(filtersDirectory)) 
                 {
@@ -1544,26 +1572,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return filterIndex;
                 }
                 
-                // Load ALL XML files and build filter-based index
-                var xmlFiles = Directory.GetFiles(filtersDirectory, "*.xml");
-                DebugLogger.Info($"[PARAM_TRANSFER] Found {xmlFiles.Length} XML files in directory");
-                DebugLogger.Info($"[{DateTime.Now}] [PARAM_TRANSFER] Found {xmlFiles.Length} XML files in directory\n");
+                // ✅ FIX: Filter out *_global.xml and *_CONDITIONS.xml files (like MarkParameterService)
+                var allXmlFiles = Directory.GetFiles(filtersDirectory, "*.xml");
+                var xmlFiles = allXmlFiles.Where(f => 
+                {
+                    string fileName = Path.GetFileName(f);
+                    return !fileName.EndsWith("_global.xml", StringComparison.OrdinalIgnoreCase) &&
+                           !fileName.EndsWith("_CONDITIONS.xml", StringComparison.OrdinalIgnoreCase) &&
+                           !fileName.EndsWith("_conditions.xml", StringComparison.OrdinalIgnoreCase);
+                }).ToList();
+                
+                DebugLogger.Info($"[PARAM_TRANSFER] Found {allXmlFiles.Length} XML files total, {xmlFiles.Count} filter files (excluded {allXmlFiles.Length - xmlFiles.Count} global/CONDITIONS files)");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    string transferDebugLogPath2 = SafeFileLogger.GetLogFilePath("transfer_debug.log");
+                    System.IO.File.AppendAllText(transferDebugLogPath2, $"[{DateTime.Now}] [PARAM_TRANSFER] Found {allXmlFiles.Length} XML files total, {xmlFiles.Count} filter files\n");
+                }
 
                 foreach (var xmlFile in xmlFiles)
                 {
                     var fileName = Path.GetFileName(xmlFile);
                     
-                    // Skip CONDITIONS files
-                    if (fileName.Contains("conditions", StringComparison.OrdinalIgnoreCase))
-                    {
-                        DebugLogger.Info($"[PARAM_TRANSFER] Skipping CONDITIONS file: {fileName}");
-                        continue;
-                    }
-                    
                     try
                     {
-                        DebugLogger.Info($"[PARAM_TRANSFER] Loading XML file: {fileName}");
-                        DebugLogger.Info($"[{DateTime.Now}] [PARAM_TRANSFER] Loading XML file: {fileName}\n");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[PARAM_TRANSFER] Loading XML file: {fileName}");
+                            string transferDebugLogPath3 = SafeFileLogger.GetLogFilePath("transfer_debug.log");
+                            System.IO.File.AppendAllText(transferDebugLogPath3, $"[{DateTime.Now}] [PARAM_TRANSFER] Loading XML file: {fileName}\n");
+                        }
 
                 var serializer = new System.Xml.Serialization.XmlSerializer(typeof(Models.OpeningFilter));
                 using (var reader = new StreamReader(xmlFile))
@@ -1571,8 +1608,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var filter = (Models.OpeningFilter)serializer.Deserialize(reader);
                     var zones = filter?.ClashZoneStorage?.ClashZones ?? new List<Models.ClashZone>();
                             
-                            DebugLogger.Info($"[PARAM_TRANSFER] Loaded {zones.Count} clash zones from {fileName}");
-                            DebugLogger.Info($"[{DateTime.Now}] [PARAM_TRANSFER] Loaded {zones.Count} clash zones from {fileName}\n");
+                            if (!DeploymentConfiguration.DeploymentMode && zones.Count > 0)
+                            {
+                                DebugLogger.Info($"[PARAM_TRANSFER] Loaded {zones.Count} clash zones from {fileName}");
+                                string transferDebugLogPath4 = SafeFileLogger.GetLogFilePath("transfer_debug.log");
+                                System.IO.File.AppendAllText(transferDebugLogPath4, $"[{DateTime.Now}] [PARAM_TRANSFER] Loaded {zones.Count} clash zones from {fileName}\n");
+                            }
                             
                             var filterData = new Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)>();
                             
@@ -1682,19 +1723,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                             
                             filterIndex[fileName] = filterData;
-                            DebugLogger.Info($"[PARAM_TRANSFER] Built index for {fileName}: {filterData.Count} sleeves");
-                            DebugLogger.Info($"[{DateTime.Now}] [PARAM_TRANSFER] Built index for {fileName}: {filterData.Count} sleeves\n");
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[PARAM_TRANSFER] Built index for {fileName}: {filterData.Count} sleeves");
+                                string transferDebugLogPath5 = SafeFileLogger.GetLogFilePath("transfer_debug.log");
+                                System.IO.File.AppendAllText(transferDebugLogPath5, $"[{DateTime.Now}] [PARAM_TRANSFER] Built index for {fileName}: {filterData.Count} sleeves\n");
+                            }
                         }
                     }
                     catch (Exception ex)
                     {
                         DebugLogger.Error($"[PARAM_TRANSFER] Error loading {fileName}: {ex.Message}");
-                        DebugLogger.Info($"[{DateTime.Now}] [PARAM_TRANSFER] Error loading {fileName}: {ex.Message}\n");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            string transferDebugLogPath6 = SafeFileLogger.GetLogFilePath("transfer_debug.log");
+                            System.IO.File.AppendAllText(transferDebugLogPath6, $"[{DateTime.Now}] [PARAM_TRANSFER] ERROR loading {fileName}: {ex.Message}\n");
+                        }
                     }
                 }
                 
                 DebugLogger.Info($"[PARAM_TRANSFER] Filter index built with {filterIndex.Count} XML files");
-                DebugLogger.Info($"[{DateTime.Now}] [PARAM_TRANSFER] Filter index built with {filterIndex.Count} XML files\n");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    string transferDebugLogPath7 = SafeFileLogger.GetLogFilePath("transfer_debug.log");
+                    System.IO.File.AppendAllText(transferDebugLogPath7, $"[{DateTime.Now}] [PARAM_TRANSFER] Filter index built with {filterIndex.Count} XML files\n");
+                    if (filterIndex.Count > 0)
+                    {
+                        System.IO.File.AppendAllText(transferDebugLogPath7, $"[{DateTime.Now}] [PARAM_TRANSFER] Available filter keys: {string.Join(", ", filterIndex.Keys.Take(10))}\n");
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -2158,16 +2215,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (clusterIdsInData.Count > 0)
                 {
                     DebugLogger.Info($"[AGGREGATE] Sample cluster sleeve IDs in filterData: {string.Join(", ", clusterIdsInData)}");
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                        $"[{DateTime.Now}] [AGGREGATE] Sample cluster sleeve IDs in filterData: {string.Join(", ", clusterIdsInData)}\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
+                        System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [AGGREGATE] Sample cluster sleeve IDs in filterData: {string.Join(", ", clusterIdsInData)}\n");
+                    }
                 }
                 
                 if (filterData.TryGetValue(clusterSleeveId, out var paramBags))
                 {
                     var sourceParams = useHost ? paramBags.host : paramBags.mep;
                     DebugLogger.Info($"[AGGREGATE] Found cluster sleeve {clusterSleeveId}, has {sourceParams.Count} {(useHost ? "host" : "MEP")} parameters");
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                        $"[{DateTime.Now}] [AGGREGATE] Found cluster sleeve {clusterSleeveId}, has {sourceParams.Count} {(useHost ? "host" : "MEP")} parameters: {string.Join(", ", sourceParams.Keys.Take(10))}\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        string transferDebugLogPath2 = SafeFileLogger.GetLogFilePath("transfer_debug.log");
+                        System.IO.File.AppendAllText(transferDebugLogPath2, $"[{DateTime.Now}] [AGGREGATE] Found cluster sleeve {clusterSleeveId}, has {sourceParams.Count} {(useHost ? "host" : "MEP")} parameters: {string.Join(", ", sourceParams.Keys.Take(10))}\n");
+                    }
                     
                     if (sourceParams.TryGetValue(parameterName, out var paramValue) && !string.IsNullOrEmpty(paramValue))
                     {
@@ -2177,16 +2240,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     else
                     {
                         DebugLogger.Warning($"[AGGREGATE] Parameter '{parameterName}' not found in aggregated data for cluster sleeve {clusterSleeveId}. Available params: {string.Join(", ", sourceParams.Keys)}");
-                        System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                            $"[{DateTime.Now}] [AGGREGATE] Parameter '{parameterName}' not found. Available: {string.Join(", ", sourceParams.Keys)}\n");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            string transferDebugLogPath3 = SafeFileLogger.GetLogFilePath("transfer_debug.log");
+                            System.IO.File.AppendAllText(transferDebugLogPath3, $"[{DateTime.Now}] [AGGREGATE] Parameter '{parameterName}' not found. Available: {string.Join(", ", sourceParams.Keys)}\n");
+                        }
                         return null;
                     }
                 }
                 else
                 {
                     DebugLogger.Warning($"[AGGREGATE] Cluster sleeve {clusterSleeveId} not found in filter data (checked {filterData.Count} entries)");
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                        $"[{DateTime.Now}] [AGGREGATE] Cluster sleeve {clusterSleeveId} NOT FOUND in filterData. Sample keys: {string.Join(", ", filterData.Keys.Take(10))}\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        string transferDebugLogPath4 = SafeFileLogger.GetLogFilePath("transfer_debug.log");
+                        System.IO.File.AppendAllText(transferDebugLogPath4, $"[{DateTime.Now}] [AGGREGATE] Cluster sleeve {clusterSleeveId} NOT FOUND in filterData. Sample keys: {string.Join(", ", filterData.Keys.Take(10))}\n");
+                    }
                     return null;
                 }
             }

@@ -2419,8 +2419,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 double depthRead = depthParam.AsDouble();
                 double depthReadMm = UnitUtils.ConvertFromInternalUnits(depthRead, UnitTypeId.Millimeters);
                 bool verified = Math.Abs(depthRead - thickness) < 0.0001;
-                System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
-                    $"[DEPTH-SET] Sleeve {sleeveInstance.Id.IntegerValue}: {(isFramingHost ? "FRAMING" : (isWallHost ? "WALL" : "FLOOR"))} - Set Depth = {depthReadMm:F1}mm, Verified={verified} {(verified ? "✓" : "✗")}\n");
+                string placementDebugLogPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                System.IO.File.AppendAllText(placementDebugLogPath, $"[DEPTH-SET] Sleeve {sleeveInstance.Id.IntegerValue}: {(isFramingHost ? "FRAMING" : (isWallHost ? "WALL" : "FLOOR"))} - Set Depth = {depthReadMm:F1}mm, Verified={verified} {(verified ? "✓" : "✗")}\n");
             }
             catch { }
             depthSetSuccess = true;
@@ -3352,8 +3352,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // DIAGNOSTIC: Log ClashZone wall direction data availability
                         try
                         {
-                            System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\placement_debug.log",
-                                $"[DIAGNOSTIC] Sleeve {sleeveInstance.Id.IntegerValue}: WallDirection={clashZone.WallDirection != null}, WallDirectionType='{clashZone.WallDirectionType ?? "NULL"}', WallDirectionZero={clashZone.WallDirection == XYZ.Zero}\n");
+                            string placementDebugLogPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                System.IO.File.AppendAllText(placementDebugLogPath, $"[DIAGNOSTIC] Sleeve {sleeveInstance.Id.IntegerValue}: WallDirection={clashZone.WallDirection != null}, WallDirectionType='{clashZone.WallDirectionType ?? "NULL"}', WallDirectionZero={clashZone.WallDirection == XYZ.Zero}\n");
                         }
                         catch { }
                         

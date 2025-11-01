@@ -348,17 +348,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 DebugLogger.Info($"[HOST_SERVICE] Getting host parameters from document: {documentName}");
                 
-                // Get parameters from Wall, Structural Framing, and Floor categories
-                var wallParams = GetParametersForCategory(document, BuiltInCategory.OST_Walls);
-                var structuralParams = GetParametersForCategory(document, BuiltInCategory.OST_StructuralFraming);
-                var floorParams = GetParametersForCategory(document, BuiltInCategory.OST_Floors);
+                // ✅ PERFORMANCE FIX: Only load Fire Rating parameter on startup (rest load when user clicks "+")
+                // Check if Fire Rating parameter exists in any of the host categories
+                var categories = new[] { BuiltInCategory.OST_Walls, BuiltInCategory.OST_StructuralFraming, BuiltInCategory.OST_Floors };
+                
+                foreach (var category in categories)
+                {
+                    var collector = new FilteredElementCollector(document)
+                        .OfCategory(category)
+                        .WhereElementIsNotElementType()
+                        .Take(1);
+                    
+                    foreach (Element element in collector)
+                    {
+                        foreach (Parameter param in element.Parameters)
+                        {
+                            if (string.Equals(param.Definition?.Name, "Fire Rating", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (!parameters.Contains("Fire Rating"))
+                                {
+                                    parameters.Add("Fire Rating");
+                                    break;
+                                }
+                            }
+                        }
+                        if (parameters.Contains("Fire Rating")) break;
+                    }
+                    if (parameters.Contains("Fire Rating")) break;
+                }
 
-                // Add unique parameters
-                AddUniqueParameters(parameters, wallParams);
-                AddUniqueParameters(parameters, structuralParams);
-                AddUniqueParameters(parameters, floorParams);
-
-                DebugLogger.Info($"[HOST_SERVICE] Retrieved {wallParams.Count} wall, {structuralParams.Count} structural, {floorParams.Count} floor parameters from {documentName}");
+                DebugLogger.Info($"[HOST_SERVICE] Retrieved {parameters.Count} host parameters from {documentName} (startup: only Fire Rating)");
             }
             catch (Exception ex)
             {
@@ -369,42 +388,60 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// Gets parameters for a specific category from a document
+        /// ✅ PERFORMANCE FIX: Gets only essential/shared parameters for a specific category
+        /// Only loads: Fire Rating, Grid, and shared parameters (from first element sample)
+        /// This limits loading to ~1-5 parameters per category instead of scanning all parameters
         /// </summary>
         private List<string> GetParametersForCategory(Document document, BuiltInCategory category)
         {
-            var parameters = new List<string>();
+            var parameters = new HashSet<string>();
             
             try
             {
+                // ✅ PERFORMANCE: Only sample 1 element instead of 10 (user wants ~1 parameter per host type)
                 var collector = new FilteredElementCollector(document)
                     .OfCategory(category)
                     .WhereElementIsNotElementType()
-                    .Take(10); // Sample first 10 elements
+                    .Take(1); // ✅ PERFORMANCE: Only 1 element for essential parameters
 
+                // ✅ PERFORMANCE: Pre-define essential parameters (user requirement: ~1 per host type)
+                var essentialParams = new[] { "Fire Rating", "Grid", "Grid Names" };
+                foreach (var essentialParam in essentialParams)
+                {
+                    parameters.Add(essentialParam);
+                }
+
+                // Get shared parameters from first element only (for the ~20 shared params user mentioned)
                 foreach (Element element in collector)
                 {
                     foreach (Parameter param in element.Parameters)
                     {
-                        if (!string.IsNullOrEmpty(param.Definition.Name) && 
-                            !parameters.Contains(param.Definition.Name) &&
-                            !param.Definition.Name.StartsWith("Internal") &&
-                            !param.Definition.Name.StartsWith("Revit") &&
-                            !param.Definition.Name.StartsWith("Assembly"))
+                        if (string.IsNullOrEmpty(param.Definition?.Name)) continue;
+                        
+                        var paramName = param.Definition.Name;
+                        
+                        // ✅ PERFORMANCE: Only add shared parameters (they have positive IDs and are part of the ~20)
+                        // Skip instance/type parameters that aren't shared (user only wants shared params from families)
+                        bool isSharedParameter = param.Id.IntegerValue > 0 && param.IsShared;
+                        
+                        if (isSharedParameter && 
+                            !paramName.StartsWith("Internal") &&
+                            !paramName.StartsWith("Revit") &&
+                            !paramName.StartsWith("Assembly"))
                         {
-                            parameters.Add(param.Definition.Name);
+                            parameters.Add(paramName);
                         }
                     }
                 }
 
-                DebugLogger.Info($"[HOST_SERVICE] Found {parameters.Count} parameters for category {category}");
+                DebugLogger.Info($"[HOST_SERVICE] Found {parameters.Count} essential/shared parameters for category {category}");
             }
             catch (Exception ex)
             {
                 DebugLogger.Error($"[HOST_SERVICE] Error getting parameters for category {category}: {ex.Message}");
             }
 
-            return parameters;
+            return parameters.ToList();
         }
 
         /// <summary>

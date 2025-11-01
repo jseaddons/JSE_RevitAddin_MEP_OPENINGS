@@ -227,23 +227,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         /// <summary>
         /// Get default parameter mappings for each service type - ONLY 4 ESSENTIAL PARAMETERS
+        /// From Linked MEP Files: System Type, System Size, System Abbreviation, Reference Level
         /// </summary>
         private List<(string MepParameter, string OpeningParameter)> GetDefaultParameterMappings(string serviceCode)
         {
             var mappings = new List<(string MepParameter, string OpeningParameter)>();
             
-            // ONLY 4 ESSENTIAL PARAMETERS FOR ALL SERVICE TYPES (Option A)
+            // ✅ PERFORMANCE FIX: Only 4 essential parameters from linked MEP files on startup
             var systemTypeParam = serviceCode.ToUpper() == "CABLE_TRAYS" ? "Service Type" : "System Type";
             
             mappings.AddRange(new[]
             {
-                ("Size", "MEP Size"),
+                ("System Size", "MEP Size"),  // Changed from "Size" to "System Size"
                 (systemTypeParam, "MEP System Type"),
-                ("Reference Level", "Level"),
-                ("MEP System Name", "System Name")
+                ("System Abbreviation", "MEP System Abbreviation"),  // Changed from "MEP System Name"
+                ("Reference Level", "Level")
             });
             
             // No additional service-specific parameters - only the 4 essential ones
+            // Rest load when user clicks "+" button
             
             return mappings;
         }

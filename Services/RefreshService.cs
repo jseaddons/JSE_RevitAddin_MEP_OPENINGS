@@ -1117,8 +1117,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // ✅ DEPLOYMENT MODE: Skip hardcoded log writes
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
-                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", 
-                                $"[{DateTime.Now}] [CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Category mismatch: '{cz.MepElementCategory}' not in [{string.Join(", ", allowedMepCats)}]\n");
+                            string refresh_debug_logLogPath = SafeFileLogger.GetLogFilePath("refresh_debug.log");
+            File.AppendAllText(refresh_debug_logLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Category mismatch: '{cz.MepElementCategory}' not in [{string.Join(", ", allowedMepCats)}]\n");
                             }
                         }
                         if (!hostTypeMatch)
@@ -1127,8 +1127,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // ✅ DEPLOYMENT MODE: Skip hardcoded log writes
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
-                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", 
-                                $"[{DateTime.Now}] [CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Host type mismatch: '{cz.StructuralElementType}' not in [{string.Join(", ", allowedHostTypes)}]\n");
+                            string refresh_debug_logLogPath = SafeFileLogger.GetLogFilePath("refresh_debug.log");
+            File.AppendAllText(refresh_debug_logLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Host type mismatch: '{cz.StructuralElementType}' not in [{string.Join(", ", allowedHostTypes)}]\n");
                             }
                         }
                         
@@ -1146,14 +1146,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!refFileMatch)
                         {
                             DebugLogger.Info($"[CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Reference file mismatch: '{cz.SourceDocKey}' -> filename: '{refFileName}' -> normalized: '{norm(refFileName)}' not in [{string.Join(", ", allowedRefFiles)}]");
-                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", 
-                                $"[{DateTime.Now}] [CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Reference file mismatch: '{refFileName}' not in [{string.Join(", ", allowedRefFiles)}]\n");
+                            string refresh_debug_logLogPath = SafeFileLogger.GetLogFilePath("refresh_debug.log");
+            File.AppendAllText(refresh_debug_logLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Reference file mismatch: '{refFileName}' not in [{string.Join(", ", allowedRefFiles)}]\n");
                         }
                         if (!hostFileMatch)
                         {
                             DebugLogger.Info($"[CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Host file mismatch: '{cz.StructuralElementDocumentTitle}' -> filename: '{hostFileName}' -> normalized: '{norm(hostFileName)}' not in [{string.Join(", ", allowedHostFiles)}]");
-                            File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", 
-                                $"[{DateTime.Now}] [CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Host file mismatch: '{hostFileName}' not in [{string.Join(", ", allowedHostFiles)}]\n");
+                            string refresh_debug_logLogPath = SafeFileLogger.GetLogFilePath("refresh_debug.log");
+            File.AppendAllText(refresh_debug_logLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Host file mismatch: '{hostFileName}' not in [{string.Join(", ", allowedHostFiles)}]\n");
                         }
                         
                         return categoryMatch && hostTypeMatch && refFileMatch && hostFileMatch;

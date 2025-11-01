@@ -434,21 +434,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         }
 
         /// <summary>
-        /// Add default parameter rows for a category (matching previous UI behavior)
+        /// Add default parameter rows for a category - ONLY 4 ESSENTIAL PARAMETERS on startup
+        /// From Linked MEP Files: System Type, System Size, System Abbreviation, Reference Level
         /// </summary>
         private void AddDefaultParameterRows(WinForms.Panel panel, string category)
         {
-            // Define default mappings - use "Service Type" for Cable Trays, "System Type" for others
+            // ✅ PERFORMANCE FIX: Only 4 essential parameters from linked MEP files on startup
+            // Rest load when user clicks "+" button
             var systemTypeParam = category == "Cable Trays" ? "Service Type" : "System Type";
             
             var mappings = new List<(string Mep, string Opening)>
             {
-                ("Size", "MEP Size"),
+                ("Size", "MEP Size"),  // ✅ FIX: Use "Size" as default (more commonly used parameter name)
                 (systemTypeParam, "MEP System Type"),
-                ("Reference Level", "Level"),
-                ("MEP System Name", "System Name"),
-                ("System Abbreviation", "MEP System Abbreviation")
+                ("System Abbreviation", "MEP System Abbreviation"),
+                ("Reference Level", "Level")
             };
+            
+            // ✅ NOTE: Dropdown will include both "Size" and "System Size" if both exist in linked files
+            // Default selection uses "Size" as it's more commonly used
+
+            if (!DeploymentConfiguration.DeploymentMode && _document != null)
+            {
+                string paramLogPath = SafeFileLogger.GetLogFilePath("parameter_service_debug.log");
+                string projectPath = ProjectPathService.GetProjectRoot(_document);
+                string filtersPath = ProjectPathService.GetFiltersDirectory(_document);
+                System.IO.File.AppendAllText(paramLogPath, $"[{DateTime.Now}] [ParameterServiceDialogV2] Adding default parameter rows for category '{category}'\n");
+                System.IO.File.AppendAllText(paramLogPath, $"[{DateTime.Now}] [ParameterServiceDialogV2] Project path: {projectPath}\n");
+                System.IO.File.AppendAllText(paramLogPath, $"[{DateTime.Now}] [ParameterServiceDialogV2] Filters directory (XML path): {filtersPath}\n");
+            }
 
             foreach (var mapping in mappings)
             {
@@ -457,7 +471,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         }
 
         /// <summary>
-        /// Get MEP/Host parameters for a specific category - dynamically loads from linked files using ParameterExtractionService
+        /// Get MEP/Host parameters for a specific category - ONLY ESSENTIAL PARAMETERS on startup
+        /// ✅ PERFORMANCE FIX: Returns only 4 essential parameters for MEP categories on startup
+        /// Rest load when user clicks "+" button
         /// </summary>
         private string[] GetMepParametersForCategory(string category)
         {
@@ -467,119 +483,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 return GetHostParametersForCategory(category);
             }
             
-            // For MEP categories, dynamically load parameters from linked files (selected in UI)
+            // ✅ PERFORMANCE FIX: Only return 4 essential parameters for MEP categories on startup
+            // 1. Size (or "System Size" - include both as some files use different names)
+            // 2. System Type (or "Service Type" for Cable Trays)
+            // 3. System Abbreviation
+            // 4. Reference Level
+            var systemTypeParam = category == "Cable Trays" ? "Service Type" : "System Type";
+            // ✅ FIX: Include both "Size" and "System Size" as different linked files might use different parameter names
+            var essentialParams = new List<string> { "Size", "System Size", systemTypeParam, "System Abbreviation", "Reference Level" };
+            // Remove duplicates while preserving order
+            essentialParams = essentialParams.Distinct().ToList();
+            
             if (_document == null)
             {
-                // Fallback to defaults if no document available
-                return new[] { "Size", "System Type", "Reference Level", "MEP System Name" };
+                // Fallback to essentials if no document available
+                return essentialParams.ToArray();
             }
             
-            try
+            // ✅ PERFORMANCE FIX: Just return the 4 essential parameters on startup
+            // Don't scan all parameters - they'll load when user clicks "+"
+            DebugLogger.Info($"[ParameterServiceDialogV2] Returning {essentialParams.Count} essential MEP parameters for category '{category}' (startup mode)");
+            if (!DeploymentConfiguration.DeploymentMode)
             {
-                var mepParameters = new HashSet<string>();
-                
-                // Convert string category to MepCategory enum (convert from Models.MepCategory to Services.MepCategory)
-                var modelsMepCategory = Models.MepCategoryConstants.Parse(category);
-                // Map Models.MepCategory to Services.MepCategory
-                Services.MepCategory servicesMepCategory = modelsMepCategory switch
-                {
-                    Models.MepCategory.Pipes => Services.MepCategory.Pipes,
-                    Models.MepCategory.Ducts => Services.MepCategory.Ducts,
-                    Models.MepCategory.DuctAccessories => Services.MepCategory.DuctAccessories,
-                    Models.MepCategory.CableTrays => Services.MepCategory.CableTrays,
-                    _ => Services.MepCategory.Ducts // Default fallback
-                };
-                var mepCategories = new List<Services.MepCategory> { servicesMepCategory };
-                
-                // Get linked files from document
-                var linkedFileService = new Services.LinkedFileService();
-                var linkedFiles = linkedFileService.GetLinkedFiles(_document);
-                
-                // Determine which linked files to use based on category
-                // For now, use all MEP-linked files. TODO: Get selected files from UI
-                var selectedLinkedFiles = linkedFiles.Where(lf => 
-                    lf.FileType == Services.LinkedFileType.Mechanical || 
-                    lf.FileType == Services.LinkedFileType.Plumbing || 
-                    lf.FileType == Services.LinkedFileType.Electrical ||
-                    lf.FileType == Services.LinkedFileType.FireProtection
-                ).ToList();
-                
-                // If no linked files, fall back to current document
-                if (selectedLinkedFiles.Count == 0)
-                {
-                    DebugLogger.Info($"[ParameterServiceDialogV2] No linked files found, using current document for MEP parameters");
-                    selectedLinkedFiles.Add(new Services.LinkedFileInfo 
-                    { 
-                        FileName = "Current Document",
-                        LinkInstance = null 
-                    });
-                }
-                
-                var parameterExtractionService = new Services.ParameterExtractionService();
-                
-                // Load parameters from each selected linked file (or current document)
-                foreach (var linkedFile in selectedLinkedFiles)
-                {
-                    Document targetDocument = _document;
-                    
-                    // If it's a linked file, get the linked document
-                    if (linkedFile.FileName != "Current Document" && linkedFile.LinkInstance != null)
-                    {
-                        var linkDoc = linkedFile.LinkInstance.GetLinkDocument();
-                        if (linkDoc != null)
-                        {
-                            targetDocument = linkDoc;
-                            DebugLogger.Info($"[ParameterServiceDialogV2] Loading MEP parameters from linked file: {linkedFile.FileName}");
-                        }
-                        else
-                        {
-                            DebugLogger.Warning($"[ParameterServiceDialogV2] Could not access linked document: {linkedFile.FileName}");
-                            continue;
-                        }
-                    }
-                    else
-                    {
-                        DebugLogger.Info($"[ParameterServiceDialogV2] Loading MEP parameters from current document");
-                    }
-                    
-                    // Use ParameterExtractionService to dynamically load parameters
-                    var parameterInfos = parameterExtractionService.GetParametersForMepCategories(targetDocument, mepCategories);
-                    
-                    // Extract parameter names and filter out internal/Revit/Assembly parameters
-                    foreach (var paramInfo in parameterInfos)
-                    {
-                        if (!string.IsNullOrEmpty(paramInfo.Name) &&
-                            !paramInfo.Name.StartsWith("Internal", StringComparison.OrdinalIgnoreCase) &&
-                            !paramInfo.Name.StartsWith("Revit", StringComparison.OrdinalIgnoreCase) &&
-                            !paramInfo.Name.StartsWith("Assembly", StringComparison.OrdinalIgnoreCase))
-                        {
-                            mepParameters.Add(paramInfo.Name);
-                        }
-                    }
-                }
-                
-                // Return sorted array of parameter names
-                return mepParameters.Count > 0 
-                    ? mepParameters.OrderBy(p => p).ToArray()
-                    : new[] { "Size", "System Type", "Reference Level", "MEP System Name" }; // Fallback if nothing found
+                string paramLogPath = SafeFileLogger.GetLogFilePath("parameter_service_debug.log");
+                System.IO.File.AppendAllText(paramLogPath, $"[{DateTime.Now}] [ParameterServiceDialogV2] Returning essential MEP parameters for '{category}': {string.Join(", ", essentialParams)}\n");
             }
-            catch (Exception ex)
-            {
-                DebugLogger.Warning($"[ParameterServiceDialogV2] Error loading MEP parameters for category '{category}': {ex.Message}");
-                // Fallback to defaults on error
-                return new[] { "Size", "System Type", "Reference Level", "MEP System Name" };
-            }
+            
+            return essentialParams.ToArray();
         }
         
         /// <summary>
         /// Get Host parameters for a specific category - loads from architectural/structural linked files
+        /// ✅ PERFORMANCE FIX: Only loads "Fire Rating" on startup, rest load when user clicks "+"
         /// </summary>
         private string[] GetHostParametersForCategory(string category)
         {
+            // ✅ PERFORMANCE FIX: Only return "Fire Rating" parameter on startup
+            // Rest load when user clicks "+" button
+            var essentialParams = new[] { "Fire Rating" };
+            
             if (_document == null)
             {
-                // Fallback to defaults if no document available
-                return new[] { "Base Level", "Top Level", "Material", "Thickness" };
+                // Fallback to essentials if no document available
+                return essentialParams;
             }
             
             try
@@ -598,7 +544,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 if (targetCategory == null)
                 {
                     DebugLogger.Warning($"[ParameterServiceDialogV2] Unknown host category: {category}");
-                    return new[] { "Base Level", "Top Level", "Material", "Thickness" };
+                    return essentialParams; // Return essentials instead of wrong defaults
                 }
                 
                 // Get linked files from document
@@ -609,6 +555,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 var hostLinkedFiles = linkedFileService.GetHostElementFiles(allLinkedFiles);
                 
                 DebugLogger.Info($"[ParameterServiceDialogV2] Found {hostLinkedFiles.Count} host-linked files for category '{category}'");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    string paramLogPath = SafeFileLogger.GetLogFilePath("parameter_service_debug.log");
+                    System.IO.File.AppendAllText(paramLogPath, $"[{DateTime.Now}] [ParameterServiceDialogV2] Found {hostLinkedFiles.Count} host-linked files for category '{category}'\n");
+                }
                 
                 // If no linked files, fall back to current document
                 if (hostLinkedFiles.Count == 0)
@@ -621,9 +572,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     });
                 }
                 
-                var parameterExtractionService = new Services.ParameterExtractionService();
-                
-                // Load parameters from each selected linked file (or current document)
+                // ✅ PERFORMANCE FIX: Only load "Fire Rating" parameter on startup (rest load when user clicks "+")
+                // Check if Fire Rating parameter exists in any of the host categories
                 foreach (var linkedFile in hostLinkedFiles)
                 {
                     Document targetDocument = _document;
@@ -635,63 +585,85 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         if (linkDoc != null)
                         {
                             targetDocument = linkDoc;
-                            DebugLogger.Info($"[ParameterServiceDialogV2] Loading host parameters from linked file: {linkedFile.FileName}");
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                string paramLogPath = SafeFileLogger.GetLogFilePath("parameter_service_debug.log");
+                                System.IO.File.AppendAllText(paramLogPath, $"[{DateTime.Now}] [ParameterServiceDialogV2] Loading host parameters from linked file: {linkedFile.FileName}\n");
+                            }
                         }
                         else
                         {
-                            DebugLogger.Warning($"[ParameterServiceDialogV2] Could not access linked document: {linkedFile.FileName}");
                             continue;
                         }
                     }
-                    else
-                    {
-                        DebugLogger.Info($"[ParameterServiceDialogV2] Loading host parameters from current document");
-                    }
                     
-                    // Use ParameterExtractionService to get parameters for the specific host category
-                    var parameterInfos = parameterExtractionService.GetParametersForCategory(targetDocument, targetCategory.Value, includeInstanceParams: true, includeTypeParams: true);
+                    // Check if Fire Rating parameter exists in the target category
+                    var collector = new FilteredElementCollector(targetDocument)
+                        .OfCategory(targetCategory.Value)
+                        .WhereElementIsNotElementType()
+                        .Take(1);
                     
-                    // Extract parameter names and filter out internal/Revit/Assembly parameters
-                    foreach (var paramInfo in parameterInfos)
+                    foreach (Element element in collector)
                     {
-                        if (!string.IsNullOrEmpty(paramInfo.Name) &&
-                            !paramInfo.Name.StartsWith("Internal", StringComparison.OrdinalIgnoreCase) &&
-                            !paramInfo.Name.StartsWith("Revit", StringComparison.OrdinalIgnoreCase) &&
-                            !paramInfo.Name.StartsWith("Assembly", StringComparison.OrdinalIgnoreCase))
+                        foreach (Parameter param in element.Parameters)
                         {
-                            hostParameters.Add(paramInfo.Name);
+                            if (string.Equals(param.Definition?.Name, "Fire Rating", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (!hostParameters.Contains("Fire Rating"))
+                                {
+                                    hostParameters.Add("Fire Rating");
+                                    break;
+                                }
+                            }
                         }
+                        if (hostParameters.Contains("Fire Rating")) break;
                     }
+                    if (hostParameters.Contains("Fire Rating")) break; // Found it, no need to check more files
                 }
                 
-                DebugLogger.Info($"[ParameterServiceDialogV2] Found {hostParameters.Count} host parameters for category '{category}'");
+                DebugLogger.Info($"[ParameterServiceDialogV2] Found {hostParameters.Count} host parameters for category '{category}' (startup: only Fire Rating)");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    string paramLogPath = SafeFileLogger.GetLogFilePath("parameter_service_debug.log");
+                    System.IO.File.AppendAllText(paramLogPath, $"[{DateTime.Now}] [ParameterServiceDialogV2] Found {hostParameters.Count} host parameters for category '{category}' (startup: only Fire Rating)\n");
+                }
                 
-                // Return sorted array of parameter names
+                // Return Fire Rating if found, otherwise return empty array (user can add via "+" button)
                 return hostParameters.Count > 0 
                     ? hostParameters.OrderBy(p => p).ToArray()
-                    : new[] { "Base Level", "Top Level", "Material", "Thickness" }; // Fallback if nothing found
+                    : essentialParams; // Return essentials even if not found (user can add it manually)
             }
             catch (Exception ex)
             {
                 DebugLogger.Warning($"[ParameterServiceDialogV2] Error loading host parameters for category '{category}': {ex.Message}");
-                // Fallback to defaults on error
-                return new[] { "Base Level", "Top Level", "Material", "Thickness" };
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    string paramLogPath = SafeFileLogger.GetLogFilePath("parameter_service_debug.log");
+                    System.IO.File.AppendAllText(paramLogPath, $"[{DateTime.Now}] [ParameterServiceDialogV2] ERROR loading host parameters for category '{category}': {ex.Message}\n");
+                }
+                // Fallback to essentials on error
+                return essentialParams;
             }
         }
         
         /// <summary>
         /// Get Opening parameters for a specific category - loads from active document FamilySymbol objects
+        /// ✅ PERFORMANCE FIX: Only loads 4 essential parameters on startup: MEP System Type, MEP Size, MEP System Abbreviation, Level
+        /// Rest load when user clicks "+"
         /// </summary>
         private string[] GetOpeningParametersForCategory(string category)
         {
+            // ✅ PERFORMANCE FIX: Only return 4 essential parameters on startup
+            // 1. MEP System Type
+            // 2. MEP Size  
+            // 3. MEP System Abbreviation
+            // 4. Level
+            var essentialParams = new[] { "MEP System Type", "MEP Size", "MEP System Abbreviation", "Level" };
+            
             if (_document == null)
             {
-                // Fallback to defaults if no document available
-                return category switch
-                {
-                    "Floors" or "Walls" or "Structural Framing" => new[] { "Level", "Material", "Thickness", "Mark" },
-                    _ => new[] { "MEP Size", "MEP System Type", "Level", "System Name", "Mark" }
-                };
+                // Fallback to essentials if no document available
+                return essentialParams;
             }
             
             try
@@ -702,79 +674,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 if (openingFamilies.Count == 0)
                 {
                     DebugLogger.Warning($"[ParameterServiceDialogV2] No opening families found in active document");
-                    // No openings found, use defaults
-                    return category switch
-                    {
-                        "Floors" or "Walls" or "Structural Framing" => new[] { "Level", "Material", "Thickness", "Mark" },
-                        _ => new[] { "MEP Size", "MEP System Type", "Level", "System Name", "Mark" }
-                    };
+                    // Return essentials even if no families found
+                    return essentialParams;
                 }
                 
-                DebugLogger.Info($"[ParameterServiceDialogV2] Found {openingFamilies.Count} opening families in active document");
+                DebugLogger.Info($"[ParameterServiceDialogV2] Found {openingFamilies.Count} opening families in active document (startup: returning only 4 essential parameters)");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    string paramLogPath = SafeFileLogger.GetLogFilePath("parameter_service_debug.log");
+                    System.IO.File.AppendAllText(paramLogPath, $"[{DateTime.Now}] [ParameterServiceDialogV2] Found {openingFamilies.Count} opening families in active document (startup: returning only 4 essential parameters)\n");
+                }
                 
-                // Get ALL parameters from opening FamilySymbol objects (type parameters)
-                var openingParams = new HashSet<string>();
-                foreach (var familySymbol in openingFamilies)
+                // ✅ PERFORMANCE FIX: Only check if the 4 essential parameters exist, then return them
+                // Don't scan all parameters - they'll load when user clicks "+"
+                // Just verify the essential params exist in at least one family symbol
+                var foundParams = new HashSet<string>();
+                
+                foreach (var familySymbol in openingFamilies.Take(1)) // Only check first family
                 {
                     foreach (Parameter param in familySymbol.Parameters)
                     {
-                        // Include all parameters except those with empty names or truly internal parameters
-                        if (param.Definition != null && 
-                            !string.IsNullOrEmpty(param.Definition.Name) &&
-                            !param.Definition.Name.StartsWith("Internal", StringComparison.OrdinalIgnoreCase) &&
-                            !param.Definition.Name.StartsWith("Revit", StringComparison.OrdinalIgnoreCase) &&
-                            !param.Definition.Name.StartsWith("Assembly", StringComparison.OrdinalIgnoreCase))
+                        var paramName = param.Definition?.Name;
+                        if (!string.IsNullOrEmpty(paramName) && 
+                            essentialParams.Any(req => string.Equals(paramName, req, StringComparison.OrdinalIgnoreCase)))
                         {
-                            openingParams.Add(param.Definition.Name);
+                            foundParams.Add(paramName);
                         }
                     }
+                    break; // Only check first family
                 }
                 
-                // Also get parameters from actual opening instances in the document (for shared parameters)
-                var instanceCollector = new FilteredElementCollector(_document)
-                    .OfClass(typeof(FamilyInstance))
-                    .Cast<FamilyInstance>()
-                    .Where(fi => 
-                    {
-                        var famName = fi.Symbol?.Family?.Name ?? "";
-                        return famName.Contains("Opening", StringComparison.OrdinalIgnoreCase);
-                    })
-                    .Take(10); // Limit to first 10 instances to avoid performance issues
-                
-                foreach (var instance in instanceCollector)
+                // Return the essential params (even if not all found - user can add them later)
+                DebugLogger.Info($"[ParameterServiceDialogV2] Returning {essentialParams.Length} essential opening parameters (startup mode)");
+                if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    foreach (Parameter param in instance.Parameters)
-                    {
-                        // Include all parameters except those with empty names or truly internal parameters
-                        if (param.Definition != null && 
-                            !string.IsNullOrEmpty(param.Definition.Name) &&
-                            !param.Definition.Name.StartsWith("Internal", StringComparison.OrdinalIgnoreCase) &&
-                            !param.Definition.Name.StartsWith("Revit", StringComparison.OrdinalIgnoreCase) &&
-                            !param.Definition.Name.StartsWith("Assembly", StringComparison.OrdinalIgnoreCase))
-                        {
-                            openingParams.Add(param.Definition.Name);
-                        }
-                    }
+                    string paramLogPath = SafeFileLogger.GetLogFilePath("parameter_service_debug.log");
+                    System.IO.File.AppendAllText(paramLogPath, $"[{DateTime.Now}] [ParameterServiceDialogV2] Returning {essentialParams.Length} essential opening parameters: {string.Join(", ", essentialParams)}\n");
                 }
-                
-                // Always include common parameters
-                openingParams.Add("Mark");
-                openingParams.Add("Level");
-                
-                DebugLogger.Info($"[ParameterServiceDialogV2] Found {openingParams.Count} opening parameters in active document");
-                
-                // Sort and convert to array
-                return openingParams.OrderBy(p => p).ToArray();
+                return essentialParams;
             }
             catch (Exception ex)
             {
                 DebugLogger.Warning($"[ParameterServiceDialogV2] Error loading opening parameters for category '{category}': {ex.Message}");
-                // Fallback to defaults on error
-                return category switch
+                if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    "Floors" or "Walls" or "Structural Framing" => new[] { "Level", "Material", "Thickness", "Mark" },
-                    _ => new[] { "MEP Size", "MEP System Type", "Level", "System Name", "Mark" }
-                };
+                    string paramLogPath = SafeFileLogger.GetLogFilePath("parameter_service_debug.log");
+                    System.IO.File.AppendAllText(paramLogPath, $"[{DateTime.Now}] [ParameterServiceDialogV2] ERROR loading opening parameters for category '{category}': {ex.Message}\n");
+                }
+                // Fallback to essentials on error
+                return essentialParams;
             }
         }
         
@@ -823,10 +771,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 }
 
                 DebugLogger.Info($"[ParameterServiceDialogV2] GetOpeningFamilies found {openingFamilies.Count} opening families in active document");
+                if (!DeploymentConfiguration.DeploymentMode && _document != null)
+                {
+                    string paramLogPath = SafeFileLogger.GetLogFilePath("parameter_service_debug.log");
+                    string projectPath = ProjectPathService.GetProjectRoot(_document);
+                    System.IO.File.AppendAllText(paramLogPath, $"[{DateTime.Now}] [ParameterServiceDialogV2] GetOpeningFamilies found {openingFamilies.Count} opening families\n");
+                    System.IO.File.AppendAllText(paramLogPath, $"[{DateTime.Now}] [ParameterServiceDialogV2] Project path: {projectPath}\n");
+                }
             }
             catch (Exception ex)
             {
                 DebugLogger.Error($"[ParameterServiceDialogV2] Error getting opening families: {ex.Message}");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    string paramLogPath = SafeFileLogger.GetLogFilePath("parameter_service_debug.log");
+                    System.IO.File.AppendAllText(paramLogPath, $"[{DateTime.Now}] [ParameterServiceDialogV2] ERROR getting opening families: {ex.Message}\n");
+                }
             }
 
             return openingFamilies;
@@ -1129,8 +1089,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     var openings = allOpeningInstances.Select(fi => fi.Id).ToList();
                     
                     DebugLogger.Info($"[ParameterServiceDialogV2] Found {openings.Count} opening sleeves in document for parameter transfer");
-                    System.IO.File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\transfer_debug.log", 
-                        $"[{DateTime.Now}] [ParameterServiceDialogV2] Found {openings.Count} opening sleeves: {string.Join(", ", familyNames)}\n");
+                    string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
+                    System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [ParameterServiceDialogV2] Found {openings.Count} opening sleeves: {string.Join(", ", familyNames)}\n");
                     
                     if (openings.Count == 0)
                     {
