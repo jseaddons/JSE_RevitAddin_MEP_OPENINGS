@@ -52,31 +52,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// Rounds opening dimensions to the nearest 5mm if the setting is enabled
+        /// Rounds opening dimensions based on user-configured rounding value and always-up setting
         /// </summary>
         /// <param name="dimension">The dimension to potentially round</param>
-        /// <returns>The rounded dimension if setting is enabled, otherwise the original dimension</returns>
+        /// <returns>The rounded dimension, or original dimension if rounding is disabled</returns>
         public static double RoundDimensionToNearest5mm(double dimension)
         {
             try
             {
                 var settings = ApplicationProfileService.Instance.GetCurrentSettings();
                 
-                if (settings.RoundOpeningSizesToNearest5mm)
+                // Get the rounding value from settings (default 5mm if 0)
+                double roundingValue = settings.RoundingValue;
+                if (roundingValue <= 0)
                 {
-                    // Convert to millimeters, round to nearest 5mm, then convert back to internal units
-                    double mmDimension = UnitUtils.ConvertFromInternalUnits(dimension, UnitTypeId.Millimeters);
-                    double roundedMm = Math.Round(mmDimension / 5.0) * 5.0;
-                    double roundedDimension = UnitUtils.ConvertToInternalUnits(roundedMm, UnitTypeId.Millimeters);
-                    
-                    DebugLogger.Info($"[OPENING_SETTINGS] Rounded dimension from {mmDimension:F1}mm to {roundedMm:F1}mm");
-                    return roundedDimension;
+                    // Rounding is disabled, return original
+                    return dimension;
+                }
+                
+                // Convert to millimeters
+                double mmDimension = UnitUtils.ConvertFromInternalUnits(dimension, UnitTypeId.Millimeters);
+                double roundedMm;
+                
+                if (settings.RoundAlwaysUp)
+                {
+                    // Always round up: 453 → 500 (with rounding value 50)
+                    roundedMm = Math.Ceiling(mmDimension / roundingValue) * roundingValue;
                 }
                 else
                 {
-                    // Setting is disabled, return original dimension
-                    return dimension;
+                    // Round to nearest: 453 → 450 (with rounding value 50)
+                    roundedMm = Math.Round(mmDimension / roundingValue) * roundingValue;
                 }
+                
+                // Convert back to internal units
+                double roundedDimension = UnitUtils.ConvertToInternalUnits(roundedMm, UnitTypeId.Millimeters);
+                
+                DebugLogger.Info($"[OPENING_SETTINGS] Rounded dimension from {mmDimension:F1}mm to {roundedMm:F1}mm (rounding value: {roundingValue}, always up: {settings.RoundAlwaysUp})");
+                return roundedDimension;
             }
             catch (Exception ex)
             {
@@ -87,7 +100,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// Rounds both width and height dimensions to the nearest 5mm if the setting is enabled
+        /// Rounds both width and height dimensions based on user-configured rounding value
         /// </summary>
         /// <param name="width">The width dimension</param>
         /// <param name="height">The height dimension</param>
@@ -98,7 +111,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// Rounds diameter dimension to the nearest 5mm if the setting is enabled
+        /// Rounds diameter dimension based on user-configured rounding value
         /// </summary>
         /// <param name="diameter">The diameter dimension</param>
         /// <returns>The rounded diameter</returns>
@@ -118,9 +131,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var settings = ApplicationProfileService.Instance.GetCurrentSettings();
                 
                 var pipeType = settings.PipeOpeningTypeRectangular ? "Rectangular" : "Circular";
-                var roundingEnabled = settings.RoundOpeningSizesToNearest5mm ? "Enabled" : "Disabled";
+                var roundingMode = settings.RoundingValue > 0 
+                    ? $"Rounding to nearest {settings.RoundingValue}mm (Always Up: {settings.RoundAlwaysUp})" 
+                    : "Rounding disabled";
                 
-                return $"Opening Settings - Pipes: {pipeType}, Rounding to 5mm: {roundingEnabled}";
+                return $"Opening Settings - Pipes: {pipeType}, {roundingMode}";
             }
             catch (Exception ex)
             {

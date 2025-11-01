@@ -1202,12 +1202,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (bbox1 == null || bbox2 == null)
                     return false;
                 
-                // Check overlap with tolerance
-                bool xOverlap = (bbox1.Min.X - toleranceDist) <= bbox2.Max.X && (bbox1.Max.X + toleranceDist) >= bbox2.Min.X;
-                bool yOverlap = (bbox1.Min.Y - toleranceDist) <= bbox2.Max.Y && (bbox1.Max.Y + toleranceDist) >= bbox2.Min.Y;
-                bool zOverlap = (bbox1.Min.Z - toleranceDist) <= bbox2.Max.Z && (bbox1.Max.Z + toleranceDist) >= bbox2.Min.Z;
+                // ✅ FIX: Use orientation-aware 2D clustering (matches CheckBoundingBoxOverlapWithOrientation logic)
+                // This prevents clustering across wall depth for X/Y wall grouping
+                string hostType = sleeve1.HostType;
+                string orientation = sleeve1.Orientation;
                 
-                return xOverlap && yOverlap && zOverlap;
+                if (hostType == "Floor")
+                {
+                    // Floor sleeves: Use X,Y distance only (ignore Z coordinate)
+                    bool xOverlap = (bbox1.Min.X - toleranceDist) <= bbox2.Max.X && (bbox1.Max.X + toleranceDist) >= bbox2.Min.X;
+                    bool yOverlap = (bbox1.Min.Y - toleranceDist) <= bbox2.Max.Y && (bbox1.Max.Y + toleranceDist) >= bbox2.Min.Y;
+                    return xOverlap && yOverlap;
+                }
+                else if (hostType == "Wall" || hostType == "Structural Framing")
+                {
+                    if (orientation == "X")
+                    {
+                        // Wall/Framing sleeves (X orientation): Use X,Z distance only (ignore Y coordinate)
+                        bool xOverlap = (bbox1.Min.X - toleranceDist) <= bbox2.Max.X && (bbox1.Max.X + toleranceDist) >= bbox2.Min.X;
+                        bool zOverlap = (bbox1.Min.Z - toleranceDist) <= bbox2.Max.Z && (bbox1.Max.Z + toleranceDist) >= bbox2.Min.Z;
+                        return xOverlap && zOverlap;
+                    }
+                    else if (orientation == "Y")
+                    {
+                        // Wall/Framing sleeves (Y orientation): Use Y,Z distance only (ignore X coordinate)
+                        bool yOverlap = (bbox1.Min.Y - toleranceDist) <= bbox2.Max.Y && (bbox1.Max.Y + toleranceDist) >= bbox2.Min.Y;
+                        bool zOverlap = (bbox1.Min.Z - toleranceDist) <= bbox2.Max.Z && (bbox1.Max.Z + toleranceDist) >= bbox2.Min.Z;
+                        return yOverlap && zOverlap;
+                    }
+                    else
+                    {
+                        // Default for walls: Use Y,Z distance (most walls are Y-oriented)
+                        bool yOverlap = (bbox1.Min.Y - toleranceDist) <= bbox2.Max.Y && (bbox1.Max.Y + toleranceDist) >= bbox2.Min.Y;
+                        bool zOverlap = (bbox1.Min.Z - toleranceDist) <= bbox2.Max.Z && (bbox1.Max.Z + toleranceDist) >= bbox2.Min.Z;
+                        return yOverlap && zOverlap;
+                    }
+                }
+                else
+                {
+                    // Fallback for unknown host types: Use full 3D distance
+                    bool xOverlap = (bbox1.Min.X - toleranceDist) <= bbox2.Max.X && (bbox1.Max.X + toleranceDist) >= bbox2.Min.X;
+                    bool yOverlap = (bbox1.Min.Y - toleranceDist) <= bbox2.Max.Y && (bbox1.Max.Y + toleranceDist) >= bbox2.Min.Y;
+                    bool zOverlap = (bbox1.Min.Z - toleranceDist) <= bbox2.Max.Z && (bbox1.Max.Z + toleranceDist) >= bbox2.Min.Z;
+                    return xOverlap && yOverlap && zOverlap;
+                }
             }
             catch (Exception ex)
             {

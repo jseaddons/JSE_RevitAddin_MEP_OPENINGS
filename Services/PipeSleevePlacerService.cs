@@ -543,14 +543,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 continue;
                             }
 
-                            if (settings.RoundUpDimensions != "Do not round up")
-                            {
-                                double roundValue = 0;
-                                if(double.TryParse(settings.RoundUpDimensions, out roundValue) && roundValue > 0)
-                                {
-                                    totalDiameter = Math.Ceiling(totalDiameter / roundValue) * roundValue;
-                                }
-                            }
+                            // Apply rounding using the new configurable rounding system
+                            totalDiameter = OpeningSettingsHelper.RoundDiameterToNearest5mm(totalDiameter);
 
                             FamilySymbol symbolToUse = (isWall || isFraming) ? _pipeWallSymbol : _pipeSlabSymbol;
                             

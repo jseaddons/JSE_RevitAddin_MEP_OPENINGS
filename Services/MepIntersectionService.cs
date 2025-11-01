@@ -540,18 +540,65 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         // Extracts a solid from a geometry object
         private static Solid? GetSolidFromGeometry(GeometryElement geometry)
         {
+            List<Solid> allSolids = new List<Solid>();
+            
             foreach (GeometryObject geomObj in geometry)
             {
-                if (geomObj is Solid s && s.Volume > 0) return s;
-                if (geomObj is GeometryInstance gi)
+                if (geomObj is Solid s && s.Volume > 0)
+                {
+                    allSolids.Add(s);
+                }
+                else if (geomObj is GeometryInstance gi)
                 {
                     foreach (GeometryObject instObj in gi.GetInstanceGeometry())
                     {
-                        if (instObj is Solid s2 && s2.Volume > 0) return s2;
+                        if (instObj is Solid s2 && s2.Volume > 0)
+                        {
+                            allSolids.Add(s2);
+                        }
                     }
                 }
             }
-            return null;
+            
+            // If no solids found, return null
+            if (allSolids.Count == 0)
+                return null;
+            
+            // For single solid, return it directly (original behavior)
+            if (allSolids.Count == 1)
+                return allSolids[0];
+            
+            // For multiple solids (compound walls), union them into one solid
+            // This ensures we get one sleeve for the entire wall, not one per layer
+            try
+            {
+                Solid resultSolid = allSolids[0];
+                for (int i = 1; i < allSolids.Count; i++)
+                {
+                    resultSolid = BooleanOperationsUtils.ExecuteBooleanOperation(
+                        resultSolid, allSolids[i], BooleanOperationsType.Union);
+                    
+                    // Safety check: if union fails, fall back to first solid
+                    if (resultSolid == null || resultSolid.Volume <= 0)
+                    {
+                        DebugLogger.Warning($"[MepIntersectionService] Wall union failed: Solid {i}/{allSolids.Count} union resulted in null or invalid volume. Falling back to first solid. This may result in individual sleeves per layer that will be clustered.");
+                        resultSolid = allSolids[0];
+                        break;
+                    }
+                }
+                
+                // Log successful union
+                DebugLogger.Info($"[MepIntersectionService] Successfully united {allSolids.Count} wall layer solids into single solid");
+                return resultSolid;
+            }
+            catch (Exception ex)
+            {
+                // If union fails for any reason, log and return the first solid as fallback
+                // NOTE: Union failures are rare in Revit. If this occurs, only one sleeve will be placed
+                // (first layer only). The clustering logic will handle multiple sleeves in nearby walls.
+                DebugLogger.Warning($"[MepIntersectionService] Wall union failed with exception: {ex.Message}. Returning first solid only. Total layers detected: {allSolids.Count}.");
+                return allSolids[0];
+            }
         }
 
         // Intersects a solid with a line and returns the intersection points
@@ -822,13 +869,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             mepElements.AddRange(damperFamilyInstances);
 
-            wallElements.AddRange(
-                new FilteredElementCollector(doc)
-                    .OfCategory(BuiltInCategory.OST_Walls)
-                    .WhereElementIsNotElementType()
-                    .WherePasses(new BoundingBoxIntersectsFilter(hostOutline))
-                    .ToElements()
-            );
+            // Collect walls and filter by minimum thickness if setting is enabled
+            var collectedWalls = new FilteredElementCollector(doc)
+                .OfCategory(BuiltInCategory.OST_Walls)
+                .WhereElementIsNotElementType()
+                .WherePasses(new BoundingBoxIntersectsFilter(hostOutline))
+                .ToElements();
+            
+            // Filter by minimum wall thickness if setting is enabled
+            collectedWalls = FilterWallsByMinimumThickness(collectedWalls);
+            wallElements.AddRange(collectedWalls);
 
             // Collect from links
             var links = new FilteredElementCollector(doc)
@@ -892,13 +942,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 mepElements.AddRange(linkedDamperFamilyInstances);
 
-                wallElements.AddRange(
-                    new FilteredElementCollector(linkDoc)
-                        .OfCategory(BuiltInCategory.OST_Walls)
-                        .WhereElementIsNotElementType()
-                        .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
-                        .ToElements()
-                );
+                // Collect walls from link and filter by minimum thickness if setting is enabled
+                var linkedWalls = new FilteredElementCollector(linkDoc)
+                    .OfCategory(BuiltInCategory.OST_Walls)
+                    .WhereElementIsNotElementType()
+                    .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
+                    .ToElements();
+                
+                // Filter by minimum wall thickness if setting is enabled
+                linkedWalls = FilterWallsByMinimumThickness(linkedWalls);
+                wallElements.AddRange(linkedWalls);
             }
         }
         
@@ -1255,6 +1308,66 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 log($"[MepIntersectionService] Failed to derive fallback line for element {element.Id}: {ex.Message}");
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// Filters walls by minimum thickness setting
+        /// Skips walls that are thinner than the user-specified minimum
+        /// </summary>
+        private static IEnumerable<Element> FilterWallsByMinimumThickness(IEnumerable<Element> walls)
+        {
+            try
+            {
+                var settings = ApplicationProfileService.Instance.GetCurrentSettings();
+                double minThicknessMm = settings.MinWallThickness;
+                
+                // If setting is 0 or negative, don't filter (all walls allowed)
+                if (minThicknessMm <= 0)
+                    return walls;
+                
+                double minThicknessInternal = UnitUtils.ConvertToInternalUnits(minThicknessMm, UnitTypeId.Millimeters);
+                var filteredWalls = new List<Element>();
+                int skippedCount = 0;
+                
+                foreach (var wall in walls)
+                {
+                    if (wall is Wall wallObj)
+                    {
+                        double wallThickness = wallObj.Width;
+                        
+                        if (wallThickness >= minThicknessInternal)
+                        {
+                            filteredWalls.Add(wall);
+                        }
+                        else
+                        {
+                            skippedCount++;
+                            if (OptimizationFlags.UseDiagnosticMode)
+                            {
+                                double wallThicknessMm = UnitUtils.ConvertFromInternalUnits(wallThickness, UnitTypeId.Millimeters);
+                                System.Diagnostics.Debug.WriteLine($"[MepIntersectionService] SKIP: Wall {wall.Id.IntegerValue} thickness {wallThicknessMm:F1}mm < {minThicknessMm:F1}mm minimum");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Not a wall, add it
+                        filteredWalls.Add(wall);
+                    }
+                }
+                
+                if (skippedCount > 0)
+                {
+                    DebugLogger.Info($"[MepIntersectionService] Filtered {skippedCount} walls below {minThicknessMm:F1}mm minimum thickness");
+                }
+                
+                return filteredWalls;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[MepIntersectionService] Error filtering walls by minimum thickness: {ex.Message}");
+                return walls; // Return original list on error
             }
         }
     }

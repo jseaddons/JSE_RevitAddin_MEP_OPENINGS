@@ -32,8 +32,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public double JoinOpeningsDistance { get; set; } = 200.0;
         public double IgnoreOpeningsAngle { get; set; } = 45.0;
         public bool CreateOpeningsWithSlope { get; set; } = true;
-        public bool RoundOpeningSizesToNearest5mm { get; set; } = false; // Default to not rounding
-        public string RoundUpDimensions { get; set; } = "Do not round up";
+        public double RoundingValue { get; set; } = 5.0; // Default rounding value in mm
+        public bool RoundAlwaysUp { get; set; } = false; // If true, always round up; if false, round to nearest
+        public double MinWallThickness { get; set; } = 0.0; // Minimum wall thickness in mm - walls below this are ignored
 
         public SettingsModel()
         {
@@ -65,8 +66,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
                 JoinOpeningsDistance = this.JoinOpeningsDistance,
                 IgnoreOpeningsAngle = this.IgnoreOpeningsAngle,
                 CreateOpeningsWithSlope = this.CreateOpeningsWithSlope,
-                RoundOpeningSizesToNearest5mm = this.RoundOpeningSizesToNearest5mm,
-                RoundUpDimensions = this.RoundUpDimensions
+                RoundingValue = this.RoundingValue,
+                RoundAlwaysUp = this.RoundAlwaysUp,
+                MinWallThickness = this.MinWallThickness
             };
         }
     }

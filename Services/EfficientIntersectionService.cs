@@ -441,6 +441,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 .Select(w => (w, Transform.Identity))
                 .ToList();
 
+            // ✅ FIX: Filter walls by minimum thickness if setting is enabled
+            hostWalls = FilterWallsByMinimumThicknessForTuples(hostWalls);
             filteredWalls.AddRange(hostWalls);
 
             // Get walls from visible linked documents
@@ -474,6 +476,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     .Select(w => (w as Element, linkTransform ?? Transform.Identity))
                     .ToList();
 
+                // ✅ FIX: Filter walls by minimum thickness if setting is enabled
+                linkedWalls = FilterWallsByMinimumThicknessForTuples(linkedWalls);
                 filteredWalls.AddRange(linkedWalls);
             }
 
@@ -628,6 +632,66 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             return intersectionPoints.FirstOrDefault() ?? XYZ.Zero;
+        }
+        
+        /// <summary>
+        /// Filters walls by minimum thickness setting
+        /// Skips walls that are thinner than the user-specified minimum
+        /// </summary>
+        private static List<(Element, Transform)> FilterWallsByMinimumThicknessForTuples(List<(Element, Transform)> walls)
+        {
+            try
+            {
+                var settings = ApplicationProfileService.Instance.GetCurrentSettings();
+                double minThicknessMm = settings.MinWallThickness;
+                
+                // If setting is 0 or negative, don't filter (all walls allowed)
+                if (minThicknessMm <= 0)
+                    return walls;
+                
+                double minThicknessInternal = UnitUtils.ConvertToInternalUnits(minThicknessMm, UnitTypeId.Millimeters);
+                var filteredWalls = new List<(Element, Transform)>();
+                int skippedCount = 0;
+                
+                foreach (var (wall, transform) in walls)
+                {
+                    if (wall is Wall wallObj)
+                    {
+                        double wallThickness = wallObj.Width;
+                        
+                        if (wallThickness >= minThicknessInternal)
+                        {
+                            filteredWalls.Add((wall, transform));
+                        }
+                        else
+                        {
+                            skippedCount++;
+                            if (OptimizationFlags.UseDiagnosticMode)
+                            {
+                                double wallThicknessMm = UnitUtils.ConvertFromInternalUnits(wallThickness, UnitTypeId.Millimeters);
+                                DebugLogger.Log($"[EfficientIntersectionService] SKIP: Wall {wall.Id.IntegerValue} thickness {wallThicknessMm:F1}mm < {minThicknessMm:F1}mm minimum");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Not a wall, add it
+                        filteredWalls.Add((wall, transform));
+                    }
+                }
+                
+                if (skippedCount > 0)
+                {
+                    DebugLogger.Info($"[EfficientIntersectionService] Filtered {skippedCount} walls below {minThicknessMm:F1}mm minimum thickness");
+                }
+                
+                return filteredWalls;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[EfficientIntersectionService] Error filtering walls by minimum thickness: {ex.Message}");
+                return walls; // Return original list on error
+            }
         }
     }
 }

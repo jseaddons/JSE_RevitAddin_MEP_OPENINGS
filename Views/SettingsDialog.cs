@@ -40,8 +40,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.TextBox _roundOpeningsRectangularTextBox;
         private WinForms.TextBox _joinOpeningsDistanceTextBox;
         private WinForms.CheckBox _createOpeningsWithSlopeCheckBox;
-        private WinForms.CheckBox _roundOpeningSizesToNearest5mmCheckBox;
-        private WinForms.ComboBox _roundUpDimensionsComboBox;
+        private WinForms.TextBox _roundingValueTextBox;
+        private WinForms.CheckBox _roundAlwaysUpCheckBox;
+        private WinForms.TextBox _minWallThicknessTextBox;
         
         // Action Buttons
         private WinForms.Button _resetButton;
@@ -250,12 +251,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         private void CreateLimitsSection()
         {
-            // Limits Section Group - 5 ITEMS (including rounding checkbox)
+            // Limits Section Group - 7 ITEMS (including new rounding controls and min wall thickness)
             var limitsGroupBox = new WinForms.GroupBox
             {
                 Text = "Limits",
                 Location = new Drawing.Point(20, 265), // Positioned after bigger Elements section (150 + 105 + 10)
-                Size = new Drawing.Size(600, 145), // Increased height for 5 items
+                Size = new Drawing.Size(600, 195), // Increased height for 7 items
                 Font = new Drawing.Font("Microsoft Sans Serif", 9F, Drawing.FontStyle.Bold)
             };
             this.Controls.Add(limitsGroupBox);
@@ -316,23 +317,59 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             limitsGroupBox.Controls.Add(_joinOpeningsDistanceTextBox);
             yPos += 25;
 
-            // Opening sizes to be rounded of to nearest 5mm if in decimals - CHECKBOX ON RIGHT, TEXT ON LEFT
+            // Round opening sizes to custom value - INPUT BOX FOR ROUNDING VALUE
             var roundSizesLabel = new WinForms.Label
             {
-                Text = "Opening sizes to be rounded of to nearest 5mm if in decimals:",
+                Text = "Round opening sizes to nearest value (mm):",
                 Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(500, 20) // Increased width for more text space
+                Size = new Drawing.Size(400, 20) // Width adjusted for shorter label
             };
             limitsGroupBox.Controls.Add(roundSizesLabel);
             
-            _roundOpeningSizesToNearest5mmCheckBox = new WinForms.CheckBox
+            _roundingValueTextBox = new WinForms.TextBox
+            {
+                Text = "5", // Default value
+                Location = new Drawing.Point(420, yPos), // Positioned after label
+                Size = new Drawing.Size(50, 20)
+            };
+            limitsGroupBox.Controls.Add(_roundingValueTextBox);
+            yPos += 25;
+
+            // Round always up checkbox - CHECKBOX ON RIGHT, TEXT ON LEFT
+            var roundUpLabel = new WinForms.Label
+            {
+                Text = "Always round up:",
+                Location = new Drawing.Point(15, yPos),
+                Size = new Drawing.Size(400, 20)
+            };
+            limitsGroupBox.Controls.Add(roundUpLabel);
+            
+            _roundAlwaysUpCheckBox = new WinForms.CheckBox
             {
                 Text = "", // No text, just checkbox
-                Location = new Drawing.Point(520, yPos), // Moved further right
+                Location = new Drawing.Point(420, yPos),
                 Size = new Drawing.Size(20, 20),
-                Checked = false // Default to not rounding
+                Checked = false // Default to round to nearest
             };
-            limitsGroupBox.Controls.Add(_roundOpeningSizesToNearest5mmCheckBox);
+            limitsGroupBox.Controls.Add(_roundAlwaysUpCheckBox);
+            yPos += 25;
+
+            // Ignore walls with thickness below minimum - INPUT BOX FOR MIN WALL THICKNESS
+            var minWallThicknessLabel = new WinForms.Label
+            {
+                Text = "Ignore walls if thickness is below (mm):",
+                Location = new Drawing.Point(15, yPos),
+                Size = new Drawing.Size(500, 20) // Match other fields
+            };
+            limitsGroupBox.Controls.Add(minWallThicknessLabel);
+            
+            _minWallThicknessTextBox = new WinForms.TextBox
+            {
+                Text = "0", // Default value (0 means disabled)
+                Location = new Drawing.Point(520, yPos),
+                Size = new Drawing.Size(50, 20)
+            };
+            limitsGroupBox.Controls.Add(_minWallThicknessTextBox);
             yPos += 30;
 
             // Footnote for all sections
@@ -353,7 +390,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _resetButton = new WinForms.Button
             {
                 Text = "Reset",
-                Location = new Drawing.Point(20, 430), // Positioned after bigger Limits section (265 + 145 + 20)
+                Location = new Drawing.Point(20, 480), // Positioned after bigger Limits section (265 + 195 + 20)
                 Size = new Drawing.Size(75, 30),
                 BackColor = Drawing.Color.FromArgb(200, 200, 200),
                 FlatStyle = WinForms.FlatStyle.Flat
@@ -365,7 +402,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _okButton = new WinForms.Button
             {
                 Text = "OK",
-                Location = new Drawing.Point(450, 430), // Positioned after bigger Limits section (265 + 145 + 20)
+                Location = new Drawing.Point(450, 480), // Positioned after bigger Limits section (265 + 195 + 20)
                 Size = new Drawing.Size(75, 30),
                 BackColor = Drawing.Color.FromArgb(0, 120, 215),
                 ForeColor = Drawing.Color.White,
@@ -378,7 +415,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _cancelButton = new WinForms.Button
             {
                 Text = "Cancel",
-                Location = new Drawing.Point(535, 430), // Positioned after bigger Limits section (265 + 145 + 20)
+                Location = new Drawing.Point(535, 480), // Positioned after bigger Limits section (265 + 195 + 20)
                 Size = new Drawing.Size(75, 30),
                 BackColor = Drawing.Color.FromArgb(200, 200, 200),
                 FlatStyle = WinForms.FlatStyle.Flat
@@ -444,10 +481,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 _joinOpeningsDistanceTextBox.Text = _settings.JoinOpeningsDistance.ToString();
             if (_createOpeningsWithSlopeCheckBox != null)
                 _createOpeningsWithSlopeCheckBox.Checked = _settings.CreateOpeningsWithSlope;
-            if (_roundOpeningSizesToNearest5mmCheckBox != null)
-                _roundOpeningSizesToNearest5mmCheckBox.Checked = _settings.RoundOpeningSizesToNearest5mm;
-            if (_roundUpDimensionsComboBox != null)
-                _roundUpDimensionsComboBox.SelectedItem = _settings.RoundUpDimensions;
+            if (_roundingValueTextBox != null)
+                _roundingValueTextBox.Text = _settings.RoundingValue.ToString();
+            if (_roundAlwaysUpCheckBox != null)
+                _roundAlwaysUpCheckBox.Checked = _settings.RoundAlwaysUp;
+            if (_minWallThicknessTextBox != null)
+                _minWallThicknessTextBox.Text = _settings.MinWallThickness.ToString();
         }
 
         private void SaveSettings()
@@ -482,8 +521,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 if (_joinOpeningsDistanceTextBox != null && double.TryParse(_joinOpeningsDistanceTextBox.Text, out double joinDist))
                     _settings.JoinOpeningsDistance = joinDist;
 
-                if (_roundOpeningSizesToNearest5mmCheckBox != null)
-                    _settings.RoundOpeningSizesToNearest5mm = _roundOpeningSizesToNearest5mmCheckBox.Checked;
+                if (_roundingValueTextBox != null && double.TryParse(_roundingValueTextBox.Text, out double roundValue))
+                    _settings.RoundingValue = roundValue;
+
+                if (_roundAlwaysUpCheckBox != null)
+                    _settings.RoundAlwaysUp = _roundAlwaysUpCheckBox.Checked;
+
+                if (_minWallThicknessTextBox != null && double.TryParse(_minWallThicknessTextBox.Text, out double minWallThickness))
+                    _settings.MinWallThickness = minWallThickness;
 
                 // Log successful save
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Settings saved successfully\n");
