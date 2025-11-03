@@ -984,53 +984,78 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Validation Criteria: 1) MEP Element exists, 2) Structural Element exists, 3) Elements still intersect
             if (existingClashZones?.ClashZones != null && existingClashZones.ClashZones.Count > 0)
             {
-                DebugLogger.Info($"[CLASH_DEBUG] ===== 3-POINT VALIDATION FOR {existingClashZones.ClashZones.Count} EXISTING CLASH ZONES =====");
-                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ===== 3-POINT VALIDATION FOR {existingClashZones.ClashZones.Count} EXISTING CLASH ZONES =====\n");
+                // ✅ CONFIGURATION: Check if 3-point validation is enabled in settings
+                var settingsService = new SettingsService();
+                var settings = settingsService.LoadSettings();
+                bool enableThreePointValidation = settings?.EnableThreePointValidation ?? true; // Default to enabled for safety
+                
+                if (enableThreePointValidation)
+                {
+                    DebugLogger.Info($"[CLASH_DEBUG] ===== 3-POINT VALIDATION ENABLED FOR {existingClashZones.ClashZones.Count} EXISTING CLASH ZONES =====");
+                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ===== 3-POINT VALIDATION ENABLED FOR {existingClashZones.ClashZones.Count} EXISTING CLASH ZONES =====\n");
+                }
+                else
+                {
+                    DebugLogger.Info($"[CLASH_DEBUG] ===== 3-POINT VALIDATION DISABLED - SKIPPING VALIDATION, ONLY FLAG CHECKS =====");
+                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ===== 3-POINT VALIDATION DISABLED - SKIPPING VALIDATION, ONLY FLAG CHECKS =====\n");
+                }
                 
                 var validClashZones = new List<Models.ClashZone>();
                 var invalidClashZones = new List<Models.ClashZone>();
                 int removedCount = 0;
                 
                 // ✅ OOP REFACTORING: Use ThreePointValidator for validation (replaces inline validation logic)
+                // ✅ CONFIGURATION: Only run validation if enabled in settings
                 foreach (var existingZone in existingClashZones.ClashZones)
                 {
                     try
                     {
-                        var validationResult = _threePointValidator.Validate(existingZone, _document);
-                        
-                        if (!validationResult.IsValid)
+                        if (enableThreePointValidation)
                         {
-                            DebugLogger.Info($"[3-POINT-VALIDATION] ❌ INVALID: Zone {existingZone.Id} - {validationResult.FailureReason}");
-                            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [3-POINT-VALIDATION] ❌ INVALID: Zone {existingZone.Id} - {validationResult.FailureReason}\n");
-                            invalidClashZones.Add(existingZone);
-                            continue;
-                        }
-                        
-                        // ✅ VALID - Keep clash zone
-                        validClashZones.Add(existingZone);
-                        
-                        // Update intersection point if it changed
-                        if (validationResult.UpdatedIntersectionPoint != null && validationResult.IntersectionPointMovement.HasValue)
-                        {
-                            // Update intersection point (linked coordinates for individual sleeve placement)
-                            existingZone.IntersectionPointX = validationResult.UpdatedIntersectionPoint.X;
-                            existingZone.IntersectionPointY = validationResult.UpdatedIntersectionPoint.Y;
-                            existingZone.IntersectionPointZ = validationResult.UpdatedIntersectionPoint.Z;
+                            // ✅ PERFORM 3-POINT VALIDATION (costly but thorough)
+                            var validationResult = _threePointValidator.Validate(existingZone, _document);
                             
-                            // ✅ CRITICAL: Update active document coordinates for proximity calculation
-                            if (validationResult.UpdatedActiveDocumentPoint != null)
+                            if (!validationResult.IsValid)
                             {
-                                existingZone.SleevePlacementPointActiveDocumentX = validationResult.UpdatedActiveDocumentPoint.X;
-                                existingZone.SleevePlacementPointActiveDocumentY = validationResult.UpdatedActiveDocumentPoint.Y;
-                                existingZone.SleevePlacementPointActiveDocumentZ = validationResult.UpdatedActiveDocumentPoint.Z;
+                                DebugLogger.Info($"[3-POINT-VALIDATION] ❌ INVALID: Zone {existingZone.Id} - {validationResult.FailureReason}");
+                                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [3-POINT-VALIDATION] ❌ INVALID: Zone {existingZone.Id} - {validationResult.FailureReason}\n");
+                                invalidClashZones.Add(existingZone);
+                                continue;
                             }
                             
-                            DebugLogger.Info($"[3-POINT-VALIDATION] ✅ VALID + UPDATED: Zone {existingZone.Id} - Intersection point updated (Δ={validationResult.IntersectionPointMovement.Value:F3}ft)");
-                            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [3-POINT-VALIDATION] ✅ VALID + UPDATED: Zone {existingZone.Id} - Intersection updated (Δ={validationResult.IntersectionPointMovement.Value:F3}ft)\n");
+                            // ✅ VALID - Keep clash zone
+                            validClashZones.Add(existingZone);
+                            
+                            // Update intersection point if it changed
+                            if (validationResult.UpdatedIntersectionPoint != null && validationResult.IntersectionPointMovement.HasValue)
+                            {
+                                // Update intersection point (linked coordinates for individual sleeve placement)
+                                existingZone.IntersectionPointX = validationResult.UpdatedIntersectionPoint.X;
+                                existingZone.IntersectionPointY = validationResult.UpdatedIntersectionPoint.Y;
+                                existingZone.IntersectionPointZ = validationResult.UpdatedIntersectionPoint.Z;
+                                
+                                // ✅ CRITICAL: Update active document coordinates for proximity calculation
+                                if (validationResult.UpdatedActiveDocumentPoint != null)
+                                {
+                                    existingZone.SleevePlacementPointActiveDocumentX = validationResult.UpdatedActiveDocumentPoint.X;
+                                    existingZone.SleevePlacementPointActiveDocumentY = validationResult.UpdatedActiveDocumentPoint.Y;
+                                    existingZone.SleevePlacementPointActiveDocumentZ = validationResult.UpdatedActiveDocumentPoint.Z;
+                                }
+                                
+                                DebugLogger.Info($"[3-POINT-VALIDATION] ✅ VALID + UPDATED: Zone {existingZone.Id} - Intersection point updated (Δ={validationResult.IntersectionPointMovement.Value:F3}ft)");
+                                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [3-POINT-VALIDATION] ✅ VALID + UPDATED: Zone {existingZone.Id} - Intersection updated (Δ={validationResult.IntersectionPointMovement.Value:F3}ft)\n");
+                            }
+                            else
+                            {
+                                DebugLogger.Info($"[3-POINT-VALIDATION] ✅ VALID: Zone {existingZone.Id} - All 3 points valid, no update needed");
+                            }
                         }
                         else
                         {
-                            DebugLogger.Info($"[3-POINT-VALIDATION] ✅ VALID: Zone {existingZone.Id} - All 3 points valid, no update needed");
+                            // ✅ SKIP 3-POINT VALIDATION - Only flag checks (faster)
+                            // All zones are considered valid if 3-point validation is disabled
+                            validClashZones.Add(existingZone);
+                            DebugLogger.Info($"[FLAG-ONLY] ✅ Zone {existingZone.Id} - 3-point validation skipped, relying on flag checks only");
                         }
                     }
                     catch (Exception ex)

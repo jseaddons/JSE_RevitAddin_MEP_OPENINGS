@@ -37,6 +37,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public double MinWallThickness { get; set; } = 0.0; // Minimum wall thickness in mm - walls below this are ignored
         public bool IgnoreArchitecturalFloors { get; set; } = false; // If true, ignore floors without Structural parameter checked
 
+        // Clash Detection Section Properties
+        /// <summary>
+        /// Enable 3-point validation during refresh (costly but ensures accuracy).
+        /// When disabled, only flag checks are performed (faster but less thorough).
+        /// Default: true (enabled for safety)
+        /// </summary>
+        public bool EnableThreePointValidation { get; set; } = true;
+
         public SettingsModel()
         {
             // Default constructor with default values
@@ -70,7 +78,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
                 RoundingValue = this.RoundingValue,
                 RoundAlwaysUp = this.RoundAlwaysUp,
                 MinWallThickness = this.MinWallThickness,
-                IgnoreArchitecturalFloors = this.IgnoreArchitecturalFloors
+                IgnoreArchitecturalFloors = this.IgnoreArchitecturalFloors,
+                EnableThreePointValidation = this.EnableThreePointValidation
             };
         }
     }

@@ -45,6 +45,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.TextBox _minWallThicknessTextBox;
         private WinForms.CheckBox _ignoreArchitecturalFloorsCheckBox;
         
+        // Clash Detection Section Controls
+        private WinForms.CheckBox _enableThreePointValidationCheckBox;
+        
         // Action Buttons
         private WinForms.Button _resetButton;
         private WinForms.Button _okButton;
@@ -83,7 +86,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             
             // Form properties
             this.Text = "Settings";
-            this.Size = new Drawing.Size(800, 700); // Made wider to fix text box visibility
+            this.Size = new Drawing.Size(800, 610); // Adjusted height for new Clash Detection section
             this.StartPosition = WinForms.FormStartPosition.CenterParent; // Center on parent window
             this.FormBorderStyle = WinForms.FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
@@ -99,6 +102,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             CreateElementsSection();
             CreateElementFilterSection();
             CreateLimitsSection();
+            CreateClashDetectionSection();
             CreateActionButtons();
             
             this.ResumeLayout(false);
@@ -404,13 +408,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             limitsGroupBox.Controls.Add(footnoteLabel);
         }
 
+        private void CreateClashDetectionSection()
+        {
+            // Clash Detection Section Group
+            var clashDetectionGroupBox = new WinForms.GroupBox
+            {
+                Text = "Clash Detection",
+                Location = new Drawing.Point(20, 495), // Positioned after Limits section (265 + 220 + 10)
+                Size = new Drawing.Size(600, 55),
+                Font = new Drawing.Font("Microsoft Sans Serif", 9F, Drawing.FontStyle.Bold)
+            };
+            this.Controls.Add(clashDetectionGroupBox);
+
+            int yPos = 25;
+
+            // Enable 3-point validation checkbox - CHECKBOX ON RIGHT, TEXT ON LEFT
+            var threePointLabel = new WinForms.Label
+            {
+                Text = "Adopt to modified document to adjust clash detections automatically:",
+                Location = new Drawing.Point(15, yPos),
+                Size = new Drawing.Size(500, 20)
+            };
+            clashDetectionGroupBox.Controls.Add(threePointLabel);
+            
+            _enableThreePointValidationCheckBox = new WinForms.CheckBox
+            {
+                Text = "", // No text, just checkbox
+                Location = new Drawing.Point(520, yPos),
+                Size = new Drawing.Size(20, 20),
+                Checked = true // Default enabled for safety
+            };
+            clashDetectionGroupBox.Controls.Add(_enableThreePointValidationCheckBox);
+        }
+
         private void CreateActionButtons()
         {
             // Reset Button
             _resetButton = new WinForms.Button
             {
                 Text = "Reset",
-                Location = new Drawing.Point(20, 505), // Positioned after bigger Limits section (265 + 220 + 20)
+                Location = new Drawing.Point(20, 560), // Positioned after Clash Detection section (495 + 55 + 10)
                 Size = new Drawing.Size(75, 30),
                 BackColor = Drawing.Color.FromArgb(200, 200, 200),
                 FlatStyle = WinForms.FlatStyle.Flat
@@ -422,7 +459,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _okButton = new WinForms.Button
             {
                 Text = "OK",
-                Location = new Drawing.Point(450, 505), // Positioned after bigger Limits section (265 + 220 + 20)
+                Location = new Drawing.Point(450, 560), // Positioned after Clash Detection section (495 + 55 + 10)
                 Size = new Drawing.Size(75, 30),
                 BackColor = Drawing.Color.FromArgb(0, 120, 215),
                 ForeColor = Drawing.Color.White,
@@ -435,7 +472,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _cancelButton = new WinForms.Button
             {
                 Text = "Cancel",
-                Location = new Drawing.Point(535, 505), // Positioned after bigger Limits section (265 + 220 + 20)
+                Location = new Drawing.Point(535, 560), // Positioned after Clash Detection section (495 + 55 + 10)
                 Size = new Drawing.Size(75, 30),
                 BackColor = Drawing.Color.FromArgb(200, 200, 200),
                 FlatStyle = WinForms.FlatStyle.Flat
@@ -509,6 +546,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 _minWallThicknessTextBox.Text = _settings.MinWallThickness.ToString();
             if (_ignoreArchitecturalFloorsCheckBox != null)
                 _ignoreArchitecturalFloorsCheckBox.Checked = _settings.IgnoreArchitecturalFloors;
+            
+            if (_enableThreePointValidationCheckBox != null)
+                _enableThreePointValidationCheckBox.Checked = _settings.EnableThreePointValidation;
         }
 
         private void SaveSettings()
@@ -554,6 +594,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
                 if (_ignoreArchitecturalFloorsCheckBox != null)
                     _settings.IgnoreArchitecturalFloors = _ignoreArchitecturalFloorsCheckBox.Checked;
+                
+                if (_enableThreePointValidationCheckBox != null)
+                    _settings.EnableThreePointValidation = _enableThreePointValidationCheckBox.Checked;
 
                 // Log successful save
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Settings saved successfully\n");
