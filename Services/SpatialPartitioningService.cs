@@ -12,6 +12,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     public class SpatialPartitioningService
     {
         private readonly double _gridSize;
+
         private readonly Dictionary<(int, int, int), List<(Element element, Transform? transform, BoundingBoxXYZ bbox)>> _grid;
         
         public SpatialPartitioningService(double gridSize = 1.0) // 1ft grid

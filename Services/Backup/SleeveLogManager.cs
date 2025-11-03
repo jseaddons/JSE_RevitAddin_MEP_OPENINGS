@@ -72,7 +72,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"Failed to initialize log files: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"Failed to initialize log files: {ex.Message}");
             }
         }
 
@@ -432,7 +433,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"Failed to finalize log files: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"Failed to finalize log files: {ex.Message}");
             }
         }
 
@@ -495,11 +497,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] {message}\r\n");
+                                // ✅ DEPLOYMENT MODE: Skip file writes
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] {message}\r\n");
+                }
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"Failed to write to log {Path.GetFileName(logPath)}: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"Failed to write to log {Path.GetFileName(logPath)}: {ex.Message}");
             }
         }
     }

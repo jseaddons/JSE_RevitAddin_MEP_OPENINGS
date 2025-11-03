@@ -1152,6 +1152,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                         // Add opening parameters using the live bootstrap routine
                     openingCombo.Items.AddRange(liveOpeningParams.Cast<object>().ToArray());
+
                         openingCombo.Items.Insert(0, "<Select Opening Parameter>");
 
                     // =====  DIAGNOSTIC – DO NOT DELETE  =====

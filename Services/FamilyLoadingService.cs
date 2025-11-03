@@ -31,11 +31,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                DebugLogger.Info("[FamilyLoadingService] Starting automatic family loading from Resources folder");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info("[FamilyLoadingService] Starting automatic family loading from Resources folder");
                 
                 if (!Directory.Exists(_resourcesPath))
                 {
-                    DebugLogger.Error($"[FamilyLoadingService] Resources folder not found at: {_resourcesPath}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error($"[FamilyLoadingService] Resources folder not found at: {_resourcesPath}");
                     return false;
                 }
 
@@ -57,7 +59,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     if (!File.Exists(familyPath))
                     {
-                        DebugLogger.Warning($"[FamilyLoadingService] Family file not found: {familyFile}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[FamilyLoadingService] Family file not found: {familyFile}");
                         continue;
                     }
 
@@ -65,7 +68,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var familyName = Path.GetFileNameWithoutExtension(familyFile);
                     if (IsFamilyAlreadyLoaded(familyName))
                     {
-                        DebugLogger.Info($"[FamilyLoadingService] Family already loaded: {familyName}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[FamilyLoadingService] Family already loaded: {familyName}");
                         alreadyLoadedCount++;
                         continue;
                     }
@@ -73,21 +77,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Load the family
                     if (LoadFamilyFromFile(familyPath))
                     {
-                        DebugLogger.Info($"[FamilyLoadingService] Successfully loaded family: {familyName}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[FamilyLoadingService] Successfully loaded family: {familyName}");
                         loadedCount++;
                     }
                     else
                     {
-                        DebugLogger.Error($"[FamilyLoadingService] Failed to load family: {familyName}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Error($"[FamilyLoadingService] Failed to load family: {familyName}");
                     }
                 }
 
-                DebugLogger.Info($"[FamilyLoadingService] Family loading complete. Loaded: {loadedCount}, Already loaded: {alreadyLoadedCount}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[FamilyLoadingService] Family loading complete. Loaded: {loadedCount}, Already loaded: {alreadyLoadedCount}");
                 return loadedCount > 0 || alreadyLoadedCount == requiredFamilies.Length;
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[FamilyLoadingService] Error loading families: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[FamilyLoadingService] Error loading families: {ex.Message}");
                 return false;
             }
         }
@@ -109,7 +117,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[FamilyLoadingService] Error checking if family is loaded: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[FamilyLoadingService] Error checking if family is loaded: {ex.Message}");
                 return false;
             }
         }
@@ -126,19 +135,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (t.Start() == TransactionStatus.Started)
                     {
                         bool loaded = _document.LoadFamily(familyPath);
+
                         t.Commit();
                         return loaded;
                     }
                     else
                     {
-                        DebugLogger.Error($"[FamilyLoadingService] Failed to start transaction for loading family");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Error($"[FamilyLoadingService] Failed to start transaction for loading family");
                         return false;
                     }
                 }
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[FamilyLoadingService] Error loading family from {familyPath}: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[FamilyLoadingService] Error loading family from {familyPath}: {ex.Message}");
                 return false;
             }
         }

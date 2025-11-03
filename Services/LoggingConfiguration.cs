@@ -81,7 +81,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
             if (!DisableAllHardcodedLogging)
             {
-                File.AppendAllText(filePath, content);
+                                // ✅ DEPLOYMENT MODE: Skip file writes
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    File.AppendAllText(filePath, content);
+                }
             }
         }
         

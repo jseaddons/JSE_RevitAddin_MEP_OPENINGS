@@ -33,17 +33,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                DebugLogger.Info("[HOST_SERVICE] Creating host element tabs");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info("[HOST_SERVICE] Creating host element tabs");
                 
                 CreateHostTab(hostParameterTabs, "Walls", "WALLS");
                 CreateHostTab(hostParameterTabs, "Structural Framing", "STRUCTURAL_FRAMING");
                 CreateHostTab(hostParameterTabs, "Floors", "FLOORS");
                 
-                DebugLogger.Info("[HOST_SERVICE] Host element tabs created successfully");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info("[HOST_SERVICE] Host element tabs created successfully");
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[HOST_SERVICE] Error creating host tabs: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[HOST_SERVICE] Error creating host tabs: {ex.Message}");
             }
         }
 
@@ -91,11 +94,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 tabPage.Controls.Add(hostPanel);
                 hostParameterTabs.TabPages.Add(tabPage);
                 
-                DebugLogger.Info($"[HOST_SERVICE] Created host tab: {tabName}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[HOST_SERVICE] Created host tab: {tabName}");
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[HOST_SERVICE] Error creating host tab '{tabName}': {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[HOST_SERVICE] Error creating host tab '{tabName}': {ex.Message}");
             }
         }
 
@@ -111,7 +116,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (document != null)
                 {
                     var liveOpeningParams = _parameterExtractionService.GetEssentialOpeningParameters(document);
-                    DebugLogger.Info($"[LIVE-DIAG] {nameof(AddHostParameterRow)} about to fill Opening combo with {liveOpeningParams.Count} items");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[LIVE-DIAG] {nameof(AddHostParameterRow)} about to fill Opening combo with {liveOpeningParams.Count} items");
                 }
                 // =======================================
 
@@ -210,11 +216,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (idx2 >= 0) openingCombo.SelectedIndex = idx2; // only if exists
                 }
 
-                DebugLogger.Info($"[HOST_SERVICE] Added parameter row for {hostCode}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[HOST_SERVICE] Added parameter row for {hostCode}");
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[HOST_SERVICE] Error adding parameter row for {hostCode}: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[HOST_SERVICE] Error adding parameter row for {hostCode}: {ex.Message}");
             }
         }
 
@@ -248,21 +256,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Store document reference for row creation
                 _document = document;
 
-                DebugLogger.Info($"[HOST_SERVICE] Populating host parameters for {selectedHostFiles.Count} selected host files");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[HOST_SERVICE] Populating host parameters for {selectedHostFiles.Count} selected host files");
 
                 if (selectedHostFiles == null || selectedHostFiles.Count == 0)
                 {
-                    DebugLogger.Info("[HOST_SERVICE] No host files selected - skipping parameter population");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info("[HOST_SERVICE] No host files selected - skipping parameter population");
                     return;
                 }
 
                 // Get host parameters from selected linked files
                 var hostParameters = GetHostParametersFromLinkedFiles(selectedHostFiles, document);
-                DebugLogger.Info($"[HOST_SERVICE] Found {hostParameters.Count} host parameters from linked files");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[HOST_SERVICE] Found {hostParameters.Count} host parameters from linked files");
 
                 // Get opening parameters (use the optimized method to avoid destructive operations)
                 var openingParameters = _parameterExtractionService.GetEssentialOpeningParameters(document);
-                DebugLogger.Info($"[HOST_SERVICE] Found {openingParameters.Count} opening parameters");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[HOST_SERVICE] Found {openingParameters.Count} opening parameters");
 
                 // Cache for add-row usage
                 _cachedHostParameters = hostParameters ?? new List<string>();
@@ -274,11 +286,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     UpdateHostTabParameters(tabPage, hostParameters, openingParameters);
                 }
 
-                DebugLogger.Info("[HOST_SERVICE] Host parameter population completed");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info("[HOST_SERVICE] Host parameter population completed");
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[HOST_SERVICE] Error populating host parameters: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[HOST_SERVICE] Error populating host parameters: {ex.Message}");
             }
         }
 
@@ -291,16 +305,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             try
             {
-                DebugLogger.Info($"[HOST_SERVICE] Getting host parameters from {selectedHostFiles.Count} selected host files");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[HOST_SERVICE] Getting host parameters from {selectedHostFiles.Count} selected host files");
                 
                 // Get all linked files
                 var linkedFiles = _linkedFileService.GetLinkedFiles(document);
-                DebugLogger.Info($"[HOST_SERVICE] Found {linkedFiles.Count} total linked files");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[HOST_SERVICE] Found {linkedFiles.Count} total linked files");
 
                 // Also check the current document for host elements
                 var currentDocParams = GetHostParametersFromDocument(document, "Current Document");
                 AddUniqueParameters(hostParameters, currentDocParams);
-                DebugLogger.Info($"[HOST_SERVICE] Found {currentDocParams.Count} host parameters from current document");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[HOST_SERVICE] Found {currentDocParams.Count} host parameters from current document");
 
                 foreach (var linkedFile in linkedFiles)
                 {
@@ -312,26 +329,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     if (!isSelected)
                     {
-                        DebugLogger.Info($"[HOST_SERVICE] Skipping unselected linked file: {fileName}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[HOST_SERVICE] Skipping unselected linked file: {fileName}");
                         continue;
                     }
 
-                    DebugLogger.Info($"[HOST_SERVICE] Processing selected host file: {fileName}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[HOST_SERVICE] Processing selected host file: {fileName}");
 
                     var linkedDoc = linkedFile.LinkInstance?.GetLinkDocument();
                     if (linkedDoc != null)
                     {
                         var linkedDocParams = GetHostParametersFromDocument(linkedDoc, fileName);
                         AddUniqueParameters(hostParameters, linkedDocParams);
-                        DebugLogger.Info($"[HOST_SERVICE] Retrieved {linkedDocParams.Count} host parameters from {fileName}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[HOST_SERVICE] Retrieved {linkedDocParams.Count} host parameters from {fileName}");
                     }
                 }
 
-                DebugLogger.Info($"[HOST_SERVICE] Total unique host parameters: {hostParameters.Count}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[HOST_SERVICE] Total unique host parameters: {hostParameters.Count}");
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[HOST_SERVICE] Error getting host parameters from linked files: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[HOST_SERVICE] Error getting host parameters from linked files: {ex.Message}");
             }
 
             return hostParameters;
@@ -346,7 +368,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             try
             {
-                DebugLogger.Info($"[HOST_SERVICE] Getting host parameters from document: {documentName}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[HOST_SERVICE] Getting host parameters from document: {documentName}");
                 
                 // ✅ PERFORMANCE FIX: Only load Fire Rating parameter on startup (rest load when user clicks "+")
                 // Check if Fire Rating parameter exists in any of the host categories
@@ -377,11 +400,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (parameters.Contains("Fire Rating")) break;
                 }
 
-                DebugLogger.Info($"[HOST_SERVICE] Retrieved {parameters.Count} host parameters from {documentName} (startup: only Fire Rating)");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[HOST_SERVICE] Retrieved {parameters.Count} host parameters from {documentName} (startup: only Fire Rating)");
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[HOST_SERVICE] Error getting host parameters from document {documentName}: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[HOST_SERVICE] Error getting host parameters from document {documentName}: {ex.Message}");
             }
 
             return parameters;
@@ -434,11 +459,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
 
-                DebugLogger.Info($"[HOST_SERVICE] Found {parameters.Count} essential/shared parameters for category {category}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[HOST_SERVICE] Found {parameters.Count} essential/shared parameters for category {category}");
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[HOST_SERVICE] Error getting parameters for category {category}: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[HOST_SERVICE] Error getting parameters for category {category}: {ex.Message}");
             }
 
             return parameters.ToList();
@@ -453,7 +480,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             try
             {
-                DebugLogger.Info($"[HOST_SERVICE] Getting opening parameters from document");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[HOST_SERVICE] Getting opening parameters from document");
 
                 // Method 1: Get parameters from FamilySymbol (Type Parameters)
                 var openingFamilySymbols = GetOpeningFamilies(document);
@@ -467,7 +495,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                     }
                 }
-                DebugLogger.Info($"[HOST_SERVICE] Found {openingParameters.Count} parameters from FamilySymbols (type parameters)");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[HOST_SERVICE] Found {openingParameters.Count} parameters from FamilySymbols (type parameters)");
 
                 // Method 2: Get parameters from FamilySymbol (Type Parameters) - works even without instances
                 var targetFamilyNames = new List<string>
@@ -506,7 +535,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 if (!string.IsNullOrEmpty(param.Definition?.Name) && !openingParameters.Contains(param.Definition.Name))
                                 {
                                     openingParameters.Add(param.Definition.Name);
-                                    DebugLogger.Info($"[HOST_SERVICE] Added type parameter from FamilySymbol: '{param.Definition.Name}'");
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[HOST_SERVICE] Added type parameter from FamilySymbol: '{param.Definition.Name}'");
                                 }
                             }
 
@@ -516,23 +546,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
 
-                DebugLogger.Info($"[HOST_SERVICE] Checked {symbolCount} opening family symbols for type parameters");
-                DebugLogger.Info($"[HOST_SERVICE] Total unique opening parameters found: {openingParameters.Count}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[HOST_SERVICE] Checked {symbolCount} opening family symbols for type parameters");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[HOST_SERVICE] Total unique opening parameters found: {openingParameters.Count}");
 
                 // If no parameters found from families, use fallback from shared parameter file
                 if (openingParameters.Count == 0)
                 {
-                    DebugLogger.Info("[HOST_SERVICE] No parameters found from families - using fallback from shared parameter file");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info("[HOST_SERVICE] No parameters found from families - using fallback from shared parameter file");
 
                     var fallbackParameters = GetOpeningParametersFromSharedFile();
                     openingParameters = fallbackParameters;
 
-                    DebugLogger.Info($"[HOST_SERVICE] Using {openingParameters.Count} parameters from shared parameter file as fallback");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[HOST_SERVICE] Using {openingParameters.Count} parameters from shared parameter file as fallback");
                 }
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[HOST_SERVICE] Error getting opening parameters: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[HOST_SERVICE] Error getting opening parameters: {ex.Message}");
             }
 
             return openingParameters;
@@ -582,11 +617,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
 
-                DebugLogger.Info($"[HOST_SERVICE] GetOpeningFamilies inspected {inspected} FamilySymbols, matched {openingFamilies.Count} families from the 4 specific opening families: {string.Join(", ", targetFamilyNames)}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[HOST_SERVICE] GetOpeningFamilies inspected {inspected} FamilySymbols, matched {openingFamilies.Count} families from the 4 specific opening families: {string.Join(", ", targetFamilyNames)}");
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[HOST_SERVICE] Error getting opening families: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[HOST_SERVICE] Error getting opening families: {ex.Message}");
             }
 
             return openingFamilies;
@@ -606,7 +643,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (!System.IO.File.Exists(sharedParamFile))
                 {
-                    DebugLogger.Warning($"[HOST_SERVICE] Shared parameter file not found: {sharedParamFile}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[HOST_SERVICE] Shared parameter file not found: {sharedParamFile}");
                     return parameters;
                 }
 
@@ -626,17 +664,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             if (!string.IsNullOrEmpty(paramName) && !parameters.Contains(paramName))
                             {
                                 parameters.Add(paramName);
-                                DebugLogger.Info($"[HOST_SERVICE] Added fallback parameter from shared file: '{paramName}'");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[HOST_SERVICE] Added fallback parameter from shared file: '{paramName}'");
                             }
                         }
                     }
                 }
 
-                DebugLogger.Info($"[HOST_SERVICE] Loaded {parameters.Count} parameters from shared parameter file");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[HOST_SERVICE] Loaded {parameters.Count} parameters from shared parameter file");
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[HOST_SERVICE] Error reading shared parameter file: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[HOST_SERVICE] Error reading shared parameter file: {ex.Message}");
             }
 
             return parameters;
@@ -649,7 +690,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                DebugLogger.Info($"[HOST_SERVICE] Updating tab '{tabPage.Text}' with {hostParameters.Count} host and {openingParameters.Count} opening parameters");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[HOST_SERVICE] Updating tab '{tabPage.Text}' with {hostParameters.Count} host and {openingParameters.Count} opening parameters");
 
                 // Find the hostPanel in this tab
                 var hostPanel = tabPage.Controls.OfType<WinForms.Panel>().FirstOrDefault();
@@ -681,12 +723,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                     }
 
-                    DebugLogger.Info($"[HOST_SERVICE] Updated {existingRows.Count} existing rows in tab '{tabPage.Text}'");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[HOST_SERVICE] Updated {existingRows.Count} existing rows in tab '{tabPage.Text}'");
                 }
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[HOST_SERVICE] Error updating host tab parameters: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[HOST_SERVICE] Error updating host tab parameters: {ex.Message}");
             }
         }
 

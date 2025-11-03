@@ -20,7 +20,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _currentPrefixes = prefixes ?? new MarkPrefixSettings();
             _hasPrefixes = true;
             
-            DebugLogger.Info($"[MarkPrefixService] Set prefixes - Project: '{_currentPrefixes.ProjectPrefix}', " +
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[MarkPrefixService] Set prefixes - Project: '{_currentPrefixes.ProjectPrefix}', " +
                 $"Duct: '{_currentPrefixes.DuctPrefix}', Pipe: '{_currentPrefixes.PipePrefix}', " +
                 $"CableTray: '{_currentPrefixes.CableTrayPrefix}', Damper: '{_currentPrefixes.DamperPrefix}'");
         }
@@ -32,11 +33,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             if (!_hasPrefixes)
             {
-                DebugLogger.Warning("[MarkPrefixService] No prefixes set, returning defaults");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning("[MarkPrefixService] No prefixes set, returning defaults");
                 return new MarkPrefixSettings();
             }
 
-            DebugLogger.Info($"[MarkPrefixService] Retrieved prefixes - Project: '{_currentPrefixes.ProjectPrefix}', " +
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[MarkPrefixService] Retrieved prefixes - Project: '{_currentPrefixes.ProjectPrefix}', " +
                 $"Duct: '{_currentPrefixes.DuctPrefix}', Pipe: '{_currentPrefixes.PipePrefix}', " +
                 $"CableTray: '{_currentPrefixes.CableTrayPrefix}', Damper: '{_currentPrefixes.DamperPrefix}'");
             
@@ -50,7 +53,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             _currentPrefixes = new MarkPrefixSettings();
             _hasPrefixes = false;
-            DebugLogger.Info("[MarkPrefixService] Cleared stored prefixes");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info("[MarkPrefixService] Cleared stored prefixes");
         }
     }
 }

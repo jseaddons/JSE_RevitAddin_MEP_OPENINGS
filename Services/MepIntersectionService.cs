@@ -108,10 +108,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         // BATCH PROCESSING: Find intersections for multiple MEP elements efficiently
+        /// <param name="knownValidPairs">Set of (MEP Element ID, Structural Element ID) pairs that have valid clash zones. When skipKnownPairsGeometryCheck is true, expensive geometry intersection is skipped for these pairs.</param>
+        /// <param name="skipKnownPairsGeometryCheck">If true, skip expensive geometry intersection calculation for known valid pairs (just verify element existence with fast bounding box check).</param>
         public static List<(Element, Element, BoundingBoxXYZ, XYZ)> FindIntersectionsBatch(
             List<(Element, Transform?)> mepElements,
             List<(Element, Transform?)> structuralElements,
-            Action<string> log)
+            Action<string> log,
+            HashSet<(int mepId, int structuralId)> knownValidPairs = null,
+            bool skipKnownPairsGeometryCheck = false)
         {
             var results = new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
             if (OptimizationFlags.UseDiagnosticMode)
@@ -211,10 +215,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     log($"[SpatialHash] MEP {mepElement.Id}: {nearbyElements.Count}/{structuralData.Count} nearby elements ({100.0 * nearbyElements.Count / structuralData.Count:F1}%)");
 
                 int spatiallyFiltered = 0;
+                int geometrySkippedForKnownPairs = 0;
                 foreach (var (structElement, structTransform, structBBox) in nearbyElements)
                 {
+                    // ✅ OOP OPTIMIZATION: Skip expensive geometry intersection for known valid pairs
+                    // When 3-point validation is disabled, user trusts model unchanged
+                    // Just verify bounding boxes intersect (fast check) instead of full geometry intersection
+                    bool isKnownValidPair = skipKnownPairsGeometryCheck && 
+                                           knownValidPairs != null && 
+                                           knownValidPairs.Contains((mepElement.Id.IntegerValue, structElement.Id.IntegerValue));
+
+                    if (isKnownValidPair)
+                    {
+                        // ✅ FAST PATH: Known valid pair - just verify bounding boxes intersect
+                        // Skip expensive solid geometry intersection calculation
+                        if (BoundingBoxService.BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max))
+                        {
+                            // Use structural element's bounding box center as intersection point (approximation for known pairs)
+                            var center = BoundingBoxService.GetBoundingBoxCenter(structBBox);
+                            results.Add((mepElement, structElement, structBBox, center));
+                            geometrySkippedForKnownPairs++;
+                            continue;
+                        }
+                        else
+                        {
+                            // Bounding boxes don't intersect - element may have moved (shouldn't happen if user trusts model)
+                            // Still skip geometry check but log warning
+                            if (OptimizationFlags.UseDiagnosticMode)
+                                log($"[OPTIMIZATION] Known pair (MEP {mepElement.Id}, Structural {structElement.Id}) bounding boxes don't intersect - skipping");
+                            spatiallyFiltered++;
+                            continue;
+                        }
+                    }
+
+                    // ✅ UNKNOWN/NEW PAIR: Run full geometry intersection (normal path)
                     // Quick bounding box intersection test
-                    if (!BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max))
+                    if (!BoundingBoxService.BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max))
                     {
                         spatiallyFiltered++;
                         continue;
@@ -236,9 +272,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         var bbox = CreateBoundingBox(intersectionPoints);
                         // Use bounding box center (average of entry/exit points) to get mid-depth of host
-                        var center = GetBoundingBoxCenter(bbox);
+                        var center = BoundingBoxService.GetBoundingBoxCenter(bbox);
                         results.Add((mepElement, structElement, bbox, center));
                     }
+                }
+                
+                if (geometrySkippedForKnownPairs > 0 && OptimizationFlags.UseDiagnosticMode)
+                {
+                    log($"[OPTIMIZATION] MEP {mepElement.Id}: Skipped geometry checks for {geometrySkippedForKnownPairs} known valid pairs");
                 }
 
                 if (spatiallyFiltered > 0)
@@ -330,7 +371,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                         
                         // Quick bounding box intersection test (both in host shared coordinates now)
-                        if (!BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max))
+                        if (!BoundingBoxService.BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max))
                         {
                             spatiallyFilteredCount++;
                             if (spatiallyFilteredCount - lastLoggedSkipCount >= 100)
@@ -372,7 +413,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         var bbox = CreateBoundingBox(intersectionPoints);
                         // Use bounding box center (average of entry/exit points) to get mid-depth of host
-                        var center = GetBoundingBoxCenter(bbox);
+                        var center = BoundingBoxService.GetBoundingBoxCenter(bbox);
                         results.Add((structuralElement, bbox, center));
                     }
                 }
@@ -457,7 +498,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             };
                         }
                         
-                        if (!BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max))
+                        if (!BoundingBoxService.BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max))
                         {
                             spatiallyFilteredCount++;
                             if (spatiallyFilteredCount - lastLoggedSkipCount >= 100)
@@ -491,7 +532,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         var bbox = CreateBoundingBox(intersectionPoints);
                         // Use bounding box center (average of entry/exit points) to get mid-depth of host
-                        var center = GetBoundingBoxCenter(bbox);
+                        var center = BoundingBoxService.GetBoundingBoxCenter(bbox);
                         results.Add((structuralElement, bbox, center));
                     }
                 }
@@ -505,13 +546,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return results;
         }
         
-        // Fast bounding box intersection test
-        private static bool BoundingBoxesIntersect(XYZ min1, XYZ max1, XYZ min2, XYZ max2)
-        {
-            return !(max1.X < min2.X || min1.X > max2.X ||
-                     max1.Y < min2.Y || min1.Y > max2.Y ||
-                     max1.Z < min2.Z || min1.Z > max2.Z);
-        }
+        // ✅ OOP REFACTORING: Removed duplicate BoundingBoxesIntersect - now uses BoundingBoxService
         
         /// <summary>
         /// PHASE 2 OPTIMIZATION 2: Test if curve intersects bounding box
@@ -581,14 +616,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Safety check: if union fails, fall back to first solid
                     if (resultSolid == null || resultSolid.Volume <= 0)
                     {
-                        DebugLogger.Warning($"[MepIntersectionService] Wall union failed: Solid {i}/{allSolids.Count} union resulted in null or invalid volume. Falling back to first solid. This may result in individual sleeves per layer that will be clustered.");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[MepIntersectionService] Wall union failed: Solid {i}/{allSolids.Count} union resulted in null or invalid volume. Falling back to first solid. This may result in individual sleeves per layer that will be clustered.");
                         resultSolid = allSolids[0];
                         break;
                     }
                 }
                 
                 // Log successful union
-                DebugLogger.Info($"[MepIntersectionService] Successfully united {allSolids.Count} wall layer solids into single solid");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[MepIntersectionService] Successfully united {allSolids.Count} wall layer solids into single solid");
                 return resultSolid;
             }
             catch (Exception ex)
@@ -596,7 +633,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // If union fails for any reason, log and return the first solid as fallback
                 // NOTE: Union failures are rare in Revit. If this occurs, only one sleeve will be placed
                 // (first layer only). The clustering logic will handle multiple sleeves in nearby walls.
-                DebugLogger.Warning($"[MepIntersectionService] Wall union failed with exception: {ex.Message}. Returning first solid only. Total layers detected: {allSolids.Count}.");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[MepIntersectionService] Wall union failed with exception: {ex.Message}. Returning first solid only. Total layers detected: {allSolids.Count}.");
                 return allSolids[0];
             }
         }
@@ -659,11 +697,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             };
         }
 
-        // Gets the center of a bounding box
-        private static XYZ GetBoundingBoxCenter(BoundingBoxXYZ bbox)
-        {
-            return new XYZ((bbox.Min.X + bbox.Max.X) / 2, (bbox.Min.Y + bbox.Max.Y) / 2, (bbox.Min.Z + bbox.Max.Z) / 2);
-        }
+        // ✅ OOP REFACTORING: Removed duplicate GetBoundingBoxCenter - now uses BoundingBoxService.GetBoundingBoxCenter()
 
         // Collects structural elements within section box bounds only - MAJOR PERFORMANCE OPTIMIZATION
     public static List<(Element, Transform?)> CollectStructuralElementsForDirectIntersectionVisibleOnly(Document doc, Action<string> log, List<string>? selectedHostTypes = null)
@@ -869,7 +903,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 .Where(fi => {
                     var bbox = fi.get_BoundingBox(null);
                     if (bbox == null) return false;
-                    return BoundingBoxesIntersect(modelMin, modelMax, bbox.Min, bbox.Max);
+                    return BoundingBoxService.BoundingBoxesIntersect(modelMin, modelMax, bbox.Min, bbox.Max);
                 })
                 .Cast<Element>()
                 .ToList();
@@ -942,7 +976,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var transformedMax = invTransform.OfPoint(bbox.Max);
                         var transformedBboxMin = new XYZ(Math.Min(transformedMin.X, transformedMax.X), Math.Min(transformedMin.Y, transformedMax.Y), Math.Min(transformedMin.Z, transformedMax.Z));
                         var transformedBboxMax = new XYZ(Math.Max(transformedMin.X, transformedMax.X), Math.Max(transformedMin.Y, transformedMax.Y), Math.Max(transformedMin.Z, transformedMax.Z));
-                        return BoundingBoxesIntersect(modelMin, modelMax, transformedBboxMin, transformedBboxMax);
+                        return BoundingBoxService.BoundingBoxesIntersect(modelMin, modelMax, transformedBboxMin, transformedBboxMax);
                     })
                     .Cast<Element>()
                     .ToList();
@@ -1004,7 +1038,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (sectionBox != null)
                     {
                         var bbox = damper.get_BoundingBox(null);
-                        if (bbox != null && !BoundingBoxesIntersect(sectionBox.Min, sectionBox.Max, bbox.Min, bbox.Max))
+                        if (bbox != null && !BoundingBoxService.BoundingBoxesIntersect(sectionBox.Min, sectionBox.Max, bbox.Min, bbox.Max))
                             continue;
                     }
                     elements.Add((damper, null));
@@ -1050,7 +1084,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 var transformedBboxMin = new XYZ(Math.Min(transformedMin.X, transformedMax.X), Math.Min(transformedMin.Y, transformedMax.Y), Math.Min(transformedMin.Z, transformedMax.Z));
                                 var transformedBboxMax = new XYZ(Math.Max(transformedMin.X, transformedMax.X), Math.Max(transformedMin.Y, transformedMax.Y), Math.Max(transformedMin.Z, transformedMax.Z));
                                 
-                                if (!BoundingBoxesIntersect(sectionBox.Min, sectionBox.Max, transformedBboxMin, transformedBboxMax))
+                                if (!BoundingBoxService.BoundingBoxesIntersect(sectionBox.Min, sectionBox.Max, transformedBboxMin, transformedBboxMax))
                                     continue;
                             }
                         }
@@ -1138,7 +1172,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             BoundingBoxXYZ hostDamperBBox = damperBBox;
             if (damperLinkTransform != null)
             {
-                var transformed = TransformBoundingBox(damperBBox, damperLinkTransform);
+                var transformed = BoundingBoxService.TransformBoundingBox(damperBBox, damperLinkTransform);
                 if (transformed != null)
                 {
                     hostDamperBBox = transformed;
@@ -1170,14 +1204,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     if (linkTransform != null)
                     {
-                        var transformedStruct = TransformBoundingBox(structBBox, linkTransform);
+                        var transformedStruct = BoundingBoxService.TransformBoundingBox(structBBox, linkTransform);
                         if (transformedStruct != null)
                         {
                             structBBox = transformedStruct;
                         }
                     }
 
-                    if (!BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max))
+                    if (!BoundingBoxService.BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max))
                         continue;
 
                     if (OptimizationFlags.UseDiagnosticMode)
@@ -1205,7 +1239,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         Max = intersectionMax
                     };
 
-                    var center = GetBoundingBoxCenter(intersectionBBox);
+                    var center = BoundingBoxService.GetBoundingBoxCenter(intersectionBBox);
                     results.Add((structuralElement, intersectionBBox, center));
                 }
                 catch (Exception ex)
@@ -1217,42 +1251,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return results;
         }
 
-        private static BoundingBoxXYZ? TransformBoundingBox(BoundingBoxXYZ bbox, Transform transform)
-        {
-            try
-            {
-                var pts = new[]
-                {
-                    transform.OfPoint(new XYZ(bbox.Min.X, bbox.Min.Y, bbox.Min.Z)),
-                    transform.OfPoint(new XYZ(bbox.Max.X, bbox.Min.Y, bbox.Min.Z)),
-                    transform.OfPoint(new XYZ(bbox.Min.X, bbox.Max.Y, bbox.Min.Z)),
-                    transform.OfPoint(new XYZ(bbox.Min.X, bbox.Min.Y, bbox.Max.Z)),
-                    transform.OfPoint(new XYZ(bbox.Max.X, bbox.Max.Y, bbox.Max.Z)),
-                    transform.OfPoint(new XYZ(bbox.Min.X, bbox.Max.Y, bbox.Max.Z)),
-                    transform.OfPoint(new XYZ(bbox.Max.X, bbox.Min.Y, bbox.Max.Z)),
-                    transform.OfPoint(new XYZ(bbox.Max.X, bbox.Max.Y, bbox.Min.Z))
-                };
-
-                var newMin = new XYZ(pts.Min(p => p.X), pts.Min(p => p.Y), pts.Min(p => p.Z));
-                var newMax = new XYZ(pts.Max(p => p.X), pts.Max(p => p.Y), pts.Max(p => p.Z));
-
-                return new BoundingBoxXYZ
-                {
-                    Min = newMin,
-                    Max = newMax
-                };
-            }
-            catch
-            {
-                return null;
-            }
-        }
+        // ✅ OOP REFACTORING: Removed duplicate TransformBoundingBox - now uses BoundingBoxService.TransformBoundingBox()
 
         private static Line? GetElementLine(Element element, BoundingBoxXYZ mepBBox, Action<string> log)
         {
             if (element is FamilyInstance fi && fi.Symbol?.Family?.Name?.IndexOf("Damper", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 log($"[MepIntersectionService] Element {element.Id} identified as damper; using bounding-box intersection approach.");
+
                 return null;
             }
 
@@ -1366,14 +1372,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (skippedCount > 0)
                 {
-                    DebugLogger.Info($"[MepIntersectionService] Filtered {skippedCount} walls below {minThicknessMm:F1}mm minimum thickness");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[MepIntersectionService] Filtered {skippedCount} walls below {minThicknessMm:F1}mm minimum thickness");
                 }
                 
                 return filteredWalls;
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[MepIntersectionService] Error filtering walls by minimum thickness: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[MepIntersectionService] Error filtering walls by minimum thickness: {ex.Message}");
                 return walls; // Return original list on error
             }
         }
@@ -1413,7 +1421,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             if (OptimizationFlags.UseDiagnosticMode)
                             {
                                 double wallThicknessMm = UnitUtils.ConvertFromInternalUnits(wallThickness, UnitTypeId.Millimeters);
-                                DebugLogger.Log($"[MepIntersectionService] SKIP: Wall {element.Id.IntegerValue} thickness {wallThicknessMm:F1}mm < {minThicknessMm:F1}mm minimum");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Log($"[MepIntersectionService] SKIP: Wall {element.Id.IntegerValue} thickness {wallThicknessMm:F1}mm < {minThicknessMm:F1}mm minimum");
                             }
                         }
                     }
@@ -1426,14 +1435,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (skippedCount > 0)
                 {
-                    DebugLogger.Info($"[MepIntersectionService] Filtered {skippedCount} walls below {minThicknessMm:F1}mm minimum thickness");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[MepIntersectionService] Filtered {skippedCount} walls below {minThicknessMm:F1}mm minimum thickness");
                 }
                 
                 return filteredElements;
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[MepIntersectionService] Error filtering walls by minimum thickness: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[MepIntersectionService] Error filtering walls by minimum thickness: {ex.Message}");
                 return elements; // Return original list on error
             }
         }
@@ -1471,7 +1482,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         else
                         {
                             skippedCount++;
-                            DebugLogger.Info($"[MepIntersectionService] SKIP: Architectural floor {floor.Id.IntegerValue} (Structural parameter not checked)");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[MepIntersectionService] SKIP: Architectural floor {floor.Id.IntegerValue} (Structural parameter not checked)");
                         }
                     }
                     else
@@ -1483,14 +1495,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (skippedCount > 0)
                 {
-                    DebugLogger.Info($"[MepIntersectionService] Filtered {skippedCount} architectural floors");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[MepIntersectionService] Filtered {skippedCount} architectural floors");
                 }
                 
                 return filteredElements;
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[MepIntersectionService] Error filtering architectural floors: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[MepIntersectionService] Error filtering architectural floors: {ex.Message}");
                 return elements; // Return original list on error
             }
         }

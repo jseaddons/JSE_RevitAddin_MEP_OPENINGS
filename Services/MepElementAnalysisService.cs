@@ -62,7 +62,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public ServiceSizeCalculation CalculateServiceSize(List<Element> mepElements, double clearance = 0)
         {
             var calculation = new ServiceSizeCalculation();
-            
+
             try
             {
                 if (clearance <= 0)

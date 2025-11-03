@@ -34,14 +34,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Validation
             {
                 // ✅ OPTIMIZATION: Fast-path check - verify element IDs from XML match current state
                 // Point 1: Quick check if MEP Element exists (O(1) in host, O(L) in links - but fast lookup)
-                var mepElement = GetElementFromDocumentOrLinked(document, clashZone.MepElementId);
+                var mepElement = ElementRetrievalService.GetElementFromDocumentOrLinked(document, clashZone.MepElementId, enableLogging: false);
                 if (mepElement == null)
                 {
                     return ValidationResult.Invalid($"MEP element {clashZone.MepElementId} not found");
                 }
 
                 // Point 2: Quick check if Structural Element exists (O(1) in host, O(L) in links - but fast lookup)
-                var structuralElement = GetElementFromDocumentOrLinked(document, clashZone.StructuralElementId);
+                var structuralElement = ElementRetrievalService.GetElementFromDocumentOrLinked(document, clashZone.StructuralElementId, enableLogging: false);
                 if (structuralElement == null)
                 {
                     return ValidationResult.Invalid($"Structural element {clashZone.StructuralElementId} not found");
@@ -78,8 +78,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Validation
 
                 if (distance > 0.001) // If points differ by more than 1mm
                 {
-                    // Calculate active document coordinates
-                    var activeDocPoint = TransformToActiveDocumentCoordinates(newIntersectionPoint, mepElement.Document);
+                // Calculate active document coordinates
+                var activeDocPoint = CoordinateTransformService.TransformToActiveDocumentCoordinates(newIntersectionPoint, mepElement.Document);
                     
                     return ValidationResult.ValidWithUpdate(
                         newIntersectionPoint,
@@ -138,51 +138,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Validation
             }
         }
 
-        /// <summary>
-        /// Gets an element from the document or linked documents.
-        /// </summary>
-        private Element GetElementFromDocumentOrLinked(Document document, ElementId elementId)
-        {
-            if (elementId == null || elementId == ElementId.InvalidElementId)
-            {
-                return null;
-            }
-
-            try
-            {
-                // First try host document
-                var element = document.GetElement(elementId);
-                if (element != null)
-                {
-                    return element;
-                }
-
-                // If not found, search linked documents
-                var linkInstances = new FilteredElementCollector(document)
-                    .OfClass(typeof(RevitLinkInstance))
-                    .Cast<RevitLinkInstance>();
-
-                foreach (var link in linkInstances)
-                {
-                    var linkDoc = link.GetLinkDocument();
-                    if (linkDoc != null)
-                    {
-                        element = linkDoc.GetElement(elementId);
-                        if (element != null)
-                        {
-                            return element;
-                        }
-                    }
-                }
-
-                return null;
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Warning($"[ThreePointValidator] Error getting element {elementId}: {ex.Message}");
-                return null;
-            }
-        }
+        // ✅ OOP REFACTORING: Removed duplicate GetElementFromDocumentOrLinked - now uses ElementRetrievalService.GetElementFromDocumentOrLinked()
 
         /// <summary>
         /// Calculates the intersection point between MEP and structural elements.
@@ -257,24 +213,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Validation
             }
         }
 
-        /// <summary>
-        /// Transform coordinates from linked document to active document.
-        /// </summary>
-        private XYZ TransformToActiveDocumentCoordinates(XYZ point, Document linkedDocument)
-        {
-            try
-            {
-                // For now, return the point as-is since coordinate transformation is complex
-                // TODO: Implement proper coordinate transformation if needed
-                // This matches the current implementation in RefreshService
-                return point;
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Warning($"[ThreePointValidator] Error transforming coordinates: {ex.Message}");
-                return point; // Return original point on error
-            }
-        }
+        // ✅ OOP REFACTORING: Removed duplicate TransformToActiveDocumentCoordinates - now uses CoordinateTransformService.TransformToActiveDocumentCoordinates()
     }
 }
 

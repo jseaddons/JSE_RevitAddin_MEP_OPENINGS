@@ -32,7 +32,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             try
             {
-                DebugLogger.Info($"[CrashSafe] ▶ Starting: {operationName}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[CrashSafe] ▶ Starting: {operationName}");
                 
                 var result = operation();
                 
@@ -40,15 +41,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (result == Result.Succeeded)
                 {
-                    DebugLogger.Info($"[CrashSafe] ✓ Completed: {operationName} in {_stopwatch.ElapsedMilliseconds}ms");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[CrashSafe] ✓ Completed: {operationName} in {_stopwatch.ElapsedMilliseconds}ms");
                 }
                 else if (result == Result.Cancelled)
                 {
-                    DebugLogger.Warning($"[CrashSafe] ⚠ Cancelled: {operationName} after {_stopwatch.ElapsedMilliseconds}ms");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[CrashSafe] ⚠ Cancelled: {operationName} after {_stopwatch.ElapsedMilliseconds}ms");
                 }
                 else
                 {
-                    DebugLogger.Warning($"[CrashSafe] ✗ Failed: {operationName} after {_stopwatch.ElapsedMilliseconds}ms");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[CrashSafe] ✗ Failed: {operationName} after {_stopwatch.ElapsedMilliseconds}ms");
                 }
                 
                 return result;
@@ -56,7 +60,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             catch (Autodesk.Revit.Exceptions.OperationCanceledException)
             {
                 _stopwatch.Stop();
-                DebugLogger.Warning($"[CrashSafe] User cancelled: {operationName} after {_stopwatch.ElapsedMilliseconds}ms");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[CrashSafe] User cancelled: {operationName} after {_stopwatch.ElapsedMilliseconds}ms");
                 
                 MessageBox.Show(
                     $"Operation '{operationName}' was cancelled by user.",
@@ -69,7 +74,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             catch (Autodesk.Revit.Exceptions.InvalidOperationException ex)
             {
                 _stopwatch.Stop();
-                DebugLogger.Error($"[CrashSafe] Invalid operation in {operationName} after {_stopwatch.ElapsedMilliseconds}ms: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[CrashSafe] Invalid operation in {operationName} after {_stopwatch.ElapsedMilliseconds}ms: {ex.Message}");
                 
                 MessageBox.Show(
                     $"Operation '{operationName}' failed due to invalid state.\n\nError: {ex.Message}\n\nThis usually happens when:\n- Document is in read-only mode\n- Element was deleted\n- Transaction conflict occurred",
@@ -82,10 +88,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             catch (Exception ex)
             {
                 _stopwatch.Stop();
-                DebugLogger.Error($"[CrashSafe] EXCEPTION in {operationName} after {_stopwatch.ElapsedMilliseconds}ms:");
-                DebugLogger.Error($"[CrashSafe]   Message: {ex.Message}");
-                DebugLogger.Error($"[CrashSafe]   Type: {ex.GetType().Name}");
-                DebugLogger.Error($"[CrashSafe]   StackTrace: {ex.StackTrace}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[CrashSafe] EXCEPTION in {operationName} after {_stopwatch.ElapsedMilliseconds}ms:");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[CrashSafe]   Message: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[CrashSafe]   Type: {ex.GetType().Name}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[CrashSafe]   StackTrace: {ex.StackTrace}");
                 
                 MessageBox.Show(
                     $"Operation '{operationName}' failed with an error.\n\nError: {ex.Message}\n\nType: {ex.GetType().Name}\n\nPlease check the log file for details.",
@@ -107,9 +117,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 _stopwatch.Stop();
                 
-                DebugLogger.Error($"[CrashSafe] ⏱ TIMEOUT: {operationPhase} exceeded {MAX_EXECUTION_TIME_MS / 1000} second limit");
-                DebugLogger.Error($"[CrashSafe]   Elapsed: {_stopwatch.ElapsedMilliseconds}ms");
-                DebugLogger.Error($"[CrashSafe]   Started: {_operationStartTime:HH:mm:ss}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[CrashSafe] ⏱ TIMEOUT: {operationPhase} exceeded {MAX_EXECUTION_TIME_MS / 1000} second limit");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[CrashSafe]   Elapsed: {_stopwatch.ElapsedMilliseconds}ms");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[CrashSafe]   Started: {_operationStartTime:HH:mm:ss}");
                 
                 MessageBox.Show(
                     $"Operation is taking too long and has been cancelled.\n\nPhase: {operationPhase}\nTime: {_stopwatch.ElapsedMilliseconds / 1000} seconds\nLimit: {MAX_EXECUTION_TIME_MS / 1000} seconds\n\nThis usually indicates:\n• Very large model\n• No filter selected\n• Infinite loop\n• Section box too large\n\nPlease:\n• Select a specific filter\n• Reduce section box size\n• Process in smaller batches",

@@ -52,7 +52,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (_instance == null)
                         {
                             _instance = new ClusterConfigurationManager();
-                            DebugLogger.Info("[ClusterConfig] Initialized with default settings");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info("[ClusterConfig] Initialized with default settings");
                         }
                     }
                 }
@@ -78,7 +79,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Validate input
             if (distanceMm < 10.0 || distanceMm > 1000.0)
             {
-                DebugLogger.Warning($"[ClusterConfig] Invalid JoinOpeningsDistance: {distanceMm}mm (must be 10-1000mm). Using default 200mm.");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[ClusterConfig] Invalid JoinOpeningsDistance: {distanceMm}mm (must be 10-1000mm). Using default 200mm.");
                 distanceMm = 200.0;
                 source = "Default (invalid input)";
             }
@@ -89,10 +91,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 LastUpdated = DateTime.Now;
                 ConfigurationSource = source;
                 
-                DebugLogger.Info($"[ClusterConfig] ✓ JoinOpeningsDistance set to: {distanceMm}mm");
-                DebugLogger.Info($"[ClusterConfig]   Source: {source}");
-                DebugLogger.Info($"[ClusterConfig]   Updated: {LastUpdated:yyyy-MM-dd HH:mm:ss}");
-                DebugLogger.Info($"[ClusterConfig]   Internal units: {GetJoinOpeningsDistanceInFeet():F6} feet");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[ClusterConfig] ✓ JoinOpeningsDistance set to: {distanceMm}mm");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[ClusterConfig]   Source: {source}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[ClusterConfig]   Updated: {LastUpdated:yyyy-MM-dd HH:mm:ss}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[ClusterConfig]   Internal units: {GetJoinOpeningsDistanceInFeet():F6} feet");
             }
         }
         
@@ -115,7 +121,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 LastUpdated = DateTime.Now;
                 ConfigurationSource = "Reset to Default";
                 
-                DebugLogger.Info("[ClusterConfig] Configuration reset to default (200mm)");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info("[ClusterConfig] Configuration reset to default (200mm)");
             }
         }
         
@@ -135,7 +142,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             if (settings == null)
             {
-                DebugLogger.Warning("[ClusterConfig] Null settings provided - using defaults");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning("[ClusterConfig] Null settings provided - using defaults");
+
                 return;
             }
             

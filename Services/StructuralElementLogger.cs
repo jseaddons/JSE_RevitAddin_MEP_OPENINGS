@@ -83,11 +83,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 IsInitialized = true;
 
                 // Also log to main debug logger
-                DebugLogger.Log($"[STRUCTURAL-LOG] Initialized structural elements log: {LogFilePath}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"[STRUCTURAL-LOG] Initialized structural elements log: {LogFilePath}");
             }
             catch (Exception ex)
             {
-                DebugLogger.Log($"[STRUCTURAL-LOG] Failed to initialize structural logger: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"[STRUCTURAL-LOG] Failed to initialize structural logger: {ex.Message}");
             }
         }
 
@@ -108,14 +110,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     logEntry += $" - {details}";
                 logEntry += "\n";
 
-                File.AppendAllText(LogFilePath, logEntry);
+                                // ✅ DEPLOYMENT MODE: Skip file writes
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    File.AppendAllText(LogFilePath, logEntry);
+                }
 
                 // Also log to main debug logger with special prefix
-                DebugLogger.Log($"[STRUCTURAL] {elementType} ID={elementId.IntegerValue}: {action} {details}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"[STRUCTURAL] {elementType} ID={elementId.IntegerValue}: {action} {details}");
             }
             catch (Exception ex)
             {
-                DebugLogger.Log($"[STRUCTURAL-LOG] Failed to write structural log: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"[STRUCTURAL-LOG] Failed to write structural log: {ex.Message}");
             }
         }
 
@@ -150,12 +158,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 if (!IsInitialized)
                     InitializeLogger();
-                DebugLogger.Log($"[STRUCTURAL] {mepElementType}-{structuralElementType} intersection detected - MEP ID={mepElementId.IntegerValue}, Structural ID={structuralElementId.IntegerValue}");
-                DebugLogger.Log($"[STRUCTURAL] {mepElementType}-{structuralElementType} intersection detected - MEP ID={mepElementId}, Structural ID={structuralElementId}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"[STRUCTURAL] {mepElementType}-{structuralElementType} intersection detected - MEP ID={mepElementId.IntegerValue}, Structural ID={structuralElementId.IntegerValue}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"[STRUCTURAL] {mepElementType}-{structuralElementType} intersection detected - MEP ID={mepElementId}, Structural ID={structuralElementId}");
             }
             catch (Exception ex)
             {
-                DebugLogger.Log($"[STRUCTURAL-LOG] Failed to write intersection log: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"[STRUCTURAL-LOG] Failed to write intersection log: {ex.Message}");
             }
         }
 
@@ -190,12 +201,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 if (!IsInitialized)
                     InitializeLogger();
-                File.AppendAllText(LogFilePath, summary);
-                DebugLogger.Log($"[STRUCTURAL] {commandName} summary - Processed: {totalProcessed}, Detected: {structuralDetected}, Placed: {sleevesPlaced}, Failed: {failures}");
+                                // ✅ DEPLOYMENT MODE: Skip file writes
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    File.AppendAllText(LogFilePath, summary);
+                }
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"[STRUCTURAL] {commandName} summary - Processed: {totalProcessed}, Detected: {structuralDetected}, Placed: {sleevesPlaced}, Failed: {failures}");
             }
             catch (Exception ex)
             {
-                DebugLogger.Log($"[STRUCTURAL-LOG] Failed to write summary: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"[STRUCTURAL-LOG] Failed to write summary: {ex.Message}");
             }
         }
 

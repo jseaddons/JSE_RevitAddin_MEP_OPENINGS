@@ -24,7 +24,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             try
             {
-                DebugLogger.Info($"[ParameterValueReader] Reading {parameterName} values for {openingIds.Count} openings from XML");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[ParameterValueReader] Reading {parameterName} values for {openingIds.Count} openings from XML");
 
                 // Look for XML files in the standard locations
                 var xmlFiles = FindParameterXmlFiles(parameterName);
@@ -50,15 +51,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     catch (Exception ex)
                     {
-                        DebugLogger.Warning($"[ParameterValueReader] Error reading XML file {xmlFile}: {ex.Message}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[ParameterValueReader] Error reading XML file {xmlFile}: {ex.Message}");
                     }
                 }
 
-                DebugLogger.Info($"[ParameterValueReader] Found values for {parameterValues.Count} openings");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[ParameterValueReader] Found values for {parameterValues.Count} openings");
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[ParameterValueReader] Error reading parameter values: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[ParameterValueReader] Error reading parameter values: {ex.Message}");
             }
 
             return parameterValues;
@@ -89,16 +93,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                         catch (Exception ex)
                         {
-                            DebugLogger.Warning($"[ParameterValueReader] Error enumerating XML files in {searchPath}: {ex.Message}");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Warning($"[ParameterValueReader] Error enumerating XML files in {searchPath}: {ex.Message}");
                         }
                     }
                 }
 
-                DebugLogger.Info($"[ParameterValueReader] Found {xmlFiles.Count} XML files to scan for parameter '{parameterName}'");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[ParameterValueReader] Found {xmlFiles.Count} XML files to scan for parameter '{parameterName}'");
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[ParameterValueReader] Error searching for XML files: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[ParameterValueReader] Error searching for XML files: {ex.Message}");
             }
 
             return xmlFiles;
@@ -115,6 +122,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 using (var reader = new StreamReader(xmlFile))
                 {
                     var filter = serializer.Deserialize(reader) as OpeningFilter;
+
                     var zones = filter?.ClashZoneStorage?.ClashZones;
                     if (zones == null || zones.Count == 0) return result;
 
@@ -141,7 +149,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                DebugLogger.Warning($"[ParameterValueReader] Failed to parse {Path.GetFileName(xmlFile)}: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[ParameterValueReader] Failed to parse {Path.GetFileName(xmlFile)}: {ex.Message}");
             }
 
             return result;

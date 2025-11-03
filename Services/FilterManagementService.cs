@@ -577,6 +577,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 using (var reader = new System.IO.StreamReader(filePath))
                 {
                     var filter = (OpeningFilter)serializer.Deserialize(reader);
+
                     _log($"[FILTER_MGMT] Loaded filter from XML: {filePath}");
                     
                     // ✅ CRITICAL FIX: Reconstruct SleevePlacementPoint from XML-serializable properties

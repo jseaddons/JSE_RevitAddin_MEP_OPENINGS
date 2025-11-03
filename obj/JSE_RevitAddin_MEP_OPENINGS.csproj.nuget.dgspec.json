@@ -46,6 +46,10 @@
         "net48": {
           "targetAlias": "net48",
           "dependencies": {
+            "CommunityToolkit.Mvvm": {
+              "target": "Package",
+              "version": "[8.2.2, )"
+            },
             "ILRepack": {
               "target": "Package",
               "version": "[2.0.41, )"

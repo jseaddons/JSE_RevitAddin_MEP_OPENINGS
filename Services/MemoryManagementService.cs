@@ -59,11 +59,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     EnforceCacheSize();
                 }
                 
-                DebugLogger.Info($"[MemoryManagement] Added element {elementId} to cache (Size: {estimatedSizeBytes} bytes, Total: {_cache.Count} entries)");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[MemoryManagement] Added element {elementId} to cache (Size: {estimatedSizeBytes} bytes, Total: {_cache.Count} entries)");
             }
             catch (Exception ex)
             {
-                DebugLogger.Warning($"[MemoryManagement] Error adding element {elementId} to cache: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[MemoryManagement] Error adding element {elementId} to cache: {ex.Message}");
             }
         }
         
@@ -85,16 +87,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     entry.LastAccessed = DateTime.Now;
                     entry.AccessCount++;
                     
-                    DebugLogger.Info($"[MemoryManagement] Cache hit for element {elementId} (Access count: {entry.AccessCount})");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[MemoryManagement] Cache hit for element {elementId} (Access count: {entry.AccessCount})");
                     return ((CacheEntry<T>)entry).Data;
                 }
                 
-                DebugLogger.Info($"[MemoryManagement] Cache miss for element {elementId}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[MemoryManagement] Cache miss for element {elementId}");
                 return default(T);
             }
             catch (Exception ex)
             {
-                DebugLogger.Warning($"[MemoryManagement] Error getting element {elementId} from cache: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[MemoryManagement] Error getting element {elementId} from cache: {ex.Message}");
                 return default(T);
             }
         }
@@ -114,7 +119,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (_cache.TryRemove(elementId, out var entry))
                 {
                     Interlocked.Add(ref _totalMemoryUsage, -entry.SizeBytes);
-                    DebugLogger.Info($"[MemoryManagement] Removed element {elementId} from cache");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[MemoryManagement] Removed element {elementId} from cache");
                     return true;
                 }
                 
@@ -122,7 +128,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                DebugLogger.Warning($"[MemoryManagement] Error removing element {elementId} from cache: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[MemoryManagement] Error removing element {elementId} from cache: {ex.Message}");
                 return false;
             }
         }
@@ -135,6 +142,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (!OptimizationFlags.UseMemoryManagement)
             {
                 return;
+
             }
             
             lock (_cleanupLock)
@@ -171,11 +179,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Force garbage collection
                     GC.Collect(1, GCCollectionMode.Optimized);
                     
-                    DebugLogger.Info($"[MemoryManagement] Cleanup completed: Removed {entriesToRemove} entries, Kept {entriesToKeep} entries");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[MemoryManagement] Cleanup completed: Removed {entriesToRemove} entries, Kept {entriesToKeep} entries");
                 }
                 catch (Exception ex)
                 {
-                    DebugLogger.Warning($"[MemoryManagement] Error during cache cleanup: {ex.Message}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[MemoryManagement] Error during cache cleanup: {ex.Message}");
                 }
             }
         }
@@ -199,11 +209,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Force garbage collection
                 GC.Collect(2, GCCollectionMode.Forced);
                 
-                DebugLogger.Info($"[MemoryManagement] Cleared all cache entries ({count} entries)");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[MemoryManagement] Cleared all cache entries ({count} entries)");
             }
             catch (Exception ex)
             {
-                DebugLogger.Warning($"[MemoryManagement] Error clearing cache: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[MemoryManagement] Error clearing cache: {ex.Message}");
             }
         }
         
@@ -233,7 +245,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                DebugLogger.Warning($"[MemoryManagement] Error getting memory statistics: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[MemoryManagement] Error getting memory statistics: {ex.Message}");
                 return new MemoryStatistics { IsEnabled = false };
             }
         }

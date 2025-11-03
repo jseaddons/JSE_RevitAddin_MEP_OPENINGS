@@ -264,7 +264,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 lock (_lock)
                 {
-                    File.AppendAllText(logPath, logEntry);
+                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(logPath, logEntry);
+                    }
                 }
             }
             catch (UnauthorizedAccessException)
@@ -286,7 +290,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // Directory.CreateDirectory creates all parent directories if they don't exist
                         Directory.CreateDirectory(directory);
                         System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Recreated directory: {directory}");
-                        File.AppendAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}\n");
+                                                // ✅ DEPLOYMENT MODE: Skip file writes
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            File.AppendAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}\n");
+                        }
                     }
                 }
                 catch (Exception retryEx)

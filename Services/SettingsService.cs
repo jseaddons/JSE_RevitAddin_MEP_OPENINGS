@@ -31,20 +31,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     using (var reader = new StreamReader(_settingsPath))
                     {
                         var settings = (SettingsModel)serializer.Deserialize(reader)!;
-                        DebugLogger.Log($"Settings loaded from file: {_settingsPath}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Log($"Settings loaded from file: {_settingsPath}");
                         return settings;
                     }
                 }
                 else
                 {
                     // Return default settings if file doesn't exist
-                    DebugLogger.Log("Settings file not found, returning default settings");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Log("Settings file not found, returning default settings");
                     return new SettingsModel();
                 }
             }
             catch (Exception ex)
             {
-                DebugLogger.Log($"Failed to load settings: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"Failed to load settings: {ex.Message}");
                 return new SettingsModel();
             }
         }
@@ -58,9 +61,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 using (var writer = new StreamWriter(_settingsPath))
                 {
                     serializer.Serialize(writer, settings);
+
                 }
                 
-                DebugLogger.Log($"Settings saved to file: {_settingsPath}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"Settings saved to file: {_settingsPath}");
                 
                 // Also save to profile if available
                 if (profile.Configuration != null)
@@ -70,7 +75,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                DebugLogger.Log($"Failed to save settings: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"Failed to save settings: {ex.Message}");
                 throw;
             }
         }
@@ -85,19 +91,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     using (var reader = new StreamReader(_settingsPath))
                     {
                         var settings = (SettingsModel)serializer.Deserialize(reader)!;
-                        DebugLogger.Log($"Settings loaded from file: {_settingsPath}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Log($"Settings loaded from file: {_settingsPath}");
                         return settings;
                     }
                 }
                 else
                 {
-                    DebugLogger.Log("Settings file not found, returning default settings");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Log("Settings file not found, returning default settings");
                     return new SettingsModel();
                 }
             }
             catch (Exception ex)
             {
-                DebugLogger.Log($"Failed to load settings: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"Failed to load settings: {ex.Message}");
                 return new SettingsModel();
             }
         }
@@ -110,13 +119,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 using (var writer = new StreamWriter(_settingsPath))
                 {
                     serializer.Serialize(writer, settings);
+
                 }
                 
-                DebugLogger.Log($"Settings saved to file: {_settingsPath}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"Settings saved to file: {_settingsPath}");
             }
             catch (Exception ex)
             {
-                DebugLogger.Log($"Failed to save settings: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"Failed to save settings: {ex.Message}");
                 throw;
             }
         }

@@ -599,8 +599,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             List<ElementId> openingIds, 
             ParameterTransferConfiguration config)
         {
-            DebugLogger.Info($"[PARAM_TRANSFER] ExecuteTransferConfiguration called with {openingIds.Count} openings and {config.Mappings.Count} mappings");
-            DebugLogger.Info($"[{DateTime.Now}] [PARAM_TRANSFER] ExecuteTransferConfiguration called with {openingIds.Count} openings and {config.Mappings.Count} mappings\n");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[PARAM_TRANSFER] ExecuteTransferConfiguration called with {openingIds.Count} openings and {config.Mappings.Count} mappings");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[{DateTime.Now}] [PARAM_TRANSFER] ExecuteTransferConfiguration called with {openingIds.Count} openings and {config.Mappings.Count} mappings\n");
             
             var result = new ParameterTransferResult();
             var allResults = new List<ParameterTransferResult>();
@@ -612,8 +614,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var r = ExecuteTransferConfigurationInTransaction(doc, openingIds, config);
                 t.Commit();
                 
-                DebugLogger.Info($"[PARAM_TRANSFER] ExecuteTransferConfiguration completed: Success={r.Success}, TransferredCount={r.TransferredCount}, FailedCount={r.FailedCount}");
-                DebugLogger.Info($"[{DateTime.Now}] [PARAM_TRANSFER] ExecuteTransferConfiguration completed: Success={r.Success}, TransferredCount={r.TransferredCount}, FailedCount={r.FailedCount}\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[PARAM_TRANSFER] ExecuteTransferConfiguration completed: Success={r.Success}, TransferredCount={r.TransferredCount}, FailedCount={r.FailedCount}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[{DateTime.Now}] [PARAM_TRANSFER] ExecuteTransferConfiguration completed: Success={r.Success}, TransferredCount={r.TransferredCount}, FailedCount={r.FailedCount}\n");
                 
                 return r;
             }
@@ -642,20 +646,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     result.Success = false;
                     result.Message = "No sleeves found in the model. Please place sleeves first before transferring parameters.";
                     result.Errors.Add("No sleeves found - place sleeves first");
-                    DebugLogger.Warning("[PARAM_TRANSFER] No sleeves found in model - user needs to place sleeves first");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning("[PARAM_TRANSFER] No sleeves found in model - user needs to place sleeves first");
                     return result;
                 }
                 
-                DebugLogger.Info($"[PARAM_TRANSFER] Found {openingIds.Count} sleeves in model - proceeding with parameter transfer");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[PARAM_TRANSFER] Found {openingIds.Count} sleeves in model - proceeding with parameter transfer");
                 // Build snapshot index (sleeveId -> (mepBag, hostBag)) from latest category XML
-                DebugLogger.Info($"[PARAM_TRANSFER] Building snapshot index for category: {config.SourceCategoryName}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[PARAM_TRANSFER] Building snapshot index for category: {config.SourceCategoryName}");
                 string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [PARAM_TRANSFER] Building snapshot index for category: {config.SourceCategoryName}\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [PARAM_TRANSFER] Building snapshot index for category: {config.SourceCategoryName}\n");
+                    }
                     string projectPath = ProjectPathService.GetProjectRoot(doc);
                     string filtersPath = ProjectPathService.GetFiltersDirectory(doc);
-                    System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [PARAM_TRANSFER] Project path: {projectPath}\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [PARAM_TRANSFER] Project path: {projectPath}\n");
+                    }
                     System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [PARAM_TRANSFER] Filters directory (XML path): {filtersPath}\n");
                 }
                 
@@ -666,20 +679,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DiagnoseXmlContent(config.SourceCategoryName);
                 DiagnoseFilterIndex(filterIndex);
                 
-                DebugLogger.Info($"[PARAM_TRANSFER] Filter index built with {filterIndex.Count} XML files");
-                DebugLogger.Info($"[{DateTime.Now}] [PARAM_TRANSFER] Filter index built with {filterIndex.Count} XML files\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[PARAM_TRANSFER] Filter index built with {filterIndex.Count} XML files");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[{DateTime.Now}] [PARAM_TRANSFER] Filter index built with {filterIndex.Count} XML files\n");
                 
                 if (filterIndex.Count == 0)
                 {
-                    DebugLogger.Warning($"[PARAM_TRANSFER] WARNING: No XML files found - all transfers will fail!");
-                    DebugLogger.Info($"[{DateTime.Now}] [PARAM_TRANSFER] WARNING: No XML files found - all transfers will fail!\n");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[PARAM_TRANSFER] WARNING: No XML files found - all transfers will fail!");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now}] [PARAM_TRANSFER] WARNING: No XML files found - all transfers will fail!\n");
                 }
                 
                 // Execute each mapping
                 foreach (var mapping in config.Mappings)
                 {
-                    DebugLogger.Info($"[PARAM_TRANSFER] Processing mapping: {mapping.SourceParameter} -> {mapping.TargetParameter}");
-                    DebugLogger.Info($"[{DateTime.Now}] [PARAM_TRANSFER] Processing mapping: {mapping.SourceParameter} -> {mapping.TargetParameter}\n");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[PARAM_TRANSFER] Processing mapping: {mapping.SourceParameter} -> {mapping.TargetParameter}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now}] [PARAM_TRANSFER] Processing mapping: {mapping.SourceParameter} -> {mapping.TargetParameter}\n");
                     
                     ParameterTransferResult mappingResult = null;
 
@@ -789,8 +808,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var failedCount = 0;
             var errors = new List<string>();
             
-            DebugLogger.Info($"[TRANSFER] Starting transfer for mapping: {mapping.SourceParameter} -> {mapping.TargetParameter}");
-            DebugLogger.Info($"[TRANSFER] FilterIndex has {filterIndex.Count} filters");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[TRANSFER] Starting transfer for mapping: {mapping.SourceParameter} -> {mapping.TargetParameter}");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[TRANSFER] FilterIndex has {filterIndex.Count} filters");
 
             foreach (var openingId in openingIds)
             {
@@ -799,7 +820,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var opening = doc.GetElement(openingId);
                     if (opening == null)
                     {
-                        DebugLogger.Warning($"[TRANSFER] Opening {openingId} not found");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[TRANSFER] Opening {openingId} not found");
                         continue;
                     }
 
@@ -807,16 +829,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var filterNameParam = opening.LookupParameter("Filter Name");
                     if (filterNameParam == null) 
                     {
-                        DebugLogger.Warning($"[TRANSFER] Sleeve {openingId} missing 'Filter Name' parameter");
-                        DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Sleeve {openingId} missing 'Filter Name' parameter\n");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[TRANSFER] Sleeve {openingId} missing 'Filter Name' parameter");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Sleeve {openingId} missing 'Filter Name' parameter\n");
                         continue;
                     }
                     
                     string xmlFileName = filterNameParam.AsString();
                     if (string.IsNullOrEmpty(xmlFileName)) 
                     {
-                        DebugLogger.Warning($"[TRANSFER] Sleeve {openingId} has empty Filter Name");
-                        DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Sleeve {openingId} has empty Filter Name\n");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[TRANSFER] Sleeve {openingId} has empty Filter Name");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Sleeve {openingId} has empty Filter Name\n");
                         continue;
                     }
                     
@@ -824,8 +850,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var instanceIdParam = opening.LookupParameter("Sleeve Instance ID");
                     if (instanceIdParam == null) 
                     {
-                        DebugLogger.Warning($"[TRANSFER] Sleeve {openingId} missing 'Sleeve Instance ID' parameter");
-                        DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Sleeve {openingId} missing 'Sleeve Instance ID' parameter\n");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[TRANSFER] Sleeve {openingId} missing 'Sleeve Instance ID' parameter");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Sleeve {openingId} missing 'Sleeve Instance ID' parameter\n");
                         continue;
                     }
                     
@@ -843,27 +871,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (mepCategoryParamEarly != null && !mepCategoryParamEarly.IsReadOnly)
                         {
                             mepCategory = mepCategoryParamEarly.AsString();
-                            DebugLogger.Info($"[TRANSFER] Early read: Cluster sleeve {openingId} has MEP_Category = '{mepCategory}'");
-                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Early read: Cluster sleeve {openingId} has MEP_Category = '{mepCategory}'\n");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[TRANSFER] Early read: Cluster sleeve {openingId} has MEP_Category = '{mepCategory}'");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Early read: Cluster sleeve {openingId} has MEP_Category = '{mepCategory}'\n");
                         }
                         else
                         {
-                            DebugLogger.Warning($"[TRANSFER] Early read: Cluster sleeve {openingId} MEP_Category parameter is null or read-only");
-                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Early read: Cluster sleeve {openingId} MEP_Category parameter is null or read-only\n");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Warning($"[TRANSFER] Early read: Cluster sleeve {openingId} MEP_Category parameter is null or read-only");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Early read: Cluster sleeve {openingId} MEP_Category parameter is null or read-only\n");
                         }
                     }
                     
                     // Get Cluster Sleeve Instance ID parameter for XML lookup (for cluster sleeves only)
                     if (isClusterSleeve)
                     {
-                        DebugLogger.Info($"[TRANSFER] Sleeve {openingId} is a cluster sleeve (Sleeve Instance ID = -1), will look up Cluster Sleeve Instance ID");
-                        DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Sleeve {openingId} is a cluster sleeve (Sleeve Instance ID = -1)\n");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[TRANSFER] Sleeve {openingId} is a cluster sleeve (Sleeve Instance ID = -1), will look up Cluster Sleeve Instance ID");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Sleeve {openingId} is a cluster sleeve (Sleeve Instance ID = -1)\n");
                         
                         // MEP_Category was already read early (above), now use it if we have it
                         if (string.IsNullOrEmpty(mepCategory))
                         {
-                            DebugLogger.Warning($"[TRANSFER] Cluster sleeve {openingId} MEP_Category is still NULL/EMPTY - trying multiple methods");
-                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve {openingId} MEP_Category is still NULL/EMPTY - trying multiple methods\n");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Warning($"[TRANSFER] Cluster sleeve {openingId} MEP_Category is still NULL/EMPTY - trying multiple methods");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve {openingId} MEP_Category is still NULL/EMPTY - trying multiple methods\n");
                             
                             // ✅ FALLBACK METHOD 1: Try to read MEP_Category using different parameter lookup methods
                             var paramNames = new[] { "MEP_Category", "MEP Category", "MEPCategory", "MepCategory" };
@@ -876,8 +912,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     if (!string.IsNullOrEmpty(altValue))
                                     {
                                         mepCategory = altValue;
-                                        DebugLogger.Info($"[TRANSFER] Fallback: Found MEP_Category = '{mepCategory}' using parameter name '{paramName}'");
-                                        DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Fallback: Found MEP_Category = '{mepCategory}' using parameter name '{paramName}'\n");
+                                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[TRANSFER] Fallback: Found MEP_Category = '{mepCategory}' using parameter name '{paramName}'");
+                                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Fallback: Found MEP_Category = '{mepCategory}' using parameter name '{paramName}'\n");
                                         break;
                                     }
                                 }
@@ -887,8 +925,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // This is more reliable than guessing from Filter Name
                             if (string.IsNullOrEmpty(mepCategory))
                             {
-                                DebugLogger.Info($"[TRANSFER] Fallback: Will try to find cluster sleeve {sleeveId} in all matching XML files");
-                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Fallback: Will try to find cluster sleeve {sleeveId} in all matching XML files\n");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[TRANSFER] Fallback: Will try to find cluster sleeve {sleeveId} in all matching XML files");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Fallback: Will try to find cluster sleeve {sleeveId} in all matching XML files\n");
                                 // We'll handle this in the XML lookup section below
                             }
                         }
@@ -898,19 +938,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (clusterInstanceIdParam != null)
                         {
                             sleeveId = clusterInstanceIdParam.AsInteger();
-                            DebugLogger.Info($"[TRANSFER] Cluster sleeve {openingId} has Cluster Sleeve Instance ID = {sleeveId}");
-                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve {openingId} has Cluster Sleeve Instance ID = {sleeveId}\n");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[TRANSFER] Cluster sleeve {openingId} has Cluster Sleeve Instance ID = {sleeveId}");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve {openingId} has Cluster Sleeve Instance ID = {sleeveId}\n");
                         }
                         else
                         {
-                            DebugLogger.Warning($"[TRANSFER] Cluster sleeve {openingId} missing 'Cluster Sleeve Instance ID' parameter");
-                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve {openingId} missing 'Cluster Sleeve Instance ID' parameter\n");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Warning($"[TRANSFER] Cluster sleeve {openingId} missing 'Cluster Sleeve Instance ID' parameter");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve {openingId} missing 'Cluster Sleeve Instance ID' parameter\n");
                             continue;
                         }
                     }
                     
-                    DebugLogger.Info($"[TRANSFER] Sleeve {openingId}: XML='{xmlFileName}', ID={sleeveId}");
-                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Sleeve {openingId}: XML='{xmlFileName}', ID={sleeveId}\n");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[TRANSFER] Sleeve {openingId}: XML='{xmlFileName}', ID={sleeveId}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Sleeve {openingId}: XML='{xmlFileName}', ID={sleeveId}\n");
                     
                     // DIRECT LOOKUP - Handle both individual and cluster sleeves
                     // ✅ FIX: Try exact match first, then try to find matching XML file by prefix
@@ -922,12 +968,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // This prevents matching "Ventilation" to "Ventilation_ducts.xml" when it should be "Ventilation_duct_accessories.xml"
                     if (!isClusterSleeve && filterIndex.TryGetValue(xmlFileName, out filterData))
                     {
-                        DebugLogger.Info($"[TRANSFER] Found exact match for '{xmlFileName}' (individual sleeve)");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[TRANSFER] Found exact match for '{xmlFileName}' (individual sleeve)");
                     }
                     else if (isClusterSleeve)
                     {
-                        DebugLogger.Info($"[TRANSFER] Cluster sleeve - skipping exact match, will use category-based lookup");
-                        DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve {openingId} - skipping exact match for '{xmlFileName}', using category-based lookup\n");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[TRANSFER] Cluster sleeve - skipping exact match, will use category-based lookup");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve {openingId} - skipping exact match for '{xmlFileName}', using category-based lookup\n");
                     }
                     
                     if (filterData == null)
@@ -940,15 +989,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // Parameter transfer uses MEP Element ID + XML category to find correct XML file
                             if (string.IsNullOrEmpty(mepCategory))
                             {
-                                DebugLogger.Info($"[TRANSFER] Cluster sleeve {openingId}: MEP_Category parameter not available (expected - families don't have this parameter) - using XML category lookup");
-                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve {openingId}: MEP_Category not available (expected) - checking Ventilation_duct_accessories.xml FIRST for cluster sleeve {sleeveId}\n");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[TRANSFER] Cluster sleeve {openingId}: MEP_Category parameter not available (expected - families don't have this parameter) - using XML category lookup");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve {openingId}: MEP_Category not available (expected) - checking Ventilation_duct_accessories.xml FIRST for cluster sleeve {sleeveId}\n");
                                 
                                 // ✅ CORE BUG FIX: When MEP_Category is missing, assume "Duct Accessories" and check _duct_accessories.xml FIRST
                                 // This is because damper cluster sleeves are ALWAYS in _duct_accessories.xml, not _ducts.xml
                                 var expectedDuctAccessoriesFile = $"{xmlFileName}_duct_accessories.xml";
                                 
-                                DebugLogger.Info($"[TRANSFER] 🔍 CORE FIX: Checking {expectedDuctAccessoriesFile} FIRST (default for damper clusters when MEP_Category is missing)");
-                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] 🔍 CORE FIX: Checking {expectedDuctAccessoriesFile} FIRST for cluster sleeve {sleeveId}\n");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[TRANSFER] 🔍 CORE FIX: Checking {expectedDuctAccessoriesFile} FIRST (default for damper clusters when MEP_Category is missing)");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] 🔍 CORE FIX: Checking {expectedDuctAccessoriesFile} FIRST for cluster sleeve {sleeveId}\n");
                                 
                                 if (filterIndex.TryGetValue(expectedDuctAccessoriesFile, out var candidateData))
                                 {
@@ -956,19 +1009,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     {
                                         filterData = candidateData;
                                         matchingKey = expectedDuctAccessoriesFile;
-                                        DebugLogger.Info($"[TRANSFER] ✅ FOUND! Cluster sleeve {sleeveId} in {expectedDuctAccessoriesFile}");
-                                        DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] ✅ FOUND! Cluster sleeve {sleeveId} in {expectedDuctAccessoriesFile} (contains {candidateData.Count} sleeves)\n");
+                                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[TRANSFER] ✅ FOUND! Cluster sleeve {sleeveId} in {expectedDuctAccessoriesFile}");
+                                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] ✅ FOUND! Cluster sleeve {sleeveId} in {expectedDuctAccessoriesFile} (contains {candidateData.Count} sleeves)\n");
                                     }
                                     else
                                     {
-                                        DebugLogger.Warning($"[TRANSFER] Cluster sleeve {sleeveId} NOT in {expectedDuctAccessoriesFile} (contains {candidateData.Count} sleeves, sample IDs: {string.Join(", ", candidateData.Keys.Take(10))})");
+                                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Warning($"[TRANSFER] Cluster sleeve {sleeveId} NOT in {expectedDuctAccessoriesFile} (contains {candidateData.Count} sleeves, sample IDs: {string.Join(", ", candidateData.Keys.Take(10))})");
                                         string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
             System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [TRANSFER] Cluster sleeve {sleeveId} NOT in {expectedDuctAccessoriesFile} (sample IDs: {string.Join(", ", candidateData.Keys.Take(10))})\n");
                                     }
                                 }
                                 else
                                 {
-                                    DebugLogger.Warning($"[TRANSFER] {expectedDuctAccessoriesFile} not found in filterIndex");
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Warning($"[TRANSFER] {expectedDuctAccessoriesFile} not found in filterIndex");
                                     string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
             System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [TRANSFER] {expectedDuctAccessoriesFile} not found. Available files: {string.Join(", ", filterIndex.Keys.Where(k => k.Contains("Ventilation", StringComparison.OrdinalIgnoreCase)).Take(5))}\n");
                                 }
@@ -979,7 +1036,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     var matchingFiles = filterIndex.Keys.Where(k => 
                                         k.StartsWith(xmlFileName + "_", StringComparison.OrdinalIgnoreCase)).ToList();
                                     
-                                    DebugLogger.Info($"[TRANSFER] Fallback: Searching remaining {matchingFiles.Count} matching XML files for cluster sleeve {sleeveId}");
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[TRANSFER] Fallback: Searching remaining {matchingFiles.Count} matching XML files for cluster sleeve {sleeveId}");
                                     string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
             System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [TRANSFER] Fallback: Searching remaining {matchingFiles.Count} matching XML files for cluster sleeve {sleeveId}: {string.Join(", ", matchingFiles)}\n");
                                     
@@ -994,8 +1052,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                             {
                                                 filterData = fallbackData;
                                                 matchingKey = candidateFile;
-                                                DebugLogger.Info($"[TRANSFER] ✅ Found cluster sleeve {sleeveId} in fallback XML file '{matchingKey}'");
-                                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] ✅ Found cluster sleeve {sleeveId} in fallback XML file '{matchingKey}'\n");
+                                                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                    DebugLogger.Info($"[TRANSFER] ✅ Found cluster sleeve {sleeveId} in fallback XML file '{matchingKey}'");
+                                                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] ✅ Found cluster sleeve {sleeveId} in fallback XML file '{matchingKey}'\n");
                                                 break;
                                             }
                                         }
@@ -1003,15 +1063,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     
                                     if (filterData == null)
                                     {
-                                        DebugLogger.Warning($"[TRANSFER] Cluster sleeve {sleeveId} not found in ANY matching XML file");
-                                        DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve {sleeveId} not found in ANY matching XML file\n");
+                                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Warning($"[TRANSFER] Cluster sleeve {sleeveId} not found in ANY matching XML file");
+                                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve {sleeveId} not found in ANY matching XML file\n");
                                     }
                                 }
                             }
                             else
                             {
-                                DebugLogger.Info($"[TRANSFER] Cluster sleeve {openingId}: MEP_Category = '{mepCategory}'");
-                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve {openingId}: MEP_Category = '{mepCategory}'\n");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[TRANSFER] Cluster sleeve {openingId}: MEP_Category = '{mepCategory}'");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve {openingId}: MEP_Category = '{mepCategory}'\n");
                                 
                                 // Map MEP category to XML file suffix (MUST CHECK Duct Accessories FIRST before Ducts)
                                 if (mepCategory.Contains("Duct Accessory", StringComparison.OrdinalIgnoreCase) || 
@@ -1035,8 +1099,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 }
                             }
                             
-                            DebugLogger.Info($"[TRANSFER] Cluster sleeve category '{mepCategory}' → suffix '{categorySuffix}'");
-                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve category '{mepCategory}' → suffix '{categorySuffix}'\n");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[TRANSFER] Cluster sleeve category '{mepCategory}' → suffix '{categorySuffix}'");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve category '{mepCategory}' → suffix '{categorySuffix}'\n");
                         }
                         
                         // ✅ FIX: Try to find XML file that matches filter name + category suffix (for damper cluster sleeves)
@@ -1046,18 +1112,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             // First try: filter name + category suffix (e.g., "Ventilation" + "_duct_accessories" → "Ventilation_duct_accessories.xml")
                             var expectedFileName = $"{xmlFileName}{categorySuffix}.xml";
-                            DebugLogger.Info($"[TRANSFER] Looking for category-specific XML file: '{expectedFileName}'");
-                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Looking for category-specific XML file: '{expectedFileName}'\n");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[TRANSFER] Looking for category-specific XML file: '{expectedFileName}'");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Looking for category-specific XML file: '{expectedFileName}'\n");
                             
                             if (filterIndex.TryGetValue(expectedFileName, out filterData))
                             {
                                 matchingKey = expectedFileName;
-                                DebugLogger.Info($"[TRANSFER] ✅ Found category-specific XML file '{matchingKey}' for cluster sleeve");
-                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] ✅ Found category-specific XML file '{matchingKey}' for cluster sleeve\n");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[TRANSFER] ✅ Found category-specific XML file '{matchingKey}' for cluster sleeve");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] ✅ Found category-specific XML file '{matchingKey}' for cluster sleeve\n");
                             }
                             else
                             {
-                                DebugLogger.Warning($"[TRANSFER] Category-specific XML file '{expectedFileName}' not found in filterIndex");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Warning($"[TRANSFER] Category-specific XML file '{expectedFileName}' not found in filterIndex");
                                 string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
             System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [TRANSFER] Category-specific XML file '{expectedFileName}' not found. Available keys: {string.Join(", ", filterIndex.Keys.Take(10))}\n");
                             }
@@ -1075,8 +1146,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             if (matchingKey != null)
                             {
                                 filterData = filterIndex[matchingKey];
-                                DebugLogger.Info($"[TRANSFER] Found fallback matching XML file '{matchingKey}' for filter name '{xmlFileName}'");
-                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Found fallback matching XML file '{matchingKey}' for filter name '{xmlFileName}'\n");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[TRANSFER] Found fallback matching XML file '{matchingKey}' for filter name '{xmlFileName}'");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Found fallback matching XML file '{matchingKey}' for filter name '{xmlFileName}'\n");
                             }
                             else
                             {
@@ -1086,17 +1159,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 if (matchingKey != null)
                                 {
                                     filterData = filterIndex[matchingKey];
-                                    DebugLogger.Info($"[TRANSFER] Found flexible match XML file '{matchingKey}' for filter name '{xmlFileName}'");
-                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Found flexible match XML file '{matchingKey}' for filter name '{xmlFileName}'\n");
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[TRANSFER] Found flexible match XML file '{matchingKey}' for filter name '{xmlFileName}'");
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Found flexible match XML file '{matchingKey}' for filter name '{xmlFileName}'\n");
                                 }
                                 else
                                 {
-                                    DebugLogger.Warning($"[TRANSFER] No matching XML file found for filter name '{xmlFileName}'. Available keys (first 5): {string.Join(", ", filterIndex.Keys.Take(5))}");
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Warning($"[TRANSFER] No matching XML file found for filter name '{xmlFileName}'. Available keys (first 5): {string.Join(", ", filterIndex.Keys.Take(5))}");
                                     if (!DeploymentConfiguration.DeploymentMode)
                                     {
                                         string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
                                         System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [TRANSFER] No matching XML file found for filter name '{xmlFileName}'. Available keys: {string.Join(", ", filterIndex.Keys)}\n");
-                                        System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [TRANSFER] Filter index has {filterIndex.Count} entries\n");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [TRANSFER] Filter index has {filterIndex.Count} entries\n");
+                                        }
                                     }
                                 }
                             }
@@ -1105,8 +1184,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     if (filterData != null)
                     {
-                        DebugLogger.Info($"[TRANSFER] Found filter data with {filterData.Count} sleeves");
-                        DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Found filter data with {filterData.Count} sleeves\n");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[TRANSFER] Found filter data with {filterData.Count} sleeves");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Found filter data with {filterData.Count} sleeves\n");
                         
                         // CRITICAL FIX: Handle cluster sleeves differently
                         if (isClusterSleeve)
@@ -1115,8 +1196,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var aggregatedParams = GetAggregatedClusterParameters(filterData, sleeveId, mapping.SourceParameter, useHost);
                             if (aggregatedParams != null)
                             {
-                                DebugLogger.Info($"[TRANSFER] Cluster sleeve {sleeveId}: aggregated parameter '{mapping.SourceParameter}' = '{aggregatedParams}'");
-                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve {sleeveId}: aggregated parameter '{mapping.SourceParameter}' = '{aggregatedParams}'\n");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[TRANSFER] Cluster sleeve {sleeveId}: aggregated parameter '{mapping.SourceParameter}' = '{aggregatedParams}'");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve {sleeveId}: aggregated parameter '{mapping.SourceParameter}' = '{aggregatedParams}'\n");
                                 
                         var targetParam = opening.LookupParameter(mapping.TargetParameter);
                                 if (targetParam != null)
@@ -1126,40 +1209,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     {
                                         transferredCount++;
                                         successfullyTransferredSleeveIds?.Add(openingId.IntegerValue); // Track unique sleeve
-                                        DebugLogger.Info($"[TRANSFER] ✓ Successfully transferred aggregated parameter to cluster sleeve {sleeveId}");
-                                        DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] ✓ Successfully transferred aggregated parameter to cluster sleeve {sleeveId}\n");
+                                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[TRANSFER] ✓ Successfully transferred aggregated parameter to cluster sleeve {sleeveId}");
+                                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] ✓ Successfully transferred aggregated parameter to cluster sleeve {sleeveId}\n");
                     }
                     else
                     {
-                                        DebugLogger.Warning($"[TRANSFER] ✗ Failed to set aggregated parameter value");
-                                        DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] ✗ Failed to set aggregated parameter value\n");
+                                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Warning($"[TRANSFER] ✗ Failed to set aggregated parameter value");
+                                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] ✗ Failed to set aggregated parameter value\n");
                                     }
                                 }
                                 else
                                 {
-                                    DebugLogger.Warning($"[TRANSFER] Target parameter '{mapping.TargetParameter}' not found on cluster sleeve");
-                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Target parameter '{mapping.TargetParameter}' not found on cluster sleeve\n");
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Warning($"[TRANSFER] Target parameter '{mapping.TargetParameter}' not found on cluster sleeve");
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Target parameter '{mapping.TargetParameter}' not found on cluster sleeve\n");
                                 }
                             }
                             else
                             {
-                                DebugLogger.Warning($"[TRANSFER] No aggregated parameters found for cluster sleeve {sleeveId}");
-                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] No aggregated parameters found for cluster sleeve {sleeveId}\n");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Warning($"[TRANSFER] No aggregated parameters found for cluster sleeve {sleeveId}");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] No aggregated parameters found for cluster sleeve {sleeveId}\n");
                             }
                         }
                         else if (filterData.TryGetValue(sleeveId, out var paramBags))
                         {
-                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Found sleeve {sleeveId} in XML '{xmlFileName}'\n");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Found sleeve {sleeveId} in XML '{xmlFileName}'\n");
                             
                             var sourceParams = useHost ? paramBags.host : paramBags.mep;
-                            DebugLogger.Info($"[TRANSFER] Source params: {string.Join(", ", sourceParams.Keys)}");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[TRANSFER] Source params: {string.Join(", ", sourceParams.Keys)}");
                             string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
             System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [TRANSFER] Source params: {string.Join(", ", sourceParams.Keys)}\n");
                             
                             if (sourceParams.TryGetValue(mapping.SourceParameter, out var paramValue))
                             {
-                                DebugLogger.Info($"[TRANSFER] Found parameter '{mapping.SourceParameter}' = '{paramValue}'");
-                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Found parameter '{mapping.SourceParameter}' = '{paramValue}'\n");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[TRANSFER] Found parameter '{mapping.SourceParameter}' = '{paramValue}'");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Found parameter '{mapping.SourceParameter}' = '{paramValue}'\n");
                                 
                                 var targetParam = opening.LookupParameter(mapping.TargetParameter);
                                 if (targetParam != null)
@@ -1169,25 +1264,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     {
                                         transferredCount++;
                                         successfullyTransferredSleeveIds?.Add(openingId.IntegerValue); // Track unique sleeve
-                                        DebugLogger.Info($"[TRANSFER] ✓ Successfully transferred to sleeve {sleeveId}");
-                                        DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] ✓ Successfully transferred to sleeve {sleeveId}\n");
+                                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[TRANSFER] ✓ Successfully transferred to sleeve {sleeveId}");
+                                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] ✓ Successfully transferred to sleeve {sleeveId}\n");
                                     }
                                     else
                                     {
-                                        DebugLogger.Warning($"[TRANSFER] ✗ Failed to set parameter value");
-                                        DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] ✗ Failed to set parameter value\n");
+                                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Warning($"[TRANSFER] ✗ Failed to set parameter value");
+                                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] ✗ Failed to set parameter value\n");
                                     }
                                 }
                                 else
                                 {
-                                    DebugLogger.Warning($"[TRANSFER] Target parameter '{mapping.TargetParameter}' not found");
-                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Target parameter '{mapping.TargetParameter}' not found\n");
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Warning($"[TRANSFER] Target parameter '{mapping.TargetParameter}' not found");
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Target parameter '{mapping.TargetParameter}' not found\n");
                                 }
                             }
                             else
                             {
-                                DebugLogger.Warning($"[TRANSFER] Source parameter '{mapping.SourceParameter}' not found in sleeve data");
-                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Source parameter '{mapping.SourceParameter}' not found in sleeve data\n");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Warning($"[TRANSFER] Source parameter '{mapping.SourceParameter}' not found in sleeve data");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Source parameter '{mapping.SourceParameter}' not found in sleeve data\n");
                             }
                     }
                     else
@@ -1195,21 +1298,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // ✅ FIX: Log family name for debugging floor sleeves issue
                             var famName = opening is FamilyInstance fi ? (fi.Symbol?.Family?.Name ?? "Unknown") : "Unknown";
                             var availableIds = filterData != null ? string.Join(", ", filterData.Keys.Take(10)) : "none";
-                            DebugLogger.Warning($"[TRANSFER] Sleeve ID {sleeveId} ({famName}) not found in XML '{xmlFileName}'. Available IDs in XML: [{availableIds}...]");
-                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Sleeve ID {sleeveId} ({famName}) not found in XML '{xmlFileName}'. Filter data contains {filterData?.Count ?? 0} sleeves: [{availableIds}...]\n");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Warning($"[TRANSFER] Sleeve ID {sleeveId} ({famName}) not found in XML '{xmlFileName}'. Available IDs in XML: [{availableIds}...]");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Sleeve ID {sleeveId} ({famName}) not found in XML '{xmlFileName}'. Filter data contains {filterData?.Count ?? 0} sleeves: [{availableIds}...]\n");
                         }
                     }
                     else
                     {
-                        DebugLogger.Warning($"[TRANSFER] XML '{xmlFileName}' not found in index");
-                        DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] XML '{xmlFileName}' not found in index\n");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[TRANSFER] XML '{xmlFileName}' not found in index");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] XML '{xmlFileName}' not found in index\n");
                     }
                 }
                 catch (Exception ex)
                 {
                     failedCount++;
                     errors.Add($"Opening {openingId}: {ex.Message}");
-                    DebugLogger.Error($"[TRANSFER] Exception for opening {openingId}: {ex.Message}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error($"[TRANSFER] Exception for opening {openingId}: {ex.Message}");
                 }
             }
 
@@ -1219,7 +1327,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             result.Errors = errors;
             result.Message = $"Transfer: {transferredCount} updated, {failedCount} failed.";
             
-            DebugLogger.Info($"[TRANSFER] Final result: {result.Message}");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[TRANSFER] Final result: {result.Message}");
             return result;
         }
 
@@ -1276,7 +1385,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[PARAM_TRANSFER] Error getting category from sleeve prefix: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[PARAM_TRANSFER] Error getting category from sleeve prefix: {ex.Message}");
                 return "Unknown";
             }
         }
@@ -1308,7 +1418,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (xmlFiles.Length > 0)
                     {
                         var xmlFile = xmlFiles.OrderByDescending(f => File.GetLastWriteTime(f)).FirstOrDefault();
-                        DebugLogger.Info($"[PARAM_TRANSFER] Loading parameters from: {Path.GetFileName(xmlFile)}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[PARAM_TRANSFER] Loading parameters from: {Path.GetFileName(xmlFile)}");
                         
                         // IMPORTANT: Use the SAME deserialization as BuildSnapshotIndex
                         var serializer = new System.Xml.Serialization.XmlSerializer(typeof(Models.OpeningFilter));
@@ -1361,19 +1472,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             
                             if (values.Count > 0)
                             {
-                                DebugLogger.Info($"[PARAM_TRANSFER] Found {values.Count} values for parameter '{parameterName}' in category '{category}'");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[PARAM_TRANSFER] Found {values.Count} values for parameter '{parameterName}' in category '{category}'");
                                 return values.Distinct().ToList();
                             }
                         }
                     }
                 }
                 
-                DebugLogger.Warning($"[PARAM_TRANSFER] No values found for parameter '{parameterName}' in category '{category}'");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[PARAM_TRANSFER] No values found for parameter '{parameterName}' in category '{category}'");
                 return new List<string>();
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[PARAM_TRANSFER] Error getting parameters from category XML: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[PARAM_TRANSFER] Error getting parameters from category XML: {ex.Message}");
                 return new List<string>();
             }
         }
@@ -1430,7 +1544,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (xmlFiles.Length > 0)
                     {
                         var xmlFile = xmlFiles.OrderByDescending(f => File.GetLastWriteTime(f)).FirstOrDefault();
-                        DebugLogger.Info($"[PARAM_TRANSFER] Loading host parameters from: {Path.GetFileName(xmlFile)}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[PARAM_TRANSFER] Loading host parameters from: {Path.GetFileName(xmlFile)}");
                         
                         // Load the XML file and extract host parameter values
                 var serializer = new System.Xml.Serialization.XmlSerializer(typeof(Models.OpeningFilter));
@@ -1456,19 +1571,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             
                             if (values.Count > 0)
                             {
-                                DebugLogger.Info($"[PARAM_TRANSFER] Found {values.Count} host values for parameter '{parameterName}' in category '{category}'");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[PARAM_TRANSFER] Found {values.Count} host values for parameter '{parameterName}' in category '{category}'");
                                 return values.Distinct().ToList();
                             }
                         }
                     }
                 }
                 
-                DebugLogger.Info($"[PARAM_TRANSFER] No host values found for parameter '{parameterName}' in category '{category}'");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[PARAM_TRANSFER] No host values found for parameter '{parameterName}' in category '{category}'");
                 return new List<string>();
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[PARAM_TRANSFER] Error getting host parameters from category XML: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[PARAM_TRANSFER] Error getting host parameters from category XML: {ex.Message}");
                 return new List<string>();
             }
         }
@@ -1478,18 +1596,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         private void DiagnoseFilterIndex(Dictionary<string, Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)>> filterIndex)
         {
-            DebugLogger.Info($"[DIAGNOSE_FILTER_INDEX] Filter index has {filterIndex.Count} XML files");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[DIAGNOSE_FILTER_INDEX] Filter index has {filterIndex.Count} XML files");
             
             foreach (var kvp in filterIndex)
             {
-                DebugLogger.Info($"[DIAGNOSE_FILTER_INDEX] XML '{kvp.Key}': {kvp.Value.Count} sleeves");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[DIAGNOSE_FILTER_INDEX] XML '{kvp.Key}': {kvp.Value.Count} sleeves");
                 
                 if (kvp.Value.Count > 0)
                 {
                     var firstSleeve = kvp.Value.First();
-                    DebugLogger.Info($"[DIAGNOSE_FILTER_INDEX]   First sleeve {firstSleeve.Key}:");
-                    DebugLogger.Info($"[DIAGNOSE_FILTER_INDEX]     MEP params: {string.Join(", ", firstSleeve.Value.mep.Keys)}");
-                    DebugLogger.Info($"[DIAGNOSE_FILTER_INDEX]     Host params: {string.Join(", ", firstSleeve.Value.host.Keys)}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[DIAGNOSE_FILTER_INDEX]   First sleeve {firstSleeve.Key}:");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[DIAGNOSE_FILTER_INDEX]     MEP params: {string.Join(", ", firstSleeve.Value.mep.Keys)}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[DIAGNOSE_FILTER_INDEX]     Host params: {string.Join(", ", firstSleeve.Value.host.Keys)}");
                 }
             }
         }
@@ -1504,11 +1627,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var filtersDirectory = ProjectPathService.GetFiltersDirectory(null);
                 
                 var allXmlFiles = Directory.GetFiles(filtersDirectory, "*.xml");
-                DebugLogger.Info($"[DIAGNOSE] All XML files in {filtersDirectory}:");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[DIAGNOSE] All XML files in {filtersDirectory}:");
                 
                 foreach (var xmlFile in allXmlFiles)
                 {
-                    DebugLogger.Info($"[DIAGNOSE]   - {Path.GetFileName(xmlFile)}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[DIAGNOSE]   - {Path.GetFileName(xmlFile)}");
                     
                     try
                     {
@@ -1518,25 +1643,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var filter = (Models.OpeningFilter)serializer.Deserialize(reader);
                             var zones = filter?.ClashZoneStorage?.ClashZones ?? new List<Models.ClashZone>();
                             
-                            DebugLogger.Info($"[DIAGNOSE]     {zones.Count} clash zones");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[DIAGNOSE]     {zones.Count} clash zones");
                             
                             if (zones.Count > 0)
                             {
                                 var firstZone = zones[0];
-                                DebugLogger.Info($"[DIAGNOSE]     First zone MEP params: {string.Join(", ", firstZone.MepParameterValues?.Select(p => p.Key) ?? new List<string>())}");
-                                DebugLogger.Info($"[DIAGNOSE]     First zone Host params: {string.Join(", ", firstZone.HostParameterValues?.Select(p => p.Key) ?? new List<string>())}");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[DIAGNOSE]     First zone MEP params: {string.Join(", ", firstZone.MepParameterValues?.Select(p => p.Key) ?? new List<string>())}");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[DIAGNOSE]     First zone Host params: {string.Join(", ", firstZone.HostParameterValues?.Select(p => p.Key) ?? new List<string>())}");
                             }
                         }
                     }
                     catch (Exception ex)
                     {
-                        DebugLogger.Error($"[DIAGNOSE]     Error reading file: {ex.Message}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Error($"[DIAGNOSE]     Error reading file: {ex.Message}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[DIAGNOSE] Error: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[DIAGNOSE] Error: {ex.Message}");
             }
         }
         
@@ -1559,16 +1689,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
                 }
                 
-                DebugLogger.Info($"[PARAM_TRANSFER] Looking for XML files in: {filtersDirectory}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[PARAM_TRANSFER] Looking for XML files in: {filtersDirectory}");
                 string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [PARAM_TRANSFER] Looking for XML files in: {filtersDirectory}\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [PARAM_TRANSFER] Looking for XML files in: {filtersDirectory}\n");
+                    }
                 }
                 
                 if (!Directory.Exists(filtersDirectory)) 
                 {
-                    DebugLogger.Warning($"[PARAM_TRANSFER] Filters directory does not exist: {filtersDirectory}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[PARAM_TRANSFER] Filters directory does not exist: {filtersDirectory}");
                     return filterIndex;
                 }
                 
@@ -1582,11 +1717,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                            !fileName.EndsWith("_conditions.xml", StringComparison.OrdinalIgnoreCase);
                 }).ToList();
                 
-                DebugLogger.Info($"[PARAM_TRANSFER] Found {allXmlFiles.Length} XML files total, {xmlFiles.Count} filter files (excluded {allXmlFiles.Length - xmlFiles.Count} global/CONDITIONS files)");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[PARAM_TRANSFER] Found {allXmlFiles.Length} XML files total, {xmlFiles.Count} filter files (excluded {allXmlFiles.Length - xmlFiles.Count} global/CONDITIONS files)");
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     string transferDebugLogPath2 = SafeFileLogger.GetLogFilePath("transfer_debug.log");
-                    System.IO.File.AppendAllText(transferDebugLogPath2, $"[{DateTime.Now}] [PARAM_TRANSFER] Found {allXmlFiles.Length} XML files total, {xmlFiles.Count} filter files\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(transferDebugLogPath2, $"[{DateTime.Now}] [PARAM_TRANSFER] Found {allXmlFiles.Length} XML files total, {xmlFiles.Count} filter files\n");
+                    }
                 }
 
                 foreach (var xmlFile in xmlFiles)
@@ -1597,9 +1736,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Info($"[PARAM_TRANSFER] Loading XML file: {fileName}");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[PARAM_TRANSFER] Loading XML file: {fileName}");
                             string transferDebugLogPath3 = SafeFileLogger.GetLogFilePath("transfer_debug.log");
-                            System.IO.File.AppendAllText(transferDebugLogPath3, $"[{DateTime.Now}] [PARAM_TRANSFER] Loading XML file: {fileName}\n");
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                File.AppendAllText(transferDebugLogPath3, $"[{DateTime.Now}] [PARAM_TRANSFER] Loading XML file: {fileName}\n");
+                            }
                         }
 
                 var serializer = new System.Xml.Serialization.XmlSerializer(typeof(Models.OpeningFilter));
@@ -1610,9 +1753,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             
                             if (!DeploymentConfiguration.DeploymentMode && zones.Count > 0)
                             {
-                                DebugLogger.Info($"[PARAM_TRANSFER] Loaded {zones.Count} clash zones from {fileName}");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[PARAM_TRANSFER] Loaded {zones.Count} clash zones from {fileName}");
                                 string transferDebugLogPath4 = SafeFileLogger.GetLogFilePath("transfer_debug.log");
-                                System.IO.File.AppendAllText(transferDebugLogPath4, $"[{DateTime.Now}] [PARAM_TRANSFER] Loaded {zones.Count} clash zones from {fileName}\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    File.AppendAllText(transferDebugLogPath4, $"[{DateTime.Now}] [PARAM_TRANSFER] Loaded {zones.Count} clash zones from {fileName}\n");
+                                }
                             }
                             
                             var filterData = new Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)>();
@@ -1626,7 +1773,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     var hostParams = zone.HostParameterValues?.ToDictionary(p => p.Key, p => p.Value) ?? new Dictionary<string, string>();
                                     
                                     filterData[zone.SleeveInstanceId] = (mepParams, hostParams);
-                                    DebugLogger.Info($"[PARAM_TRANSFER] Added individual sleeve {zone.SleeveInstanceId} to index");
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[PARAM_TRANSFER] Added individual sleeve {zone.SleeveInstanceId} to index");
                                 }
                             }
                             
@@ -1639,7 +1787,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 var clusterSleeveId = clusterGroup.Key;
                                 var clusterZones = clusterGroup.ToList();
                                 
-                                DebugLogger.Info($"[PARAM_TRANSFER] Aggregating {clusterZones.Count} clash zones for cluster sleeve {clusterSleeveId}");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[PARAM_TRANSFER] Aggregating {clusterZones.Count} clash zones for cluster sleeve {clusterSleeveId}");
                                 
                                 // Aggregate MEP parameters
                                 var aggregatedMepParams = new Dictionary<string, string>();
@@ -1664,8 +1813,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                     if (parts.Length > 0 && !string.IsNullOrEmpty(parts[0]))
                                                     {
                                                         cleanValue = parts[0].Trim();
-                                                        DebugLogger.Info($"[PARAM_TRANSFER] Cleaned Size parameter: '{param.Value}' → '{cleanValue}'");
-                                                        DebugLogger.Info($"[{DateTime.Now}] [PARAM_TRANSFER] Cleaned Size: '{param.Value}' → '{cleanValue}'\n");
+                                                                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                            DebugLogger.Info($"[PARAM_TRANSFER] Cleaned Size parameter: '{param.Value}' → '{cleanValue}'");
+                                                                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                            DebugLogger.Info($"[{DateTime.Now}] [PARAM_TRANSFER] Cleaned Size: '{param.Value}' → '{cleanValue}'\n");
                                                     }
                                                 }
                                                 // ✅ Note: If Size doesn't contain "-", cleanValue = param.Value (unchanged) - handles both formats correctly
@@ -1686,7 +1837,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                     {
                                                         // ✅ SIZE PARAMETER: Always add all values, including duplicates
                                                         aggregatedMepParams[param.Key] = $"{existingValue}, {cleanValue}";
-                                                        DebugLogger.Info($"[PARAM_TRANSFER] Added size '{cleanValue}' to cluster (including duplicates). Total sizes: {existingValue}, {cleanValue}");
+                                                                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                            DebugLogger.Info($"[PARAM_TRANSFER] Added size '{cleanValue}' to cluster (including duplicates). Total sizes: {existingValue}, {cleanValue}");
                                                     }
                                                     else
                                                     {
@@ -1735,34 +1887,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 }
                                 
                                 filterData[clusterSleeveId] = (aggregatedMepParams, aggregatedHostParams);
-                                DebugLogger.Info($"[PARAM_TRANSFER] Added aggregated cluster sleeve {clusterSleeveId} with {aggregatedMepParams.Count} MEP params and {aggregatedHostParams.Count} host params");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[PARAM_TRANSFER] Added aggregated cluster sleeve {clusterSleeveId} with {aggregatedMepParams.Count} MEP params and {aggregatedHostParams.Count} host params");
                             }
                             
                             filterIndex[fileName] = filterData;
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                DebugLogger.Info($"[PARAM_TRANSFER] Built index for {fileName}: {filterData.Count} sleeves");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[PARAM_TRANSFER] Built index for {fileName}: {filterData.Count} sleeves");
                                 string transferDebugLogPath5 = SafeFileLogger.GetLogFilePath("transfer_debug.log");
-                                System.IO.File.AppendAllText(transferDebugLogPath5, $"[{DateTime.Now}] [PARAM_TRANSFER] Built index for {fileName}: {filterData.Count} sleeves\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    File.AppendAllText(transferDebugLogPath5, $"[{DateTime.Now}] [PARAM_TRANSFER] Built index for {fileName}: {filterData.Count} sleeves\n");
+                                }
                             }
                         }
                     }
                     catch (Exception ex)
                     {
-                        DebugLogger.Error($"[PARAM_TRANSFER] Error loading {fileName}: {ex.Message}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Error($"[PARAM_TRANSFER] Error loading {fileName}: {ex.Message}");
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             string transferDebugLogPath6 = SafeFileLogger.GetLogFilePath("transfer_debug.log");
-                            System.IO.File.AppendAllText(transferDebugLogPath6, $"[{DateTime.Now}] [PARAM_TRANSFER] ERROR loading {fileName}: {ex.Message}\n");
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                File.AppendAllText(transferDebugLogPath6, $"[{DateTime.Now}] [PARAM_TRANSFER] ERROR loading {fileName}: {ex.Message}\n");
+                            }
                         }
                     }
                 }
                 
-                DebugLogger.Info($"[PARAM_TRANSFER] Filter index built with {filterIndex.Count} XML files");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[PARAM_TRANSFER] Filter index built with {filterIndex.Count} XML files");
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     string transferDebugLogPath7 = SafeFileLogger.GetLogFilePath("transfer_debug.log");
-                    System.IO.File.AppendAllText(transferDebugLogPath7, $"[{DateTime.Now}] [PARAM_TRANSFER] Filter index built with {filterIndex.Count} XML files\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(transferDebugLogPath7, $"[{DateTime.Now}] [PARAM_TRANSFER] Filter index built with {filterIndex.Count} XML files\n");
+                    }
                     if (filterIndex.Count > 0)
                     {
                         System.IO.File.AppendAllText(transferDebugLogPath7, $"[{DateTime.Now}] [PARAM_TRANSFER] Available filter keys: {string.Join(", ", filterIndex.Keys.Take(10))}\n");
@@ -1771,8 +1936,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[PARAM_TRANSFER] Error building filter index: {ex.Message}");
-                DebugLogger.Info($"[{DateTime.Now}] [PARAM_TRANSFER] Error building filter index: {ex.Message}\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[PARAM_TRANSFER] Error building filter index: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[{DateTime.Now}] [PARAM_TRANSFER] Error building filter index: {ex.Message}\n");
             }
             
             return filterIndex;
@@ -2145,7 +2312,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"Failed to get current parameter transfer configuration: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"Failed to get current parameter transfer configuration: {ex.Message}");
                 return null;
             }
         }
@@ -2171,12 +2339,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     serializer.Serialize(writer, config);
                 }
                 
-                DebugLogger.Info($"Saved parameter transfer configuration to: {configFile}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"Saved parameter transfer configuration to: {configFile}");
                 return true;
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"Failed to save parameter transfer configuration: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"Failed to save parameter transfer configuration: {ex.Message}");
                 return false;
             }
         }
@@ -2220,17 +2390,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                DebugLogger.Info($"[AGGREGATE] Getting aggregated parameters for cluster sleeve {clusterSleeveId}, parameter '{parameterName}', useHost={useHost}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[AGGREGATE] Getting aggregated parameters for cluster sleeve {clusterSleeveId}, parameter '{parameterName}', useHost={useHost}");
                 
                 // The parameters are already aggregated in the filter index
-                DebugLogger.Info($"[AGGREGATE] Looking for cluster sleeve {clusterSleeveId} in filterData with {filterData.Count} entries");
-                DebugLogger.Info($"[{DateTime.Now}] [AGGREGATE] Looking for cluster sleeve {clusterSleeveId} in filterData with {filterData.Count} entries\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[AGGREGATE] Looking for cluster sleeve {clusterSleeveId} in filterData with {filterData.Count} entries");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[{DateTime.Now}] [AGGREGATE] Looking for cluster sleeve {clusterSleeveId} in filterData with {filterData.Count} entries\n");
                 
                 // ✅ DEBUG: Log all cluster sleeve IDs in filterData
                 var clusterIdsInData = filterData.Keys.Where(k => k > 100000).Take(10).ToList(); // Cluster IDs are typically large numbers
                 if (clusterIdsInData.Count > 0)
                 {
-                    DebugLogger.Info($"[AGGREGATE] Sample cluster sleeve IDs in filterData: {string.Join(", ", clusterIdsInData)}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[AGGREGATE] Sample cluster sleeve IDs in filterData: {string.Join(", ", clusterIdsInData)}");
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
@@ -2241,7 +2415,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (filterData.TryGetValue(clusterSleeveId, out var paramBags))
                 {
                     var sourceParams = useHost ? paramBags.host : paramBags.mep;
-                    DebugLogger.Info($"[AGGREGATE] Found cluster sleeve {clusterSleeveId}, has {sourceParams.Count} {(useHost ? "host" : "MEP")} parameters");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[AGGREGATE] Found cluster sleeve {clusterSleeveId}, has {sourceParams.Count} {(useHost ? "host" : "MEP")} parameters");
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         string transferDebugLogPath2 = SafeFileLogger.GetLogFilePath("transfer_debug.log");
@@ -2250,12 +2425,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     if (sourceParams.TryGetValue(parameterName, out var paramValue) && !string.IsNullOrEmpty(paramValue))
                     {
-                        DebugLogger.Info($"[AGGREGATE] Found aggregated parameter '{parameterName}' = '{paramValue}' for cluster sleeve {clusterSleeveId}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[AGGREGATE] Found aggregated parameter '{parameterName}' = '{paramValue}' for cluster sleeve {clusterSleeveId}");
                         return paramValue;
                     }
                     else
                     {
-                        DebugLogger.Warning($"[AGGREGATE] Parameter '{parameterName}' not found in aggregated data for cluster sleeve {clusterSleeveId}. Available params: {string.Join(", ", sourceParams.Keys)}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[AGGREGATE] Parameter '{parameterName}' not found in aggregated data for cluster sleeve {clusterSleeveId}. Available params: {string.Join(", ", sourceParams.Keys)}");
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             string transferDebugLogPath3 = SafeFileLogger.GetLogFilePath("transfer_debug.log");
@@ -2266,7 +2443,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 else
                 {
-                    DebugLogger.Warning($"[AGGREGATE] Cluster sleeve {clusterSleeveId} not found in filter data (checked {filterData.Count} entries)");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[AGGREGATE] Cluster sleeve {clusterSleeveId} not found in filter data (checked {filterData.Count} entries)");
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         string transferDebugLogPath4 = SafeFileLogger.GetLogFilePath("transfer_debug.log");
@@ -2277,7 +2455,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[AGGREGATE] Error getting aggregated cluster parameters: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[AGGREGATE] Error getting aggregated cluster parameters: {ex.Message}");
                 return null;
             }
         }

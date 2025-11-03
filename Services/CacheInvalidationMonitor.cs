@@ -54,7 +54,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     _elementVersions[elementId] = currentVersion;
                     _lastChecked[elementId] = DateTime.Now;
                     
-                    DebugLogger.Info($"[CacheInvalidationMonitor] Element {elementId} changed, invalidating cache");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[CacheInvalidationMonitor] Element {elementId} changed, invalidating cache");
                     InvalidateElementCache(elementId);
                     return true;
                 }
@@ -68,7 +69,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                DebugLogger.Warning($"[CacheInvalidationMonitor] Error checking invalidation for element {element?.Id}: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[CacheInvalidationMonitor] Error checking invalidation for element {element?.Id}: {ex.Message}");
                 return false;
             }
         }
@@ -88,12 +90,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 _elementVersions.TryRemove(elementId, out _);
                 _lastChecked[elementId] = DateTime.Now;
                 
-                DebugLogger.Info($"[CacheInvalidationMonitor] Marked element {elementId} as changed");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[CacheInvalidationMonitor] Marked element {elementId} as changed");
                 InvalidateElementCache(elementId);
             }
             catch (Exception ex)
             {
-                DebugLogger.Warning($"[CacheInvalidationMonitor] Error marking element {elementId} as changed: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[CacheInvalidationMonitor] Error marking element {elementId} as changed: {ex.Message}");
             }
         }
         
@@ -108,11 +112,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 _elementVersions.Clear();
                 _lastChecked.Clear();
                 
-                DebugLogger.Info($"[CacheInvalidationMonitor] Cleared {count} cached element versions");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[CacheInvalidationMonitor] Cleared {count} cached element versions");
             }
             catch (Exception ex)
             {
-                DebugLogger.Warning($"[CacheInvalidationMonitor] Error clearing versions: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[CacheInvalidationMonitor] Error clearing versions: {ex.Message}");
             }
         }
         
@@ -133,7 +139,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                DebugLogger.Warning($"[CacheInvalidationMonitor] Error getting statistics: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[CacheInvalidationMonitor] Error getting statistics: {ex.Message}");
                 return new CacheStatistics { IsEnabled = false };
             }
         }
@@ -179,11 +186,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // This would be implemented when GeometryCacheService is created
                 
                 // For now, just log the invalidation
-                DebugLogger.Info($"[CacheInvalidationMonitor] Invalidated cache for element {elementId}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[CacheInvalidationMonitor] Invalidated cache for element {elementId}");
             }
             catch (Exception ex)
             {
-                DebugLogger.Warning($"[CacheInvalidationMonitor] Error invalidating cache for element {elementId}: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[CacheInvalidationMonitor] Error invalidating cache for element {elementId}: {ex.Message}");
             }
         }
         

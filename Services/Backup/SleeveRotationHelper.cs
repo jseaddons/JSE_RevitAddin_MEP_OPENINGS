@@ -29,16 +29,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             double dy = bbox.Max.Y - bbox.Min.Y;
             double tol = 1e-6;
 
-            DebugLogger.Log($"ElementId={elementId.IntegerValue} dx={dx}, dy={dy}, width={elemWidth}, height={elemHeight}");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Log($"ElementId={elementId.IntegerValue} dx={dx}, dy={dy}, width={elemWidth}, height={elemHeight}");
 
             if (Math.Abs(dx - elemWidth) < tol && Math.Abs(dy - elemHeight) < tol)
             {
-                DebugLogger.Log("dx matches width, dy matches height, no rotation needed.");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log("dx matches width, dy matches height, no rotation needed.");
                 return false;
             }
             else if (Math.Abs(dx - elemHeight) < tol && Math.Abs(dy - elemWidth) < tol)
             {
-                DebugLogger.Log("dx matches height, dy matches width, rotation needed.");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log("dx matches height, dy matches width, rotation needed.");
                 // Rotate 90 degrees about Z axis at placementPoint
                 Line axis = Line.CreateBound(placementPoint, placementPoint + XYZ.BasisZ);
                 ElementTransformUtils.RotateElement(doc, sleeveInstance.Id, axis, Math.PI / 2);
@@ -46,7 +49,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             else
             {
-                DebugLogger.Log("Ambiguous bounding box/parameter match, no rotation applied.");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log("Ambiguous bounding box/parameter match, no rotation applied.");
                 return false;
             }
         }

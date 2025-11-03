@@ -11,7 +11,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public FailureProcessingResult PreprocessFailures(FailuresAccessor failuresAccessor)
         {
             var failures = failuresAccessor.GetFailureMessages();
-            DebugLogger.Log($"Checking for failures to suppress: {failures.Count} messages found");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Log($"Checking for failures to suppress: {failures.Count} messages found");
 
             foreach (var failure in failures)
             {
@@ -19,7 +20,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (failure.GetSeverity() == FailureSeverity.Warning || failure.GetSeverity() == FailureSeverity.Error)
                 {
                     string desc = failure.GetDescriptionText();
-                    DebugLogger.Log($"Failure detected: {desc} (Severity: {failure.GetSeverity()})");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Log($"Failure detected: {desc} (Severity: {failure.GetSeverity()})");
                 }
 
                 // Suppress warnings based on descriptions related to duplicate elements
@@ -31,7 +33,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         desc.IndexOf("duplicate", StringComparison.OrdinalIgnoreCase) >= 0 ||
                         desc.IndexOf("same place", StringComparison.OrdinalIgnoreCase) >= 0))
                     {
-                        DebugLogger.Log($"Suppressing duplicate-related warning: {desc}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Log($"Suppressing duplicate-related warning: {desc}");
                         failuresAccessor.DeleteWarning(failure);
                     }
                 }

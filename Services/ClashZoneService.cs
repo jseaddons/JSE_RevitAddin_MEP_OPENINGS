@@ -198,6 +198,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var asm = System.Reflection.Assembly.GetExecutingAssembly();
                 var ver = System.Diagnostics.FileVersionInfo.GetVersionInfo(asm.Location)?.FileVersion ?? "?";
                 var ts = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] [BUILD] {ts} Assembly={System.IO.Path.GetFileName(asm.Location)} Version={ver} Path={asm.Location}\n");
             }
             catch { }
@@ -490,7 +491,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         var hostThickness = GetElementThickness(structuralElement);
                         var mepDir = GetMepElementOrientation(mepElement);
-                        var hostNormal = GetStructuralElementNormal(structuralElement);
+                        var hostNormal = WallDirectionService.GetStructuralElementNormal(structuralElement); // ✅ OOP: Use centralized service
                         var (mepW, mepH) = GetMepElementDimensions(mepElement);
                         var mepCat = GetElementCategoryName(mepElement);
 
@@ -1399,11 +1400,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 new ElementId(mepIdValue), 
                 new ElementId(structuralIdValue)) ?? 
                 clashZonesList.FirstOrDefault(cz => 
-                {
-                    int czMepId = cz.MepElementId?.IntegerValue ?? cz.MepElementIdValue;
-                    int czStructuralId = cz.StructuralElementId?.IntegerValue ?? cz.StructuralElementIdValue;
-                    return czMepId == mepIdValue && czStructuralId == structuralIdValue;
-                });
+            {
+                int czMepId = cz.MepElementId?.IntegerValue ?? cz.MepElementIdValue;
+                int czStructuralId = cz.StructuralElementId?.IntegerValue ?? cz.StructuralElementIdValue;
+                return czMepId == mepIdValue && czStructuralId == structuralIdValue;
+            });
             
             if (legacyMatch != null)
             {
@@ -1603,8 +1604,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 clashZone.SleeveInstanceId = -1;
                                 clashZone.SleeveFamilyName = string.Empty;
                                 
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [RESET-ALL] ClashZone {clashZone.Id}: Cluster sleeve deleted/invalid, ALL flags reset\n");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [RESET-ALL] FLAGS: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}\n");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [RESET-ALL] PARAMS: SleeveInstanceId={clashZone.SleeveInstanceId}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}\n");
                                 
                                 clashZone.LastUpdated = DateTime.Now;
@@ -1674,7 +1678,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // ⚠️ CRITICAL: Log flag states AFTER reset operation completion
                     if (resetCount > 0)
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [RESET-COMPLETE] Reset operation completed for {resetCount} clash zones\n");
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [RESET-COMPLETE] Saving flags to both Global XML and Filter XML\n");
                         
                         // ✅ CRITICAL FIX: Save flags to Global XML after reset (legacy path)
@@ -1694,12 +1700,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 foreach (var kvp in updatesByCategory)
                                 {
                                     GlobalIndexService.UpsertFlagsWithIds(document, kvp.Key, kvp.Value);
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[RESET-FLAGS] Updated Global XML for category: {kvp.Key}, {kvp.Value.Count()} entries (legacy path)");
                                 }
                             }
                         }
                         catch (Exception saveEx)
                         {
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Warning($"[RESET-FLAGS] Error saving reset flags to Global XML: {saveEx.Message}");
                         }
                     }
@@ -1753,9 +1761,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var (mepWidth, mepHeight) = GetMepElementDimensions(mepElement);
             var mepOrientation = GetMepElementOrientation(mepElement);
             
-            // ⚠️ CRITICAL OPTIMIZATION: Calculate wall direction during refresh (one calculation, many uses)
-            var wallDirection = GetWallDirection(structuralElement);
-            var wallDirectionType = GetWallDirectionType(structuralElement, wallDirection);
+            // ✅ OOP REFACTORING: Use centralized WallDirectionService (eliminates code duplication)
+            var wallDirection = WallDirectionService.GetWallDirection(structuralElement);
+            var wallDirectionType = WallDirectionService.GetWallDirectionType(structuralElement, wallDirection);
             
             // 🛡️ ARCHITECTURE FIX: Store RAW dimensions only (no pre-calculated clearance)
             // All clearance (simple and complex) will be handled by CONDITIONS service during placement
@@ -1766,6 +1774,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             double finalWidth = mepWidth;
             double finalHeight = mepHeight;
             
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[CLASH_DEBUG] Element {mepElement.Id}: Raw dimensions {mepWidth:F3}x{mepHeight:F3} (clearance will be handled by CONDITIONS service during placement)");
             
             // Get pipe opening type if applicable
@@ -1780,11 +1789,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ⚠️ CRITICAL: Get MEP element category for category-specific processing ⚠️
             // DO NOT REMOVE: This is essential for each placement service to validate its category
             var mepCategory = GetElementCategoryName(mepElement);
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[CLASH_DEBUG] Element {mepElement.Id} ({mepElement.GetType().Name}): Category='{mepCategory}', Element.Category.Name='{mepElement.Category?.Name}'");
             
             // ✅ FIX: Skip pipe accessories when processing pipes filter
             if (mepCategory == "Pipe Accessories")
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] SKIP: Pipe Accessories element {mepElement.Id} - not processing unwanted clash zones");
                 return null; // Skip creating clash zone for pipe accessories
             }
@@ -1886,12 +1897,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DocumentPath = document.PathName,
                 StructuralElementDocumentTitle = structuralElement.Document.Title,
                 StructuralElementType = structuralElementType,
-                HostOrientation = GetHostOrientation(structuralElement), // Pre-calculate orientation (X/Y for walls/framing)
+                HostOrientation = WallDirectionService.GetHostOrientation(structuralElement), // ✅ OOP: Use centralized service
                 StructuralElementThickness = GetElementThickness(structuralElement),
                 WallThickness = GetWallThickness(structuralElement),
                 FramingThickness = GetFramingThickness(structuralElement),
                 
-                StructuralElementNormal = GetStructuralElementNormal(structuralElement), // Pre-calculate normal/direction for orientation
+                StructuralElementNormal = WallDirectionService.GetStructuralElementNormal(structuralElement), // ✅ OOP: Use centralized service
                 WallDirection = wallDirection, // Pre-calculate wall direction for robust X-wall/Y-wall detection
                 WallDirectionType = wallDirectionType, // Pre-calculate wall direction type for efficient rotation logic
                 MepElementOrientation = mepOrientation, // Pre-calculate MEP element orientation vector for rotation logic
@@ -1917,7 +1928,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 var th = clashZone.StructuralElementThickness;
                 var thMm = UnitUtils.ConvertFromInternalUnits(th, UnitTypeId.Millimeters);
-                Services.DebugLogger.Info($"[CLASH-THICKNESS-ASSIGN] structuralId={structuralElement.Id.IntegerValue} thickness={th:F6}ft ({thMm:F1}mm)");
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[CLASH-THICKNESS-ASSIGN] structuralId={structuralElement.Id.IntegerValue} thickness={th:F6}ft ({thMm:F1}mm)");
             }
             catch { }
             
@@ -1940,79 +1952,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Get structural element type name for depth calculation
         /// </summary>
-        /// <summary>
-        /// Get host orientation (X or Y) for walls and structural framing based on their direction
-        /// Pre-calculated during refresh for efficient clustering
-        /// </summary>
-        private string GetHostOrientation(Element structuralElement)
-        {
-            try
-            {
-                if (structuralElement is Wall wall)
-                {
-                    if (wall.Location is LocationCurve locationCurve)
-                    {
-                        var curve = locationCurve.Curve;
-                        if (curve is Line line)
-                        {
-                            var direction = line.Direction.Normalize();
-                            
-                            // Check if wall is more aligned with X or Y axis
-                            double absX = Math.Abs(direction.X);
-                            double absY = Math.Abs(direction.Y);
-                            
-                            // If wall runs along X axis (direction is primarily in X), orientation is X
-                            // If wall runs along Y axis (direction is primarily in Y), orientation is Y
-                            if (absX > absY)
-                            {
-                                _log($"[HOST-ORIENT] Wall {wall.Id}: Direction=({direction.X:F3},{direction.Y:F3}), absX={absX:F3} > absY={absY:F3} → Orientation=X");
-                                return "X"; // Wall runs along X axis
-                            }
-                            else
-                            {
-                                _log($"[HOST-ORIENT] Wall {wall.Id}: Direction=({direction.X:F3},{direction.Y:F3}), absY={absY:F3} > absX={absX:F3} → Orientation=Y");
-                                return "Y"; // Wall runs along Y axis
-                            }
-                        }
-                    }
-                }
-                else if (structuralElement is FamilyInstance famInst && 
-                         famInst.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
-                {
-                    if (famInst.Location is LocationCurve locationCurve)
-                    {
-                        var curve = locationCurve.Curve;
-                        if (curve is Line line)
-                        {
-                            var direction = line.Direction.Normalize();
-                            
-                            // Same logic as walls
-                            double absX = Math.Abs(direction.X);
-                            double absY = Math.Abs(direction.Y);
-                            
-                            if (absX > absY)
-                            {
-                                _log($"[HOST-ORIENT] Framing {famInst.Id}: Direction=({direction.X:F3},{direction.Y:F3}), absX={absX:F3} > absY={absY:F3} → Orientation=X");
-                                return "X";
-                            }
-                            else
-                            {
-                                _log($"[HOST-ORIENT] Framing {famInst.Id}: Direction=({direction.X:F3},{direction.Y:F3}), absY={absY:F3} > absX={absX:F3} → Orientation=Y");
-                                return "Y";
-                            }
-                        }
-                    }
-                }
-                
-                // Floors don't need orientation
-                return "";
-            }
-            catch (Exception ex)
-            {
-                _log($"[HOST-ORIENT] Error determining orientation: {ex.Message}");
-                return "";
-            }
-        }
+        // ✅ OOP REFACTORING: Removed GetHostOrientation() - now uses WallDirectionService.GetHostOrientation()
 
         private string GetStructuralElementType(Element element)
         {
@@ -2399,6 +2339,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                         if (typeElem == null)
                         {
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Warning($"[FRAMING-THICKNESS] Could not get type element for framing {element.Id.IntegerValue}");
                             return 0.1;
                         }
@@ -2419,6 +2360,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     bVal = p.AsDouble();
                                     if (bVal > 0)
                                     {
+                                                                                if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Info($"[FRAMING-THICKNESS] Found parameter '{paramName}' = {bVal:F6}ft on framing {element.Id.IntegerValue}");
                                         break;
                                     }
@@ -2426,6 +2368,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                             catch (Exception ex)
                             {
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Warning($"[FRAMING-THICKNESS] Error reading parameter '{paramName}': {ex.Message}");
                             }
                         }
@@ -2452,10 +2395,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     }
                                     parts.Add(name + ":" + val);
                                 }
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[FRAMING-THICKNESS-PARAMS] typeId={typeId.IntegerValue}: {string.Join(", ", parts)}");
                             }
                             catch (Exception ex)
                             {
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Warning($"[FRAMING-THICKNESS] Error logging parameters: {ex.Message}");
                             }
                         }
@@ -2464,10 +2409,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         try
                         {
                             var valMm = UnitUtils.ConvertFromInternalUnits(bVal, UnitTypeId.Millimeters);
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[FRAMING-THICKNESS] id={element.Id.IntegerValue}: key={(p?.Definition?.Name ?? "<null>")} value={valMm:F1}mm");
                         }
                         catch (Exception ex)
                         {
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Warning($"[FRAMING-THICKNESS] Error converting units: {ex.Message}");
                         }
 
@@ -2475,6 +2422,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     catch (Exception ex)
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Warning($"[FRAMING-THICKNESS] Error getting framing thickness: {ex.Message}");
                         return 0.1;
                     }
@@ -2497,6 +2445,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (element is Wall wall)
                 {
                     double thickness = wall.Width;
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[WALL-THICKNESS] Wall {element.Id.IntegerValue}: thickness={UnitUtils.ConvertFromInternalUnits(thickness, UnitTypeId.Millimeters):F1}mm");
                     return thickness;
                 }
@@ -2504,6 +2453,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Warning($"[GetWallThickness] Error: {ex.Message}");
                 return 0.0;
             }
@@ -2528,6 +2478,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                         if (typeElem == null)
                         {
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Warning($"[FRAMING-THICKNESS] Could not get type element for framing {element.Id.IntegerValue}");
                             return 0.0;
                         }
@@ -2548,6 +2499,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     bVal = p.AsDouble();
                                     if (bVal > 0)
                                     {
+                                                                                if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Info($"[FRAMING-THICKNESS] Found parameter '{paramName}' = {bVal:F6}ft ({UnitUtils.ConvertFromInternalUnits(bVal, UnitTypeId.Millimeters):F1}mm) on framing {element.Id.IntegerValue}");
                                         break;
                                     }
@@ -2555,6 +2507,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                             catch (Exception ex)
                             {
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Warning($"[FRAMING-THICKNESS] Error reading parameter '{paramName}': {ex.Message}");
                             }
                         }
@@ -2581,10 +2534,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     }
                                     parts.Add(name + ":" + val);
                                 }
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[FRAMING-THICKNESS-PARAMS] typeId={typeId.IntegerValue}: {string.Join(", ", parts)}");
                             }
                             catch (Exception ex)
                             {
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Warning($"[FRAMING-THICKNESS] Error logging parameters: {ex.Message}");
                             }
                         }
@@ -2593,6 +2548,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     catch (Exception ex)
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Warning($"[FRAMING-THICKNESS] Error getting framing thickness: {ex.Message}");
                         return 0.0;
                     }
@@ -2601,6 +2557,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Warning($"[GetFramingThickness] Error: {ex.Message}");
                 return 0.0;
             }
@@ -2649,6 +2606,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // DEBUG: Log System Abbreviation for duct accessories
                     if (mepElement.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[{DateTime.Now}] [GET_SYSTEM_ABBREV] DUCT ACCESSORY {mepElement.Id}: System Abbreviation = '{value}'\n");
                     }
                     
@@ -2668,6 +2626,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // DEBUG: Log System Name fallback for duct accessories
                         if (mepElement.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
                         {
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[{DateTime.Now}] [GET_SYSTEM_ABBREV] DUCT ACCESSORY {mepElement.Id}: System Name fallback '{systemName}' → '{abbreviation}'\n");
                         }
                         
@@ -2678,6 +2637,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // DEBUG: Log no System Abbreviation found for duct accessories
                 if (mepElement.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[{DateTime.Now}] [GET_SYSTEM_ABBREV] DUCT ACCESSORY {mepElement.Id}: No System Abbreviation or System Name found\n");
                 }
                 
@@ -2730,186 +2690,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
         
-        /// <summary>
-        /// ⚠️ CRITICAL METHOD - DO NOT REMOVE ⚠️
-        /// Get wall direction vector for robust X-wall/Y-wall detection
-        /// Calculated during refresh for efficient sleeve rotation logic
-        /// </summary>
-        private XYZ GetWallDirection(Element element)
-        {
-            try
-            {
-                if (element is Wall wall)
-                {
-                    // Get actual wall direction (not normal)
-                    var locationCurve = wall.Location as LocationCurve;
-                    if (locationCurve != null)
-                    {
-                        var curve = locationCurve.Curve as Line;
-                        if (curve != null)
-                        {
-                            var wallDirection = curve.Direction.Normalize();
-                            
-                            // DEBUG: Log wall direction calculation
-                            DebugLogger.Info($"[WALL-DIR-CALC] Wall {wall.Id.IntegerValue}: Direction=({wallDirection.X:F3},{wallDirection.Y:F3},{wallDirection.Z:F3})");
-                            
-                            // ALSO log to placement_debug.log for immediate visibility
-                            try
-                            {
-                                DebugLogger.Info($"[WALL-DIR-CALC] Wall {wall.Id.IntegerValue}: Direction=({wallDirection.X:F3},{wallDirection.Y:F3},{wallDirection.Z:F3})\n");
-                            }
-                            catch { }
-                            
-                            return wallDirection;
-                        }
-                    }
-                }
-                else if (element is FamilyInstance famInst && 
-                         famInst.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
-                {
-                    // For structural framing, use framing direction
-                    var locationCurve = famInst.Location as LocationCurve;
-                    if (locationCurve != null)
-                    {
-                        var curve = locationCurve.Curve as Line;
-                        if (curve != null)
-                        {
-                            var framingDirection = curve.Direction.Normalize();
-                            DebugLogger.Info($"[FRAMING-DIR-CALC] Framing {famInst.Id.IntegerValue}: Direction=({framingDirection.X:F3},{framingDirection.Y:F3},{framingDirection.Z:F3})");
-                            return framingDirection;
-                        }
-                    }
-                }
-                else if (element is Floor)
-                {
-                    // For floors, direction is not applicable (use MEP orientation)
-                    return XYZ.Zero;
-                }
-                
-                return XYZ.Zero; // Default for unsupported elements
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Error($"[WALL-DIR-CALC] Error calculating wall direction: {ex.Message}");
-                return XYZ.Zero;
-            }
-        }
-        
-        /// <summary>
-        /// ⚠️ CRITICAL METHOD - DO NOT REMOVE ⚠️
-        /// Get wall direction type for efficient sleeve rotation logic
-        /// Determines if wall is X-oriented, Y-oriented, or other
-        /// </summary>
-        private string GetWallDirectionType(Element element, XYZ wallDirection)
-        {
-            try
-            {
-                if (element is Wall)
-                {
-                    if (wallDirection == XYZ.Zero)
-                        return "UNKNOWN";
-                    
-                    double absX = Math.Abs(wallDirection.X);
-                    double absY = Math.Abs(wallDirection.Y);
-                    
-                    // Determine wall orientation based on direction vector
-                    if (absX > absY)
-                    {
-                        return "X-WALL"; // Wall runs along X-axis
-                    }
-                    else if (absY > absX)
-                    {
-                        return "Y-WALL"; // Wall runs along Y-axis
-                    }
-                    else
-                    {
-                        return "DIAGONAL-WALL"; // Wall is diagonal
-                    }
-                }
-                else if (element is FamilyInstance famInst && 
-                         famInst.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
-                {
-                    return "FRAMING";
-                }
-                else if (element is Floor)
-                {
-                    return "FLOOR";
-                }
-                
-                return "UNKNOWN";
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Error($"[WALL-DIR-TYPE] Error determining wall direction type: {ex.Message}");
-                return "UNKNOWN";
-            }
-        }
-        
-        /// <summary>
-        /// Get structural element normal/direction vector for orientation calculation
-        /// For walls: returns wall normal (perpendicular to wall direction)
-        /// For floors: returns null (use MEP orientation instead)
-        /// For framing: returns framing direction
-        /// </summary>
-        private XYZ GetStructuralElementNormal(Element element)
-        {
-            try
-            {
-                if (element is Wall wall)
-                {
-                    // Get wall normal (perpendicular to wall direction)
-                    var locationCurve = wall.Location as LocationCurve;
-                    if (locationCurve != null)
-                    {
-                        var curve = locationCurve.Curve as Line;
-                        if (curve != null)
-                        {
-                            var wallDirection = curve.Direction;
-                            // FIX: For X-wall (Direction=(1,0,0)), normal should be (0,1,0) or (0,-1,0)
-                            // For Y-wall (Direction=(0,1,0)), normal should be (1,0,0) or (-1,0,0)
-                            // The original formula was correct: normal = (-Y, X, 0)
-                            var wallNormal = new XYZ(-wallDirection.Y, wallDirection.X, 0).Normalize();
-                            
-                            // DEBUG: Log wall direction and normal
-                            DebugLogger.Info($"[WALL-DIR] Wall {wall.Id.IntegerValue}: Direction=({wallDirection.X:F3},{wallDirection.Y:F3},{wallDirection.Z:F3}), Normal=({wallNormal.X:F3},{wallNormal.Y:F3},{wallNormal.Z:F3})");
-                            
-                            // ALSO log to placement_debug.log for immediate visibility
-                            try
-                            {
-                                DebugLogger.Info($"[WALL-DIR] Wall {wall.Id.IntegerValue}: Direction=({wallDirection.X:F3},{wallDirection.Y:F3},{wallDirection.Z:F3}), Normal=({wallNormal.X:F3},{wallNormal.Y:F3},{wallNormal.Z:F3})\n");
-                            }
-                            catch { }
-                            
-                            return wallNormal;
-                        }
-                    }
-                }
-                else if (element is Floor)
-                {
-                    // For floors, we don't need the normal - we use MEP orientation instead
-                    return null;
-                }
-                else if (element is FamilyInstance famInst && 
-                         famInst.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
-                {
-                    // For framing, get direction vector
-                    var locationCurve = famInst.Location as LocationCurve;
-                    if (locationCurve != null)
-                    {
-                        var curve = locationCurve.Curve as Line;
-                        if (curve != null)
-                        {
-                            return curve.Direction;
-                        }
-                    }
-                }
-                return null;
-            }
-            catch
-            {
-                return null;
-            }
-        }
+        // ✅ OOP REFACTORING: Removed GetWallDirection(), GetWallDirectionType(), GetStructuralElementNormal()
+        // All three methods replaced by WallDirectionService (eliminates code duplication):
+        // - WallDirectionService.GetWallDirection()
+        // - WallDirectionService.GetWallDirectionType()
+        // - WallDirectionService.GetStructuralElementNormal()
         
         /// <summary>
         /// Get element normal vector for walls, floors, and structural framing
@@ -3124,7 +2909,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (wallBbox == null) continue;
                         
                         // Check if bounding boxes intersect
-                        if (BoundingBoxesIntersect(damperBbox.Min, damperBbox.Max, wallBbox.Min, wallBbox.Max))
+                        if (BoundingBoxService.BoundingBoxesIntersect(damperBbox.Min, damperBbox.Max, wallBbox.Min, wallBbox.Max))
                         {
                             // Calculate intersection point (center of intersection)
                             var intersectionMin = new XYZ(
@@ -3168,12 +2953,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Check if two bounding boxes intersect
         /// </summary>
-        private bool BoundingBoxesIntersect(XYZ min1, XYZ max1, XYZ min2, XYZ max2)
-        {
-            return min1.X <= max2.X && max1.X >= min2.X &&
-                   min1.Y <= max2.Y && max1.Y >= min2.Y &&
-                   min1.Z <= max2.Z && max1.Z >= min2.Z;
-        }
+        // ✅ OOP REFACTORING: Removed duplicate BoundingBoxesIntersect - now uses BoundingBoxService.BoundingBoxesIntersect()
 
         /// <summary>
         /// FOOLPROOF METHOD: Prioritize intersections by category to ensure dampers are always processed first
@@ -3484,6 +3264,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 if (string.IsNullOrEmpty(wallDirectionType))
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning($"[GetWallOrientationFromType] WallDirectionType is null or empty, defaulting to X");
                     return "X"; // Default to X orientation
                 }
@@ -3505,14 +3286,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 else
                 {
                     orientation = "X"; // Default fallback
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning($"[GetWallOrientationFromType] Unknown wall direction type '{wallDirectionType}', defaulting to X");
                 }
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[GetWallOrientationFromType] WallDirectionType='{wallDirectionType}' → Orientation='{orientation}'");
                 return orientation;
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Warning($"[GetWallOrientationFromType] Error converting wall direction type '{wallDirectionType}': {ex.Message}");
                 return "X"; // Default to X orientation
             }
@@ -3530,6 +3314,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (mepBbox == null)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning($"[GetMepElementOrientationFromBbox] No bounding box for element {mepElement.Id}");
                     return "X"; // Default to X orientation
                 }
@@ -3549,12 +3334,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     mepOrientation = "Y"; // Width runs in Y-axis
                 }
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[GetMepElementOrientationFromBbox] Element {mepElement.Id}: BboxWidth={bboxWidth:F3}, BboxHeight={bboxHeight:F3}, Orientation={mepOrientation}");
                 
                 return mepOrientation;
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Warning($"[GetMepElementOrientationFromBbox] Error getting orientation for element {mepElement?.Id}: {ex.Message}");
                 return "X"; // Default to X orientation
             }
@@ -3567,6 +3354,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[GetMepElementOrientation] Element {mepElement.Id}: Type={mepElement.GetType().Name}, Category={mepElement.Category?.Name}, Location={mepElement.Location?.GetType().Name}");
                 
                 if (mepElement is Duct duct && duct.Location is LocationCurve curve)
@@ -3575,24 +3363,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (line != null)
                     {
                         var direction = line.Direction;
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[GetMepElementOrientation] Duct {mepElement.Id}: Direction=({direction.X:F3}, {direction.Y:F3}, {direction.Z:F3})");
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[ORIENT-DEBUG] Duct {mepElement.Id}: Direction=({direction.X:F3}, {direction.Y:F3}, {direction.Z:F3})\n");
                         
                         // ✅ FIX: ALWAYS use helper for ALL ducts - it determines X or Y width orientation
                         // No need to check if vertical - helper handles all cases
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[GetMepElementOrientation] Duct {mepElement.Id}: Checking width orientation using helper");
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[ORIENT-DEBUG] Duct {mepElement.Id}: Checking width orientation using helper\n");
                         
                         try
                         {
                             var (orientation, widthDirection) = Helpers.MepElementOrientationHelper.GetDuctWidthOrientation(duct);
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[GetMepElementOrientation] Duct {mepElement.Id}: Width orientation={orientation}, WidthDirection=({widthDirection.X:F3}, {widthDirection.Y:F3}, {widthDirection.Z:F3})");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[ORIENT-DEBUG] Duct {mepElement.Id}: Width orientation={orientation}, WidthDirection=({widthDirection.X:F3}, {widthDirection.Y:F3}, {widthDirection.Z:F3})\n");
                             return widthDirection; // Return X or Y basis vector based on width orientation
                         }
                         catch (Exception ex)
                         {
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Warning($"[GetMepElementOrientation] Error using helper for duct {mepElement.Id}: {ex.Message}");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[ORIENT-DEBUG] ERROR: {ex.Message}\n");
                             return direction; // Fallback to original direction
                         }
@@ -3601,16 +3397,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 else if (mepElement is Duct verticalDuct && verticalDuct.Location is LocationPoint point)
                 {
                     // ✅ FIX: For vertical ducts through floors, use MepElementOrientationHelper to determine X or Y orientation
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[GetMepElementOrientation] Duct {mepElement.Id}: Has LocationPoint, checking width orientation using helper");
                     
                     try
                     {
                         var (orientation, widthDirection) = Helpers.MepElementOrientationHelper.GetDuctWidthOrientation(verticalDuct);
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[GetMepElementOrientation] Duct {mepElement.Id}: Width orientation={orientation}, WidthDirection=({widthDirection.X:F3}, {widthDirection.Y:F3}, {widthDirection.Z:F3})");
                         return widthDirection; // Return X or Y basis vector based on width orientation
                     }
                     catch (Exception ex)
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Warning($"[GetMepElementOrientation] Error using helper for duct {mepElement.Id}: {ex.Message}");
                         return XYZ.BasisY; // Default fallback to Y-oriented
                     }
@@ -3623,6 +3422,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (line != null)
                     {
                         var direction = line.Direction;
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[GetMepElementOrientation] DuctAccessory {mepElement.Id}: Direction=({direction.X:F3}, {direction.Y:F3}, {direction.Z:F3})");
                         return direction;
                     }
@@ -3660,6 +3460,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var transform = damper.GetTotalTransform();
                         // Use BasisX as the "flow direction" (similar to ducts/pipes)
                         var damperDirection = transform.BasisX;
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[GetMepElementOrientation] Damper {mepElement.Id}: Direction=({damperDirection.X:F3}, {damperDirection.Y:F3}, {damperDirection.Z:F3})");
                         return damperDirection;
                     }
@@ -3669,6 +3470,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Warning($"[GetMepElementOrientation] Error getting orientation for element {mepElement?.Id}: {ex.Message}");
                 return XYZ.BasisX; // Default fallback
             }
@@ -3707,6 +3509,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var refLevel = JSE_RevitAddin_MEP_OPENINGS.Helpers.HostLevelHelper.GetHostReferenceLevel(mepElement.Document, mepElement);
                 if (refLevel != null)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[ClashZoneService] MEP Element {mepElement.Id}: Using reference level '{refLevel.Name}' (elevation: {refLevel.Elevation})");
                     return (refLevel.Name, refLevel.Elevation);
                 }
@@ -3717,6 +3520,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var level = mepElement.Document.GetElement(mepElement.LevelId) as Level;
                     if (level != null)
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[ClashZoneService] MEP Element {mepElement.Id}: Using LevelId level '{level.Name}' (elevation: {level.Elevation})");
                         return (level.Name, level.Elevation);
                     }
@@ -3726,6 +3530,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (mepElement.Location is LocationPoint locationPoint)
                 {
                     var elevation = locationPoint.Point.Z;
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[ClashZoneService] MEP Element {mepElement.Id}: Using location point elevation {elevation}");
                     return ($"Auto-Level-{elevation:F2}", elevation);
                 }
@@ -3733,11 +3538,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     var startPoint = locationCurve.Curve.GetEndPoint(0);
                     var elevation = startPoint.Z;
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[ClashZoneService] MEP Element {mepElement.Id}: Using location curve elevation {elevation}");
                     return ($"Auto-Level-{elevation:F2}", elevation);
                 }
                 
                 // Final fallback
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Warning($"[ClashZoneService] MEP Element {mepElement.Id}: No level found, using fallback 'Level 1'");
                 return ("Level 1", 0.0);
             }
@@ -3973,6 +3780,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 // 🔥 CRITICAL DEBUG: Force direct file logging to trace strategy analysis
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Analyzing element {mepElement.Id} with category '{mepCategory}'\n");
                 
                 // Use appropriate strategy based on category
@@ -3985,20 +3793,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     _ => new DuctPlacementStrategy() // Default fallback
                 };
 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Using strategy: {strategy.GetType().Name}\n");
 
                 // Get MEP element size with insulation information
                 var mepElementSize = strategy.GetMepElementSize(mepElement);
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Strategy analysis complete: Shape='{mepElementSize.Shape}', IsInsulated={mepElementSize.IsInsulated}, InsulationThickness={mepElementSize.InsulationThickness:F6}ft\n");
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[ClashZoneService] Strategy '{strategy.GetType().Name}' analyzed element {mepElement.Id}: Shape='{mepElementSize.Shape}', IsInsulated={mepElementSize.IsInsulated}");
                 
                 return mepElementSize;
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ❌ ERROR in strategy analysis: {ex.Message}\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[ClashZoneService] Error getting MEP element size with strategy: {ex.Message}");
                 return new MepElementSize(); // Return empty size on error
             }
@@ -4105,15 +3918,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (mepOrientation != null && mepOrientation != XYZ.Zero)
                     {
                         double absX = Math.Abs(mepOrientation.X);
+
                         double absY = Math.Abs(mepOrientation.Y);
                         
                         if (absX > absY)
                         {
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[ORIENT-FIX] Floor host: MEP orientation has absX={absX:F3} > absY={absY:F3} → returning X\n");
                             return "X"; // X-oriented → 0° rotation
                         }
                         else
                         {
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[ORIENT-FIX] Floor host: MEP orientation has absY={absY:F3} >= absX={absX:F3} → returning Y\n");
                             return "Y"; // Y-oriented → 90° rotation
                         }
@@ -4121,6 +3937,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     else
                     {
                         // Default to X if orientation is zero
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[ORIENT-FIX] Floor host: MEP orientation is zero/null → returning X\n");
                         return "X";
                     }
@@ -4129,12 +3946,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     // ✅ CRITICAL: For walls and framing, use wall direction type
                     // DO NOT CHANGE THIS LOGIC - WALL/FRAMING ROTATION DEPENDS ON IT
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[ORIENT-FIX] {structuralElementType} host: Using GetWallOrientationFromType({wallDirectionType})\n");
                     return GetWallOrientationFromType(wallDirectionType);
                 }
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Warning($"[GetMepOrientationDirection] Error: {ex.Message}");
                 return "X"; // Default fallback
             }

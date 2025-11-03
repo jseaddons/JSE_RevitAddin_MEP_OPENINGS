@@ -35,7 +35,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var sectionBox = SectionBoxHelper.GetSectionBoxBounds(view3D);
             if (sectionBox == null)
             {
-                DebugLogger.Log("[EfficientIntersectionService] No section box found, using full model");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log("[EfficientIntersectionService] No section box found, using full model");
             }
 
             // (diagnostics moved to after mepBBox is computed)
@@ -47,18 +48,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 var sb = sectionBox;
-                DebugLogger.Log($"[EfficientIntersectionService] DIAG SectionBox: {(sb == null ? "<null>" : $"Min={FormatXYZ(sb.Min)}, Max={FormatXYZ(sb.Max)}")}");
-                DebugLogger.Log($"[EfficientIntersectionService] DIAG MEP BBox: Min={FormatXYZ(mepBBox.Min)}, Max={FormatXYZ(mepBBox.Max)}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"[EfficientIntersectionService] DIAG SectionBox: {(sb == null ? "<null>" : $"Min={FormatXYZ(sb.Min)}, Max={FormatXYZ(sb.Max)}")}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"[EfficientIntersectionService] DIAG MEP BBox: Min={FormatXYZ(mepBBox.Min)}, Max={FormatXYZ(mepBBox.Max)}");
             }
             catch (Exception ex)
             {
-                DebugLogger.Log($"[EfficientIntersectionService] DIAG error while logging section/mep bbox: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"[EfficientIntersectionService] DIAG error while logging section/mep bbox: {ex.Message}");
             }
             
             // Pre-filter walls by section box and bounding box intersection
             var filteredWalls = GetFilteredWallsInSectionBox(mepElement.Document, view3D, sectionBox ?? new BoundingBoxXYZ(), mepBBox);
             
-            DebugLogger.Log($"[EfficientIntersectionService] Filtered walls: {filteredWalls.Count} (from section box and bbox pre-check)");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Log($"[EfficientIntersectionService] Filtered walls: {filteredWalls.Count} (from section box and bbox pre-check)");
             
             // Create optimized ReferenceIntersector with filtered elements
             ElementFilter wallFilter = new ElementCategoryFilter(BuiltInCategory.OST_Walls);
@@ -87,17 +92,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         hasLinkTransform = linkTransform != null && !linkTransform.IsIdentity;
                         var originStr = linkTransform != null ? FormatXYZ(linkTransform.Origin) : "<identity>";
                         var linkIdStr = linkInstanceInHost?.Id.IntegerValue.ToString() ?? "<no-id>";
-                        DebugLogger.Log($"[EfficientIntersectionService] DIAG using MEP link transform from RevitLinkInstance Id={linkIdStr}, Origin={originStr}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Log($"[EfficientIntersectionService] DIAG using MEP link transform from RevitLinkInstance Id={linkIdStr}, Origin={originStr}");
                     }
                     else
                     {
-                        DebugLogger.Log($"[EfficientIntersectionService] DIAG WARNING: No RevitLinkInstance found for MEP document '{mepElement.Document.Title}'");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Log($"[EfficientIntersectionService] DIAG WARNING: No RevitLinkInstance found for MEP document '{mepElement.Document.Title}'");
                     }
                 }
             }
             catch (Exception ex)
             {
-                DebugLogger.Log($"[EfficientIntersectionService] DIAG error resolving MEP link transform: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"[EfficientIntersectionService] DIAG error resolving MEP link transform: {ex.Message}");
             }
             
             // Cast rays from test points with early termination
@@ -115,11 +123,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         testPointHost = linkTransform.OfPoint(testPoint);
                         rayDirHost = linkTransform.OfVector(rayDirection);
-                        DebugLogger.Log($"[EfficientIntersectionService] DIAG transformed test point: {FormatXYZ(testPoint)} -> {FormatXYZ(testPointHost)}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Log($"[EfficientIntersectionService] DIAG transformed test point: {FormatXYZ(testPoint)} -> {FormatXYZ(testPointHost)}");
                     }
                     catch (Exception ex)
                     {
-                        DebugLogger.Log($"[EfficientIntersectionService] DIAG error transforming test point/ray to host: {ex.Message}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Log($"[EfficientIntersectionService] DIAG error transforming test point/ray to host: {ex.Message}");
                         testPointHost = testPoint;
                         rayDirHost = rayDirection;
                     }
@@ -259,7 +269,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Get pre-filtered structural elements
             var structuralElements = GetFilteredStructuralElementsInSectionBox(mepElement.Document, view3D, sectionBox, mepBBox);
             
-            DebugLogger.Log($"[EfficientIntersectionService] Processing {structuralElements.Count} pre-filtered structural elements");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Log($"[EfficientIntersectionService] Processing {structuralElements.Count} pre-filtered structural elements");
             
             // Process each structural element with solid intersection
             foreach (var (structuralElement, linkTransform) in structuralElements)
@@ -268,7 +279,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     // Get element bounding box and check intersection with MEP bbox
                     var elementBBox = GetElementBoundingBox(structuralElement, linkTransform);
-                    if (elementBBox == null || !BoundingBoxesIntersect(mepBBox, elementBBox))
+                    if (elementBBox == null || !BoundingBoxService.BoundingBoxesIntersect(mepBBox, elementBBox))
                     {
                         continue; // Skip expensive solid intersection if bboxes don't intersect
                     }
@@ -283,7 +294,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 catch (Exception ex)
                 {
-                    DebugLogger.Log($"[EfficientIntersectionService] Error processing structural element {structuralElement.Id.IntegerValue}: {ex.Message}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Log($"[EfficientIntersectionService] Error processing structural element {structuralElement.Id.IntegerValue}: {ex.Message}");
                 }
             }
             
@@ -361,15 +373,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return bbox;
         }
         
-        /// <summary>
-        /// Check if two bounding boxes intersect
-        /// </summary>
-        private static bool BoundingBoxesIntersect(BoundingBoxXYZ bbox1, BoundingBoxXYZ bbox2)
-        {
-            return !(bbox1.Max.X < bbox2.Min.X || bbox2.Max.X < bbox1.Min.X ||
-                     bbox1.Max.Y < bbox2.Min.Y || bbox2.Max.Y < bbox1.Min.Y ||
-                     bbox1.Max.Z < bbox2.Min.Z || bbox2.Max.Z < bbox1.Min.Z);
-        }
+        // ✅ OOP REFACTORING: Removed duplicate BoundingBoxesIntersect - now uses BoundingBoxService.BoundingBoxesIntersect()
         
         /// <summary>
         /// Check if point is within bounding box
@@ -424,13 +428,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             Max = new XYZ(Math.Max(pMin.X, pMax.X), Math.Max(pMin.Y, pMax.Y), Math.Max(pMin.Z, pMax.Z))
                         };
 
-                        DebugLogger.Log($"[EfficientIntersectionService] DIAG converted MEP bbox into host coords: Min={FormatXYZ(mepBBoxInHost.Min)}, Max={FormatXYZ(mepBBoxInHost.Max)}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Log($"[EfficientIntersectionService] DIAG converted MEP bbox into host coords: Min={FormatXYZ(mepBBoxInHost.Min)}, Max={FormatXYZ(mepBBoxInHost.Max)}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                DebugLogger.Log($"[EfficientIntersectionService] DIAG error converting MEP bbox to host coords: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"[EfficientIntersectionService] DIAG error converting MEP bbox to host coords: {ex.Message}");
             }
 
             // Get walls from host document (use the view's document when providing a view id)
@@ -462,11 +468,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     var linkTitle = linkDoc != null ? linkDoc.Title : "<no-link-doc>";
                     var origin = linkTransform != null ? FormatXYZ(linkTransform.Origin) : "<identity>";
-                    DebugLogger.Log($"[EfficientIntersectionService] DIAG LinkInstance Id={linkInstance.Id.IntegerValue}, LinkDoc='{linkTitle}', TransformOrigin={origin}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Log($"[EfficientIntersectionService] DIAG LinkInstance Id={linkInstance.Id.IntegerValue}, LinkDoc='{linkTitle}', TransformOrigin={origin}");
                 }
                 catch (Exception ex)
                 {
-                    DebugLogger.Log($"[EfficientIntersectionService] DIAG LinkInstance logging error: {ex.Message}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Log($"[EfficientIntersectionService] DIAG LinkInstance logging error: {ex.Message}");
                 }
 
                 var linkedWalls = new FilteredElementCollector(linkDoc)
@@ -503,7 +511,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 .Select(tuple => (tuple.Item1, tuple.Item2 ?? Transform.Identity))
                 .ToList();
             filteredElements.AddRange(hostFiltered);
-            DebugLogger.Log($"[EfficientIntersectionService] Pre-filtered structural elements: {filteredElements.Count} (from {structuralElements.Count} total)");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Log($"[EfficientIntersectionService] Pre-filtered structural elements: {filteredElements.Count} (from {structuralElements.Count} total)");
             return filteredElements;
         }
         
@@ -522,13 +531,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (elementBBox == null) return false;
 
             // Check section box intersection (if section box exists)
-            if (sectionBox != null && !BoundingBoxesIntersect(elementBBox, sectionBox))
+            if (sectionBox != null && !BoundingBoxService.BoundingBoxesIntersect(elementBBox, sectionBox))
             {
                 return false;
             }
 
             // Check MEP bounding box intersection
-            return BoundingBoxesIntersect(elementBBox, mepBBox);
+            return BoundingBoxService.BoundingBoxesIntersect(elementBBox, mepBBox);
         }
         
         /// <summary>
@@ -577,6 +586,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 foreach (Face face in structuralSolid.Faces)
                 {
                     IntersectionResultArray? ira = null;
+
                     SetComparisonResult res = face.Intersect(mepLine, out ira);
                     if (res == SetComparisonResult.Overlap && ira != null)
                     {
@@ -589,7 +599,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                DebugLogger.Log($"[EfficientIntersectionService] Solid intersection error for element {structuralElement.Id.IntegerValue}: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"[EfficientIntersectionService] Solid intersection error for element {structuralElement.Id.IntegerValue}: {ex.Message}");
             }
 
             return intersectionPoints;
@@ -669,7 +680,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             if (OptimizationFlags.UseDiagnosticMode)
                             {
                                 double wallThicknessMm = UnitUtils.ConvertFromInternalUnits(wallThickness, UnitTypeId.Millimeters);
-                                DebugLogger.Log($"[EfficientIntersectionService] SKIP: Wall {wall.Id.IntegerValue} thickness {wallThicknessMm:F1}mm < {minThicknessMm:F1}mm minimum");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Log($"[EfficientIntersectionService] SKIP: Wall {wall.Id.IntegerValue} thickness {wallThicknessMm:F1}mm < {minThicknessMm:F1}mm minimum");
                             }
                         }
                     }
@@ -682,14 +694,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (skippedCount > 0)
                 {
-                    DebugLogger.Info($"[EfficientIntersectionService] Filtered {skippedCount} walls below {minThicknessMm:F1}mm minimum thickness");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[EfficientIntersectionService] Filtered {skippedCount} walls below {minThicknessMm:F1}mm minimum thickness");
                 }
                 
                 return filteredWalls;
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[EfficientIntersectionService] Error filtering walls by minimum thickness: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[EfficientIntersectionService] Error filtering walls by minimum thickness: {ex.Message}");
                 return walls; // Return original list on error
             }
         }

@@ -53,13 +53,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Clamp to reasonable bounds
                 var finalTolerance = ClampValue(baseTolerance, MIN_TOLERANCE, MAX_TOLERANCE);
                 
-                DebugLogger.Info($"[SmartTolerance] Element {mepElement.Id}: Size={elementSize:F2}, Insulation={insulationFactor:F2}, Category={categoryFactor:F2}, Tolerance={finalTolerance:F2}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[SmartTolerance] Element {mepElement.Id}: Size={elementSize:F2}, Insulation={insulationFactor:F2}, Category={categoryFactor:F2}, Tolerance={finalTolerance:F2}");
                 
                 return finalTolerance;
             }
             catch (Exception ex)
             {
-                DebugLogger.Warning($"[SmartTolerance] Error calculating tolerance for element {mepElement?.Id}: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[SmartTolerance] Error calculating tolerance for element {mepElement?.Id}: {ex.Message}");
                 return DEFAULT_TOLERANCE;
             }
         }
@@ -86,13 +88,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Clamp to reasonable bounds
                 var finalTolerance = ClampValue(baseTolerance, MIN_TOLERANCE * 0.8, MAX_TOLERANCE * 0.8);
                 
-                DebugLogger.Info($"[SmartTolerance] Structural element {structuralElement.Id}: Category={categoryFactor:F2}, Tolerance={finalTolerance:F2}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[SmartTolerance] Structural element {structuralElement.Id}: Category={categoryFactor:F2}, Tolerance={finalTolerance:F2}");
                 
                 return finalTolerance;
             }
             catch (Exception ex)
             {
-                DebugLogger.Warning($"[SmartTolerance] Error calculating structural tolerance for element {structuralElement?.Id}: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[SmartTolerance] Error calculating structural tolerance for element {structuralElement?.Id}: {ex.Message}");
                 return DEFAULT_TOLERANCE * 0.8;
             }
         }
@@ -115,13 +119,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Use the larger tolerance for intersection testing
                 var intersectionTolerance = Math.Max(mepTolerance, structuralTolerance);
                 
-                DebugLogger.Info($"[SmartTolerance] Intersection tolerance: MEP={mepTolerance:F2}, Structural={structuralTolerance:F2}, Final={intersectionTolerance:F2}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[SmartTolerance] Intersection tolerance: MEP={mepTolerance:F2}, Structural={structuralTolerance:F2}, Final={intersectionTolerance:F2}");
                 
                 return intersectionTolerance;
             }
             catch (Exception ex)
             {
-                DebugLogger.Warning($"[SmartTolerance] Error calculating intersection tolerance: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[SmartTolerance] Error calculating intersection tolerance: {ex.Message}");
                 return DEFAULT_TOLERANCE;
             }
         }

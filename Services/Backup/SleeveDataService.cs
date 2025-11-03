@@ -82,11 +82,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Save XML file
                 xmlDoc.Save(filePath);
                 
-                DebugLogger.Info($"[SAVE-CLUSTER-XML] Saved {sleeveDataList.Count} sleeves to {fileName}\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[SAVE-CLUSTER-XML] Saved {sleeveDataList.Count} sleeves to {fileName}\n");
             }
             catch (Exception ex)
             {
-                DebugLogger.Info($"[ERROR] Failed to save cluster XML: {ex.Message}\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[ERROR] Failed to save cluster XML: {ex.Message}\n");
             }
         }
         
@@ -113,7 +115,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (!File.Exists(filePath))
                 {
-                    DebugLogger.Info($"[LOAD-CLUSTER-XML] File not found: {fileName}\n");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[LOAD-CLUSTER-XML] File not found: {fileName}\n");
                     return sleeveDataList;
                 }
                 
@@ -169,11 +172,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
                 
-                DebugLogger.Info($"[LOAD-CLUSTER-XML] Loaded {sleeveDataList.Count} sleeves from {fileName}\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[LOAD-CLUSTER-XML] Loaded {sleeveDataList.Count} sleeves from {fileName}\n");
             }
             catch (Exception ex)
             {
-                DebugLogger.Info($"[ERROR] Failed to load cluster XML: {ex.Message}\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[ERROR] Failed to load cluster XML: {ex.Message}\n");
             }
             
             return sleeveDataList;

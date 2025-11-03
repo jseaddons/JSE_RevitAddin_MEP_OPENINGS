@@ -25,7 +25,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     // REMOVED: PipeOpeningTypeRectangular global setting that forced ALL pipes to rectangular
                     // Now pipes will respect UI selection and size threshold rules
-                    DebugLogger.Info($"[OPENING_SETTINGS] Pipe opening type will be determined by UI selection and size threshold rules");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[OPENING_SETTINGS] Pipe opening type will be determined by UI selection and size threshold rules");
                     return "Circular"; // Default, will be overridden by UI selection and size rules
                 }
                 else if (mepCategory.Equals("Ducts", StringComparison.OrdinalIgnoreCase))
@@ -33,19 +34,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // For ducts, we need to get the opening type from the UI (EmergencyMainDialog)
                     // This will be handled by the DuctSleeveCommand which reads from the UI directly
                     // For now, return a placeholder that will be overridden by the command
-                    DebugLogger.Info($"[OPENING_SETTINGS] Duct opening type will be determined by UI selection for round ducts");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[OPENING_SETTINGS] Duct opening type will be determined by UI selection for round ducts");
                     return "Circular"; // Default, will be overridden by UI selection
                 }
                 else
                 {
                     // All other categories (Duct Accessories, Cable Trays) are always rectangular
-                    DebugLogger.Info($"[OPENING_SETTINGS] {mepCategory} opening type set to Rectangular (default for non-pipe categories)");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[OPENING_SETTINGS] {mepCategory} opening type set to Rectangular (default for non-pipe categories)");
                     return "Rectangular";
                 }
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[OPENING_SETTINGS] Error getting opening type for category '{mepCategory}': {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[OPENING_SETTINGS] Error getting opening type for category '{mepCategory}': {ex.Message}");
                 // Fallback to rectangular for safety
                 return "Rectangular";
             }
@@ -88,12 +92,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Convert back to internal units
                 double roundedDimension = UnitUtils.ConvertToInternalUnits(roundedMm, UnitTypeId.Millimeters);
                 
-                DebugLogger.Info($"[OPENING_SETTINGS] Rounded dimension from {mmDimension:F1}mm to {roundedMm:F1}mm (rounding value: {roundingValue}, always up: {settings.RoundAlwaysUp})");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[OPENING_SETTINGS] Rounded dimension from {mmDimension:F1}mm to {roundedMm:F1}mm (rounding value: {roundingValue}, always up: {settings.RoundAlwaysUp})");
                 return roundedDimension;
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[OPENING_SETTINGS] Error rounding dimension: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[OPENING_SETTINGS] Error rounding dimension: {ex.Message}");
                 // Return original dimension on error
                 return dimension;
             }

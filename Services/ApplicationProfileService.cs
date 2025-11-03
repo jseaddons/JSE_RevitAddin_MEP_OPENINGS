@@ -460,7 +460,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             //    try
             //    {
             //        var logPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "error_debug.log");
-            //        File.AppendAllText(logPath, $"[{DateTime.Now}] UpdateForCurrentDocument ERROR: {ex}\n");
+            //        // ✅ DEPLOYMENT MODE: Skip file writes
+            //        if (!DeploymentConfiguration.DeploymentMode)
+            //        {
+            //            File.AppendAllText(logPath, $"[{DateTime.Now}] UpdateForCurrentDocument ERROR: {ex}\n");
+            //        }
             //    }
             //    catch { /* Ignore logging errors */ }
             //}
@@ -654,6 +658,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 using (var writer = new StreamWriter(configFile, false, System.Text.Encoding.UTF8))
                 {
                     writer.WriteLine($"ProfileName={profile.Name}");
+
                     writer.WriteLine($"LastModified={DateTime.Now:O}");
                     
                     // Write each reference file on a separate line

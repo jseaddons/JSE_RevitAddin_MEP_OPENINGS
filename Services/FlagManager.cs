@@ -6,6 +6,8 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
+    // ✅ DEPLOYMENT MODE: All logging wrapped - tested pattern for deployment
+    // Pattern: if (!DeploymentConfiguration.DeploymentMode) { DebugLogger.Info(...); }
     /// <summary>
     /// Centralized flag management for clash zones.
     /// Eliminates redundant flag operations across multiple services.
@@ -76,16 +78,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         if (flagChanged)
                         {
-                            DebugLogger.Info($"[FLAG-MANAGER] Synced ClashZone {clashZone.Id} from Global XML (IsResolved={globalEntry.IsResolved}, IsClusterResolved={globalEntry.IsClusterResolved})");
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[FLAG-MANAGER] Synced ClashZone {clashZone.Id} from Global XML (IsResolved={globalEntry.IsResolved}, IsClusterResolved={globalEntry.IsClusterResolved})");
                         }
                     }
                 }
                 
-                DebugLogger.Info($"[FLAG-MANAGER] Synced flags from Global XML for {clashZones.Count} clash zones in category '{category}'");
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[FLAG-MANAGER] Synced flags from Global XML for {clashZones.Count} clash zones in category '{category}'");
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[FLAG-MANAGER] Error syncing flags from Global XML for category '{category}': {ex.Message}");
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[FLAG-MANAGER] Error syncing flags from Global XML for category '{category}': {ex.Message}");
                 throw;
             }
         }
@@ -111,6 +116,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var updates = new List<(Guid Id, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterSleeveInstanceId)>();
                 int resetCount = 0;
                 
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[FLAG-MANAGER] ===== STARTING DELETED SLEEVE CHECK FOR {clashZones.Count} CLASH ZONES =====");
+                
                 foreach (var clashZone in clashZones)
                 {
                     if (clashZone == null) continue;
@@ -121,20 +129,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     bool globalSaysClusterResolved = globalEntry?.IsClusterResolved ?? false;
                     bool globalSaysResolved = globalEntry?.IsResolved ?? false;
                     
+                    // ✅ DEBUG: Log clash zone state before checking (deployment mode wrapped)
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[FLAG-MANAGER] Checking ClashZone {clashZone.Id}: IsClusterResolved={clashZone.IsClusterResolved}, IsResolved={clashZone.IsResolved}, ClusterSleeveId={clashZone.ClusterSleeveInstanceId}, SleeveId={clashZone.SleeveInstanceId}");
+                        DebugLogger.Info($"[FLAG-MANAGER]   Global XML says: IsClusterResolved={globalSaysClusterResolved}, IsResolved={globalSaysResolved}, ClusterSleeveId={globalEntry?.ClusterSleeveInstanceId ?? -1}, SleeveId={globalEntry?.SleeveInstanceId ?? -1}");
+                    }
+                    
                     // Flag Hierarchy: Check cluster FIRST (cluster flags take precedence)
                     if (clashZone.IsClusterResolved)
                     {
-                        // Trust Global XML if it says resolved (sleeve may be in linked file)
-                        if (globalSaysClusterResolved)
-                        {
-                            DebugLogger.Info($"[FLAG-MANAGER] SKIP RESET: ClashZone {clashZone.Id} - Global XML says IsClusterResolved=true, trusting Global XML");
-                            continue; // Skip - Global XML is authoritative
-                        }
+                        // ✅ CRITICAL FIX: Always check Revit API FIRST (Global XML may be stale if sleeve was deleted)
+                        // Don't trust Global XML blindly - verify the sleeve actually exists in Revit
+                        // Use ClusterSleeveInstanceId from clashZone (synced from Global XML) or fallback to Global XML entry
+                        int clusterSleeveId = clashZone.ClusterSleeveInstanceId > 0 
+                            ? clashZone.ClusterSleeveInstanceId 
+                            : (globalEntry?.ClusterSleeveInstanceId ?? -1);
                         
-                        // Check cluster sleeve in ACTIVE DOCUMENT
-                        if (!CheckClusterSleeveExists(clashZone.ClusterSleeveInstanceId))
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[FLAG-MANAGER]   → Checking cluster sleeve ID {clusterSleeveId} in Revit API...");
+                        bool clusterSleeveExists = CheckClusterSleeveExists(clusterSleeveId);
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[FLAG-MANAGER]   → Revit API check result: {clusterSleeveExists}");
+                        
+                        if (!clusterSleeveExists)
                         {
-                            // Cluster sleeve deleted → Reset ALL flags
+                            // ✅ Cluster sleeve deleted → Reset ALL flags (regardless of Global XML state)
+                            // Global XML may still say IsClusterResolved=true, but we verify Revit is authoritative
                             clashZone.IsClusterResolved = false;
                             clashZone.IsResolved = false;
                             clashZone.ClusterSleeveInstanceId = -1;
@@ -145,27 +166,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             updates.Add((clashZone.Id, false, false, -1, -1));
                             resetCount++;
                             
-                            DebugLogger.Info($"[FLAG-MANAGER] ✓ Reset ALL flags for ClashZone {clashZone.Id} - cluster sleeve deleted");
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[FLAG-MANAGER] ✓ Reset ALL flags for ClashZone {clashZone.Id} - cluster sleeve {clusterSleeveId} NOT FOUND in Revit (Global XML was stale)");
                         }
                         else
                         {
-                            DebugLogger.Info($"[FLAG-MANAGER] SKIP RESET: ClashZone {clashZone.Id} - cluster sleeve {clashZone.ClusterSleeveInstanceId} exists in Revit");
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[FLAG-MANAGER] ✓ Verified: ClashZone {clashZone.Id} - cluster sleeve {clusterSleeveId} EXISTS in Revit");
                         }
                     }
                     // Then check individual (only if cluster flag is false)
                     else if (clashZone.IsResolved)
                     {
-                        // Trust Global XML if it says resolved
-                        if (globalSaysResolved)
-                        {
-                            DebugLogger.Info($"[FLAG-MANAGER] SKIP RESET: ClashZone {clashZone.Id} - Global XML says IsResolved=true, trusting Global XML");
-                            continue; // Skip - Global XML is authoritative
-                        }
+                        // ✅ CRITICAL FIX: Always check Revit API FIRST (Global XML may be stale if sleeve was deleted)
+                        // Don't trust Global XML blindly - verify the sleeve actually exists in Revit
+                        // Use SleeveInstanceId from clashZone (synced from Global XML) or fallback to Global XML entry
+                        int individualSleeveId = clashZone.SleeveInstanceId > 0 
+                            ? clashZone.SleeveInstanceId 
+                            : (globalEntry?.SleeveInstanceId ?? -1);
                         
-                        // Check individual sleeve in ACTIVE DOCUMENT
-                        if (!CheckIndividualSleeveExists(clashZone.SleeveInstanceId))
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[FLAG-MANAGER]   → Checking individual sleeve ID {individualSleeveId} in Revit API...");
+                        bool individualSleeveExists = CheckIndividualSleeveExists(individualSleeveId);
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[FLAG-MANAGER]   → Revit API check result: {individualSleeveExists}");
+                        
+                        if (!individualSleeveExists)
                         {
-                            // Individual sleeve deleted → Reset individual flag
+                            // ✅ Individual sleeve deleted → Reset individual flag (regardless of Global XML state)
+                            // Global XML may still say IsResolved=true, but we verify Revit is authoritative
                             clashZone.IsResolved = false;
                             clashZone.SleeveInstanceId = -1;
                             clashZone.SleeveFamilyName = string.Empty;
@@ -174,30 +203,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             updates.Add((clashZone.Id, false, clashZone.IsClusterResolved, -1, clashZone.ClusterSleeveInstanceId));
                             resetCount++;
                             
-                            DebugLogger.Info($"[FLAG-MANAGER] ✓ Reset individual flags for ClashZone {clashZone.Id} - sleeve deleted");
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[FLAG-MANAGER] ✓ Reset individual flags for ClashZone {clashZone.Id} - individual sleeve {individualSleeveId} NOT FOUND in Revit (Global XML was stale)");
                         }
                         else
                         {
-                            DebugLogger.Info($"[FLAG-MANAGER] SKIP RESET: ClashZone {clashZone.Id} - individual sleeve {clashZone.SleeveInstanceId} exists in Revit");
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[FLAG-MANAGER] ✓ Verified: ClashZone {clashZone.Id} - individual sleeve {individualSleeveId} EXISTS in Revit");
                         }
                     }
+                    else
+                    {
+                        // Neither cluster nor individual flags are set - nothing to check
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[FLAG-MANAGER]   → Skipping ClashZone {clashZone.Id} - neither IsClusterResolved nor IsResolved is true");
+                    }
                 }
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[FLAG-MANAGER] ===== COMPLETED DELETED SLEEVE CHECK: {resetCount} flags reset =====");
                 
                 // Save updated flags to Global XML using existing service
                 if (updates.Count > 0)
                 {
                     GlobalIndexService.UpsertFlagsWithIds(_document, category, updates);
-                    DebugLogger.Info($"[FLAG-MANAGER] Updated Global XML for {updates.Count} clash zones with reset flags in category '{category}'");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[FLAG-MANAGER] Updated Global XML for {updates.Count} clash zones with reset flags in category '{category}'");
                 }
                 
                 if (resetCount > 0)
                 {
-                    DebugLogger.Info($"[FLAG-MANAGER] Reset flags for {resetCount} clash zones in category '{category}'");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[FLAG-MANAGER] Reset flags for {resetCount} clash zones in category '{category}'");
                 }
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[FLAG-MANAGER] Error resetting flags for deleted sleeves in category '{category}': {ex.Message}");
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[FLAG-MANAGER] Error resetting flags for deleted sleeves in category '{category}': {ex.Message}");
                 throw;
             }
         }
@@ -245,11 +288,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                      clashZone.SleeveInstanceId, clashZone.ClusterSleeveInstanceId) 
                 });
                 
-                DebugLogger.Info($"[FLAG-MANAGER] Updated flags for ClashZone {clashZone.Id} after {(isCluster ? "cluster" : "individual")} sleeve placement (SleeveId={sleeveId})");
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[FLAG-MANAGER] Updated flags for ClashZone {clashZone.Id} after {(isCluster ? "cluster" : "individual")} sleeve placement (SleeveId={sleeveId})");
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[FLAG-MANAGER] Error updating flags for placement: {ex.Message}");
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[FLAG-MANAGER] Error updating flags for placement: {ex.Message}");
                 throw;
             }
         }

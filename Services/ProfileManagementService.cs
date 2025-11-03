@@ -634,6 +634,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 using (var writer = new FileStream(_profileFilePath, FileMode.Create))
                 {
                     serializer.Serialize(writer, _availableProfiles);
+
                 }
                 
                 System.Diagnostics.Debug.WriteLine($"SaveProfiles: Successfully saved profiles to XML file");

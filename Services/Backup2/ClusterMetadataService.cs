@@ -61,7 +61,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
             
-            DebugLogger.Log($"[ClusterMetadata] Cluster {metadata.ClusterMark}: {metadata.MepElementCount} MEP elements, Total area: {metadata.TotalMepAreaMm2:F0}mm², Occupancy: {metadata.OccupancyPercentage:F1}%");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Log($"[ClusterMetadata] Cluster {metadata.ClusterMark}: {metadata.MepElementCount} MEP elements, Total area: {metadata.TotalMepAreaMm2:F0}mm², Occupancy: {metadata.OccupancyPercentage:F1}%");
             
             return metadata;
         }
@@ -80,7 +81,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (mepIdParam == null || !mepIdParam.HasValue)
                 {
-                    DebugLogger.Warning($"[ClusterMetadata] Sleeve {sleeve.Id} has no MEP element ID parameter");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[ClusterMetadata] Sleeve {sleeve.Id} has no MEP element ID parameter");
                     return null;
                 }
                 
@@ -89,7 +91,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (mepElement == null)
                 {
-                    DebugLogger.Warning($"[ClusterMetadata] MEP element {mepId} not found");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[ClusterMetadata] MEP element {mepId} not found");
                     return null;
                 }
                 
@@ -130,7 +133,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[ClusterMetadata] Error extracting MEP info from sleeve {sleeve.Id}: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[ClusterMetadata] Error extracting MEP info from sleeve {sleeve.Id}: {ex.Message}");
                 return null;
             }
         }
@@ -290,14 +294,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 using (var writer = new StreamWriter(xmlPath))
                 {
                     serializer.Serialize(writer, metadata);
+
                 }
                 
-                DebugLogger.Log($"[ClusterMetadata] ✓ Saved metadata to: {xmlPath}");
-                DebugLogger.Log($"[ClusterMetadata] Total clusters: {metadata.TotalClusters}, Total MEP elements: {metadata.TotalMepElements}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"[ClusterMetadata] ✓ Saved metadata to: {xmlPath}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"[ClusterMetadata] Total clusters: {metadata.TotalClusters}, Total MEP elements: {metadata.TotalMepElements}");
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[ClusterMetadata] Failed to save metadata: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[ClusterMetadata] Failed to save metadata: {ex.Message}");
             }
         }
         

@@ -58,11 +58,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             if (match != null)
             {
-                DebugLogger.Info($"[GUID-MANAGER] Found existing ClashZone {match.Id} for MEP={mepIdValue}, Structural={hostIdValue}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[GUID-MANAGER] Found existing ClashZone {match.Id} for MEP={mepIdValue}, Structural={hostIdValue}");
             }
             else
             {
-                DebugLogger.Info($"[GUID-MANAGER] No existing ClashZone found for MEP={mepIdValue}, Structural={hostIdValue}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[GUID-MANAGER] No existing ClashZone found for MEP={mepIdValue}, Structural={hostIdValue}");
             }
             
             return match;
@@ -128,7 +130,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (sleeves.Count == 0)
                 {
-                    DebugLogger.Info($"[GUID-MANAGER] No sleeves found with MEP_ElementId={mepIdValue}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[GUID-MANAGER] No sleeves found with MEP_ElementId={mepIdValue}");
                     return null;
                 }
                 
@@ -176,22 +179,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                         
                         // ✅ MATCH FOUND: Reuse existing GUID from Revit sleeve
-                        DebugLogger.Info($"[GUID-MANAGER] ✅ FOUND VIA REVIT SLEEVE: ClashZone {clashZone.Id} (sleeve {sleeve.Id}, MEP={mepIdValue}, Structural={structuralIdValue}) - REUSING EXISTING GUID");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[GUID-MANAGER] ✅ FOUND VIA REVIT SLEEVE: ClashZone {clashZone.Id} (sleeve {sleeve.Id}, MEP={mepIdValue}, Structural={structuralIdValue}) - REUSING EXISTING GUID");
                         return clashZone;
                     }
                     catch (Exception ex)
                     {
-                        DebugLogger.Warning($"[GUID-MANAGER] Error reading GUID from sleeve {sleeve.Id}: {ex.Message}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[GUID-MANAGER] Error reading GUID from sleeve {sleeve.Id}: {ex.Message}");
                         continue;
                     }
                 }
                 
-                DebugLogger.Info($"[GUID-MANAGER] No matching clash zone found in Revit sleeves for MEP={mepIdValue}, Structural={structuralIdValue}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[GUID-MANAGER] No matching clash zone found in Revit sleeves for MEP={mepIdValue}, Structural={structuralIdValue}");
                 return null;
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[GUID-MANAGER] Error finding clash zone by Revit sleeve GUID: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[GUID-MANAGER] Error finding clash zone by Revit sleeve GUID: {ex.Message}");
                 return null;
             }
         }
@@ -262,11 +269,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             if (bestMatch != null)
             {
-                DebugLogger.Info($"[GUID-MANAGER] ✅ FOUND BY POINT MATCH: ClashZone {bestMatch.Id} (MEP={mepIdValue}, Structural={structuralIdValue}, Distance={closestDistance:F3}ft) - REUSING EXISTING GUID");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[GUID-MANAGER] ✅ FOUND BY POINT MATCH: ClashZone {bestMatch.Id} (MEP={mepIdValue}, Structural={structuralIdValue}, Distance={closestDistance:F3}ft) - REUSING EXISTING GUID");
             }
             else
             {
-                DebugLogger.Info($"[GUID-MANAGER] No clash zone found by point match for MEP={mepIdValue}, Structural={structuralIdValue}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[GUID-MANAGER] No clash zone found by point match for MEP={mepIdValue}, Structural={structuralIdValue}");
             }
             
             return bestMatch;
@@ -289,11 +298,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 GlobalIndexService.EnsureEntries(_document, category, new[] { clashZone.Id });
-                DebugLogger.Info($"[GUID-MANAGER] Ensured Global XML entry for ClashZone {clashZone.Id} in category '{category}'");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[GUID-MANAGER] Ensured Global XML entry for ClashZone {clashZone.Id} in category '{category}'");
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[GUID-MANAGER] Error ensuring Global XML entry for ClashZone {clashZone.Id}: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[GUID-MANAGER] Error ensuring Global XML entry for ClashZone {clashZone.Id}: {ex.Message}");
                 throw;
             }
         }
@@ -326,16 +337,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (removedCount > 0)
                 {
                     GlobalIndexService.Save(_document, globalIndex);
-                    DebugLogger.Info($"[GUID-MANAGER] Removed ClashZone {guid} from Global XML for category '{category}'");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[GUID-MANAGER] Removed ClashZone {guid} from Global XML for category '{category}'");
                 }
                 else
                 {
-                    DebugLogger.Info($"[GUID-MANAGER] ClashZone {guid} not found in Global XML for category '{category}' (no removal needed)");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[GUID-MANAGER] ClashZone {guid} not found in Global XML for category '{category}' (no removal needed)");
                 }
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[GUID-MANAGER] Error removing ClashZone {guid} from Global XML: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[GUID-MANAGER] Error removing ClashZone {guid} from Global XML: {ex.Message}");
                 throw;
             }
         }

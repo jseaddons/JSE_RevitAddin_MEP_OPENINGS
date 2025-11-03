@@ -42,13 +42,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Finds intersections using the proven TestMepIntersection approach
         /// </summary>
+        /// <param name="optimizationService">Optional optimization service to skip geometry checks for known valid pairs. If null, full intersection detection runs.</param>
         public List<(Element, Element, BoundingBoxXYZ, XYZ)> FindIntersections(
             Document document, 
             View3D view3D,
             List<string> selectedMepCategories = null,
             List<string> selectedReferenceFiles = null,
             List<string> selectedHostFiles = null,
-            List<string> allowedHostElementTypes = null)
+            List<string> allowedHostElementTypes = null,
+            IntersectionOptimizationService optimizationService = null)
         {
             try
             {
@@ -145,10 +147,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 // STEP 3: Find intersections
-                var intersections = FindIntersectionsInternal(mepElements, wallElements, document);
+                var intersections = FindIntersectionsInternal(mepElements, wallElements, document, optimizationService);
 
                 // Enforce section box bounds using oriented-box test (view's local coords)
                 Transform invSection = sectionTransform.Inverse;
+
                 intersections = intersections
                     .Where(tuple =>
                     {
@@ -410,7 +413,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var bbox = e.get_BoundingBox(null);
                             if (bbox == null) return false;
                             // Manual intersection check with tolerance
-                            return BoundingBoxesIntersectWithTolerance(
+                            return BoundingBoxService.BoundingBoxesIntersectWithTolerance(
                                 modelMin, modelMax, 
                                 bbox.Min, bbox.Max, 
                                 tolerance: 0.01); // 0.01 feet tolerance (~3mm)
@@ -563,7 +566,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     var bbox = e.get_BoundingBox(null);
                                     if (bbox == null) return false;
                                     // Manual intersection check with tolerance
-                                    return BoundingBoxesIntersectWithTolerance(
+                                    return BoundingBoxService.BoundingBoxesIntersectWithTolerance(
                                         actualMin, actualMax, 
                                         bbox.Min, bbox.Max, 
                                         tolerance: 0.01); // 0.01 feet tolerance (~3mm)
@@ -802,7 +805,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private List<(Element, Element, BoundingBoxXYZ, XYZ)> FindIntersectionsInternal(
             List<Element> mepElements, 
             List<Element> wallElements, 
-            Document doc)
+            Document doc,
+            IntersectionOptimizationService optimizationService = null)
         {
             _logger($"Using optimized MepIntersectionService.FindIntersectionsBatch with {mepElements.Count} MEP elements...");
 
@@ -855,7 +859,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var intersections = MepIntersectionService.FindIntersectionsBatch(
                 mepElementsWithTransforms,
                 structuralElementsWithTransforms,
-                _logger);
+                _logger,
+                optimizationService?.KnownValidPairs,
+                optimizationService?.ShouldSkipKnownPairsGeometryCheck ?? false);
             
             _logger($"[PHASE2] Optimized batch processing completed: {intersections.Count} intersections found");
             return intersections;
@@ -1172,17 +1178,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Check if two bounding boxes intersect with a tolerance
         /// This is more lenient than BoundingBoxIntersectsFilter which can miss edge cases
         /// </summary>
-        private bool BoundingBoxesIntersectWithTolerance(XYZ box1Min, XYZ box1Max, XYZ box2Min, XYZ box2Max, double tolerance = 0.01)
-        {
-            // Expand box1 by tolerance
-            XYZ expandedMin = new XYZ(box1Min.X - tolerance, box1Min.Y - tolerance, box1Min.Z - tolerance);
-            XYZ expandedMax = new XYZ(box1Max.X + tolerance, box1Max.Y + tolerance, box1Max.Z + tolerance);
-            
-            // Check if box2 intersects with expanded box1
-            return !(box2Max.X < expandedMin.X || box2Min.X > expandedMax.X ||
-                     box2Max.Y < expandedMin.Y || box2Min.Y > expandedMax.Y ||
-                     box2Max.Z < expandedMin.Z || box2Min.Z > expandedMax.Z);
-        }
+        // ✅ OOP REFACTORING: Removed duplicate BoundingBoxesIntersectWithTolerance - now uses BoundingBoxService.BoundingBoxesIntersectWithTolerance()
         
         /// <summary>
         /// Check if an element is a damper based on type and family name

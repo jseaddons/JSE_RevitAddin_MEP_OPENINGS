@@ -60,7 +60,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ MEMORY OPTIMIZATION: Log total whitelist size for debugging
             if (keys.Count > 30)
             {
-                DebugLogger.Warning($"[PARAM_SNAPSHOT] ⚠️ Large parameter whitelist detected: {keys.Count} parameters. This may increase memory usage significantly.");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[PARAM_SNAPSHOT] ⚠️ Large parameter whitelist detected: {keys.Count} parameters. This may increase memory usage significantly.");
             }
 
             return keys;
@@ -77,15 +78,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // DEBUG: Log all available parameters for duct accessories
             if (element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
             {
-                DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: Starting parameter capture\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: Starting parameter capture\n");
                 
                 var allParams = element.Parameters.Cast<Parameter>().Where(p => p != null && !string.IsNullOrEmpty(p.Definition?.Name)).ToList();
-                DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: Found {allParams.Count} total parameters\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: Found {allParams.Count} total parameters\n");
                 
                 foreach (var param in allParams.Take(10)) // Log first 10 parameters
                 {
                     var paramValue = ConvertParameterToString(element, param);
-                    DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: Parameter '{param.Definition.Name}' = '{paramValue}'\n");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: Parameter '{param.Definition.Name}' = '{paramValue}'\n");
                 }
             }
 
@@ -114,19 +118,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // DEBUG: Log System Abbreviation search for duct accessories
                     if (element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
                     {
-                        DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: System Abbreviation fallback search - Parameter found: {p != null}\n");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: System Abbreviation fallback search - Parameter found: {p != null}\n");
                         
                         if (p != null)
                         {
                             var testValue = ConvertParameterToString(element, p);
-                            DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: System Abbreviation value = '{testValue}'\n");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: System Abbreviation value = '{testValue}'\n");
                         }
                     }
                 }
                 if (p == null) 
                 {
                     // DEBUG: Log missing parameters
-                    DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Parameter '{key}' not found\n");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Parameter '{key}' not found\n");
                     continue;
                 }
 
@@ -134,7 +141,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (string.IsNullOrWhiteSpace(value)) 
                 {
                     // DEBUG: Log empty parameter values
-                    DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Parameter '{key}' found but value is empty\n");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Parameter '{key}' found but value is empty\n");
                     continue;
                 }
 
@@ -151,7 +159,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // DEBUG: Log successful parameter capture (only in non-deployment mode)
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Captured '{key}' = '{value}'\n");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Captured '{key}' = '{value}'\n");
                 }
             }
 

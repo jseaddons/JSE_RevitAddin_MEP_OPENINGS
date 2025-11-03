@@ -23,10 +23,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                DebugLogger.Info($"[UpdateXmlService] Starting XML update from Revit model");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[UpdateXmlService] Starting XML update from Revit model");
                 
                 // Get filters directory using helper
                 ProjectPathService.EnsureFiltersDirectory(doc);
+
                 string filtersDirectory = ProjectPathService.GetFiltersDirectory(doc);
                 
                 if (!Directory.Exists(filtersDirectory))
@@ -46,7 +48,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (filterFiles.Count == 0)
                 {
-                    DebugLogger.Warning($"[UpdateXmlService] No filter XML files found in {filtersDirectory}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[UpdateXmlService] No filter XML files found in {filtersDirectory}");
                     return;
                 }
 
@@ -59,20 +62,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         int updated = UpdateFilterFile(xmlFile, doc);
                         totalUpdated += updated;
-                        DebugLogger.Info($"[UpdateXmlService] Updated {updated} clash zones in {Path.GetFileName(xmlFile)}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[UpdateXmlService] Updated {updated} clash zones in {Path.GetFileName(xmlFile)}");
                     }
                     catch (Exception ex)
                     {
-                        DebugLogger.Error($"[UpdateXmlService] Error processing {Path.GetFileName(xmlFile)}: {ex.Message}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Error($"[UpdateXmlService] Error processing {Path.GetFileName(xmlFile)}: {ex.Message}");
                         // Continue with other files
                     }
                 }
 
-                DebugLogger.Info($"[UpdateXmlService] ✅ XML update complete: {totalUpdated} total clash zones updated");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[UpdateXmlService] ✅ XML update complete: {totalUpdated} total clash zones updated");
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[UpdateXmlService] Error updating XML from Revit: {ex.Message}\n{ex.StackTrace}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[UpdateXmlService] Error updating XML from Revit: {ex.Message}\n{ex.StackTrace}");
                 throw;
             }
         }
@@ -88,7 +95,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 // ✅ Use FilterManagementService helper to load XML
                 var filterMgmt = new FilterManagementService(
-                    msg => DebugLogger.Info($"[UpdateXmlService] {msg}"),
+                    msg => {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[UpdateXmlService] {msg}");
+                    },
                     msg => { } // No status updates needed
                 );
                 
@@ -96,7 +106,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (filter?.ClashZoneStorage?.ClashZones == null)
                 {
-                    DebugLogger.Warning($"[UpdateXmlService] No clash zones in {Path.GetFileName(xmlFilePath)}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[UpdateXmlService] No clash zones in {Path.GetFileName(xmlFilePath)}");
                     return 0;
                 }
 
@@ -108,11 +119,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (clusterSleeveGroups.Count == 0)
                 {
-                    DebugLogger.Info($"[UpdateXmlService] No cluster sleeves found in {Path.GetFileName(xmlFilePath)}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[UpdateXmlService] No cluster sleeves found in {Path.GetFileName(xmlFilePath)}");
                     return 0;
                 }
 
-                DebugLogger.Info($"[UpdateXmlService] Processing {clusterSleeveGroups.Count} category groups in {Path.GetFileName(xmlFilePath)}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[UpdateXmlService] Processing {clusterSleeveGroups.Count} category groups in {Path.GetFileName(xmlFilePath)}");
 
                 // Process each category group
                 foreach (var categoryGroup in clusterSleeveGroups)
@@ -123,7 +136,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         .Distinct()
                         .ToList();
 
-                    DebugLogger.Info($"[UpdateXmlService] Processing {clusterSleeveIds.Count} cluster sleeves for category '{category}'");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[UpdateXmlService] Processing {clusterSleeveIds.Count} cluster sleeves for category '{category}'");
 
                     // Process each cluster sleeve
                     foreach (var clusterSleeveId in clusterSleeveIds)
@@ -134,7 +148,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             
                             if (clusterSleeve == null)
                             {
-                                DebugLogger.Warning($"[UpdateXmlService] Cluster sleeve {clusterSleeveId} not found in Revit - may have been deleted");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Warning($"[UpdateXmlService] Cluster sleeve {clusterSleeveId} not found in Revit - may have been deleted");
                                 continue;
                             }
 
@@ -192,7 +207,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         if (clashZone.MepElementIdValue > 0)
                                         {
                                             // Keep original for reference, but note multiple elements
-                                            DebugLogger.Info($"[UpdateXmlService] Cluster sleeve {clusterSleeveId} has {mepElements.Count} MEP elements - keeping original MEP_ElementId");
+                                                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                                DebugLogger.Info($"[UpdateXmlService] Cluster sleeve {clusterSleeveId} has {mepElements.Count} MEP elements - keeping original MEP_ElementId");
                                         }
                                         else
                                         {
@@ -207,7 +223,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                         catch (Exception ex)
                         {
-                            DebugLogger.Error($"[UpdateXmlService] Error updating cluster sleeve {clusterSleeveId}: {ex.Message}");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Error($"[UpdateXmlService] Error updating cluster sleeve {clusterSleeveId}: {ex.Message}");
                             // Continue with next cluster sleeve
                         }
                     }
@@ -216,13 +233,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ Use FilterManagementService helper to save XML
                 filterMgmt.SaveFilterToXmlFile(filter, xmlFilePath);
                 
-                DebugLogger.Info($"[UpdateXmlService] ✅ Saved {updatedCount} updated clash zones to {Path.GetFileName(xmlFilePath)}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[UpdateXmlService] ✅ Saved {updatedCount} updated clash zones to {Path.GetFileName(xmlFilePath)}");
                 
                 return updatedCount;
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[UpdateXmlService] Error updating filter file {xmlFilePath}: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[UpdateXmlService] Error updating filter file {xmlFilePath}: {ex.Message}");
                 throw;
             }
         }
@@ -290,12 +309,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
 
-                DebugLogger.Info($"[UpdateXmlService] Found {intersectingElements.Count} MEP elements intersecting cluster sleeve {sleeve.Id.IntegerValue}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[UpdateXmlService] Found {intersectingElements.Count} MEP elements intersecting cluster sleeve {sleeve.Id.IntegerValue}");
                 return intersectingElements;
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[UpdateXmlService] Error getting MEP elements for sleeve: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[UpdateXmlService] Error getting MEP elements for sleeve: {ex.Message}");
                 return mepElements;
             }
         }
@@ -311,7 +332,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var mepBbox = mepElement.get_BoundingBox(null);
                 if (mepBbox == null) return false;
 
-                if (!BoundingBoxesIntersect(mepBbox, sleeveBbox))
+                if (!BoundingBoxService.BoundingBoxesIntersect(mepBbox, sleeveBbox))
                 {
                     return false;
                 }
@@ -333,12 +354,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
-        private bool BoundingBoxesIntersect(BoundingBoxXYZ bbox1, BoundingBoxXYZ bbox2)
-        {
-            return bbox1.Min.X <= bbox2.Max.X && bbox1.Max.X >= bbox2.Min.X &&
-                   bbox1.Min.Y <= bbox2.Max.Y && bbox1.Max.Y >= bbox2.Min.Y &&
-                   bbox1.Min.Z <= bbox2.Max.Z && bbox1.Max.Z >= bbox2.Min.Z;
-        }
+        // ✅ OOP REFACTORING: Removed duplicate BoundingBoxesIntersect - now uses BoundingBoxService.BoundingBoxesIntersect()
 
         /// <summary>
         /// Get sleeve dimensions from Revit element
@@ -369,7 +385,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[UpdateXmlService] Error getting sleeve dimensions: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[UpdateXmlService] Error getting sleeve dimensions: {ex.Message}");
                 return (0, 0, 0);
             }
         }
@@ -427,7 +444,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[UpdateXmlService] Error aggregating MEP parameters: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[UpdateXmlService] Error aggregating MEP parameters: {ex.Message}");
                 return new List<SerializableKeyValue>();
             }
         }

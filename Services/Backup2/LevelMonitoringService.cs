@@ -38,7 +38,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Check if we already copied this level
                 if (_copiedLevels.ContainsKey(levelKey))
                 {
-                    DebugLogger.Info($"[LevelMonitoring] Using cached level: {linkedLevel.Name} (elevation: {linkedLevel.Elevation:F2})");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[LevelMonitoring] Using cached level: {linkedLevel.Name} (elevation: {linkedLevel.Elevation:F2})");
                     return _copiedLevels[levelKey];
                 }
 
@@ -47,7 +48,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (existingLevel != null)
                 {
                     _copiedLevels[levelKey] = existingLevel;
-                    DebugLogger.Info($"[LevelMonitoring] Found existing level: {existingLevel.Name} (elevation: {existingLevel.Elevation:F2})");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[LevelMonitoring] Found existing level: {existingLevel.Name} (elevation: {existingLevel.Elevation:F2})");
                     return existingLevel;
                 }
 
@@ -56,16 +58,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (newLevel != null)
                 {
                     _copiedLevels[levelKey] = newLevel;
-                    DebugLogger.Info($"[LevelMonitoring] Created new level: {newLevel.Name} (elevation: {newLevel.Elevation:F2})");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[LevelMonitoring] Created new level: {newLevel.Name} (elevation: {newLevel.Elevation:F2})");
                     return newLevel;
                 }
 
-                DebugLogger.Warning($"[LevelMonitoring] Failed to get or create level for: {linkedLevel.Name}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[LevelMonitoring] Failed to get or create level for: {linkedLevel.Name}");
                 return null;
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[LevelMonitoring] Error getting/creating level for {linkedLevel.Name}: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[LevelMonitoring] Error getting/creating level for {linkedLevel.Name}: {ex.Message}");
                 return null;
             }
         }
@@ -96,7 +101,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             if (elevationMatch != null)
             {
-                DebugLogger.Info($"[LevelMonitoring] Found level by elevation: {elevationMatch.Name} matches elevation {elevation:F2}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[LevelMonitoring] Found level by elevation: {elevationMatch.Name} matches elevation {elevation:F2}");
                 return elevationMatch;
             }
 
@@ -127,20 +133,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
 
                         transaction.Commit();
-                        DebugLogger.Info($"[LevelMonitoring] Successfully created level: {linkedLevel.Name} at elevation {linkedLevel.Elevation:F2}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[LevelMonitoring] Successfully created level: {linkedLevel.Name} at elevation {linkedLevel.Elevation:F2}");
                         return newLevel;
                     }
                     else
                     {
                         transaction.RollBack();
-                        DebugLogger.Error($"[LevelMonitoring] Failed to create level: {linkedLevel.Name}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Error($"[LevelMonitoring] Failed to create level: {linkedLevel.Name}");
                         return null;
                     }
                 }
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[LevelMonitoring] Exception creating level {linkedLevel.Name}: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[LevelMonitoring] Exception creating level {linkedLevel.Name}: {ex.Message}");
                 return null;
             }
         }
@@ -169,7 +178,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     if (Math.Abs(closestLevel.Elevation - elevation) <= maxDistance)
                     {
-                        DebugLogger.Info($"[LevelMonitoring] Using closest existing level: {closestLevel.Name} (elevation: {closestLevel.Elevation:F2}) for target elevation {elevation:F2}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[LevelMonitoring] Using closest existing level: {closestLevel.Name} (elevation: {closestLevel.Elevation:F2}) for target elevation {elevation:F2}");
                         return closestLevel;
                     }
                 }
@@ -188,7 +198,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[LevelMonitoring] Error getting level for elevation {elevation:F2}: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[LevelMonitoring] Error getting level for elevation {elevation:F2}: {ex.Message}");
                 return null;
             }
         }
@@ -215,20 +226,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
 
                         transaction.Commit();
-                        DebugLogger.Info($"[LevelMonitoring] Created new level: {levelName} at elevation {elevation:F2}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[LevelMonitoring] Created new level: {levelName} at elevation {elevation:F2}");
                         return newLevel;
                     }
                     else
                     {
                         transaction.RollBack();
-                        DebugLogger.Error($"[LevelMonitoring] Failed to create level: {levelName}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Error($"[LevelMonitoring] Failed to create level: {levelName}");
                         return null;
                     }
                 }
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[LevelMonitoring] Exception creating level {levelName}: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[LevelMonitoring] Exception creating level {levelName}: {ex.Message}");
                 return null;
             }
         }

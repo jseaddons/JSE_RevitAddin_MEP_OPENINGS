@@ -32,7 +32,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
                 var logEntry = $"[{timestamp}] {message}{Environment.NewLine}";
-                File.AppendAllText(LogFilePath, logEntry);
+                                // ✅ DEPLOYMENT MODE: Skip file writes
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    File.AppendAllText(LogFilePath, logEntry);
+                }
             }
             catch
             {

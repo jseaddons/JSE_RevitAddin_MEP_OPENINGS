@@ -90,6 +90,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 using (var transaction = new Transaction(doc, "Delete original sleeves"))
                 {
                     transaction.Start();
+
                     doc.Delete(sleevesToDelete);
                     transaction.Commit();
                 }

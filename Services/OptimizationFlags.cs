@@ -142,11 +142,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 UseFamilySymbolCache = GetConfigValue("UseFamilySymbolCache", true);
                 UseIncrementalCache = GetConfigValue("UseIncrementalCache", true);
                 
-                DebugLogger.Info($"[OptimizationFlags] Loaded configuration successfully");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[OptimizationFlags] Loaded configuration successfully");
             }
             catch (Exception ex)
             {
-                DebugLogger.Warning($"[OptimizationFlags] Failed to load configuration, using safe defaults: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[OptimizationFlags] Failed to load configuration, using safe defaults: {ex.Message}");
+
                 // Use safe defaults defined above
             }
         }
@@ -160,11 +163,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 // This would save to user settings or config file
                 // For now, just log the current state
-                DebugLogger.Info($"[OptimizationFlags] Current flags - GeometryCache: {UseGeometryCache}, MemoryManagement: {UseMemoryManagement}, SmartTolerance: {UseSmartTolerance}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[OptimizationFlags] Current flags - GeometryCache: {UseGeometryCache}, MemoryManagement: {UseMemoryManagement}, SmartTolerance: {UseSmartTolerance}");
             }
             catch (Exception ex)
             {
-                DebugLogger.Warning($"[OptimizationFlags] Failed to save configuration: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[OptimizationFlags] Failed to save configuration: {ex.Message}");
             }
         }
         
@@ -212,7 +217,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             UseFamilySymbolCache = true;
             UseIncrementalCache = true;
             
-            DebugLogger.Info($"[OptimizationFlags] Reset to safe defaults");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[OptimizationFlags] Reset to safe defaults");
         }
         
         /// <summary>
@@ -225,7 +231,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             UseSmartTolerance = true;
             UseCacheInvalidation = true;
             
-            DebugLogger.Info($"[OptimizationFlags] Enabled Phase 1 optimizations (40% gain)");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[OptimizationFlags] Enabled Phase 1 optimizations (40% gain)");
         }
         
         /// <summary>
@@ -237,7 +244,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             UseParallelProcessing = true;
             UseSpatialGrid = true;
             
-            DebugLogger.Info($"[OptimizationFlags] Enabled Phase 2 optimizations (45% gain)");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[OptimizationFlags] Enabled Phase 2 optimizations (45% gain)");
         }
         
         /// <summary>

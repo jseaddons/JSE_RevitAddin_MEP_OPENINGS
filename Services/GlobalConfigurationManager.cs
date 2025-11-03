@@ -61,19 +61,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Configuration
                     using (var reader = new FileStream(_settingsPath, FileMode.Open))
                     {
                         _settings = (GlobalApplicationSettings)serializer.Deserialize(reader);
-                        DebugLogger.Info($"[GlobalConfig] Loaded settings from: {_settingsPath}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[GlobalConfig] Loaded settings from: {_settingsPath}");
                     }
                 }
                 else
                 {
                     // Create default settings if file doesn't exist
                     _settings = new GlobalApplicationSettings();
-                    DebugLogger.Info("[GlobalConfig] Created default settings (file not found)");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info("[GlobalConfig] Created default settings (file not found)");
                 }
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[GlobalConfig] Error loading settings: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[GlobalConfig] Error loading settings: {ex.Message}");
                 _settings = new GlobalApplicationSettings(); // Fallback to defaults
             }
         }
@@ -90,19 +93,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Configuration
                 if (!Directory.Exists(configDir))
                 {
                     Directory.CreateDirectory(configDir);
-                    DebugLogger.Info($"[GlobalConfig] Created directory: {configDir}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[GlobalConfig] Created directory: {configDir}");
                 }
                 
                 var serializer = new XmlSerializer(typeof(GlobalApplicationSettings));
                 using (var writer = new FileStream(_settingsPath, FileMode.Create))
                 {
                     serializer.Serialize(writer, _settings);
-                    DebugLogger.Info($"[GlobalConfig] Saved settings to: {_settingsPath}");
+
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[GlobalConfig] Saved settings to: {_settingsPath}");
                 }
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[GlobalConfig] Error saving settings: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[GlobalConfig] Error saving settings: {ex.Message}");
                 throw;
             }
         }
@@ -118,16 +125,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Configuration
                 if (property != null && property.CanWrite)
                 {
                     property.SetValue(_settings.ConfigurationDefaults, value);
-                    DebugLogger.Info($"[GlobalConfig] Updated {settingName} = {value}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[GlobalConfig] Updated {settingName} = {value}");
                 }
                 else
                 {
-                    DebugLogger.Warning($"[GlobalConfig] Property {settingName} not found or not writable");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[GlobalConfig] Property {settingName} not found or not writable");
                 }
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[GlobalConfig] Error updating {settingName}: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[GlobalConfig] Error updating {settingName}: {ex.Message}");
             }
         }
         
@@ -147,12 +157,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Configuration
                         return (T)value;
                     }
                 }
-                DebugLogger.Warning($"[GlobalConfig] Property {settingName} not found or wrong type");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[GlobalConfig] Property {settingName} not found or wrong type");
                 return default(T);
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[GlobalConfig] Error getting {settingName}: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[GlobalConfig] Error getting {settingName}: {ex.Message}");
                 return default(T);
             }
         }
@@ -163,7 +175,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Configuration
         public void ResetToDefaults()
         {
             _settings.ConfigurationDefaults = new ConfigurationDefaults();
-            DebugLogger.Info("[GlobalConfig] Reset all configuration settings to defaults");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info("[GlobalConfig] Reset all configuration settings to defaults");
         }
         
         /// <summary>

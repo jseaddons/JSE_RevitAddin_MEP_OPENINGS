@@ -45,15 +45,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public void SetContext(List<string> categories, MarkPrefixSettings markPrefixes, string filterName)
         {
-            DebugLogger.Info("[SleevePlacementExternalEvent] ===== SETCONTEXT METHOD CALLED =====");
-            DebugLogger.Info($"[SleevePlacementExternalEvent] Categories: {string.Join(", ", categories)}");
-            DebugLogger.Info($"[SleevePlacementExternalEvent] MarkPrefixes: {markPrefixes?.ProjectPrefix ?? "NULL"}");
-            DebugLogger.Info($"[SleevePlacementExternalEvent] FilterName: {filterName ?? "NULL"}");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info("[SleevePlacementExternalEvent] ===== SETCONTEXT METHOD CALLED =====");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[SleevePlacementExternalEvent] Categories: {string.Join(", ", categories)}");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[SleevePlacementExternalEvent] MarkPrefixes: {markPrefixes?.ProjectPrefix ?? "NULL"}");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[SleevePlacementExternalEvent] FilterName: {filterName ?? "NULL"}");
             
             _selectedCategories = categories ?? throw new ArgumentNullException(nameof(categories));
             _markPrefixes = markPrefixes ?? new MarkPrefixSettings(); // Use defaults if null
             _selectedFilterName = filterName ?? throw new ArgumentNullException(nameof(filterName));
-            DebugLogger.Info($"[SleevePlacementExternalEvent] SetContext called - Categories: {string.Join(", ", categories)}, Filter: {filterName}");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[SleevePlacementExternalEvent] SetContext called - Categories: {string.Join(", ", categories)}, Filter: {filterName}");
         }
 
         public void Execute(UIApplication app)
@@ -62,102 +67,151 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: {DateTime.Now:yyyy-MM-dd HH:mm:ss} 🔥🔥🔥\n");
+                                // ✅ DEPLOYMENT MODE: Skip file writes
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: {DateTime.Now:yyyy-MM-dd HH:mm:ss} 🔥🔥🔥\n");
+                }
             }
             catch { }
             
             try
             {
                 // 🔥 CRITICAL DEBUG: Force direct file logging to bypass any logger issues
-                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: {DateTime.Now:yyyy-MM-dd HH:mm:ss} 🔥🔥🔥\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: {DateTime.Now:yyyy-MM-dd HH:mm:ss} 🔥🔥🔥\n");
                 
                 // 🔥 CRITICAL DEBUG: Force direct file logging to trace execution
-                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 1: Execute method started\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 1: Execute method started\n");
                 
                 // ✅ CRITICAL: Log to file immediately to verify Execute() reaches this point
                 try
                 {
                     var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 1: Execute method started\n");
+                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 1: Execute method started\n");
+                    }
                 }
                 catch { }
                 
                 // ✅ DEBUG: Add immediate logging to confirm Execute is called
-                DebugLogger.Info("[SleevePlacementExternalEvent] ===== EXECUTE METHOD CALLED =====");
-                DebugLogger.Info($"[SleevePlacementExternalEvent] _selectedCategories is null: {_selectedCategories == null}");
-                DebugLogger.Info($"[SleevePlacementExternalEvent] _markPrefixes is null: {_markPrefixes == null}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info("[SleevePlacementExternalEvent] ===== EXECUTE METHOD CALLED =====");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[SleevePlacementExternalEvent] _selectedCategories is null: {_selectedCategories == null}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[SleevePlacementExternalEvent] _markPrefixes is null: {_markPrefixes == null}");
                 
-                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 2: _selectedCategories is null: {_selectedCategories == null}\n");
-                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 3: _markPrefixes is null: {_markPrefixes == null}\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 2: _selectedCategories is null: {_selectedCategories == null}\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 3: _markPrefixes is null: {_markPrefixes == null}\n");
                 
                 // ✅ CRITICAL: Log to file at each step
                 try
                 {
                     var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 2: Categories null={_selectedCategories == null}, Count={_selectedCategories?.Count ?? 0}\n");
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 3: MarkPrefixes null={_markPrefixes == null}\n");
+                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 2: Categories null={_selectedCategories == null}, Count={_selectedCategories?.Count ?? 0}\n");
+                    }
+                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 3: MarkPrefixes null={_markPrefixes == null}\n");
+                    }
                 }
                 catch { }
                 
                 // ✅ CORRECTED: Defensive null check with fallback
                 if (_markPrefixes == null)
                 {
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 4: Mark prefixes null, using defaults\n");
-                    DebugLogger.Warning("[SleevePlacementExternalEvent] Mark prefixes not set, using defaults");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 4: Mark prefixes null, using defaults\n");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning("[SleevePlacementExternalEvent] Mark prefixes not set, using defaults");
                     _markPrefixes = new MarkPrefixSettings();
                 }
                 
-                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 5: Starting sleeve placement process\n");
-                DebugLogger.Info("[SleevePlacementExternalEvent] Starting sleeve placement process");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 5: Starting sleeve placement process\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info("[SleevePlacementExternalEvent] Starting sleeve placement process");
                 
                 _uiDocument = app.ActiveUIDocument;
                 _document = _uiDocument.Document;
                 
-                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 6: Got UI document and document\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 6: Got UI document and document\n");
                 
                 // Log document details for debugging
-                DebugLogger.Info($"[SleevePlacementExternalEvent] Active document - Path: {_document.PathName}");
-                DebugLogger.Info($"[SleevePlacementExternalEvent] Active document - IsModifiable: {_document.IsModifiable}");
-                DebugLogger.Info($"[SleevePlacementExternalEvent] Active document - IsLinked: {_document.IsLinked}");
-                DebugLogger.Info($"[SleevePlacementExternalEvent] Active document - IsWorkshared: {_document.IsWorkshared}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[SleevePlacementExternalEvent] Active document - Path: {_document.PathName}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[SleevePlacementExternalEvent] Active document - IsModifiable: {_document.IsModifiable}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[SleevePlacementExternalEvent] Active document - IsLinked: {_document.IsLinked}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[SleevePlacementExternalEvent] Active document - IsWorkshared: {_document.IsWorkshared}");
                 
-                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 7: Document: {_document.Title}, IsLinked: {_document.IsLinked}\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 7: Document: {_document.Title}, IsLinked: {_document.IsLinked}\n");
                 
                 // Ensure we're working with the host document, not a linked file
                 // Sleeves must be placed in the host document where structural elements are located
                 if (_document.IsLinked)
                 {
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 8: ❌ DOCUMENT IS LINKED - RETURNING EARLY\n");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 8: ❌ DOCUMENT IS LINKED - RETURNING EARLY\n");
                     try
                     {
                         var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 8: ❌ DOCUMENT IS LINKED - RETURNING EARLY\n");
+                                                // ✅ DEPLOYMENT MODE: Skip file writes
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 8: ❌ DOCUMENT IS LINKED - RETURNING EARLY\n");
+                        }
                     }
                     catch { }
                     var msg = "Cannot place sleeves: Currently active document is a linked file.\n\n" +
                              "Please activate the host document (main project file) and try again.\n" +
                              "Sleeves must be placed in the host document, not in linked files.";
-                    DebugLogger.Error($"[SleevePlacementExternalEvent] {msg}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error($"[SleevePlacementExternalEvent] {msg}");
                     TaskDialog.Show("Wrong Document Active", msg);
                     return;
                 }
 
-                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 9: ✅ Document is not linked, continuing\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 9: ✅ Document is not linked, continuing\n");
                 try
                 {
                     var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9: ✅ Document is not linked, continuing\n");
+                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9: ✅ Document is not linked, continuing\n");
+                    }
                 }
                 catch { }
 
                 // ✅ CRITICAL FIX: Check for null _selectedCategories
                 if (_selectedCategories == null)
                 {
-                    DebugLogger.Error("[SleevePlacementExternalEvent] _selectedCategories is null - cannot process");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error("[SleevePlacementExternalEvent] _selectedCategories is null - cannot process");
                     try
                     {
                         var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ _selectedCategories is NULL - RETURNING EARLY\n");
+                                                // ✅ DEPLOYMENT MODE: Skip file writes
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ _selectedCategories is NULL - RETURNING EARLY\n");
+                        }
                     }
                     catch { }
                     TaskDialog.Show("Error", "No categories selected for processing");
@@ -173,72 +227,105 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 catch { }
 
                 // Log immediate feedback (non-blocking)
-                DebugLogger.Info($"[SleevePlacementExternalEvent] Processing {_selectedCategories.Count} categories: {string.Join(", ", _selectedCategories)}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[SleevePlacementExternalEvent] Processing {_selectedCategories.Count} categories: {string.Join(", ", _selectedCategories)}");
 
                 // ✅ DEBUG: Add try-catch around LoadClusterConfigurationFromFilters
                 try
                 {
-                    DebugLogger.Info("[SleevePlacementExternalEvent] About to call LoadClusterConfigurationFromFilters...");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info("[SleevePlacementExternalEvent] About to call LoadClusterConfigurationFromFilters...");
                     LoadClusterConfigurationFromFilters();
-                    DebugLogger.Info("[SleevePlacementExternalEvent] LoadClusterConfigurationFromFilters completed successfully");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info("[SleevePlacementExternalEvent] LoadClusterConfigurationFromFilters completed successfully");
                 }
                 catch (Exception loadEx)
                 {
-                    DebugLogger.Error($"[SleevePlacementExternalEvent] Error in LoadClusterConfigurationFromFilters: {loadEx.Message}");
-                    DebugLogger.Error($"[SleevePlacementExternalEvent] LoadClusterConfigurationFromFilters stack trace: {loadEx.StackTrace}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error($"[SleevePlacementExternalEvent] Error in LoadClusterConfigurationFromFilters: {loadEx.Message}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error($"[SleevePlacementExternalEvent] LoadClusterConfigurationFromFilters stack trace: {loadEx.StackTrace}");
                     throw; // Re-throw to be caught by outer try-catch
                 }
 
-                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 10: About to create orchestrator\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 10: About to create orchestrator\n");
                 try
                 {
                     var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 10: About to create orchestrator\n");
+                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 10: About to create orchestrator\n");
+                    }
                 }
                 catch { }
                 
                 // ✅ ARCHITECTURE COMPLIANCE: Use OpeningCommandOrchestrator for proper command execution
-                DebugLogger.Info("[SleevePlacementExternalEvent] Creating OpeningCommandOrchestrator for proper architecture compliance");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info("[SleevePlacementExternalEvent] Creating OpeningCommandOrchestrator for proper architecture compliance");
                 
                 var clearanceSettings = GetClearanceSettingsFromUI();
                 try
                 {
                     var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 10.5: Clearance settings count: {clearanceSettings?.Count ?? 0}\n");
+                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 10.5: Clearance settings count: {clearanceSettings?.Count ?? 0}\n");
+                    }
                 }
                 catch { }
                 
                 var orchestrator = new OpeningCommandOrchestrator(_document, _uiDocument, clearanceSettings, _markPrefixes);
                 
-                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 11: Orchestrator created successfully with clearances and mark prefixes\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 11: Orchestrator created successfully with clearances and mark prefixes\n");
                 try
                 {
                     var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 11: Orchestrator created successfully\n");
+                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 11: Orchestrator created successfully\n");
+                    }
                 }
                 catch { }
                 
-                DebugLogger.Info($"[SleevePlacementExternalEvent] Set {clearanceSettings.Count} UI clearance settings and mark prefixes in orchestrator");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[SleevePlacementExternalEvent] Set {clearanceSettings.Count} UI clearance settings and mark prefixes in orchestrator");
                 
-                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 12: Set UI clearances in orchestrator\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 12: Set UI clearances in orchestrator\n");
                 
                 // ✅ Convert categories to filters for orchestrator
-                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 12.5: About to convert categories to filters\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 12.5: About to convert categories to filters\n");
                 try
                 {
                     var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 12.5: About to convert {_selectedCategories.Count} categories to filters\n");
+                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 12.5: About to convert {_selectedCategories.Count} categories to filters\n");
+                    }
                 }
                 catch { }
                 
                 var filters = ConvertCategoriesToFilters(_selectedCategories);
-                DebugLogger.Info($"[SleevePlacementExternalEvent] Converted {_selectedCategories.Count} categories to {filters.Count} filters");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[SleevePlacementExternalEvent] Converted {_selectedCategories.Count} categories to {filters.Count} filters");
                 
-                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 13: Converted {_selectedCategories.Count} categories to {filters.Count} filters\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 13: Converted {_selectedCategories.Count} categories to {filters.Count} filters\n");
                 try
                 {
                     var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 13: Converted to {filters.Count} filters\n");
+                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 13: Converted to {filters.Count} filters\n");
+                    }
                     if (filters != null && filters.Count > 0)
                     {
                         File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 13.5: Filter names: {string.Join(", ", filters.Select(f => f.Name))}\n");
@@ -247,9 +334,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 catch { }
                 
                 // ✅ Execute through orchestrator (proper architecture)
-                DebugLogger.Info("[SleevePlacementExternalEvent] Executing through OpeningCommandOrchestrator...");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info("[SleevePlacementExternalEvent] Executing through OpeningCommandOrchestrator...");
                 
-                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 14: About to execute orchestrator\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 14: About to execute orchestrator\n");
                 
                 // ✅ CRITICAL: Log before and after orchestrator call to see if it completes
                 try
@@ -269,21 +358,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 catch { }
                 
-                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 15: ✅ Orchestrator execution completed\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 15: ✅ Orchestrator execution completed\n");
                 
-                DebugLogger.Info("[SleevePlacementExternalEvent] Orchestrator execution completed");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info("[SleevePlacementExternalEvent] Orchestrator execution completed");
                 
                 // ✅ SIMPLIFIED: Coordinate saving now handled directly in UniversalSleevePlacerService
-                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 16: ✅ Coordinate saving completed in UniversalSleevePlacerService\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 16: ✅ Coordinate saving completed in UniversalSleevePlacerService\n");
                 
-                DebugLogger.Info("[SleevePlacementExternalEvent] Coordinate saving completed in UniversalSleevePlacerService");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info("[SleevePlacementExternalEvent] Coordinate saving completed in UniversalSleevePlacerService");
                 
-                DebugLogger.Info("[SleevePlacementExternalEvent] ✓ COMPLETED THROUGH PROPER ORCHESTRATOR ARCHITECTURE");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info("[SleevePlacementExternalEvent] ✓ COMPLETED THROUGH PROPER ORCHESTRATOR ARCHITECTURE");
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[SleevePlacementExternalEvent] Exception: {ex.Message}");
-                DebugLogger.Error($"[SleevePlacementExternalEvent] Stack trace: {ex.StackTrace}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[SleevePlacementExternalEvent] Exception: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[SleevePlacementExternalEvent] Stack trace: {ex.StackTrace}");
                 TaskDialog.Show("Error", $"Failed to complete sleeve placement: {ex.Message}");
             }
             finally
@@ -304,7 +400,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ CRITICAL FIX: Check for null _selectedCategories
                 if (_selectedCategories == null)
                 {
-                    DebugLogger.Error("[SleevePlacementExternalEvent] _selectedCategories is null in GetClearanceSettingsFromUI");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error("[SleevePlacementExternalEvent] _selectedCategories is null in GetClearanceSettingsFromUI");
                     return clearanceSettings;
                 }
                 
@@ -318,12 +415,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
                 
-                DebugLogger.Info($"[SleevePlacementExternalEvent] Collected {clearanceSettings.Count} clearance settings from UI");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[SleevePlacementExternalEvent] Collected {clearanceSettings.Count} clearance settings from UI");
                 return clearanceSettings;
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[SleevePlacementExternalEvent] Error getting clearance settings: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[SleevePlacementExternalEvent] Error getting clearance settings: {ex.Message}");
                 return new Dictionary<string, double>();
             }
         }
@@ -340,7 +439,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ CRITICAL FIX: Check for null categories parameter
                 if (categories == null)
                 {
-                    DebugLogger.Error("[SleevePlacementExternalEvent] categories parameter is null in ConvertCategoriesToFilters");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error("[SleevePlacementExternalEvent] categories parameter is null in ConvertCategoriesToFilters");
                     return filters;
                 }
                 
@@ -362,7 +462,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             LastModified = DateTime.Now
                         };
                         filters.Add(filter);
-                        DebugLogger.Info($"[SleevePlacementExternalEvent] Created filter '{filter.Name}' for category '{categoryName}' with {clashZones.Count} clash zones");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[SleevePlacementExternalEvent] Created filter '{filter.Name}' for category '{categoryName}' with {clashZones.Count} clash zones");
                     }
                 }
                 
@@ -370,7 +471,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[SleevePlacementExternalEvent] Error converting categories to filters: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[SleevePlacementExternalEvent] Error converting categories to filters: {ex.Message}");
                 return new List<OpeningFilter>();
             }
         }
@@ -384,7 +486,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                DebugLogger.Info("[SleevePlacementExternalEvent] Loading cluster configuration from filters...");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info("[SleevePlacementExternalEvent] Loading cluster configuration from filters...");
                 
                 // ✅ CRITICAL FIX: Use project-specific directory (matches Refresh saves)
                 // This was using hardcoded "Default" path
@@ -392,12 +495,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     ? ProjectPathService.GetFiltersDirectory(_document)
                     : ProjectPathService.GetFiltersDirectory(_document);
                 
-                DebugLogger.Info($"[SleevePlacementExternalEvent] Loading cluster config from: {filtersDirectory}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[SleevePlacementExternalEvent] Loading cluster config from: {filtersDirectory}");
                 
                 // ✅ Ensure directory exists before searching
                 if (!Directory.Exists(filtersDirectory))
                 {
-                    DebugLogger.Warning($"[SleevePlacementExternalEvent] Filters directory does not exist: {filtersDirectory} - using default cluster configuration");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[SleevePlacementExternalEvent] Filters directory does not exist: {filtersDirectory} - using default cluster configuration");
                     ClusterConfigurationManager.Instance.SetJoinOpeningsDistance(200.0, "Default (directory not found)");
                     return;
                 }
@@ -412,7 +517,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         .OrderByDescending(f => File.GetLastWriteTime(f))
                         .First();
                     
-                    DebugLogger.Info($"[SleevePlacementExternalEvent] Reading configuration from: {Path.GetFileName(xmlFile)}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[SleevePlacementExternalEvent] Reading configuration from: {Path.GetFileName(xmlFile)}");
                     
                     // Try to load as UserConfiguration first (which contains AdvancedSettings)
                     try
@@ -431,7 +537,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     joinDistance, 
                                     $"UserConfiguration: {xmlFile}");
                                 
-                                DebugLogger.Info($"[SleevePlacementExternalEvent] ✓ Cluster configuration loaded from UserConfiguration: JoinOpeningsDistance = {joinDistance}mm");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[SleevePlacementExternalEvent] ✓ Cluster configuration loaded from UserConfiguration: JoinOpeningsDistance = {joinDistance}mm");
                                 return; // Success - exit method
                             }
                         }
@@ -448,7 +555,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         using (var reader = new StreamReader(xmlFile))
                         {
                             var filter = (OpeningFilter)serializer.Deserialize(reader);
-                            DebugLogger.Info($"[SleevePlacementExternalEvent] Loaded filter: {filter?.Name}, using default cluster configuration (200mm)");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[SleevePlacementExternalEvent] Loaded filter: {filter?.Name}, using default cluster configuration (200mm)");
                         }
                     }
                     catch
@@ -457,19 +565,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     
                     // No advanced settings found - use default
-                    DebugLogger.Warning("[SleevePlacementExternalEvent] No AdvancedSettings found in XML files - using default cluster configuration (200mm)");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning("[SleevePlacementExternalEvent] No AdvancedSettings found in XML files - using default cluster configuration (200mm)");
                     ClusterConfigurationManager.Instance.SetJoinOpeningsDistance(200.0, "Default (no settings in filter)");
                 }
                 else
                 {
-                    DebugLogger.Warning($"[SleevePlacementExternalEvent] No filter XML files found in {filtersDirectory} - using default cluster configuration (200mm)");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[SleevePlacementExternalEvent] No filter XML files found in {filtersDirectory} - using default cluster configuration (200mm)");
                     ClusterConfigurationManager.Instance.SetJoinOpeningsDistance(200.0, "Default (no filters found)");
                 }
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[SleevePlacementExternalEvent] Error loading cluster configuration: {ex.Message}");
-                DebugLogger.Error($"[SleevePlacementExternalEvent] Using default cluster configuration (200mm)");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[SleevePlacementExternalEvent] Error loading cluster configuration: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[SleevePlacementExternalEvent] Using default cluster configuration (200mm)");
                 ClusterConfigurationManager.Instance.SetJoinOpeningsDistance(200.0, "Default (error loading from filter)");
             }
         }
@@ -486,7 +598,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ CRITICAL FIX: Check for null category parameter
                 if (string.IsNullOrEmpty(category))
                 {
-                    DebugLogger.Error("[SleevePlacementExternalEvent] category parameter is null or empty in GetClashZonesForCategory");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error("[SleevePlacementExternalEvent] category parameter is null or empty in GetClashZonesForCategory");
                     return (clashZones, xmlFilePath);
                 }
                 
@@ -496,11 +609,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     : ProjectPathService.GetFiltersDirectory(_document);
                 
                 // ✅ CRITICAL: Log which directory we're looking in
-                DebugLogger.Info($"[SleevePlacementExternalEvent] GetClashZonesForCategory: Looking in directory: {filtersDirectory}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[SleevePlacementExternalEvent] GetClashZonesForCategory: Looking in directory: {filtersDirectory}");
                 try
                 {
                     var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] GetClashZonesForCategory: category='{category}', directory='{filtersDirectory}', filterName='{_selectedFilterName}'\n");
+                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] GetClashZonesForCategory: category='{category}', directory='{filtersDirectory}', filterName='{_selectedFilterName}'\n");
+                    }
                 }
                 catch { }
                 
@@ -517,29 +635,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var exactFileName = $"{baseFilterName}_{categoryPattern}.xml";
                 xmlFilePath = Path.Combine(filtersDirectory, exactFileName);
                 
-                DebugLogger.Info($"[SleevePlacementExternalEvent] Looking for EXACT file: '{exactFileName}'");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[SleevePlacementExternalEvent] Looking for EXACT file: '{exactFileName}'");
                 try
                 {
                     var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] GetClashZonesForCategory: Looking for EXACT file: '{exactFileName}'\n");
+                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] GetClashZonesForCategory: Looking for EXACT file: '{exactFileName}'\n");
+                    }
                 }
                 catch { }
                 
                 // ✅ EXACT FILE EXISTENCE CHECK: No variations, no fallbacks
                 if (!File.Exists(xmlFilePath))
                 {
-                    DebugLogger.Warning($"[SleevePlacementExternalEvent] ❌ EXACT file not found: '{exactFileName}' in directory '{filtersDirectory}'");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[SleevePlacementExternalEvent] ❌ EXACT file not found: '{exactFileName}' in directory '{filtersDirectory}'");
                     try
                     {
                         var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
                         if (!Directory.Exists(filtersDirectory))
                         {
-                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ GetClashZonesForCategory: Directory does not exist: {filtersDirectory}\n");
+                                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ GetClashZonesForCategory: Directory does not exist: {filtersDirectory}\n");
+                            }
                 }
                 else
                 {
                             var allFiles = Directory.GetFiles(filtersDirectory, "*.xml");
-                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ GetClashZonesForCategory: EXACT file '{exactFileName}' not found. Directory has {allFiles.Length} XML files.\n");
+                                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ GetClashZonesForCategory: EXACT file '{exactFileName}' not found. Directory has {allFiles.Length} XML files.\n");
+                            }
                             if (allFiles.Length > 0)
                     {
                                 File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] GetClashZonesForCategory: Available files: {string.Join(", ", allFiles.Select(Path.GetFileName))}\n");
@@ -556,10 +688,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     using (var reader = new StreamReader(xmlFilePath))
                     {
                         var filter = (OpeningFilter)serializer.Deserialize(reader);
+
                         if (filter?.ClashZoneStorage?.ClashZones != null)
                         {
                             clashZones.AddRange(filter.ClashZoneStorage.ClashZones);
-                            DebugLogger.Info($"[SleevePlacementExternalEvent] Loaded {filter.ClashZoneStorage.ClashZones.Count} clash zones from {Path.GetFileName(xmlFilePath)}");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[SleevePlacementExternalEvent] Loaded {filter.ClashZoneStorage.ClashZones.Count} clash zones from {Path.GetFileName(xmlFilePath)}");
                             
                             // ✅ CRITICAL: Log to file
                             try
@@ -571,7 +705,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             
                             // Debug: Check if document titles are populated
                             var clashZonesWithDocTitle = clashZones.Count(cz => !string.IsNullOrEmpty(cz.StructuralElementDocumentTitle));
-                            DebugLogger.Info($"[SleevePlacementExternalEvent] Clash zones with document titles: {clashZonesWithDocTitle}/{clashZones.Count}");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[SleevePlacementExternalEvent] Clash zones with document titles: {clashZonesWithDocTitle}/{clashZones.Count}");
                         }
                         else
                         {
@@ -582,18 +717,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ GetClashZonesForCategory: Filter or ClashZoneStorage is null in file {Path.GetFileName(xmlFilePath)}\n");
                             }
                             catch { }
-                            DebugLogger.Warning($"[SleevePlacementExternalEvent] Filter or ClashZoneStorage is null in file {xmlFilePath}");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Warning($"[SleevePlacementExternalEvent] Filter or ClashZoneStorage is null in file {xmlFilePath}");
                         }
                     }
                 }
                 else
                 {
-                    DebugLogger.Warning($"[SleevePlacementExternalEvent] No XML files found for category '{category}' with filter '{_selectedFilterName}' in directory: {filtersDirectory}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[SleevePlacementExternalEvent] No XML files found for category '{category}' with filter '{_selectedFilterName}' in directory: {filtersDirectory}");
                 }
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[SleevePlacementExternalEvent] Error loading clash zones for {category}: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[SleevePlacementExternalEvent] Error loading clash zones for {category}: {ex.Message}");
             }
             
             return (clashZones, xmlFilePath);
@@ -601,14 +739,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         public string GetName()
         {
-            DebugLogger.Info("[SleevePlacementExternalEvent] GetName() called - returning 'Sleeve Placement Handler'");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info("[SleevePlacementExternalEvent] GetName() called - returning 'Sleeve Placement Handler'");
             return "Sleeve Placement Handler";
         }
 
         public void SetSelectedCategories(List<string> selectedCategories)
         {
             _selectedCategories = selectedCategories;
-            DebugLogger.Info($"[SleevePlacementExternalEvent] Set categories for processing: {string.Join(", ", selectedCategories)}");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[SleevePlacementExternalEvent] Set categories for processing: {string.Join(", ", selectedCategories)}");
         }
 
         /// <summary>
@@ -637,8 +777,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Normalize category names to Revit API standard (prevent Duct/Ducts confusion)
                 string normalizedCategory = MepCategoryConstants.Normalize(category);
                 
-                DebugLogger.Info($"[SleevePlacementExternalEvent] Category '{category}' normalized to '{normalizedCategory}'");
-                DebugLogger.Info($"[SleevePlacementExternalEvent] Creating UniversalSleevePlacementCommand for {normalizedCategory} with {clashZones.Count} clash zones");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[SleevePlacementExternalEvent] Category '{category}' normalized to '{normalizedCategory}'");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[SleevePlacementExternalEvent] Creating UniversalSleevePlacementCommand for {normalizedCategory} with {clashZones.Count} clash zones");
                 
                 // ✅ NEW: Get clearance settings from UI for this category
                 var clearanceSettings = GetClearanceSettingsForCategory(normalizedCategory);
@@ -647,7 +789,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[SleevePlacementExternalEvent] Error creating command for {category}: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[SleevePlacementExternalEvent] Error creating command for {category}: {ex.Message}");
                 return null;
             }
         }
@@ -662,17 +805,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Use FilterUiStateProvider to get clearance settings from UI
                 var clearanceSettings = FilterUiStateProvider.GetClearanceSettings?.Invoke(category) ?? new Dictionary<string, double>();
                 
-                DebugLogger.Info($"[SleevePlacementExternalEvent] Retrieved {clearanceSettings.Count} clearance settings for category '{category}'");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[SleevePlacementExternalEvent] Retrieved {clearanceSettings.Count} clearance settings for category '{category}'");
                 foreach (var kvp in clearanceSettings)
                 {
-                    DebugLogger.Info($"[SleevePlacementExternalEvent] Clearance: {kvp.Key} = {kvp.Value}mm");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[SleevePlacementExternalEvent] Clearance: {kvp.Key} = {kvp.Value}mm");
                 }
                 
                 return clearanceSettings;
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[SleevePlacementExternalEvent] Error getting clearance settings for {category}: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[SleevePlacementExternalEvent] Error getting clearance settings for {category}: {ex.Message}");
                 return new Dictionary<string, double>();
             }
         }

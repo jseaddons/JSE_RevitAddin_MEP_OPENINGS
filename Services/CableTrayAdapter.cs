@@ -1,6 +1,7 @@
 using System;
 using Autodesk.Revit.DB;
-using Autodesk.Revit.DB.Electrical;  // for CableTray
+using Autodesk.Revit.DB.Electrical;
+using JSE_RevitAddin_MEP_OPENINGS.Services; // For DeploymentConfiguration  // for CableTray
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {

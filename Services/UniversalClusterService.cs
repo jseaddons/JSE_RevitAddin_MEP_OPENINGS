@@ -87,7 +87,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             if (_filterService == null)
             {
-                _filterService = new FilterManagementService(doc, msg => DebugLogger.Info(msg), msg => DebugLogger.Error(msg));
+                _filterService = new FilterManagementService(doc, msg => {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info(msg);
+                }, msg => {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error(msg);
+                });
             }
             
             int placedCount = 0;
@@ -106,11 +112,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     System.IO.File.WriteAllText(clusterLogPath, $"===== CLUSTER SESSION STARTED {DateTime.Now:HH:mm:ss} =====\n");
                 
                 // 🔥 CRITICAL DEBUG: Log which XML file cluster service is working with
+                // ✅ DEPLOYMENT MODE: Skip file writes
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     string orchestratorDebugLogPath = SafeFileLogger.GetLogFilePath("orchestrator_debug.log");
-                    System.IO.File.AppendAllText(orchestratorDebugLogPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 CLUSTER SERVICE WORKING WITH XML FILE: {xmlFilePath ?? "NULL"}\n");
-                    System.IO.File.AppendAllText(orchestratorDebugLogPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 CLUSTER SERVICE FILTER NAME: {filterName ?? "NULL"}\n");
+                    File.AppendAllText(orchestratorDebugLogPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 CLUSTER SERVICE WORKING WITH XML FILE: {xmlFilePath ?? "NULL"}\n");
+                    File.AppendAllText(orchestratorDebugLogPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 CLUSTER SERVICE FILTER NAME: {filterName ?? "NULL"}\n");
                 }
                 
                 // ⚠️ CRITICAL: Reset cluster flags for deleted cluster sleeves
@@ -136,6 +143,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 double toleranceMm = ClusterConfigurationManager.Instance.JoinOpeningsDistance;
                 var toleranceDist = UnitUtils.ConvertToInternalUnits(toleranceMm, UnitTypeId.Millimeters);
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[UniversalClusterService] Using cheaper bounding box overlap algorithm with tolerance: {toleranceMm}mm");
                 
                 // ✅ DYNAMIC: Reload cache with updated cluster flags from regular XML
@@ -148,12 +156,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 toleranceDist = UnitUtils.ConvertToInternalUnits(toleranceMm, UnitTypeId.Millimeters);
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Log($"[UniversalClusterService] Using JoinOpeningsDistance: {toleranceMm}mm (from {ClusterConfigurationManager.Instance.ConfigurationSource})");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Log($"[UniversalClusterService] Internal units: {toleranceDist:F6} feet");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Log($"[UniversalClusterService] Target category: {targetCategory ?? "ALL"}");
                 
+                                // ✅ DEPLOYMENT MODE: Skip file writes
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
                 File.AppendAllText(clusterLogPath, $"JoinOpeningsDistance: {toleranceMm}mm\n");
+                }
+                                // ✅ DEPLOYMENT MODE: Skip file writes
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
                 File.AppendAllText(clusterLogPath, $"Target category: {targetCategory ?? "ALL"}\n");
+                }
 
                 // Collect all sleeves using the 4 universal families
                 var allSleeves = new FilteredElementCollector(doc)
@@ -169,6 +188,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     })
                     .ToList();
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Log($"[UniversalClusterService] Found {allSleeves.Count} total sleeves (all categories)");
                 File.AppendAllText(clusterLogPath, $"Found {allSleeves.Count} total sleeves (all categories)\n");
                 
@@ -183,6 +203,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         // ✅ CRITICAL FIX: Process ALL sleeves that have MEP_ElementId parameter
                         // Don't filter by clash zone cache - read directly from Revit
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Log($"[UniversalClusterService] PROCESS: Sleeve {s.Id} (MEP {mepElementId}) found in Revit - proceeding with clustering");
                             return true;
                     }
@@ -203,10 +224,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Log($"[UniversalClusterService] Found {cacheSleeves.Count} sleeves in Revit model (out of {allSleeves.Count} total)");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Log($"[UniversalClusterService] DIRECT REVIT READING: Processing all sleeves with MEP_ElementId parameter");
                 File.AppendAllText(clusterLogPath, $"Found {cacheSleeves.Count} sleeves in Revit model (out of {allSleeves.Count} total)\n");
+                                // ✅ DEPLOYMENT MODE: Skip file writes
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
                 File.AppendAllText(clusterLogPath, $"DIRECT REVIT READING: Processing all sleeves with MEP_ElementId parameter\n");
+                }
                 
                 // ✅ CRITICAL: Filter by MEP_Category parameter to prevent cross-category clustering
                 // ✅ FIXED: Use XML data directly for clustering - no Revit API calls needed
@@ -219,10 +246,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var placementDebugPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
                 try 
                 { 
-                    System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING-START] Loaded {allClashZonesFromXml.Count} total clash zones from XML\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING-START] Loaded {allClashZonesFromXml.Count} total clash zones from XML\n");
+                    }
                     var withSleeveId = allClashZonesFromXml.Count(cz => cz.SleeveInstanceId > 0);
                     var notClusterResolved = allClashZonesFromXml.Count(cz => cz.SleeveInstanceId > 0 && !cz.IsClusterResolved);
-                    System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING-START] With SleeveInstanceId>0: {withSleeveId}, Not IsClusterResolved: {notClusterResolved}\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING-START] With SleeveInstanceId>0: {withSleeveId}, Not IsClusterResolved: {notClusterResolved}\n");
+                    }
                 } 
                 catch { }
                 
@@ -242,6 +275,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     .Where(s => s.BoundingBox != null) // ✅ CRITICAL: Only include sleeves with valid bounding boxes
                     .ToList();
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Log($"[UniversalClusterService] Found {rawSleeves.Count} sleeves from XML data for category '{targetCategory}'");
                 
                 // ✅ DEBUG: Log which sleeves have zero bounding boxes
@@ -264,12 +298,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ DEBUG: Log first few sleeves that will be clustered
                 try 
                 { 
-                    System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] Found {rawSleeves.Count} sleeves ready for clustering after filtering:\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] Found {rawSleeves.Count} sleeves ready for clustering after filtering:\n");
+                    }
                     var firstFew = rawSleeves.Take(5).Select(s => $"Sleeve {s.SleeveInstanceId} (Host={s.HostType}, Ori={s.Orientation}, BBox=({s.BoundingBox.Min.X:F3},{s.BoundingBox.Min.Y:F3},{s.BoundingBox.Min.Z:F3}) to ({s.BoundingBox.Max.X:F3},{s.BoundingBox.Max.Y:F3},{s.BoundingBox.Max.Z:F3}))");
                     System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] First 5: {string.Join("\n", firstFew)}\n");
                 } 
                 catch { }
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Log($"[UniversalClusterService] Processing {rawSleeves.Count} sleeves" + 
                                (string.IsNullOrEmpty(targetCategory) ? " (all categories)" : $" (category-filtered for {targetCategory})"));
                 File.AppendAllText(clusterLogPath, $"Processing {rawSleeves.Count} sleeves (category-filtered for {targetCategory ?? "ALL"})\n");
@@ -288,8 +326,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var clashZone = GetClashZoneBySleeveInstanceId(sleeveInstanceId);
                     if (clashZone != null)
                     {
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-START] Sleeve {sleeveInstanceId}: MEP={clashZone.MepElementIdValue}, ClashZone={clashZone.Id}\n");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-START] FLAGS: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}\n");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-START] PARAMS: SleeveInstanceId={clashZone.SleeveInstanceId}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}\n");
                     }
                 }
@@ -297,6 +338,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ FIXED: Work with XML data directly - no Revit API calls needed
                 if (rawSleeves.Count == 0)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Log($"[UniversalClusterService] No sleeves to cluster from XML data");
                     return (0, 0);
                 }
@@ -304,6 +346,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ⚠️ CRITICAL: Transaction must be started by caller
                 if (!doc.IsModifiable)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[UniversalClusterService] Document is not modifiable - transaction must be started by caller");
                     throw new InvalidOperationException("Document must be in a transaction before calling ClusterSleeves");
                 }
@@ -316,7 +359,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     string effectiveOrientation = sleeve.Orientation;
                     
                     // Log to dedicated cluster debug file
+                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
                     File.AppendAllText(clusterLogPath, $"Sleeve {sleeve.SleeveInstanceId}: hostType={hostType}, systemType={systemType}, orientation={effectiveOrientation}\n");
+                    }
                     
                     return new SleeveGroupKey(hostType, systemType, effectiveOrientation);
                 });
@@ -326,6 +373,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     var list = g.ToList();
                     var ids = list.Select(s => s.SleeveInstanceId.ToString()).Take(10).ToList();
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Log($"[ClusterService] Group hostType={g.Key.hostType}, systemType={g.Key.systemType}, orientation={g.Key.orientation}, count={list.Count}, sampleIds={string.Join(",", ids)}");
                     File.AppendAllText(clusterLogPath, $"Group: hostType={g.Key.hostType}, systemType={g.Key.systemType}, orientation={g.Key.orientation}, count={list.Count}, sampleIds={string.Join(",", ids)}\n");
                 }
@@ -339,10 +387,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var placementDebugPath2 = SafeFileLogger.GetLogFilePath("placement_debug.log");
                 try 
                 { 
-                    System.IO.File.AppendAllText(placementDebugPath2, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] FormClusters returned {totalClusters} clusters with {totalSleevesInClusters} total sleeves\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(placementDebugPath2, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] FormClusters returned {totalClusters} clusters with {totalSleevesInClusters} total sleeves\n");
+                    }
                     foreach (var groupEntry in clustersByGroup)
                     {
-                        System.IO.File.AppendAllText(placementDebugPath2, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] Group {groupEntry.Key.hostType}_{groupEntry.Key.systemType}: {groupEntry.Value.Count} clusters\n");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            File.AppendAllText(placementDebugPath2, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] Group {groupEntry.Key.hostType}_{groupEntry.Key.systemType}: {groupEntry.Value.Count} clusters\n");
+                        }
                     }
                 } 
                 catch { }
@@ -364,16 +418,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var placementDebugPath3 = SafeFileLogger.GetLogFilePath("placement_debug.log");
                             try 
                             { 
-                                System.IO.File.AppendAllText(placementDebugPath3, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] Processing cluster with {cluster.Count} sleeves: [{clusterSleeveIds}]\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    File.AppendAllText(placementDebugPath3, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] Processing cluster with {cluster.Count} sleeves: [{clusterSleeveIds}]\n");
+                                }
                             } 
                             catch { }
                             
                             if (IsClusterAlreadyExists(cluster, groupKey))
                             {
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[DEBUG] SKIP: Cluster already exists for {cluster.Count} sleeves - skipping placement\n");
                                 try 
                                 { 
-                                    System.IO.File.AppendAllText(placementDebugPath3, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] ⚠️ SKIP: Cluster already exists for sleeves [{clusterSleeveIds}]\n");
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        File.AppendAllText(placementDebugPath3, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] ⚠️ SKIP: Cluster already exists for sleeves [{clusterSleeveIds}]\n");
+                                    }
                                 } 
                                 catch { }
                                 continue;
@@ -382,7 +443,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // Place cluster sleeve
                             try 
                             { 
-                                System.IO.File.AppendAllText(placementDebugPath3, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] ✓ CALLING PlaceClusterSleeve for [{clusterSleeveIds}]\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    File.AppendAllText(placementDebugPath3, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] ✓ CALLING PlaceClusterSleeve for [{clusterSleeveIds}]\n");
+                                }
                             } 
                             catch { }
                             
@@ -390,7 +454,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             
                             try 
                             { 
-                                System.IO.File.AppendAllText(placementDebugPath3, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] PlaceClusterSleeve returned: placed={placed1}, deleted={deleted1}\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    File.AppendAllText(placementDebugPath3, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] PlaceClusterSleeve returned: placed={placed1}, deleted={deleted1}\n");
+                                }
                             } 
                             catch { }
                             placedCount += placed1;
@@ -399,12 +466,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // ✅ CRITICAL: Update ClashZone flags after cluster placement
                             if (placed1 > 0)
                             {
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[UniversalClusterService] 🔥 FLAG UPDATE: placed1={placed1}, about to find cluster sleeve 🔥");
                                 
                                 // Find the cluster sleeve that was just placed (it should be the newest family instance)
                                 var clusterSleeve = FindNewestClusterSleeve(doc, cluster, groupKey);
                                 if (clusterSleeve != null)
                                 {
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[UniversalClusterService] 🔥 FLAG UPDATE: Found cluster sleeve {clusterSleeve.Id.IntegerValue}, calling UpdateClashZoneFlagsForCluster 🔥");
                                     UpdateClashZoneFlagsForCluster(clusterSleeve, cluster, groupKey.systemType, doc);
                                     
@@ -413,11 +482,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 }
                                 else
                                 {
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Warning($"[UniversalClusterService] ⚠️ FLAG UPDATE: No cluster sleeve found, skipping flag update");
                                 }
                             }
                             else
                             {
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Warning($"[UniversalClusterService] ⚠️ FLAG UPDATE: placed1={placed1}, no cluster sleeve placed, skipping flag update");
                             }
                             
@@ -425,19 +496,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                         catch (Exception ex)
                         {
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Error($"[UniversalClusterService] Error placing cluster: {ex.Message}");
                         }
                     }
                 }
 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Log($"[UniversalClusterService] Summary: {placedCount} openings placed, {deletedCount} sleeves deleted.");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[DEBUG] Summary: {placedCount} openings placed, {deletedCount} sleeves deleted.\n");
                 
                 // ⚠️ DISABLED: Cleanup will be called AFTER XML save in orchestrator to use cached bounding boxes
                 // Cleanup requires cluster sleeve bounding boxes to be saved to XML first
                 // The orchestrator will call CleanupSleevesWithinClustersAfterXmlSave() after XML update
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Log($"[UniversalClusterService] Final Summary: {placedCount} openings placed, {deletedCount} sleeves deleted.");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[DEBUG] Final Summary: {placedCount} openings placed, {deletedCount} sleeves deleted.\n");
                 
                 // ✅ RETURN: Populate the output list with placed cluster sleeves
@@ -445,22 +521,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     placedClusterSleevesOut.Clear();
                     placedClusterSleevesOut.AddRange(placedClusters);
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Log($"[UniversalClusterService] Returning {placedClusters.Count} placed cluster sleeves for coordinate update");
                 }
                 
                 // ✅ PERFORMANCE: Log clustering performance
                 var endTime = DateTime.Now;
                 var duration = endTime - startTime;
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[UniversalClusterService] ⚡ Clustering completed in {duration.TotalSeconds:F1} seconds");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[DEBUG] ⚡ PERFORMANCE: Clustering completed in {duration.TotalSeconds:F1} seconds\n");
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[DEBUG] ===== CLUSTER DEBUG SESSION ENDED {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n\n");
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Clustering failed: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Stack trace: {ex.StackTrace}");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[DEBUG] ERROR: {ex.Message}\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[DEBUG] Stack trace: {ex.StackTrace}\n");
                 throw;
             }
@@ -502,11 +586,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (familyName.Contains("Wall")) return "Wall";
                 if (familyName.Contains("Slab")) return "Floor";
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Warning($"[UniversalClusterService] Sleeve {sleeve.Id.IntegerValue}: Could not determine host type dynamically");
                 return "Unknown";
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error getting HostType for sleeve {sleeve.Id.IntegerValue}: {ex.Message}");
                 return "Unknown";
             }
@@ -532,6 +618,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (wallDirectionParam != null && !string.IsNullOrEmpty(wallDirectionParam.AsString()))
                         {
                             string orientation = wallDirectionParam.AsString();
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Log($"[UniversalClusterService] Sleeve {sleeve.Id.IntegerValue}: Using Orientation='{orientation}' from MEP element Wall Direction Type");
                             return orientation;
                         }
@@ -543,6 +630,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (hostOrientationParam != null && !string.IsNullOrEmpty(hostOrientationParam.AsString()))
                 {
                     string orientation = hostOrientationParam.AsString();
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Log($"[UniversalClusterService] Sleeve {sleeve.Id.IntegerValue}: Using Orientation='{orientation}' from HostOrientation parameter");
                     return orientation;
                 }
@@ -561,11 +649,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (depth > width && depth > height) return "Z";
                 }
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Warning($"[UniversalClusterService] Sleeve {sleeve.Id.IntegerValue}: Could not determine orientation dynamically");
                 return "";
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error getting orientation from MEP element: {ex.Message}");
                 return "";
             }
@@ -583,6 +673,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (mepCategoryParam != null && !string.IsNullOrEmpty(mepCategoryParam.AsString()))
                 {
                     string category = mepCategoryParam.AsString();
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Log($"[UniversalClusterService] Sleeve {sleeve.Id.IntegerValue}: Using Category='{category}' from MEP_Category parameter");
                     return category;
                 }
@@ -604,6 +695,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             if (category.Contains("Cable")) return "Cable Trays";
                             if (category.Contains("Duct Accessory")) return "Duct Accessories";
                             
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Log($"[UniversalClusterService] Sleeve {sleeve.Id.IntegerValue}: Using Category='{category}' from MEP element");
                             return category;
                         }
@@ -615,11 +707,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (familyName.Contains("Circular")) return "Pipes"; // Circular openings are typically pipes
                 if (familyName.Contains("Rectangular")) return "Ducts"; // Rectangular openings are typically ducts
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Warning($"[UniversalClusterService] Sleeve {sleeve.Id.IntegerValue}: Could not determine category dynamically");
                 return "Unknown";
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error getting category from MEP element: {ex.Message}");
                 return "Unknown";
             }
@@ -642,6 +736,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var clashZone = GetClashZoneBySleeveInstanceId(sleeveInstanceId);
                     if (clashZone != null && clashZone.IsClusterResolved && clashZone.ClusterSleeveInstanceId > 0)
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[DEBUG] Cluster already exists: ClashZone {clashZone.Id} is cluster-resolved (cluster sleeve ID: {clashZone.ClusterSleeveInstanceId})\n");
                         return true;
                     }
@@ -651,6 +746,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error checking if cluster exists: {ex.Message}");
                 return false; // Default to allowing placement if check fails
             }
@@ -734,20 +830,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     
                                     // ✅ NOTE: Global XML update happens in batch at end (line ~2689) via GlobalIndexService.UpsertFlagsWithIds()
                                     // This ensures all cluster sleeves are updated together efficiently
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[GLOBAL-XML] Cluster sleeve {clusterSleeveId.IntegerValue} placed for ClashZone {clashZone.Id} - will be saved to Global XML in batch");
                                     
                                     // ⚠️ CRITICAL: Log flag state AFTER cluster sleeve placement
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-PLACED] ClashZone {clashZone.Id}: Cluster sleeve {clusterSleeveId.IntegerValue} placed\n");
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-PLACED] FLAGS: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}\n");
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-PLACED] PARAMS: SleeveInstanceId={clashZone.SleeveInstanceId}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}\n");
                                     
                                     updated = true;
                                     markedCount++;
                                     
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[DEBUG] Marked ClashZone {clashZone.Id} as cluster-resolved with cluster sleeve {clusterSleeveId.IntegerValue} (cleared individual flags)\n");
                                 }
                                 else
                                 {
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[DEBUG] ✗ Clash zone not found for SleeveInstanceId={sleeveInstanceId}\n");
                                 }
                             }
@@ -756,6 +858,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             if (updated)
                             {
                                 // ⚠️ CRITICAL: Log flag states BEFORE XML save after clustering
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-XML-SAVE-BEFORE] About to save XML after clustering\n");
                                 
                                 try
@@ -798,35 +901,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     }
                                     
                                     // ⚠️ CRITICAL: Log flag states AFTER XML save after clustering
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-XML-SAVE-AFTER] XML save completed after clustering\n");
                                     
                                     // 🔥 CRITICAL DEBUG: Log XML file save
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 💾 XML FILE SAVED: {xmlFile} with {markedCount} cluster-resolved clash zones\n");
                                 }
                                 catch (Exception ex)
                                 {
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ❌ ERROR SAVING XML FILE: {xmlFile} - {ex.Message}\n");
                                 }
                             }
                             else
                             {
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ⚠️ NO CHANGES MADE - XML FILE NOT SAVED: {xmlFile}\n");
                             }
                         }
                     }
                     catch (Exception ex)
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Error($"[UniversalClusterService] Error processing XML file {xmlFile}: {ex.Message}");
                     }
                 }
 
                 if (markedCount > 0)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[DEBUG] Marked {markedCount} clash zones as cluster-resolved\n");
                 }
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error marking clash zones as cluster-resolved: {ex.Message}");
             }
         }
@@ -887,6 +997,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         clashZone.LastUpdated = DateTime.Now;
                                         resetCount++;
                                         modified = true;
+                                                                                if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Info($"[DEBUG] Reset cluster flag for ClashZone {clashZone.Id} - ClusterSleeveInstanceId was {clashZone.ClusterSleeveInstanceId} (invalid)\n");
                                     }
                                     else
@@ -903,6 +1014,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                             clashZone.LastUpdated = DateTime.Now;
                                             resetCount++;
                                             modified = true;
+                                                                                        if (!DeploymentConfiguration.DeploymentMode)
                                             DebugLogger.Info($"[DEBUG] Reset cluster flag for ClashZone {clashZone.Id} - cluster sleeve {clashZone.ClusterSleeveInstanceId} was deleted\n");
                                         }
                                     }
@@ -921,6 +1033,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         clashZone.LastUpdated = DateTime.Now;
                                         resetCount++;
                                         modified = true;
+                                                                                if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Info($"[DEBUG] Reset individual sleeve flag for ClashZone {clashZone.Id} - SleeveInstanceId was {clashZone.SleeveInstanceId} (invalid)\n");
                                     }
                                     else
@@ -938,6 +1051,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                             clashZone.LastUpdated = DateTime.Now;
                                             resetCount++;
                                             modified = true;
+                                                                                        if (!DeploymentConfiguration.DeploymentMode)
                                             DebugLogger.Info($"[DEBUG] Reset individual sleeve flag for ClashZone {clashZone.Id} - sleeve {clashZone.SleeveInstanceId} was deleted\n");
                                         }
                                     }
@@ -983,28 +1097,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 {
                                     serializer.Serialize(writer, filter);
                                 }
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[DEBUG] ✓ Saved reset flags to {Path.GetFileName(xmlFile)}\n");
                             }
                         }
                     }
                     catch (Exception ex)
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Error($"[UniversalClusterService] Error processing XML file {xmlFile}: {ex.Message}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[DEBUG] ✗ Error resetting flags in {Path.GetFileName(xmlFile)}: {ex.Message}\n");
                     }
                 }
 
                 if (resetCount > 0)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[DEBUG] ✓ Reset flags for {resetCount} deleted sleeves (cluster + individual)\n");
                 }
                 else
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[DEBUG] ✓ No deleted sleeves found - all flags preserved\n");
                 }
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error resetting cluster flags: {ex.Message}");
             }
         }
@@ -1019,10 +1139,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 string resourcesPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Resources";
                 string familyPath = Path.Combine(resourcesPath, $"{familyName}.rfa");
 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Log($"[ClusterService] Attempting to load family from: {familyPath}");
 
                 if (!File.Exists(familyPath))
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[ClusterService] Universal family file not found: {familyPath}");
                     return false;
                 }
@@ -1032,17 +1154,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (loaded)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Log($"[ClusterService] Successfully loaded universal family: {familyName}");
                     return true;
                 }
                 else
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[ClusterService] Failed to load universal family: {familyName}");
                     return false;
                 }
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[ClusterService] Error loading universal family '{familyName}': {ex.Message}");
                 return false;
             }
@@ -1061,7 +1186,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var xmlSleeves = group.ToList();
                 var groupClusters = new List<List<dynamic>>();
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Log($"[UniversalClusterService] Processing group {group.Key.hostType}_{group.Key.systemType} with {xmlSleeves.Count} sleeves");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[DEBUG] GROUP: {group.Key.hostType}_{group.Key.systemType} - {xmlSleeves.Count} sleeves\n");
                 
                 // ✅ FIXED: Use bounding box overlap algorithm with XML data
@@ -1071,7 +1198,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (clusters.Count > 0)
                 {
                     groupClusters.AddRange(clusters);
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Log($"[UniversalClusterService] Formed {clusters.Count} clusters using XML data");
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[DEBUG] ✓ CLUSTERS FORMED: {clusters.Count} clusters using XML data\n");
                     
                     // Log cluster details
@@ -1086,6 +1215,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 else
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[DEBUG] ℹ️ NO CLUSTERS: No proximate sleeves found in this group\n");
                 }
                 
@@ -1103,6 +1233,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var clusters = new List<List<dynamic>>();
             var processed = new HashSet<int>();
             
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Log($"[UniversalClusterService] Starting XML clustering for {xmlSleeves.Count} sleeves with tolerance {UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm");
             
             foreach (var sleeve in xmlSleeves)
@@ -1145,6 +1276,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING-WALL-CHECK] SKIP: Sleeve {clusterSleeve.SleeveInstanceId} (Wall {host1Id}) and {otherSleeve.SleeveInstanceId} (Wall {host2Id}) are on different walls\n");
                                     } 
                                     catch { }
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[UniversalClusterService] SKIP CLUSTERING (XML): Sleeve {clusterSleeve.SleeveInstanceId} (Wall {host1Id}) and {otherSleeve.SleeveInstanceId} (Wall {host2Id}) are on different walls");
                                     continue;
                                 }
@@ -1165,7 +1297,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var placementDebugPath2 = SafeFileLogger.GetLogFilePath("placement_debug.log");
                             try 
                             { 
-                                System.IO.File.AppendAllText(placementDebugPath2, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING-DIST-CHECK] Checking distance: Sleeve {clusterSleeve.SleeveInstanceId} vs {otherSleeve.SleeveInstanceId}\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    File.AppendAllText(placementDebugPath2, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING-DIST-CHECK] Checking distance: Sleeve {clusterSleeve.SleeveInstanceId} vs {otherSleeve.SleeveInstanceId}\n");
+                                }
                             } 
                             catch { }
                                 
@@ -1174,6 +1309,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 cluster.Add(otherSleeve);
                                 processed.Add(otherSleeve.SleeveInstanceId);
                                 foundNewNeighbors = true;
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Log($"[UniversalClusterService] Added sleeve {otherSleeve.SleeveInstanceId} to cluster (now {cluster.Count} sleeves)");
                             }
                         }
@@ -1183,10 +1319,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (cluster.Count > 1) // Only add clusters with multiple sleeves
                 {
                     clusters.Add(cluster);
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Log($"[UniversalClusterService] Final cluster with {cluster.Count} sleeves: {string.Join(", ", cluster.Select(s => s.SleeveInstanceId))}");
                 }
             }
             
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Log($"[UniversalClusterService] Formed {clusters.Count} clusters from {xmlSleeves.Count} sleeves");
             return clusters;
         }
@@ -1208,6 +1346,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return (0, 0, 0, XYZ.Zero);
 
                 // ✅ DEBUG: Log individual sleeve bounding boxes
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"\n[CLUSTER-BBOX] Individual sleeves in cluster ({cluster.Count} sleeves):\n");
                 
                 foreach (var sleeve in cluster)
@@ -1289,6 +1428,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error calculating cluster bounding box from XML: {ex.Message}");
                 return (0, 0, 0, XYZ.Zero);
             }
@@ -1313,6 +1453,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error getting reference level from XML: {ex.Message}");
                 return null;
             }
@@ -1394,6 +1535,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (!withinTolerance)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[UniversalClusterService] Sleeves {sleeve1.SleeveInstanceId} and {sleeve2.SleeveInstanceId}: Distance={UnitUtils.ConvertFromInternalUnits(minDistance, UnitTypeId.Millimeters):F1}mm > Tolerance={UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm - NO CLUSTER");
                 }
                 
@@ -1401,6 +1543,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error checking bounding box distance: {ex.Message}");
                 return false;
             }
@@ -1410,6 +1553,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var clusters = new List<List<FamilyInstance>>();
             var unprocessedSet = new HashSet<FamilyInstance>(sleeves);
             
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Log($"[UniversalClusterService] Starting bounding box overlap clustering for {sleeves.Count} sleeves with tolerance {UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm");
             
             while (unprocessedSet.Count > 0)
@@ -1442,6 +1586,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (cluster.Count > 1)
                 {
                     clusters.Add(cluster);
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Log($"[UniversalClusterService] Formed cluster with {cluster.Count} sleeves: {string.Join(", ", cluster.Select(s => s.Id.IntegerValue))}");
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
@@ -1451,7 +1596,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 else
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Log($"[UniversalClusterService] Individual sleeve {cluster[0].Id.IntegerValue} (no proximate neighbors)");
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"✗ NO CLUSTER: Individual sleeve {cluster[0].Id.IntegerValue} (no proximate neighbors within {UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm)\n");
                 }
             }
@@ -1499,6 +1646,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     proximateSleeves.Add(candidateSleeve);
                     
                     // Log proximity analysis
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[DEBUG] ✓ BOUNDING-BOX-PROXIMITY: Sleeve {currentSleeve.Id.IntegerValue} -> {candidateSleeve.Id.IntegerValue}: Bounding boxes overlap within {UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm\n");
                 }
                 else
@@ -1507,6 +1655,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (currentSleeve.Id.IntegerValue == 897149 || currentSleeve.Id.IntegerValue == 897154 || currentSleeve.Id.IntegerValue == 897195 ||
                         candidateSleeve.Id.IntegerValue == 897149 || candidateSleeve.Id.IntegerValue == 897154 || candidateSleeve.Id.IntegerValue == 897195)
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[DEBUG] ✗ NO PROXIMITY: Sleeve {currentSleeve.Id.IntegerValue} <-> {candidateSleeve.Id.IntegerValue}: Bounding boxes do not overlap within {UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm\n");
                     }
                 }
@@ -1537,8 +1686,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             double minDistance;
             
             // ✅ DEBUG: Log coordinates and orientation
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[DISTANCE-DEBUG] Rect1: Min=({current.SleeveBoundingBoxMinX:F3}, {current.SleeveBoundingBoxMinY:F3}), Max=({current.SleeveBoundingBoxMaxX:F3}, {current.SleeveBoundingBoxMaxY:F3})\n");
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[DISTANCE-DEBUG] Rect2: Min=({other.SleeveBoundingBoxMinX:F3}, {other.SleeveBoundingBoxMinY:F3}), Max=({other.SleeveBoundingBoxMaxX:F3}, {other.SleeveBoundingBoxMaxY:F3})\n");
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[DISTANCE-DEBUG] HostType={current.StructuralElementType}, Orientation={orientation}\n");
             
             // ✅ CRITICAL FIX: Use orientation from grouping logic instead of ClashZone orientation
@@ -1562,8 +1714,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 else if (orientation == "Y")
                 {
                     // Wall/Framing sleeves (Y orientation): Use Y,Z distance only (ignore X coordinate)
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[DISTANCE-DEBUG] Using Y,Z coordinates for Y-oriented walls\n");
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[DISTANCE-DEBUG] Rect1 YZ: Min=({current.SleeveBoundingBoxMinY:F3}, {current.SleeveBoundingBoxMinZ:F3}), Max=({current.SleeveBoundingBoxMaxY:F3}, {current.SleeveBoundingBoxMaxZ:F3})\n");
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[DISTANCE-DEBUG] Rect2 YZ: Min=({other.SleeveBoundingBoxMinY:F3}, {other.SleeveBoundingBoxMinZ:F3}), Max=({other.SleeveBoundingBoxMaxY:F3}, {other.SleeveBoundingBoxMaxZ:F3})\n");
                     minDistance = CalculateMinimumDistance2D(
                         current.SleeveBoundingBoxMinY, current.SleeveBoundingBoxMinZ, current.SleeveBoundingBoxMaxY, current.SleeveBoundingBoxMaxZ,
@@ -1593,6 +1748,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             if (shouldLogDistance)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[DISTANCE-DEBUG] Calculated distance: {UnitUtils.ConvertFromInternalUnits(minDistance, UnitTypeId.Millimeters):F1}mm, Tolerance: {UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm\n");
             }
             
@@ -1757,7 +1913,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (cluster.Count > 1)
                 {
                     var clusterIds = string.Join(", ", cluster.Select(s => s.Id.IntegerValue));
+                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
                     File.AppendAllText(clusterLogPath, $"✅ CLUSTER FORMED: {cluster.Count} sleeves [{clusterIds}]\n");
+                    }
                 }
                 else
                 {
@@ -1772,9 +1932,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             bool __suppressClusterLogs2 = DeploymentConfiguration.DeploymentMode;
             int totalClusters = groupClusters.Count(c => c.Count > 1);
             int totalIndividuals = groupClusters.Count(c => c.Count == 1);
+                        // ✅ DEPLOYMENT MODE: Skip file writes
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
             File.AppendAllText(clusterLogPath2, $"\n=== CLUSTER SUMMARY ===\n");
+            }
+                        // ✅ DEPLOYMENT MODE: Skip file writes
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
             File.AppendAllText(clusterLogPath2, $"Total clusters formed: {totalClusters}\n");
+            }
+                        // ✅ DEPLOYMENT MODE: Skip file writes
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
             File.AppendAllText(clusterLogPath2, $"Total individual sleeves: {totalIndividuals}\n");
+            }
             File.AppendAllText(clusterLogPath2, $"Total sleeves processed: {groupClusters.Sum(c => c.Count)}\n\n");
 
             return groupClusters;
@@ -1869,6 +2041,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (host1 == null || host2 == null || host1.Id != host2.Id)
                     {
                         // Different walls - do not cluster
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[UniversalClusterService] SKIP CLUSTERING: Sleeve {inst.Id.IntegerValue} (Wall {host1?.Id.IntegerValue ?? -1}) and {candidate.Id.IntegerValue} (Wall {host2?.Id.IntegerValue ?? -1}) are on different walls - keeping distinct sleeves");
                         continue;
                     }
@@ -1916,6 +2089,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (!Directory.Exists(filtersDirectory))
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning($"[UniversalClusterService] Filters directory not found: {filtersDirectory}");
                     return clashZones;
                 }
@@ -1968,6 +2142,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error loading clash zones from regular XML: {ex.Message}");
             }
             
@@ -1995,6 +2170,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error getting host type from clash zone: {ex.Message}");
             }
             return "Unknown";
@@ -2024,6 +2200,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error getting effective orientation for clustering: {ex.Message}");
             }
             return "Unknown";
@@ -2048,6 +2225,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     clashZone.SleeveBoundingBoxMinX == 0 && clashZone.SleeveBoundingBoxMinY == 0 && clashZone.SleeveBoundingBoxMinZ == 0 &&
                     clashZone.SleeveBoundingBoxMaxX == 0 && clashZone.SleeveBoundingBoxMaxY == 0 && clashZone.SleeveBoundingBoxMaxZ == 0)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning($"[UniversalClusterService] Sleeve {clashZone.SleeveInstanceId} has zero bounding box in XML - this will prevent clustering");
                 }
                 
@@ -2055,6 +2233,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error getting bounding box from clash zone: {ex.Message}");
             return null;
             }
@@ -2084,6 +2263,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error checking group criteria: {ex.Message}");
                 return false;
             }
@@ -2114,6 +2294,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error getting host type from sleeve: {ex.Message}");
             }
             return "Unknown";
@@ -2163,6 +2344,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error getting orientation from sleeve: {ex.Message}");
             }
             return "Unknown";
@@ -2192,14 +2374,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ CRITICAL: Clear cache before reloading to get fresh data from XML
             _clashZoneCache.Clear();
             
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[UniversalClusterService] Loading cache for cleanup with xmlFilePath={xmlFilePath}, targetCategory={targetCategory}");
             LoadClashZoneCacheFromRegularXml(xmlFilePath, targetCategory, doc, filterName);
             
             // Log what was loaded
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[UniversalClusterService] Cache loaded with {_clashZoneCache.Count} clash zones");
             foreach (var kvp in _clashZoneCache.Take(5))
             {
                 var cz = kvp.Value;
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[UniversalClusterService] Cached: SleeveId={cz.SleeveInstanceId}, AfterClusterId={cz.AfterClusterSleevePlacedSleeveInstanceId}, ClusterId={cz.ClusterSleeveInstanceId}");
             }
         }
@@ -2230,6 +2415,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (!Directory.Exists(filtersDirectory))
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning($"[UniversalClusterService] Filters directory not found: {filtersDirectory}");
                     return;
                 }
@@ -2251,6 +2437,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     if (File.Exists(xmlFile))
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[UniversalClusterService] Loading clash zones from regular XML: {Path.GetFileName(xmlFile)}");
                         
                         var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
@@ -2267,6 +2454,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     {
                                         if (!string.Equals(cz.MepElementCategory, targetCategory, StringComparison.OrdinalIgnoreCase))
                                         {
+                                                                                        if (!DeploymentConfiguration.DeploymentMode)
                                             DebugLogger.Log($"[UniversalClusterService] SKIP: ClashZone {cz.Id} category '{cz.MepElementCategory}' doesn't match target '{targetCategory}'");
                                 continue;
                             }
@@ -2286,11 +2474,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         
                                         _clashZoneCache[cz.MepElementIdValue] = cz;
                                             
+                                                                                        if (!DeploymentConfiguration.DeploymentMode)
                                             DebugLogger.Log($"[UniversalClusterService] LOADED: ClashZone {cz.Id} with SleeveInstanceId={cz.SleeveInstanceId}, ClusterSleeveInstanceId={cz.ClusterSleeveInstanceId} from {Path.GetFileName(xmlFile)}");
                                         }
                                     }
                                     else
                                     {
+                                                                                if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Log($"[UniversalClusterService] SKIP: ClashZone {cz.Id} has no SleeveInstanceId or ClusterSleeveInstanceId (not placed yet)");
                                     }
                                 }
@@ -2299,6 +2489,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[UniversalClusterService] Loaded {_clashZoneCache.Count} clash zones from regular XML files");
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
@@ -2308,6 +2499,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error loading clash zone cache from regular XML: {ex.Message}");
             }
         }
@@ -2324,12 +2516,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     if (clashZone.SleeveInstanceId == sleeveInstanceId)
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Log($"[UniversalClusterService] Found clash zone for Sleeve Instance ID {sleeveInstanceId} in cache");
                         return clashZone;
+                        }
                     }
-                }
                 
-                DebugLogger.Warning($"[UniversalClusterService] Sleeve Instance ID {sleeveInstanceId} not found in cache (cache size: {_clashZoneCache?.Count ?? 0}) - trying XML fallback");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[UniversalClusterService] Sleeve Instance ID {sleeveInstanceId} not found in cache (cache size: {_clashZoneCache?.Count ?? 0}) - trying XML fallback");
                 
                 // ✅ CRITICAL FIX: Fallback to XML if cache lookup fails (similar to GetClashZoneByMepElementId)
                 // This ensures GUID is always set even if cache is incomplete
@@ -2337,7 +2531,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (!Directory.Exists(filtersDirectory))
                 {
-                    DebugLogger.Warning($"[UniversalClusterService] Filters directory does not exist for XML fallback");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[UniversalClusterService] Filters directory does not exist for XML fallback");
                     return null;
                 }
                 
@@ -2371,7 +2566,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                             _clashZoneCache[cz.MepElementIdValue] = cz;
                                         }
                                         
-                                        DebugLogger.Info($"[UniversalClusterService] ✅ Found clash zone for Sleeve Instance ID {sleeveInstanceId} in XML fallback: {cz.Id}");
+                                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[UniversalClusterService] ✅ Found clash zone for Sleeve Instance ID {sleeveInstanceId} in XML fallback: {cz.Id}");
                                         return cz;
                                     }
                                 }
@@ -2380,11 +2576,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
                 
-                DebugLogger.Warning($"[UniversalClusterService] ❌ Sleeve Instance ID {sleeveInstanceId} not found in cache or XML files");
-                return null;
-            }
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[UniversalClusterService] ❌ Sleeve Instance ID {sleeveInstanceId} not found in cache or XML files");
+            return null;
+        }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error getting clash zone by sleeve instance ID: {ex.Message}");
                 return null;
             }
@@ -2400,10 +2598,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ PERFORMANCE: Fast O(1) lookup using clash cache
                 if (_clashZoneCache != null && _clashZoneCache.TryGetValue(mepElementId, out ClashZone clashZone))
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Log($"[UniversalClusterService] Found clash zone for MEP Element ID {mepElementId} in cache");
                     return clashZone;
                 }
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Warning($"[UniversalClusterService] MEP Element ID {mepElementId} not found in cache (cache size: {_clashZoneCache?.Count ?? 0})");
 
                 var filtersDirectory = ProjectPathService.GetFiltersDirectory(_doc);
@@ -2447,6 +2647,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error getting clash zone by MEP element ID: {ex.Message}");
                 return null;
             }
@@ -2511,6 +2712,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error loading clash zones from XML: {ex.Message}");
             }
 
@@ -2544,6 +2746,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (isPipeCategory)
             {
                 isCircular = false;
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Log("[ClusterService] For Pipes category: forcing rectangular cluster shape (legacy parity)");
             }
             
@@ -2559,10 +2762,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             else
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Log($"Unknown host type for cluster group, skipping. HostType={groupKey.hostType}");
                 return;
             }
 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Log($"[ClusterService] Creating {groupKey.systemType} cluster using family '{familyName}' (shape: {(isCircular ? "Circular" : "Rectangular")}, orientation: {groupKey.orientation})");
 
             // Find FamilySymbol
@@ -2572,11 +2777,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 .Where(sym => sym.Family.Name.Equals(familyName, StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Log($"[ClusterService] Looking for family '{familyName}' - Found {allClusterSymbols.Count} symbols");
 
             if (allClusterSymbols.Count == 0)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[ClusterService] No suitable cluster family found for name '{familyName}'");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[ClusterService] Available families in project:");
                 var allFamilies = new FilteredElementCollector(doc)
                     .OfClass(typeof(FamilySymbol))
@@ -2586,12 +2794,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     .ToList();
                 foreach (var famName in allFamilies.OrderBy(f => f))
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[ClusterService]   - {famName}");
                 }
 
                 // Try to load the missing universal family
                 if (!LoadUniversalFamily(doc, familyName))
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[ClusterService] Failed to load universal family '{familyName}'");
                     return;
                 }
@@ -2605,6 +2815,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (allClusterSymbols.Count == 0)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[ClusterService] Still no family found for '{familyName}' after loading attempt");
                     return;
                 }
@@ -2628,17 +2839,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     else
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Warning($"[ClusterService] Sleeve ID {xmlSleeve.SleeveInstanceId} not found in document for cluster");
                     }
                 }
                 catch (Exception ex)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[ClusterService] Error getting sleeve {xmlSleeve.SleeveInstanceId} from document: {ex.Message}");
                 }
             }
             
             if (actualSleeves.Count == 0)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[ClusterService] No actual sleeves found for cluster group, skipping placement.");
                 return;
             }
@@ -2646,12 +2860,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Step 2: Use ClusterBoundingBoxServices to get accurate bounding box from actual sleeves
             var (width, height, depth, mid) = ClusterBoundingBoxServices.GetClusterBoundingBox(actualSleeves);
             
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Log($"[ClusterService] ✅ HYBRID APPROACH: Cluster bounding box from Revit API - Width={width:F3}, Height={height:F3}, Depth={depth:F3}");
 
             // ✅ FIXED: Get reference level from XML data (use first sleeve's level)
             Level? refLevel = GetReferenceLevelFromXml(doc, cluster[0]);
             if (refLevel == null)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Log($"Reference level not found for cluster sleeve. Skipping cluster.");
                 return;
             }
@@ -2676,7 +2892,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     rotationAngle = 0.0;  // No rotation for Y-oriented walls/framing
                 }
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Log($"[ClusterService] {groupKey.hostType} orientation from XML: '{xmlOrientation}', rotation angle: {rotationAngle * 180 / Math.PI}°");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[ROTATION] {groupKey.hostType} orientation: {xmlOrientation}, rotation: {rotationAngle * 180 / Math.PI}°\n");
             }
 
@@ -2694,7 +2912,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             SetClusterSizeParameters(doc, inst, cluster, groupKey, width, height, depth, shouldSwapDimensions);
             
             // ✅ DEBUG: Log before calling SetClusterSleeveMetadata
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[PlaceClusterSleeve] About to call SetClusterSleeveMetadata for cluster sleeve {inst.Id}, targetCategory='{targetCategory}'");
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[PlaceClusterSleeve] About to call SetClusterSleeveMetadata for cluster sleeve {inst.Id}, targetCategory='{targetCategory}'\n");
             
             // CRITICAL FIX: Set metadata parameters for cluster sleeve
@@ -2714,25 +2934,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (firstClashZone == null)
                     {
                         firstClashZone = clashZone; // Keep first for GUID storage
-                        DebugLogger.Info($"[PlaceClusterSleeve] ✅ Found first clash zone for GUID storage: {firstClashZone.Id} (SleeveId={sleeveData.SleeveInstanceId})");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[PlaceClusterSleeve] ✅ Found first clash zone for GUID storage: {firstClashZone.Id} (SleeveId={sleeveData.SleeveInstanceId})");
                     }
                 }
                 else
                 {
-                    DebugLogger.Warning($"[PlaceClusterSleeve] ⚠️ Could not find clash zone for SleeveId={sleeveData.SleeveInstanceId} - GUID may not be set for this cluster!");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[PlaceClusterSleeve] ⚠️ Could not find clash zone for SleeveId={sleeveData.SleeveInstanceId} - GUID may not be set for this cluster!");
                 }
             }
             
-            DebugLogger.Info($"[MEP_ElementId] Cluster contains {allMepElementIds.Count} MEP Element IDs: {string.Join(", ", allMepElementIds)}\n");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[MEP_ElementId] Cluster contains {allMepElementIds.Count} MEP Element IDs: {string.Join(", ", allMepElementIds)}\n");
             
             if (allMepElementIds.Count > 0 && firstClashZone != null)
             {
                 // Set first MEP Element ID for backward compatibility
                 var clusterMepElementIdParam = inst.LookupParameter("MEP_ElementId");
-                if (clusterMepElementIdParam != null && !clusterMepElementIdParam.IsReadOnly)
-                {
+                    if (clusterMepElementIdParam != null && !clusterMepElementIdParam.IsReadOnly)
+                    {
                     clusterMepElementIdParam.Set(allMepElementIds[0]);
-                    DebugLogger.Info($"[DEBUG] ✓ Set MEP_ElementId = {allMepElementIds[0]} (first) on cluster sleeve {inst.Id}\n");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[DEBUG] ✓ Set MEP_ElementId = {allMepElementIds[0]} (first) on cluster sleeve {inst.Id}\n");
                 }
                 
                 // ✅ CRITICAL: Store ALL MEP Element IDs as comma-separated list for lookup
@@ -2743,8 +2967,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     if (clusterMepElementIdsParam.IsReadOnly)
                     {
-                        DebugLogger.Error($"[PlaceClusterSleeve] ❌ MEP_ElementIds parameter is READ-ONLY on cluster sleeve {inst.Id} - cannot set value!");
-                        DebugLogger.Error($"[PlaceClusterSleeve] Parameter storage type: {clusterMepElementIdsParam.StorageType}, Element type: {inst.GetType().Name}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Error($"[PlaceClusterSleeve] ❌ MEP_ElementIds parameter is READ-ONLY on cluster sleeve {inst.Id} - cannot set value!");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Error($"[PlaceClusterSleeve] Parameter storage type: {clusterMepElementIdsParam.StorageType}, Element type: {inst.GetType().Name}");
                     }
                     else
                     {
@@ -2756,25 +2982,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             string verifyValue = clusterMepElementIdsParam.AsString() ?? "";
                             if (verifyValue == mepIdsString)
                             {
-                                DebugLogger.Info($"[PlaceClusterSleeve] ✅ VERIFIED: Set MEP_ElementIds = '{mepIdsString}' on cluster sleeve {inst.Id} (contains {allMepElementIds.Count} MEP IDs)");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[PlaceClusterSleeve] ✅ VERIFIED: Set MEP_ElementIds = '{mepIdsString}' on cluster sleeve {inst.Id} (contains {allMepElementIds.Count} MEP IDs)");
                             }
                             else
                             {
-                                DebugLogger.Error($"[PlaceClusterSleeve] ❌ VERIFICATION FAILED: Expected '{mepIdsString}', got '{verifyValue}' on cluster sleeve {inst.Id}");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Error($"[PlaceClusterSleeve] ❌ VERIFICATION FAILED: Expected '{mepIdsString}', got '{verifyValue}' on cluster sleeve {inst.Id}");
                             }
                         }
                         catch (Exception setEx)
                         {
-                            DebugLogger.Error($"[PlaceClusterSleeve] ❌ ERROR setting MEP_ElementIds on cluster sleeve {inst.Id}: {setEx.Message}");
-                            DebugLogger.Error($"[PlaceClusterSleeve] Stack trace: {setEx.StackTrace}");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Error($"[PlaceClusterSleeve] ❌ ERROR setting MEP_ElementIds on cluster sleeve {inst.Id}: {setEx.Message}");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Error($"[PlaceClusterSleeve] Stack trace: {setEx.StackTrace}");
                         }
                     }
                 }
                 else
                 {
-                    DebugLogger.Error($"[PlaceClusterSleeve] ❌ CRITICAL: MEP_ElementIds parameter NOT FOUND on cluster sleeve {inst.Id}!");
-                    DebugLogger.Error($"[PlaceClusterSleeve] Available parameters: {string.Join(", ", inst.Parameters.Cast<Parameter>().Select(p => p.Definition?.Name ?? "null").Take(10))}");
-                    DebugLogger.Error($"[PlaceClusterSleeve] Add 'MEP_ElementIds' text parameter to cluster family '{inst.Symbol?.Family?.Name ?? "unknown"}' to enable cluster lookup");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error($"[PlaceClusterSleeve] ❌ CRITICAL: MEP_ElementIds parameter NOT FOUND on cluster sleeve {inst.Id}!");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error($"[PlaceClusterSleeve] Available parameters: {string.Join(", ", inst.Parameters.Cast<Parameter>().Select(p => p.Definition?.Name ?? "null").Take(10))}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error($"[PlaceClusterSleeve] Add 'MEP_ElementIds' text parameter to cluster family '{inst.Symbol?.Family?.Name ?? "unknown"}' to enable cluster lookup");
                 }
                 
                 // ✅ CRITICAL: Store ClashZone GUID on cluster sleeve (use first clash zone's GUID)
@@ -2783,9 +3016,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             else
             {
-                DebugLogger.Warning($"[PlaceClusterSleeve] ⚠️ CRITICAL: No MEP Element IDs found OR firstClashZone is null - GUID will NOT be set for cluster sleeve {inst.Id}!");
-                DebugLogger.Warning($"[PlaceClusterSleeve] This may cause duplicate clash zones on refresh. Check cache population and XML loading.");
-                DebugLogger.Info($"[DEBUG] ✗ No MEP Element IDs found in cluster sleeves\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[PlaceClusterSleeve] ⚠️ CRITICAL: No MEP Element IDs found OR firstClashZone is null - GUID will NOT be set for cluster sleeve {inst.Id}!");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[PlaceClusterSleeve] This may cause duplicate clash zones on refresh. Check cache population and XML loading.");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[DEBUG] ✗ No MEP Element IDs found in cluster sleeves\n");
             }
 
             placed++;
@@ -2820,7 +3056,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 int clusterSleeveId = inst.Id.IntegerValue;
                                 bool isCluster = true;
                                 _flagManager.UpdateFlagsForPlacement(clashZone, clusterSleeveId, isCluster, targetCategory);
-                                DebugLogger.Info($"[FLAG-MANAGER] Updated flags for ClashZone {clashZone.Id} after cluster placement (ClusterSleeveId={clusterSleeveId})");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[FLAG-MANAGER] Updated flags for ClashZone {clashZone.Id} after cluster placement (ClusterSleeveId={clusterSleeveId})");
                             }
                         }
                     }
@@ -2839,19 +3076,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             int clusterSleeveId = inst.Id.IntegerValue;
                             bool isCluster = true;
                             _flagManager.UpdateFlagsForPlacement(cz, clusterSleeveId, isCluster, targetCategory);
-                            DebugLogger.Info($"[FLAG-MANAGER] Updated flags for ClashZone {cz.Id} after cluster placement (fallback, ClusterSleeveId={clusterSleeveId})");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[FLAG-MANAGER] Updated flags for ClashZone {cz.Id} after cluster placement (fallback, ClusterSleeveId={clusterSleeveId})");
                         }
                     }
                 }
                 
-                DebugLogger.Info($"[FLAG-MANAGER] ✅ Successfully updated flags for {cluster.Count} clash zones after clustering");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[FLAG-MANAGER] ✅ Successfully updated flags for {cluster.Count} clash zones after clustering");
             }
             catch (Exception upEx)
             {
-                DebugLogger.Warning($"[FLAG-MANAGER] Flag update after clustering failed: {upEx.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[FLAG-MANAGER] Flag update after clustering failed: {upEx.Message}");
             }
 
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Log($"[ClusterService] About to delete {cluster.Count} individual sleeves for cluster sleeve {inst.Id.IntegerValue}");
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[DELETE] About to delete {cluster.Count} individual sleeves for cluster sleeve {inst.Id.IntegerValue} (hostType={groupKey.hostType})\n");
 
             // Delete originals - collect ElementIds first, then delete in batch
@@ -2864,26 +3106,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var sleeveElementId = new ElementId(s.SleeveInstanceId);
                     var sleeveElement = doc.GetElement(sleeveElementId);
                     
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[DELETE] Checking sleeve {sleeveElementId.IntegerValue}: found={sleeveElement != null}, isFamilyInstance={sleeveElement is FamilyInstance}\n");
                     
                     if (sleeveElement != null && sleeveElement is FamilyInstance sleeveInstance)
                     {
                         sleevesToDelete.Add(sleeveElementId);
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Log($"[ClusterService] Queued for deletion: individual sleeve {sleeveElementId.IntegerValue}");
                     }
                     else
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Warning($"[ClusterService] Could not find sleeve {s.SleeveInstanceId} for deletion");
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[DELETE] ✗ Sleeve {sleeveElementId.IntegerValue} not found or not a FamilyInstance\n");
                     }
                 }
                 catch (Exception ex)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[ClusterService] Error preparing sleeve {s.SleeveInstanceId} for deletion: {ex.Message}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[DELETE] ✗ Exception preparing sleeve: {ex.Message}\n");
                 }
             }
             
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[DELETE] Total sleeves queued for deletion: {sleevesToDelete.Count}\n");
             
             // Delete all sleeves in batch (within the same transaction)
@@ -2891,11 +3140,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 try
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[DELETE] Calling doc.Delete() for {sleevesToDelete.Count} sleeves (hostType={groupKey.hostType})\n");
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[DELETE] Document modifiable: {doc.IsModifiable}\n");
                     doc.Delete(sleevesToDelete);
                     deleted = sleevesToDelete.Count;
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Log($"[ClusterService] Successfully deleted {deleted} individual sleeves in batch");
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[DELETE] ✓ Successfully deleted {deleted} individual sleeves in batch (hostType={groupKey.hostType})\n");
                     
                     // ✅ VERIFY: Check if sleeves were actually deleted
@@ -2906,24 +3159,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (stillThere != null)
                         {
                             stillExists++;
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[DELETE] ⚠️ WARNING: Sleeve {sleeveId.IntegerValue} still exists after deletion attempt!\n");
                         }
                     }
                     if (stillExists > 0)
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[DELETE] ⚠️ WARNING: {stillExists} sleeves still exist after deletion attempt!\n");
                     }
                 }
                 catch (Exception ex)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[ClusterService] Error deleting sleeves in batch: {ex.Message}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[DELETE] ✗ Error deleting sleeves: {ex.Message} (hostType={groupKey.hostType})\n");
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[DELETE] Stack trace: {ex.StackTrace}\n");
                     deleted = 0;
                 }
             }
             else
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[DELETE] ⚠️ No sleeves to delete (sleevesToDelete.Count=0) for hostType={groupKey.hostType}\n");
             }
         }
@@ -2995,15 +3254,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ FIXED: Cluster sleeve should use individual sleeve thickness, not structural element thickness
                 // For all host types, use the calculated depth from individual sleeves
                 hostThickness = openingDepth;
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Log($"[ClusterService] Cluster sleeve: Using individual sleeve depth {UnitUtils.ConvertFromInternalUnits(hostThickness, UnitTypeId.Millimeters):F1}mm for {groupKey.hostType}");
                 
                 // ✅ FIXED: Use calculated depth as final fallback (no Revit API calls needed)
                 if (hostThickness <= 0.0)
                 {
                     hostThickness = openingDepth;  // Use calculated depth from bounding box
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Log($"[ClusterService] Using calculated depth as fallback: {UnitUtils.ConvertFromInternalUnits(hostThickness, UnitTypeId.Millimeters):F1}mm");
                 }
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLUSTER-DIM] Sleeve {inst.Id}: Calculated Depth = {UnitUtils.ConvertFromInternalUnits(openingDepth, UnitTypeId.Millimeters):F1}mm, Final HostThickness = {UnitUtils.ConvertFromInternalUnits(hostThickness, UnitTypeId.Millimeters):F1}mm\n");
                     
                 // Set the mapped dimensions (use hostThickness for depth instead of openingDepth)
@@ -3035,6 +3297,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (!Directory.Exists(filtersDirectory))
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning($"[UniversalClusterService] Filters directory not found: {filtersDirectory}");
                     return mapping;
                 }
@@ -3046,6 +3309,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 var xmlFiles = Directory.GetFiles(filtersDirectory, searchPattern);
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Log($"[UniversalClusterService] Loading sleeve mapping from {xmlFiles.Length} XML files (pattern: {searchPattern})");
                 
                 foreach (var xmlFile in xmlFiles)
@@ -3073,20 +3337,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     }
                                 }
                                 
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Log($"[UniversalClusterService] Loaded {filter.ClashZoneStorage.ClashZones.Count} clash zones from {Path.GetFileName(xmlFile)}");
                             }
                         }
                     }
                     catch (Exception ex)
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Warning($"[UniversalClusterService] Error loading {Path.GetFileName(xmlFile)}: {ex.Message}");
                     }
                 }
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Log($"[UniversalClusterService] Total sleeve-to-category mappings loaded: {mapping.Count}");
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error loading sleeve category mapping: {ex.Message}");
             }
             
@@ -3113,10 +3381,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[UniversalClusterService] 🔥 UpdateClashZoneFlagsForCluster CALLED 🔥");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[UniversalClusterService] Cluster ID: {clusterInstance.Id.IntegerValue}, Original sleeves: {originalSleeves.Count}, SystemType: {systemType}");
                 
                 // ✅ DEBUG: Log the category mapping
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] UpdateClashZoneFlagsForCluster: systemType='{systemType}', clusterId={clusterInstance.Id.IntegerValue}\n");
 
                 // Map systemType to category (Ducts → ducts, Pipes → pipes, etc.)
@@ -3134,13 +3405,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 string clusterMark = clusterInstance.LookupParameter("Mark")?.AsString() 
                                   ?? $"CO-{clusterInstance.Id.IntegerValue}";
 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[UniversalClusterService] Loading clash zones for category: {category}");
                 
                 // ✅ DEBUG: Log the category mapping result
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Category mapping: '{systemType}' → '{category}'\n");
 
                 // Load clash zones from XML
                 var clashZones = LoadClashZonesFromRegularXml(null, category, doc);
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[UniversalClusterService] Loaded {clashZones.Count} clash zones from XML");
 
                 // Update each clash zone for deleted sleeves
@@ -3166,20 +3440,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         clashZone.SleeveFamilyName = string.Empty;
                         
                         updatedCount++;
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[UniversalClusterService] ✓ Updated ClashZone {clashZone.Id} as clustered");
                     }
                     else
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Warning($"[UniversalClusterService] ⚠️ ClashZone not found for sleeve {sleeve.Id.IntegerValue}");
                     }
                 }
 
                 // Save updated clash zones back to XML
                 SaveClashZonesToXml(clashZones, category);
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[UniversalClusterService] ✅ Updated {updatedCount} clash zones as clustered, saved to XML");
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error updating clash zone flags: {ex.Message}");
             }
         }
@@ -3191,7 +3469,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[UniversalClusterService] 🔥 FindNewestClusterSleeve CALLED 🔥");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[UniversalClusterService] Host Type: {groupKey.hostType}, System Type: {groupKey.systemType}");
 
                 // ✅ FIXED: Use XML data instead of Revit API calls
@@ -3203,6 +3483,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (isPipeCategory)
                 {
                     isCircular = false;
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[UniversalClusterService] For Pipes category: forcing rectangular cluster shape");
                 }
 
@@ -3218,10 +3499,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 else
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[UniversalClusterService] Unknown host type: {groupKey.hostType}");
                     return null;
                 }
 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[UniversalClusterService] Looking for cluster family: {familyName} (shape: {(isCircular ? "Circular" : "Rectangular")})");
 
                 // Find all family instances of the cluster family type
@@ -3232,16 +3515,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     .OrderByDescending(fi => fi.Id.IntegerValue) // Newest will have highest ID
                     .ToList();
 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[UniversalClusterService] Found {clusterSleeves.Count} cluster sleeves of type {familyName}");
 
                 // Return the newest one (highest ID)
                 var newestSleeve = clusterSleeves.FirstOrDefault();
                 if (newestSleeve != null)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[UniversalClusterService] ✅ Found newest cluster sleeve: ID {newestSleeve.Id.IntegerValue}");
                 }
                 else
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning($"[UniversalClusterService] ⚠️ No cluster sleeve found for family {familyName}");
                 }
 
@@ -3249,6 +3535,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error finding newest cluster sleeve: {ex.Message}");
                 return null;
             }
@@ -3262,6 +3549,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[UniversalClusterService] Saving MarkedForClusteringSleeveProcess flags to XML: {Path.GetFileName(xmlFilePath)}");
                 
                 // Load current XML
@@ -3274,6 +3562,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (filter?.ClashZoneStorage?.ClashZones == null)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning($"[UniversalClusterService] No clash zones found in XML for flag saving");
                     return;
                 }
@@ -3292,12 +3581,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             clashZone.MarkedForClusteringSleeveProcess = cachedClashZone.MarkedForClusteringSleeveProcess;
                             updatedCount++;
                             
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[UniversalClusterService] Updated MarkedForClusteringSleeveProcess flag for ClashZone {clashZone.Id}: {clashZone.MarkedForClusteringSleeveProcess}");
                         }
                         
                         // ✅ CRITICAL: Preserve IsCurrentClash flag from cache
                         clashZone.IsCurrentClash = cachedClashZone.IsCurrentClash;
                         
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[UniversalClusterService] Preserved IsCurrentClash flag for ClashZone {clashZone.Id}: {clashZone.IsCurrentClash}");
                     }
                 }
@@ -3308,12 +3599,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     serializer.Serialize(writer, filter);
                 }
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[UniversalClusterService] Saved {updatedCount} MarkedForClusteringSleeveProcess flags and preserved IsCurrentClash flags to XML");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[DEBUG] SAVED FLAGS: {updatedCount} MarkedForClusteringSleeveProcess flags saved, IsCurrentClash flags preserved\n");
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error saving cluster flags: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[DEBUG] ERROR SAVING FLAGS: {ex.Message}\n");
             }
         }
@@ -3334,12 +3629,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (matchingFiles.Length == 0)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning($"[UniversalClusterService] No XML files found for pattern: {pattern}");
                     return;
                 }
 
                 // Use most recently modified file
                 var xmlFile = matchingFiles.OrderByDescending(f => File.GetLastWriteTime(f)).First();
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[UniversalClusterService] Saving clash zones to: {xmlFile}");
 
                 var serializer = new XmlSerializer(typeof(Models.OpeningFilter));
@@ -3365,10 +3662,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     serializer.Serialize(writer, filter);
                 }
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[UniversalClusterService] ✅ Successfully saved {clashZones.Count} clash zones to XML");
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[UniversalClusterService] Error saving clash zones to XML: {ex.Message}");
             }
         }
@@ -3381,7 +3680,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     {
         try
         {
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[SetClusterSleeveMetadata] Setting metadata for cluster sleeve {clusterSleeve.Id}, category='{category}'");
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[SetClusterSleeveMetadata] Setting metadata for cluster sleeve {clusterSleeve.Id}, category='{category}'\n");
             
             // ✅ OPTIONAL: Try to set MEP_Category parameter if it exists (not critical - XML has category info per sleeve)
@@ -3392,7 +3693,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 // Parameter exists and is writable - set it for convenience
                 mepCategoryParam.Set(category);
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[SetClusterSleeveMetadata] Set MEP_Category = '{category}' for cluster sleeve {clusterSleeve.Id}");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[SetClusterSleeveMetadata] ✓ Set MEP_Category = '{category}' for cluster sleeve {clusterSleeve.Id}\n");
             }
             // ✅ NOTE: If parameter doesn't exist, that's OK - XML lookup will use MEP Element ID and category from XML
@@ -3403,10 +3706,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (filterNameParam != null && !filterNameParam.IsReadOnly)
             {
                 filterNameParam.Set(filterName);
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[SetClusterSleeveMetadata] Set Filter Name = '{filterName}' for cluster sleeve {clusterSleeve.Id}");
             }
             else
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Warning($"[SetClusterSleeveMetadata] Filter Name parameter not found or read-only on cluster sleeve {clusterSleeve.Id}");
             }
             
@@ -3415,10 +3720,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (instanceIdParam != null && !instanceIdParam.IsReadOnly)
             {
                 instanceIdParam.Set(-1); // -1 indicates this is a cluster sleeve
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[SetClusterSleeveMetadata] Set Sleeve Instance ID = -1 for cluster sleeve {clusterSleeve.Id}");
             }
             else
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Warning($"[SetClusterSleeveMetadata] Sleeve Instance ID parameter not found or read-only on cluster sleeve {clusterSleeve.Id}");
             }
             
@@ -3427,15 +3734,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (clusterInstanceIdParam != null && !clusterInstanceIdParam.IsReadOnly)
             {
                 clusterInstanceIdParam.Set(clusterSleeve.Id.IntegerValue);
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[SetClusterSleeveMetadata] Set Cluster Sleeve Instance ID = {clusterSleeve.Id.IntegerValue} for cluster sleeve {clusterSleeve.Id}");
             }
             else
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Warning($"[SetClusterSleeveMetadata] Cluster Sleeve Instance ID parameter not found or read-only on cluster sleeve {clusterSleeve.Id}");
             }
         }
         catch (Exception ex)
         {
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Error($"[SetClusterSleeveMetadata] Error setting metadata for cluster sleeve {clusterSleeve.Id}: {ex.Message}");
         }
     }
@@ -3453,17 +3763,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 string guidString = clashZoneGuid.ToString();
                 guidParam.Set(guidString);
-                DebugLogger.Info($"[SetClashZoneGuid] Set ClashZone_GUID = '{guidString}' for cluster sleeve {clusterSleeve.Id}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[SetClashZoneGuid] Set ClashZone_GUID = '{guidString}' for cluster sleeve {clusterSleeve.Id}");
             }
             else
             {
                 // Parameter not found - log warning but don't fail (backward compatibility)
-                DebugLogger.Warning($"[SetClashZoneGuid] ClashZone_GUID parameter not found or read-only on cluster sleeve {clusterSleeve.Id} - GUID storage skipped. Add 'ClashZone_GUID' text parameter to cluster family.");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[SetClashZoneGuid] ClashZone_GUID parameter not found or read-only on cluster sleeve {clusterSleeve.Id} - GUID storage skipped. Add 'ClashZone_GUID' text parameter to cluster family.");
             }
         }
         catch (Exception ex)
         {
-            DebugLogger.Warning($"[SetClashZoneGuid] Error setting ClashZone_GUID for cluster sleeve {clusterSleeve.Id}: {ex.Message}");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Warning($"[SetClashZoneGuid] Error setting ClashZone_GUID for cluster sleeve {clusterSleeve.Id}: {ex.Message}");
         }
     }
     
@@ -3499,16 +3812,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Update parameter
                 string updatedIdsString = string.Join(",", existingIds.OrderBy(id => id));
                 mepIdsParam.Set(updatedIdsString);
-                DebugLogger.Info($"[UpdateClusterSleeveMepElementIds] Updated MEP_ElementIds on cluster sleeve {clusterSleeve.Id}: Added {newMepIds.Count} new IDs, total now: {existingIds.Count} ({updatedIdsString})");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[UpdateClusterSleeveMepElementIds] Updated MEP_ElementIds on cluster sleeve {clusterSleeve.Id}: Added {newMepIds.Count} new IDs, total now: {existingIds.Count} ({updatedIdsString})");
             }
             else
             {
-                DebugLogger.Warning($"[UpdateClusterSleeveMepElementIds] MEP_ElementIds parameter not found or read-only on cluster sleeve {clusterSleeve.Id} - cannot add deleted sleeves' MEP Element IDs");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[UpdateClusterSleeveMepElementIds] MEP_ElementIds parameter not found or read-only on cluster sleeve {clusterSleeve.Id} - cannot add deleted sleeves' MEP Element IDs");
             }
         }
         catch (Exception ex)
         {
-            DebugLogger.Warning($"[UpdateClusterSleeveMepElementIds] Error updating MEP_ElementIds for cluster sleeve {clusterSleeve.Id}: {ex.Message}");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Warning($"[UpdateClusterSleeveMepElementIds] Error updating MEP_ElementIds for cluster sleeve {clusterSleeve.Id}: {ex.Message}");
         }
     }
 
@@ -3523,12 +3839,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         try
         {
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Log($"[CleanupSleevesWithinClusters] 🔥 METHOD CALLED - placedClusters count: {placedClusters?.Count ?? 0}");
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[CLEANUP-START] Method called with {placedClusters?.Count ?? 0} placed cluster sleeves\n");
             
             if (placedClusters == null || placedClusters.Count == 0)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Log("[CleanupSleevesWithinClusters] No cluster sleeves to check against");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLEANUP-START] ⚠️ No cluster sleeves provided, exiting\n");
                 return 0;
             }
@@ -3587,26 +3907,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 bool isIndividual = !isClusterSleeve && (clusterValue <= 0);
                 
                 // ✅ DEBUG: Log ALL sleeves to find missing ones
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLEANUP-DEBUG-ALL] Sleeve {s.Id}: Family={s.Symbol?.FamilyName}, ClusterParam={clusterValue}, SleeveInstanceId={sleeveInstanceId}, IsCluster={isClusterSleeve}, IsIndividual={isIndividual}\n");
                 
                 return isIndividual;
             }).ToList();
             
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Log($"[CleanupSleevesWithinClusters] Found {allSleeves.Count} total sleeves, {individualSleeves.Count} individual sleeves to check against {placedClusters.Count} cluster sleeves");
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[CLEANUP] Found {allSleeves.Count} total sleeves, checking {individualSleeves.Count} individual sleeves against {placedClusters.Count} cluster sleeves\n");
             
             // ✅ BATCH DELETION: Collect all sleeves to delete first, then delete in one batch
             var sleevesToDelete = new List<(ElementId sleeveId, int clusterId, Models.ClashZone clashZone)>();
             
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[CLEANUP-BATCH] Scanning {individualSleeves.Count} individual sleeves for deletion candidates\n");
             
             foreach (var individualSleeve in individualSleeves)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLEANUP-LOOP] Processing individual sleeve {individualSleeve.Id}\n");
                 
                 // ✅ FIX: Skip if this sleeve is actually a cluster sleeve in our placedClusters list
                 if (placedClusters.Any(c => c.Id.IntegerValue == individualSleeve.Id.IntegerValue))
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLEANUP] Skipping sleeve {individualSleeve.Id} - it's a cluster sleeve\n");
                     continue;
                 }
@@ -3616,6 +3942,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var bbox = individualSleeve.get_BoundingBox(null);
                 if (bbox == null)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLEANUP] Individual sleeve {individualId} has no bounding box, skipping\n");
                     continue;
                 }
@@ -3629,6 +3956,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ OPTIMIZATION: Skip sleeves that were already deleted in Stage 1
                 if (individualClashZone != null && individualClashZone.SleeveInstanceId == -1)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLEANUP-SKIP] Individual sleeve {individualId} already deleted in Stage 1 (SleeveInstanceId=-1), skipping\n");
                     continue;
                 }
@@ -3653,6 +3981,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         individualHostType != clusterHostType)
                     {
                         // Skip comparison if host types don't match (Floor vs Wall, etc.)
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[CLEANUP-SKIP] Individual sleeve {individualSleeve.Id} (hostType={individualHostType}) skipped cluster {clusterId} (hostType={clusterHostType})\n");
                         continue;
                     }
@@ -3663,6 +3992,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (clusterClashZone == null || 
                         (clusterClashZone.ClusterSleeveBoundingBoxMinX == 0 && clusterClashZone.ClusterSleeveBoundingBoxMinY == 0))
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[CLEANUP] Cluster sleeve {clusterId} not found in cache or no bbox data (MinX={clusterClashZone?.ClusterSleeveBoundingBoxMinX ?? 0}), skipping\n");
                         continue;
                     }
@@ -3671,20 +4001,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var clusterMin = new XYZ(clusterClashZone.ClusterSleeveBoundingBoxMinX, clusterClashZone.ClusterSleeveBoundingBoxMinY, clusterClashZone.ClusterSleeveBoundingBoxMinZ);
                     var clusterMax = new XYZ(clusterClashZone.ClusterSleeveBoundingBoxMaxX, clusterClashZone.ClusterSleeveBoundingBoxMaxY, clusterClashZone.ClusterSleeveBoundingBoxMaxZ);
                     
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLEANUP] Cluster sleeve {clusterId} bbox from CACHE: Min=({clusterClashZone.ClusterSleeveBoundingBoxMinX:F6}, {clusterClashZone.ClusterSleeveBoundingBoxMinY:F6}), Max=({clusterClashZone.ClusterSleeveBoundingBoxMaxX:F6}, {clusterClashZone.ClusterSleeveBoundingBoxMaxY:F6})\n");
                     
                     // ✅ ENHANCED LOGGING: Show bounding boxes before checking (with Z coordinates for floors)
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLEANUP-CHECK] Individual sleeve {individualId}: Min=({individualMin.X:F3}, {individualMin.Y:F3}, {individualMin.Z:F3}), Max=({individualMax.X:F3}, {individualMax.Y:F3}, {individualMax.Z:F3})\n");
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLEANUP-CHECK] Cluster sleeve {clusterId}: Min=({clusterMin.X:F3}, {clusterMin.Y:F3}, {clusterMin.Z:F3}), Max=({clusterMax.X:F3}, {clusterMax.Y:F3}, {clusterMax.Z:F3})\n");
                     
                     // Check if individual sleeve is completely within cluster sleeve bounding box
                     bool withinBounds = IsWithinBounds(individualMin, individualMax, clusterMin, clusterMax);
                     
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLEANUP-CHECK] Individual {individualId} within Cluster {clusterId}: {withinBounds}\n");
                     
                     if (withinBounds)
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Log($"[CleanupSleevesWithinClusters] Individual sleeve {individualSleeve.Id} falls within cluster sleeve {clusterSleeve.Id} - marking for deletion");
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[CLEANUP-MARK] Individual sleeve {individualSleeve.Id} falls within cluster sleeve {clusterSleeve.Id} - marking for deletion\n");
                         
                         markedForDeletion = true;
@@ -3714,6 +4050,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     doc.Delete(elementIdsToDelete);
                     deletedCount = sleevesToDelete.Count;
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CleanupSleevesWithinClusters] ✅ Batch deleted {deletedCount} individual sleeves");
                     
                     // ✅ CRITICAL: Update flags for all deleted sleeves (preserves IsResolved=true)
@@ -3737,9 +4074,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     mepIdsToAddByCluster[clusterId] = new HashSet<long>();
                                 }
                                 mepIdsToAddByCluster[clusterId].Add(clashZone.MepElementIdValue);
-                                DebugLogger.Info($"[CLEANUP-MEP-ID] Collected MEP Element ID {clashZone.MepElementIdValue} from deleted sleeve {sleeveId.IntegerValue} for cluster {clusterId}\n");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[CLEANUP-MEP-ID] Collected MEP Element ID {clashZone.MepElementIdValue} from deleted sleeve {sleeveId.IntegerValue} for cluster {clusterId}\n");
                             }
                         }
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[CLEANUP-FLAGS] Updated flags for {sleeveId.IntegerValue}: IsResolved=True, IsClusterResolved=True, ClusterSleeveId={clusterId}\n");
                     }
                     
@@ -3755,20 +4094,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                         else
                         {
-                            DebugLogger.Warning($"[CLEANUP-MEP-ID] Cluster sleeve {clusterId} not found in placedClusters list - cannot update MEP_ElementIds\n");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Warning($"[CLEANUP-MEP-ID] Cluster sleeve {clusterId} not found in placedClusters list - cannot update MEP_ElementIds\n");
                         }
                     }
                 }
                 catch (Exception ex)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[CleanupSleevesWithinClusters] Error batch deleting sleeves: {ex.Message}");
                 }
             }
             
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Log($"[CleanupSleevesWithinClusters] Cleanup complete: {deletedCount} sleeves deleted");
         }
         catch (Exception ex)
         {
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Error($"[CleanupSleevesWithinClusters] Error during cleanup: {ex.Message}");
         }
         
@@ -3807,7 +4150,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         double coverage = (individualVolume > 0) ? (overlapVolume / individualVolume) * 100.0 : 0.0;
         
         // Log coverage for debugging
+                if (!DeploymentConfiguration.DeploymentMode)
         DebugLogger.Info($"[CLEANUP-COVERAGE] Individual: W={individualMax.X - individualMin.X:F3}, H={individualMax.Y - individualMin.Y:F3}, D={individualMax.Z - individualMin.Z:F3}, Vol={individualVolume:F6}\n");
+                if (!DeploymentConfiguration.DeploymentMode)
         DebugLogger.Info($"[CLEANUP-COVERAGE] Overlap: W={overlapMaxX - overlapMinX:F3}, H={overlapMaxY - overlapMinY:F3}, D={overlapMaxZ - overlapMinZ:F3}, Vol={overlapVolume:F6}, Coverage={coverage:F1}%\n");
         
         // Return true if coverage is 75% or more
@@ -3825,6 +4170,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (string.IsNullOrEmpty(_filterName))
             {
                 var errorMsg = $"Filter name is required but was not provided. Cannot determine target XML file for category '{category}'.";
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[GetFilterNameForCategory] {errorMsg}");
                 throw new InvalidOperationException(errorMsg);
             }
@@ -3841,6 +4187,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 if (string.IsNullOrEmpty(xmlFilePath) || !File.Exists(xmlFilePath))
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning($"[SaveUpdatedFlagsToXml] XML file not found: {xmlFilePath}");
                     return;
                 }
@@ -3887,12 +4234,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     serializer.Serialize(writer, filter);
                 }
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[SaveUpdatedFlagsToXml] ✅ Saved {updatedCount} updated flag changes to {xmlFilePath}");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[SAVE-XML] Updated {updatedCount} clash zone flags after cleanup\n");
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[SaveUpdatedFlagsToXml] Error: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[SAVE-XML-ERROR] {ex.Message}\n");
             }
         }

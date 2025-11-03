@@ -75,14 +75,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 _log($"[ConditionsService] Saved conditions to: {filePath}");
-                DebugLogger.Info($"[ConditionsService] Saved conditions for key '{key}' - Clearances: Rect={conditions.ClearanceSettings.RectangularNormal}/{conditions.ClearanceSettings.RectangularInsulated}mm, Round={conditions.ClearanceSettings.RoundNormal}/{conditions.ClearanceSettings.RoundInsulated}mm");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[ConditionsService] Saved conditions for key '{key}' - Clearances: Rect={conditions.ClearanceSettings.RectangularNormal}/{conditions.ClearanceSettings.RectangularInsulated}mm, Round={conditions.ClearanceSettings.RoundNormal}/{conditions.ClearanceSettings.RoundInsulated}mm");
                 
                 return true;
             }
             catch (Exception ex)
             {
                 _log($"[ConditionsService] Error saving conditions: {ex.Message}");
-                DebugLogger.Error($"[ConditionsService] Error saving conditions: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[ConditionsService] Error saving conditions: {ex.Message}");
                 return false;
             }
         }
@@ -118,15 +120,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 using (var reader = new StreamReader(filePath))
                 {
                     var conditions = (OpeningConditions)serializer.Deserialize(reader);
+
                     _log($"[ConditionsService] Loaded conditions from: {filePath}");
-                    DebugLogger.Info($"[ConditionsService] Loaded conditions for filter '{filterName}' - Clearances: Rect={conditions.ClearanceSettings.RectangularNormal}/{conditions.ClearanceSettings.RectangularInsulated}mm, Round={conditions.ClearanceSettings.RoundNormal}/{conditions.ClearanceSettings.RoundInsulated}mm");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[ConditionsService] Loaded conditions for filter '{filterName}' - Clearances: Rect={conditions.ClearanceSettings.RectangularNormal}/{conditions.ClearanceSettings.RectangularInsulated}mm, Round={conditions.ClearanceSettings.RoundNormal}/{conditions.ClearanceSettings.RoundInsulated}mm");
                     return conditions;
                 }
             }
             catch (Exception ex)
             {
                 _log($"[ConditionsService] Error loading conditions: {ex.Message}");
-                DebugLogger.Error($"[ConditionsService] Error loading conditions: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[ConditionsService] Error loading conditions: {ex.Message}");
                 return CreateDefaultConditions(filterName);
             }
         }

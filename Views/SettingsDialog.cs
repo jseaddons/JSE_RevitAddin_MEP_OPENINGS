@@ -23,7 +23,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         
         // Elements Section Controls
         private WinForms.CheckBox _cutOpeningWithHostsCheckBox;
-        private WinForms.CheckBox _createConstraintCheckBox;
         private WinForms.CheckBox _pipeOpeningTypeRectangularCheckBox;
         private WinForms.CheckBox _createVerticalOpeningsCheckBox;
         private WinForms.CheckBox _createHorizontalOpeningsCheckBox;
@@ -45,7 +44,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.TextBox _minWallThicknessTextBox;
         private WinForms.CheckBox _ignoreArchitecturalFloorsCheckBox;
         
-        // Clash Detection Section Controls
+        // Clash Detection Control (now in Manage section)
         private WinForms.CheckBox _enableThreePointValidationCheckBox;
         
         // Action Buttons
@@ -86,7 +85,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             
             // Form properties
             this.Text = "Settings";
-            this.Size = new Drawing.Size(800, 610); // Adjusted height for new Clash Detection section
+            // Form height calculation:
+            // Manage section: Y=20, Height=150, ends at Y=170
+            // Elements section: Y=180, Height=80, ends at Y=260
+            // Limits section: Y=270, Height=220, ends at Y=490
+            // Buttons: Y=500, Height=30, ends at Y=530
+            // Need extra margin at bottom to show buttons fully, so total height = 570px
+            this.Size = new Drawing.Size(800, 570); // Adjusted height after removing CreateConstraint
+            this.AutoScroll = false; // Fixed size - no scroll needed
             this.StartPosition = WinForms.FormStartPosition.CenterParent; // Center on parent window
             this.FormBorderStyle = WinForms.FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
@@ -102,7 +108,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             CreateElementsSection();
             CreateElementFilterSection();
             CreateLimitsSection();
-            CreateClashDetectionSection();
             CreateActionButtons();
             
             this.ResumeLayout(false);
@@ -110,12 +115,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         private void CreateManageSection()
         {
-            // Manage Section Group - BIGGER to show 2-line text properly
+            // Manage Section Group - INCREASED to accommodate 4 items (added Clash Detection checkbox)
             var manageGroupBox = new WinForms.GroupBox
             {
                 Text = "Manage",
                 Location = new Drawing.Point(20, 20),
-                Size = new Drawing.Size(600, 120), // Increased height for 2-line text
+                Size = new Drawing.Size(600, 150), // Increased height for 4 items (was 120 for 3 items)
                 Font = new Drawing.Font("Microsoft Sans Serif", 9F, Drawing.FontStyle.Bold)
             };
             this.Controls.Add(manageGroupBox);
@@ -175,16 +180,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Size = new Drawing.Size(50, 20)
             };
             manageGroupBox.Controls.Add(_locationChangeThresholdTextBox);
+            yPos += 30; // More space for next item
+
+            // ✅ NEW: Adopt to modified document checkbox - CHECKBOX ON RIGHT, TEXT ON LEFT
+            var adoptModificationLabel = new WinForms.Label
+            {
+                Text = "Adopt to modified document to adjust clash detections automatically:",
+                Location = new Drawing.Point(15, yPos),
+                Size = new Drawing.Size(500, 20)
+            };
+            manageGroupBox.Controls.Add(adoptModificationLabel);
+            
+            _enableThreePointValidationCheckBox = new WinForms.CheckBox
+            {
+                Text = "", // No text, just checkbox
+                Location = new Drawing.Point(520, yPos),
+                Size = new Drawing.Size(20, 20),
+                Checked = true // Default enabled for safety
+            };
+            manageGroupBox.Controls.Add(_enableThreePointValidationCheckBox);
         }
 
         private void CreateElementsSection()
         {
-            // Elements Section Group - 3 ITEMS (including pipe opening type)
+            // Elements Section Group - 2 ITEMS (removed CreateConstraint - not implemented)
+            // Positioned after Manage section (20 + 150 height + 10 gap = 180)
             var elementsGroupBox = new WinForms.GroupBox
             {
                 Text = "Elements",
-                Location = new Drawing.Point(20, 150), // Positioned after bigger Manage section
-                Size = new Drawing.Size(600, 105), // Increased height for 3 items
+                Location = new Drawing.Point(20, 180), // Positioned after bigger Manage section (was 150)
+                Size = new Drawing.Size(600, 80), // Reduced height for 2 items (was 105 for 3 items)
                 Font = new Drawing.Font("Microsoft Sans Serif", 9F, Drawing.FontStyle.Bold)
             };
             this.Controls.Add(elementsGroupBox);
@@ -208,25 +233,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Checked = false
             };
             elementsGroupBox.Controls.Add(_cutOpeningWithHostsCheckBox);
-            yPos += 25;
-
-            // Create constraint checkbox - CHECKBOX ON RIGHT, TEXT ON LEFT
-            var constraintLabel = new WinForms.Label
-            {
-                Text = "Create a constraint between openings and Hosts:",
-                Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(500, 20) // Increased width for more text space
-            };
-            elementsGroupBox.Controls.Add(constraintLabel);
-            
-            _createConstraintCheckBox = new WinForms.CheckBox
-            {
-                Text = "", // No text, just checkbox
-                Location = new Drawing.Point(520, yPos), // Moved further right
-                Size = new Drawing.Size(20, 20),
-                Checked = true
-            };
-            elementsGroupBox.Controls.Add(_createConstraintCheckBox);
             yPos += 25;
 
             // Pipe Opening Type Rectangular checkbox - CHECKBOX ON RIGHT, TEXT ON LEFT
@@ -257,10 +263,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private void CreateLimitsSection()
         {
             // Limits Section Group - 8 ITEMS (including new rounding controls, min wall thickness, and ignore architectural floors)
+            // Positioned after Elements section (180 + 80 height + 10 gap = 270)
             var limitsGroupBox = new WinForms.GroupBox
             {
                 Text = "Limits",
-                Location = new Drawing.Point(20, 265), // Positioned after bigger Elements section (150 + 105 + 10)
+                Location = new Drawing.Point(20, 270), // Positioned after Elements section (was 295, now 180 + 80 + 10)
                 Size = new Drawing.Size(600, 220), // Increased height for 8 items
                 Font = new Drawing.Font("Microsoft Sans Serif", 9F, Drawing.FontStyle.Bold)
             };
@@ -322,74 +329,74 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             limitsGroupBox.Controls.Add(_joinOpeningsDistanceTextBox);
             yPos += 25;
 
-            // Round opening sizes to custom value - INPUT BOX FOR ROUNDING VALUE
+            // Round opening sizes to custom value - INPUT BOX FOR ROUNDING VALUE (X-ALIGNED)
             var roundSizesLabel = new WinForms.Label
             {
                 Text = "Round opening sizes to nearest value (mm):",
                 Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(400, 20) // Width adjusted for shorter label
+                Size = new Drawing.Size(500, 20) // Match other sections width
             };
             limitsGroupBox.Controls.Add(roundSizesLabel);
             
             _roundingValueTextBox = new WinForms.TextBox
             {
                 Text = "5", // Default value
-                Location = new Drawing.Point(420, yPos), // Positioned after label
+                Location = new Drawing.Point(520, yPos), // X-aligned with other textboxes (same as dimension/location thresholds)
                 Size = new Drawing.Size(50, 20)
             };
             limitsGroupBox.Controls.Add(_roundingValueTextBox);
             yPos += 25;
 
-            // Round always up checkbox - CHECKBOX ON RIGHT, TEXT ON LEFT
+            // Round always up checkbox - CHECKBOX ON RIGHT, TEXT ON LEFT (X-ALIGNED)
             var roundUpLabel = new WinForms.Label
             {
                 Text = "Always round up:",
                 Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(400, 20)
+                Size = new Drawing.Size(500, 20) // Match other sections width
             };
             limitsGroupBox.Controls.Add(roundUpLabel);
             
             _roundAlwaysUpCheckBox = new WinForms.CheckBox
             {
                 Text = "", // No text, just checkbox
-                Location = new Drawing.Point(420, yPos),
+                Location = new Drawing.Point(520, yPos), // X-aligned with other checkboxes (same as reset approval, cut opening, etc.)
                 Size = new Drawing.Size(20, 20),
                 Checked = false // Default to round to nearest
             };
             limitsGroupBox.Controls.Add(_roundAlwaysUpCheckBox);
             yPos += 25;
 
-            // Ignore walls with thickness below minimum - INPUT BOX FOR MIN WALL THICKNESS
+            // Ignore walls with thickness below minimum - INPUT BOX FOR MIN WALL THICKNESS (X-ALIGNED)
             var minWallThicknessLabel = new WinForms.Label
             {
                 Text = "Ignore walls if thickness is below (mm):",
                 Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(500, 20) // Match other fields
+                Size = new Drawing.Size(500, 20) // Match other sections width
             };
             limitsGroupBox.Controls.Add(minWallThicknessLabel);
             
             _minWallThicknessTextBox = new WinForms.TextBox
             {
                 Text = "0", // Default value (0 means disabled)
-                Location = new Drawing.Point(520, yPos),
+                Location = new Drawing.Point(520, yPos), // X-aligned with other textboxes
                 Size = new Drawing.Size(50, 20)
             };
             limitsGroupBox.Controls.Add(_minWallThicknessTextBox);
             yPos += 25;
 
-            // Ignore architectural floors checkbox - CHECKBOX ON RIGHT, TEXT ON LEFT
+            // Ignore architectural floors checkbox - CHECKBOX ON RIGHT, TEXT ON LEFT (X-ALIGNED)
             var ignoreArchFloorsLabel = new WinForms.Label
             {
                 Text = "Ignore architectural floors:",
                 Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(400, 20)
+                Size = new Drawing.Size(500, 20) // Match other sections width
             };
             limitsGroupBox.Controls.Add(ignoreArchFloorsLabel);
             
             _ignoreArchitecturalFloorsCheckBox = new WinForms.CheckBox
             {
                 Text = "", // No text, just checkbox
-                Location = new Drawing.Point(420, yPos),
+                Location = new Drawing.Point(520, yPos), // X-aligned with other checkboxes
                 Size = new Drawing.Size(20, 20),
                 Checked = false // Default to process all floors
             };
@@ -408,46 +415,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             limitsGroupBox.Controls.Add(footnoteLabel);
         }
 
-        private void CreateClashDetectionSection()
-        {
-            // Clash Detection Section Group
-            var clashDetectionGroupBox = new WinForms.GroupBox
-            {
-                Text = "Clash Detection",
-                Location = new Drawing.Point(20, 495), // Positioned after Limits section (265 + 220 + 10)
-                Size = new Drawing.Size(600, 55),
-                Font = new Drawing.Font("Microsoft Sans Serif", 9F, Drawing.FontStyle.Bold)
-            };
-            this.Controls.Add(clashDetectionGroupBox);
-
-            int yPos = 25;
-
-            // Enable 3-point validation checkbox - CHECKBOX ON RIGHT, TEXT ON LEFT
-            var threePointLabel = new WinForms.Label
-            {
-                Text = "Adopt to modified document to adjust clash detections automatically:",
-                Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(500, 20)
-            };
-            clashDetectionGroupBox.Controls.Add(threePointLabel);
-            
-            _enableThreePointValidationCheckBox = new WinForms.CheckBox
-            {
-                Text = "", // No text, just checkbox
-                Location = new Drawing.Point(520, yPos),
-                Size = new Drawing.Size(20, 20),
-                Checked = true // Default enabled for safety
-            };
-            clashDetectionGroupBox.Controls.Add(_enableThreePointValidationCheckBox);
-        }
 
         private void CreateActionButtons()
         {
             // Reset Button
+            // Positioned after Limits section (270 + 220 height + 10 gap = 500)
             _resetButton = new WinForms.Button
             {
                 Text = "Reset",
-                Location = new Drawing.Point(20, 560), // Positioned after Clash Detection section (495 + 55 + 10)
+                Location = new Drawing.Point(20, 500), // Positioned after Limits section (was 525, now 270 + 220 + 10)
                 Size = new Drawing.Size(75, 30),
                 BackColor = Drawing.Color.FromArgb(200, 200, 200),
                 FlatStyle = WinForms.FlatStyle.Flat
@@ -459,7 +435,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _okButton = new WinForms.Button
             {
                 Text = "OK",
-                Location = new Drawing.Point(450, 560), // Positioned after Clash Detection section (495 + 55 + 10)
+                Location = new Drawing.Point(450, 500), // Positioned after Limits section (was 525, now 270 + 220 + 10)
                 Size = new Drawing.Size(75, 30),
                 BackColor = Drawing.Color.FromArgb(0, 120, 215),
                 ForeColor = Drawing.Color.White,
@@ -472,7 +448,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _cancelButton = new WinForms.Button
             {
                 Text = "Cancel",
-                Location = new Drawing.Point(535, 560), // Positioned after Clash Detection section (495 + 55 + 10)
+                Location = new Drawing.Point(535, 500), // Positioned after Limits section (was 525, now 270 + 220 + 10)
                 Size = new Drawing.Size(75, 30),
                 BackColor = Drawing.Color.FromArgb(200, 200, 200),
                 FlatStyle = WinForms.FlatStyle.Flat
@@ -510,8 +486,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             
             if (_cutOpeningWithHostsCheckBox != null)
                 _cutOpeningWithHostsCheckBox.Checked = _settings.CutOpeningWithHosts;
-            if (_createConstraintCheckBox != null)
-                _createConstraintCheckBox.Checked = _settings.CreateConstraint;
             if (_pipeOpeningTypeRectangularCheckBox != null)
                 _pipeOpeningTypeRectangularCheckBox.Checked = _settings.PipeOpeningTypeRectangular;
             if (_createVerticalOpeningsCheckBox != null)
@@ -567,9 +541,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 
                 if (_cutOpeningWithHostsCheckBox != null)
                     _settings.CutOpeningWithHosts = _cutOpeningWithHostsCheckBox.Checked;
-                
-                if (_createConstraintCheckBox != null)
-                    _settings.CreateConstraint = _createConstraintCheckBox.Checked;
                 
                 if (_pipeOpeningTypeRectangularCheckBox != null)
                     _settings.PipeOpeningTypeRectangular = _pipeOpeningTypeRectangularCheckBox.Checked;

@@ -46,8 +46,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     catch (Exception ex)
                     {
-                        DebugLogger.Error($"[RevitTask] Exception in queued action: {ex.Message}");
-                        DebugLogger.Error($"[RevitTask] Stack trace: {ex.StackTrace}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Error($"[RevitTask] Exception in queued action: {ex.Message}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Error($"[RevitTask] Stack trace: {ex.StackTrace}");
                         // Continue processing other queued actions
                     }
                 }

@@ -136,6 +136,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 // Transform section box to link's coordinate system using INVERSE
                 Transform invTransform = linkTransform.Inverse;
+
                 XYZ minLink = invTransform.OfPoint(modelBox.Min);
                 XYZ maxLink = invTransform.OfPoint(modelBox.Max);
                 

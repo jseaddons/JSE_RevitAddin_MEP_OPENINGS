@@ -35,7 +35,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         // ✅ OOP REFACTORING: Centralized flag and GUID management
         private readonly FlagManager _flagManager;
         private readonly GuidManager _guidManager;
-        
+
         // ✅ OOP REFACTORING: Validation strategies
         private readonly Validation.ThreePointValidator _threePointValidator;
 
@@ -49,12 +49,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _document = document ?? throw new ArgumentNullException(nameof(document));
             _uiDocument = uiDocument ?? throw new ArgumentNullException(nameof(uiDocument));
             _appProfileService = appProfileService ?? throw new ArgumentNullException(nameof(appProfileService));
-            _filterManagementService = new FilterManagementService(_document, msg => DebugLogger.Info(msg), msg => DebugLogger.Error(msg));
+            _filterManagementService = new FilterManagementService(_document, msg => {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info(msg);
+            }, msg => {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error(msg);
+            });
             
             // ⚠️ CRITICAL FIX: Initialize with EMPTY storage in constructor ⚠️
             // The existing clash zones will be loaded during ExecuteRefresh from the current profile
-            _clashZoneService = new ClashZoneService(new Models.ClashZoneStorage(), msg => DebugLogger.Info(msg));
-            _intersectionService = new IntersectionDetectionService(msg => DebugLogger.Info(msg));
+            _clashZoneService = new ClashZoneService(new Models.ClashZoneStorage(), msg => {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info(msg);
+            });
+            _intersectionService = new IntersectionDetectionService(msg => {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info(msg);
+            });
             
             // Initialize crash-safe executor for timeout protection
             _crashSafeExecutor = new CrashSafeExecutor();
@@ -94,6 +106,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (!Directory.Exists(filtersDirectory))
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info("[RefreshService] No existing filters directory found - starting with empty clash zones");
                     return;
                 }
@@ -103,6 +116,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (xmlFiles.Length == 0)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info("[RefreshService] No existing XML files found - starting with empty clash zones");
                     return;
                 }
@@ -112,6 +126,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     .OrderByDescending(f => File.GetLastWriteTime(f))
                     .First();
 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[RefreshService] Loading existing clash zone data from: {mostRecentFile}");
 
                 // Reuse a static serializer to avoid per-refresh type cache allocations
@@ -123,21 +138,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (filter?.ClashZoneStorage?.ClashZones != null)
                     {
                         // ✅ CRITICAL: Preserve existing clash zone data including cluster information
-                        _clashZoneService = new ClashZoneService(filter.ClashZoneStorage, msg => DebugLogger.Info(msg));
+                        _clashZoneService = new ClashZoneService(filter.ClashZoneStorage, msg => {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info(msg);
+                        });
                         
                         int clusterResolvedCount = filter.ClashZoneStorage.ClashZones.Count(cz => cz.IsClusterResolved);
                         int individualResolvedCount = filter.ClashZoneStorage.ClashZones.Count(cz => cz.IsResolved);
                         
+                        if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[RefreshService] ✅ Loaded existing clash zone data: {filter.ClashZoneStorage.ClashZones.Count} total, {clusterResolvedCount} cluster-resolved, {individualResolvedCount} individual-resolved");
                     }
                     else
                     {
+                        if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info("[RefreshService] No clash zone data found in existing XML file");
                     }
                 }
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[RefreshService] Error loading existing clash zone data: {ex.Message}");
                 // Continue with empty storage if loading fails
             }
@@ -150,6 +171,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info("[SHARED_PARAMS] Ensuring shared parameters are loaded into project");
 
                 // Path to shared parameter file
@@ -157,6 +179,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (!File.Exists(sharedParamFile))
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning($"[SHARED_PARAMS] Shared parameter file not found: {sharedParamFile}");
                     return;
                 }
@@ -165,12 +188,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var currentSharedParams = doc.Application.SharedParametersFilename;
                 if (!string.IsNullOrEmpty(currentSharedParams) && currentSharedParams.Contains("Opening family shared parameter.txt"))
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[SHARED_PARAMS] Shared parameters already loaded: {currentSharedParams}");
                     return;
                 }
 
                 // Load the shared parameter file
                 doc.Application.SharedParametersFilename = sharedParamFile;
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[SHARED_PARAMS] Loaded shared parameter file: {sharedParamFile}");
 
                 // Create a group for the parameters if it doesn't exist
@@ -184,14 +209,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         // Create the group if it doesn't exist
                         group = sharedParams.Groups.Create(groupName);
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[SHARED_PARAMS] Created shared parameter group: {groupName}");
                     }
                 }
 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info("[SHARED_PARAMS] Shared parameters loaded successfully");
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[SHARED_PARAMS] Error loading shared parameters: {ex.Message}");
                 // Continue anyway - parameters might already be loaded
             }
@@ -204,6 +232,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info("[DUCT_ACCESSORIES] Starting damper parameter validation");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DUCT_ACCESSORIES] Starting damper parameter validation\n");
 
@@ -215,6 +244,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         System.Windows.Forms.MessageBoxButtons.OK,
                         System.Windows.Forms.MessageBoxIcon.Warning);
                     
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning("[DUCT_ACCESSORIES] No linked files selected for damper validation");
                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DUCT_ACCESSORIES] WARNING: No linked files selected for damper validation\n");
                     return false;
@@ -238,6 +268,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (ductAccessories.Count > 0)
                         {
                             linkedMechanicalDoc = linkDoc;
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[DUCT_ACCESSORIES] Found linked mechanical file: {linkDoc.Title}");
                             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DUCT_ACCESSORIES] Found linked mechanical file: {linkDoc.Title}\n");
                             break;
@@ -253,6 +284,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         System.Windows.Forms.MessageBoxButtons.OK,
                         System.Windows.Forms.MessageBoxIcon.Warning);
                     
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning("[DUCT_ACCESSORIES] No linked mechanical file found with duct accessories");
                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DUCT_ACCESSORIES] WARNING: No linked mechanical file found with duct accessories\n");
                     return false;
@@ -264,6 +296,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     .WhereElementIsNotElementType()
                     .ToElements();
 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[DUCT_ACCESSORIES] Found {dampers.Count} dampers in linked mechanical file");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DUCT_ACCESSORIES] Found {dampers.Count} dampers in linked mechanical file\n");
 
@@ -275,6 +308,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         System.Windows.Forms.MessageBoxButtons.OK,
                         System.Windows.Forms.MessageBoxIcon.Warning);
                     
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning("[DUCT_ACCESSORIES] No dampers found in linked mechanical file");
                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DUCT_ACCESSORIES] WARNING: No dampers found in linked mechanical file\n");
                     return false;
@@ -300,6 +334,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // ✅ DEBUG: Log damper family for first 5 dampers
                     if (missingStandard.Count + missingMSFD.Count < 5)
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[DUCT_ACCESSORIES] Damper {damper.Id}: Family='{familyName}', Type='{typeName}', Combined='{nameUpper}'");
                     }
 
@@ -326,6 +361,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (missingStandard.Count > 0)
                     {
                         message += $"• {missingStandard.Count} dampers missing 'Standard' keyword in family name\n";
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Warning($"[DUCT_ACCESSORIES] {missingStandard.Count} dampers missing 'Standard' keyword in family name");
                         SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DUCT_ACCESSORIES] WARNING: {missingStandard.Count} dampers missing 'Standard' keyword in family name\n");
                     }
@@ -333,6 +369,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (missingMSFD.Count > 0)
                     {
                         message += $"• {missingMSFD.Count} dampers missing 'MSFD' keyword in family name\n";
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Warning($"[DUCT_ACCESSORIES] {missingMSFD.Count} dampers missing 'MSFD' keyword in family name");
                         SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DUCT_ACCESSORIES] WARNING: {missingMSFD.Count} dampers missing 'MSFD' keyword in family name\n");
                     }
@@ -348,18 +385,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     if (result == System.Windows.Forms.DialogResult.No)
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info("[DUCT_ACCESSORIES] User chose to abort due to missing damper parameters");
                         SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DUCT_ACCESSORIES] User chose to abort due to missing damper parameters\n");
                         return false;
                     }
                     else
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info("[DUCT_ACCESSORIES] User chose to continue despite missing damper parameters");
                         SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DUCT_ACCESSORIES] User chose to continue despite missing damper parameters\n");
                     }
                 }
                 else
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info("[DUCT_ACCESSORIES] All dampers have required Standard and MSFD parameters");
                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DUCT_ACCESSORIES] All dampers have required Standard and MSFD parameters\n");
                 }
@@ -368,6 +408,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[DUCT_ACCESSORIES] Error during damper parameter validation: {ex.Message}");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DUCT_ACCESSORIES] ERROR: {ex.Message}\n");
                 
@@ -479,6 +520,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ DEPLOYMENT MODE: ConditionalAppendAllText now checks DeploymentMode automatically
             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] === REFRESH STARTED === Timestamp: {timestamp}\n");
 
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info("=== REFRESH METHOD STARTED ===");
             System.Diagnostics.Debug.WriteLine("[REFRESH] DebugLogger.Info called");
             
@@ -545,12 +587,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _memoryProfiler.TakeSnapshot("REFRESH_START", 0);
 
             // Step 1: Use passed filter selections from UI (optional - can work without filters)
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[CLASH_DEBUG] Selected filter items: {string.Join(", ", selectedFilterItems)}");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Selected filter items: {string.Join(", ", selectedFilterItems)}\n");
 
             // ⚠️ CRITICAL: Require filter selection - don't proceed without a filter ⚠️
             if (selectedFilterItems.Count == 0)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error("[CLASH_DEBUG] ERROR: No filters selected - cannot proceed with refresh");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ERROR: No filters selected - cannot proceed with refresh\n");
                 
@@ -603,7 +647,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 errorMessage += string.Join("\n", validationErrors.Select(e => $"• {e}"));
                 errorMessage += "\n\nThese selections are required for clash detection to work correctly.";
                 
-                DebugLogger.Error($"[CLASH_DEBUG] ERROR: Missing UI selections: {string.Join(", ", validationErrors)}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[CLASH_DEBUG] ERROR: Missing UI selections: {string.Join(", ", validationErrors)}");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ERROR: Missing UI selections: {string.Join(", ", validationErrors)}\n");
                 
                 System.Windows.Forms.MessageBox.Show(
@@ -618,11 +663,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             
             // ✅ All validations passed - log selections
-            DebugLogger.Info($"[CLASH_DEBUG] ✅ UI State Validation PASSED:");
-            DebugLogger.Info($"[CLASH_DEBUG]   - MEP Categories: {selectedMepCategories.Count} selected");
-            DebugLogger.Info($"[CLASH_DEBUG]   - Host Categories: {selectedHostCategories.Count} selected");
-            DebugLogger.Info($"[CLASH_DEBUG]   - MEP Linked Files: {selectedReferenceFiles.Count} selected");
-            DebugLogger.Info($"[CLASH_DEBUG]   - Host Linked Files: {selectedHostFiles.Count} selected");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[CLASH_DEBUG] ✅ UI State Validation PASSED:");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[CLASH_DEBUG]   - MEP Categories: {selectedMepCategories.Count} selected");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[CLASH_DEBUG]   - Host Categories: {selectedHostCategories.Count} selected");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[CLASH_DEBUG]   - MEP Linked Files: {selectedReferenceFiles.Count} selected");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[CLASH_DEBUG]   - Host Linked Files: {selectedHostFiles.Count} selected");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ✅ UI State Validation PASSED\n");
 
             // Step 2: Process filters and detect intersections
@@ -631,6 +681,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Try to load actual filters first
             foreach (var filterName in selectedFilterItems)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] Attempting to load filter: '{filterName}'");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Attempting to load filter: '{filterName}'\n");
                 
@@ -638,12 +689,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (filter != null)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLASH_DEBUG] ✓ Successfully loaded filter: '{filterName}'");
                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ✓ Successfully loaded filter: '{filterName}'\n");
                     filtersToProcess.Add(filter);
                 }
                 else
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning($"[CLASH_DEBUG] ✗ Failed to load filter: '{filterName}' - file may not exist or deserialization failed");
                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ✗ Failed to load filter: '{filterName}' - file may not exist or deserialization failed\n");
                 }
@@ -653,6 +706,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (filtersToProcess.Count == 0)
             {
                 string errorMessage = "No filter found. Please create a filter first before running Refresh.";
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[CLASH_DEBUG] {errorMessage}");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ERROR: {errorMessage}\n");
                 
@@ -665,26 +719,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             // ⚠️ CRITICAL: Ensure shared parameters are loaded into the project before any parameter operations
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info("[SHARED_PARAMS] Ensuring shared parameters are loaded into project before refresh operations");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [SHARED_PARAMS] Ensuring shared parameters are loaded into project\n");
             EnsureSharedParametersLoaded(_document);
 
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[CLASH_DEBUG] MEP filters to process: {filtersToProcess.Count}");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] MEP filters to process: {filtersToProcess.Count}\n");
 
             foreach (var filter in filtersToProcess)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] Filter: {filter.Name} - Category: {filter.Category} - Enabled: {filter.IsEnabled}");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Filter: {filter.Name} - Category: {filter.Category} - Enabled: {filter.IsEnabled}\n");
             }
 
             // Step 3: Get current profile and initialize clash zone service
             var currentProfile = _appProfileService.GetCurrentProfile();
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[CLASH_DEBUG] Current profile: {currentProfile?.Name ?? "NULL"}");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Profile loaded: {currentProfile?.Name ?? "NULL"}\n");
 
             if (currentProfile?.Configuration?.ClashZoneStorage == null)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info("[CLASH_DEBUG] No clash zone storage in profile - proceeding with direct clash detection");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] INFO: No clash zone storage - proceeding with direct clash detection\n");
             }
@@ -692,6 +751,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Step 4: Check for active document
             if (_document == null)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error("[CLASH_DEBUG] No active Revit document found");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ERROR: No active Revit document found\n");
                 
@@ -701,6 +761,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 return Autodesk.Revit.UI.Result.Failed;
             }
 
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[CLASH_DEBUG] Document: {_document.Title}");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Document: {_document.Title}\n");
 
@@ -711,6 +772,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 _progressBar.Visible = true;
                 _progressBar.Value = 10;
 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info("[DUCT_ACCESSORIES] Only Duct Accessories selected - validating damper parameters");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DUCT_ACCESSORIES] Only Duct Accessories selected - validating damper parameters\n");
 
@@ -725,21 +787,405 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
 
-            // Step 6: Perform intersection detection
+            // Step 6: Intersection detection will happen later (after existingClashZones is loaded and optimization service is created)
+
+            // Step 6: Process clash zones
+            _progressBar.Value = 40;
+            _statusLabel.Text = "Processing clash zones...";
+
+            // ✅ FIX: Load existing clash zones from Filter XML files (NOT profile)
+            // This preserves IsResolved and IsClusterResolved flags from previous placement/clustering
+            // Ensure per-project filters directory exists
+            try { ProjectPathService.EnsureFiltersDirectory(_document); } catch { }
+            // ✅ Get resolved GUID sets from Global XML (for filtering - no Revit API calls)
+            // Note: Flag validation/reset happens in:
+            // - 3-Point Validation: Clears Global XML entries when MEP/host elements are deleted
+            // - ResetResolvedFlagForDeletedSleeves: Resets flags when sleeves are deleted
+            var __globalsResolved = new HashSet<Guid>();
+            try
+            {
+                foreach (var cat in selectedMepCategories ?? new List<string>())
+                {
+                    var (resolvedSet, clusterResolvedSet) = GlobalIndexService.GetResolvedGuids(_document, cat);
+                    foreach (var gid in resolvedSet) __globalsResolved.Add(gid);
+                    foreach (var gid in clusterResolvedSet) __globalsResolved.Add(gid);
+                }
+            }
+            catch { }
+
+            var existingClashZones = LoadExistingClashZonesFromFilterXml(selectedFilterItems, selectedMepCategories);
+            __logPhaseMem("AFTER_XML_LOAD", existingClashZones?.ClashZones, null, null);
+            var existingCount = existingClashZones?.ClashZones?.Count ?? 0;
+            
+                        if (!DeploymentConfiguration.DeploymentMode)
+            DebugLogger.Info($"[CLASH_DEBUG] Loaded {existingCount} existing clash zones from Filter XML files");
+            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Loaded {existingCount} existing clash zones from Filter XML files (selected filter + categories)\n");
+            
+            // ✅ OOP OPTIMIZATION: Create optimization service after existingClashZones is loaded
+            // - If "Adopt to modified document" is CHECKED → Run full intersection detection (detect movements/modifications)
+            // - If "Adopt to modified document" is UNCHECKED → Skip geometry checks for known valid pairs (user trusts model unchanged)
+            var optimizationService = new IntersectionOptimizationService(existingClashZones);
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[PERFORMANCE] {optimizationService.GetOptimizationStatus()}");
+            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [PERFORMANCE] {optimizationService.GetOptimizationStatus()}\n");
+            
+            // ✅ OOP REFACTORING: Use FlagManager for flag syncing from Global XML
+            // Clash zones must remain in Filter XML even if resolved (for OK button logic and history)
+            // Only update their flags to match Global XML state
+            if (existingClashZones?.ClashZones != null && existingClashZones.ClashZones.Count > 0)
+            {
+                try
+                {
+                    // Group by category and sync flags for each category
+                    var clashZonesByCategory = existingClashZones.ClashZones
+                        .GroupBy(cz => cz.MepElementCategory)
+                        .ToList();
+                    
+                    foreach (var categoryGroup in clashZonesByCategory)
+                    {
+                        var category = categoryGroup.Key;
+                        var categoryClashZones = categoryGroup.ToList();
+                        
+                        _flagManager.SyncFlagsFromGlobal(categoryClashZones, category);
+                        
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[REFRESH-GLOBAL-SYNC] Synced flags from Global XML for {categoryClashZones.Count} clash zones in category '{category}'");
+                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [REFRESH-GLOBAL-SYNC] Synced {categoryClashZones.Count} clash zones from Global XML for category '{category}'\n");
+                    }
+                }
+                catch (Exception syncEx)
+                {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[REFRESH-GLOBAL-SYNC] Error syncing flags from Global XML: {syncEx.Message}");
+                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [REFRESH-GLOBAL-SYNC] ERROR: {syncEx.Message}\n");
+                }
+                
+                // ✅ CRITICAL FIX: Check for deleted sleeves IMMEDIATELY after syncing flags
+                // This must happen BEFORE deciding whether to skip intersection detection
+                // If sleeves are deleted, flags will be reset, making zones unresolved
+                try
+                {
+                    var settingsService = new SettingsService();
+                    var settings = settingsService.LoadSettings();
+                    bool enableThreePointValidation = settings?.EnableThreePointValidation ?? true;
+                    
+                    // Always check for deleted sleeves (regardless of 3-point validation setting)
+                    // 3-point validation only affects geometry validation, not sleeve existence checks
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[FLAG-MANAGER] ===== CHECKING FOR DELETED SLEEVES (after flag sync) FOR {existingClashZones.ClashZones.Count} CLASH ZONES =====");
+                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER] ===== CHECKING FOR DELETED SLEEVES (after flag sync) =====\n");
+                    
+                    var clashZonesByCategoryForReset = existingClashZones.ClashZones
+                        .GroupBy(cz => cz.MepElementCategory)
+                        .ToList();
+                    
+                    int totalResetCount = 0;
+                    foreach (var categoryGroup in clashZonesByCategoryForReset)
+                    {
+                        var category = categoryGroup.Key;
+                        var categoryClashZones = categoryGroup.ToList();
+                        
+                        _flagManager.ResetFlagsForDeletedSleeves(categoryClashZones, category);
+                        
+                        // Count how many were reset (unresolved after check)
+                        int resetCount = categoryClashZones.Count(cz => !cz.IsResolved && !cz.IsClusterResolved);
+                        if (resetCount > 0)
+                        {
+                            totalResetCount += resetCount;
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[FLAG-MANAGER] Reset {resetCount} clash zones in category '{category}' - sleeves were deleted");
+                            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER] Reset {resetCount} clash zones in category '{category}' - sleeves deleted\n");
+                        }
+                    }
+                    
+                    if (totalResetCount > 0)
+                    {
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[FLAG-MANAGER] ✅ Total {totalResetCount} clash zones reset due to deleted sleeves - these zones are now unresolved");
+                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER] ✅ Total {totalResetCount} clash zones reset due to deleted sleeves\n");
+                    }
+                    else
+                    {
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[FLAG-MANAGER] All sleeves exist - no flags reset");
+                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER] All sleeves exist - no flags reset\n");
+                    }
+                }
+                catch (Exception resetEx)
+                {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error($"[FLAG-MANAGER] Error checking for deleted sleeves: {resetEx.Message}");
+                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER] ERROR: {resetEx.Message}\n");
+                }
+            }
+            
+            // Reinitialize with existing clash zones
+            // If a 3D view with section box is active, pre-filter existing zones to the oriented box
+            if (_document.ActiveView is View3D secView && secView != null)
+            {
+                try
+                {
+                    var secBox = secView.GetSectionBox();
+                    var inv = secBox.Transform.Inverse;
+                    var kept = new List<Models.ClashZone>();
+                    foreach (var cz in existingClashZones?.ClashZones ?? new List<Models.ClashZone>())
+                    {
+                        var pt = new XYZ(cz.IntersectionPointX, cz.IntersectionPointY, cz.IntersectionPointZ);
+                        var local = inv.OfPoint(pt);
+                        bool inside = local.X >= secBox.Min.X && local.X <= secBox.Max.X &&
+                                      local.Y >= secBox.Min.Y && local.Y <= secBox.Max.Y &&
+                                      local.Z >= secBox.Min.Z && local.Z <= secBox.Max.Z;
+                        if (inside) kept.Add(cz);
+                    }
+                    existingClashZones.ClashZones = kept;
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[CLASH_DEBUG] Section-box filtered existing zones: {kept.Count}");
+                }
+                catch (Exception ex)
+                {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[CLASH_DEBUG] Section-box prefilter failed: {ex.Message}");
+                }
+            }
+
+            // ✅ CRITICAL: 3-Point Validation - Validate clash zone validity before processing
+            // Validation Criteria: 1) MEP Element exists, 2) Structural Element exists, 3) Elements still intersect
+            if (existingClashZones?.ClashZones != null && existingClashZones.ClashZones.Count > 0)
+            {
+                // ✅ CONFIGURATION: Check if 3-point validation is enabled in settings
+                var settingsService = new SettingsService();
+                var settings = settingsService.LoadSettings();
+                bool enableThreePointValidation = settings?.EnableThreePointValidation ?? true; // Default to enabled for safety
+                
+                if (enableThreePointValidation)
+                {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[CLASH_DEBUG] ===== 3-POINT VALIDATION ENABLED FOR {existingClashZones.ClashZones.Count} EXISTING CLASH ZONES =====");
+                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ===== 3-POINT VALIDATION ENABLED FOR {existingClashZones.ClashZones.Count} EXISTING CLASH ZONES =====\n");
+                }
+                else
+                {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[CLASH_DEBUG] ===== 3-POINT VALIDATION DISABLED - SKIPPING VALIDATION, ONLY FLAG CHECKS =====");
+                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ===== 3-POINT VALIDATION DISABLED - SKIPPING VALIDATION, ONLY FLAG CHECKS =====\n");
+                }
+                
+                var validClashZones = new List<Models.ClashZone>();
+                var invalidClashZones = new List<Models.ClashZone>();
+                int removedCount = 0;
+                
+                // ✅ OOP REFACTORING: Use ThreePointValidator for validation (replaces inline validation logic)
+                // ✅ CONFIGURATION: Only run validation if enabled in settings
+                foreach (var existingZone in existingClashZones.ClashZones)
+                {
+                    try
+                    {
+                        if (enableThreePointValidation)
+                        {
+                            // ✅ PERFORM 3-POINT VALIDATION (costly but thorough)
+                            var validationResult = _threePointValidator.Validate(existingZone, _document);
+                            
+                            if (!validationResult.IsValid)
+                            {
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[3-POINT-VALIDATION] ❌ INVALID: Zone {existingZone.Id} - {validationResult.FailureReason}");
+                                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [3-POINT-VALIDATION] ❌ INVALID: Zone {existingZone.Id} - {validationResult.FailureReason}\n");
+                            invalidClashZones.Add(existingZone);
+                            continue;
+                        }
+                        
+                            // ✅ VALID - Keep clash zone
+                        validClashZones.Add(existingZone);
+                        
+                        // Update intersection point if it changed
+                            if (validationResult.UpdatedIntersectionPoint != null && validationResult.IntersectionPointMovement.HasValue)
+                            {
+                                // Update intersection point (linked coordinates for individual sleeve placement)
+                                existingZone.IntersectionPointX = validationResult.UpdatedIntersectionPoint.X;
+                                existingZone.IntersectionPointY = validationResult.UpdatedIntersectionPoint.Y;
+                                existingZone.IntersectionPointZ = validationResult.UpdatedIntersectionPoint.Z;
+                                
+                                // ✅ CRITICAL: Update active document coordinates for proximity calculation
+                                if (validationResult.UpdatedActiveDocumentPoint != null)
+                                {
+                                    existingZone.SleevePlacementPointActiveDocumentX = validationResult.UpdatedActiveDocumentPoint.X;
+                                    existingZone.SleevePlacementPointActiveDocumentY = validationResult.UpdatedActiveDocumentPoint.Y;
+                                    existingZone.SleevePlacementPointActiveDocumentZ = validationResult.UpdatedActiveDocumentPoint.Z;
+                                }
+                                
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[3-POINT-VALIDATION] ✅ VALID + UPDATED: Zone {existingZone.Id} - Intersection point updated (Δ={validationResult.IntersectionPointMovement.Value:F3}ft)");
+                                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [3-POINT-VALIDATION] ✅ VALID + UPDATED: Zone {existingZone.Id} - Intersection updated (Δ={validationResult.IntersectionPointMovement.Value:F3}ft)\n");
+                            }
+                            else
+                            {
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[3-POINT-VALIDATION] ✅ VALID: Zone {existingZone.Id} - All 3 points valid, no update needed");
+                            }
+                        }
+                        else
+                        {
+                            // ✅ SKIP 3-POINT VALIDATION - Only flag checks (faster)
+                            // All zones are considered valid if 3-point validation is disabled
+                            validClashZones.Add(existingZone);
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[FLAG-ONLY] ✅ Zone {existingZone.Id} - 3-point validation skipped, relying on flag checks only");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[3-POINT-VALIDATION] ❌ ERROR: Zone {existingZone.Id} - Exception during validation: {ex.Message}");
+                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [3-POINT-VALIDATION] ❌ ERROR: Zone {existingZone.Id} - {ex.Message}\n");
+                        invalidClashZones.Add(existingZone); // Treat as invalid on error
+                    }
+                }
+                
+                // ✅ DELETED SLEEVES CHECK ALREADY COMPLETED above (right after SyncFlagsFromGlobal)
+                // No need to check again here - it was done before validation to ensure flags are correct
+                
+                // ✅ STEP 2: Remove invalid clash zones and clear Global XML entries
+                if (invalidClashZones.Count > 0)
+                {
+                    removedCount = invalidClashZones.Count;
+                    
+                    // ✅ OOP REFACTORING: Use GuidManager to remove invalid clash zones from Global XML
+                    foreach (var invalidClashZone in invalidClashZones)
+                    {
+                        try
+                        {
+                            _guidManager.RemoveFromGlobalXml(invalidClashZone.Id, invalidClashZone.MepElementCategory);
+                        }
+                        catch (Exception globalEx)
+                        {
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[3-POINT-VALIDATION] Error removing ClashZone {invalidClashZone.Id} from Global XML: {globalEx.Message}");
+                        }
+                    }
+                    
+                    if (invalidClashZones.Count > 0)
+                    {
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[3-POINT-VALIDATION] Removed {invalidClashZones.Count} invalid clash zones from Global XML");
+                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [3-POINT-VALIDATION] Removed {invalidClashZones.Count} invalid clash zones from Global XML\n");
+                    }
+                    
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[3-POINT-VALIDATION] Removed {removedCount} invalid clash zones (MEP/Structural deleted or no longer intersect)");
+                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [3-POINT-VALIDATION] Removed {removedCount} invalid clash zones\n");
+                }
+                
+                // Replace with validated clash zones only
+                existingClashZones.ClashZones = validClashZones;
+                
+                                if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[3-POINT-VALIDATION] Validation complete: {validClashZones.Count} valid, {removedCount} removed");
+                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [3-POINT-VALIDATION] Result: {validClashZones.Count} valid, {removedCount} removed\n");
+            }
+            
+            // ✅ ARCHITECTURE: Intersection detection is ALWAYS required
+            // Even if all existing zones are resolved, new clashes may exist from:
+            // - New MEP elements added to the model
+            // - New structural elements added to the model
+            // - Modified elements that now intersect
+            // Performance optimization happens AFTER detection by filtering known intersections
+            
+            // ✅ NOTE: Intersection points already updated during 3-point validation above
+            // Continue with orientation calculation for validated clash zones
+            if (existingClashZones?.ClashZones != null && existingClashZones.ClashZones.Count > 0)
+            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[CLASH_DEBUG] ===== CALCULATING ORIENTATION FOR {existingClashZones.ClashZones.Count} VALIDATED CLASH ZONES =====");
+                
+                int orientationUpdatedCount = 0;
+                
+                // Calculate orientation for validated clash zones
+                foreach (var existingZone in existingClashZones.ClashZones)
+                {
+                    try
+                    {
+                        // Get the MEP and structural elements (already validated above)
+                        var mepElement = ElementRetrievalService.GetElementFromDocumentOrLinked(_document, existingZone.MepElementId, enableLogging: false);
+                        var structuralElement = ElementRetrievalService.GetElementFromDocumentOrLinked(_document, existingZone.StructuralElementId, enableLogging: false);
+                        
+                        if (mepElement == null || structuralElement == null)
+                            continue; // Skip if elements not found (shouldn't happen after validation)
+
+                        // ✅ ORIENTATION: Cache minimal data (no heavy API retention) and compute orientation post-API
+                        try
+                        {
+                            // ✅ OOP REFACTORING: Use centralized WallDirectionService (eliminates code duplication)
+                            // This ensures consistent orientation calculation across all services
+                            string hostOrientation = WallDirectionService.GetHostOrientation(structuralElement);
+                            
+                            // Cache structural normal for other uses
+                            var hostNormal = WallDirectionService.GetWallNormal(structuralElement);
+                            if (hostNormal != null)
+                            {
+                                existingZone.StructuralElementNormalX = hostNormal.X;
+                                existingZone.StructuralElementNormalY = hostNormal.Y;
+                                existingZone.StructuralElementNormalZ = hostNormal.Z;
+                            }
+
+                            // MEP orientation vector (projection to XY)
+                            XYZ mepDir = null;
+                            if (mepElement.Location is LocationCurve mepLc)
+                            {
+                                mepDir = (mepLc.Curve.GetEndPoint(1) - mepLc.Curve.GetEndPoint(0)).Normalize();
+                            }
+
+                            if (mepDir != null)
+                            {
+                                existingZone.MepElementOrientationX = mepDir.X;
+                                existingZone.MepElementOrientationY = mepDir.Y;
+                                existingZone.MepElementOrientationZ = mepDir.Z;
+                            }
+
+                            // ✅ Set HostOrientation (now calculated from direction, matching CreateClashZone)
+                            existingZone.HostOrientation = hostOrientation;
+                        }
+                        catch { /* non-fatal */ }
+                    }
+                    catch (Exception ex)
+                    {
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[CLASH_DEBUG] ❌ Zone {existingZone.Id}: Error calculating orientation - {ex.Message}");
+                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ❌ Zone {existingZone.Id}: Orientation error - {ex.Message}\n");
+                    }
+                }
+                
+                                if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[CLASH_DEBUG] Orientation calculation complete for {existingClashZones.ClashZones.Count} validated clash zones");
+                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Orientation calculation complete\n");
+                
+                // ✅ MEMORY OPTIMIZATION: Clear Revit API objects after recalculation to free memory
+                foreach (var existingZone in existingClashZones.ClashZones)
+                {
+                    existingZone.ClearRevitApiObjects();
+                }
+            }
+            
+            // Step 6: Perform intersection detection (AFTER existingClashZones loaded and optimization service created)
+            // ✅ ALWAYS run intersection detection (to find NEW clashes)
+            // BUT skip expensive geometry checks for known pairs when optimization is enabled
             _statusLabel.Text = "Detecting intersections...";
             _progressBar.Visible = true;
             _progressBar.Value = 20;
 
-            DebugLogger.Info("[CLASH_DEBUG] Starting MEP-structural intersection detection...");
-            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Starting MEP-structural intersection detection...\n");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[CLASH_DEBUG] Starting MEP-structural intersection detection... (Optimization: {optimizationService.ShouldSkipKnownPairsGeometryCheck}, Known pairs: {optimizationService.KnownValidPairs.Count})");
+            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Starting intersection detection (Optimization: {optimizationService.ShouldSkipKnownPairsGeometryCheck})\n");
 
             // Build allowed host types from current UI (UI PRECEDENCE)
             var allowedHostTypesUI = new HashSet<string>(
                 FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>(),
                 StringComparer.OrdinalIgnoreCase);
-            DebugLogger.Info($"[CLASH_DEBUG] UI Selected MEP categories: {string.Join(", ", selectedMepCategories ?? new List<string>())}");
-            DebugLogger.Info($"[CLASH_DEBUG] UI Selected Host types: {string.Join(", ", allowedHostTypesUI)}");
-            DebugLogger.Info($"[CLASH_DEBUG] UI Selected Host files: {string.Join(", ", selectedHostFiles ?? new List<string>())}");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[CLASH_DEBUG] UI Selected MEP categories: {string.Join(", ", selectedMepCategories ?? new List<string>())}");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[CLASH_DEBUG] UI Selected Host types: {string.Join(", ", allowedHostTypesUI)}");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[CLASH_DEBUG] UI Selected Host files: {string.Join(", ", selectedHostFiles ?? new List<string>())}");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] UI Selected MEP categories: {string.Join(", ", selectedMepCategories ?? new List<string>())}\n");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] UI Selected Host types: {string.Join(", ", allowedHostTypesUI)}\n");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] UI Selected Host files: {string.Join(", ", selectedHostFiles ?? new List<string>())}\n");
@@ -747,7 +1193,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Route intersection logs into both debug and refresh log files
             var intersectionService = new IntersectionDetectionService(msg =>
             {
-                DebugLogger.Info(msg);
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info(msg);
                 try { SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] {msg}"); } catch { }
             });
 
@@ -796,13 +1243,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (all3DViews != null)
                 {
-                    DebugLogger.Warning($"[CLASH_DEBUG] Active view is not 3D. Using existing 3D view: {all3DViews.Name}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[CLASH_DEBUG] Active view is not 3D. Using existing 3D view: {all3DViews.Name}");
                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Active view is not 3D. Using existing 3D view: {all3DViews.Name}\n");
                     view3D = all3DViews;
                 }
                 else
                 {
-                    DebugLogger.Error("[CLASH_DEBUG] ERROR: No 3D view found in document. Please create a 3D view and try again.");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error("[CLASH_DEBUG] ERROR: No 3D view found in document. Please create a 3D view and try again.");
                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] ERROR: No 3D view available for intersection detection\n");
                     _statusLabel.Text = "Error: No 3D view found. Please create a 3D view.";
                     _progressBar.Value = 0;
@@ -811,13 +1260,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             
             // Use passed MEP categories, reference files, and host filters from UI (UI PRECEDENCE)
+            // ✅ OOP: Pass optimization service to intersection detection (dependency injection)
             var currentIntersections = intersectionService.FindIntersections(
                 _document,
                 view3D,
                 selectedMepCategories,
                 selectedReferenceFiles,
                 selectedHostFiles,
-                allowedHostTypesUI.ToList());
+                allowedHostTypesUI.ToList(),
+                optimizationService); // ✅ OOP: Pass optimization service instead of raw data
 
             // ⚠️ CRITICAL: Check limits after intersection detection
             try
@@ -850,11 +1301,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     System.Windows.Forms.MessageBoxIcon.Warning);
                 return Autodesk.Revit.UI.Result.Failed;
             }
-
-            DebugLogger.Info($"[CLASH_DEBUG] INTERSECTION DETECTION COMPLETE: {currentIntersections.Count} intersections found");
+            
+            // Log intersection details after detection
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[CLASH_DEBUG] INTERSECTION DETECTION COMPLETE: {currentIntersections.Count} intersections found");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] INTERSECTION DETECTION COMPLETE: {currentIntersections.Count} intersections found\n");
-
-            // Log intersection details to timestamped file
             if (currentIntersections.Count > 0)
             {
                 if (OptimizationFlags.UseDiagnosticMode)
@@ -883,311 +1334,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}]   ... and {currentIntersections.Count - 20} more intersections\n");
                 }
-
-                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] Found {currentIntersections.Count} intersections during refresh\n");
-            }
-            else
-            {
-                DebugLogger.Warning("[CLASH_DEBUG] WARNING: No intersections found - clash detection returned empty results");
-                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] WARNING: No intersections found - clash detection returned empty results\n");
-            }
-
-            // Step 6: Process clash zones
-            _progressBar.Value = 40;
-            _statusLabel.Text = "Processing clash zones...";
-
-            // ✅ FIX: Load existing clash zones from Filter XML files (NOT profile)
-            // This preserves IsResolved and IsClusterResolved flags from previous placement/clustering
-            // Ensure per-project filters directory exists
-            try { ProjectPathService.EnsureFiltersDirectory(_document); } catch { }
-            // ✅ Get resolved GUID sets from Global XML (for filtering - no Revit API calls)
-            // Note: Flag validation/reset happens in:
-            // - 3-Point Validation: Clears Global XML entries when MEP/host elements are deleted
-            // - ResetResolvedFlagForDeletedSleeves: Resets flags when sleeves are deleted
-            var __globalsResolved = new HashSet<Guid>();
-            try
-            {
-                foreach (var cat in selectedMepCategories ?? new List<string>())
-                {
-                    var (resolvedSet, clusterResolvedSet) = GlobalIndexService.GetResolvedGuids(_document, cat);
-                    foreach (var gid in resolvedSet) __globalsResolved.Add(gid);
-                    foreach (var gid in clusterResolvedSet) __globalsResolved.Add(gid);
-                }
-            }
-            catch { }
-
-            var existingClashZones = LoadExistingClashZonesFromFilterXml(selectedFilterItems, selectedMepCategories);
-            __logPhaseMem("AFTER_XML_LOAD", existingClashZones?.ClashZones, null, null);
-            var existingCount = existingClashZones?.ClashZones?.Count ?? 0;
-            
-            DebugLogger.Info($"[CLASH_DEBUG] Loaded {existingCount} existing clash zones from Filter XML files");
-            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Loaded {existingCount} existing clash zones from Filter XML files (selected filter + categories)\n");
-            
-            // ✅ OOP REFACTORING: Use FlagManager for flag syncing from Global XML
-            // Clash zones must remain in Filter XML even if resolved (for OK button logic and history)
-            // Only update their flags to match Global XML state
-            if (existingClashZones?.ClashZones != null && existingClashZones.ClashZones.Count > 0)
-            {
-                try
-                {
-                    // Group by category and sync flags for each category
-                    var clashZonesByCategory = existingClashZones.ClashZones
-                        .GroupBy(cz => cz.MepElementCategory)
-                        .ToList();
-                    
-                    foreach (var categoryGroup in clashZonesByCategory)
-                    {
-                        var category = categoryGroup.Key;
-                        var categoryClashZones = categoryGroup.ToList();
-                        
-                        _flagManager.SyncFlagsFromGlobal(categoryClashZones, category);
-                        
-                        DebugLogger.Info($"[REFRESH-GLOBAL-SYNC] Synced flags from Global XML for {categoryClashZones.Count} clash zones in category '{category}'");
-                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [REFRESH-GLOBAL-SYNC] Synced {categoryClashZones.Count} clash zones from Global XML for category '{category}'\n");
-                    }
-                }
-                catch (Exception syncEx)
-                {
-                    DebugLogger.Error($"[REFRESH-GLOBAL-SYNC] Error syncing flags from Global XML: {syncEx.Message}");
-                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [REFRESH-GLOBAL-SYNC] ERROR: {syncEx.Message}\n");
-                }
-            }
-            
-            // Reinitialize with existing clash zones
-            // If a 3D view with section box is active, pre-filter existing zones to the oriented box
-            if (_document.ActiveView is View3D secView && secView != null)
-            {
-                try
-                {
-                    var secBox = secView.GetSectionBox();
-                    var inv = secBox.Transform.Inverse;
-                    var kept = new List<Models.ClashZone>();
-                    foreach (var cz in existingClashZones?.ClashZones ?? new List<Models.ClashZone>())
-                    {
-                        var pt = new XYZ(cz.IntersectionPointX, cz.IntersectionPointY, cz.IntersectionPointZ);
-                        var local = inv.OfPoint(pt);
-                        bool inside = local.X >= secBox.Min.X && local.X <= secBox.Max.X &&
-                                      local.Y >= secBox.Min.Y && local.Y <= secBox.Max.Y &&
-                                      local.Z >= secBox.Min.Z && local.Z <= secBox.Max.Z;
-                        if (inside) kept.Add(cz);
-                    }
-                    existingClashZones.ClashZones = kept;
-                    DebugLogger.Info($"[CLASH_DEBUG] Section-box filtered existing zones: {kept.Count}");
-                }
-                catch (Exception ex)
-                {
-                    DebugLogger.Warning($"[CLASH_DEBUG] Section-box prefilter failed: {ex.Message}");
-                }
-            }
-
-            // ✅ CRITICAL: 3-Point Validation - Validate clash zone validity before processing
-            // Validation Criteria: 1) MEP Element exists, 2) Structural Element exists, 3) Elements still intersect
-            if (existingClashZones?.ClashZones != null && existingClashZones.ClashZones.Count > 0)
-            {
-                // ✅ CONFIGURATION: Check if 3-point validation is enabled in settings
-                var settingsService = new SettingsService();
-                var settings = settingsService.LoadSettings();
-                bool enableThreePointValidation = settings?.EnableThreePointValidation ?? true; // Default to enabled for safety
-                
-                if (enableThreePointValidation)
-                {
-                    DebugLogger.Info($"[CLASH_DEBUG] ===== 3-POINT VALIDATION ENABLED FOR {existingClashZones.ClashZones.Count} EXISTING CLASH ZONES =====");
-                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ===== 3-POINT VALIDATION ENABLED FOR {existingClashZones.ClashZones.Count} EXISTING CLASH ZONES =====\n");
-                }
-                else
-                {
-                    DebugLogger.Info($"[CLASH_DEBUG] ===== 3-POINT VALIDATION DISABLED - SKIPPING VALIDATION, ONLY FLAG CHECKS =====");
-                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ===== 3-POINT VALIDATION DISABLED - SKIPPING VALIDATION, ONLY FLAG CHECKS =====\n");
-                }
-                
-                var validClashZones = new List<Models.ClashZone>();
-                var invalidClashZones = new List<Models.ClashZone>();
-                int removedCount = 0;
-                
-                // ✅ OOP REFACTORING: Use ThreePointValidator for validation (replaces inline validation logic)
-                // ✅ CONFIGURATION: Only run validation if enabled in settings
-                foreach (var existingZone in existingClashZones.ClashZones)
-                {
-                    try
-                    {
-                        if (enableThreePointValidation)
-                        {
-                            // ✅ PERFORM 3-POINT VALIDATION (costly but thorough)
-                            var validationResult = _threePointValidator.Validate(existingZone, _document);
-                            
-                            if (!validationResult.IsValid)
-                            {
-                                DebugLogger.Info($"[3-POINT-VALIDATION] ❌ INVALID: Zone {existingZone.Id} - {validationResult.FailureReason}");
-                                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [3-POINT-VALIDATION] ❌ INVALID: Zone {existingZone.Id} - {validationResult.FailureReason}\n");
-                                invalidClashZones.Add(existingZone);
-                                continue;
-                            }
-                            
-                            // ✅ VALID - Keep clash zone
-                            validClashZones.Add(existingZone);
-                            
-                            // Update intersection point if it changed
-                            if (validationResult.UpdatedIntersectionPoint != null && validationResult.IntersectionPointMovement.HasValue)
-                            {
-                                // Update intersection point (linked coordinates for individual sleeve placement)
-                                existingZone.IntersectionPointX = validationResult.UpdatedIntersectionPoint.X;
-                                existingZone.IntersectionPointY = validationResult.UpdatedIntersectionPoint.Y;
-                                existingZone.IntersectionPointZ = validationResult.UpdatedIntersectionPoint.Z;
-                                
-                                // ✅ CRITICAL: Update active document coordinates for proximity calculation
-                                if (validationResult.UpdatedActiveDocumentPoint != null)
-                                {
-                                    existingZone.SleevePlacementPointActiveDocumentX = validationResult.UpdatedActiveDocumentPoint.X;
-                                    existingZone.SleevePlacementPointActiveDocumentY = validationResult.UpdatedActiveDocumentPoint.Y;
-                                    existingZone.SleevePlacementPointActiveDocumentZ = validationResult.UpdatedActiveDocumentPoint.Z;
-                                }
-                                
-                                DebugLogger.Info($"[3-POINT-VALIDATION] ✅ VALID + UPDATED: Zone {existingZone.Id} - Intersection point updated (Δ={validationResult.IntersectionPointMovement.Value:F3}ft)");
-                                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [3-POINT-VALIDATION] ✅ VALID + UPDATED: Zone {existingZone.Id} - Intersection updated (Δ={validationResult.IntersectionPointMovement.Value:F3}ft)\n");
-                            }
-                            else
-                            {
-                                DebugLogger.Info($"[3-POINT-VALIDATION] ✅ VALID: Zone {existingZone.Id} - All 3 points valid, no update needed");
-                            }
-                        }
-                        else
-                        {
-                            // ✅ SKIP 3-POINT VALIDATION - Only flag checks (faster)
-                            // All zones are considered valid if 3-point validation is disabled
-                            validClashZones.Add(existingZone);
-                            DebugLogger.Info($"[FLAG-ONLY] ✅ Zone {existingZone.Id} - 3-point validation skipped, relying on flag checks only");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        DebugLogger.Warning($"[3-POINT-VALIDATION] ❌ ERROR: Zone {existingZone.Id} - Exception during validation: {ex.Message}");
-                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [3-POINT-VALIDATION] ❌ ERROR: Zone {existingZone.Id} - {ex.Message}\n");
-                        invalidClashZones.Add(existingZone); // Treat as invalid on error
-                    }
-                }
-                
-                // ✅ STEP 2: Remove invalid clash zones and clear Global XML entries
-                if (invalidClashZones.Count > 0)
-                {
-                    removedCount = invalidClashZones.Count;
-                    
-                    // ✅ OOP REFACTORING: Use GuidManager to remove invalid clash zones from Global XML
-                    foreach (var invalidClashZone in invalidClashZones)
-                    {
-                        try
-                        {
-                            _guidManager.RemoveFromGlobalXml(invalidClashZone.Id, invalidClashZone.MepElementCategory);
-                        }
-                        catch (Exception globalEx)
-                        {
-                            DebugLogger.Warning($"[3-POINT-VALIDATION] Error removing ClashZone {invalidClashZone.Id} from Global XML: {globalEx.Message}");
-                        }
-                    }
-                    
-                    if (invalidClashZones.Count > 0)
-                    {
-                        DebugLogger.Info($"[3-POINT-VALIDATION] Removed {invalidClashZones.Count} invalid clash zones from Global XML");
-                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [3-POINT-VALIDATION] Removed {invalidClashZones.Count} invalid clash zones from Global XML\n");
-                    }
-                    
-                    DebugLogger.Info($"[3-POINT-VALIDATION] Removed {removedCount} invalid clash zones (MEP/Structural deleted or no longer intersect)");
-                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [3-POINT-VALIDATION] Removed {removedCount} invalid clash zones\n");
-                }
-                
-                // Replace with validated clash zones only
-                existingClashZones.ClashZones = validClashZones;
-                
-                DebugLogger.Info($"[3-POINT-VALIDATION] Validation complete: {validClashZones.Count} valid, {removedCount} removed");
-                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [3-POINT-VALIDATION] Result: {validClashZones.Count} valid, {removedCount} removed\n");
-            }
-            
-            // ✅ NOTE: Intersection points already updated during 3-point validation above
-            // Continue with orientation calculation for validated clash zones
-            if (existingClashZones?.ClashZones != null && existingClashZones.ClashZones.Count > 0)
-            {
-                DebugLogger.Info($"[CLASH_DEBUG] ===== CALCULATING ORIENTATION FOR {existingClashZones.ClashZones.Count} VALIDATED CLASH ZONES =====");
-                
-                int orientationUpdatedCount = 0;
-                
-                // Calculate orientation for validated clash zones
-                foreach (var existingZone in existingClashZones.ClashZones)
-                {
-                    try
-                    {
-                        // Get the MEP and structural elements (already validated above)
-                        var mepElement = GetElementFromDocumentOrLinked(_document, existingZone.MepElementId);
-                        var structuralElement = GetElementFromDocumentOrLinked(_document, existingZone.StructuralElementId);
-                        
-                        if (mepElement == null || structuralElement == null)
-                            continue; // Skip if elements not found (shouldn't happen after validation)
-
-                        // ✅ ORIENTATION: Cache minimal data (no heavy API retention) and compute orientation post-API
-                        try
-                        {
-                            // Compute wall/framing host orientation X/Y based on host normal
-                            XYZ hostNormal = null;
-                            if (structuralElement is Wall wall)
-                            {
-                                // Wall normal from location curve
-                                var lc = wall.Location as LocationCurve;
-                                if (lc != null)
-                                {
-                                    var dir = (lc.Curve.GetEndPoint(1) - lc.Curve.GetEndPoint(0)).Normalize();
-                                    // Wall normal is perpendicular in XY plane
-                                    hostNormal = new XYZ(-dir.Y, dir.X, 0).Normalize();
-                                }
-                            }
-                            else if (structuralElement.Category?.Name?.IndexOf("Fram", StringComparison.OrdinalIgnoreCase) >= 0)
-                            {
-                                // Framing: fallback to X normal in XY plane (no unsupported built-in param)
-                                hostNormal = new XYZ(1, 0, 0);
-                            }
-
-                            // MEP orientation vector (projection to XY)
-                            XYZ mepDir = null;
-                            if (mepElement.Location is LocationCurve mepLc)
-                            {
-                                mepDir = (mepLc.Curve.GetEndPoint(1) - mepLc.Curve.GetEndPoint(0)).Normalize();
-                            }
-
-                            // Cache numeric components (post-API usage only)
-                            if (hostNormal != null)
-                            {
-                                existingZone.StructuralElementNormalX = hostNormal.X;
-                                existingZone.StructuralElementNormalY = hostNormal.Y;
-                                existingZone.StructuralElementNormalZ = hostNormal.Z;
-                            }
-                            if (mepDir != null)
-                            {
-                                existingZone.MepElementOrientationX = mepDir.X;
-                                existingZone.MepElementOrientationY = mepDir.Y;
-                                existingZone.MepElementOrientationZ = mepDir.Z;
-                            }
-
-                            // Derive HostOrientation string using cached values only
-                            string hostOrientation = "Unknown";
-                            var nx = existingZone.StructuralElementNormalX;
-                            var ny = existingZone.StructuralElementNormalY;
-                            if (Math.Abs(nx) >= Math.Abs(ny)) hostOrientation = "X"; else hostOrientation = "Y";
-                            existingZone.HostOrientation = hostOrientation;
-                        }
-                        catch { /* non-fatal */ }
-                    }
-                    catch (Exception ex)
-                    {
-                        DebugLogger.Warning($"[CLASH_DEBUG] ❌ Zone {existingZone.Id}: Error calculating orientation - {ex.Message}");
-                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ❌ Zone {existingZone.Id}: Orientation error - {ex.Message}\n");
-                    }
-                }
-                
-                DebugLogger.Info($"[CLASH_DEBUG] Orientation calculation complete for {existingClashZones.ClashZones.Count} validated clash zones");
-                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Orientation calculation complete\n");
-                
-                // ✅ MEMORY OPTIMIZATION: Clear Revit API objects after recalculation to free memory
-                foreach (var existingZone in existingClashZones.ClashZones)
-                {
-                    existingZone.ClearRevitApiObjects();
-                }
             }
             
             // ✅ MEMORY OPTIMIZATION: Clear Revit API objects for all loaded existing clash zones
@@ -1213,22 +1359,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ OOP: Pass GuidManager to ClashZoneService for GUID lookup from Revit sleeves
             _clashZoneService = new ClashZoneService(existingClashZones, msg => batchedLogger.Log(msg), _flagManager, _guidManager);
             
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[CLASH_DEBUG] ClashZoneService reinitialized with {existingCount} existing zones from XML");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ClashZoneService reinitialized with {existingCount} existing zones from XML\n");
 
             // ✅ STEP 3a: Create Known Intersections Map from valid clash zones (PERFORMANCE OPTIMIZATION)
-            // This allows skipping already-known intersections and only detecting NEW ones
+            // This allows filtering out already-known intersections AFTER detection, so we only process NEW ones
             // ✅ FLAG MANAGEMENT: Only include zones that passed 3-point validation AND are NOT cluster resolved
-            // Cluster resolved zones skip intersection detection (flags already set by FlagManager.SyncFlagsFromGlobal)
+            // Cluster resolved zones are excluded from the map (flags already set by FlagManager.SyncFlagsFromGlobal)
             var knownIntersectionsMap = new Dictionary<(int mepId, int hostId, string pointKey), ClashZone>();
             var validatedClashZones = existingClashZones?.ClashZones ?? new List<Models.ClashZone>();
             
-            // Filter out cluster resolved zones (don't need intersection detection - flags already managed by FlagManager)
+            // Filter out cluster resolved zones (don't need to check them - flags already managed by FlagManager)
             var zonesForIntersectionDetection = validatedClashZones
                 .Where(cz => cz != null && !cz.IsClusterResolved)
                 .ToList();
             int clusterResolvedSkippedCount = validatedClashZones.Count - zonesForIntersectionDetection.Count;
             
+            // ✅ ALWAYS create the map (intersection detection already completed above)
             if (zonesForIntersectionDetection.Count > 0)
             {
                 foreach (var cz in zonesForIntersectionDetection)
@@ -1248,16 +1396,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         knownIntersectionsMap[key] = cz;
                     }
                 }
-                DebugLogger.Info($"[PERFORMANCE] Created known intersections map: {knownIntersectionsMap.Count} entries (skipping re-detection), {clusterResolvedSkippedCount} cluster resolved zones skipped");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[PERFORMANCE] Created known intersections map: {knownIntersectionsMap.Count} entries (skipping re-detection), {clusterResolvedSkippedCount} cluster resolved zones skipped");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [PERFORMANCE] Known intersections map: {knownIntersectionsMap.Count} entries, {clusterResolvedSkippedCount} cluster resolved skipped\n");
             }
-            
+
             // Step 7: Filter and detect new clash zones
             _progressBar.Value = 50;
             _statusLabel.Text = "Detecting new clash zones...";
 
-            // ✅ PERFORMANCE OPTIMIZATION: Filter out already-known intersections before processing
-            // This skips expensive geometry calculations for unchanged intersections
+            // ✅ PERFORMANCE OPTIMIZATION: Filter out already-known intersections AFTER detection
+            // This skips expensive clash zone creation for unchanged intersections
+            // BUT still allows detection of NEW clashes from new/modified elements
             var filteredIntersections = new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
             if (knownIntersectionsMap.Count > 0)
             {
@@ -1278,26 +1428,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (knownIntersectionsMap.ContainsKey(key))
                     {
                         skippedCount++;
-                        continue; // Skip this intersection - already known
+                        continue; // Skip this intersection - already known (performance optimization)
                     }
                     
-                    filteredIntersections.Add(intersection); // New intersection - keep it
+                    filteredIntersections.Add(intersection); // NEW intersection - keep it for clash zone creation
                 }
-                DebugLogger.Info($"[PERFORMANCE] Filtered intersections: {currentIntersections.Count} total, {skippedCount} skipped (known), {filteredIntersections.Count} new");
-                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [PERFORMANCE] Filtered: {currentIntersections.Count} total, {skippedCount} skipped, {filteredIntersections.Count} new\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[PERFORMANCE] Filtered intersections: {currentIntersections.Count} total, {skippedCount} skipped (known), {filteredIntersections.Count} NEW clashes to process");
+                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [PERFORMANCE] Filtered: {currentIntersections.Count} total, {skippedCount} skipped, {filteredIntersections.Count} NEW\n");
             }
             else
             {
-                // No known intersections - process all
+                // No known intersections - process all (first run or all zones invalidated)
                 filteredIntersections = currentIntersections;
-                DebugLogger.Info($"[PERFORMANCE] No known intersections map - processing all {currentIntersections.Count} intersections");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[PERFORMANCE] No known intersections map - processing all {currentIntersections.Count} intersections as NEW clashes");
+                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [PERFORMANCE] No known intersections - processing all {currentIntersections.Count} as NEW\n");
             }
 
             // Use passed file selections and clearance settings from UI
 
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info("[CLASH_DEBUG] Skipping cleanup - no cleanup needed");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Skipping cleanup - no cleanup needed\n");
 
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[CLASH_DEBUG] Using loaded existing clash zones - Reference files: {selectedReferenceFiles.Count}, Clearance settings: {clearanceSettings.Count}");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Using loaded existing clash zones - Reference files: {selectedReferenceFiles.Count}, Clearance settings: {clearanceSettings.Count}\n");
 
@@ -1311,7 +1466,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 var allowedMepCats = new HashSet<string>(selectedMepCategories ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] Selected MEP categories from UI: [{string.Join(", ", selectedMepCategories ?? new List<string>())}]");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] Allowed MEP categories: [{string.Join(", ", allowedMepCats)}]");
                 var allowedHostTypes = new HashSet<string>(
                     FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>(),
@@ -1345,6 +1502,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // 🔥 CRITICAL DEBUG: Log flags BEFORE filtering
                     int clusterResolvedBefore = existingClashZones.ClashZones.Count(cz => cz.IsClusterResolved);
                     int individualResolvedBefore = existingClashZones.ClashZones.Count(cz => cz.IsResolved);
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLASH_DEBUG] BEFORE FILTERING: {before} clash zones, IsClusterResolved=True: {clusterResolvedBefore}, IsResolved=True: {individualResolvedBefore}");
                     
                     existingClashZones.ClashZones = existingClashZones.ClashZones.Where(cz =>
@@ -1361,6 +1519,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // 🔥 CRITICAL DEBUG: Log individual clash zone filtering
                         if (!categoryMatch)
                         {
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Category mismatch: '{cz.MepElementCategory}' not in [{string.Join(", ", allowedMepCats)}]");
                             // ✅ DEPLOYMENT MODE: Skip hardcoded log writes
                             if (!DeploymentConfiguration.DeploymentMode)
@@ -1371,6 +1530,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                         if (!hostTypeMatch)
                         {
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Host type mismatch: '{cz.StructuralElementType}' not in [{string.Join(", ", allowedHostTypes)}]");
                             // ✅ DEPLOYMENT MODE: Skip hardcoded log writes
                             if (!DeploymentConfiguration.DeploymentMode)
@@ -1393,21 +1553,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // 🔥 CRITICAL DEBUG: Log file filtering
                         if (!refFileMatch)
                         {
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Reference file mismatch: '{cz.SourceDocKey}' -> filename: '{refFileName}' -> normalized: '{norm(refFileName)}' not in [{string.Join(", ", allowedRefFiles)}]");
+                            // ✅ DEPLOYMENT MODE: Skip hardcoded log writes
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
                             string refresh_debug_logLogPath = SafeFileLogger.GetLogFilePath("refresh_debug.log");
             File.AppendAllText(refresh_debug_logLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Reference file mismatch: '{refFileName}' not in [{string.Join(", ", allowedRefFiles)}]\n");
+                            }
                         }
                         if (!hostFileMatch)
                         {
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Host file mismatch: '{cz.StructuralElementDocumentTitle}' -> filename: '{hostFileName}' -> normalized: '{norm(hostFileName)}' not in [{string.Join(", ", allowedHostFiles)}]");
+                            // ✅ DEPLOYMENT MODE: Skip hardcoded log writes
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
                             string refresh_debug_logLogPath = SafeFileLogger.GetLogFilePath("refresh_debug.log");
             File.AppendAllText(refresh_debug_logLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Host file mismatch: '{hostFileName}' not in [{string.Join(", ", allowedHostFiles)}]\n");
+                            }
                         }
                         
                         return categoryMatch && hostTypeMatch && refFileMatch && hostFileMatch;
                     }).ToList();
                     
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLASH_DEBUG] Current UI filter: MEP cats={allowedMepCats.Count}, Host types={allowedHostTypes.Count}, Ref files={allowedRefFiles.Count}, Host files={allowedHostFiles.Count}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLASH_DEBUG] Filtered existing zones by current UI: {before} -> {existingClashZones.ClashZones.Count}");
                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Filtered existing zones by current UI: {before} -> {existingClashZones.ClashZones.Count}\n");
                     __logPhaseMem("AFTER_UI_FILTER_EXISTING", existingClashZones?.ClashZones, null, null);
@@ -1415,21 +1587,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // 🔥 CRITICAL DEBUG: Log flags AFTER filtering
                     int clusterResolvedAfter = existingClashZones.ClashZones.Count(cz => cz.IsClusterResolved);
                     int individualResolvedAfter = existingClashZones.ClashZones.Count(cz => cz.IsResolved);
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLASH_DEBUG] AFTER FILTERING: {existingClashZones.ClashZones.Count} clash zones, IsClusterResolved=True: {clusterResolvedAfter}, IsResolved=True: {individualResolvedAfter}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLASH_DEBUG] [{DateTime.Now}]  AFTER FILTERING: {existingClashZones.ClashZones.Count} clash zones, IsClusterResolved=True: {clusterResolvedAfter}, IsResolved=True: {individualResolvedAfter}\n");
                 }
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Warning($"[CLASH_DEBUG] Current-selection filter failed: {ex.Message}");
             }
 
-            DebugLogger.Info($"[CLASH_DEBUG] Calling DetectNewClashZones with {filteredIntersections.Count} filtered intersections (from {currentIntersections.Count} total)...");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[CLASH_DEBUG] Calling DetectNewClashZones with {filteredIntersections.Count} filtered intersections (from {currentIntersections.Count} total)...");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Calling DetectNewClashZones with {filteredIntersections.Count} filtered intersections (from {currentIntersections.Count} total)...\n");
 
             // DEBUG: Log intersection breakdown by category
             var intersectionBreakdown = currentIntersections.GroupBy(i => GetElementCategory(i.Item1))
                 .ToDictionary(g => g.Key, g => g.Count());
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[CLASH_DEBUG] Intersection breakdown by category: {string.Join(", ", intersectionBreakdown.Select(kv => $"{kv.Key}={kv.Value}"))}");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Intersection breakdown by category: {string.Join(", ", intersectionBreakdown.Select(kv => $"{kv.Key}={kv.Value}"))}\n");
 
@@ -1441,6 +1618,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 return (mepCat == "Ducts" || mepCat == "Duct Curves" || mepCat == "Duct Accessories") 
                     && (structType == "Walls" || structType == "Wall");
             }).ToList();
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[CLASH_DEBUG] ═══ BEFORE OPTIMIZATION: {ductWallIntersections.Count} Duct-Wall intersections found ═══");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ═══ BEFORE OPTIMIZATION: {ductWallIntersections.Count} Duct-Wall intersections (Total intersections: {currentIntersections.Count}) ═══\n");
 
@@ -1451,6 +1629,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ⚠️ CRITICAL: Check memory/timeout before heavy processing
                 _memoryManager.CheckLimits();
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] About to call DetectNewClashZones...");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] About to call DetectNewClashZones...\n");
                 
@@ -1472,6 +1651,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     batchedLogger.Flush();
                 }
                 
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[CLASH_DEBUG] ✅ DetectNewClashZones RETURNED: {newClashZones?.Count ?? 0} clash zones");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ✅ DetectNewClashZones RETURNED: {newClashZones?.Count ?? 0} clash zones\n");
                 // Skip zones flagged resolved in per-category globals
@@ -1482,6 +1662,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     int filtered = before - newClashZones.Count;
                     if (filtered > 0)
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[CLASH_DEBUG] Skipped {filtered} zones due to global resolved flags");
                         SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Skipped {filtered} zones due to global resolved flags\n");
                     }
@@ -1492,6 +1673,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             catch (TimeoutException timeoutEx)
             {
                 SafeFileLogger.SafeAppendText("refresh_timeouts.log", $"Timeout during DetectNewClashZones: {timeoutEx.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[CLASH_DEBUG] ⏱ TIMEOUT in DetectNewClashZones: {timeoutEx.Message}");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ⏱ TIMEOUT in DetectNewClashZones: {timeoutEx.Message}\n");
                 
@@ -1514,6 +1696,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             catch (OutOfMemoryException memEx)
             {
                 SafeFileLogger.SafeAppendText("refresh_memory.log", $"Memory limit during DetectNewClashZones: {memEx.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[CLASH_DEBUG] 💾 MEMORY LIMIT in DetectNewClashZones: {memEx.Message}");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] 💾 MEMORY LIMIT in DetectNewClashZones: {memEx.Message}\n");
                 
@@ -1536,7 +1719,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             catch (Exception detectEx)
             {
                 SafeFileLogger.SafeAppendText("refresh_errors.log", $"Error in DetectNewClashZones: {detectEx.Message}\n{detectEx.StackTrace}");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[CLASH_DEBUG] ❌ ERROR in DetectNewClashZones: {detectEx.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[CLASH_DEBUG] Stack trace: {detectEx.StackTrace}");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ❌ ERROR in DetectNewClashZones: {detectEx.Message}\n");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Stack trace: {detectEx.StackTrace}\n");
@@ -1561,6 +1746,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             
             // ✅ CRITICAL DEBUG: Log immediately after DetectNewClashZones returns (or exception)
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[CLASH_DEBUG] After DetectNewClashZones: {newClashZones?.Count ?? 0} clash zones");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] After DetectNewClashZones: {newClashZones?.Count ?? 0} clash zones\n");
 
@@ -1574,6 +1760,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return (mepCat == "Ducts" || mepCat == "Duct Curves" || mepCat == "Duct Accessories") 
                         && (structType == "Wall");
                 }).Count();
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] ═══ AFTER OPTIMIZATION: {ductWallClashZones} Duct-Wall clash zones created (from {ductWallIntersections.Count} intersections) ═══");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ═══ AFTER OPTIMIZATION: {ductWallClashZones} Duct-Wall clash zones created (from {ductWallIntersections.Count} intersections) ═══\n");
             }
@@ -1596,8 +1783,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 foreach (var cz in newClashZones ?? new List<Models.ClashZone>())
                 {
                     // Resolve elements from document or links
-                    var mep = GetElementFromDocumentOrLinked(_document, cz.MepElementId);
-                    var host = GetElementFromDocumentOrLinked(_document, cz.StructuralElementId);
+                    var mep = ElementRetrievalService.GetElementFromDocumentOrLinked(_document, cz.MepElementId, enableLogging: false);
+                    var host = ElementRetrievalService.GetElementFromDocumentOrLinked(_document, cz.StructuralElementId, enableLogging: false);
                     if (mep == null || host == null) continue;
 
                     var mepKey = (snapshotService.GetDocKey(mep), cz.MepElementId?.IntegerValue ?? -1);
@@ -1657,9 +1844,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Warning($"[PARAM_SNAPSHOT] Non-fatal: {ex.Message}");
             }
 
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[CLASH_DEBUG] DetectNewClashZones completed - {newClashZones?.Count ?? 0} new clash zones detected");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] DetectNewClashZones completed - {newClashZones?.Count ?? 0} new clash zones detected\n");
             
@@ -1738,16 +1927,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         cz.IsEligibleByCurrentUi = isEligible;
                     }
                     var eligible = newClashZones.Count(cz => cz.IsEligibleByCurrentUi);
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLASH_DEBUG] UI host filter marked NEW zones eligible: {eligible}/{newClashZones.Count}");
                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] UI host filter marked NEW zones eligible: {eligible}/{newClashZones.Count}\n");
                 }
             }
             catch (Exception uiFilterEx)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Warning($"[CLASH_DEBUG] UI host filter failed: {uiFilterEx.Message}");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] UI host filter failed: {uiFilterEx.Message}\n");
             }
             
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[CLASH_DEBUG] About to start Step 8: Save results");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] About to start Step 8: Save results\n");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] newClashZones count: {newClashZones?.Count ?? 0}\n");
@@ -1756,13 +1948,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _progressBar.Value = 70;
             _statusLabel.Text = "Saving results...";
 
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[CLASH_DEBUG] Step 8 started - Progress bar set to 70");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Step 8 started - Progress bar set to 70\n");
 
             // Save to enabled filter
             var enabledFilter = filtersToProcess.FirstOrDefault(f => f.IsEnabled);
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Looking for enabled filter... filtersToProcess.Count={filtersToProcess.Count}\n");
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[CLASH_DEBUG] Found {filtersToProcess.Count} filters to process");
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[CLASH_DEBUG] Enabled filter: {(enabledFilter != null ? enabledFilter.Name : "NULL")}");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Found {filtersToProcess.Count} filters to process\n");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Enabled filter: {(enabledFilter != null ? enabledFilter.Name : "NULL")}\n");
@@ -1860,6 +2055,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 // ---------------------------------------------------------------------
                 // 6. MEMORY SNAPSHOT & LOG
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[PARAM_SNAPSHOT] Persisting {allClashZones.Count} zones (cleared, deduped, interned)");
                 batchedLogger.Log($"[{DateTime.Now}] [MEMORY_DEBUG] AFTER_MERGE_NO_DUP: {allClashZones.Count} zones, post-GC memory snapshot taken{Environment.NewLine}");
                 var clashZoneStorage = new Models.ClashZoneStorage
@@ -1882,8 +2078,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 targetFilter.SelectedHostFiles = selectedHostFiles;
                 // Also persist host element types selected in UI
                 try { targetFilter.SelectedHostElementTypes = FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>(); } catch { }
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] Set targetFilter.SelectedMepCategoryNames to: {string.Join(", ", selectedMepCategories)}");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] Set targetFilter.SelectedReferenceFiles to: {string.Join(", ", selectedReferenceFiles)}");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] Set targetFilter.SelectedHostFiles to: {string.Join(", ", selectedHostFiles)}");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Set targetFilter.SelectedMepCategoryNames to: {string.Join(", ", selectedMepCategories)}\n");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Set targetFilter.SelectedReferenceFiles to: {string.Join(", ", selectedReferenceFiles)}\n");
@@ -1894,6 +2093,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     // Create a proper UserConfiguration object
                     currentProfile.Configuration = new Models.UserConfiguration(); // TODO: Initialize with proper values
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info("[CLASH_DEBUG] Created new profile configuration during Refresh");
                 }
 
@@ -1901,6 +2101,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // This ensures the OK button can find clash zones after refresh
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] About to set clash zone storage to profile configuration...\n");
                 currentProfile.Configuration.ClashZoneStorage = clashZoneStorage;
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] Saved {clashZoneStorage.ClashZones.Count} clash zones to profile configuration");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Saved {clashZoneStorage.ClashZones.Count} clash zones to profile configuration\n");
                 
@@ -1909,11 +2110,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] About to call SaveCurrentProfile()...\n");
                     _appProfileService.SaveCurrentProfile();
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info("[CLASH_DEBUG] Profile saved successfully after setting clash zone storage");
                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Profile saved successfully\n");
                 }
                 catch (Exception saveEx)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[CLASH_DEBUG] Failed to save profile: {saveEx.Message}");
                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ERROR saving profile: {saveEx.Message}\n");
                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Profile save exception: {saveEx.StackTrace}\n");
@@ -2007,26 +2210,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     
                     _filterManagementService.SaveFilterToXmlFile(targetFilter, mainFilePath);
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLASH_DEBUG] Persisted main filter '{targetFilter.Name}' to XML file: {mainFilePath}");
                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Persisted main filter '{targetFilter.Name}' to XML file: {mainFilePath}\n");
 
                     // CRITICAL FIX: Save category-specific XML files RIGHT HERE after main filter is saved
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLASH_DEBUG] ===== SAVING CATEGORY-SPECIFIC XML FILES =====");
                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ===== SAVING CATEGORY-SPECIFIC XML FILES =====\n");
 
                     if (targetFilter.ClashZoneStorage != null && targetFilter.ClashZoneStorage.ClashZones != null && targetFilter.ClashZoneStorage.ClashZones.Count > 0)
                     {
                         var selectedCategories = targetFilter.SelectedMepCategoryNames ?? new List<string>();
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[CLASH_DEBUG] Saving category-specific XML files for: {string.Join(", ", selectedCategories)}");
                         SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Saving category-specific XML files for: {string.Join(", ", selectedCategories)}\n");
 
                         foreach (var category in selectedCategories)
                         {
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[CLASH_DEBUG] Processing category: '{category}' - About to call FilterClashZonesByCategory");
                             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Processing category: '{category}' - About to call FilterClashZonesByCategory\n");
                             
                              var categoryClashZones = FilterClashZonesByCategory(targetFilter.ClashZoneStorage.ClashZones, category, _document, refreshLogName);
                             
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[CLASH_DEBUG] FilterClashZonesByCategory returned {categoryClashZones.Count} clash zones for category: '{category}'");
                             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] FilterClashZonesByCategory returned {categoryClashZones.Count} clash zones for category: '{category}'\n");
 
@@ -2150,7 +2358,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                             File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] REFRESH-CATEGORY BEFORE SAVE: {Path.GetFileName(categoryFilePath)} Zone={s.Id} IP=({s.IntersectionPointX},{s.IntersectionPointY},{s.IntersectionPointZ}) IP_OBJ={(s.IntersectionPoint != null ? $"({s.IntersectionPoint.X},{s.IntersectionPoint.Y},{s.IntersectionPoint.Z})" : "NULL")} SPP={(s.SleevePlacementPoint != null ? $"({s.SleevePlacementPoint.X},{s.SleevePlacementPoint.Y},{s.SleevePlacementPoint.Z})" : "NULL")}\n");
                                         }
                                     }
-                                    catch (Exception logEx) { DebugLogger.Error($"[REFRESH-LOG-ERROR] {logEx.Message}"); }
+                                    catch (Exception logEx) {                                     if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Error($"[REFRESH-LOG-ERROR] {logEx.Message}"); }
                                 }
                                 
                             if (categoryClashZones.Count > 0)
@@ -2158,7 +2367,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 // 🔥 CRITICAL DEBUG: Log flags BEFORE saving to XML
                                 int clusterResolvedBeforeSave = categoryClashZones.Count(cz => cz.IsClusterResolved);
                                 int individualResolvedBeforeSave = categoryClashZones.Count(cz => cz.IsResolved);
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[CLASH_DEBUG] BEFORE SAVING TO XML: {categoryClashZones.Count} clash zones, IsClusterResolved=True: {clusterResolvedBeforeSave}, IsResolved=True: {individualResolvedBeforeSave}");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[CLASH_DEBUG] [{DateTime.Now}]  BEFORE SAVING TO XML: {categoryClashZones.Count} clash zones, IsClusterResolved=True: {clusterResolvedBeforeSave}, IsResolved=True: {individualResolvedBeforeSave}\n");
                             }
                                 
@@ -2190,7 +2401,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         try
                                         {
                                             var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                                                                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                            {
                                             File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] REFRESH-CATEGORY VERIFY ERROR: {verifyEx.Message}\n");
+                                            }
                                         }
                                         catch { }
                                     }
@@ -2198,6 +2413,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                             if (categoryClashZones.Count > 0)
                             {
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[CLASH_DEBUG] Saved {categoryClashZones.Count} clash zones for category '{category}' to: {categoryFilePath}");
                                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Saved {categoryClashZones.Count} clash zones for category '{category}'\n");
                                 if (OptimizationFlags.UseGlobalCategoryIndexForRefresh)
@@ -2211,6 +2427,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                             else
                             {
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[CLASH_DEBUG] Created empty XML file for category '{category}' (no clash zones detected): {categoryFilePath}");
                                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Created empty XML file for category '{category}' (no clash zones detected)\n");
                             }
@@ -2218,17 +2435,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     else
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Warning($"[CLASH_DEBUG] Cannot save category-specific XML - ClashZoneStorage is null or empty");
                     }
                 }
                 catch (Exception xmlSaveEx)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[CLASH_DEBUG] Failed to save filter to XML: {xmlSaveEx.Message}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[CLASH_DEBUG] XML Save Exception Stack Trace: {xmlSaveEx.StackTrace}");
                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ERROR saving filter to XML: {xmlSaveEx.Message}\n");
                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] XML Save Exception Stack Trace: {xmlSaveEx.StackTrace}\n");
                 }
 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] Saved clash zones to filter '{targetFilter.Name}'");
                 
                 // AFTER PERSISTENCE: Now safe to clear heavy Revit API objects so future runs use less memory
@@ -2243,6 +2464,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             else
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Warning("[CLASH_DEBUG] No enabled filter found to save clash zones");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] WARNING: No enabled filter found to save clash zones\n");
             }
@@ -2266,6 +2488,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             string logDir = SafeFileLogger.GetLogDirectory();
             _statusLabel.Text = $"Clash zones: {finalTotal} total, {finalUnresolved} unresolved, {finalNewZones} new | Logs: {logDir}";
 
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[CLASH_DEBUG] Clash zone refresh complete: {finalTotal} total, {finalUnresolved} unresolved, {finalNewZones} new");
             
             // ✅ USER FEEDBACK: Prompt user if no new clash zones found AND no zones need processing
@@ -2283,7 +2506,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 int validCount = existingClashZones.ClashZones.Count;
                 int clusterResolvedCount = existingClashZones.ClashZones.Count(cz => cz.IsClusterResolved);
                 int individualResolvedCount = existingClashZones.ClashZones.Count(cz => cz.IsResolved && !cz.IsClusterResolved);
-                DebugLogger.Info($"[CLASH_DEBUG] ✅ All {validCount} existing clash zones are resolved ({clusterResolvedCount} cluster, {individualResolvedCount} individual) - no zones need processing");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[CLASH_DEBUG] ✅ All {validCount} existing clash zones are resolved ({clusterResolvedCount} cluster, {individualResolvedCount} individual) - no zones need processing");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ✅ All {validCount} zones resolved - no zones need processing\n");
                 
                 // Show user-friendly message
@@ -2300,12 +2524,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             else if (finalNewZones == 0 && invalidatedCount > 0)
             {
                 // No new zones but some were invalidated - don't show "no new zones" message
-                DebugLogger.Info($"[CLASH_DEBUG] Refresh complete: {invalidatedCount} clash zones invalidated, {finalNewZones} new zones detected");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[CLASH_DEBUG] Refresh complete: {invalidatedCount} clash zones invalidated, {finalNewZones} new zones detected");
             }
             else if (finalNewZones == 0 && unresolvedCount > 0)
             {
                 // No new zones but there are unresolved existing zones - don't show "no new zones" message
-                DebugLogger.Info($"[CLASH_DEBUG] Refresh complete: {unresolvedCount} unresolved zones need processing, {finalNewZones} new zones detected");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[CLASH_DEBUG] Refresh complete: {unresolvedCount} unresolved zones need processing, {finalNewZones} new zones detected");
             }
             
             var __refreshEnd = DateTime.Now;
@@ -2322,6 +2548,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _progressBar.Visible = false;
             _refreshButton.Enabled = true;
 
+                        if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info("[REFRESH] Refresh process completed successfully");
             
             // ⚠️ CRITICAL: Force memory cleanup after refresh completes
@@ -2407,10 +2634,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 if (allClearances == null || allClearances.Count == 0)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLEARANCE_DEBUG] No clearance settings to filter for category: {category}");
                     return categoryClearances;
                 }
 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLEARANCE_DEBUG] Filtering {allClearances.Count} clearance settings for category: {category}");
 
                 foreach (var kvp in allClearances)
@@ -2422,18 +2651,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (IsClearanceKeyForCategory(key, category))
                     {
                         categoryClearances[key] = value;
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[CLEARANCE_DEBUG] Included clearance: {key} = {value}mm (for category: {category})");
                     }
                     else
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[CLEARANCE_DEBUG] Excluded clearance: {key} = {value}mm (not for category: {category})");
                     }
                 }
 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLEARANCE_DEBUG] Filtered {categoryClearances.Count} clearance settings for category '{category}'");
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[CLEARANCE_DEBUG] Error in FilterClearancesByCategory: {ex.Message}");
             }
 
@@ -2469,6 +2702,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return keyLower.Contains("cabletray") || keyLower.Contains("cable_tray");
                     
                 default:
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning($"[CLEARANCE_DEBUG] Unknown category for clearance filtering: {category}");
                     return false;
             }
@@ -2492,6 +2726,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 case "cable trays":
                     return "Cable Trays";
                 default:
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning($"[CLEARANCE_DEBUG] Unknown category for MEP type: {category}");
                     return "Unknown";
             }
@@ -2512,6 +2747,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             try
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] Filtering {clashZones.Count} clash zones for category: {category}");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Filtering {clashZones.Count} clash zones for category: {category}\n");
                 
@@ -2521,6 +2757,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var cz = clashZones[i];
                     if (OptimizationFlags.UseDiagnosticMode)
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[CLASH_DEBUG] Sample zone {i}: MEP ID={cz.MepElementId}, Cat='{cz.MepElementCategory}', Structural={cz.StructuralElementType}");
                         SafeFileLogger.SafeAppendText(refreshLogName,
                             $"[{DateTime.Now}] [CLASH_DEBUG] Sample zone {i}: MEP ID={cz.MepElementId}, Cat='{cz.MepElementCategory}', Structural={cz.StructuralElementType}\n");
@@ -2529,6 +2766,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 // Count zones by structural type for debugging
                 var byStructType = clashZones.GroupBy(cz => cz.StructuralElementType).ToDictionary(g => g.Key, g => g.Count());
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] Zones by structural type: {string.Join(", ", byStructType.Select(kv => $"{kv.Key}={kv.Value}"))}");
                 SafeFileLogger.SafeAppendText(refreshLogName, 
                     $"[{DateTime.Now}] [CLASH_DEBUG] Zones by structural type: {string.Join(", ", byStructType.Select(kv => $"{kv.Key}={kv.Value}"))}\n");
@@ -2552,6 +2790,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             wallOrientation = absX > absY ? "X-Wall" : "Y-Wall";
                         }
 
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[CLASH_DEBUG] Zone {clashZone.Id}: Cat='{elementCategory}', Struct='{structType}', Orient='{wallOrientation}', Checking against '{category}'");
                         SafeFileLogger.SafeAppendText(refreshLogName, 
                             $"[{DateTime.Now}] [CLASH_DEBUG] Zone {clashZone.Id}: Cat='{elementCategory}', Struct='{structType}', Orient='{wallOrientation}', Checking against '{category}'\n");
@@ -2562,12 +2801,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (isMatch)
                         {
                             filteredZones.Add(clashZone);
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[CLASH_DEBUG] ✅ Zone {clashZone.Id} MATCHED '{category}' - Cat='{elementCategory}', Orient='{wallOrientation}'");
                             SafeFileLogger.SafeAppendText(refreshLogName, 
                                 $"[{DateTime.Now}] [CLASH_DEBUG] ✅ Zone {clashZone.Id} MATCHED '{category}' - Cat='{elementCategory}', Orient='{wallOrientation}'\n");
                         }
                         else
                         {
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[CLASH_DEBUG] ❌ Zone {clashZone.Id} NOT matched '{category}' - Cat='{elementCategory}'");
                             SafeFileLogger.SafeAppendText(refreshLogName, 
                                 $"[{DateTime.Now}] [CLASH_DEBUG] ❌ Zone {clashZone.Id} NOT matched '{category}' - Cat='{elementCategory}'\n");
@@ -2575,16 +2816,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     catch (Exception ex)
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Error($"[CLASH_DEBUG] Error filtering clash zone {clashZone.Id}: {ex.Message}");
                     }
                 }
 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] ✅ Filtered {filteredZones.Count}/{clashZones.Count} clash zones for category '{category}'");
                 SafeFileLogger.SafeAppendText(refreshLogName, 
                     $"[{DateTime.Now}] [CLASH_DEBUG] ✅ Filtered {filteredZones.Count}/{clashZones.Count} clash zones for category '{category}'\n");
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[CLASH_DEBUG] Error in FilterClashZonesByCategory: {ex.Message}");
             }
 
@@ -2608,6 +2852,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (standardMatch)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CATEGORY_MATCH] ✅ Standard match for '{elementCategory}' -> '{requestedCategory}'");
                     return true;
                 }
@@ -2631,6 +2876,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     if (isCableTray)
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[CATEGORY_MATCH] ✅ Cable tray enhanced match for '{elementCategory}'");
                         return true;
                     }
@@ -2638,7 +2884,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // ✅ PHASE 3: Fallback - check actual element from Revit (for linked files)
                     try
                     {
-                        var mepElement = GetElementFromDocumentOrLinked(document, clashZone.MepElementId);
+                        var mepElement = ElementRetrievalService.GetElementFromDocumentOrLinked(document, clashZone.MepElementId, enableLogging: false);
                         if (mepElement != null)
                         {
                             var actualCategory = mepElement.Category?.Name ?? "";
@@ -2651,6 +2897,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                             if (isCableTrayActual)
                             {
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[CATEGORY_MATCH] ✅ Cable tray FALLBACK match from actual element: '{actualCategory}'");
                                 // Update cached category for future use
                                 clashZone.MepElementCategory = actualCategory;
@@ -2658,12 +2905,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                             else
                             {
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[CATEGORY_MATCH] ❌ Cable tray fallback check failed: actual category = '{actualCategory}'");
                             }
                         }
                     }
                     catch (Exception ex)
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Warning($"[CATEGORY_MATCH] Fallback element check failed: {ex.Message}");
                     }
                 }
@@ -2680,6 +2929,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     if (isPipe)
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[CATEGORY_MATCH] ✅ Pipe enhanced match for '{elementCategory}'");
                         return true;
                     }
@@ -2695,6 +2945,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     if (isDuct)
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[CATEGORY_MATCH] ✅ Duct enhanced match for '{elementCategory}'");
                         return true;
                     }
@@ -2709,16 +2960,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     if (isDuctAccessory)
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[CATEGORY_MATCH] ✅ Duct accessory enhanced match for '{elementCategory}'");
                         return true;
                     }
                 }
 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CATEGORY_MATCH] ❌ No match found for '{elementCategory}' -> '{requestedCategory}'");
                 return false;
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[CATEGORY_MATCH] Error in IsElementInCategoryEnhanced: {ex.Message}");
                 return false;
             }
@@ -2727,53 +2981,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Gets element from document or linked documents
         /// </summary>
-        private Element GetElementFromDocumentOrLinked(Document document, ElementId elementId)
-        {
-            try
-            {
-                DebugLogger.Info($"[CLASH_DEBUG] Looking for element {elementId} in document '{document.Title}'");
-                
-                // First try host document
-                var element = document.GetElement(elementId);
-                if (element != null)
-                {
-                    DebugLogger.Info($"[CLASH_DEBUG] Found element {elementId} in host document - Category: {element.Category?.Name ?? "Unknown"}");
-                    return element;
-                }
-
-                DebugLogger.Info($"[CLASH_DEBUG] Element {elementId} not found in host document, searching linked documents...");
-
-                // If not found, search linked documents
-                var linkInstances = new FilteredElementCollector(document)
-                    .OfClass(typeof(RevitLinkInstance))
-                    .Cast<RevitLinkInstance>();
-
-                DebugLogger.Info($"[CLASH_DEBUG] Found {linkInstances.Count()} linked documents to search");
-
-                foreach (var link in linkInstances)
-                {
-                    var linkDoc = link.GetLinkDocument();
-                    if (linkDoc != null)
-                    {
-                        DebugLogger.Info($"[CLASH_DEBUG] Searching in linked document: {linkDoc.Title}");
-                        element = linkDoc.GetElement(elementId);
-                        if (element != null)
-                        {
-                            DebugLogger.Info($"[CLASH_DEBUG] Found element {elementId} in linked document '{linkDoc.Title}' - Category: {element.Category?.Name ?? "Unknown"}");
-                            return element;
-                        }
-                    }
-                }
-
-                DebugLogger.Warning($"[CLASH_DEBUG] Element {elementId} not found in host document or any linked documents");
-                return null;
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Error($"[CLASH_DEBUG] Error getting element {elementId}: {ex.Message}");
-                return null;
-            }
-        }
+        // ✅ OOP REFACTORING: Removed duplicate GetElementFromDocumentOrLinked - now uses ElementRetrievalService.GetElementFromDocumentOrLinked()
+        // All calls have been replaced with ElementRetrievalService.GetElementFromDocumentOrLinked(document, elementId, enableLogging: false)
 
         /// <summary>
         /// Gets the category name of an element
@@ -2790,6 +2999,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[CLASH_DEBUG] Error getting element category: {ex.Message}");
                 return "Unknown";
             }
@@ -2805,6 +3015,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // First try the standard category detection
                 var standardCategory = GetElementCategory(element);
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] Standard category detection for element {elementId}: '{standardCategory}'");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Standard category detection for element {elementId}: '{standardCategory}'\n");
 
@@ -2818,11 +3029,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 // Fallback: Use element type and family information to determine category
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] Triggering fallback category detection for element {elementId} with standard category '{standardCategory}'");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Triggering fallback category detection for element {elementId} with standard category '{standardCategory}'\n");
                 
                 var fallbackCategory = GetCategoryFromElementType(element);
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] Fallback category detection for element {elementId}: '{fallbackCategory}' (original: '{standardCategory}')");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Fallback category detection for element {elementId}: '{fallbackCategory}' (original: '{standardCategory}')\n");
 
@@ -2833,6 +3046,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // and they're being categorized as "Automatic Sketch Dimensions", they're likely pipes
                     if (standardCategory.Contains("Sketch"))
                     {
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[CLASH_DEBUG] Inferring 'Pipes' category for sketch element {elementId} based on intersection detection");
                         SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Inferring 'Pipes' category for sketch element {elementId} based on intersection detection\n");
                         return "Pipes";
@@ -2843,6 +3057,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[CLASH_DEBUG] Error in GetElementCategoryWithFallback for element {elementId}: {ex.Message}");
                 return "Unknown";
             }
@@ -2861,6 +3076,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var elementType = element.GetType();
                 var typeName = elementType.Name;
 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] Element type analysis: TypeName='{typeName}'");
 
                 // Check for specific MEP element types
@@ -2869,6 +3085,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var familyName = familyInstance.Symbol?.FamilyName ?? "Unknown";
                     var categoryName = familyInstance.Category?.Name ?? "Unknown";
                     
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLASH_DEBUG] FamilyInstance analysis: FamilyName='{familyName}', CategoryName='{categoryName}'");
 
                     // Check family name patterns
@@ -2899,6 +3116,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     var categoryName = mepCurve.Category?.Name ?? "Unknown";
                     
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLASH_DEBUG] MEPCurve analysis: CategoryName='{categoryName}'");
 
                     if (categoryName.Contains("Pipe") || categoryName.Contains("Piping"))
@@ -2941,6 +3159,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[CLASH_DEBUG] Error in GetCategoryFromElementType: {ex.Message}");
                 return "Unknown";
             }
@@ -2957,6 +3176,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var elementCatLower = elementCategory?.ToLower() ?? "";
                 var requestedCatLower = requestedCategory?.ToLower() ?? "";
 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] Checking if element category '{elementCategory}' matches requested '{requestedCategory}'");
 
                 switch (requestedCatLower)
@@ -2998,12 +3218,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                elementCatLower.Contains("tray");
 
                     default:
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Warning($"[CLASH_DEBUG] Unknown requested category: '{requestedCategory}'");
                         return false;
                 }
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[CLASH_DEBUG] Error checking category match: {ex.Message}");
                 return false;
             }
@@ -3077,46 +3299,60 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
             var filtersDirectory = ProjectPathService.GetFiltersDirectory(_document);
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[LoadExistingClashZones] Looking for XML files in: {filtersDirectory}");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] [{DateTime.Now}] [LoadExistingClashZones] Looking for XML files in: {filtersDirectory}\n");
                 
                 if (!Directory.Exists(filtersDirectory))
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning($"[LoadExistingClashZones] Filters directory does not exist!");
                     return mergedStorage;
                 }
 
                 // 🔥 DEBUG: List ALL XML files in the directory
                 var allXmlFiles = Directory.GetFiles(filtersDirectory, "*.xml");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[LoadExistingClashZones] Found {allXmlFiles.Length} total XML files");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] [{DateTime.Now}] [LoadExistingClashZones] Found {allXmlFiles.Length} total XML files\n");
                 
                 foreach (var xmlFile in allXmlFiles)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[LoadExistingClashZones] - {Path.GetFileName(xmlFile)}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLASH_DEBUG] [{DateTime.Now}] [LoadExistingClashZones] - {Path.GetFileName(xmlFile)}\n");
                 }
 
                 // Load clash zones from each category-specific XML file
                 foreach (var filterName in selectedFilterNames)
                 {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[LoadExistingClashZones] Processing filter: {filterName}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLASH_DEBUG] [{DateTime.Now}] [LoadExistingClashZones] Processing filter: {filterName}\n");
                     
                     foreach (var category in selectedCategories)
                     {
                         var pattern = $"{filterName}_{category.ToLower().Replace(" ", "_")}.xml";
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[LoadExistingClashZones] Looking for pattern: {pattern}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[CLASH_DEBUG] [{DateTime.Now}] [LoadExistingClashZones] Looking for pattern: {pattern}\n");
                         
                         var matchingFiles = Directory.GetFiles(filtersDirectory, pattern);
                         
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[LoadExistingClashZones] Found {matchingFiles.Length} matching files for pattern: {pattern}");
+                                                if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[CLASH_DEBUG] [{DateTime.Now}] [LoadExistingClashZones] Found {matchingFiles.Length} matching files for pattern: {pattern}\n");
                         
                         if (matchingFiles.Length > 0)
                         {
                             var xmlFile = matchingFiles.First();
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[LoadExistingClashZones] ✅ Loading from {Path.GetFileName(xmlFile)}");
                             
                             try
@@ -3128,30 +3364,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     if (filter?.ClashZoneStorage?.ClashZones != null)
                                     {
                                         mergedStorage.ClashZones.AddRange(filter.ClashZoneStorage.ClashZones);
+                                                                                if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Info($"[LoadExistingClashZones] ✅ Loaded {filter.ClashZoneStorage.ClashZones.Count} clash zones from {Path.GetFileName(xmlFile)}");
+                                                                                if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Info($"[CLASH_DEBUG] [{DateTime.Now}] [LoadExistingClashZones] ✅ Loaded {filter.ClashZoneStorage.ClashZones.Count} clash zones\n");
                                     }
                                     else
                                     {
+                                                                                if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Warning($"[LoadExistingClashZones] ❌ No clash zones in {Path.GetFileName(xmlFile)}");
                                     }
                                 }
                             }
                             catch (Exception ex)
                             {
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Error($"[LoadExistingClashZones] ❌ Error loading {Path.GetFileName(xmlFile)}: {ex.Message}");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[CLASH_DEBUG] [{DateTime.Now}] [LoadExistingClashZones] ❌ ERROR: {ex.Message}\n");
                             }
                         }
                     }
                 }
                 
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[LoadExistingClashZones] ✅ Total clash zones loaded: {mergedStorage.ClashZones.Count}");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] [{DateTime.Now}] [LoadExistingClashZones] ✅ FINAL: Total clash zones loaded: {mergedStorage.ClashZones.Count}\n");
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[LoadExistingClashZones] Error: {ex.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] [{DateTime.Now}] [LoadExistingClashZones] EXCEPTION: {ex.Message}\n");
             }
 
@@ -3220,6 +3465,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
+                                if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Warning($"[CLASH_DEBUG] Failed to calculate intersection point: {ex.Message}");
                 return null;
             }
@@ -3228,20 +3474,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Transform coordinates from linked document to active document
         /// </summary>
-        private XYZ TransformToActiveDocumentCoordinates(XYZ point, Document linkedDocument)
-        {
-            try
-            {
-                // For now, return the point as-is since coordinate transformation is complex
-                // TODO: Implement proper coordinate transformation if needed
-                return point;
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Error($"[RefreshService] Error transforming coordinates: {ex.Message}");
-                return point; // Return original point as fallback
-            }
-        }
+        // ✅ OOP REFACTORING: Removed duplicate TransformToActiveDocumentCoordinates - now uses CoordinateTransformService.TransformToActiveDocumentCoordinates()
 
         /// <summary>
         /// Extracts the base filter name by removing any existing category suffix.

@@ -199,15 +199,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (damperBBox == null || wallBBox == null)
                 {
-                    DebugLogger.Info($"[PlaceFireDamperSleeve] Bounding box unavailable. damperId={accessory?.Id.IntegerValue ?? -1}, damperBBoxNull={(damperBBox==null)}, wallId={linkedWall?.Id.IntegerValue ?? -1}, wallBBoxNull={(wallBBox==null)}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[PlaceFireDamperSleeve] Bounding box unavailable. damperId={accessory?.Id.IntegerValue ?? -1}, damperBBoxNull={(damperBBox==null)}, wallId={linkedWall?.Id.IntegerValue ?? -1}, wallBBoxNull={(wallBBox==null)}");
                     Log("Bounding box unavailable for damper or wall. Skipping placement.");
                     return false;
                 }
 
                 // Check if bounding boxes intersect
-                if (!BoundingBoxesIntersect(damperBBox, wallBBox))
+                if (!BoundingBoxService.BoundingBoxesIntersect(damperBBox, wallBBox))
                 {
-                    DebugLogger.Info($"[PlaceFireDamperSleeve] BBox intersection test failed for damperId={accessory.Id.IntegerValue}, wallId={linkedWall.Id.IntegerValue}. damperMin={damperBBox.Min}, damperMax={damperBBox.Max}, wallMin={wallBBox.Min}, wallMax={wallBBox.Max}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[PlaceFireDamperSleeve] BBox intersection test failed for damperId={accessory.Id.IntegerValue}, wallId={linkedWall.Id.IntegerValue}. damperMin={damperBBox.Min}, damperMax={damperBBox.Max}, wallMin={wallBBox.Min}, wallMax={wallBBox.Max}");
                     Log("Damper bounding box does not intersect wall bounding box. Skipping placement.");
                     return false;
                 }
@@ -218,7 +220,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (widthParam == null || heightParam == null)
                 {
-                    DebugLogger.Info($"[PlaceFireDamperSleeve] Missing damper params for damperId={accessory.Id.IntegerValue}: widthParamNull={(widthParam==null)}, heightParamNull={(heightParam==null)}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[PlaceFireDamperSleeve] Missing damper params for damperId={accessory.Id.IntegerValue}: widthParamNull={(widthParam==null)}, heightParamNull={(heightParam==null)}");
                     Log("Damper parameters 'Damper Width' or 'Damper Height' not found. Skipping placement.");
                     return false;
                 }
@@ -227,7 +230,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 double damperHeight = heightParam.AsDouble();
 
                 Log($"Retrieved damper dimensions: Width={damperWidth}, Height={damperHeight}");
-                DebugLogger.Info($"[PlaceFireDamperSleeve] Damper dims internal: damperId={accessory.Id.IntegerValue}, Width={damperWidth}, Height={damperHeight}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[PlaceFireDamperSleeve] Damper dims internal: damperId={accessory.Id.IntegerValue}, Width={damperWidth}, Height={damperHeight}");
                 Log($"Damper dimensions (mm): Width={UnitUtils.ConvertFromInternalUnits(damperWidth, UnitTypeId.Millimeters)}, Height={UnitUtils.ConvertFromInternalUnits(damperHeight, UnitTypeId.Millimeters)}");
 
                 // Get symbol type name and determine damper type (null-safe)
@@ -237,18 +241,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Get clearance using provider (supports UI overrides)
                 double baseClearance = ClearanceManager.Instance.GetClearance(accessory);
                 
-                // Determine damper type (MSFD or Standard)
+                // Determine damper type (MSFD, MSD, MOTORIZED, MD, or Standard)
                 string typeNameUpper = familyTypeName?.Trim().ToUpperInvariant() ?? "";
                 bool isMSFD = typeNameUpper.Contains("MSFD");
-                Log($"Damper type name: '{familyTypeName}', isMSFD: {isMSFD}");
+                bool isMSD = typeNameUpper.Contains("MSD");
+                bool isMotorized = typeNameUpper.Contains("MOTORIZED");
+                bool isMD = typeNameUpper.Contains("MD");
+                // Families that need MEP side clearance: MSFD, MSD, MOTORIZED, MD
+                bool needsMepSideClearance = isMSFD || isMSD || isMotorized || isMD;
+                Log($"Damper type name: '{familyTypeName}', isMSFD: {isMSFD}, isMSD: {isMSD}, isMotorized: {isMotorized}, isMD: {isMD}, needsMepSideClearance: {needsMepSideClearance}");
 
                 // Get connector side based on damper type
                 Connector? conn;
                 string side;
-                if (isMSFD)
+                if (needsMepSideClearance)
                 {
+                    // Use world coordinates for MSFD, MSD, MOTORIZED, and MD families
                     side = GetConnectorSideWorld(accessory, out conn);
-                    Log($"[DEBUG] Used GetConnectorSideWorld for MSFD. Detected connector side: {side}");
+                    Log($"[DEBUG] Used GetConnectorSideWorld for {familyTypeName}. Detected connector side: {side}");
                     
                     // Debug: Log the actual connector direction for investigation
                     if (_enableDebugLogging && conn != null)
@@ -261,22 +271,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 else
                 {
                     side = GetConnectorSideLocal(accessory, out conn);
-                    Log($"[DEBUG] Used GetConnectorSideLocal for non-MSFD. Detected connector side: {side}");
+                    Log($"[DEBUG] Used GetConnectorSideLocal for standard damper. Detected connector side: {side}");
                 }
 
                 // Set clearances for each side using provider logic
                 double left = baseClearance, right = baseClearance, top = baseClearance, bottom = baseClearance;
-                if (isMSFD)
+                if (needsMepSideClearance)
                 {
                     // If connector side is unknown, fallback to Right
                     string effectiveSide = side;
                     if (side == "Unknown")
                     {
                         effectiveSide = "Right";
-                        Log("[MSFD CLEARANCE] Connector side unknown, defaulting to 'Right' for clearance.");
+                        Log($"[MEP SIDE CLEARANCE] Connector side unknown for {familyTypeName}, defaulting to 'Right' for clearance.");
                     }
                     
-                    // Apply double clearance to the connector side for MSFD dampers
+                    // Apply double clearance to the connector side (MEP side) for MSFD, MSD, MOTORIZED, and MD families
                     double connectorClearance = baseClearance * 2; // Double the base clearance for connector side
                     switch (effectiveSide)
                     {
@@ -286,7 +296,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         case "Bottom": bottom = connectorClearance; break;
                     }
                     
-                    Log($"[MSFD CLEARANCE] Applied {UnitUtils.ConvertFromInternalUnits(connectorClearance, UnitTypeId.Millimeters):F1}mm clearance to {effectiveSide}, {UnitUtils.ConvertFromInternalUnits(baseClearance, UnitTypeId.Millimeters):F1}mm elsewhere. left={UnitUtils.ConvertFromInternalUnits(left, UnitTypeId.Millimeters):F1}, right={UnitUtils.ConvertFromInternalUnits(right, UnitTypeId.Millimeters):F1}, top={UnitUtils.ConvertFromInternalUnits(top, UnitTypeId.Millimeters):F1}, bottom={UnitUtils.ConvertFromInternalUnits(bottom, UnitTypeId.Millimeters):F1}");
+                    Log($"[MEP SIDE CLEARANCE] Applied {UnitUtils.ConvertFromInternalUnits(connectorClearance, UnitTypeId.Millimeters):F1}mm clearance to {effectiveSide} (MEP side) for {familyTypeName}, {UnitUtils.ConvertFromInternalUnits(baseClearance, UnitTypeId.Millimeters):F1}mm elsewhere. left={UnitUtils.ConvertFromInternalUnits(left, UnitTypeId.Millimeters):F1}, right={UnitUtils.ConvertFromInternalUnits(right, UnitTypeId.Millimeters):F1}, top={UnitUtils.ConvertFromInternalUnits(top, UnitTypeId.Millimeters):F1}, bottom={UnitUtils.ConvertFromInternalUnits(bottom, UnitTypeId.Millimeters):F1}");
                 }
                 else
                 {
@@ -313,7 +323,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 .FirstOrDefault();
                 if (level == null)
                 {
-                    DebugLogger.Info($"[PlaceFireDamperSleeve] No Level found for damperId={accessory.Id.IntegerValue}. Aborting placement.");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[PlaceFireDamperSleeve] No Level found for damperId={accessory.Id.IntegerValue}. Aborting placement.");
                     Log("No Level found; aborting placement.");
                     return false;
                 }
@@ -330,7 +341,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Update safeCenter after any transform
                 safeCenter = rawCenter ?? new XYZ(0, 0, 0);
                 Log($"Raw damper center before projection: {safeCenter}");
-                DebugLogger.Info($"[PlaceFireDamperSleeve] Raw center damperId={accessory.Id.IntegerValue}: {safeCenter}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[PlaceFireDamperSleeve] Raw center damperId={accessory.Id.IntegerValue}: {safeCenter}");
 
                 // Project raw center onto wall plane (wall face intersection)
                 XYZ wallFaceOrigin;
@@ -354,12 +366,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 double distance = (safeCenter - wallFaceOrigin).DotProduct(wallNormal);
                 XYZ projectedCenter = safeCenter - wallNormal.Multiply(distance);
                 Log($"Projected damper-wall intersection center: {projectedCenter}");
-                DebugLogger.Info($"[PlaceFireDamperSleeve] Projected center damperId={accessory.Id.IntegerValue}: {projectedCenter}, wallNormal={wallNormal}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[PlaceFireDamperSleeve] Projected center damperId={accessory.Id.IntegerValue}: {projectedCenter}, wallNormal={wallNormal}");
 
-                // Calculate offset for MSFD dampers (25mm toward connector direction)
+                // Calculate offset for families needing MEP side clearance (MSFD, MSD, MOTORIZED, MD) - 25mm toward connector direction
                 XYZ offset = XYZ.Zero;
                 double offset25 = UnitUtils.ConvertToInternalUnits(25.0, UnitTypeId.Millimeters);
-                if (isMSFD && conn != null)
+                if (needsMepSideClearance && conn != null)
                 {
                     // Determine wall orientation and get correct offset direction
                     bool isYAxisWall = IsYAxisWall(linkedWall);
@@ -389,7 +402,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 if (duplicateExists)
                 {
-                    DebugLogger.Info($"[PlaceFireDamperSleeve] Duplicate detected at center for damperId={accessory.Id.IntegerValue}, center={sleeveCenter}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[PlaceFireDamperSleeve] Duplicate detected at center for damperId={accessory.Id.IntegerValue}, center={sleeveCenter}");
                     Log("Duplicate damper sleeve detected at this location. Skipping placement.");
                     return false;
                 }
@@ -405,7 +419,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Ensure instance is not null before touching parameters
                 if (instance == null)
                 {
-                    DebugLogger.Error($"[PlaceFireDamperSleeve] Created instance is null for damperId={accessory.Id.IntegerValue}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error($"[PlaceFireDamperSleeve] Created instance is null for damperId={accessory.Id.IntegerValue}");
                     Log("Failed to create sleeve instance; skipping placement.");
                     return false;
                 }
@@ -423,7 +438,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         levelByName.Set(level.Id);
                 }
                 Log("Created sleeve at computed center.");
-                DebugLogger.Info($"[PlaceFireDamperSleeve] Created sleeve instanceId={(instance.Id.IntegerValue)} for damperId={accessory.Id.IntegerValue} at {sleeveCenter}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[PlaceFireDamperSleeve] Created sleeve instanceId={(instance.Id.IntegerValue)} for damperId={accessory.Id.IntegerValue} at {sleeveCenter}");
 
                 // Set sleeve dimensions and depth (null-safe since instance is non-null)
                 instance.LookupParameter("Width")?.Set(sleeveWidth);
@@ -484,12 +500,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 Log("Set sleeve dimensions and completed placement.");
-                DebugLogger.Info($"[PlaceFireDamperSleeve] Placement completed for damperId={accessory.Id.IntegerValue}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[PlaceFireDamperSleeve] Placement completed for damperId={accessory.Id.IntegerValue}");
                 return true;
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[PlaceFireDamperSleeve] Exception: {ex.Message}\n{ex.StackTrace}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[PlaceFireDamperSleeve] Exception: {ex.Message}\n{ex.StackTrace}");
                 Log($"Exception in PlaceFireDamperSleeve: {ex.Message}");
                 return false;
             }
@@ -532,7 +550,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 var damperListSafe = damperTuples ?? new System.Collections.Generic.List<(FamilyInstance, Transform?)>();
                 var wallListSafe = wallTuples ?? new System.Collections.Generic.List<(Wall, Transform?)>();
-                DebugLogger.Log($"[ProcessDamperBatch] DEBUG START: damperCount={damperListSafe.Count}, wallCandidates={wallListSafe.Count}, structuralProvided={(structuralElements!=null ? structuralElements.Count.ToString() : "false")}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"[ProcessDamperBatch] DEBUG START: damperCount={damperListSafe.Count}, wallCandidates={wallListSafe.Count}, structuralProvided={(structuralElements!=null ? structuralElements.Count.ToString() : "false")}");
                 int sampleIndex = 0;
                 foreach (var wtuple in wallListSafe.Take(10))
                 {
@@ -541,7 +560,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     BoundingBoxXYZ? bbox = null;
                     try { bbox = w?.get_BoundingBox(null); } catch { }
                     string bboxText = bbox != null ? $"Min={bbox.Min},Max={bbox.Max}" : "<no-bbox>";
-                    DebugLogger.Log($"[ProcessDamperBatch] WALL SAMPLE {sampleIndex++}: id={(w?.Id.IntegerValue.ToString() ?? "<null>")}, transformProvided={(wtr!=null)}, bbox={bboxText}");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Log($"[ProcessDamperBatch] WALL SAMPLE {sampleIndex++}: id={(w?.Id.IntegerValue.ToString() ?? "<null>")}, transformProvided={(wtr!=null)}, bbox={bboxText}");
                 }
             }
             catch { }
@@ -606,7 +626,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         try
                         {
-                            DebugLogger.Log($"[ProcessDamperBatch] No wall found by bbox for damper {damper.Id.IntegerValue}, attempting intersection fallback.");
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Log($"[ProcessDamperBatch] No wall found by bbox for damper {damper.Id.IntegerValue}, attempting intersection fallback.");
                             // Construct a short test line through the sleevePos in world Z to probe nearby walls
                             var p1 = sleevePos + new Autodesk.Revit.DB.XYZ(0, 0, -5.0);
                             var p2 = sleevePos + new Autodesk.Revit.DB.XYZ(0, 0, 5.0);
@@ -619,7 +640,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 targetWall = intersects[0].Item1 as Wall;
                                 if (targetWall != null)
                                 {
-                                    DebugLogger.Log($"[ProcessDamperBatch] Intersection fallback found wall {targetWall.Id.IntegerValue} for damper {damper.Id.IntegerValue}.");
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Log($"[ProcessDamperBatch] Intersection fallback found wall {targetWall.Id.IntegerValue} for damper {damper.Id.IntegerValue}.");
                                 }
                             }
                         }
@@ -637,6 +659,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     // Now that we have a target wall, perform duplication suppression using wall-based host type
                     bool duplicateExistsForWall = false;
+
                     try
                     {
                         // Use hostType filter to only consider wall clusters/sleeves
@@ -674,11 +697,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return (placedCount, skippedExisting, errors);
         }
 
-        private bool BoundingBoxesIntersect(BoundingBoxXYZ bbox1, BoundingBoxXYZ bbox2)
-        {
-            return !(bbox1.Max.X < bbox2.Min.X || bbox1.Min.X > bbox2.Max.X ||
-                     bbox1.Max.Y < bbox2.Min.Y || bbox1.Min.Y > bbox2.Max.Y ||
-                     bbox1.Max.Z < bbox2.Min.Z || bbox1.Min.Z > bbox2.Max.Z);
-        }
+        // ✅ OOP REFACTORING: Removed duplicate BoundingBoxesIntersect - now uses BoundingBoxService.BoundingBoxesIntersect()
     }
 }
