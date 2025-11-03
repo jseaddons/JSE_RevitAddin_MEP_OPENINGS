@@ -27,7 +27,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     private static string DuctLogFilePath = Path.Combine(LogDir, "ductsleeveplacer.log");
     private static string CableTrayLogFilePath = Path.Combine(LogDir, "cabletraysleeveplacer.log");
     private static string DamperLogFilePath = Path.Combine(LogDir, "dampersleeveplacer.log");
-    private static string MainUiLogFilePath = Path.Combine(LogDir, "MainUi.log");
+    // ✅ REMOVED: MainUiLogFilePath - Main UI logging removed per user request
     private static string LogFilePath = CableTrayLogFilePath; // Default
 
     // Single shared writer to avoid repeated open/close per log entry
@@ -171,6 +171,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         /// <summary>
         /// Start a new log file with a custom file name (without extension)
+        /// ✅ FIXED: Now OVERWRITES existing log file instead of appending
         /// </summary>
         public static void InitLogFile(string logFileName)
         {
@@ -192,13 +193,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     $"Build Timestamp: {buildTimestamp}\n" +
                     $"Wrote: {_cachedAssemblyPath}\n" +
                     $"====================================================\n";
-                // Initialize writer
-                EnsureWriterInitialized(LogFilePath, header);
+                // ✅ FIXED: Initialize writer with overwrite=true to clear old logs
+                EnsureWriterInitialized(LogFilePath, header, overwrite: true);
             }
             catch (Exception ex)
             {
-                // Log to default log if custom log creation fails
-                string fallbackLog = Path.Combine("c:\\JSE_CSharp_Projects\\JSE_RevitAddin_MEP_OPENINGS\\JSE_RevitAddin_MEP_OPENINGS\\Logs", "cabletraysleeveplacer.log");
+                // Log to default log if custom log creation fails - ✅ FIXED: Use SafeFileLogger for deployment-compatible path
+                string fallbackLog = SafeFileLogger.GetLogFilePath("cabletraysleeveplacer.log");
                 string msg = $"[LOGGER ERROR] Could not create custom log file '{logFileName}': {ex.Message}\n{ex.StackTrace}\n";
                 try { File.AppendAllText(fallbackLog, msg); } catch { /* ignore */ }
             }
@@ -318,6 +319,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         /// <summary>
         /// Initialize log file using an absolute path (full filename). Creates directory if needed.
+        /// ✅ FIXED: Now OVERWRITES existing log file instead of appending
         /// </summary>
         public static void InitAbsoluteLogFile(string absoluteFilePath)
         {
@@ -337,7 +339,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     $"Build Timestamp: {buildTimestamp}\n" +
                     $"Wrote: {_cachedAssemblyPath}\n" +
                     $"====================================================\n";
-                EnsureWriterInitialized(LogFilePath, header);
+                // ✅ FIXED: Initialize writer with overwrite=true to clear old logs
+                EnsureWriterInitialized(LogFilePath, header, overwrite: true);
             }
             catch
             {

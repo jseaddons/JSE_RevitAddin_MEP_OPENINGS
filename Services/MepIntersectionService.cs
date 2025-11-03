@@ -805,6 +805,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 
                 log($"Finished structural element collection. Total elements found: {elements.Count}");
+                
+                // ✅ FIX: Filter walls by minimum thickness if setting is enabled
+                elements = FilterWallsByMinimumThicknessForTuples(elements).ToList();
+                
+                // ✅ FIX: Filter architectural floors if setting is enabled
+                elements = FilterArchitecturalFloorsForTuples(elements).ToList();
+                
                 return elements;
             }
             catch (Exception ex)
@@ -877,7 +884,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 .ToElements();
             
             // Filter by minimum wall thickness if setting is enabled
-            collectedWalls = FilterWallsByMinimumThickness(collectedWalls);
+            collectedWalls = FilterWallsByMinimumThickness(collectedWalls).ToList();
             wallElements.AddRange(collectedWalls);
 
             // Collect from links
@@ -950,7 +957,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     .ToElements();
                 
                 // Filter by minimum wall thickness if setting is enabled
-                linkedWalls = FilterWallsByMinimumThickness(linkedWalls);
+                linkedWalls = FilterWallsByMinimumThickness(linkedWalls).ToList();
                 wallElements.AddRange(linkedWalls);
             }
         }
@@ -1368,6 +1375,123 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 DebugLogger.Error($"[MepIntersectionService] Error filtering walls by minimum thickness: {ex.Message}");
                 return walls; // Return original list on error
+            }
+        }
+
+        /// <summary>
+        /// Filters walls by minimum thickness setting (for tuple format)
+        /// Skips walls that are thinner than the user-specified minimum
+        /// </summary>
+        private static List<(Element, Transform?)> FilterWallsByMinimumThicknessForTuples(List<(Element, Transform?)> elements)
+        {
+            try
+            {
+                var settings = ApplicationProfileService.Instance.GetCurrentSettings();
+                double minThicknessMm = settings.MinWallThickness;
+                
+                // If setting is 0 or negative, don't filter (all walls allowed)
+                if (minThicknessMm <= 0)
+                    return elements;
+                
+                double minThicknessInternal = UnitUtils.ConvertToInternalUnits(minThicknessMm, UnitTypeId.Millimeters);
+                var filteredElements = new List<(Element, Transform?)>();
+                int skippedCount = 0;
+                
+                foreach (var (element, transform) in elements)
+                {
+                    if (element is Wall wallObj)
+                    {
+                        double wallThickness = wallObj.Width;
+                        
+                        if (wallThickness >= minThicknessInternal)
+                        {
+                            filteredElements.Add((element, transform));
+                        }
+                        else
+                        {
+                            skippedCount++;
+                            if (OptimizationFlags.UseDiagnosticMode)
+                            {
+                                double wallThicknessMm = UnitUtils.ConvertFromInternalUnits(wallThickness, UnitTypeId.Millimeters);
+                                DebugLogger.Log($"[MepIntersectionService] SKIP: Wall {element.Id.IntegerValue} thickness {wallThicknessMm:F1}mm < {minThicknessMm:F1}mm minimum");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Not a wall, add it
+                        filteredElements.Add((element, transform));
+                    }
+                }
+                
+                if (skippedCount > 0)
+                {
+                    DebugLogger.Info($"[MepIntersectionService] Filtered {skippedCount} walls below {minThicknessMm:F1}mm minimum thickness");
+                }
+                
+                return filteredElements;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[MepIntersectionService] Error filtering walls by minimum thickness: {ex.Message}");
+                return elements; // Return original list on error
+            }
+        }
+
+        /// <summary>
+        /// Filters architectural floors if the setting is enabled (for tuple format)
+        /// Skips floors where Structural parameter is not checked
+        /// </summary>
+        private static List<(Element, Transform?)> FilterArchitecturalFloorsForTuples(List<(Element, Transform?)> elements)
+        {
+            try
+            {
+                var settings = ApplicationProfileService.Instance.GetCurrentSettings();
+                bool ignoreArchFloors = settings.IgnoreArchitecturalFloors;
+                
+                // If setting is disabled, don't filter (all floors allowed)
+                if (!ignoreArchFloors)
+                    return elements;
+                
+                var filteredElements = new List<(Element, Transform?)>();
+                int skippedCount = 0;
+                
+                foreach (var (element, transform) in elements)
+                {
+                    if (element is Floor floor)
+                    {
+                        // Check Structural parameter
+                        Parameter structuralParam = floor.get_Parameter(BuiltInParameter.FLOOR_PARAM_IS_STRUCTURAL);
+                        bool isStructural = structuralParam?.AsInteger() == 1;
+                        
+                        if (isStructural)
+                        {
+                            filteredElements.Add((element, transform));
+                        }
+                        else
+                        {
+                            skippedCount++;
+                            DebugLogger.Info($"[MepIntersectionService] SKIP: Architectural floor {floor.Id.IntegerValue} (Structural parameter not checked)");
+                        }
+                    }
+                    else
+                    {
+                        // Not a floor, add it (walls, framing, etc.)
+                        filteredElements.Add((element, transform));
+                    }
+                }
+                
+                if (skippedCount > 0)
+                {
+                    DebugLogger.Info($"[MepIntersectionService] Filtered {skippedCount} architectural floors");
+                }
+                
+                return filteredElements;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[MepIntersectionService] Error filtering architectural floors: {ex.Message}");
+                return elements; // Return original list on error
             }
         }
     }

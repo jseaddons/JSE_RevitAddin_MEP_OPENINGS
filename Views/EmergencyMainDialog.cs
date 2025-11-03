@@ -200,8 +200,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             DebugLogger.SetServiceContext("MainUI");
             DebugLogger.Info("🔍 Constructor: Set service context to MainUI");
             
-            // Initialize DebugLogger for main UI session
-            DebugLogger.InitCustomLogFileOverwrite("MainUi");
+            // ✅ REMOVED: Main UI log initialization per user request
+            // DebugLogger.InitCustomLogFileOverwrite("MainUi");
             DebugLogger.Info($"Emergency Main Dialog Constructor Started");
             DebugLogger.Info($"ApplicationProfileService: {appProfileService != null}");
             DebugLogger.Info($"Document: {document?.Title ?? "null"}");
@@ -515,6 +515,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     return GetSelectedFilterItems();
                 };
 
+                Services.FilterUiStateProvider.GetSelectedHostCategories = () => GetSelectedHostCategories(); // ✅ Register host categories delegate
                 Services.FilterUiStateProvider.GetSelectedHostElementTypes = () =>
                 {
                     var selected = new List<string>();
@@ -1803,13 +1804,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             _bottomLeftPanel.Controls.Add(otherHostFilesListBox);
 
-            // Always add the active document as a host element (available by default)
-            if (_activeDocument != null)
-            {
-                string activeDocName = _activeDocument.Title;
-                hostFilesListBox.Items.Add($"{activeDocName} (Active Document)", false);
-                System.Diagnostics.Debug.WriteLine($"Added active document '{activeDocName}' to host elements");
-            }
+            // ✅ FIX: Active Document should ONLY be in Reference Elements section, NOT in Host Elements
+            // Removed: Active Document from Host Elements section
             
             // Get the other files list box
             var hostListBoxes = _bottomLeftPanel.Controls.OfType<WinForms.CheckedListBox>().ToList();
@@ -6168,9 +6164,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         {
             try
             {
-                DebugLogger.Info("=== LAUNCHING PARAMETER SERVICE WITH MAIN UI INTEGRATION ===");
+                DebugLogger.Info("=== LAUNCHING PARAMETER SERVICE V2 WITH MAIN UI INTEGRATION ===");
                 
-                using (var parameterServiceDialog = new ParameterServiceDialog(_document, _uiDocument))
+                // ✅ V2: Use ParameterServiceDialogV2 (old version moved to Backup folder)
+                using (var parameterServiceDialog = new ParameterServiceDialogV2(_document, _uiDocument))
                 {
                     var result = parameterServiceDialog.ShowDialog();
                     
@@ -6349,8 +6346,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] After host type filter: {beforeFilter} -> {zones.Count}\n");
                         }
                         
-                        var unresolved = zones.Count(cz => !cz.IsResolved);
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Final unresolved count: {unresolved}\n");
+                        // ✅ CRITICAL FIX: Check both flags with proper hierarchy (cluster takes precedence)
+                        // A clash zone is "resolved" if EITHER cluster OR individual sleeve is placed
+                        // But according to flag hierarchy: if cluster exists, individual doesn't matter
+                        var unresolved = zones.Count(cz => !cz.IsClusterResolved && !cz.IsResolved);
+                        var clusterResolved = zones.Count(cz => cz.IsClusterResolved);
+                        var individualResolved = zones.Count(cz => cz.IsResolved && !cz.IsClusterResolved);
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Total zones: {zones.Count}, Cluster resolved: {clusterResolved}, Individual resolved: {individualResolved}, Unresolved: {unresolved}\n");
                         
                         _okButton.Enabled = unresolved > 0;
                         JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] OK button enabled: {_okButton.Enabled}\n");

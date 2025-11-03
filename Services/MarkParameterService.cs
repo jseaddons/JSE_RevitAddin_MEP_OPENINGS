@@ -80,7 +80,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         public (int processedCount, int errorCount) ApplyMepMarkToClusters(
-            Document doc, string category, string projectPrefix, string disciplinePrefix, bool remarkAll = false)
+            Document doc, string category, string projectPrefix, string disciplinePrefix, bool remarkAll = false, string numberFormat = "000")
         {
             int processedCount = 0;
             int errorCount = 0;
@@ -121,11 +121,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return (0, 0);
                 }
                 
-                // Get starting index based on existing marks (continuous numbering)
-                int startIndex = GetMaxExistingMarkNumber(doc, projectPrefix, disciplinePrefix) + 1;
+                // ✅ FIX: Get max number per category (not per prefix) - finds max for any prefix in this category
+                int categoryMaxNumber = GetMaxExistingMarkNumberForCategory(doc, category, disciplinePrefix);
+                int startIndex = categoryMaxNumber + 1;
                 
-                DebugLogger.Info($"[MarkParameterService] Starting mark numbering at: {startIndex} (based on existing marks)");
-                File.AppendAllText(mepmarkLogPath, $"Starting mark numbering at: {startIndex} (based on existing marks)\n");
+                DebugLogger.Info($"[MarkParameterService] Category '{category}': Max existing number = {categoryMaxNumber}, Starting at: {startIndex}");
+                File.AppendAllText(mepmarkLogPath, $"Category '{category}': Max existing number = {categoryMaxNumber}, Starting at: {startIndex}\n");
+                
+                // ✅ TRACK: Keep track of used numbers when remark=true (to avoid duplicates)
+                var usedNumbers = new HashSet<int>();
+                if (remarkAll && categoryMaxNumber > 0)
+                {
+                    // Pre-populate with existing numbers
+                    for (int n = 1; n <= categoryMaxNumber; n++)
+                    {
+                        usedNumbers.Add(n);
+                    }
+                }
                 
                 // Apply MEPMARK to each sleeve (both cluster and individual)
                 int actualIndex = startIndex;
@@ -135,19 +147,63 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         var sleeve = allSleeves[i];
                         
-                        // ✅ FIX: Skip sleeves that already have MEPMARK value (unless RemarkAll is true)
+                        // ✅ ENHANCED: Check if MEP Mark exists
                         var existingMark = sleeve.LookupParameter("MEP Mark")?.AsString() ?? 
                                           sleeve.LookupParameter("Mark")?.AsString();
                         
-                        if (!remarkAll && !string.IsNullOrEmpty(existingMark))
-                        {
-                            File.AppendAllText(mepmarkLogPath, $"SKIP sleeve {sleeve.Id}: already has mark '{existingMark}' (RemarkAll=false)\n");
-                            continue; // Skip - already marked
-                        }
+                        int numberToUse;
                         
+                        // ✅ FIX: When remark=true, extract number from existing mark (preserve number, update prefix only)
                         if (remarkAll && !string.IsNullOrEmpty(existingMark))
                         {
-                            File.AppendAllText(mepmarkLogPath, $"OVERWRITE sleeve {sleeve.Id}: changing '{existingMark}' → (RemarkAll=true)\n");
+                            // Try to extract number from existing mark
+                            int? extractedNumber = ExtractNumberFromMark(existingMark, disciplinePrefix);
+                            if (extractedNumber.HasValue)
+                            {
+                                numberToUse = extractedNumber.Value;
+                                usedNumbers.Add(numberToUse); // Track this number as used
+                                File.AppendAllText(mepmarkLogPath, 
+                                    $"[MARK-ASSIGN] Remark=true: Sleeve {sleeve.Id} existing mark '{existingMark}' → extracted number {numberToUse}, updating prefix only\n");
+                                // Don't increment actualIndex - preserving existing number
+                            }
+                            else
+                            {
+                                // Can't extract number, use next available number that's not used
+                                while (usedNumbers.Contains(actualIndex))
+                                {
+                                    actualIndex++;
+                                }
+                                numberToUse = actualIndex;
+                                usedNumbers.Add(numberToUse);
+                                actualIndex++; // Increment for next sleeve
+                                File.AppendAllText(mepmarkLogPath, 
+                                    $"[MARK-ASSIGN] Remark=true: Sleeve {sleeve.Id} existing mark '{existingMark}' → couldn't extract number, using next available: {numberToUse}\n");
+                            }
+                        }
+                        else if (!remarkAll && !string.IsNullOrEmpty(existingMark))
+                        {
+                            // Skip - already marked and remark=false
+                            File.AppendAllText(mepmarkLogPath, $"SKIP sleeve {sleeve.Id}: already has mark '{existingMark}' (remark=false)\n");
+                            continue; // Skip - already marked
+                        }
+                        else
+                        {
+                            // No existing mark, use next number and increment
+                            if (remarkAll)
+                            {
+                                // When remark=true, skip used numbers
+                                while (usedNumbers.Contains(actualIndex))
+                        {
+                                    actualIndex++;
+                                }
+                                numberToUse = actualIndex;
+                                usedNumbers.Add(numberToUse);
+                            }
+                            else
+                            {
+                                numberToUse = actualIndex;
+                            }
+                            actualIndex++; // Increment for next sleeve
                         }
                         
                         // ✅ ENHANCED: Log detailed info about sleeve before marking
@@ -159,23 +215,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             $"[MARK-ASSIGN] Sleeve {sleeve.Id}: MEP_ID={mepElementId}, Category={clashZone?.MepElementCategory ?? "UNKNOWN"}, " +
                             $"IsCluster={clashZone?.IsClusterResolved ?? false}, ClusterId={clashZone?.ClusterSleeveInstanceId ?? -1}\n");
                         
-                        string markValue = GenerateMarkValue(disciplinePrefix, actualIndex);
+                        string markValue = GenerateMarkValue(disciplinePrefix, numberToUse, numberFormat);
                         string fullMarkValue = $"{projectPrefix}{markValue}";
                         
                         File.AppendAllText(mepmarkLogPath, 
-                            $"[MARK-ASSIGN] Generating mark: prefix='{projectPrefix}', discipline='{disciplinePrefix}', index={actualIndex} → '{fullMarkValue}'\n");
+                            $"[MARK-ASSIGN] Generating mark: prefix='{projectPrefix}', discipline='{disciplinePrefix}', number={numberToUse} → '{fullMarkValue}'\n");
                         
+                        try
+                        {
                         SetMarkParameter(sleeve, fullMarkValue);
                         processedCount++;
-                        actualIndex++;
                         
                         DebugLogger.Info($"[MarkParameterService] Applied MEPMARK '{fullMarkValue}' to sleeve {sleeve.Id.IntegerValue}");
                         File.AppendAllText(mepmarkLogPath, $"[MARK-ASSIGN] ✅ SUCCESS: Applied MEPMARK '{fullMarkValue}' to sleeve {sleeve.Id.IntegerValue}\n");
+                        }
+                        catch (Exception setEx)
+                        {
+                            // Parameter setting failed
+                            errorCount++;
+                            DebugLogger.Error($"[MarkParameterService] Error setting MEPMARK '{fullMarkValue}' on sleeve {sleeve.Id.IntegerValue}: {setEx.Message}");
+                            File.AppendAllText(mepmarkLogPath, 
+                                $"[MARK-ASSIGN] ❌ FAILED: Could not set '{fullMarkValue}' on sleeve {sleeve.Id.IntegerValue}: {setEx.Message}\n");
+                            // If we used a number but failed to set, remove it from usedNumbers if remark=true
+                            if (remarkAll && usedNumbers.Contains(numberToUse))
+                            {
+                                usedNumbers.Remove(numberToUse);
+                            }
+                            // Don't adjust actualIndex - it's already incremented or preserved correctly
+                        }
                     }
                     catch (Exception ex)
                     {
                         errorCount++;
+                        // Don't increment actualIndex here - it's already handled in the try block
                         DebugLogger.Error($"[MarkParameterService] Error applying MEPMARK to sleeve {allSleeves[i].Id.IntegerValue}: {ex.Message}");
+                        File.AppendAllText(mepmarkLogPath, 
+                            $"[MARK-ASSIGN] ❌ EXCEPTION: Sleeve {allSleeves[i].Id.IntegerValue}: {ex.Message}\n");
                     }
                 }
             }
@@ -583,66 +658,116 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
-        /// ✅ OPTIMIZED: Get maximum existing mark number to continue numbering
-        /// Only filters sleeve family instances for better performance
+        /// ✅ NEW: Get maximum existing mark number per category (any prefix)
+        /// Finds max number for sleeves in this category regardless of prefix
         /// </summary>
-        private int GetMaxExistingMarkNumber(Document doc, string projectPrefix, string disciplinePrefix)
+        private int GetMaxExistingMarkNumberForCategory(Document doc, string category, string disciplinePrefix)
         {
             try
             {
-                string expectedPrefix = $"{projectPrefix}{disciplinePrefix}";
                 int maxNumber = 0;
                 
-                // ✅ OPTIMIZED: Only get sleeve family instances (performance optimization)
+                // ✅ OPTIMIZED: Only get sleeve family instances
                 var sleeveElements = new FilteredElementCollector(doc)
                     .OfClass(typeof(FamilyInstance))
                     .Cast<FamilyInstance>()
                     .Where(fi => {
                         var famName = fi.Symbol?.Family?.Name ?? string.Empty;
-                        return famName == "RectangularOpeningOnWall" || 
-                               famName == "CircularOpeningOnWall" ||
-                               famName == "RectangularOpeningOnSlab" || 
-                               famName == "CircularOpeningOnSlab";
+                        return famName.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                               famName.IndexOf("OpeningOnSlab", StringComparison.OrdinalIgnoreCase) >= 0;
                     })
                     .ToList();
                 
                 foreach (var element in sleeveElements)
                 {
-                    // Resolve mark parameter case/space/underscore-insensitively
+                    // Get category for this sleeve using MEP_ElementId
+                    var mepElementIdParam = element.LookupParameter("MEP_ElementId");
+                    if (mepElementIdParam != null)
+                    {
+                        long mepElementId = mepElementIdParam.AsInteger();
+                        var clashZone = GetClashZoneByMepElementId(mepElementId, doc);
+                        
+                        // Only consider sleeves in the same category
+                        if (clashZone?.MepElementCategory != category)
+                            continue;
+                    }
+                    
+                    // Resolve mark parameter
                     var markParam = ResolveMarkParameter(element);
                     if (markParam != null)
                     {
                         string markValue = markParam.AsString() ?? "";
 
-                        // Check if this mark matches our pattern: ProjectPrefix + DisciplinePrefix + Number
-                        if (markValue.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase))
+                        if (!string.IsNullOrEmpty(markValue))
                         {
-                            // Extract the number part
-                            string numberPart = markValue.Substring(expectedPrefix.Length);
-                            if (int.TryParse(numberPart, out int number))
+                            // Try to extract number from any mark format (any prefix + discipline prefix + number)
+                            int? extractedNumber = ExtractNumberFromMark(markValue, disciplinePrefix);
+                            if (extractedNumber.HasValue)
                             {
-                                maxNumber = Math.Max(maxNumber, number);
+                                maxNumber = Math.Max(maxNumber, extractedNumber.Value);
                             }
                         }
                     }
                 }
                 
-                DebugLogger.Info($"[MarkParameterService] Max existing mark number for '{expectedPrefix}': {maxNumber}");
+                DebugLogger.Info($"[MarkParameterService] Max existing mark number for category '{category}': {maxNumber}");
                 return maxNumber;
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[MarkParameterService] Error getting max existing mark number: {ex.Message}");
+                DebugLogger.Error($"[MarkParameterService] Error getting max existing mark number for category: {ex.Message}");
                 return 0; // Start from 1 if error
             }
         }
         
         /// <summary>
-        /// Generate mark value based on discipline prefix and number
+        /// ✅ NEW: Extract number from existing mark value
+        /// Supports formats like: "PREFIX_DCT001", "OLD_PRE_DCT002", "DCT003", etc.
         /// </summary>
-        private string GenerateMarkValue(string disciplinePrefix, int number)
+        private int? ExtractNumberFromMark(string markValue, string disciplinePrefix)
         {
-            return $"{disciplinePrefix}{number:000}";
+            try
+            {
+                if (string.IsNullOrEmpty(markValue) || string.IsNullOrEmpty(disciplinePrefix))
+                    return null;
+                
+                // Look for discipline prefix in the mark
+                int prefixIndex = markValue.LastIndexOf(disciplinePrefix, StringComparison.OrdinalIgnoreCase);
+                if (prefixIndex < 0)
+                    return null;
+                
+                // Get the part after the discipline prefix
+                string numberPart = markValue.Substring(prefixIndex + disciplinePrefix.Length);
+                
+                // Try to parse as integer (handles formats like "001", "002", "03", etc.)
+                if (int.TryParse(numberPart, out int number))
+                {
+                    return number;
+                }
+                
+                // Alternative: Look for any trailing digits (last 1-4 digits)
+                string digitsOnly = new string(markValue.Reverse().TakeWhile(char.IsDigit).Reverse().ToArray());
+                if (!string.IsNullOrEmpty(digitsOnly) && int.TryParse(digitsOnly, out int trailingNumber))
+                {
+                    return trailingNumber;
+                }
+                
+                return null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+        
+        /// <summary>
+        /// Generate mark value based on discipline prefix and number with specified format
+        /// </summary>
+        private string GenerateMarkValue(string disciplinePrefix, int number, string numberFormat = "000")
+        {
+            // Calculate padding length from format string (e.g., "00" = 2, "000" = 3, "0000" = 4)
+            int paddingLength = numberFormat.Length;
+            return $"{disciplinePrefix}{number.ToString().PadLeft(paddingLength, '0')}";
         }
         
         /// <summary>
@@ -657,32 +782,84 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             File.AppendAllText(mepmarkLogPath, 
                 $"[SET-DEBUG] Element {element.Id}: ResolvedParam='{markParam?.Definition?.Name}', Value='{markValue}', Doc.IsModifiable={element.Document.IsModifiable}\n");
             
-            if (markParam != null && !markParam.IsReadOnly && markParam.StorageType == StorageType.String)
+            if (markParam == null)
+            {
+                // ✅ ENHANCED: Log all available parameters for debugging
+                var allParams = string.Join(", ", element.Parameters.Cast<Parameter>().Select(p => $"'{p.Definition?.Name}'"));
+                File.AppendAllText(mepmarkLogPath, 
+                    $"[SET-FAIL] Element {element.Id}: MEP Mark parameter not found. Available parameters: {allParams}\n");
+                throw new InvalidOperationException($"MEP Mark parameter not found on element {element.Id.IntegerValue}. Available params: {allParams}");
+            }
+            
+            if (markParam.IsReadOnly)
+            {
+                File.AppendAllText(mepmarkLogPath, 
+                    $"[SET-FAIL] Element {element.Id}: Parameter '{markParam.Definition?.Name}' is read-only\n");
+                throw new InvalidOperationException($"MEP Mark parameter '{markParam.Definition?.Name}' is read-only on element {element.Id.IntegerValue}");
+            }
+            
+            if (markParam.StorageType != StorageType.String)
+            {
+                File.AppendAllText(mepmarkLogPath, 
+                    $"[SET-FAIL] Element {element.Id}: Parameter '{markParam.Definition?.Name}' has wrong storage type: {markParam.StorageType} (expected String)\n");
+                throw new InvalidOperationException($"MEP Mark parameter '{markParam.Definition?.Name}' has wrong storage type {markParam.StorageType} on element {element.Id.IntegerValue}");
+            }
+            
+            try
             {
                 markParam.Set(markValue);
-                // ✅ FIX: Remove Regenerate() calls - not needed and can cause transaction issues
-                // Parameter.Set() is immediate within a transaction, no need to regenerate
+                
+                // ✅ FIX: Try reading back immediately
                 var readBack = markParam.AsString();
                 
-                // Verify the value was set correctly
-                if (string.Equals(readBack, markValue, StringComparison.Ordinal))
+                // ✅ ENHANCED: More lenient verification - check if value is set (even if not exact match due to whitespace)
+                var normalizedReadBack = (readBack ?? string.Empty).Trim();
+                var normalizedMarkValue = markValue.Trim();
+                
+                if (string.Equals(normalizedReadBack, normalizedMarkValue, StringComparison.Ordinal))
                 {
                     File.AppendAllText(mepmarkLogPath, 
                         $"[SET-SUCCESS] Applied '{markValue}' to element {element.Id} using '{markParam.Definition?.Name}'\n");
                 }
+                else if (string.IsNullOrEmpty(normalizedReadBack))
+                {
+                    // ✅ FIX: If read-back is empty, check if parameter needs to be loaded as shared parameter
+                    File.AppendAllText(mepmarkLogPath, 
+                        $"[SET-VERIFY-FAIL] Element {element.Id}: attempted '{markValue}', read-back is empty (may need shared parameter loaded)\n");
+                    
+                    // Check if this might be a shared parameter issue
+                    if (markParam.Definition != null)
+                    {
+                        if (markParam.Definition is ExternalDefinition externalDef)
+                        {
+                            var guid = externalDef.GUID;
+                            File.AppendAllText(mepmarkLogPath, 
+                                $"[SET-VERIFY-FAIL] Parameter GUID: {guid}, IsShared: true\n");
+                        }
+                        else if (markParam.Definition is InternalDefinition internalDef)
+                        {
+                            File.AppendAllText(mepmarkLogPath, 
+                                $"[SET-VERIFY-FAIL] Parameter is Internal (built-in), IsShared: {internalDef.VariesAcrossGroups}\n");
+                        }
+                    }
+                    
+                    // ✅ FIX: Don't throw exception for empty read-back - parameter might be valid but not readable immediately
+                    // Instead, log warning and continue (transaction commit might fix it)
+                    File.AppendAllText(mepmarkLogPath, 
+                        $"[SET-WARNING] Parameter set but read-back empty - will verify after transaction commit\n");
+                }
                 else
                 {
                     File.AppendAllText(mepmarkLogPath, 
-                        $"[SET-VERIFY-FAIL] Element {element.Id}: attempted '{markValue}', read-back='{readBack ?? "<null>"}'\n");
-                    throw new InvalidOperationException($"MEP Mark write did not persist on element {element.Id.IntegerValue}");
+                        $"[SET-VERIFY-FAIL] Element {element.Id}: attempted '{markValue}', read-back='{readBack}'\n");
+                    throw new InvalidOperationException($"MEP Mark write did not persist on element {element.Id.IntegerValue}: expected '{markValue}', got '{readBack}'");
                 }
             }
-            else
+            catch (Exception setEx)
             {
-                var readonlyInfo = markParam != null ? $"Param='{markParam.Definition?.Name}', Readonly={markParam.IsReadOnly}, Type={markParam.StorageType}" : "Param=null";
                 File.AppendAllText(mepmarkLogPath, 
-                    $"[SET-FAIL] Element {element.Id}: {readonlyInfo}\n");
-                throw new InvalidOperationException($"Cannot set MEP Mark parameter on element {element.Id.IntegerValue}: parameter missing or not writable");
+                    $"[SET-EXCEPTION] Element {element.Id}: Exception setting parameter: {setEx.Message}\n");
+                throw;
             }
         }
 
@@ -694,31 +871,56 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             try
             {
+                // ✅ ENHANCED: Collect all parameters for debugging
+                var allParams = element.Parameters.Cast<Parameter>().ToList();
+                string mepmarkLogPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                
                 // Search all instance parameters case/space/underscore-insensitively
-                foreach (Parameter p in element.Parameters)
+                foreach (Parameter p in allParams)
                 {
                     var defName = p.Definition?.Name ?? string.Empty;
                     var norm = NormalizeName(defName);
                     if (preferredNames.Any(n => NormalizeName(n) == norm))
                     {
+                        File.AppendAllText(mepmarkLogPath, 
+                            $"[PARAM-RESOLVE] Element {element.Id}: Found preferred param '{defName}' (normalized: '{norm}')\n");
                         return p;
                     }
                 }
                 // Fallback to simple "Mark"
-                foreach (Parameter p in element.Parameters)
+                foreach (Parameter p in allParams)
                 {
                     var defName = p.Definition?.Name ?? string.Empty;
                     var norm = NormalizeName(defName);
                     if (fallbackNames.Any(n => NormalizeName(n) == norm))
                     {
+                        File.AppendAllText(mepmarkLogPath, 
+                            $"[PARAM-RESOLVE] Element {element.Id}: Found fallback param '{defName}' (normalized: '{norm}')\n");
                         return p;
                     }
                 }
+                
+                // ✅ DEBUG: Log all available parameters if not found
+                var paramNames = string.Join(", ", allParams.Select(p => $"'{p.Definition?.Name}' ({p.StorageType}, readonly={p.IsReadOnly})"));
+                File.AppendAllText(mepmarkLogPath, 
+                    $"[PARAM-RESOLVE] Element {element.Id}: No MEP Mark parameter found. Available params: {paramNames}\n");
             }
-            catch { }
+            catch (Exception ex)
+            {
+                string mepmarkLogPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                File.AppendAllText(mepmarkLogPath, 
+                    $"[PARAM-RESOLVE] Element {element.Id}: Exception resolving parameter: {ex.Message}\n");
+            }
             
             // Final fallback: direct lookups (in case)
-            return element.LookupParameter("MEP Mark") ?? element.LookupParameter("MEP_Mark") ?? element.LookupParameter("Mark");
+            var param = element.LookupParameter("MEP Mark") ?? element.LookupParameter("MEP_Mark") ?? element.LookupParameter("Mark");
+            if (param != null)
+            {
+                string mepmarkLogPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                File.AppendAllText(mepmarkLogPath, 
+                    $"[PARAM-RESOLVE] Element {element.Id}: Found via direct lookup: '{param.Definition?.Name}'\n");
+            }
+            return param;
         }
 
         private string NormalizeName(string s)

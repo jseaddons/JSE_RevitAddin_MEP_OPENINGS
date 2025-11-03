@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
@@ -1041,6 +1042,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     return;
                 }
                 
+                // ✅ NEW: Check if filter XML files exist for all categories before processing
+                // NOTE: Only Transfer Parameters needs XML validation because it reads parameter values FROM XML files
+                // Apply Marks and Remark Selected work directly with Revit elements and don't need XML files
+                var missingCategories = CheckFilterFilesForCategories();
+                if (missingCategories.Count > 0)
+                {
+                    var categoryList = string.Join("\n• ", missingCategories);
+                    var result = WinForms.MessageBox.Show(
+                        $"⚠️ FILTER DATA NOT FOUND\n\n" +
+                        $"The following categories cannot be processed because no filter data is found:\n\n" +
+                        $"• {categoryList}\n\n" +
+                        $"These categories require XML filter files (e.g., '*_ducts.xml', '*_pipes.xml') in the Filters directory.\n\n" +
+                        $"Would you like to continue with available categories only?",
+                        "Missing Filter Data",
+                        WinForms.MessageBoxButtons.YesNo,
+                        WinForms.MessageBoxIcon.Warning);
+                    
+                    if (result != WinForms.DialogResult.Yes)
+                    {
+                        return; // User cancelled
+                    }
+                }
+                
                 // Show progress dialog
                 using (var progressForm = new WinForms.Form())
                 {
@@ -1244,6 +1268,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         /// <summary>
         /// Handle Apply Marks button click
         /// Applies marks to sleeves based on selected remark checkboxes
+        /// NOTE: This needs XML files to determine which category each sleeve belongs to (Ducts/Pipes/etc.)
         /// </summary>
         private void OnApplyMarksClick(object sender, EventArgs e)
         {
@@ -1253,6 +1278,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 {
                     WinForms.MessageBox.Show("Document not available.", "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
                     return;
+                }
+                
+                // ✅ NEW: Check if filter XML files exist for all categories before processing
+                // Apply Marks needs XML to determine which category each sleeve belongs to
+                var missingCategories = CheckFilterFilesForCategories();
+                if (missingCategories.Count > 0)
+                {
+                    var categoryList = string.Join("\n• ", missingCategories);
+                    var result = WinForms.MessageBox.Show(
+                        $"⚠️ FILTER DATA NOT FOUND\n\n" +
+                        $"The following categories cannot be processed because no filter data is found:\n\n" +
+                        $"• {categoryList}\n\n" +
+                        $"Apply Marks requires XML filter files to determine sleeve categories (e.g., '*_ducts.xml', '*_pipes.xml') in the Filters directory.\n\n" +
+                        $"Would you like to continue with available categories only?",
+                        "Missing Filter Data",
+                        WinForms.MessageBoxButtons.YesNo,
+                        WinForms.MessageBoxIcon.Warning);
+                    
+                    if (result != WinForms.DialogResult.Yes)
+                    {
+                        return; // User cancelled
+                    }
                 }
                 
                 // Collect settings from UI
@@ -1337,6 +1384,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         /// <summary>
         /// Handle Remark Selected button click
         /// Re-marks only the categories with remark checkboxes checked
+        /// NOTE: This DOES need XML files to determine which sleeves belong to each category
         /// </summary>
         private void OnRemarkSelectedClick(object sender, EventArgs e)
         {
@@ -1346,6 +1394,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 {
                     WinForms.MessageBox.Show("Document not available.", "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
                     return;
+                }
+                
+                // ✅ NEW: Check if filter XML files exist for selected categories before processing
+                // Remark Selected needs XML to determine which sleeves belong to each category
+                var checkedCategories = new List<string>();
+                if (_remarkDuctCheckBox.Checked) checkedCategories.Add("Ducts");
+                if (_remarkPipeCheckBox.Checked) checkedCategories.Add("Pipes");
+                if (_remarkCableTrayCheckBox.Checked) checkedCategories.Add("Cable Trays");
+                if (_remarkDamperCheckBox.Checked) checkedCategories.Add("Duct Accessories");
+                
+                if (checkedCategories.Count > 0)
+                {
+                    var missingCategories = CheckFilterFilesForCategories()
+                        .Where(cat => checkedCategories.Contains(cat))
+                        .ToList();
+                    
+                    if (missingCategories.Count > 0)
+                    {
+                        var categoryList = string.Join("\n• ", missingCategories);
+                        var result = WinForms.MessageBox.Show(
+                            $"⚠️ FILTER DATA NOT FOUND\n\n" +
+                            $"The following selected categories cannot be processed because no filter data is found:\n\n" +
+                            $"• {categoryList}\n\n" +
+                            $"Remark Selected requires XML filter files to determine sleeve categories (e.g., '*_ducts.xml', '*_pipes.xml') in the Filters directory.\n\n" +
+                            $"Would you like to continue with available categories only?",
+                            "Missing Filter Data",
+                            WinForms.MessageBoxButtons.YesNo,
+                            WinForms.MessageBoxIcon.Warning);
+                        
+                        if (result != WinForms.DialogResult.Yes)
+                        {
+                            return; // User cancelled
+                        }
+                    }
                 }
                 
                 // Collect remark checkbox states
@@ -1483,6 +1565,97 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 WinForms.MessageBox.Show($"Error during remark: {ex.Message}", 
                     "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
             }
+        }
+        
+        /// <summary>
+        /// ✅ NEW: Check if filter XML files exist for all MEP categories
+        /// Returns list of categories that don't have filter data
+        /// </summary>
+        private List<string> CheckFilterFilesForCategories()
+        {
+            var missingCategories = new List<string>();
+            
+            try
+            {
+                if (_document == null) return missingCategories;
+                
+                // Get filters directory
+                ProjectPathService.EnsureFiltersDirectory(_document);
+                string filtersDirectory = ProjectPathService.GetFiltersDirectory(_document);
+                
+                if (!Directory.Exists(filtersDirectory))
+                {
+                    // No filters directory - all categories missing
+                    return new List<string> { "Ducts", "Pipes", "Cable Trays", "Duct Accessories" };
+                }
+                
+                // Check each MEP category (only Reference Elements categories need filter files)
+                var categoriesToCheck = new Dictionary<string, string[]>
+                {
+                    { "Ducts", new[] { "*_ducts.xml", "*ducts*.xml", "ducts*.xml" } },
+                    { "Pipes", new[] { "*_pipes.xml", "*pipes*.xml", "pipes*.xml" } },
+                    { "Cable Trays", new[] { "*_cable_trays.xml", "*cable_trays*.xml", "*cable_tray*.xml", "*cabletray*.xml" } },
+                    { "Duct Accessories", new[] { "*_duct_accessories.xml", "*duct_accessories*.xml", "*damper*.xml" } }
+                };
+                
+                foreach (var categoryPair in categoriesToCheck)
+                {
+                    string category = categoryPair.Key;
+                    string[] patterns = categoryPair.Value;
+                    
+                    bool found = false;
+                    foreach (var pattern in patterns)
+                    {
+                        var files = Directory.GetFiles(filtersDirectory, pattern);
+                        if (files.Length > 0)
+                        {
+                            // Found at least one file - check if it has clash zones
+                            foreach (var file in files)
+                            {
+                                try
+                                {
+                                    // Quick check: deserialize and see if it has clash zones
+                                    var serializer = new System.Xml.Serialization.XmlSerializer(typeof(Models.OpeningFilter));
+                                    using (var reader = new System.IO.StreamReader(file))
+                                    {
+                                        var filter = (Models.OpeningFilter)serializer.Deserialize(reader);
+                                        if (filter?.ClashZoneStorage?.ClashZones != null && filter.ClashZoneStorage.ClashZones.Count > 0)
+                                        {
+                                            found = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                                catch
+                                {
+                                    // If deserialization fails, skip this file
+                                    continue;
+                                }
+                            }
+                        }
+                        
+                        if (found) break;
+                    }
+                    
+                    if (!found)
+                    {
+                        missingCategories.Add(category);
+                    }
+                }
+                
+                DebugLogger.Info($"[ParameterServiceDialogV2] Filter file check: {missingCategories.Count} categories missing filter data");
+                if (missingCategories.Count > 0)
+                {
+                    DebugLogger.Warning($"[ParameterServiceDialogV2] Missing filter files for: {string.Join(", ", missingCategories)}");
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[ParameterServiceDialogV2] Error checking filter files: {ex.Message}");
+                // On error, don't block processing - return empty list
+            }
+            
+            return missingCategories;
         }
     }
 }

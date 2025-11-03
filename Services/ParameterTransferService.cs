@@ -1672,10 +1672,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                 
                                                 if (aggregatedMepParams.ContainsKey(param.Key))
                                                 {
-                                                    // Append to existing value with comma separation (check for unique values only)
+                                                    // Append to existing value with comma separation
                                                     var existingValue = aggregatedMepParams[param.Key];
                                                     
-                                                    // ✅ FIX: Split existing value by comma and check if cleanValue already exists
+                                                    // ✅ FIX FOR CLUSTER SIZES: For Size/MEP Size parameter, include ALL sizes even if duplicates
+                                                    // This ensures 3 elements with same size show as "200 mmø, 200 mmø, 200 mmø" instead of just "200 mmø"
+                                                    bool isSizeParameter = param.Key.Equals("Size", StringComparison.OrdinalIgnoreCase) || 
+                                                                           param.Key.Equals("MEP Size", StringComparison.OrdinalIgnoreCase) ||
+                                                                           param.Key.Equals("MepElementFormattedSize", StringComparison.OrdinalIgnoreCase) ||
+                                                                           param.Key.Equals("Service Size", StringComparison.OrdinalIgnoreCase);
+                                                    
+                                                    if (isSizeParameter)
+                                                    {
+                                                        // ✅ SIZE PARAMETER: Always add all values, including duplicates
+                                                        aggregatedMepParams[param.Key] = $"{existingValue}, {cleanValue}";
+                                                        DebugLogger.Info($"[PARAM_TRANSFER] Added size '{cleanValue}' to cluster (including duplicates). Total sizes: {existingValue}, {cleanValue}");
+                                                    }
+                                                    else
+                                                    {
+                                                        // ✅ OTHER PARAMETERS: Check for unique values only (to avoid duplicates for System Type, etc.)
                                                     var existingParts = existingValue.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
                                                         .Select(p => p.Trim())
                                                         .ToList();
@@ -1683,6 +1698,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                     if (!existingParts.Any(e => e.Equals(cleanValue, StringComparison.OrdinalIgnoreCase)))
                                                     {
                                                         aggregatedMepParams[param.Key] = $"{existingValue}, {cleanValue}";
+                                                        }
                                                     }
                                                 }
                                                 else

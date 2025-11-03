@@ -25,6 +25,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private string _filterName; // Store filter name for use in GetFilterNameForCategory
         private Document _doc; // Active document context for path resolution
         
+        // ✅ OOP REFACTORING: Centralized flag and filter management
+        private FlagManager _flagManager;
+        private FilterManagementService _filterService;
+        
         // Helper struct for grouping key
         private struct SleeveGroupKey
         {
@@ -52,6 +56,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
+        /// <summary>
+        /// Constructor with optional dependencies for OOP refactoring.
+        /// If not provided, creates instances internally (backward compatible).
+        /// </summary>
+        public UniversalClusterService(FlagManager flagManager = null, FilterManagementService filterService = null)
+        {
+            _flagManager = flagManager; // Will be initialized per-document in ClusterSleeves if null
+            _filterService = filterService; // Will be created in ClusterSleeves if null
+        }
 
         /// <summary>
         /// Cluster sleeves for a specific category
@@ -67,6 +80,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ CRITICAL: Store filterName in class field for use in GetFilterNameForCategory
             _filterName = filterName;
             
+            // ✅ OOP REFACTORING: Initialize managers if not provided (backward compatibility)
+            if (_flagManager == null)
+            {
+                _flagManager = new FlagManager(doc);
+            }
+            if (_filterService == null)
+            {
+                _filterService = new FilterManagementService(doc, msg => DebugLogger.Info(msg), msg => DebugLogger.Error(msg));
+            }
+            
             int placedCount = 0;
             int deletedCount = 0;
             var placedClusters = new List<FamilyInstance>(); // Track placed cluster sleeves for cleanup
@@ -77,10 +100,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 // ✅ PERFORMANCE FIX: Minimal logging - only log session start and end
-                string clusterLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log";
+                string clusterLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
                 bool __suppressClusterLogs = DeploymentConfiguration.DeploymentMode;
                 if (!DeploymentConfiguration.DeploymentMode)
-                    File.AppendAllText(clusterLogPath, $"\n===== CLUSTER SESSION STARTED {DateTime.Now:HH:mm:ss} =====\n");
+                    System.IO.File.WriteAllText(clusterLogPath, $"===== CLUSTER SESSION STARTED {DateTime.Now:HH:mm:ss} =====\n");
                 
                 // 🔥 CRITICAL DEBUG: Log which XML file cluster service is working with
                 if (!DeploymentConfiguration.DeploymentMode)
@@ -187,8 +210,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 // ✅ CRITICAL: Filter by MEP_Category parameter to prevent cross-category clustering
                 // ✅ FIXED: Use XML data directly for clustering - no Revit API calls needed
-                // Get sleeves from XML data only (SleeveInstanceId > 0 means placed sleeves)
-                var rawSleeves = _clashZoneCache.Values
+                // ✅ CRITICAL FIX FOR MULTILAYERED WALLS: Load ALL clash zones from XML (not just cache)
+                // The cache is keyed by MepElementIdValue, so if multiple sleeves share the same MEP ID
+                // (multilayered walls), only the last one is in cache. Loading from XML gets ALL sleeves.
+                var allClashZonesFromXml = LoadClashZonesFromRegularXml(xmlFilePath, targetCategory, doc);
+                
+                // ✅ DEBUG: Log total clash zones loaded
+                var placementDebugPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                try 
+                { 
+                    System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING-START] Loaded {allClashZonesFromXml.Count} total clash zones from XML\n");
+                    var withSleeveId = allClashZonesFromXml.Count(cz => cz.SleeveInstanceId > 0);
+                    var notClusterResolved = allClashZonesFromXml.Count(cz => cz.SleeveInstanceId > 0 && !cz.IsClusterResolved);
+                    System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING-START] With SleeveInstanceId>0: {withSleeveId}, Not IsClusterResolved: {notClusterResolved}\n");
+                } 
+                catch { }
+                
+                var rawSleeves = allClashZonesFromXml
                     .Where(cz => cz.SleeveInstanceId > 0) // Only placed sleeves
                     .Where(cz => !cz.IsClusterResolved) // ✅ CRITICAL: Skip sleeves already resolved by cluster
                     .Where(cz => string.IsNullOrEmpty(targetCategory) || 
@@ -198,11 +236,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         Category = cz.MepElementCategory,
                         HostType = GetHostTypeFromClashZone(cz),
                         Orientation = GetEffectiveOrientationForClustering(cz),
-                        BoundingBox = GetBoundingBoxFromClashZone(cz)
+                        BoundingBox = GetBoundingBoxFromClashZone(cz),
+                        ClashZone = cz  // ✅ DEBUG: Keep reference for logging
                     })
+                    .Where(s => s.BoundingBox != null) // ✅ CRITICAL: Only include sleeves with valid bounding boxes
                     .ToList();
                 
                 DebugLogger.Log($"[UniversalClusterService] Found {rawSleeves.Count} sleeves from XML data for category '{targetCategory}'");
+                
+                // ✅ DEBUG: Log which sleeves have zero bounding boxes
+                var zeroBboxSleeves = allClashZonesFromXml
+                    .Where(cz => cz.SleeveInstanceId > 0 && !cz.IsClusterResolved)
+                    .Where(cz => cz.SleeveBoundingBoxMinX == 0 && cz.SleeveBoundingBoxMinY == 0 && cz.SleeveBoundingBoxMinZ == 0 &&
+                                cz.SleeveBoundingBoxMaxX == 0 && cz.SleeveBoundingBoxMaxY == 0 && cz.SleeveBoundingBoxMaxZ == 0)
+                    .Select(cz => cz.SleeveInstanceId)
+                    .ToList();
+                
+                if (zeroBboxSleeves.Count > 0)
+                {
+                    try 
+                    { 
+                        System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] ⚠️ Found {zeroBboxSleeves.Count} sleeves with zero bounding boxes (filtered out): [{string.Join(", ", zeroBboxSleeves.Take(10))}...]\n"); 
+                    } 
+                    catch { }
+                }
+                
+                // ✅ DEBUG: Log first few sleeves that will be clustered
+                try 
+                { 
+                    System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] Found {rawSleeves.Count} sleeves ready for clustering after filtering:\n");
+                    var firstFew = rawSleeves.Take(5).Select(s => $"Sleeve {s.SleeveInstanceId} (Host={s.HostType}, Ori={s.Orientation}, BBox=({s.BoundingBox.Min.X:F3},{s.BoundingBox.Min.Y:F3},{s.BoundingBox.Min.Z:F3}) to ({s.BoundingBox.Max.X:F3},{s.BoundingBox.Max.Y:F3},{s.BoundingBox.Max.Z:F3}))");
+                    System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] First 5: {string.Join("\n", firstFew)}\n");
+                } 
+                catch { }
                 
                 DebugLogger.Log($"[UniversalClusterService] Processing {rawSleeves.Count} sleeves" + 
                                (string.IsNullOrEmpty(targetCategory) ? " (all categories)" : $" (category-filtered for {targetCategory})"));
@@ -266,6 +332,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 // Form clusters using spatial hashing
                 var clustersByGroup = FormClusters(sleeveGroups, toleranceDist);
+                
+                // ✅ DEBUG: Log cluster formation results
+                var totalClusters = clustersByGroup.Values.Sum(clusterList => clusterList.Count);
+                var totalSleevesInClusters = clustersByGroup.Values.Sum(clusterList => clusterList.Sum(cluster => cluster.Count));
+                var placementDebugPath2 = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                try 
+                { 
+                    System.IO.File.AppendAllText(placementDebugPath2, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] FormClusters returned {totalClusters} clusters with {totalSleevesInClusters} total sleeves\n");
+                    foreach (var groupEntry in clustersByGroup)
+                    {
+                        System.IO.File.AppendAllText(placementDebugPath2, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] Group {groupEntry.Key.hostType}_{groupEntry.Key.systemType}: {groupEntry.Value.Count} clusters\n");
+                    }
+                } 
+                catch { }
 
                 // Process each cluster
                 foreach (var groupEntry in clustersByGroup)
@@ -280,14 +360,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         try
                         {
                             // ⚠️ CRITICAL: Check if cluster already exists using flag management
+                            var clusterSleeveIds = string.Join(", ", cluster.Select(s => s.SleeveInstanceId));
+                            var placementDebugPath3 = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                            try 
+                            { 
+                                System.IO.File.AppendAllText(placementDebugPath3, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] Processing cluster with {cluster.Count} sleeves: [{clusterSleeveIds}]\n");
+                            } 
+                            catch { }
+                            
                             if (IsClusterAlreadyExists(cluster, groupKey))
                             {
                                 DebugLogger.Info($"[DEBUG] SKIP: Cluster already exists for {cluster.Count} sleeves - skipping placement\n");
+                                try 
+                                { 
+                                    System.IO.File.AppendAllText(placementDebugPath3, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] ⚠️ SKIP: Cluster already exists for sleeves [{clusterSleeveIds}]\n");
+                                } 
+                                catch { }
                                 continue;
                             }
 
                             // Place cluster sleeve
+                            try 
+                            { 
+                                System.IO.File.AppendAllText(placementDebugPath3, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] ✓ CALLING PlaceClusterSleeve for [{clusterSleeveIds}]\n");
+                            } 
+                            catch { }
+                            
                             PlaceClusterSleeve(doc, cluster, groupKey, targetCategory, out int placed1, out int deleted1, xmlFilePath);
+                            
+                            try 
+                            { 
+                                System.IO.File.AppendAllText(placementDebugPath3, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] PlaceClusterSleeve returned: placed={placed1}, deleted={deleted1}\n");
+                            } 
+                            catch { }
                             placedCount += placed1;
                             deletedCount += deleted1;
                             
@@ -627,30 +732,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     clashZone.SleeveInstanceId = -1; // Individual sleeve was deleted
                                     clashZone.SleeveFamilyName = string.Empty; // Individual sleeve family cleared
                                     
-                                    // ✅ GLOBAL XML: Record cluster placement in global XML
-                                    try
-                                    {
-                                        var categoryName = clashZone.MepElementCategory;
-                                        // ✅ MEMORY OPTIMIZATION: Use singleton to avoid reloading XML multiple times
-                                        var globalManager = GlobalFlagManager.GetOrCreate(categoryName);
-                                        
-                                        // Get filter filename from XML file path
-                                        string filterName = Path.GetFileName(xmlFile ?? "unknown_filter.xml");
-                                        
-                                        globalManager.RecordPlacement(
-                                            clashZone.MepElementId,
-                                            clashZone.StructuralElementId,
-                                            null, // Individual sleeve was deleted
-                                            clusterSleeveId, // Cluster sleeve ID
-                                            filterName
-                                        );
-                                        
-                                        DebugLogger.Info($"[GLOBAL-XML] Recorded cluster sleeve {clusterSleeveId.IntegerValue} for MEP={clashZone.MepElementId.IntegerValue}, Host={clashZone.StructuralElementId.IntegerValue}");
-                                    }
-                                    catch (Exception globalEx)
-                                    {
-                                        DebugLogger.Warning($"[GLOBAL-XML] Error recording cluster placement: {globalEx.Message}");
-                                    }
+                                    // ✅ NOTE: Global XML update happens in batch at end (line ~2689) via GlobalIndexService.UpsertFlagsWithIds()
+                                    // This ensures all cluster sleeves are updated together efficiently
+                                    DebugLogger.Info($"[GLOBAL-XML] Cluster sleeve {clusterSleeveId.IntegerValue} placed for ClashZone {clashZone.Id} - will be saved to Global XML in batch");
                                     
                                     // ⚠️ CRITICAL: Log flag state AFTER cluster sleeve placement
                                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-PLACED] ClashZone {clashZone.Id}: Cluster sleeve {clusterSleeveId.IntegerValue} placed\n");
@@ -981,7 +1065,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Info($"[DEBUG] GROUP: {group.Key.hostType}_{group.Key.systemType} - {xmlSleeves.Count} sleeves\n");
                 
                 // ✅ FIXED: Use bounding box overlap algorithm with XML data
-                var clusters = CalculateClustersUsingXmlData(xmlSleeves, toleranceDist, group.Key.orientation);
+                // ✅ PASS DOC: Need document to check wall hosts for preventing cross-wall clustering
+                var clusters = CalculateClustersUsingXmlData(xmlSleeves, toleranceDist, group.Key.orientation, _doc);
                 
                 if (clusters.Count > 0)
                 {
@@ -1013,7 +1098,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// ✅ FIXED: Calculate clusters using XML data directly - no Revit API calls needed
         /// </summary>
-        private List<List<dynamic>> CalculateClustersUsingXmlData(List<dynamic> xmlSleeves, double toleranceDist, string orientation)
+        private List<List<dynamic>> CalculateClustersUsingXmlData(List<dynamic> xmlSleeves, double toleranceDist, string orientation, Document doc)
         {
             var clusters = new List<List<dynamic>>();
             var processed = new HashSet<int>();
@@ -1042,6 +1127,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             if (processed.Contains(otherSleeve.SleeveInstanceId))
                                 continue;
+                            
+                            // ✅ CRITICAL FIX: Check wall hosts BEFORE bounding box overlap using XML data (NO REVIT API CALLS)
+                            // If both sleeves are on walls, ensure they're on the SAME wall by comparing StructuralElementIdValue from XML
+                            if (clusterSleeve.HostType == "Wall" && otherSleeve.HostType == "Wall")
+                            {
+                                // ✅ OPTIMIZED: Use StructuralElementIdValue from XML (already in memory, no Revit API call needed)
+                                var host1Id = clusterSleeve.ClashZone?.StructuralElementIdValue ?? -1;
+                                var host2Id = otherSleeve.ClashZone?.StructuralElementIdValue ?? -1;
+                                
+                                if (host1Id > 0 && host2Id > 0 && host1Id != host2Id)
+                                {
+                                    // Different walls confirmed - do not cluster
+                                    var placementDebugPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                                    try 
+                                    { 
+                                        System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING-WALL-CHECK] SKIP: Sleeve {clusterSleeve.SleeveInstanceId} (Wall {host1Id}) and {otherSleeve.SleeveInstanceId} (Wall {host2Id}) are on different walls\n");
+                                    } 
+                                    catch { }
+                                    DebugLogger.Info($"[UniversalClusterService] SKIP CLUSTERING (XML): Sleeve {clusterSleeve.SleeveInstanceId} (Wall {host1Id}) and {otherSleeve.SleeveInstanceId} (Wall {host2Id}) are on different walls");
+                                    continue;
+                                }
+                                else if (host1Id <= 0 || host2Id <= 0)
+                                {
+                                    // Can't verify walls (StructuralElementIdValue is invalid) - proceed with distance check (will cluster if within tolerance)
+                                    var placementDebugPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                                    try 
+                                    { 
+                                        System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING-WALL-CHECK] INFO: Cannot verify wall hosts from XML (host1={host1Id}, host2={host2Id}) - proceeding with distance check\n");
+                                    } 
+                                    catch { }
+                                }
+                                // If host1Id > 0 && host2Id > 0 && host1Id == host2Id, continue to distance check (same wall)
+                            }
+                            
+                            // ✅ DEBUG: Log before distance check
+                            var placementDebugPath2 = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                            try 
+                            { 
+                                System.IO.File.AppendAllText(placementDebugPath2, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING-DIST-CHECK] Checking distance: Sleeve {clusterSleeve.SleeveInstanceId} vs {otherSleeve.SleeveInstanceId}\n");
+                            } 
+                            catch { }
                                 
                             if (BoundingBoxesOverlapFromXml(clusterSleeve, otherSleeve, toleranceDist))
                             {
@@ -1202,54 +1328,80 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (bbox1 == null || bbox2 == null)
                     return false;
                 
-                // ✅ FIX: Use orientation-aware 2D clustering (matches CheckBoundingBoxOverlapWithOrientation logic)
-                // This prevents clustering across wall depth for X/Y wall grouping
+                // ✅ CRITICAL FIX: Use MINIMUM DISTANCE calculation instead of overlap
+                // Overlap checking can cluster sleeves that are far apart if they overlap in ignored dimension
+                // For example: X-oriented wall sleeves 500mm apart in Y (wall depth) will still overlap in X,Z
+                // We need to calculate actual minimum distance and check if it's within tolerance
                 string hostType = sleeve1.HostType;
                 string orientation = sleeve1.Orientation;
                 
+                double minDistance;
+                
                 if (hostType == "Floor")
                 {
-                    // Floor sleeves: Use X,Y distance only (ignore Z coordinate)
-                    bool xOverlap = (bbox1.Min.X - toleranceDist) <= bbox2.Max.X && (bbox1.Max.X + toleranceDist) >= bbox2.Min.X;
-                    bool yOverlap = (bbox1.Min.Y - toleranceDist) <= bbox2.Max.Y && (bbox1.Max.Y + toleranceDist) >= bbox2.Min.Y;
-                    return xOverlap && yOverlap;
+                    // Floor sleeves: Calculate 2D distance in X,Y plane (ignore Z)
+                    minDistance = CalculateMinimumDistance2D(
+                        bbox1.Min.X, bbox1.Min.Y, bbox1.Max.X, bbox1.Max.Y,
+                        bbox2.Min.X, bbox2.Min.Y, bbox2.Max.X, bbox2.Max.Y);
                 }
                 else if (hostType == "Wall" || hostType == "Structural Framing")
                 {
                     if (orientation == "X")
                     {
-                        // Wall/Framing sleeves (X orientation): Use X,Z distance only (ignore Y coordinate)
-                        bool xOverlap = (bbox1.Min.X - toleranceDist) <= bbox2.Max.X && (bbox1.Max.X + toleranceDist) >= bbox2.Min.X;
-                        bool zOverlap = (bbox1.Min.Z - toleranceDist) <= bbox2.Max.Z && (bbox1.Max.Z + toleranceDist) >= bbox2.Min.Z;
-                        return xOverlap && zOverlap;
+                        // X-oriented walls: Calculate 2D distance in X,Z plane (ignore Y/wall depth)
+                        // X = width along wall, Z = height
+                        minDistance = CalculateMinimumDistance2D(
+                            bbox1.Min.X, bbox1.Min.Z, bbox1.Max.X, bbox1.Max.Z,
+                            bbox2.Min.X, bbox2.Min.Z, bbox2.Max.X, bbox2.Max.Z);
                     }
                     else if (orientation == "Y")
                     {
-                        // Wall/Framing sleeves (Y orientation): Use Y,Z distance only (ignore X coordinate)
-                        bool yOverlap = (bbox1.Min.Y - toleranceDist) <= bbox2.Max.Y && (bbox1.Max.Y + toleranceDist) >= bbox2.Min.Y;
-                        bool zOverlap = (bbox1.Min.Z - toleranceDist) <= bbox2.Max.Z && (bbox1.Max.Z + toleranceDist) >= bbox2.Min.Z;
-                        return yOverlap && zOverlap;
+                        // Y-oriented walls: Calculate 2D distance in Y,Z plane (ignore X/wall depth)
+                        // Y = width along wall, Z = height
+                        minDistance = CalculateMinimumDistance2D(
+                            bbox1.Min.Y, bbox1.Min.Z, bbox1.Max.Y, bbox1.Max.Z,
+                            bbox2.Min.Y, bbox2.Min.Z, bbox2.Max.Y, bbox2.Max.Z);
                     }
                     else
                     {
-                        // Default for walls: Use Y,Z distance (most walls are Y-oriented)
-                        bool yOverlap = (bbox1.Min.Y - toleranceDist) <= bbox2.Max.Y && (bbox1.Max.Y + toleranceDist) >= bbox2.Min.Y;
-                        bool zOverlap = (bbox1.Min.Z - toleranceDist) <= bbox2.Max.Z && (bbox1.Max.Z + toleranceDist) >= bbox2.Min.Z;
-                        return yOverlap && zOverlap;
+                        // Default for walls: Assume Y-oriented, use Y,Z distance
+                        minDistance = CalculateMinimumDistance2D(
+                            bbox1.Min.Y, bbox1.Min.Z, bbox1.Max.Y, bbox1.Max.Z,
+                            bbox2.Min.Y, bbox2.Min.Z, bbox2.Max.Y, bbox2.Max.Z);
                     }
                 }
                 else
                 {
                     // Fallback for unknown host types: Use full 3D distance
-                    bool xOverlap = (bbox1.Min.X - toleranceDist) <= bbox2.Max.X && (bbox1.Max.X + toleranceDist) >= bbox2.Min.X;
-                    bool yOverlap = (bbox1.Min.Y - toleranceDist) <= bbox2.Max.Y && (bbox1.Max.Y + toleranceDist) >= bbox2.Min.Y;
-                    bool zOverlap = (bbox1.Min.Z - toleranceDist) <= bbox2.Max.Z && (bbox1.Max.Z + toleranceDist) >= bbox2.Min.Z;
-                    return xOverlap && yOverlap && zOverlap;
+                    minDistance = CalculateMinimumDistance3D(
+                        bbox1.Min.X, bbox1.Min.Y, bbox1.Min.Z, bbox1.Max.X, bbox1.Max.Y, bbox1.Max.Z,
+                        bbox2.Min.X, bbox2.Min.Y, bbox2.Min.Z, bbox2.Max.X, bbox2.Max.Y, bbox2.Max.Z);
                 }
+                
+                // Check if minimum distance is within tolerance
+                bool withinTolerance = minDistance <= toleranceDist;
+                
+                // ✅ DEBUG: Log distance calculation results for ALL sleeves (not just 945000+)
+                var placementDebugPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                try 
+                { 
+                    System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING-DISTANCE] Sleeve {sleeve1.SleeveInstanceId} vs {sleeve2.SleeveInstanceId}: " +
+                        $"Host={hostType}, Ori={orientation}, Distance={UnitUtils.ConvertFromInternalUnits(minDistance, UnitTypeId.Millimeters):F1}mm, " +
+                        $"Tolerance={UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm, " +
+                        $"Result={(withinTolerance ? "CLUSTER ✓" : "NO CLUSTER ✗")}\n");
+                } 
+                catch { }
+                
+                if (!withinTolerance)
+                {
+                    DebugLogger.Info($"[UniversalClusterService] Sleeves {sleeve1.SleeveInstanceId} and {sleeve2.SleeveInstanceId}: Distance={UnitUtils.ConvertFromInternalUnits(minDistance, UnitTypeId.Millimeters):F1}mm > Tolerance={UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm - NO CLUSTER");
+                }
+                
+                return withinTolerance;
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[UniversalClusterService] Error checking bounding box overlap: {ex.Message}");
+                DebugLogger.Error($"[UniversalClusterService] Error checking bounding box distance: {ex.Message}");
                 return false;
             }
         }
@@ -1601,7 +1753,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 // 🔥 PROXIMITY DEBUG: Log cluster results
-                string clusterLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log";
+                string clusterLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
                 if (cluster.Count > 1)
                 {
                     var clusterIds = string.Join(", ", cluster.Select(s => s.Id.IntegerValue));
@@ -1616,7 +1768,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             // 🔥 PROXIMITY DEBUG: Log final summary
-            string clusterLogPath2 = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\cluster_debug.log";
+            string clusterLogPath2 = SafeFileLogger.GetLogFilePath("cluster_debug.log");
             bool __suppressClusterLogs2 = DeploymentConfiguration.DeploymentMode;
             int totalClusters = groupClusters.Count(c => c.Count > 1);
             int totalIndividuals = groupClusters.Count(c => c.Count == 1);
@@ -1705,6 +1857,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!MatchesGroupCriteria(candidate, groupKey))
                     continue;
 
+                // ✅ CRITICAL FIX: For wall-hosted sleeves, ensure they are on the SAME wall element
+                // If an MEP element passes through 2 adjacent walls, each wall should have its own distinct sleeve
+                // Do NOT cluster sleeves across different walls, even if they have the same orientation
+                // BUT: Sleeves on the SAME wall (multilayered walls) SHOULD cluster together
+                if (groupKey.hostType == "Wall")
+                {
+                    var host1 = inst.Host;
+                    var host2 = candidate.Host;
+                    
+                    if (host1 == null || host2 == null || host1.Id != host2.Id)
+                    {
+                        // Different walls - do not cluster
+                        DebugLogger.Info($"[UniversalClusterService] SKIP CLUSTERING: Sleeve {inst.Id.IntegerValue} (Wall {host1?.Id.IntegerValue ?? -1}) and {candidate.Id.IntegerValue} (Wall {host2?.Id.IntegerValue ?? -1}) are on different walls - keeping distinct sleeves");
+                        continue;
+                    }
+                }
+
                 // Get bounding box for candidate
                 BoundingBoxXYZ o2_bbox = bboxes.ContainsKey(candidate) ? bboxes[candidate] : candidate.get_BoundingBox(null);
                 if (o2_bbox == null) continue;
@@ -1787,7 +1956,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     // Only process clash zones with valid SleeveInstanceId (placed sleeves)
                                     if (cz.SleeveInstanceId > 0)
                                     {
-                                        // Reconstruct SleevePlacementPoint from XML-serializable properties
+                                        // ✅ CRITICAL: Reconstruct SleevePlacementPoint from XML-serializable properties
                                         cz.EnsureSleevePlacementPointReconstructed();
                                         clashZones.Add(cz);
                                     }
@@ -1868,9 +2037,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 // Create bounding box from stored coordinates
+                // Note: If coordinates are zero, clustering will calculate zero distance, which is fine for validation
+                // The real check happens in BoundingBoxesOverlapFromXml which will validate actual distances
                 var bbox = new BoundingBoxXYZ();
                 bbox.Min = new XYZ(clashZone.SleeveBoundingBoxMinX, clashZone.SleeveBoundingBoxMinY, clashZone.SleeveBoundingBoxMinZ);
                 bbox.Max = new XYZ(clashZone.SleeveBoundingBoxMaxX, clashZone.SleeveBoundingBoxMaxY, clashZone.SleeveBoundingBoxMaxZ);
+                
+                // ✅ LOG WARNING if bbox is zero but sleeve exists - helps diagnose why clustering isn't working
+                if (clashZone.SleeveInstanceId > 0 && 
+                    clashZone.SleeveBoundingBoxMinX == 0 && clashZone.SleeveBoundingBoxMinY == 0 && clashZone.SleeveBoundingBoxMinZ == 0 &&
+                    clashZone.SleeveBoundingBoxMaxX == 0 && clashZone.SleeveBoundingBoxMaxY == 0 && clashZone.SleeveBoundingBoxMaxZ == 0)
+                {
+                    DebugLogger.Warning($"[UniversalClusterService] Sleeve {clashZone.SleeveInstanceId} has zero bounding box in XML - this will prevent clustering");
+                }
+                
                 return bbox;
             }
             catch (Exception ex)
@@ -2135,23 +2315,74 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Get clash zone from cache by sleeve instance ID
         /// </summary>
-        private ClashZone GetClashZoneBySleeveInstanceId(int sleeveInstanceId)
+        private ClashZone GetClashZoneBySleeveInstanceId(int sleeveInstanceId, string xmlFilePath = null)
         {
             try
             {
-                // Search through all loaded clash zones for matching SleeveInstanceId
+                // ✅ PERFORMANCE: First try cache lookup (fast O(N) search)
                 foreach (var clashZone in _clashZoneCache.Values)
                 {
                     if (clashZone.SleeveInstanceId == sleeveInstanceId)
                     {
                         DebugLogger.Log($"[UniversalClusterService] Found clash zone for Sleeve Instance ID {sleeveInstanceId} in cache");
                         return clashZone;
+                    }
+                }
+                
+                DebugLogger.Warning($"[UniversalClusterService] Sleeve Instance ID {sleeveInstanceId} not found in cache (cache size: {_clashZoneCache?.Count ?? 0}) - trying XML fallback");
+                
+                // ✅ CRITICAL FIX: Fallback to XML if cache lookup fails (similar to GetClashZoneByMepElementId)
+                // This ensures GUID is always set even if cache is incomplete
+                var filtersDirectory = ProjectPathService.GetFiltersDirectory(_doc);
+                
+                if (!Directory.Exists(filtersDirectory))
+                {
+                    DebugLogger.Warning($"[UniversalClusterService] Filters directory does not exist for XML fallback");
+                    return null;
+                }
+                
+                // ✅ FIX: Only search specific XML file if provided (ONE SOURCE OF TRUTH)
+                var xmlFiles = string.IsNullOrEmpty(xmlFilePath)
+                    ? Directory.GetFiles(filtersDirectory, "*.xml")
+                    : new[] { xmlFilePath };
+                
+                foreach (var xmlFile in xmlFiles)
+                {
+                    if (File.Exists(xmlFile))
+                    {
+                        var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
+                        using (var reader = new StreamReader(xmlFile))
+                        {
+                            var filter = (OpeningFilter)serializer.Deserialize(reader);
+                            
+                            if (filter?.ClashZoneStorage?.ClashZones != null)
+                            {
+                                foreach (var cz in filter.ClashZoneStorage.ClashZones)
+                                {
+                                    if (cz.SleeveInstanceId == sleeveInstanceId)
+                                    {
+                                        // ✅ CRITICAL: Reconstruct placement points from XML-serializable properties
+                                        cz.EnsureSleevePlacementPointReconstructed();
+                                        cz.EnsureSleevePlacementPointActiveDocumentReconstructed();
+                                        
+                                        // Add to cache for future lookups
+                                        if (cz.MepElementIdValue > 0 && !_clashZoneCache.ContainsKey(cz.MepElementIdValue))
+                                        {
+                                            _clashZoneCache[cz.MepElementIdValue] = cz;
+                                        }
+                                        
+                                        DebugLogger.Info($"[UniversalClusterService] ✅ Found clash zone for Sleeve Instance ID {sleeveInstanceId} in XML fallback: {cz.Id}");
+                                        return cz;
+                                    }
+                                }
+                            }
                         }
                     }
+                }
                 
-                DebugLogger.Warning($"[UniversalClusterService] Sleeve Instance ID {sleeveInstanceId} not found in cache (cache size: {_clashZoneCache?.Count ?? 0})");
-            return null;
-        }
+                DebugLogger.Warning($"[UniversalClusterService] ❌ Sleeve Instance ID {sleeveInstanceId} not found in cache or XML files");
+                return null;
+            }
             catch (Exception ex)
             {
                 DebugLogger.Error($"[UniversalClusterService] Error getting clash zone by sleeve instance ID: {ex.Message}");
@@ -2469,36 +2700,92 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // CRITICAL FIX: Set metadata parameters for cluster sleeve
             SetClusterSleeveMetadata(inst, targetCategory);
 
-            // ✅ FIXED: Set MEP_ElementId on cluster sleeve using XML data
-            var firstSleeve = cluster.FirstOrDefault();
-            DebugLogger.Info($"[MEP_ElementId] First sleeve ID: {firstSleeve?.SleeveInstanceId}\n");
+            // ✅ CRITICAL: Collect ALL MEP Element IDs from all sleeves in cluster
+            var allMepElementIds = new List<long>();
+            var firstClashZone = null as ClashZone;
             
-            if (firstSleeve != null)
+            foreach (var sleeveData in cluster)
             {
-                // Get MEP Element ID from XML data (stored in clash zone)
-                var clashZone = GetClashZoneBySleeveInstanceId(firstSleeve.SleeveInstanceId);
+                // ✅ CRITICAL FIX: Pass xmlFilePath to enable XML fallback if cache lookup fails
+                var clashZone = GetClashZoneBySleeveInstanceId(sleeveData.SleeveInstanceId, xmlFilePath);
                 if (clashZone != null && clashZone.MepElementIdValue > 0)
                 {
-                    long mepElementId = clashZone.MepElementIdValue;
-                    DebugLogger.Info($"[MEP_ElementId] Value from XML: {mepElementId}\n");
-                    
-                    var clusterMepElementIdParam = inst.LookupParameter("MEP_ElementId");
-                    DebugLogger.Info($"[MEP_ElementId] Parameter found on cluster: {clusterMepElementIdParam != null}, ReadOnly: {clusterMepElementIdParam?.IsReadOnly}\n");
-                    
-                    if (clusterMepElementIdParam != null && !clusterMepElementIdParam.IsReadOnly)
+                    allMepElementIds.Add(clashZone.MepElementIdValue);
+                    if (firstClashZone == null)
                     {
-                        clusterMepElementIdParam.Set(mepElementId);
-                        DebugLogger.Info($"[DEBUG] ✓ Set MEP_ElementId = {mepElementId} on cluster sleeve {inst.Id}\n");
-                    }
-                    else
-                    {
-                        DebugLogger.Info($"[DEBUG] ✗ Cannot set MEP_ElementId on cluster sleeve {inst.Id} (param null or readonly)\n");
+                        firstClashZone = clashZone; // Keep first for GUID storage
+                        DebugLogger.Info($"[PlaceClusterSleeve] ✅ Found first clash zone for GUID storage: {firstClashZone.Id} (SleeveId={sleeveData.SleeveInstanceId})");
                     }
                 }
                 else
                 {
-                    DebugLogger.Info($"[DEBUG] ✗ MEP_ElementId not found in XML for sleeve {firstSleeve.SleeveInstanceId}\n");
+                    DebugLogger.Warning($"[PlaceClusterSleeve] ⚠️ Could not find clash zone for SleeveId={sleeveData.SleeveInstanceId} - GUID may not be set for this cluster!");
                 }
+            }
+            
+            DebugLogger.Info($"[MEP_ElementId] Cluster contains {allMepElementIds.Count} MEP Element IDs: {string.Join(", ", allMepElementIds)}\n");
+            
+            if (allMepElementIds.Count > 0 && firstClashZone != null)
+            {
+                // Set first MEP Element ID for backward compatibility
+                var clusterMepElementIdParam = inst.LookupParameter("MEP_ElementId");
+                if (clusterMepElementIdParam != null && !clusterMepElementIdParam.IsReadOnly)
+                {
+                    clusterMepElementIdParam.Set(allMepElementIds[0]);
+                    DebugLogger.Info($"[DEBUG] ✓ Set MEP_ElementId = {allMepElementIds[0]} (first) on cluster sleeve {inst.Id}\n");
+                }
+                
+                // ✅ CRITICAL: Store ALL MEP Element IDs as comma-separated list for lookup
+                // This allows GuidManager to find cluster sleeve for ANY MEP element in the cluster
+                string mepIdsString = string.Join(",", allMepElementIds);
+                var clusterMepElementIdsParam = inst.LookupParameter("MEP_ElementIds");
+                if (clusterMepElementIdsParam != null)
+                {
+                    if (clusterMepElementIdsParam.IsReadOnly)
+                    {
+                        DebugLogger.Error($"[PlaceClusterSleeve] ❌ MEP_ElementIds parameter is READ-ONLY on cluster sleeve {inst.Id} - cannot set value!");
+                        DebugLogger.Error($"[PlaceClusterSleeve] Parameter storage type: {clusterMepElementIdsParam.StorageType}, Element type: {inst.GetType().Name}");
+                    }
+                    else
+                    {
+                        try
+                        {
+                            clusterMepElementIdsParam.Set(mepIdsString);
+                            
+                            // ✅ VERIFY: Read back the value to confirm it was set correctly
+                            string verifyValue = clusterMepElementIdsParam.AsString() ?? "";
+                            if (verifyValue == mepIdsString)
+                            {
+                                DebugLogger.Info($"[PlaceClusterSleeve] ✅ VERIFIED: Set MEP_ElementIds = '{mepIdsString}' on cluster sleeve {inst.Id} (contains {allMepElementIds.Count} MEP IDs)");
+                            }
+                            else
+                            {
+                                DebugLogger.Error($"[PlaceClusterSleeve] ❌ VERIFICATION FAILED: Expected '{mepIdsString}', got '{verifyValue}' on cluster sleeve {inst.Id}");
+                            }
+                        }
+                        catch (Exception setEx)
+                        {
+                            DebugLogger.Error($"[PlaceClusterSleeve] ❌ ERROR setting MEP_ElementIds on cluster sleeve {inst.Id}: {setEx.Message}");
+                            DebugLogger.Error($"[PlaceClusterSleeve] Stack trace: {setEx.StackTrace}");
+                        }
+                    }
+                }
+                else
+                {
+                    DebugLogger.Error($"[PlaceClusterSleeve] ❌ CRITICAL: MEP_ElementIds parameter NOT FOUND on cluster sleeve {inst.Id}!");
+                    DebugLogger.Error($"[PlaceClusterSleeve] Available parameters: {string.Join(", ", inst.Parameters.Cast<Parameter>().Select(p => p.Definition?.Name ?? "null").Take(10))}");
+                    DebugLogger.Error($"[PlaceClusterSleeve] Add 'MEP_ElementIds' text parameter to cluster family '{inst.Symbol?.Family?.Name ?? "unknown"}' to enable cluster lookup");
+                }
+                
+                // ✅ CRITICAL: Store ClashZone GUID on cluster sleeve (use first clash zone's GUID)
+                // This enables GUID lookup for cluster sleeves during refresh to prevent duplicates
+                SetClashZoneGuidOnClusterSleeve(inst, firstClashZone.Id);
+            }
+            else
+            {
+                DebugLogger.Warning($"[PlaceClusterSleeve] ⚠️ CRITICAL: No MEP Element IDs found OR firstClashZone is null - GUID will NOT be set for cluster sleeve {inst.Id}!");
+                DebugLogger.Warning($"[PlaceClusterSleeve] This may cause duplicate clash zones on refresh. Check cache population and XML loading.");
+                DebugLogger.Info($"[DEBUG] ✗ No MEP Element IDs found in cluster sleeves\n");
             }
 
             placed++;
@@ -2506,28 +2793,62 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ⚠️ CRITICAL: Mark clash zones as cluster-resolved with the actual cluster sleeve ID
             MarkClashZonesAsClusterResolvedWithSleeveId(cluster, inst.Id, xmlFilePath);
 
-            // ✅ GLOBAL FLAGS: Upsert IsResolved/IsClusterResolved into per-category global index after clustering
+            // ✅ OOP REFACTORING: Use FlagManager for flag updates after clustering
+            // Load updated clash zones from XML to get correct flag values
             try
             {
-                var updates = new List<(Guid Id, bool IsResolved, bool IsClusterResolved)>();
-                foreach (var s in cluster)
+                // ✅ FIX: Load clash zones from the same XML file that was just updated
+                if (!string.IsNullOrEmpty(xmlFilePath) && File.Exists(xmlFilePath))
                 {
-                    var cz = GetClashZoneBySleeveInstanceId(s.SleeveInstanceId);
-                    if (cz != null)
+                    var filter = _filterService.LoadFilterFromXmlFile(xmlFilePath);
+                    
+                    if (filter?.ClashZoneStorage?.ClashZones != null)
                     {
-                        updates.Add((cz.Id, cz.IsResolved, cz.IsClusterResolved));
+                        // Get clash zones for sleeves in this cluster (use original SleeveInstanceId before it was set to -1)
+                        foreach (var s in cluster)
+                        {
+                            // Find clash zone by the original SleeveInstanceId (before clustering set it to -1)
+                            var originalSleeveId = s.SleeveInstanceId;
+                            var clashZone = filter.ClashZoneStorage.ClashZones.FirstOrDefault(cz => 
+                                cz.SleeveInstanceId == originalSleeveId || 
+                                cz.AfterClusterSleevePlacedSleeveInstanceId == originalSleeveId);
+                            
+                            if (clashZone != null)
+                            {
+                                // ✅ Use FlagManager to update flags (handles both in-memory and Global XML)
+                                // Note: clashZone already has IsClusterResolved=true, IsResolved=true, SleeveInstanceId=-1, ClusterSleeveInstanceId=clusterId from MarkClashZonesAsClusterResolvedWithSleeveId
+                                int clusterSleeveId = inst.Id.IntegerValue;
+                                bool isCluster = true;
+                                _flagManager.UpdateFlagsForPlacement(clashZone, clusterSleeveId, isCluster, targetCategory);
+                                DebugLogger.Info($"[FLAG-MANAGER] Updated flags for ClashZone {clashZone.Id} after cluster placement (ClusterSleeveId={clusterSleeveId})");
+                            }
+                        }
                     }
                 }
-
-                if (updates.Count > 0)
+                
+                // Fallback: Use cache if XML not available
+                if (string.IsNullOrEmpty(xmlFilePath) || !File.Exists(xmlFilePath))
                 {
-                    var updatesWithIds = updates.Select(u => (u.Id, u.IsResolved, u.IsClusterResolved, 0, inst.Id.IntegerValue)).ToList();
-                    GlobalIndexService.UpsertFlagsWithIds(_doc, targetCategory, updatesWithIds);
+                    foreach (var s in cluster)
+                    {
+                        var cz = GetClashZoneBySleeveInstanceId(s.SleeveInstanceId);
+                        if (cz != null)
+                        {
+                            // ✅ Update flags using FlagManager
+                            // For cluster sleeves: isCluster=true, sleeveId=cluster sleeve ID
+                            int clusterSleeveId = inst.Id.IntegerValue;
+                            bool isCluster = true;
+                            _flagManager.UpdateFlagsForPlacement(cz, clusterSleeveId, isCluster, targetCategory);
+                            DebugLogger.Info($"[FLAG-MANAGER] Updated flags for ClashZone {cz.Id} after cluster placement (fallback, ClusterSleeveId={clusterSleeveId})");
+                        }
+                    }
                 }
+                
+                DebugLogger.Info($"[FLAG-MANAGER] ✅ Successfully updated flags for {cluster.Count} clash zones after clustering");
             }
             catch (Exception upEx)
             {
-                DebugLogger.Warning($"[GLOBAL_INDEX] Upsert after clustering failed: {upEx.Message}");
+                DebugLogger.Warning($"[FLAG-MANAGER] Flag update after clustering failed: {upEx.Message}");
             }
 
             DebugLogger.Log($"[ClusterService] About to delete {cluster.Count} individual sleeves for cluster sleeve {inst.Id.IntegerValue}");
@@ -3004,9 +3325,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                string filtersDirectory = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                // ✅ CRITICAL FIX: Use ProjectPathService instead of hardcoded path
+                string filtersDirectory = ProjectPathService.GetFiltersDirectory(_doc);
 
                 // Find pattern: *_{category}.xml (e.g., Ventilation_ducts.xml)
                 var pattern = $"*_{category}.xml";
@@ -3117,6 +3437,78 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         catch (Exception ex)
         {
             DebugLogger.Error($"[SetClusterSleeveMetadata] Error setting metadata for cluster sleeve {clusterSleeve.Id}: {ex.Message}");
+        }
+    }
+    
+    /// <summary>
+    /// ✅ CRITICAL: Store ClashZone GUID on cluster sleeve as family parameter to prevent duplicate GUID creation on refresh
+    /// Uses the first clash zone's GUID (since cluster represents multiple clash zones)
+    /// </summary>
+    private void SetClashZoneGuidOnClusterSleeve(FamilyInstance clusterSleeve, Guid clashZoneGuid)
+    {
+        try
+        {
+            var guidParam = clusterSleeve.LookupParameter("ClashZone_GUID");
+            if (guidParam != null && !guidParam.IsReadOnly)
+            {
+                string guidString = clashZoneGuid.ToString();
+                guidParam.Set(guidString);
+                DebugLogger.Info($"[SetClashZoneGuid] Set ClashZone_GUID = '{guidString}' for cluster sleeve {clusterSleeve.Id}");
+            }
+            else
+            {
+                // Parameter not found - log warning but don't fail (backward compatibility)
+                DebugLogger.Warning($"[SetClashZoneGuid] ClashZone_GUID parameter not found or read-only on cluster sleeve {clusterSleeve.Id} - GUID storage skipped. Add 'ClashZone_GUID' text parameter to cluster family.");
+            }
+        }
+        catch (Exception ex)
+        {
+            DebugLogger.Warning($"[SetClashZoneGuid] Error setting ClashZone_GUID for cluster sleeve {clusterSleeve.Id}: {ex.Message}");
+        }
+    }
+    
+    /// <summary>
+    /// ✅ CRITICAL: Update cluster sleeve MEP_ElementIds parameter with additional MEP Element IDs
+    /// Called when sleeves are incidentally deleted during cleanup (edge cases)
+    /// </summary>
+    private void UpdateClusterSleeveMepElementIds(FamilyInstance clusterSleeve, HashSet<long> newMepIds)
+    {
+        try
+        {
+            var mepIdsParam = clusterSleeve.LookupParameter("MEP_ElementIds");
+            if (mepIdsParam != null && !mepIdsParam.IsReadOnly)
+            {
+                // Get existing MEP Element IDs
+                string existingIdsString = mepIdsParam.AsString() ?? "";
+                var existingIds = new HashSet<long>();
+                
+                if (!string.IsNullOrWhiteSpace(existingIdsString))
+                {
+                    existingIds = existingIdsString.Split(',')
+                        .Select(id => id.Trim())
+                        .Where(id => !string.IsNullOrWhiteSpace(id))
+                        .Select(id => long.TryParse(id, out long parsed) ? parsed : (long?)null)
+                        .Where(id => id.HasValue)
+                        .Select(id => id.Value)
+                        .ToHashSet();
+                }
+                
+                // Add new MEP Element IDs (avoid duplicates)
+                existingIds.UnionWith(newMepIds);
+                
+                // Update parameter
+                string updatedIdsString = string.Join(",", existingIds.OrderBy(id => id));
+                mepIdsParam.Set(updatedIdsString);
+                DebugLogger.Info($"[UpdateClusterSleeveMepElementIds] Updated MEP_ElementIds on cluster sleeve {clusterSleeve.Id}: Added {newMepIds.Count} new IDs, total now: {existingIds.Count} ({updatedIdsString})");
+            }
+            else
+            {
+                DebugLogger.Warning($"[UpdateClusterSleeveMepElementIds] MEP_ElementIds parameter not found or read-only on cluster sleeve {clusterSleeve.Id} - cannot add deleted sleeves' MEP Element IDs");
+            }
+        }
+        catch (Exception ex)
+        {
+            DebugLogger.Warning($"[UpdateClusterSleeveMepElementIds] Error updating MEP_ElementIds for cluster sleeve {clusterSleeve.Id}: {ex.Message}");
         }
     }
 
@@ -3325,6 +3717,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DebugLogger.Info($"[CleanupSleevesWithinClusters] ✅ Batch deleted {deletedCount} individual sleeves");
                     
                     // ✅ CRITICAL: Update flags for all deleted sleeves (preserves IsResolved=true)
+                    // ✅ ALSO: Collect MEP Element IDs from deleted sleeves to update cluster sleeve parameter
+                    var mepIdsToAddByCluster = new Dictionary<int, HashSet<long>>();
+                    
                     foreach (var (sleeveId, clusterId, clashZone) in sleevesToDelete)
                     {
                         if (clashZone != null)
@@ -3333,8 +3728,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             clashZone.IsClusterResolved = true;
                             clashZone.ClusterSleeveInstanceId = clusterId;
                             clashZone.SleeveInstanceId = -1;
+                            
+                            // ✅ CRITICAL: Track MEP Element ID for cluster sleeve parameter update
+                            if (clashZone.MepElementIdValue > 0)
+                            {
+                                if (!mepIdsToAddByCluster.ContainsKey(clusterId))
+                                {
+                                    mepIdsToAddByCluster[clusterId] = new HashSet<long>();
+                                }
+                                mepIdsToAddByCluster[clusterId].Add(clashZone.MepElementIdValue);
+                                DebugLogger.Info($"[CLEANUP-MEP-ID] Collected MEP Element ID {clashZone.MepElementIdValue} from deleted sleeve {sleeveId.IntegerValue} for cluster {clusterId}\n");
+                            }
                         }
                         DebugLogger.Info($"[CLEANUP-FLAGS] Updated flags for {sleeveId.IntegerValue}: IsResolved=True, IsClusterResolved=True, ClusterSleeveId={clusterId}\n");
+                    }
+                    
+                    // ✅ CRITICAL: Update cluster sleeve MEP_ElementIds parameter with deleted sleeves' MEP Element IDs
+                    foreach (var kvp in mepIdsToAddByCluster)
+                    {
+                        int clusterId = kvp.Key;
+                        HashSet<long> newMepIds = kvp.Value;
+                        var clusterSleeve = placedClusters.FirstOrDefault(c => c.Id.IntegerValue == clusterId);
+                        if (clusterSleeve != null)
+                        {
+                            UpdateClusterSleeveMepElementIds(clusterSleeve, newMepIds);
+                        }
+                        else
+                        {
+                            DebugLogger.Warning($"[CLEANUP-MEP-ID] Cluster sleeve {clusterId} not found in placedClusters list - cannot update MEP_ElementIds\n");
+                        }
                     }
                 }
                 catch (Exception ex)

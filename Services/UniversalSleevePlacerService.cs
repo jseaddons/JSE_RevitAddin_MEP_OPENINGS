@@ -29,6 +29,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly ISleevePlacementStrategy _strategy;
         private readonly Dictionary<string, double> _clearanceSettings;
         private readonly string _filterName;
+        
+        // ✅ OOP REFACTORING: Centralized flag management
+        private readonly FlagManager _flagManager;
 
         // ⚠️ QUICK WIN: Pre-cached family symbols (load once, reuse many times)
         private static Dictionary<string, FamilySymbol> _familySymbolCache = new Dictionary<string, FamilySymbol>();
@@ -37,13 +40,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public int SkippedCount { get; private set; }
         public int ErrorCount { get; private set; }
 
-        public UniversalSleevePlacerService(Document doc, OpeningConditions conditions, ISleevePlacementStrategy strategy, Dictionary<string, double> clearanceSettings = null, string filterName = null)
+        public UniversalSleevePlacerService(Document doc, OpeningConditions conditions, ISleevePlacementStrategy strategy, Dictionary<string, double> clearanceSettings = null, string filterName = null, FlagManager flagManager = null)
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _conditions = conditions ?? new OpeningConditions();
             _strategy = strategy ?? throw new ArgumentNullException(nameof(strategy));
             _clearanceSettings = clearanceSettings ?? new Dictionary<string, double>();
             _filterName = filterName;
+            
+            // ✅ OOP REFACTORING: Initialize FlagManager (create if not provided for backward compatibility)
+            _flagManager = flagManager ?? new FlagManager(doc);
             
             // 🔥 CRITICAL DEBUG: Direct file logging to trace service instantiation (SAFE - won't crash)
             SafeFileLogger.SafeAppendText("service_instantiation.log", 
@@ -240,8 +246,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             cacheTimer.Stop();
             detailedTimingLog.AppendLine($"[TIMING] Level caching: {cacheTimer.ElapsedMilliseconds}ms ({cachedLevels.Count} levels)");
             
-            // ✅ PERFORMANCE OPTIMIZATION: Cache GlobalFlagManager per category (not per clash zone)
-            var globalManagersByCategory = new Dictionary<string, GlobalFlagManager>();
+            // ✅ PERFORMANCE OPTIMIZATION: Cache GlobalIndexService lookups per category (not per clash zone)
+            // NOTE: GlobalIndexService is static, no need to cache instances
             
             // ✅ PERFORMANCE OPTIMIZATION: Batch file logging - collect logs and write once
             var batchLogs = new System.Text.StringBuilder();
@@ -489,18 +495,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                         }
                         
-                        // STEP 2: Check cluster sleeve flag
-                        if (clashZone.IsClusterResolved)
-                        {
-                            // Only cluster flag TRUE: Skip both individual and cluster placement
-                            if (PlacedCount + SkippedCount < 50) batchLogs.AppendLine($"✓ SKIP ClashZone {clashZone.Id}: IsClusterResolved=True (cluster sleeve handles it)");
-                            SkippedCount++;
-                            continue;
-                        }
+                        // ✅ REMOVED: Redundant cluster check (already checked at line 420)
+                        // If we reach here, no cluster exists (per flag hierarchy check above)
                         
-                        // STEP 3: Both flags FALSE - proceed with individual sleeve placement
+                        // STEP 2: Both flags FALSE - proceed with individual sleeve placement
                         
-                        // STEP 4: Check if individual sleeve already exists in Revit (additional safety check)
+                        // ✅ CRITICAL: Always check if sleeve exists by ID first (fast check)
                         if (clashZone.SleeveInstanceId > 0)
                         {
                             // Check if individual sleeve still exists in Revit
@@ -524,7 +524,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     DebugLogger.Info($"[UniversalSleevePlacer] Individual sleeve {clashZone.SleeveInstanceId} was deleted and no cluster sleeve - resetting flag and placing new sleeve");
                                     clashZone.IsResolved = false;
                                     clashZone.SleeveInstanceId = -1;
-                                    // Continue to place individual sleeve below
+                                    // Continue to place individual sleeve below (will do spatial check)
                                 }
                                 else
                                 {
@@ -540,54 +540,69 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // STEP 3: If we reach here, place individual sleeve (fresh or replacement)
                         
                         // ✅ CRITICAL: Check Global XML before placement (prevents cross-filter duplicates)
-                        // ✅ PERFORMANCE OPTIMIZATION: Cache GlobalFlagManager per category instead of creating new one per clash zone
+                        // ✅ USES GlobalIndexService (GUID-based) per methodology document
                         try
                         {
                             var categoryName = clashZone.MepElementCategory;
-                            if (!globalManagersByCategory.TryGetValue(categoryName, out var globalManager))
-                            {
-                                // ✅ MEMORY OPTIMIZATION: Use static singleton to avoid reloading XML (works across all service instances)
-                                globalManager = GlobalFlagManager.GetOrCreate(categoryName);
-                                globalManagersByCategory[categoryName] = globalManager;
-                            }
-                            var sleeveState = globalManager.CheckSleeveExistence(_doc, clashZone.MepElementId, clashZone.StructuralElementId);
+                            var globalIndex = GlobalIndexService.LoadOrCreate(_doc, categoryName);
+                            var entry = globalIndex.Entries?.FirstOrDefault(e => e.Id == clashZone.Id.ToString());
                             
-                            if (sleeveState.ExistsInGlobal)
+                            if (entry != null)
                             {
-                                if (sleeveState.HasClusterSleeve)
+                                // Entry exists in Global XML - check if sleeve still exists in Revit
+                                if (entry.IsClusterResolved && entry.ClusterSleeveInstanceId > 0)
                                 {
-                                    // Cluster sleeve exists in Global XML and Revit - skip individual placement
-                                    DebugLogger.Info($"[GLOBAL-XML] SKIP: ClashZone {clashZone.Id} has cluster sleeve {sleeveState.Placement.ClusterSleeveId} in Global XML (placed from another filter)");
-                                    if (PlacedCount + SkippedCount < 50) batchLogs.AppendLine($"✓ SKIP ClashZone {clashZone.Id}: Cluster sleeve {sleeveState.Placement.ClusterSleeveId} exists in Global XML");
+                                    // Cluster sleeve exists in Global XML - verify it exists in Revit
+                                    var clusterSleeve = _doc.GetElement(new ElementId(entry.ClusterSleeveInstanceId));
+                                    if (clusterSleeve != null)
+                                {
+                                        // Cluster sleeve exists - skip individual placement
+                                        DebugLogger.Info($"[GLOBAL-XML] SKIP: ClashZone {clashZone.Id} has cluster sleeve {entry.ClusterSleeveInstanceId} in Global XML (placed from another filter)");
+                                        if (PlacedCount + SkippedCount < 50) batchLogs.AppendLine($"✓ SKIP ClashZone {clashZone.Id}: Cluster sleeve {entry.ClusterSleeveInstanceId} exists in Global XML");
                                     
                                     // Update clash zone flags to match Global XML state
                                     clashZone.IsClusterResolved = true;
-                                    clashZone.ClusterSleeveInstanceId = sleeveState.Placement.ClusterSleeveId;
+                                        clashZone.ClusterSleeveInstanceId = entry.ClusterSleeveInstanceId;
                                     clashZone.IsResolved = false;
                                     clashZone.SleeveInstanceId = -1;
                                     
                                     SkippedCount++;
                                     continue;
                                 }
-                                else if (sleeveState.HasIndividualSleeve)
+                                    else
+                                    {
+                                        // ✅ OOP REFACTORING: Use FlagManager to reset cluster flags
+                                        DebugLogger.Info($"[FLAG-MANAGER] RESET: ClashZone {clashZone.Id} has cluster sleeve in Global XML but sleeve was deleted - resetting flags and proceeding with placement");
+                                        clashZone.IsClusterResolved = false;
+                                        clashZone.ClusterSleeveInstanceId = -1;
+                                        _flagManager.UpdateFlagsForPlacement(clashZone, -1, isCluster: true, categoryName);
+                                    }
+                                }
+                                else if (entry.IsResolved && entry.SleeveInstanceId > 0)
                                 {
-                                    // Individual sleeve exists in Global XML and Revit - skip placement
-                                    DebugLogger.Info($"[GLOBAL-XML] SKIP: ClashZone {clashZone.Id} has individual sleeve {sleeveState.Placement.IndividualSleeveId} in Global XML (placed from another filter)");
-                                    if (PlacedCount + SkippedCount < 50) batchLogs.AppendLine($"✓ SKIP ClashZone {clashZone.Id}: Individual sleeve {sleeveState.Placement.IndividualSleeveId} exists in Global XML");
+                                    // Individual sleeve exists in Global XML - verify it exists in Revit
+                                    var individualSleeve = _doc.GetElement(new ElementId(entry.SleeveInstanceId));
+                                    if (individualSleeve != null)
+                                    {
+                                        // Individual sleeve exists - skip placement
+                                        DebugLogger.Info($"[GLOBAL-XML] SKIP: ClashZone {clashZone.Id} has individual sleeve {entry.SleeveInstanceId} in Global XML (placed from another filter)");
+                                        if (PlacedCount + SkippedCount < 50) batchLogs.AppendLine($"✓ SKIP ClashZone {clashZone.Id}: Individual sleeve {entry.SleeveInstanceId} exists in Global XML");
                                     
                                     // Update clash zone flags to match Global XML state
                                     clashZone.IsResolved = true;
-                                    clashZone.SleeveInstanceId = sleeveState.Placement.IndividualSleeveId;
+                                        clashZone.SleeveInstanceId = entry.SleeveInstanceId;
                                     
                                     SkippedCount++;
                                     continue;
                                 }
                                 else
                                 {
-                                    // Entry exists in Global XML but sleeve was deleted from Revit - reset Global XML entry and proceed
-                                    DebugLogger.Info($"[GLOBAL-XML] RESET: ClashZone {clashZone.Id} has Global XML entry but sleeve was deleted - removing Global XML entry and proceeding with placement");
-                                    globalManager.RemovePlacement(clashZone.MepElementId, clashZone.StructuralElementId);
-                                    if (PlacedCount + SkippedCount < 50) batchLogs.AppendLine($"🔄 RESET ClashZone {clashZone.Id}: Global XML entry existed but sleeve deleted - removed entry, proceeding with placement");
+                                        // ✅ OOP REFACTORING: Use FlagManager to reset individual flags
+                                        DebugLogger.Info($"[FLAG-MANAGER] RESET: ClashZone {clashZone.Id} has individual sleeve in Global XML but sleeve was deleted - resetting flags and proceeding with placement");
+                                        clashZone.IsResolved = false;
+                                        clashZone.SleeveInstanceId = -1;
+                                        _flagManager.UpdateFlagsForPlacement(clashZone, -1, isCluster: false, categoryName);
+                                    }
                                 }
                             }
                             // If no Global XML entry exists, proceed with placement (normal case)
@@ -942,6 +957,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // Set sleeve metadata for fast parameter transfer
                         SetSleeveMetadata(sleeveInstance, clashZone.MepElementCategory);
                         
+                        // ✅ CRITICAL: Store ClashZone GUID on sleeve to prevent duplicates on refresh
+                        SetClashZoneGuidOnSleeve(sleeveInstance, clashZone.Id);
+                        
                         // ⚠️ CRITICAL: Set orientation (rotation for floors, HostOrientation parameter for walls/framing)
                         SetSleeveOrientation(sleeveInstance, clashZone);
                         parameterTimer.Stop();
@@ -1012,6 +1030,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     
                                     // ✅ CRITICAL FIX: Set the actual Revit element ID
                                     clashZone.SleeveInstanceId = sleeveInstance.Id.IntegerValue;
+                                    
+                                    // ✅ CRITICAL FIX FOR MULTILAYERED WALLS: Save bounding box coordinates for clustering
+                                    // This was missing, causing bounding boxes to be zeros in XML and preventing clustering
+                                    clashZone.SetSleeveBoundingBox(actualBbox);
+                                    
+                                    // ✅ CRITICAL LOGGING: Log bounding box immediately after placement (BEFORE regeneration/XML save)
+                                    // ✅ DEPLOYMENT: Wrapped in deployment mode check
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        DebugLogger.Info($"[BOUNDING_BOX_AFTER_PLACEMENT] Sleeve {sleeveInstance.Id.IntegerValue}: Min=({actualBbox.Min.X:F6}, {actualBbox.Min.Y:F6}, {actualBbox.Min.Z:F6}), Max=({actualBbox.Max.X:F6}, {actualBbox.Max.Y:F6}, {actualBbox.Max.Z:F6})");
+                                        DebugLogger.Info($"[BOUNDING_BOX_AFTER_PLACEMENT] ClashZone {clashZone.Id} - SetSleeveBoundingBox called: MinX={clashZone.SleeveBoundingBoxMinX:F6}, MinY={clashZone.SleeveBoundingBoxMinY:F6}, MinZ={clashZone.SleeveBoundingBoxMinZ:F6}, MaxX={clashZone.SleeveBoundingBoxMaxX:F6}, MaxY={clashZone.SleeveBoundingBoxMaxY:F6}, MaxZ={clashZone.SleeveBoundingBoxMaxZ:F6}");
+                                        
+                                        // Also log to cluster_debug.log for easier tracking
+                                        try
+                                        {
+                                            string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                                            System.IO.File.AppendAllText(clusterDebugLogPath, 
+                                                $"[BOUNDING_BOX_AFTER_PLACEMENT] {DateTime.Now:HH:mm:ss.fff} - Sleeve {sleeveInstance.Id.IntegerValue}: " +
+                                                $"MinX={actualBbox.Min.X:F6}, MinY={actualBbox.Min.Y:F6}, MinZ={actualBbox.Min.Z:F6}, " +
+                                                $"MaxX={actualBbox.Max.X:F6}, MaxY={actualBbox.Max.Y:F6}, MaxZ={actualBbox.Max.Z:F6}, " +
+                                                $"ClashZone={clashZone.Id}, SleeveInstanceId={clashZone.SleeveInstanceId}\n");
+                                        }
+                                        catch { }
+                                    }
                                 }
                                 
                                 // ✅ PERFORMANCE OPTIMIZATION: Batch XML updates instead of updating per sleeve
@@ -1039,34 +1081,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         clashZone.SleeveInstanceId = sleeveInstance.Id.IntegerValue;
                         clashZone.SleeveFamilyName = familySymbol.Family.Name;
                         
-                        // ✅ GLOBAL XML: Record placement in global XML (use cached manager)
-                        try
-                        {
-                            var categoryName = clashZone.MepElementCategory;
-                            if (!globalManagersByCategory.TryGetValue(categoryName, out var globalManager))
-                            {
-                                // ✅ MEMORY OPTIMIZATION: Use static singleton to avoid reloading XML (works across all service instances)
-                                globalManager = GlobalFlagManager.GetOrCreate(categoryName);
-                                globalManagersByCategory[categoryName] = globalManager;
-                            }
-                            
-                            // Get filter filename from constructor parameter or use default
-                            string filterName = _filterName ?? "unknown_filter.xml";
-                            
-                            globalManager.RecordPlacement(
-                                clashZone.MepElementId,
-                                clashZone.StructuralElementId,
-                                sleeveInstance.Id,
-                                null, // Individual sleeve, no cluster
-                                filterName
-                            );
-                            
-                            DebugLogger.Info($"[GLOBAL-XML] Recorded individual sleeve {sleeveInstance.Id.IntegerValue} for MEP={clashZone.MepElementId.IntegerValue}, Host={clashZone.StructuralElementId.IntegerValue}");
-                        }
-                        catch (Exception globalEx)
-                        {
-                            DebugLogger.Warning($"[GLOBAL-XML] Error recording placement: {globalEx.Message}");
-                        }
+                        // ✅ NOTE: Global XML update happens in batch at end (line ~1238) via GlobalIndexService.UpsertFlagsWithIds()
+                        // This ensures all placed sleeves are updated together efficiently
+                        DebugLogger.Info($"[GLOBAL-XML] Individual sleeve {sleeveInstance.Id.IntegerValue} placed for ClashZone {clashZone.Id} - will be saved to Global XML in batch");
                         
                         // ✅ PERFORMANCE OPTIMIZATION: Batch logging instead of individual file writes
                         if (PlacedCount < 50) batchLogs.AppendLine($"[SLEEVE-PLACED] ClashZone {clashZone.Id}: SleeveInstanceId = {clashZone.SleeveInstanceId}, RevitElementId = {sleeveInstance.Id.IntegerValue}");
@@ -1155,13 +1172,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Info($"[{DateTime.Now}] [PLACEMENT_COMPLETE] Placed: {PlacedCount}, Skipped: {SkippedCount}, Errors: {ErrorCount}, Total: {overallTimer.ElapsedMilliseconds}ms, Avg: {avgPlacementTime:F2}ms\n");
                 
                 // CRITICAL FIX: Save XML files with updated SleeveInstanceId values
+                // ✅ CRITICAL: Save Global XML IMMEDIATELY after placement (before clustering can delete sleeves)
                 if (PlacedCount > 0)
                 {
-                    DebugLogger.Info($"[{DateTime.Now}] [XML_SAVE] PlacedCount > 0, calling SaveUpdatedXmlFiles\n");
+                    DebugLogger.Info($"[{DateTime.Now}] [XML_SAVE] PlacedCount > 0, starting save operations\n");
                     
-                    // ⚠️ CRITICAL: Log flag states BEFORE XML save
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [XML-SAVE-BEFORE] About to save XML with {PlacedCount} placed sleeves\n");
+                    // ⚠️ CRITICAL: Log flag states BEFORE any operations
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [XML-SAVE-BEFORE] About to save with {PlacedCount} placed sleeves\n");
                     
+                    // ✅ STEP 1: Capture placed clash zones WITH valid SleeveInstanceId BEFORE any file operations
+                    // This ensures we have the correct state even if SaveUpdatedXmlFiles modifies the list
+                    var placedClashZonesForGlobal = clashZones
+                        .Where(cz => cz.IsResolved && cz.SleeveInstanceId > 0)
+                        .ToList(); // ✅ OOP REFACTORING: Keep actual ClashZone objects instead of anonymous types
+                    
+                    DebugLogger.Info($"[GLOBAL_INDEX] CAPTURED {placedClashZonesForGlobal.Count} placed clash zones for Global XML update (before file operations)");
+                    foreach (var cz in placedClashZonesForGlobal.Take(10))
+                    {
+                        DebugLogger.Info($"[GLOBAL_INDEX-CAPTURED] ClashZone {cz.Id}: Category={cz.MepElementCategory}, IsResolved={cz.IsResolved}, SleeveInstanceId={cz.SleeveInstanceId}");
+                    }
+                    
+                    // ✅ STEP 2: Save Filter XML first
                     SaveUpdatedXmlFiles(clashZones);
                     
                     // ⚠️ REMOVED: Don't update coordinates here because clustering will delete individual sleeves
@@ -1172,23 +1203,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // ⚠️ CRITICAL: Log flag states AFTER XML save
                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [XML-SAVE-AFTER] XML save completed for {PlacedCount} placed sleeves\n");
 
-                    // ✅ GLOBAL FLAGS: Upsert IsResolved/IsClusterResolved into per-category global index (with instance IDs)
+                    // ✅ OOP REFACTORING: Use FlagManager for flag updates after placement
+                    // Per methodology document line 242-245: "Update Global XML" after placement
                     try
                     {
-                        var updatesByCategory = clashZones
-                            .GroupBy(cz => cz.MepElementCategory)
-                            .ToDictionary(g => g.Key, g => g.Select(cz => (cz.Id, cz.IsResolved, cz.IsClusterResolved, cz.SleeveInstanceId, cz.ClusterSleeveInstanceId)));
-
-                        foreach (var kvp in updatesByCategory)
+                        if (placedClashZonesForGlobal.Count > 0)
                         {
-                            var categoryName = kvp.Key;
-                            var updates = kvp.Value;
-                            GlobalIndexService.UpsertFlagsWithIds(_doc, categoryName, updates);
+                            foreach (var clashZone in placedClashZonesForGlobal)
+                            {
+                                if (clashZone.SleeveInstanceId > 0)
+                                {
+                                    _flagManager.UpdateFlagsForPlacement(
+                                        clashZone,
+                                        clashZone.SleeveInstanceId,
+                                        isCluster: false,
+                                        clashZone.MepElementCategory
+                                    );
+                                }
+                            }
+                            
+                            DebugLogger.Info($"[FLAG-MANAGER] ✅ Successfully updated Global XML for {placedClashZonesForGlobal.Count} placed sleeves (BEFORE clustering)");
+                        }
+                        else
+                        {
+                            DebugLogger.Warning($"[FLAG-MANAGER] ⚠️ No placed clash zones found to update in Global XML (PlacedCount={PlacedCount}, but no clash zones with IsResolved=true AND SleeveInstanceId > 0)");
                         }
                     }
                     catch (Exception upEx)
                     {
-                        DebugLogger.Warning($"[GLOBAL_INDEX] Upsert after individual placement failed: {upEx.Message}");
+                        DebugLogger.Error($"[FLAG-MANAGER] ❌ CRITICAL ERROR: Flag update after individual placement failed: {upEx.Message}");
+                        DebugLogger.Error($"[FLAG-MANAGER] Stack trace: {upEx.StackTrace}");
+                        // Don't throw - Global XML failure shouldn't stop placement, but log it clearly
                     }
                 }
                 else
@@ -2673,6 +2718,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             catch (Exception ex)
             {
                 DebugLogger.Error($"[SetSleeveMetadata] Error setting metadata for sleeve {sleeveInstance.Id}: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// ✅ CRITICAL: Store ClashZone GUID on sleeve as family parameter to prevent duplicate GUID creation on refresh
+        /// This creates a permanent link between Revit sleeve element and XML clash zone GUID
+        /// </summary>
+        private void SetClashZoneGuidOnSleeve(FamilyInstance sleeveInstance, Guid clashZoneGuid)
+        {
+            try
+            {
+                var guidParam = sleeveInstance.LookupParameter("ClashZone_GUID");
+                if (guidParam != null && !guidParam.IsReadOnly)
+                {
+                    string guidString = clashZoneGuid.ToString();
+                    guidParam.Set(guidString);
+                    DebugLogger.Info($"[SetClashZoneGuid] Set ClashZone_GUID = '{guidString}' for sleeve {sleeveInstance.Id}");
+                }
+                else
+                {
+                    // Parameter not found - log warning but don't fail (backward compatibility)
+                    DebugLogger.Warning($"[SetClashZoneGuid] ClashZone_GUID parameter not found or read-only on sleeve {sleeveInstance.Id} - GUID storage skipped. Add 'ClashZone_GUID' text parameter to family.");
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[SetClashZoneGuid] Error setting ClashZone_GUID for sleeve {sleeveInstance.Id}: {ex.Message}");
             }
         }
 

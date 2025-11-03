@@ -14,6 +14,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public static Func<List<string>> GetSelectedReferenceFiles { get; set; }
         public static Func<List<string>> GetSelectedHostFiles { get; set; }
         public static Func<List<string>> GetSelectedHostElementTypes { get; set; }
+        public static Func<List<string>> GetSelectedHostCategories { get; set; } // ✅ Added for host categories validation
         public static Func<List<string>> GetSelectedFilterItems { get; set; }
         public static Func<string, Dictionary<string, double>> GetClearanceSettings { get; set; }
 

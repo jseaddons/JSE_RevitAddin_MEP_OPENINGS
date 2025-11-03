@@ -200,12 +200,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 _document = document;
 
                 // Log to main log file
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [PARAMETER_SERVICE] Starting category-specific population for {selectedCategories.Count} categories\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [PARAMETER_SERVICE] Starting category-specific population for {selectedCategories.Count} categories\n");
                 
                 // Get opening parameters using the optimized harvest routine
                 var openingParameters = GetEssentialOpeningParameters(document);
 
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [PARAMETER_SERVICE] Using cached opening parameters: {openingParameters.Count} parameters\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [PARAMETER_SERVICE] Using cached opening parameters: {openingParameters.Count} parameters\n");
 
                 // Get linked files for parameter extraction (both MEP and architectural files)
                 var linkedFileService = new Services.LinkedFileService();
@@ -222,7 +222,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 foreach (var f in hostLinkedFiles)
                     System.Diagnostics.Debug.WriteLine($"[HOST]   Host file: {f.FileName}  type={f.FileType}");
 
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [PARAMETER_SERVICE] Found {allLinkedFiles.Count} total linked files, {hostLinkedFiles.Count} host element files\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [PARAMETER_SERVICE] Found {allLinkedFiles.Count} total linked files, {hostLinkedFiles.Count} host element files\n");
 
                 // Get host element parameters from linked architectural files (walls, floors, ceilings are in linked files)
                 var linkedHostParameters = GetHostElementParametersFromLinkedFiles(hostLinkedFiles);
@@ -242,11 +242,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     System.Diagnostics.Debug.WriteLine($"[HOST] Found {linkedHostParameters.Count} host parameters: {string.Join(", ", linkedHostParameters.Take(5))}");
                 }
 
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [PARAMETER_SERVICE] Found {linkedHostParameters.Count} host element parameters from linked files\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [PARAMETER_SERVICE] Found {linkedHostParameters.Count} host element parameters from linked files\n");
 
                 // Combine opening and host parameters from linked files
                 var combinedOpeningParameters = openingParameters.Union(linkedHostParameters).Distinct().OrderBy(p => p).ToList();
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [PARAMETER_SERVICE] Combined total: {combinedOpeningParameters.Count} unique parameters\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [PARAMETER_SERVICE] Combined total: {combinedOpeningParameters.Count} unique parameters\n");
                 
                 // Update each tab that matches selected categories
                 foreach (var selectedCategory in selectedCategories)
@@ -254,16 +254,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var matchingTab = FindTabByCategory(serviceParameterTabs, selectedCategory);
                     if (matchingTab != null)
                     {
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [PARAMETER_SERVICE] Updating tab '{matchingTab.Text}' for category '{selectedCategory}'\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [PARAMETER_SERVICE] Updating tab '{matchingTab.Text}' for category '{selectedCategory}'\n");
 
                         var categorySpecificParameters = GetParametersForSpecificCategoryFromLinkedFiles(selectedCategory, allLinkedFiles);
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [PARAMETER_SERVICE] Found {categorySpecificParameters.Count} parameters for category '{selectedCategory}' from linked files\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [PARAMETER_SERVICE] Found {categorySpecificParameters.Count} parameters for category '{selectedCategory}' from linked files\n");
 
                         UpdateSingleTabParameters(matchingTab, categorySpecificParameters, combinedOpeningParameters, document);
                     }
                     else
                     {
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [PARAMETER_SERVICE] No tab found for category '{selectedCategory}'\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [PARAMETER_SERVICE] No tab found for category '{selectedCategory}'\n");
                     }
                 }
 
@@ -273,7 +273,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     System.Diagnostics.Debug.WriteLine($"[HOST] Tab '{hostTab.Text}' gets {linkedHostParameters.Count} host params + {combinedOpeningParameters.Count} opening params");
 
-                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [PARAMETER_SERVICE] Updating 'Host to Opening' tab with host parameters\n");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [PARAMETER_SERVICE] Updating 'Host to Opening' tab with host parameters\n");
 
                     // For Host tab: Source = host parameters, Target = opening parameters
                     UpdateSingleTabParameters(hostTab, linkedHostParameters, combinedOpeningParameters, document);
@@ -289,7 +289,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     System.Diagnostics.Debug.WriteLine($"[REFERENCE] Tab '{referenceTab.Text}' found, populating with MEP parameters");
 
-                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [PARAMETER_SERVICE] Updating 'Reference Element to Openings' tab with MEP parameters\n");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [PARAMETER_SERVICE] Updating 'Reference Element to Openings' tab with MEP parameters\n");
 
                     // For Reference tab: Source = MEP parameters, Target = opening parameters
                     // We need to harvest MEP parameters since they're not in the cache yet
@@ -301,11 +301,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     System.Diagnostics.Debug.WriteLine($"[REFERENCE] WARNING: 'Reference Element to Openings' tab not found!");
                 }
                 
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [PARAMETER_SERVICE] Category-specific parameter population completed successfully\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [PARAMETER_SERVICE] Category-specific parameter population completed successfully\n");
             }
             catch (Exception ex)
             {
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [PARAMETER_SERVICE] Error in PopulateCategorySpecificParameters: {ex.Message}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [PARAMETER_SERVICE] Error in PopulateCategorySpecificParameters: {ex.Message}\n");
             }
         }
 
@@ -971,7 +971,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 LoggingConfiguration.ConditionalAppendAllText(
-                    @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt",
+                    SafeFileLogger.GetLogFilePath("logger_debug.txt"),
                     $"[{DateTime.Now}] [ADD_ROW] Starting to add new row{Environment.NewLine}");
 
                 int rowHeight = 24;
@@ -1012,7 +1012,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 row.Controls.Add(mepCombo);
 
                 LoggingConfiguration.ConditionalAppendAllText(
-                    @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt",
+                    SafeFileLogger.GetLogFilePath("logger_debug.txt"),
                     $"[{DateTime.Now}] [ADD_ROW] MEP combo populated with {mepCombo.Items.Count} items{Environment.NewLine}");
 
                 // Opening Parameter ComboBox (right side) - THIS IS THE CRITICAL PART
@@ -1026,14 +1026,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 };
 
                 LoggingConfiguration.ConditionalAppendAllText(
-                    @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt",
+                    SafeFileLogger.GetLogFilePath("logger_debug.txt"),
                     $"[{DateTime.Now}] [ADD_ROW] About to populate opening combo - received {openingParameters.Count} parameters from caller{Environment.NewLine}");
 
                 // CRITICAL FIX: Use the optimized method instead of destructive bootstrap routine
                 var liveOpeningParams = GetEssentialOpeningParameters(document);
 
                 LoggingConfiguration.ConditionalAppendAllText(
-                    @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt",
+                    SafeFileLogger.GetLogFilePath("logger_debug.txt"),
                     $"[{DateTime.Now}] [ADD_ROW] Live bootstrap returned {liveOpeningParams.Count} opening parameters{Environment.NewLine}");
 
                 // Add opening parameters
@@ -1049,7 +1049,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 row.Controls.Add(openingCombo);
 
                 LoggingConfiguration.ConditionalAppendAllText(
-                    @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt",
+                    SafeFileLogger.GetLogFilePath("logger_debug.txt"),
                     $"[{DateTime.Now}] [ADD_ROW] Opening combo populated - Items.Count = {openingCombo.Items.Count}{Environment.NewLine}");
 
                 // Remove button
@@ -1069,13 +1069,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 row.Controls.Add(removeBtn);
 
                 LoggingConfiguration.ConditionalAppendAllText(
-                    @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt",
+                    SafeFileLogger.GetLogFilePath("logger_debug.txt"),
                     $"[{DateTime.Now}] [ADD_ROW] Row successfully added to panel{Environment.NewLine}");
             }
             catch (Exception ex)
             {
                 LoggingConfiguration.ConditionalAppendAllText(
-                    @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt",
+                    SafeFileLogger.GetLogFilePath("logger_debug.txt"),
                     $"[{DateTime.Now}] [ADD_ROW] ERROR: {ex.Message}{Environment.NewLine}{ex.StackTrace}{Environment.NewLine}");
             }
         }
@@ -1087,7 +1087,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // =====  DIAGNOSTIC – DO NOT DELETE  =====
                 var diagOpeningParams = GetEssentialOpeningParameters(document);
                 LoggingConfiguration.ConditionalAppendAllText(
-                    @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt",
+                    SafeFileLogger.GetLogFilePath("logger_debug.txt"),
                     $"[LIVE-DIAG] {nameof(CreateAutomaticParameterRows)} about to fill Opening combo with {diagOpeningParams.Count} items{Environment.NewLine}");
                 // =======================================
 
@@ -1103,7 +1103,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 // =====  DIAGNOSTIC – DO NOT DELETE  =====
                 LoggingConfiguration.ConditionalAppendAllText(
-                    @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt",
+                    SafeFileLogger.GetLogFilePath("logger_debug.txt"),
                     $"[ROW-CHECK] About to create {specificParameters.Count} rows for category '{categoryName}'{Environment.NewLine}");
                 // =======================================
                 
@@ -1156,7 +1156,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     // =====  DIAGNOSTIC – DO NOT DELETE  =====
                     LoggingConfiguration.ConditionalAppendAllText(
-                        @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt",
+                        SafeFileLogger.GetLogFilePath("logger_debug.txt"),
                         $"[REF-CHECK] Opening combo now contains {openingCombo.Items.Count - 1} items (after AddRange){Environment.NewLine}");
                     // =======================================
 
@@ -1167,7 +1167,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     // =====  DIAGNOSTIC – DO NOT DELETE  =====
                     LoggingConfiguration.ConditionalAppendAllText(
-                        @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt",
+                        SafeFileLogger.GetLogFilePath("logger_debug.txt"),
                         $"[UI-TRUTH] Added-row combo count = {openingCombo.Items.Count - 1}{Environment.NewLine}");
                     // =======================================
 
@@ -1201,14 +1201,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // =====  DIAGNOSTIC – DO NOT DELETE  =====
                 var finalOpeningParams = GetEssentialOpeningParameters(document);
                 LoggingConfiguration.ConditionalAppendAllText(
-                    @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt",
+                    SafeFileLogger.GetLogFilePath("logger_debug.txt"),
                     $"[REF-FINAL] Method completed - bootstrap returns {finalOpeningParams.Count} opening parameters{Environment.NewLine}");
                 // =======================================
             }
             catch (Exception ex)
             {
                 LoggingConfiguration.ConditionalAppendAllText(
-                    @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt",
+                    SafeFileLogger.GetLogFilePath("logger_debug.txt"),
                     $"[LIVE-DIAG-ERROR] {ex.GetType().Name}: {ex.Message}{Environment.NewLine}");
                 System.Diagnostics.Debug.WriteLine($"[PARAMETER_UI] Error creating specific parameter rows: {ex.Message}");
             }

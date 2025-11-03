@@ -194,6 +194,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ FIX: Filter walls by minimum thickness if setting is enabled
             structuralInSectionBox = FilterWallsByMinimumThickness(structuralInSectionBox).ToList();
 
+            // ✅ FIX: Filter architectural floors if setting is enabled
+            structuralInSectionBox = FilterArchitecturalFloors(structuralInSectionBox).ToList();
+
             _log($"\n=== FINAL RESULTS ===");
             _log($"Total MEP: {mepInSectionBox.Count}");
             _log($"Total Structural: {structuralInSectionBox.Count}");
@@ -253,6 +256,63 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 System.Diagnostics.Debug.WriteLine($"[ElementCollectorService] Error filtering walls by minimum thickness: {ex.Message}");
                 return walls; // Return original list on error
+            }
+        }
+
+        /// <summary>
+        /// Filters architectural floors if the setting is enabled
+        /// Skips floors where Structural parameter is not checked
+        /// </summary>
+        private static IEnumerable<Element> FilterArchitecturalFloors(IEnumerable<Element> structuralElements)
+        {
+            try
+            {
+                var settings = ApplicationProfileService.Instance.GetCurrentSettings();
+                bool ignoreArchFloors = settings.IgnoreArchitecturalFloors;
+                
+                // If setting is disabled, don't filter (all floors allowed)
+                if (!ignoreArchFloors)
+                    return structuralElements;
+                
+                var filteredElements = new List<Element>();
+                int skippedCount = 0;
+                
+                foreach (var element in structuralElements)
+                {
+                    if (element is Floor floor)
+                    {
+                        // Check Structural parameter
+                        Parameter structuralParam = floor.get_Parameter(BuiltInParameter.FLOOR_PARAM_IS_STRUCTURAL);
+                        bool isStructural = structuralParam?.AsInteger() == 1;
+                        
+                        if (isStructural)
+                        {
+                            filteredElements.Add(element);
+                        }
+                        else
+                        {
+                            skippedCount++;
+                            System.Diagnostics.Debug.WriteLine($"[ElementCollectorService] SKIP: Architectural floor {floor.Id.IntegerValue} (Structural parameter not checked)");
+                        }
+                    }
+                    else
+                    {
+                        // Not a floor, add it (walls, framing, etc.)
+                        filteredElements.Add(element);
+                    }
+                }
+                
+                if (skippedCount > 0)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[ElementCollectorService] Filtered {skippedCount} architectural floors");
+                }
+                
+                return filteredElements;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ElementCollectorService] Error filtering architectural floors: {ex.Message}");
+                return structuralElements; // Return original list on error
             }
         }
     }

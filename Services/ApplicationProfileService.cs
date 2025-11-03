@@ -124,7 +124,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 System.Diagnostics.Debug.WriteLine("ApplicationProfileService: Reset for new project - fresh instance created");
                 
                 // Use conditional logging instead of hardcoded file writes
-                var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_debug.log";
+                var debugLogPath = SafeFileLogger.GetLogFilePath("profile_debug.log");
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] ResetForNewProject: Fresh instance created\n");
             }
         }
@@ -157,7 +157,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 try
                 {
                     // Use conditional logging instead of hardcoded file writes
-                    var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_check_debug.log";
+                    var debugLogPath = SafeFileLogger.GetLogFilePath("profile_check_debug.log");
                     JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Checking project-specific profiles\n");
                     JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] ProfileService.ProfileFilePath: {_profileService.ProfileFilePath}\n");
                     JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Available profiles count: {_profileService.AvailableProfiles.Count}\n");
@@ -178,7 +178,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 catch (Exception ex)
                 {
                     // Fallback to original logic
-                    var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_check_debug.log";
+                    var debugLogPath = SafeFileLogger.GetLogFilePath("profile_check_debug.log");
                     JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Exception in profile check: {ex.Message}\n");
                     // ✅ CRITICAL FIX: Handle null _profileService (can happen if directory creation failed)
                     if (_profileService == null)
@@ -266,7 +266,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 System.Diagnostics.Debug.WriteLine("LoadCurrentProfile: Cleared current profile - will be set project-specific later");
                 
                 // Use conditional logging instead of hardcoded file writes
-                var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_debug.log";
+                var debugLogPath = SafeFileLogger.GetLogFilePath("profile_debug.log");
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadCurrentProfile: Cleared current profile\n");
             }
             catch (Exception ex)
@@ -337,7 +337,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     System.Diagnostics.Debug.WriteLine($"UpdateForCurrentDocument: Creating new ProfileManagementService for path: {documentPath}");
                     
                     // Direct file logging for visibility
-                    var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\update_debug.log";
+                    var debugLogPath = SafeFileLogger.GetLogFilePath("update_debug.log");
                     JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] UpdateForCurrentDocument: Creating new ProfileManagementService for path: {documentPath}\n");
                     System.Diagnostics.Debug.WriteLine($"UpdateForCurrentDocument: Current service profile file path: {_profileService.ProfileFilePath}");
                     System.Diagnostics.Debug.WriteLine($"UpdateForCurrentDocument: Current service available profiles count: {_profileService.AvailableProfiles.Count}");
@@ -533,7 +533,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 System.Diagnostics.Debug.WriteLine("ApplicationProfileService: Forced profile setup for new file");
                 
-                var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_debug.log";
+                var debugLogPath = SafeFileLogger.GetLogFilePath("profile_debug.log");
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] ForceProfileSetupForNewFile: Fresh instance created with no cached profiles\n");
             }
         }
@@ -557,7 +557,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 try
                 {
                     // DIRECT FILE SAVING: Bypass broken ProfileManagementService
-                    var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
+                    var debugLogPath = SafeFileLogger.GetLogFilePath("profile_save_debug.log");
                     JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] SaveCurrentProfile: Saving profile {_currentProfile.Name}\n");
                     
                     // Save the current profile name to PROJECT-SPECIFIC directory for persistence
@@ -603,7 +603,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 catch (Exception ex)
                 {
-                    var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
+                    var debugLogPath = SafeFileLogger.GetLogFilePath("profile_save_debug.log");
                     JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] SaveCurrentProfile failed: {ex.Message}\n");
                     
                     StatusUpdated?.Invoke(this, new StatusUpdateEventArgs(
@@ -619,7 +619,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
+                var debugLogPath = SafeFileLogger.GetLogFilePath("profile_save_debug.log");
                 
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] SaveConfigurationOnly START for profile: {profile.Name}\n");
                 
@@ -723,7 +723,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
+                var debugLogPath = SafeFileLogger.GetLogFilePath("profile_save_debug.log");
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] SaveConfigurationOnly failed: {ex.Message}\n");
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] Exception details: {ex}\n");
                 throw;

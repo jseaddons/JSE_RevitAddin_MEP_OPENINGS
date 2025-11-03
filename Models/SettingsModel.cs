@@ -35,6 +35,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public double RoundingValue { get; set; } = 5.0; // Default rounding value in mm
         public bool RoundAlwaysUp { get; set; } = false; // If true, always round up; if false, round to nearest
         public double MinWallThickness { get; set; } = 0.0; // Minimum wall thickness in mm - walls below this are ignored
+        public bool IgnoreArchitecturalFloors { get; set; } = false; // If true, ignore floors without Structural parameter checked
 
         public SettingsModel()
         {
@@ -68,7 +69,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
                 CreateOpeningsWithSlope = this.CreateOpeningsWithSlope,
                 RoundingValue = this.RoundingValue,
                 RoundAlwaysUp = this.RoundAlwaysUp,
-                MinWallThickness = this.MinWallThickness
+                MinWallThickness = this.MinWallThickness,
+                IgnoreArchitecturalFloors = this.IgnoreArchitecturalFloors
             };
         }
     }

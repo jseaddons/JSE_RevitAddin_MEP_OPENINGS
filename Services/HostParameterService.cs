@@ -167,7 +167,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     // =====  DIAGNOSTIC – DO NOT DELETE  =====
                     LoggingConfiguration.ConditionalAppendAllText(
-                        @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt",
+                        SafeFileLogger.GetLogFilePath("logger_debug.txt"),
                         $"[HOST-CHECK] Opening combo now contains {openingCombo.Items.Count} items (after AddRange){Environment.NewLine}");
                     // =======================================
 

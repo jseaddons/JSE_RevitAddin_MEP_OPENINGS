@@ -31,6 +31,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly CrashSafeExecutor _crashSafeExecutor; // ⚠️ CRITICAL: Provides timeout and crash protection
         private MemoryManager _memoryManager; // ⚠️ CRITICAL: Provides memory management and timeout protection
         private MemoryProfiler _memoryProfiler; // Memory profiling for tracking actual vs theoretical usage
+        
+        // ✅ OOP REFACTORING: Centralized flag and GUID management
+        private readonly FlagManager _flagManager;
+        private readonly GuidManager _guidManager;
+        
+        // ✅ OOP REFACTORING: Validation strategies
+        private readonly Validation.ThreePointValidator _threePointValidator;
 
         // UI References (passed from main dialog)
         private System.Windows.Forms.Label _statusLabel;
@@ -56,6 +63,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Memory limit is auto-calculated based on system RAM (10% of total RAM, capped at 12GB)
             // For 64GB system: ~6.4GB limit (10% of 64GB, capped at 12GB)
             _memoryManager = new MemoryManager(maxMemoryMB: null, timeoutMinutes: 5);
+            
+            // ✅ OOP REFACTORING: Initialize centralized managers
+            _flagManager = new FlagManager(document);
+            _guidManager = new GuidManager(document);
+            _threePointValidator = new Validation.ThreePointValidator();
         }
 
         /// <summary>
@@ -465,7 +477,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             // Write to the main debug logger file that user can see
             // ✅ DEPLOYMENT MODE: ConditionalAppendAllText now checks DeploymentMode automatically
-            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] === REFRESH STARTED === Timestamp: {timestamp}\n");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] === REFRESH STARTED === Timestamp: {timestamp}\n");
 
             DebugLogger.Info("=== REFRESH METHOD STARTED ===");
             System.Diagnostics.Debug.WriteLine("[REFRESH] DebugLogger.Info called");
@@ -553,6 +565,65 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 _progressBar.Value = 0;
                 return Autodesk.Revit.UI.Result.Cancelled; // STOP - don't proceed without a filter
             }
+            
+            // ✅ UI STATE VALIDATION: Check all 4 required UI selections before proceeding
+            var validationErrors = new List<string>();
+            
+            // 1. Check MEP Categories
+            if (selectedMepCategories == null || selectedMepCategories.Count == 0)
+            {
+                validationErrors.Add("MEP Categories");
+            }
+            
+            // 2. Check Host Categories (Walls, Structural Framing, Floors, Ceilings)
+            // Note: "Host Categories" and "Host Element Types" both read from the same UI panel,
+            // so we only need to check one of them.
+            var selectedHostCategories = FilterUiStateProvider.GetSelectedHostCategories?.Invoke() ?? new List<string>();
+            if (selectedHostCategories == null || selectedHostCategories.Count == 0)
+            {
+                validationErrors.Add("Host Categories");
+            }
+            
+            // 3. Check MEP Linked Files (Reference Files)
+            if (selectedReferenceFiles == null || selectedReferenceFiles.Count == 0)
+            {
+                validationErrors.Add("MEP Linked Files (Reference Files)");
+            }
+            
+            // 4. Check Host Linked Files
+            if (selectedHostFiles == null || selectedHostFiles.Count == 0)
+            {
+                validationErrors.Add("Host Linked Files");
+            }
+            
+            // If any validation failed, show prompt and stop
+            if (validationErrors.Count > 0)
+            {
+                string errorMessage = "Please select the following before running Refresh:\n\n";
+                errorMessage += string.Join("\n", validationErrors.Select(e => $"• {e}"));
+                errorMessage += "\n\nThese selections are required for clash detection to work correctly.";
+                
+                DebugLogger.Error($"[CLASH_DEBUG] ERROR: Missing UI selections: {string.Join(", ", validationErrors)}");
+                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ERROR: Missing UI selections: {string.Join(", ", validationErrors)}\n");
+                
+                System.Windows.Forms.MessageBox.Show(
+                    errorMessage,
+                    "Missing Required Selections",
+                    System.Windows.Forms.MessageBoxButtons.OK,
+                    System.Windows.Forms.MessageBoxIcon.Warning);
+                
+                _statusLabel.Text = $"Refresh cancelled - Missing: {string.Join(", ", validationErrors)}";
+                _progressBar.Value = 0;
+                return Autodesk.Revit.UI.Result.Cancelled;
+            }
+            
+            // ✅ All validations passed - log selections
+            DebugLogger.Info($"[CLASH_DEBUG] ✅ UI State Validation PASSED:");
+            DebugLogger.Info($"[CLASH_DEBUG]   - MEP Categories: {selectedMepCategories.Count} selected");
+            DebugLogger.Info($"[CLASH_DEBUG]   - Host Categories: {selectedHostCategories.Count} selected");
+            DebugLogger.Info($"[CLASH_DEBUG]   - MEP Linked Files: {selectedReferenceFiles.Count} selected");
+            DebugLogger.Info($"[CLASH_DEBUG]   - Host Linked Files: {selectedHostFiles.Count} selected");
+            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ✅ UI State Validation PASSED\n");
 
             // Step 2: Process filters and detect intersections
             var filtersToProcess = new List<Models.OpeningFilter>();
@@ -829,13 +900,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // This preserves IsResolved and IsClusterResolved flags from previous placement/clustering
             // Ensure per-project filters directory exists
             try { ProjectPathService.EnsureFiltersDirectory(_document); } catch { }
-            // Validate and auto-heal global flags per selected category before proceeding
+            // ✅ Get resolved GUID sets from Global XML (for filtering - no Revit API calls)
+            // Note: Flag validation/reset happens in:
+            // - 3-Point Validation: Clears Global XML entries when MEP/host elements are deleted
+            // - ResetResolvedFlagForDeletedSleeves: Resets flags when sleeves are deleted
             var __globalsResolved = new HashSet<Guid>();
             try
             {
                 foreach (var cat in selectedMepCategories ?? new List<string>())
                 {
-                    var (resolvedSet, clusterResolvedSet) = GlobalIndexService.ValidateAndFixFlags(_document, cat);
+                    var (resolvedSet, clusterResolvedSet) = GlobalIndexService.GetResolvedGuids(_document, cat);
                     foreach (var gid in resolvedSet) __globalsResolved.Add(gid);
                     foreach (var gid in clusterResolvedSet) __globalsResolved.Add(gid);
                 }
@@ -848,6 +922,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             DebugLogger.Info($"[CLASH_DEBUG] Loaded {existingCount} existing clash zones from Filter XML files");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Loaded {existingCount} existing clash zones from Filter XML files (selected filter + categories)\n");
+            
+            // ✅ OOP REFACTORING: Use FlagManager for flag syncing from Global XML
+            // Clash zones must remain in Filter XML even if resolved (for OK button logic and history)
+            // Only update their flags to match Global XML state
+            if (existingClashZones?.ClashZones != null && existingClashZones.ClashZones.Count > 0)
+            {
+                try
+                {
+                    // Group by category and sync flags for each category
+                    var clashZonesByCategory = existingClashZones.ClashZones
+                        .GroupBy(cz => cz.MepElementCategory)
+                        .ToList();
+                    
+                    foreach (var categoryGroup in clashZonesByCategory)
+                    {
+                        var category = categoryGroup.Key;
+                        var categoryClashZones = categoryGroup.ToList();
+                        
+                        _flagManager.SyncFlagsFromGlobal(categoryClashZones, category);
+                        
+                        DebugLogger.Info($"[REFRESH-GLOBAL-SYNC] Synced flags from Global XML for {categoryClashZones.Count} clash zones in category '{category}'");
+                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [REFRESH-GLOBAL-SYNC] Synced {categoryClashZones.Count} clash zones from Global XML for category '{category}'\n");
+                    }
+                }
+                catch (Exception syncEx)
+                {
+                    DebugLogger.Error($"[REFRESH-GLOBAL-SYNC] Error syncing flags from Global XML: {syncEx.Message}");
+                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [REFRESH-GLOBAL-SYNC] ERROR: {syncEx.Message}\n");
+                }
+            }
             
             // Reinitialize with existing clash zones
             // If a 3D view with section box is active, pre-filter existing zones to the oriented box
@@ -876,75 +980,121 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
 
-            // ✅ FIX: Recalculate intersection points for existing clash zones to use corrected intersection logic
+            // ✅ CRITICAL: 3-Point Validation - Validate clash zone validity before processing
+            // Validation Criteria: 1) MEP Element exists, 2) Structural Element exists, 3) Elements still intersect
             if (existingClashZones?.ClashZones != null && existingClashZones.ClashZones.Count > 0)
             {
-                DebugLogger.Info($"[CLASH_DEBUG] ===== RECALCULATING INTERSECTION POINTS FOR {existingClashZones.ClashZones.Count} EXISTING CLASH ZONES =====");
-                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ===== RECALCULATING INTERSECTION POINTS FOR {existingClashZones.ClashZones.Count} EXISTING CLASH ZONES =====\n");
+                DebugLogger.Info($"[CLASH_DEBUG] ===== 3-POINT VALIDATION FOR {existingClashZones.ClashZones.Count} EXISTING CLASH ZONES =====");
+                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ===== 3-POINT VALIDATION FOR {existingClashZones.ClashZones.Count} EXISTING CLASH ZONES =====\n");
                 
-                int updatedCount = 0;
-                int skippedCount = 0;
-                int errorCount = 0;
+                var validClashZones = new List<Models.ClashZone>();
+                var invalidClashZones = new List<Models.ClashZone>();
+                int removedCount = 0;
                 
-                // Recalculate intersection points for existing clash zones
+                // ✅ OOP REFACTORING: Use ThreePointValidator for validation (replaces inline validation logic)
                 foreach (var existingZone in existingClashZones.ClashZones)
                 {
                     try
                     {
-                        // Get the MEP and structural elements
-                        var mepElement = GetElementFromDocumentOrLinked(_document, existingZone.MepElementId);
-                        var structuralElement = GetElementFromDocumentOrLinked(_document, existingZone.StructuralElementId);
+                        var validationResult = _threePointValidator.Validate(existingZone, _document);
                         
-                        if (mepElement == null)
+                        if (!validationResult.IsValid)
                         {
-                            DebugLogger.Warning($"[CLASH_DEBUG] Zone {existingZone.Id}: MEP element {existingZone.MepElementId} not found");
-                            skippedCount++;
+                            DebugLogger.Info($"[3-POINT-VALIDATION] ❌ INVALID: Zone {existingZone.Id} - {validationResult.FailureReason}");
+                            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [3-POINT-VALIDATION] ❌ INVALID: Zone {existingZone.Id} - {validationResult.FailureReason}\n");
+                            invalidClashZones.Add(existingZone);
                             continue;
                         }
                         
-                        if (structuralElement == null)
-                        {
-                            DebugLogger.Warning($"[CLASH_DEBUG] Zone {existingZone.Id}: Structural element {existingZone.StructuralElementId} not found");
-                            skippedCount++;
-                            continue;
-                        }
+                        // ✅ VALID - Keep clash zone
+                        validClashZones.Add(existingZone);
                         
-                        // Recalculate intersection point using corrected logic
-                        var newIntersectionPoint = CalculateIntersectionPoint(mepElement, structuralElement);
-                        if (newIntersectionPoint != null)
+                        // Update intersection point if it changed
+                        if (validationResult.UpdatedIntersectionPoint != null && validationResult.IntersectionPointMovement.HasValue)
                         {
-                            // Update the intersection point if it differs significantly
-                            var existingPoint = new XYZ(existingZone.IntersectionPointX, existingZone.IntersectionPointY, existingZone.IntersectionPointZ);
-                            var distance = existingPoint.DistanceTo(newIntersectionPoint);
+                            // Update intersection point (linked coordinates for individual sleeve placement)
+                            existingZone.IntersectionPointX = validationResult.UpdatedIntersectionPoint.X;
+                            existingZone.IntersectionPointY = validationResult.UpdatedIntersectionPoint.Y;
+                            existingZone.IntersectionPointZ = validationResult.UpdatedIntersectionPoint.Z;
                             
-                            if (distance > 0.001) // If points differ by more than 1mm
+                            // ✅ CRITICAL: Update active document coordinates for proximity calculation
+                            if (validationResult.UpdatedActiveDocumentPoint != null)
                             {
-                                // Update intersection point (linked coordinates for individual sleeve placement)
-                                existingZone.IntersectionPointX = newIntersectionPoint.X;
-                                existingZone.IntersectionPointY = newIntersectionPoint.Y;
-                                existingZone.IntersectionPointZ = newIntersectionPoint.Z;
-                                
-                                // ✅ CRITICAL: Transform to active document coordinates for proximity calculation
-                                var activeDocPoint = TransformToActiveDocumentCoordinates(newIntersectionPoint, mepElement.Document);
-                                existingZone.SleevePlacementPointActiveDocumentX = activeDocPoint.X;
-                                existingZone.SleevePlacementPointActiveDocumentY = activeDocPoint.Y;
-                                existingZone.SleevePlacementPointActiveDocumentZ = activeDocPoint.Z;
-                                
-                                DebugLogger.Info($"[CLASH_DEBUG] ✅ Zone {existingZone.Id}: Updated from {existingPoint} -> {newIntersectionPoint} (Δ={distance:F3}ft)");
-                                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ✅ Zone {existingZone.Id}: Updated from ({existingPoint.X:F2}, {existingPoint.Y:F2}, {existingPoint.Z:F2}) -> ({newIntersectionPoint.X:F2}, {newIntersectionPoint.Y:F2}, {newIntersectionPoint.Z:F2}) (Δ={distance:F3}ft)\n");
-                                updatedCount++;
+                                existingZone.SleevePlacementPointActiveDocumentX = validationResult.UpdatedActiveDocumentPoint.X;
+                                existingZone.SleevePlacementPointActiveDocumentY = validationResult.UpdatedActiveDocumentPoint.Y;
+                                existingZone.SleevePlacementPointActiveDocumentZ = validationResult.UpdatedActiveDocumentPoint.Z;
                             }
-                            else
-                            {
-                                DebugLogger.Info($"[CLASH_DEBUG] Zone {existingZone.Id}: No update needed (distance={distance:F6}ft)");
-                                skippedCount++;
-                            }
+                            
+                            DebugLogger.Info($"[3-POINT-VALIDATION] ✅ VALID + UPDATED: Zone {existingZone.Id} - Intersection point updated (Δ={validationResult.IntersectionPointMovement.Value:F3}ft)");
+                            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [3-POINT-VALIDATION] ✅ VALID + UPDATED: Zone {existingZone.Id} - Intersection updated (Δ={validationResult.IntersectionPointMovement.Value:F3}ft)\n");
                         }
                         else
                         {
-                            DebugLogger.Warning($"[CLASH_DEBUG] Zone {existingZone.Id}: Could not calculate new intersection point");
-                            skippedCount++;
+                            DebugLogger.Info($"[3-POINT-VALIDATION] ✅ VALID: Zone {existingZone.Id} - All 3 points valid, no update needed");
                         }
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLogger.Warning($"[3-POINT-VALIDATION] ❌ ERROR: Zone {existingZone.Id} - Exception during validation: {ex.Message}");
+                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [3-POINT-VALIDATION] ❌ ERROR: Zone {existingZone.Id} - {ex.Message}\n");
+                        invalidClashZones.Add(existingZone); // Treat as invalid on error
+                    }
+                }
+                
+                // ✅ STEP 2: Remove invalid clash zones and clear Global XML entries
+                if (invalidClashZones.Count > 0)
+                {
+                    removedCount = invalidClashZones.Count;
+                    
+                    // ✅ OOP REFACTORING: Use GuidManager to remove invalid clash zones from Global XML
+                    foreach (var invalidClashZone in invalidClashZones)
+                    {
+                        try
+                        {
+                            _guidManager.RemoveFromGlobalXml(invalidClashZone.Id, invalidClashZone.MepElementCategory);
+                        }
+                        catch (Exception globalEx)
+                        {
+                            DebugLogger.Warning($"[3-POINT-VALIDATION] Error removing ClashZone {invalidClashZone.Id} from Global XML: {globalEx.Message}");
+                        }
+                    }
+                    
+                    if (invalidClashZones.Count > 0)
+                    {
+                        DebugLogger.Info($"[3-POINT-VALIDATION] Removed {invalidClashZones.Count} invalid clash zones from Global XML");
+                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [3-POINT-VALIDATION] Removed {invalidClashZones.Count} invalid clash zones from Global XML\n");
+                    }
+                    
+                    DebugLogger.Info($"[3-POINT-VALIDATION] Removed {removedCount} invalid clash zones (MEP/Structural deleted or no longer intersect)");
+                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [3-POINT-VALIDATION] Removed {removedCount} invalid clash zones\n");
+                }
+                
+                // Replace with validated clash zones only
+                existingClashZones.ClashZones = validClashZones;
+                
+                DebugLogger.Info($"[3-POINT-VALIDATION] Validation complete: {validClashZones.Count} valid, {removedCount} removed");
+                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [3-POINT-VALIDATION] Result: {validClashZones.Count} valid, {removedCount} removed\n");
+            }
+            
+            // ✅ NOTE: Intersection points already updated during 3-point validation above
+            // Continue with orientation calculation for validated clash zones
+            if (existingClashZones?.ClashZones != null && existingClashZones.ClashZones.Count > 0)
+            {
+                DebugLogger.Info($"[CLASH_DEBUG] ===== CALCULATING ORIENTATION FOR {existingClashZones.ClashZones.Count} VALIDATED CLASH ZONES =====");
+                
+                int orientationUpdatedCount = 0;
+                
+                // Calculate orientation for validated clash zones
+                foreach (var existingZone in existingClashZones.ClashZones)
+                {
+                    try
+                    {
+                        // Get the MEP and structural elements (already validated above)
+                        var mepElement = GetElementFromDocumentOrLinked(_document, existingZone.MepElementId);
+                        var structuralElement = GetElementFromDocumentOrLinked(_document, existingZone.StructuralElementId);
+                        
+                        if (mepElement == null || structuralElement == null)
+                            continue; // Skip if elements not found (shouldn't happen after validation)
 
                         // ✅ ORIENTATION: Cache minimal data (no heavy API retention) and compute orientation post-API
                         try
@@ -1000,14 +1150,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     catch (Exception ex)
                     {
-                        DebugLogger.Warning($"[CLASH_DEBUG] ❌ Zone {existingZone.Id}: Error recalculating - {ex.Message}");
-                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ❌ Zone {existingZone.Id}: Error - {ex.Message}\n");
-                        errorCount++;
+                        DebugLogger.Warning($"[CLASH_DEBUG] ❌ Zone {existingZone.Id}: Error calculating orientation - {ex.Message}");
+                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ❌ Zone {existingZone.Id}: Orientation error - {ex.Message}\n");
                     }
                 }
                 
-                DebugLogger.Info($"[CLASH_DEBUG] Recalculation summary: Updated={updatedCount}, Skipped={skippedCount}, Errors={errorCount}");
-                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Recalculation summary: Updated={updatedCount}, Skipped={skippedCount}, Errors={errorCount}\n");
+                DebugLogger.Info($"[CLASH_DEBUG] Orientation calculation complete for {existingClashZones.ClashZones.Count} validated clash zones");
+                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Orientation calculation complete\n");
                 
                 // ✅ MEMORY OPTIMIZATION: Clear Revit API objects after recalculation to free memory
                 foreach (var existingZone in existingClashZones.ClashZones)
@@ -1036,14 +1185,88 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             // Flush each message immediately to avoid buffered string buildup
             batchedLogger = new BatchedLogger(baseLogger, batchSize: 1, flushIntervalSeconds: 1, logFileName: refreshLogName);
-            _clashZoneService = new ClashZoneService(existingClashZones, msg => batchedLogger.Log(msg));
+            // ✅ OOP: Pass GuidManager to ClashZoneService for GUID lookup from Revit sleeves
+            _clashZoneService = new ClashZoneService(existingClashZones, msg => batchedLogger.Log(msg), _flagManager, _guidManager);
             
             DebugLogger.Info($"[CLASH_DEBUG] ClashZoneService reinitialized with {existingCount} existing zones from XML");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ClashZoneService reinitialized with {existingCount} existing zones from XML\n");
 
+            // ✅ STEP 3a: Create Known Intersections Map from valid clash zones (PERFORMANCE OPTIMIZATION)
+            // This allows skipping already-known intersections and only detecting NEW ones
+            // ✅ FLAG MANAGEMENT: Only include zones that passed 3-point validation AND are NOT cluster resolved
+            // Cluster resolved zones skip intersection detection (flags already set by FlagManager.SyncFlagsFromGlobal)
+            var knownIntersectionsMap = new Dictionary<(int mepId, int hostId, string pointKey), ClashZone>();
+            var validatedClashZones = existingClashZones?.ClashZones ?? new List<Models.ClashZone>();
+            
+            // Filter out cluster resolved zones (don't need intersection detection - flags already managed by FlagManager)
+            var zonesForIntersectionDetection = validatedClashZones
+                .Where(cz => cz != null && !cz.IsClusterResolved)
+                .ToList();
+            int clusterResolvedSkippedCount = validatedClashZones.Count - zonesForIntersectionDetection.Count;
+            
+            if (zonesForIntersectionDetection.Count > 0)
+            {
+                foreach (var cz in zonesForIntersectionDetection)
+                {
+                    int mepId = cz.MepElementId?.IntegerValue ?? cz.MepElementIdValue;
+                    int hostId = cz.StructuralElementId?.IntegerValue ?? cz.StructuralElementIdValue;
+                    
+                    // Create point key with tolerance (round to 0.1ft for matching)
+                    double tolerance = 0.1;
+                    string pointKey = $"{Math.Round(cz.IntersectionPointX / tolerance) * tolerance:F1}," +
+                                     $"{Math.Round(cz.IntersectionPointY / tolerance) * tolerance:F1}," +
+                                     $"{Math.Round(cz.IntersectionPointZ / tolerance) * tolerance:F1}";
+                    
+                    var key = (mepId, hostId, pointKey);
+                    if (!knownIntersectionsMap.ContainsKey(key))
+                    {
+                        knownIntersectionsMap[key] = cz;
+                    }
+                }
+                DebugLogger.Info($"[PERFORMANCE] Created known intersections map: {knownIntersectionsMap.Count} entries (skipping re-detection), {clusterResolvedSkippedCount} cluster resolved zones skipped");
+                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [PERFORMANCE] Known intersections map: {knownIntersectionsMap.Count} entries, {clusterResolvedSkippedCount} cluster resolved skipped\n");
+            }
+            
             // Step 7: Filter and detect new clash zones
             _progressBar.Value = 50;
             _statusLabel.Text = "Detecting new clash zones...";
+
+            // ✅ PERFORMANCE OPTIMIZATION: Filter out already-known intersections before processing
+            // This skips expensive geometry calculations for unchanged intersections
+            var filteredIntersections = new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
+            if (knownIntersectionsMap.Count > 0)
+            {
+                int skippedCount = 0;
+                foreach (var intersection in currentIntersections)
+                {
+                    var (mepElement, structuralElement, bbox, point) = intersection;
+                    int mepId = mepElement.Id.IntegerValue;
+                    int hostId = structuralElement.Id.IntegerValue;
+                    
+                    // Create point key with same tolerance
+                    double tolerance = 0.1;
+                    string pointKey = $"{Math.Round(point.X / tolerance) * tolerance:F1}," +
+                                     $"{Math.Round(point.Y / tolerance) * tolerance:F1}," +
+                                     $"{Math.Round(point.Z / tolerance) * tolerance:F1}";
+                    
+                    var key = (mepId, hostId, pointKey);
+                    if (knownIntersectionsMap.ContainsKey(key))
+                    {
+                        skippedCount++;
+                        continue; // Skip this intersection - already known
+                    }
+                    
+                    filteredIntersections.Add(intersection); // New intersection - keep it
+                }
+                DebugLogger.Info($"[PERFORMANCE] Filtered intersections: {currentIntersections.Count} total, {skippedCount} skipped (known), {filteredIntersections.Count} new");
+                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [PERFORMANCE] Filtered: {currentIntersections.Count} total, {skippedCount} skipped, {filteredIntersections.Count} new\n");
+            }
+            else
+            {
+                // No known intersections - process all
+                filteredIntersections = currentIntersections;
+                DebugLogger.Info($"[PERFORMANCE] No known intersections map - processing all {currentIntersections.Count} intersections");
+            }
 
             // Use passed file selections and clearance settings from UI
 
@@ -1176,8 +1399,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Warning($"[CLASH_DEBUG] Current-selection filter failed: {ex.Message}");
             }
 
-            DebugLogger.Info($"[CLASH_DEBUG] Calling DetectNewClashZones with {currentIntersections.Count} intersections...");
-            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Calling DetectNewClashZones with {currentIntersections.Count} intersections...\n");
+            DebugLogger.Info($"[CLASH_DEBUG] Calling DetectNewClashZones with {filteredIntersections.Count} filtered intersections (from {currentIntersections.Count} total)...");
+            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Calling DetectNewClashZones with {filteredIntersections.Count} filtered intersections (from {currentIntersections.Count} total)...\n");
 
             // DEBUG: Log intersection breakdown by category
             var intersectionBreakdown = currentIntersections.GroupBy(i => GetElementCategory(i.Item1))
@@ -1213,7 +1436,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 _memoryProfiler?.TakeSnapshot("BEFORE_DETECT_NEW_CLASH_ZONES", 0);
                 _clashZoneService.SetMemoryProfiler(_memoryProfiler);
                 
-                newClashZones = _clashZoneService.DetectNewClashZones(currentIntersections, _document, clearanceSettings, selectedMepCategories);
+                newClashZones = _clashZoneService.DetectNewClashZones(filteredIntersections, _document, clearanceSettings, selectedMepCategories);
                 
                 // ✅ MEMORY PROFILING: Record snapshot after clash zone detection
                 _memoryProfiler?.TakeSnapshot("AFTER_DETECT_NEW_CLASH_ZONES", newClashZones?.Count ?? 0);
@@ -1954,8 +2177,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Saved {categoryClashZones.Count} clash zones for category '{category}'\n");
                                 if (OptimizationFlags.UseGlobalCategoryIndexForRefresh)
                                 {
-                                    // Write minimal per-category index for refresh-only dedupe/flags
-                                    GlobalIndexService.EnsureEntries(_document, category, categoryClashZones.Select(cz => cz.Id));
+                                    // ✅ OOP REFACTORING: Use GuidManager to ensure Global XML entries exist
+                                    foreach (var clashZone in categoryClashZones)
+                                    {
+                                        _guidManager.EnsureGlobalXmlEntry(clashZone, category);
+                                    }
                                 }
                             }
                             else
@@ -2016,6 +2242,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _statusLabel.Text = $"Clash zones: {finalTotal} total, {finalUnresolved} unresolved, {finalNewZones} new | Logs: {logDir}";
 
             DebugLogger.Info($"[CLASH_DEBUG] Clash zone refresh complete: {finalTotal} total, {finalUnresolved} unresolved, {finalNewZones} new");
+            
+            // ✅ USER FEEDBACK: Prompt user if no new clash zones found AND no zones need processing
+            // Only show if: 1) No new zones detected, 2) No zones were invalidated, 3) All zones are resolved (cluster or individual)
+            var invalidatedCount = existingClashZones?.ClashZones != null ? 
+                (existingCount - (existingClashZones.ClashZones.Count)) : 0;
+            
+            // ✅ FLAG MANAGEMENT: Count unresolved zones (neither cluster resolved nor individual resolved)
+            // Flags are managed by FlagManager.SyncFlagsFromGlobal() - we just check the flag properties here
+            int unresolvedCount = existingClashZones?.ClashZones != null ? 
+                existingClashZones.ClashZones.Count(cz => cz != null && !cz.IsClusterResolved && !cz.IsResolved) : 0;
+            
+            if (finalNewZones == 0 && invalidatedCount == 0 && unresolvedCount == 0 && existingClashZones?.ClashZones != null && existingClashZones.ClashZones.Count > 0)
+            {
+                int validCount = existingClashZones.ClashZones.Count;
+                int clusterResolvedCount = existingClashZones.ClashZones.Count(cz => cz.IsClusterResolved);
+                int individualResolvedCount = existingClashZones.ClashZones.Count(cz => cz.IsResolved && !cz.IsClusterResolved);
+                DebugLogger.Info($"[CLASH_DEBUG] ✅ All {validCount} existing clash zones are resolved ({clusterResolvedCount} cluster, {individualResolvedCount} individual) - no zones need processing");
+                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ✅ All {validCount} zones resolved - no zones need processing\n");
+                
+                // Show user-friendly message
+                System.Windows.Forms.MessageBox.Show(
+                    $"Refresh complete!\n\n" +
+                    $"✅ All {validCount} clash zones are resolved.\n" +
+                    $"✅ No new clash zones detected.\n" +
+                    $"✅ Total: {finalTotal} clash zones (all resolved).\n\n" +
+                    $"No zones need processing - all intersections are handled.",
+                    "Refresh Complete - No Zones Need Processing",
+                    System.Windows.Forms.MessageBoxButtons.OK,
+                    System.Windows.Forms.MessageBoxIcon.Information);
+            }
+            else if (finalNewZones == 0 && invalidatedCount > 0)
+            {
+                // No new zones but some were invalidated - don't show "no new zones" message
+                DebugLogger.Info($"[CLASH_DEBUG] Refresh complete: {invalidatedCount} clash zones invalidated, {finalNewZones} new zones detected");
+            }
+            else if (finalNewZones == 0 && unresolvedCount > 0)
+            {
+                // No new zones but there are unresolved existing zones - don't show "no new zones" message
+                DebugLogger.Info($"[CLASH_DEBUG] Refresh complete: {unresolvedCount} unresolved zones need processing, {finalNewZones} new zones detected");
+            }
+            
             var __refreshEnd = DateTime.Now;
             var __refreshMs = (long)(__refreshEnd - __refreshStart).TotalMilliseconds;
             SafeFileLogger.SafeAppendText("performance.log", $"REFRESH_END {__refreshEnd:O} DURATION_MS {__refreshMs}");
@@ -2765,14 +3032,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Load existing clash zones from Filter XML files (selected filter + categories)
         /// This preserves flags (IsResolved, IsClusterResolved) from previous runs
+        /// 
+        /// ⚠️ CRITICAL: Even when UseGlobalCategoryIndexForRefresh is true, we MUST load existing clash zones
+        /// to populate the known intersections map. Otherwise, all intersections are treated as new,
+        /// causing duplicate clash zones and ignoring resolved flags from Global XML.
         /// </summary>
         private Models.ClashZoneStorage LoadExistingClashZonesFromFilterXml(List<string> selectedFilterNames, List<string> selectedCategories)
         {
-            if (OptimizationFlags.UseGlobalCategoryIndexForRefresh)
-            {
-                DebugLogger.Info("[CLASH_DEBUG] Using per-category global index; skipping full XML load");
-                return new Models.ClashZoneStorage { ClashZones = new List<Models.ClashZone>(), LastUpdated = DateTime.Now };
-            }
+            // ⚠️ CRITICAL FIX: Always load existing clash zones, even when optimization flag is true
+            // The known intersections map requires existing clash zones to prevent duplicates
+            // The optimization flag should only affect how we query Global XML, not whether we load Filter XML
             var mergedStorage = new Models.ClashZoneStorage
             {
                 ClashZones = new List<Models.ClashZone>(),

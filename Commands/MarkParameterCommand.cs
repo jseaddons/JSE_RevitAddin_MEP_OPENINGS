@@ -62,15 +62,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         foreach (var category in availableCategories)
                         {
                             var disciplinePrefix = _markPrefixes?.GetDisciplinePrefix(category) ?? GetDisciplinePrefixForCategory(category);
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Processing category: {category}, discipline: {disciplinePrefix}\n");
+                            // ✅ FIX: Get remark flag per category from MarkPrefixSettings
+                            var remarkFlag = _markPrefixes?.GetRemarkFlag(category) ?? _remarkAll;
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Processing category: {category}, discipline: {disciplinePrefix}, remark: {remarkFlag}\n");
 
                             using (var tx = new Transaction(doc, $"Mark {category} Clusters"))
                             {
                                 tx.Start();
 
                                 var markService = new MarkParameterService();
+                                var numberFormat = _markPrefixes?.NumberFormat ?? "000";
                                 var (processedCount, errorCount) = markService.ApplyMepMarkToClusters(
-                                    doc, category, _projectPrefix, disciplinePrefix, _remarkAll);
+                                    doc, category, _projectPrefix, disciplinePrefix, remarkFlag, numberFormat);
 
                                 tx.Commit();
 
@@ -87,8 +90,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             tx.Start();
 
                             var markService = new MarkParameterService();
+                            var numberFormat = _markPrefixes?.NumberFormat ?? "000";
                             var (processedCount, errorCount) = markService.ApplyMepMarkToClusters(
-                                doc, _targetCategory, _projectPrefix, _disciplinePrefix, _remarkAll);
+                                doc, _targetCategory, _projectPrefix, _disciplinePrefix, _remarkAll, numberFormat);
 
                             tx.Commit();
 

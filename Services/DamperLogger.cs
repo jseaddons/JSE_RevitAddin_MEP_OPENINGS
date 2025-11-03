@@ -7,8 +7,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
      /// </summary>
     public static class DamperLogger
     {
-    // Match the project's Log directory used by DebugLogger for consistency
-    private static readonly string LogFilePath = Path.Combine("C:", "JSE_CSharp_Projects", "JSE_MEPOPENING_23", "Log", "RevitAddin_DamperDebug.log");
+    // ✅ FIXED: Use SafeFileLogger for deployment-compatible paths (no hardcoded paths)
+    private static string LogFilePath => SafeFileLogger.GetLogFilePath("RevitAddin_DamperDebug.log");
 
         public static void InitLogFile()
         {

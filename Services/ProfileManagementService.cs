@@ -627,7 +627,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 
                 // Use conditional logging instead of hardcoded file writes
-                var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
+                var debugLogPath = SafeFileLogger.GetLogFilePath("profile_save_debug.log");
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] SaveProfiles: Saving {_availableProfiles.Count} profiles to: {_profileFilePath}\n");
                 
                 var serializer = new XmlSerializer(typeof(List<UserProfile>));
@@ -644,7 +644,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 System.Diagnostics.Debug.WriteLine($"SaveProfiles: ERROR - {ex.Message}");
                 
                 // Use conditional logging instead of hardcoded file writes
-                var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
+                var debugLogPath = SafeFileLogger.GetLogFilePath("profile_save_debug.log");
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] SaveProfiles: ERROR - {ex.Message}\n");
                 
                 StatusUpdated?.Invoke(this, new StatusUpdateEventArgs(

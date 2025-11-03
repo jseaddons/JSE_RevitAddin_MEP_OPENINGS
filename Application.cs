@@ -117,8 +117,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS
         button5.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
         button5.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
 
-        // Parameter Service Command - standalone parameter transfer functionality
-        var button6 = panel.AddPushButton<ParameterServiceCommand>("Parameter Service");
+        // ✅ NEW: Update XML Command - updates XML after manual cluster sleeve adjustments
+        var buttonUpdateXml = panel.AddPushButton<UpdateXmlCommand>("Update XML");
+        buttonUpdateXml.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+        buttonUpdateXml.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+        buttonUpdateXml.ToolTip = "Update XML files after manual cluster sleeve changes. ⚠️ Expensive operation - use only after resizing/joining sleeves.";
+
+        // ✅ V2: Parameter Service Command V2 - standalone parameter transfer functionality (NEW VERSION)
+        var button6 = panel.AddPushButton<TestParameterServiceDialogV2Command>("Parameter Service");
         button6.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
         button6.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
 

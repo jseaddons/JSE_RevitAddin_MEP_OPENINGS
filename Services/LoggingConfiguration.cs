@@ -12,7 +12,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public static bool DisableAllHardcodedLogging = false; // Temporarily enabled for DuctSleeveCommand debugging
         
         // Individual log switches - set to true only for the service you want to debug
-        public static bool EnableMainUI = false;           // Main UI operations
+        // ✅ REMOVED: EnableMainUI - Main UI logging removed per user request
         public static bool EnableOKButton = true;          // OK button operations (ENABLED for debugging)
         public static bool EnableRefreshButton = false;   // Refresh button operations
         public static bool EnableProfileManagement = false; // Profile save/restore (DISABLED)
@@ -24,16 +24,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public static bool EnableExternalEvents = false; // External event handlers (DISABLED to reduce profile logs)
         public static bool EnableProgressDialog = false;  // Progress dialog operations (DISABLED)
         
-        // Log file paths
-        private static readonly string LogDirectory = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log";
-        private static readonly string MainLogFile = Path.Combine(LogDirectory, "main_debug.log");
+        // Log file paths - ✅ FIXED: Use SafeFileLogger for deployment-compatible paths
+        private static string LogDirectory => SafeFileLogger.GetLogDirectory();
+        private static string MainLogFile => SafeFileLogger.GetLogFilePath("main_debug.log");
         
         /// <summary>
         /// Gets the appropriate log file path based on the service
         /// </summary>
         public static string GetLogFilePath(string serviceName)
         {
-            if (serviceName == "MainUI" || serviceName == "OKButton")
+            // ✅ REMOVED: MainUI log file path - Main UI logging removed per user request
+            if (serviceName == "OKButton")
                 return MainLogFile;
             
             return Path.Combine(LogDirectory, $"{serviceName.ToLower()}_debug.log");
@@ -46,7 +47,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             return serviceName switch
             {
-                "MainUI" => EnableMainUI,
+                // ✅ REMOVED: "MainUI" => EnableMainUI, - Main UI logging removed per user request
                 "OKButton" => EnableOKButton,
                 "RefreshButton" => EnableRefreshButton,
                 "ProfileManagement" => EnableProfileManagement,
@@ -90,7 +91,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public static void FocusOnService(string serviceName)
         {
             // Disable all
-            EnableMainUI = false;
+            // ✅ REMOVED: EnableMainUI = false; - Main UI logging removed per user request
             EnableOKButton = false;
             EnableRefreshButton = false;
             EnableProfileManagement = false;
@@ -104,16 +105,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Enable only the specified service
             switch (serviceName)
             {
-                case "MainUI":
-                    EnableMainUI = true;
-                    break;
+                // ✅ REMOVED: case "MainUI": - Main UI logging removed per user request
                 case "OKButton":
                     EnableOKButton = true;
-                    EnableMainUI = true; // OK button needs main UI context
+                    // ✅ REMOVED: EnableMainUI = true; - Main UI logging removed per user request
                     break;
                 case "RefreshButton":
                     EnableRefreshButton = true;
-                    EnableMainUI = true;
+                    // ✅ REMOVED: EnableMainUI = true; - Main UI logging removed per user request
                     break;
                 case "ProfileManagement":
                     EnableProfileManagement = true;
@@ -147,7 +146,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void DisableAllLogging()
         {
-            EnableMainUI = false;
+            // ✅ REMOVED: EnableMainUI = false; - Main UI logging removed per user request
             EnableOKButton = false;
             EnableRefreshButton = false;
             EnableProfileManagement = false;
@@ -167,7 +166,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             DisableAllLogging();
             EnableOKButton = true;
-            EnableMainUI = true;
+            // ✅ REMOVED: EnableMainUI = true; - Main UI logging removed per user request
         }
     }
 }

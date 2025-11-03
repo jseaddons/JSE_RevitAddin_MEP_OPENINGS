@@ -116,6 +116,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ FIX: Filter walls by minimum thickness if setting is enabled
                 wallElements = FilterWallsByMinimumThickness(wallElements).ToList();
 
+                // ✅ FIX: Filter architectural floors if setting is enabled
+                wallElements = FilterArchitecturalFloors(wallElements).ToList();
+
                 _logger($"Found {mepElements.Count} MEP elements and {wallElements.Count} structural elements (walls/floors/framing) in section box");
                 _logger($"Selected MEP cats: {string.Join(", ", selectedMepCategories ?? new List<string>())}");
                 _logger($"Selected host types: {string.Join(", ", allowedHostElementTypes ?? new List<string>())}");
@@ -306,30 +309,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
             
-            // Collect from host
-            int totalCollected = 0;
-            foreach (var cat in mepCats)
+            // ✅ FIX: Collect MEP from active document ONLY if "Active Document" is selected in reference files
+            // Use passed-in reference files, independent from host files
+            // If not provided, fall back to UI state provider
+            if (selectedReferenceFiles == null)
             {
-                // ⚠️ CRITICAL: Check element limit BEFORE collecting
-                if (totalCollected >= MAX_ELEMENTS_TO_PROCESS)
+                selectedReferenceFiles = FilterUiStateProvider.GetSelectedReferenceFiles?.Invoke() ?? new List<string>();
+            }
+            
+            // Check if "Active Document" is selected in reference files
+            string activeDocName = doc?.Title ?? string.Empty;
+            bool isActiveDocSelected = selectedReferenceFiles.Any(f => 
+                f.Contains("(Active Document)", StringComparison.OrdinalIgnoreCase) ||
+                (f.Contains(activeDocName, StringComparison.OrdinalIgnoreCase) && f.Contains("Active Document", StringComparison.OrdinalIgnoreCase)));
+            
+            if (isActiveDocSelected)
+            {
+                _logger($"DEBUG: Active Document '{activeDocName}' is selected in reference files - collecting MEP elements from active document");
+                
+                // Collect from active document (host document)
+                int totalCollected = 0;
+                foreach (var cat in mepCats)
                 {
-                    _logger($"[ELEMENT-LIMIT] ⚠️ Stopped at {totalCollected} elements (limit: {MAX_ELEMENTS_TO_PROCESS})");
-                    SafeFileLogger.SafeAppendText("intersection_limits.log", 
-                        $"Element limit exceeded: Collected {totalCollected} elements, limit is {MAX_ELEMENTS_TO_PROCESS}. " +
-                        $"Please reduce section box or use more specific filters.");
-                    break; // Stop collection
-                }
-                
-                var collector = new FilteredElementCollector(doc)
-                    .OfCategory(cat)
-                    .WhereElementIsNotElementType();
-                
-                // ✅ FIX: Use BoundingBoxIntersectsFilter but also add fallback manual check
-                // BoundingBoxIntersectsFilter can miss elements on exact boundaries or with edge cases
-                var filteredByOutline = collector
-                    .WherePasses(new BoundingBoxIntersectsFilter(hostOutline))
-                    .ToElements()
-                    .ToList();
+                    // ⚠️ CRITICAL: Check element limit BEFORE collecting
+                    if (totalCollected >= MAX_ELEMENTS_TO_PROCESS)
+                    {
+                        _logger($"[ELEMENT-LIMIT] ⚠️ Stopped at {totalCollected} elements (limit: {MAX_ELEMENTS_TO_PROCESS})");
+                        SafeFileLogger.SafeAppendText("intersection_limits.log", 
+                            $"Element limit exceeded: Collected {totalCollected} elements, limit is {MAX_ELEMENTS_TO_PROCESS}. " +
+                            $"Please reduce section box or use more specific filters.");
+                        break; // Stop collection
+                    }
+                    
+                    var collector = new FilteredElementCollector(doc)
+                        .OfCategory(cat)
+                        .WhereElementIsNotElementType();
+                    
+                    // ✅ FIX: Use BoundingBoxIntersectsFilter but also add fallback manual check
+                    // BoundingBoxIntersectsFilter can miss elements on exact boundaries or with edge cases
+                    var filteredByOutline = collector
+                        .WherePasses(new BoundingBoxIntersectsFilter(hostOutline))
+                        .ToElements()
+                        .ToList();
                 
                 // ⚠️ CRITICAL: Enforce element limit
                 int beforeAdd = mepElements.Count;
@@ -401,12 +422,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (missedElements.Count > 0)
                 {
                     _logger($"⚠️ Found {missedElements.Count} {cat} elements missed by BoundingBoxIntersectsFilter in host document, adding them manually");
-                    filteredByOutline = filteredByOutline.Concat(missedElements).ToList();
+                    // Add missed elements separately (filteredByOutline was already added at line 358)
+                    int remaining = MAX_ELEMENTS_TO_PROCESS - totalCollected;
+                    if (remaining > 0)
+                    {
+                        int beforeMissed = mepElements.Count;
+                        mepElements.AddRange(missedElements.Take(remaining));
+                        totalCollected += mepElements.Count - beforeMissed;
+                    }
                 }
-                
-                mepElements.AddRange(filteredByOutline);
+                }
+                _logger($"Collected {mepElements.Count} MEP elements from active document '{activeDocName}' after category filter");
             }
-            _logger($"Collected {mepElements.Count} MEP elements from host document after category filter");
+            else
+            {
+                _logger($"DEBUG: Active Document '{activeDocName}' is NOT selected in reference files - skipping MEP collection from active document");
+            }
 
             // ✅ CRITICAL FIX: Track MEP count before processing links
             int mepCountBeforeLinks = mepElements.Count;
@@ -422,24 +453,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 .ToList();
 
             _logger($"DEBUG: Found {links.Count} linked models");
-
-            // Use passed-in reference files (MEP links), independent from host files
-            // If not provided, fall back to UI state provider
-            if (selectedReferenceFiles == null)
+            
+            // Use selectedHostFiles passed in, or get from UI state provider
+            if (selectedHostFiles == null)
             {
-                selectedReferenceFiles = FilterUiStateProvider.GetSelectedReferenceFiles?.Invoke() ?? new List<string>();
+                selectedHostFiles = FilterUiStateProvider.GetSelectedHostFiles?.Invoke() ?? new List<string>();
             }
             
             _logger($"DEBUG: Selected reference files (MEP links): {string.Join(", ", selectedReferenceFiles)}");
+            _logger($"DEBUG: Selected reference files COUNT: {selectedReferenceFiles.Count} (includes both main list and 'Other Files' section)");
+            _logger($"DEBUG: Selected host files: {string.Join(", ", selectedHostFiles)}");
+            _logger($"DEBUG: Selected host files COUNT: {selectedHostFiles.Count} (includes both main list and 'Other Files' section)");
 
             // Normalization helper for robust filename matching
+            // Handles both main list items (e.g., "FileName.rvt (123 elements)") and "Other Files" section items
             Func<string, string> norm = s =>
             {
                 if (string.IsNullOrWhiteSpace(s)) return string.Empty;
                 var trimmed = s;
+                // Remove everything after first parenthesis (e.g., "(123 elements)", "(Active Document)", "[NOT LOADED]")
                 var idxParen = trimmed.IndexOf('(');
                 if (idxParen >= 0) trimmed = trimmed.Substring(0, idxParen);
-                trimmed = System.IO.Path.GetFileNameWithoutExtension(trimmed);
+                var idxBracket = trimmed.IndexOf('[');
+                if (idxBracket >= 0) trimmed = trimmed.Substring(0, idxBracket);
+                trimmed = System.IO.Path.GetFileNameWithoutExtension(trimmed.Trim());
                 trimmed = trimmed.ToLowerInvariant().Replace("_detached", "");
                 trimmed = trimmed.Replace('_', ' ').Replace('-', ' ');
                 trimmed = System.Text.RegularExpressions.Regex.Replace(trimmed, "\\s+", " ");
@@ -474,11 +511,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 Outline linkOutline = new Outline(actualMin, actualMax);
 
                 // Collect MEP from reference links only (if any specified); otherwise from all links
+                // ✅ FIX: Properly match files from both main list and "Other Files" section
                 bool refMatch = selectedReferenceFiles.Count == 0 || selectedReferenceFiles.Any(f =>
                 {
                     string ui = norm(f);
-                    return linkTitleNorm.Contains(ui) || ui.Contains(linkTitleNorm);
+                    bool matches = linkTitleNorm.Contains(ui) || ui.Contains(linkTitleNorm);
+                    if (matches)
+                    {
+                        _logger($"DEBUG: ✅ Reference file MATCH: '{f}' (normalized: '{ui}') matches link '{linkDoc.Title}' (normalized: '{linkTitleNorm}')");
+                    }
+                    return matches;
                 });
+                if (!refMatch && selectedReferenceFiles.Count > 0)
+                {
+                    _logger($"DEBUG: ⚠️ Reference file NO MATCH: Link '{linkDoc.Title}' (normalized: '{linkTitleNorm}') not in selected files. Selected files (normalized): {string.Join(", ", selectedReferenceFiles.Select(f => $"'{norm(f)}'"))}");
+                }
                 if (refMatch)
                 {
                     foreach (var cat in mepCats)
@@ -541,13 +588,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 // Collect hosts only from selected host files (if specified), else from all links
+                // ✅ FIX: Properly match files from both main list and "Other Files" section
                 bool hostMatch = selectedHostFiles == null || selectedHostFiles.Count == 0 || selectedHostFiles.Any(f =>
                 {
                     string ui = norm(f);
-                    return linkTitleNorm.Contains(ui) || ui.Contains(linkTitleNorm);
+                    bool matches = linkTitleNorm.Contains(ui) || ui.Contains(linkTitleNorm);
+                    if (matches)
+                    {
+                        _logger($"DEBUG: ✅ Host file MATCH: '{f}' (normalized: '{ui}') matches link '{linkDoc.Title}' (normalized: '{linkTitleNorm}')");
+                    }
+                    return matches;
                 });
-                
-                _logger($"DEBUG: Host match for '{linkDoc.Title}': {hostMatch} (selected host files: {string.Join(", ", selectedHostFiles ?? new List<string>())})");
+                if (!hostMatch && selectedHostFiles != null && selectedHostFiles.Count > 0)
+                {
+                    _logger($"DEBUG: ⚠️ Host file NO MATCH: Link '{linkDoc.Title}' (normalized: '{linkTitleNorm}') not in selected files. Selected files (normalized): {string.Join(", ", selectedHostFiles.Select(f => $"'{norm(f)}'"))}");
+                }
+                else
+                {
+                    _logger($"DEBUG: Host match for '{linkDoc.Title}': {hostMatch} (selected host files count: {selectedHostFiles?.Count ?? 0})");
+                }
                 
                 if (hostMatch)
                 {
@@ -1211,6 +1270,63 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 System.Diagnostics.Debug.WriteLine($"[IntersectionDetectionService] Error filtering walls by minimum thickness: {ex.Message}");
                 return walls; // Return original list on error
+            }
+        }
+
+        /// <summary>
+        /// Filters architectural floors if the setting is enabled
+        /// Skips floors where Structural parameter is not checked
+        /// </summary>
+        private static IEnumerable<Element> FilterArchitecturalFloors(IEnumerable<Element> structuralElements)
+        {
+            try
+            {
+                var settings = ApplicationProfileService.Instance.GetCurrentSettings();
+                bool ignoreArchFloors = settings.IgnoreArchitecturalFloors;
+                
+                // If setting is disabled, don't filter (all floors allowed)
+                if (!ignoreArchFloors)
+                    return structuralElements;
+                
+                var filteredElements = new List<Element>();
+                int skippedCount = 0;
+                
+                foreach (var element in structuralElements)
+                {
+                    if (element is Floor floor)
+                    {
+                        // Check Structural parameter
+                        Parameter structuralParam = floor.get_Parameter(BuiltInParameter.FLOOR_PARAM_IS_STRUCTURAL);
+                        bool isStructural = structuralParam?.AsInteger() == 1;
+                        
+                        if (isStructural)
+                        {
+                            filteredElements.Add(element);
+                        }
+                        else
+                        {
+                            skippedCount++;
+                            System.Diagnostics.Debug.WriteLine($"[IntersectionDetectionService] SKIP: Architectural floor {floor.Id.IntegerValue} (Structural parameter not checked)");
+                        }
+                    }
+                    else
+                    {
+                        // Not a floor, add it (walls, framing, etc.)
+                        filteredElements.Add(element);
+                    }
+                }
+                
+                if (skippedCount > 0)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[IntersectionDetectionService] Filtered {skippedCount} architectural floors");
+                }
+                
+                return filteredElements;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[IntersectionDetectionService] Error filtering architectural floors: {ex.Message}");
+                return structuralElements; // Return original list on error
             }
         }
     }

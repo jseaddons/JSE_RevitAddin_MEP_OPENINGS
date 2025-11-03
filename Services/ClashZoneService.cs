@@ -27,10 +27,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         // ✅ MEMORY PROFILING: Profiler for tracking actual memory usage per clash zone
         private MemoryProfiler _memoryProfiler;
         
-        public ClashZoneService(ClashZoneStorage clashZoneStorage, Action<string> log)
+        // ✅ OOP REFACTORING: Optional FlagManager for centralized flag operations
+        private readonly FlagManager _flagManager;
+        
+        // ✅ OOP REFACTORING: Optional GuidManager for centralized GUID operations
+        private readonly GuidManager _guidManager;
+        
+        public ClashZoneService(ClashZoneStorage clashZoneStorage, Action<string> log, FlagManager flagManager = null, GuidManager guidManager = null)
         {
             _clashZoneStorage = clashZoneStorage;
             _log = log;
+            _flagManager = flagManager; // Optional dependency for backward compatibility
+            _guidManager = guidManager; // Optional dependency for backward compatibility
         }
         
         /// <summary>
@@ -675,38 +683,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // ✅ MEMORY: Drop heavy API objects immediately after populating numeric fields
                         newClashZone.ClearRevitApiObjects();
                         
-                        // ✅ GLOBAL XML: Check if sleeve already exists in global XML
-                        // ✅ MEMORY OPTIMIZATION: Use singleton to avoid reloading XML multiple times
-                        var categoryName = GetElementCategoryName(mepElement);
-                        var globalManager = GlobalFlagManager.GetOrCreate(categoryName);
-                        var sleeveState = globalManager.CheckSleeveExistence(document, mepElement.Id, structuralElement.Id);
-                        
-                        if (sleeveState.ExistsInGlobal)
-                        {
-                            if (sleeveState.HasClusterSleeve)
-                            {
-                                // Cluster sleeve exists - mark as cluster resolved
-                                newClashZone.IsClusterResolved = true;
-                                newClashZone.ClusterSleeveInstanceId = sleeveState.Placement.ClusterSleeveId;
-                                _log($"[GLOBAL-XML] Existing cluster sleeve found: {sleeveState.Placement.ClusterSleeveId} for MEP={mepElement.Id}, Structural={structuralElement.Id}");
-                            }
-                            else if (sleeveState.HasIndividualSleeve)
-                            {
-                                // Individual sleeve exists - mark as resolved
-                                newClashZone.IsResolved = true;
-                                newClashZone.SleeveInstanceId = sleeveState.Placement.IndividualSleeveId;
-                                _log($"[GLOBAL-XML] Existing individual sleeve found: {sleeveState.Placement.IndividualSleeveId} for MEP={mepElement.Id}, Structural={structuralElement.Id}");
-                            }
-                            else
-                            {
-                                // Global XML says sleeve exists, but Revit says it doesn't - reset flags
-                                newClashZone.IsResolved = false;
-                                newClashZone.IsClusterResolved = false;
-                                newClashZone.SleeveInstanceId = -1;
-                                newClashZone.ClusterSleeveInstanceId = -1;
-                                _log($"[GLOBAL-XML] Global XML entry exists but sleeve not found in Revit - resetting flags for MEP={mepElement.Id}, Structural={structuralElement.Id}");
-                            }
-                        }
+                        // ✅ CRITICAL FIX: Do NOT check Global XML here using old MEP+Host key system
+                        // The old GlobalFlagManager used MEP+Host as key, which meant:
+                        // - Same MEP crossing Wall 1 and Wall 2 (different hosts, different intersection points)
+                        // - Would only find ONE entry in Global XML (wrong - should have separate entries per intersection)
+                        // 
+                        // NEW SYSTEM: GlobalIndexService uses GUID as key (correct per intersection)
+                        // Flags will be synced from Global XML AFTER clash zones are loaded from Filter XML
+                        // This happens in RefreshService line 852-910, which correctly uses GUID lookup
+                        // 
+                        // For NEW clash zones (not in Filter XML), they start with flags=false (correct)
+                        // For EXISTING clash zones (loaded from Filter XML), flags are synced by GUID (correct)
+                        _log($"[GLOBAL-XML] New clash zone created: ClashZone {newClashZone.Id} for MEP={mepElement.Id}, Structural={structuralElement.Id}, Intersection=({intersectionPoint.X:F3},{intersectionPoint.Y:F3},{intersectionPoint.Z:F3}) - flags will be synced from Global XML if exists");
                         
                         newClashZones.Add(newClashZone);
                         _clashZoneStorage.ClashZones.Add(newClashZone);
@@ -767,10 +755,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
             
-            // CRITICAL: Check for existing sleeves and reset IsResolved flag if sleeves were deleted
-            // This allows re-placement of sleeves after manual deletion
-            // ⚠️ CRITICAL FIX: Only reset flags for selected categories to avoid affecting other filters/categories
-            ResetResolvedFlagForDeletedSleeves(document, selectedCategories);
+            // ✅ OOP REFACTORING: Use FlagManager for flag reset if available
+            // Otherwise fall back to legacy method for backward compatibility
+            if (_flagManager != null && _clashZoneStorage?.ClashZones != null)
+            {
+                // Use FlagManager - group by category and reset flags for each category
+                var clashZonesByCategory = _clashZoneStorage.ClashZones
+                    .Where(cz => selectedCategories == null || selectedCategories.Contains(cz.MepElementCategory, StringComparer.OrdinalIgnoreCase))
+                    .GroupBy(cz => cz.MepElementCategory)
+                    .ToList();
+                
+                foreach (var categoryGroup in clashZonesByCategory)
+                {
+                    var category = categoryGroup.Key;
+                    var categoryClashZones = categoryGroup.ToList();
+                    _flagManager.ResetFlagsForDeletedSleeves(categoryClashZones, category);
+                }
+                
+                _log($"[FLAG-MANAGER] Reset flags for deleted sleeves using FlagManager");
+            }
+            else
+            {
+                // Fallback to legacy method for backward compatibility
+                ResetResolvedFlagForDeletedSleeves(document, selectedCategories);
+            }
             
             // CRITICAL FIX: Remove duplicate clash zones (same MEP + structural element)
             RemoveDuplicateClashZones();
@@ -1339,11 +1347,77 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         private ClashZone? FindExistingClashZone(ElementId mepElementId, ElementId structuralElementId, XYZ intersectionPoint)
         {
-            // FIXED: Only check MEP and structural element IDs, not intersection point
-            // This prevents creating multiple clash zones for the same physical clash
-            return _clashZoneStorage.ClashZones.FirstOrDefault(cz => 
-                cz.MepElementId == mepElementId && 
-                cz.StructuralElementId == structuralElementId);
+            // ✅ CRITICAL FIX: Compare by IntegerValue to handle XML deserialization cases
+            // After XML load, MepElementId may be null until MepElementIdValue setter is triggered
+            // Compare IntegerValue to ensure matching works even if ElementId objects aren't initialized
+            int mepIdValue = mepElementId?.IntegerValue ?? -1;
+            int structuralIdValue = structuralElementId?.IntegerValue ?? -1;
+            
+            if (mepIdValue <= 0 || structuralIdValue <= 0)
+            {
+                _log($"[FindExistingClashZone] ❌ Invalid IDs - MEP={mepIdValue}, Structural={structuralIdValue}");
+                return null;
+            }
+            
+            // ✅ OOP: Use GuidManager for finding existing clash zones (PRIORITY ORDER)
+            // 1. First check Revit sleeves for GUID (most reliable - prevents duplicate GUID creation)
+            // 2. Then check XML by MEP+Host+Point (fallback for unplaced clash zones)
+            
+            var clashZonesList = _clashZoneStorage?.ClashZones?.ToList() ?? new List<ClashZone>();
+            
+            if (_guidManager != null && clashZonesList.Count > 0)
+            {
+                // Priority 1: Check Revit sleeves for GUID
+                var existingByRevitGuid = _guidManager.FindByRevitSleeveGuid(clashZonesList, mepIdValue, structuralIdValue, intersectionPoint);
+                if (existingByRevitGuid != null)
+                {
+                    _log($"[FindExistingClashZone] ✅ FOUND VIA REVIT SLEEVE: ClashZone {existingByRevitGuid.Id} (read GUID from placed sleeve)");
+                    return existingByRevitGuid;
+                }
+                
+                // Priority 2: Check XML by MEP+Host+Point
+                var existingByPoint = _guidManager.FindByMepHostAndPoint(clashZonesList, mepIdValue, structuralIdValue, intersectionPoint);
+                if (existingByPoint != null)
+                {
+                    _log($"[FindExistingClashZone] ✅ FOUND VIA XML POINT MATCH: ClashZone {existingByPoint.Id}");
+                    return existingByPoint;
+                }
+            }
+            
+            // ✅ FALLBACK: Legacy logic if GuidManager not available (backward compatibility)
+            int storageCount = _clashZoneStorage?.ClashZones?.Count ?? 0;
+            _log($"[FindExistingClashZone] Checking MEP={mepIdValue}, Structural={structuralIdValue}, Intersection=({intersectionPoint?.X:F3},{intersectionPoint?.Y:F3},{intersectionPoint?.Z:F3}) against {storageCount} existing clash zones");
+            
+            if (storageCount == 0)
+            {
+                _log($"[FindExistingClashZone] ⚠️ WARNING: _clashZoneStorage is empty - cannot find existing clash zones!");
+                return null;
+            }
+            
+            // Legacy: Simple MEP+Host match (no point matching)
+            var legacyMatch = _guidManager?.FindByMepAndHost(clashZonesList, 
+                new ElementId(mepIdValue), 
+                new ElementId(structuralIdValue)) ?? 
+                clashZonesList.FirstOrDefault(cz => 
+                {
+                    int czMepId = cz.MepElementId?.IntegerValue ?? cz.MepElementIdValue;
+                    int czStructuralId = cz.StructuralElementId?.IntegerValue ?? cz.StructuralElementIdValue;
+                    return czMepId == mepIdValue && czStructuralId == structuralIdValue;
+                });
+            
+            if (legacyMatch != null)
+            {
+                _log($"[FindExistingClashZone] ✅ FOUND (LEGACY): ClashZone {legacyMatch.Id} (MEP={mepIdValue}, Structural={structuralIdValue})");
+            }
+            else
+            {
+                var sampleIds = _clashZoneStorage.ClashZones.Take(5).Select(cz => 
+                    $"MEP={cz.MepElementId?.IntegerValue ?? cz.MepElementIdValue}, Structural={cz.StructuralElementId?.IntegerValue ?? cz.StructuralElementIdValue}, IP=({cz.IntersectionPointX:F3},{cz.IntersectionPointY:F3},{cz.IntersectionPointZ:F3})"
+                ).ToList();
+                _log($"[FindExistingClashZone] ❌ NOT FOUND: MEP={mepIdValue}, Structural={structuralIdValue}, IP=({intersectionPoint?.X:F3},{intersectionPoint?.Y:F3},{intersectionPoint?.Z:F3}). Sample existing: {string.Join("; ", sampleIds)}");
+            }
+            
+            return legacyMatch;
         }
         
         /// <summary>
@@ -1375,29 +1449,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
-        /// ⚠️ CRITICAL FLAG MANAGEMENT: Complete lifecycle protection
+        /// ⚠️ LEGACY METHOD - DEPRECATED (kept for backward compatibility only)
         /// 
-        /// FLAG LIFECYCLE SCENARIOS:
+        /// This method is replaced by FlagManager.ResetFlagsForDeletedSleeves() in the OOP refactoring.
+        /// It is only called if FlagManager is not available.
         /// 
-        /// 1. FIRST RUN (Fresh Detection):
-        ///    - IsResolved = false, IsClusterResolved = false
-        ///    - Individual sleeve placed → IsResolved = true
-        ///    - Clustering → IsClusterResolved = true, IsResolved = true
-        /// 
-        /// 2. SUBSEQUENT RUNS (Existing Sleeves):
-        ///    - Individual sleeves: IsResolved = true, IsClusterResolved = false
-        ///    - Cluster sleeves: IsResolved = true, IsClusterResolved = true
-        /// 
-        /// 3. DELETION SCENARIOS:
-        ///    - Individual sleeve deleted → Reset IsResolved = false (allow re-placement)
-        ///    - Cluster sleeve deleted → Reset ALL flags = false (allow fresh individual placement)
-        /// 
-        /// ⚠️ CRITICAL METHOD - DO NOT REMOVE ⚠️
         /// Reset IsResolved flag for clash zones where sleeves no longer exist
         /// This allows re-placement of sleeves after manual deletion
         /// Called during refresh to detect deleted sleeves
         /// ⚠️ CRITICAL FIX: Only reset flags for clash zones in current UI context (selected filters/categories)
         /// </summary>
+        /// <remarks>
+        /// TODO: This method can be removed once all callers are migrated to use FlagManager
+        /// </remarks>
         private void ResetResolvedFlagForDeletedSleeves(Document document, List<string> selectedCategories = null)
         {
             try
@@ -1432,6 +1496,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     if (needsIndividualCheck || needsClusterCheck)
                     {
+                        // ✅ CRITICAL: Check Global XML FIRST before resetting flags
+                        // If Global XML says sleeve exists, trust it even if Revit check fails (sleeve might be in linked file)
+                        bool globalSaysResolved = false;
+                        bool globalSaysClusterResolved = false;
+                        bool globalEntryFound = false;
+                        try
+                        {
+                            var globalIndex = GlobalIndexService.LoadOrCreate(document, clashZone.MepElementCategory);
+                            var entry = globalIndex.Entries?.FirstOrDefault(e => e.Id == clashZone.Id.ToString());
+                            if (entry != null)
+                            {
+                                globalEntryFound = true;
+                                globalSaysResolved = entry.IsResolved;
+                                globalSaysClusterResolved = entry.IsClusterResolved;
+                                _log($"[ResetResolvedFlag] ✅ Global XML FOUND for ClashZone {clashZone.Id}: IsResolved={entry.IsResolved}, IsClusterResolved={entry.IsClusterResolved}, SleeveId={entry.SleeveInstanceId}, ClusterId={entry.ClusterSleeveInstanceId}");
+                            }
+                            else
+                            {
+                                // Entry not in Global XML - check Revit to determine if sleeve actually exists
+                                _log($"[ResetResolvedFlag] ClashZone {clashZone.Id} NOT in Global XML - will check Revit to determine if reset needed");
+                            }
+                        }
+                        catch (Exception globalEx)
+                        {
+                            _log($"[ResetResolvedFlag] WARNING: Error checking Global XML for ClashZone {clashZone.Id}: {globalEx.Message} - will check Revit to determine if reset needed");
+                            // Continue with Revit check even if Global XML check fails
+                        }
+                        
                         // ✅ METHOD 3: Check for damper presence before resetting duct clash zones
                         if (string.Equals(clashZone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase))
                         {
@@ -1456,73 +1548,120 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             continue;
                         }
                         
-                        // ✅ CHEAP APPROACH: Check sleeve existence using ElementId only (no expensive spatial checking)
-                        _log($"[ResetResolvedFlag] Using ElementId-based approach for clash zone {clashZone.Id} ({clashZone.MepElementCategory}): IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}");
-                        
-                        // Check if individual sleeve exists (if marked as resolved)
-                        bool individualSleeveExists = false;
-                        if (needsIndividualCheck && clashZone.SleeveInstanceId > 0)
+                        // ✅ CRITICAL FIX: Check cluster FIRST (per flag hierarchy - cluster flags take precedence)
+                        // According to RELIABLE_FLAG_MANAGEMENT_IMPLEMENTATION.md: "Cluster flags take precedence over individual flags"
+                        // FLOW: 1) Check cluster flag, 2) If cluster flag=true, check cluster sleeve in Revit, 3) If cluster flag=false, check individual flag, 4) If individual flag=true, check individual sleeve in Revit
+        
+                        if (needsClusterCheck)
                         {
-                            var individualSleeveId = new ElementId(clashZone.SleeveInstanceId);
-                            var individualSleeve = document.GetElement(individualSleeveId);
-                            individualSleeveExists = individualSleeve != null;
+                            // ✅ STEP 1: Cluster flag is TRUE - check cluster sleeve existence in Revit
+                            _log($"[ResetResolvedFlag] ClashZone {clashZone.Id} has IsClusterResolved=true - checking cluster sleeve existence in Revit");
                             
-                            _log($"[ResetResolvedFlag] Checking individual sleeve for clash zone {clashZone.Id} ({clashZone.MepElementCategory}): exists={individualSleeveExists}, IsResolved={clashZone.IsResolved}, SleeveId={clashZone.SleeveInstanceId}");
-                            
-                            if (!individualSleeveExists && !needsClusterCheck)
+                            // ✅ CRITICAL: If Global XML says cluster resolved, trust it (don't reset based on Revit check alone)
+                            if (globalSaysClusterResolved)
                             {
-                                // Individual sleeve deleted - reset individual flags only
-                                clashZone.IsResolved = false;
-                                clashZone.SleeveInstanceId = -1;
-                                clashZone.SleeveFamilyName = string.Empty;
-                                clashZone.LastUpdated = DateTime.Now;
-                                resetCount++;
-                                _log($"[ResetResolvedFlag] ✓ Reset individual flags to FALSE for clash zone {clashZone.Id} ({clashZone.MepElementCategory}) - individual sleeve deleted, allowing re-placement");
-                            }
-                            else if (individualSleeveExists)
-                            {
-                                _log($"[ResetResolvedFlag] Individual sleeve still exists (ID: {clashZone.SleeveInstanceId}) - keeping IsResolved=true");
-                            }
+                                _log($"[ResetResolvedFlag] ✅ SKIP RESET: ClashZone {clashZone.Id} - Global XML says IsClusterResolved=true, trusting Global XML (sleeve may be in linked file)");
+                                continue; // Don't reset - Global XML is authoritative
                         }
                         
-                        // Check if cluster sleeve exists (if marked as cluster resolved)
+                            // ✅ STEP 2: Check if cluster sleeve exists in Revit by ClusterSleeveInstanceId
                         bool clusterSleeveExists = false;
-                        if (needsClusterCheck && clashZone.ClusterSleeveInstanceId > 0)
+                            if (clashZone.ClusterSleeveInstanceId > 0)
                         {
                             var clusterSleeveId = new ElementId(clashZone.ClusterSleeveInstanceId);
                             var clusterSleeve = document.GetElement(clusterSleeveId);
                             clusterSleeveExists = clusterSleeve != null;
                             
-                            _log($"[ResetResolvedFlag] Checking cluster sleeve for clash zone {clashZone.Id} ({clashZone.MepElementCategory}): exists={clusterSleeveExists}, IsClusterResolved={clashZone.IsClusterResolved}, ClusterSleeveId={clashZone.ClusterSleeveInstanceId}");
+                                _log($"[ResetResolvedFlag] Checking cluster sleeve by ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId} for clash zone {clashZone.Id} ({clashZone.MepElementCategory}): exists={clusterSleeveExists}");
+                                
+                                if (clusterSleeveExists)
+                                {
+                                    // ✅ Cluster sleeve found in Revit - skip reset
+                                    _log($"[ResetResolvedFlag] ✅ SKIP RESET: Cluster sleeve found in Revit (ID: {clashZone.ClusterSleeveInstanceId}) - keeping IsClusterResolved=true, skipping individual check");
+                                    continue; // Cluster exists - don't reset, don't check individual
+                                }
+                                else
+                                {
+                                    // ❌ Cluster sleeve NOT found in Revit - reset ALL flags
+                                    _log($"[ResetResolvedFlag] ❌ Cluster sleeve NOT found in Revit (ID: {clashZone.ClusterSleeveInstanceId}) - resetting ALL flags");
+                                }
+                            }
+                            else
+                            {
+                                // ❌ BUG CASE: IsClusterResolved=true but ClusterSleeveInstanceId invalid
+                                // Inconsistent state - cluster sleeve is missing
+                                clusterSleeveExists = false;
+                                _log($"[ResetResolvedFlag] ❌ Cluster flag is true but ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId} (invalid) - resetting ALL flags");
+                            }
                             
+                            // ✅ STEP 3: Reset ALL flags because cluster sleeve is missing
                             if (!clusterSleeveExists)
                             {
-                                // ✅ CRITICAL: Reset ALL flags when cluster sleeve is deleted
-                                // This allows individual sleeve placement in next run
                                 clashZone.IsClusterResolved = false;
                                 clashZone.ClusterSleeveInstanceId = -1;
-                                
-                                // ✅ CRITICAL: Reset individual sleeve flag because individual sleeve was deleted during clustering
-                                // When cluster sleeve is deleted, both individual and cluster sleeves are gone
-                                clashZone.IsResolved = false;
+                                clashZone.IsResolved = false; // Reset individual flag too (cluster deletion means individual was also deleted)
                                 clashZone.SleeveInstanceId = -1;
                                 clashZone.SleeveFamilyName = string.Empty;
                                 
-                                // ✅ CRITICAL: Reset clustering history flag to allow fresh individual sleeve placement
-                                // Note: IsClustered flag removed - using MarkedForClusteringSleeveProcess instead
-                                
-                                // ⚠️ CRITICAL: Log flag state AFTER reset
-                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [RESET-ALL] ClashZone {clashZone.Id}: Cluster sleeve deleted, ALL flags reset\n");
+                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [RESET-ALL] ClashZone {clashZone.Id}: Cluster sleeve deleted/invalid, ALL flags reset\n");
                                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [RESET-ALL] FLAGS: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}\n");
                                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [RESET-ALL] PARAMS: SleeveInstanceId={clashZone.SleeveInstanceId}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}\n");
                                 
                                 clashZone.LastUpdated = DateTime.Now;
                                 resetCount++;
-                                _log($"[ResetResolvedFlag] ✓ Reset ALL flags to FALSE for clash zone {clashZone.Id} ({clashZone.MepElementCategory}) - cluster sleeve deleted, allowing fresh individual sleeve placement");
+                                _log($"[ResetResolvedFlag] ✓ Reset ALL flags to FALSE for clash zone {clashZone.Id} ({clashZone.MepElementCategory}) - cluster sleeve deleted/invalid");
+                                continue; // Done with this clash zone - don't check individual
+                            }
+                        }
+                        else if (needsIndividualCheck)
+                        {
+                            // ✅ STEP 1: Individual flag is TRUE (cluster flag was false) - check individual sleeve existence in Revit
+                            _log($"[ResetResolvedFlag] ClashZone {clashZone.Id} has IsResolved=true (cluster flag is false) - checking individual sleeve existence in Revit");
+                            
+                            // ✅ CRITICAL: If Global XML says individual resolved, trust it (don't reset based on Revit check alone)
+                            if (globalSaysResolved)
+                            {
+                                _log($"[ResetResolvedFlag] ✅ SKIP RESET: ClashZone {clashZone.Id} - Global XML says IsResolved=true, trusting Global XML (sleeve may be in linked file)");
+                                continue; // Don't reset - Global XML is authoritative
+                            }
+                            
+                            // ✅ STEP 2: Check if individual sleeve exists in Revit by SleeveInstanceId
+                            if (clashZone.SleeveInstanceId > 0)
+                            {
+                                var individualSleeveId = new ElementId(clashZone.SleeveInstanceId);
+                                var individualSleeve = document.GetElement(individualSleeveId);
+                                bool individualSleeveExists = individualSleeve != null;
+                                
+                                _log($"[ResetResolvedFlag] Checking individual sleeve by SleeveInstanceId={clashZone.SleeveInstanceId} for clash zone {clashZone.Id} ({clashZone.MepElementCategory}): exists={individualSleeveExists}");
+                                
+                                if (individualSleeveExists)
+                                {
+                                    // ✅ Individual sleeve found in Revit - skip reset
+                                    _log($"[ResetResolvedFlag] ✅ SKIP RESET: Individual sleeve found in Revit (ID: {clashZone.SleeveInstanceId}) - keeping IsResolved=true");
+                                    continue; // Sleeve exists - don't reset
                             }
                             else
                             {
-                                _log($"[ResetResolvedFlag] Cluster sleeve still exists (ID: {clashZone.ClusterSleeveInstanceId}) - keeping IsClusterResolved=true");
+                                    // ❌ Individual sleeve NOT found in Revit - reset flag
+                                    _log($"[ResetResolvedFlag] ❌ Individual sleeve NOT found in Revit (ID: {clashZone.SleeveInstanceId}) - resetting individual flag");
+                                    clashZone.IsResolved = false;
+                                    clashZone.SleeveInstanceId = -1;
+                                    clashZone.SleeveFamilyName = string.Empty;
+                                    clashZone.LastUpdated = DateTime.Now;
+                                    resetCount++;
+                                    _log($"[ResetResolvedFlag] ✓ Reset individual flags to FALSE for clash zone {clashZone.Id} ({clashZone.MepElementCategory}) - sleeve NOT found in Revit");
+                                }
+                            }
+                            else
+                            {
+                                // ❌ SleeveInstanceId is invalid (<=0) but flag is true - reset flag
+                                _log($"[ResetResolvedFlag] ❌ Individual flag is true but SleeveInstanceId={clashZone.SleeveInstanceId} (invalid) - resetting individual flag");
+                                clashZone.IsResolved = false;
+                                clashZone.SleeveInstanceId = -1;
+                                clashZone.SleeveFamilyName = string.Empty;
+                                clashZone.LastUpdated = DateTime.Now;
+                                resetCount++;
+                                _log($"[ResetResolvedFlag] ✓ Reset individual flags to FALSE for clash zone {clashZone.Id} ({clashZone.MepElementCategory}) - invalid SleeveInstanceId");
                             }
                         }
                     }
@@ -1536,7 +1675,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (resetCount > 0)
                     {
                         DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [RESET-COMPLETE] Reset operation completed for {resetCount} clash zones\n");
-                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [RESET-COMPLETE] XML will be saved with updated flag states\n");
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [RESET-COMPLETE] Saving flags to both Global XML and Filter XML\n");
+                        
+                        // ✅ CRITICAL FIX: Save flags to Global XML after reset (legacy path)
+                        // Note: FlagManager path handles this automatically, but legacy path needs manual save
+                        try
+                        {
+                            var resetClashZones = _clashZoneStorage.ClashZones
+                                .Where(cz => selectedCategories != null && selectedCategories.Contains(cz.MepElementCategory, StringComparer.OrdinalIgnoreCase))
+                                .ToList();
+                            
+                            if (resetClashZones.Count > 0)
+                            {
+                                var updatesByCategory = resetClashZones
+                                    .GroupBy(cz => cz.MepElementCategory)
+                                    .ToDictionary(g => g.Key, g => g.Select(cz => (cz.Id, cz.IsResolved, cz.IsClusterResolved, cz.SleeveInstanceId, cz.ClusterSleeveInstanceId)));
+                                
+                                foreach (var kvp in updatesByCategory)
+                                {
+                                    GlobalIndexService.UpsertFlagsWithIds(document, kvp.Key, kvp.Value);
+                                    DebugLogger.Info($"[RESET-FLAGS] Updated Global XML for category: {kvp.Key}, {kvp.Value.Count()} entries (legacy path)");
+                                }
+                            }
+                        }
+                        catch (Exception saveEx)
+                        {
+                            DebugLogger.Warning($"[RESET-FLAGS] Error saving reset flags to Global XML: {saveEx.Message}");
+                        }
                     }
                 }
             }
@@ -3707,12 +3872,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             // ✅ CRITICAL FIX: Check for existing individual sleeve at intersection point
             // This ensures IsResolved flag is set correctly for existing clash zones
+            // ⚠️ DO NOT overwrite SleeveInstanceId if it's already set (from XML) - preserve existing value
             var hasExistingSleeve = CheckForExistingSleeve(intersectionPoint, document);
             if (hasExistingSleeve && !existingZone.IsResolved)
             {
                 existingZone.IsResolved = true;
+                // ✅ FIXED: Only set SleeveInstanceId to -1 if it's not already set (preserve from XML)
+                if (existingZone.SleeveInstanceId <= 0)
+                {
                 existingZone.SleeveInstanceId = -1; // Will be populated during placement if needed
-                _log($"[UpdateExistingClashZone] Found existing individual sleeve at intersection point - set IsResolved=true for clash zone {existingZone.Id}");
+                }
+                _log($"[UpdateExistingClashZone] Found existing individual sleeve at intersection point - set IsResolved=true for clash zone {existingZone.Id}, preserved SleeveInstanceId={existingZone.SleeveInstanceId}");
             }
             
             // ✅ CRITICAL FIX: Check for existing cluster sleeve at intersection point

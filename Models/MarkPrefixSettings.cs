@@ -83,6 +83,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         }
         
         /// <summary>
+        /// Get remark flag for a specific category
+        /// Returns true if remark is enabled for this category, false otherwise
+        /// </summary>
+        public bool GetRemarkFlag(string category)
+        {
+            return category switch
+            {
+                "Ducts" => RemarkDuctPrefix,
+                "Pipes" => RemarkPipePrefix,
+                "Cable Trays" => RemarkCableTrayPrefix,
+                "Duct Accessories" => RemarkDamperPrefix,
+                _ => RemarkAll // Fallback to global RemarkAll for unknown categories
+            };
+        }
+        
+        /// <summary>
         /// ✅ NEW: Two-tier prefix resolution - checks System Type override first, then falls back to discipline prefix
         /// </summary>
         public string GetPrefixForElement(string category, string systemType = null, string serviceType = null)

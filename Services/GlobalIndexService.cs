@@ -127,55 +127,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 			}
 		}
 
-		public static (HashSet<Guid> resolved, HashSet<Guid> clusterResolved) ValidateAndFixFlags(Document doc, string categoryName)
+		/// <summary>
+		/// Gets resolved GUID sets from Global XML (no Revit API calls, just reads flags)
+		/// Used for filtering during refresh - returns clash zones that are already resolved
+		/// Note: Actual flag validation/reset happens:
+		/// - 3-Point Validation: When MEP/host elements are deleted (clears Global XML entries)
+		/// - ResetResolvedFlagForDeletedSleeves: When sleeves are deleted (resets flags)
+		/// </summary>
+		public static (HashSet<Guid> resolved, HashSet<Guid> clusterResolved) GetResolvedGuids(Document doc, string categoryName)
 		{
 			var index = LoadOrCreate(doc, categoryName);
-			bool changed = false;
 			var resolved = new HashSet<Guid>();
 			var clusterResolved = new HashSet<Guid>();
+			
 			foreach (var e in index.Entries)
 			{
 				Guid id;
 				if (!Guid.TryParse(e.Id, out id)) continue;
-				// Individual check
-				if (e.IsResolved)
+				
+				// ✅ Cluster resolved: both flags should be true (individual was placed then deleted during clustering)
+				if (e.IsClusterResolved)
 				{
-					var el = e.SleeveInstanceId > 0 ? doc?.GetElement(new ElementId(e.SleeveInstanceId)) : null;
-					if (e.SleeveInstanceId <= 0 || el == null)
-					{
-						e.IsResolved = false;
-						e.SleeveInstanceId = 0;
-						changed = true;
-					}
-					else
+					clusterResolved.Add(id);
+					resolved.Add(id); // Cluster resolved means individual was also resolved (then deleted)
+				}
+				// ✅ Individual-only resolved: no cluster, but individual flag is true
+				else if (e.IsResolved)
 					{
 						resolved.Add(id);
 					}
-				}
-				// Cluster check
-				if (e.IsClusterResolved)
-				{
-					var el = e.ClusterSleeveInstanceId > 0 ? doc?.GetElement(new ElementId(e.ClusterSleeveInstanceId)) : null;
-					if (e.ClusterSleeveInstanceId <= 0 || el == null)
-					{
-						e.IsClusterResolved = false;
-						e.ClusterSleeveInstanceId = 0;
-						changed = true;
-					}
-					else
-					{
-						clusterResolved.Add(id);
-					}
-				}
+				// Both flags false = unresolved clash zone (not added to sets)
 			}
-			if (changed)
-			{
-				Save(doc, index);
-			}
+			
 			return (resolved, clusterResolved);
 		}
 
-		private static void Save(Document doc, CategoryGlobalIndex index)
+		public static void Save(Document doc, CategoryGlobalIndex index)
 		{
 			try
 			{

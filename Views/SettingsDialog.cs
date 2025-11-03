@@ -43,6 +43,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.TextBox _roundingValueTextBox;
         private WinForms.CheckBox _roundAlwaysUpCheckBox;
         private WinForms.TextBox _minWallThicknessTextBox;
+        private WinForms.CheckBox _ignoreArchitecturalFloorsCheckBox;
         
         // Action Buttons
         private WinForms.Button _resetButton;
@@ -251,12 +252,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         private void CreateLimitsSection()
         {
-            // Limits Section Group - 7 ITEMS (including new rounding controls and min wall thickness)
+            // Limits Section Group - 8 ITEMS (including new rounding controls, min wall thickness, and ignore architectural floors)
             var limitsGroupBox = new WinForms.GroupBox
             {
                 Text = "Limits",
                 Location = new Drawing.Point(20, 265), // Positioned after bigger Elements section (150 + 105 + 10)
-                Size = new Drawing.Size(600, 195), // Increased height for 7 items
+                Size = new Drawing.Size(600, 220), // Increased height for 8 items
                 Font = new Drawing.Font("Microsoft Sans Serif", 9F, Drawing.FontStyle.Bold)
             };
             this.Controls.Add(limitsGroupBox);
@@ -370,7 +371,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Size = new Drawing.Size(50, 20)
             };
             limitsGroupBox.Controls.Add(_minWallThicknessTextBox);
-            yPos += 30;
+            yPos += 25;
+
+            // Ignore architectural floors checkbox - CHECKBOX ON RIGHT, TEXT ON LEFT
+            var ignoreArchFloorsLabel = new WinForms.Label
+            {
+                Text = "Ignore architectural floors:",
+                Location = new Drawing.Point(15, yPos),
+                Size = new Drawing.Size(400, 20)
+            };
+            limitsGroupBox.Controls.Add(ignoreArchFloorsLabel);
+            
+            _ignoreArchitecturalFloorsCheckBox = new WinForms.CheckBox
+            {
+                Text = "", // No text, just checkbox
+                Location = new Drawing.Point(420, yPos),
+                Size = new Drawing.Size(20, 20),
+                Checked = false // Default to process all floors
+            };
+            limitsGroupBox.Controls.Add(_ignoreArchitecturalFloorsCheckBox);
+            yPos += 25;
 
             // Footnote for all sections
             var footnoteLabel = new WinForms.Label
@@ -390,7 +410,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _resetButton = new WinForms.Button
             {
                 Text = "Reset",
-                Location = new Drawing.Point(20, 480), // Positioned after bigger Limits section (265 + 195 + 20)
+                Location = new Drawing.Point(20, 505), // Positioned after bigger Limits section (265 + 220 + 20)
                 Size = new Drawing.Size(75, 30),
                 BackColor = Drawing.Color.FromArgb(200, 200, 200),
                 FlatStyle = WinForms.FlatStyle.Flat
@@ -402,7 +422,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _okButton = new WinForms.Button
             {
                 Text = "OK",
-                Location = new Drawing.Point(450, 480), // Positioned after bigger Limits section (265 + 195 + 20)
+                Location = new Drawing.Point(450, 505), // Positioned after bigger Limits section (265 + 220 + 20)
                 Size = new Drawing.Size(75, 30),
                 BackColor = Drawing.Color.FromArgb(0, 120, 215),
                 ForeColor = Drawing.Color.White,
@@ -415,7 +435,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _cancelButton = new WinForms.Button
             {
                 Text = "Cancel",
-                Location = new Drawing.Point(535, 480), // Positioned after bigger Limits section (265 + 195 + 20)
+                Location = new Drawing.Point(535, 505), // Positioned after bigger Limits section (265 + 220 + 20)
                 Size = new Drawing.Size(75, 30),
                 BackColor = Drawing.Color.FromArgb(200, 200, 200),
                 FlatStyle = WinForms.FlatStyle.Flat
@@ -487,6 +507,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 _roundAlwaysUpCheckBox.Checked = _settings.RoundAlwaysUp;
             if (_minWallThicknessTextBox != null)
                 _minWallThicknessTextBox.Text = _settings.MinWallThickness.ToString();
+            if (_ignoreArchitecturalFloorsCheckBox != null)
+                _ignoreArchitecturalFloorsCheckBox.Checked = _settings.IgnoreArchitecturalFloors;
         }
 
         private void SaveSettings()
@@ -529,6 +551,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
                 if (_minWallThicknessTextBox != null && double.TryParse(_minWallThicknessTextBox.Text, out double minWallThickness))
                     _settings.MinWallThickness = minWallThickness;
+
+                if (_ignoreArchitecturalFloorsCheckBox != null)
+                    _settings.IgnoreArchitecturalFloors = _ignoreArchitecturalFloorsCheckBox.Checked;
 
                 // Log successful save
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Settings saved successfully\n");

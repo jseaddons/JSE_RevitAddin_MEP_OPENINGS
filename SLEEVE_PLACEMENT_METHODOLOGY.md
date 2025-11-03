@@ -23,6 +23,44 @@ This document outlines the complete methodology for sleeve placement in MEP open
 
 **Output:** XML files with ClashZone data containing both coordinate systems
 
+### Phase 1.5: 3-Point Validation (Stale Clash Zone Prevention)
+**Purpose:** Validate existing clash zones and remove stale entries when elements are deleted or no longer intersect
+
+**Services Involved:**
+- `RefreshService` - Performs validation during refresh
+- `GlobalIndexService` - Clears invalid entries from Global XML
+
+**What Happens:**
+1. **Load Existing ClashZones:** From Filter XML files created in previous runs
+2. **3-Point Validation (Per ClashZone):**
+   - ✅ **Point 1: MEP Element Exists** → Verify `MepElementId` exists in document
+   - ✅ **Point 2: Structural Element Exists** → Verify `StructuralElementId` exists in document
+   - ✅ **Point 3: Elements Still Intersect** → Verify `CalculateIntersectionPoint()` returns valid point
+3. **Handle Valid ClashZones (All 3 Points Pass):**
+   - Keep clash zone and preserve GUID
+   - Update `IntersectionPoint` if elements moved (>1mm difference)
+   - Update `SleevePlacementPointActiveDocument` with new coordinates
+   - Preserve existing flags (`IsResolved`, `IsClusterResolved`) - **sleeve placement state is separate from clash validity**
+4. **Handle Invalid ClashZones (Any Point Fails):**
+   - Remove clash zone from Filter XML
+   - Clear entry from Global XML (`CategoryGlobalIndex`)
+   - Log removal reason (MEP deleted / Structural deleted / No longer intersect)
+
+**Key Principle:**
+- **Clash Zone Validity ≠ Sleeve Placement State**
+  - Clash zone validity depends on: MEP Element ID + Structural Element ID + Intersection Point
+  - Sleeve placement state depends on: Flags (`IsResolved`, `IsClusterResolved`) and sleeve existence
+  - A clash zone is valid if elements still intersect, regardless of whether sleeves exist
+  - Flags track sleeve placement independently of clash zone validity
+
+**Benefits:**
+- ✅ Prevents stale clash zones from accumulating in XML
+- ✅ Updates intersection points when elements move but still intersect
+- ✅ Automatically cleans up when elements are deleted
+- ✅ Maintains data integrity across multiple refresh cycles
+
+**Output:** Validated clash zones with updated coordinates, stale entries removed
+
 ### Phase 2: OK Click - Individual Sleeve Placement
 **Purpose:** Place individual sleeves using linked coordinates
 
@@ -121,6 +159,117 @@ if (MarkedForClusteringSleeveProcess == true) → PROCESS (sleeve is proximate, 
 if (MarkedForClusteringSleeveProcess == false) → SKIP (sleeve is not proximate, keep individual)
 if (MarkedForClusteringSleeveProcess == null) → PROCESS (not yet processed, check proximity)
 ```
+
+## 📁 GLOBAL XML vs FILTER XML - Why Both Are Needed for Placement
+
+### Global XML (`{category}_global.xml`)
+**Purpose:** Filter-independent flag tracking and skip decision
+
+**Contains:**
+- ClashZone GUID (`Id`)
+- `IsResolved` (individual sleeve flag)
+- `IsClusterResolved` (cluster sleeve flag)
+- `SleeveInstanceId` (individual sleeve ElementId)
+- `ClusterSleeveInstanceId` (cluster sleeve ElementId)
+
+**What it answers:**
+- ✅ **"Is this clash zone already resolved?"**
+- ✅ **"Should I skip placement for this clash zone?"**
+
+**What it does NOT contain:**
+- ❌ Placement coordinates
+- ❌ Family names
+- ❌ Sizing parameters
+- ❌ Host information
+- ❌ Bounding boxes
+- ❌ MEP/Structural element details
+
+### Filter XML (`{filter}_{category}.xml`)
+**Purpose:** Complete placement data storage (filter-specific)
+
+**Contains:**
+- Full ClashZone object with ALL placement data:
+  - `IntersectionPoint` coordinates (where to place)
+  - `SleevePlacementPointActiveDocument` coordinates
+  - `SleeveFamilyName` (which family to use)
+  - `MepElementWidth/Height` (sizing parameters)
+  - `HostOrientation` (placement direction)
+  - `StructuralElementIdValue` (host element ID)
+  - Bounding box coordinates (for clustering)
+  - MEP/Structural element IDs
+  - All other ClashZone properties
+
+**What it answers:**
+- ✅ **"Where should I place the sleeve?"**
+- ✅ **"What family should I use?"**
+- ✅ **"What size should it be?"**
+- ✅ **"What host information do I need?"**
+
+### Why Placement Needs BOTH
+
+**Cannot use only Global XML because:**
+- Global XML has NO placement data (coordinates, family, size, etc.)
+- Global XML only tells you IF to place, not HOW or WHERE
+
+**Cannot use only Filter XML because:**
+- Filter XML has no filter-independent flag tracking
+- Without Global XML, you can't check if a clash zone was already resolved in another filter
+- Would require expensive Revit API calls to check if sleeves exist
+
+### Placement Flow Example
+
+```
+Placement Phase (Individual Sleeve Placement):
+─────────────────────────────────────────────────────
+1. Load clash zones from Filter XML
+   → Get ALL placement data (coordinates, family, size, etc.)
+   
+2. For each clash zone:
+   a. Check Global XML by GUID
+      → "Does IsResolved=true exist for this GUID?"
+      → If YES → SKIP (already placed in this or another filter)
+      → If NO → Continue
+   
+   b. Use Filter XML data
+      → Get IntersectionPoint (coordinates)
+      → Get SleeveFamilyName (family)
+      → Get MepElementWidth/Height (size)
+      → Get HostOrientation (direction)
+      → Get StructuralElementIdValue (host)
+   
+   c. Place sleeve using Filter XML data
+   
+   d. Update Global XML
+      → Set IsResolved=true
+      → Set SleeveInstanceId=<new sleeve ID>
+      → Set GUID=<clash zone ID>
+```
+
+### Summary Table
+
+| Aspect | Global XML | Filter XML |
+|--------|------------|------------|
+| **Purpose** | Skip decision | Placement execution |
+| **Question** | "Should I place?" | "Where/How/What to place?" |
+| **Scope** | Filter-independent | Filter-specific |
+| **Contains** | Flags + Sleeve IDs | Full placement data |
+| **Used During** | Refresh (filter out resolved), Placement (skip check) | Refresh (save clash zones), Placement (get data) |
+| **Can Place Without It?** | ❌ No - need flags to skip | ❌ No - need placement data |
+
+### Key Takeaway
+
+**Both XML files are required for placement:**
+- **Global XML** = Decision maker ("Skip or place?")
+- **Filter XML** = Data provider ("Where, how, what to place?")
+
+**If you only had Global XML:**
+- You'd know which clash zones to skip, but have no data to place sleeves
+
+**If you only had Filter XML:**
+- You'd have all placement data, but couldn't efficiently check if already resolved across filters
+
+**Together:**
+- Efficient skip checks (Global XML) + Complete placement data (Filter XML) = Optimal placement workflow
 
 ## 📊 CLASS RESPONSIBILITIES
 
@@ -891,6 +1040,140 @@ public class ClashZone
     // Existing properties continue...
 }
 ```
+
+## 🔍 3-POINT VALIDATION SYSTEM (Stale Clash Zone Prevention)
+
+### Purpose
+Prevent stale clash zones from accumulating in XML by validating that clash zones remain valid across multiple refresh cycles.
+
+### Validation Criteria
+A clash zone is **valid** only if **ALL 3 points pass**:
+
+1. **MEP Element Exists** (`MepElementId` found in document)
+2. **Structural Element Exists** (`StructuralElementId` found in document)
+3. **Elements Still Intersect** (`CalculateIntersectionPoint()` returns valid point)
+
+### When Validation Occurs
+- **During Refresh Phase** - Before processing new intersections
+- **After Loading Existing ClashZones** - From Filter XML files
+- **Before Orientation Calculation** - Ensures only valid clash zones are processed
+
+### Validation Logic Flow
+
+```
+FOR EACH existing clash zone in Filter XML:
+  ✅ Check Point 1: MEP Element exists?
+    ❌ NO → INVALID (remove clash zone, clear Global XML)
+    ✅ YES → Continue
+  
+  ✅ Check Point 2: Structural Element exists?
+    ❌ NO → INVALID (remove clash zone, clear Global XML)
+    ✅ YES → Continue
+  
+  ✅ Check Point 3: Elements still intersect?
+    ❌ NO → INVALID (remove clash zone, clear Global XML)
+    ✅ YES → VALID (keep clash zone)
+    
+  IF VALID:
+    - Keep clash zone in Filter XML
+    - Preserve GUID (ClashZone.Id)
+    - Update IntersectionPoint if moved (>1mm difference)
+    - Preserve flags (IsResolved, IsClusterResolved)
+    - Update SleevePlacementPointActiveDocument coordinates
+```
+
+### Key Principle: Separation of Concerns
+
+**Clash Zone Validity ≠ Sleeve Placement State**
+
+- **Clash Zone Validity:**
+  - Depends on: MEP Element ID + Structural Element ID + Intersection Point
+  - Determined by: 3-point validation (Refresh phase only)
+  - Independent of: Sleeve presence or absence
+  
+- **Sleeve Placement State:**
+  - Depends on: Flags (`IsResolved`, `IsClusterResolved`) + Sleeve existence
+  - Determined by: Flag checks (Placement phase)
+  - Independent of: Clash zone validity
+
+**Why This Matters:**
+- A clash zone is valid if elements still intersect, regardless of sleeve status
+- Sleeves can be deleted, but if elements still intersect, clash zone remains valid
+- Flags track sleeve placement independently of clash validity
+- Placement phase does NOT re-validate clash zones (assumes Refresh already did)
+
+### Example Scenarios
+
+#### Scenario 1: Elements Moved (Still Intersect) ✅
+- **Input:** Existing clash zone with old intersection point
+- **Validation:**
+  - MEP Element exists: ✅
+  - Structural Element exists: ✅
+  - New intersection point calculated: ✅ (updated)
+- **Result:** **VALID** - Keep clash zone, update intersection point, preserve flags
+
+#### Scenario 2: MEP Element Deleted ❌
+- **Input:** Existing clash zone for deleted MEP element
+- **Validation:**
+  - MEP Element exists: ❌
+- **Result:** **INVALID** - Remove clash zone from Filter XML, clear Global XML entry
+
+#### Scenario 3: Elements No Longer Intersect ❌
+- **Input:** Existing clash zone for elements moved apart
+- **Validation:**
+  - MEP Element exists: ✅
+  - Structural Element exists: ✅
+  - Elements intersect: ❌ (`CalculateIntersectionPoint()` returns null)
+- **Result:** **INVALID** - Remove clash zone from Filter XML, clear Global XML entry
+
+#### Scenario 4: Elements Intersect, Sleeve Deleted ✅
+- **Input:** Valid clash zone with deleted sleeve
+- **Validation:**
+  - MEP Element exists: ✅
+  - Structural Element exists: ✅
+  - Elements intersect: ✅
+- **Result:** **VALID** - Keep clash zone
+- **Placement Phase:** Flags checked separately, sleeve re-placed if needed
+
+### Implementation Details
+
+**Location:** `Services/RefreshService.cs` (lines ~925-1056)
+
+**Process:**
+1. Load existing clash zones from Filter XML
+2. Group by category for efficient Global XML cleanup
+3. Validate each clash zone using 3-point criteria
+4. Remove invalid clash zones from Filter XML list
+5. Clear invalid entries from Global XML (`GlobalIndexService`)
+6. Update intersection points for valid clash zones that moved
+7. Continue with orientation calculation for validated clash zones
+
+**Global XML Cleanup:**
+- Invalid clash zones identified by GUID (`ClashZone.Id`)
+- Entries removed from `CategoryGlobalIndex` per category
+- Cleanup happens before new intersection detection
+
+### Benefits
+
+✅ **Prevents Stale Data:**
+- Automatically removes clash zones for deleted elements
+- Cleans up when elements no longer intersect
+- Maintains data integrity across refresh cycles
+
+✅ **Updates Coordinates:**
+- Recalculates intersection points when elements move
+- Keeps coordinates accurate for sleeve placement
+- Updates both linked and active document coordinates
+
+✅ **Preserves Flags:**
+- Does not reset sleeve placement flags during validation
+- Flags managed separately in Placement phase
+- Allows re-placement if sleeves deleted but clash zone valid
+
+✅ **Efficient Processing:**
+- Validation happens once per refresh
+- Placement phase assumes clash zones are valid
+- No redundant validation during placement
 
 ## Hierarchical Flag Management - The Critical Rule
 
