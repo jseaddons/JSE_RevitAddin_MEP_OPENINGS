@@ -29,6 +29,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private FlagManager _flagManager;
         private FilterManagementService _filterService;
         
+        // ✅ PERFORMANCE OPTIMIZATION: Cache MEP elements and bounding boxes to avoid duplicate API calls
+        private Dictionary<ElementId, Element> _mepElementCache;
+        private Dictionary<FamilyInstance, BoundingBoxXYZ> _bboxCache;
+        
         // Helper struct for grouping key
         private struct SleeveGroupKey
         {
@@ -79,6 +83,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _doc = doc;
             // ✅ CRITICAL: Store filterName in class field for use in GetFilterNameForCategory
             _filterName = filterName;
+            
+            // ✅ PERFORMANCE OPTIMIZATION: Initialize caches to avoid duplicate API calls
+            _mepElementCache = new Dictionary<ElementId, Element>();
+            _bboxCache = new Dictionary<FamilyInstance, BoundingBoxXYZ>();
             
             // ✅ OOP REFACTORING: Initialize managers if not provided (backward compatibility)
             if (_flagManager == null)
@@ -209,6 +217,70 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     return false;
                 }).ToList();
+                
+                // ✅ PERFORMANCE OPTIMIZATION: PRE-POPULATE caches in ONE batch operation (calculate once, use many times)
+                // This avoids expensive API calls when methods access sleeves/elements later
+                if (cacheSleeves.Count > 0)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Log($"[UniversalClusterService] Pre-populating caches for {cacheSleeves.Count} sleeves (calculate once, use many times)");
+                    
+                    // Pre-calculate ALL bounding boxes in one batch
+                    foreach (var sleeve in cacheSleeves)
+                    {
+                        try
+                        {
+                            if (!_bboxCache.ContainsKey(sleeve))
+                            {
+                                var bbox = sleeve.get_BoundingBox(null);
+                                if (bbox != null)
+                                {
+                                    _bboxCache[sleeve] = bbox;
+                                }
+                            }
+                        }
+                        catch { /* Ignore individual failures */ }
+                    }
+                    
+                    // Pre-retrieve ALL MEP elements in one batch
+                    var uniqueMepElementIds = new HashSet<ElementId>();
+                    foreach (var sleeve in cacheSleeves)
+                    {
+                        try
+                        {
+                            var mepElementIdParam = sleeve.LookupParameter("MEP_ElementId");
+                            if (mepElementIdParam != null && mepElementIdParam.HasValue)
+                            {
+                                var mepElementId = mepElementIdParam.AsElementId();
+                                if (mepElementId != null && mepElementId != ElementId.InvalidElementId && !uniqueMepElementIds.Contains(mepElementId))
+                                {
+                                    uniqueMepElementIds.Add(mepElementId);
+                                }
+                            }
+                        }
+                        catch { /* Ignore individual failures */ }
+                    }
+                    
+                    // Batch retrieve all unique MEP elements
+                    foreach (var mepElementId in uniqueMepElementIds)
+                    {
+                        try
+                        {
+                            if (!_mepElementCache.ContainsKey(mepElementId))
+                            {
+                                var mepElement = doc.GetElement(mepElementId);
+                                if (mepElement != null)
+                                {
+                                    _mepElementCache[mepElementId] = mepElement;
+                                }
+                            }
+                        }
+                        catch { /* Ignore individual failures */ }
+                    }
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Log($"[UniversalClusterService] ✅ Caches pre-populated: {_bboxCache.Count} bounding boxes, {_mepElementCache.Count} MEP elements");
+                }
                 
                 // ✅ DEBUG: Log current vs old clash filtering statistics
                 int currentClashCount = 0;
@@ -378,8 +450,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     File.AppendAllText(clusterLogPath, $"Group: hostType={g.Key.hostType}, systemType={g.Key.systemType}, orientation={g.Key.orientation}, count={list.Count}, sampleIds={string.Join(",", ids)}\n");
                 }
 
+                // ⚠️ CRITICAL: Add timeout protection for clustering operation
+                var clusteringTimer = System.Diagnostics.Stopwatch.StartNew();
+                const int MAX_CLUSTERING_TIME_MS = 300000; // 5 minutes
+                
                 // Form clusters using spatial hashing
                 var clustersByGroup = FormClusters(sleeveGroups, toleranceDist);
+                
+                // ⚠️ CRITICAL: Check timeout after FormClusters
+                if (clusteringTimer.ElapsedMilliseconds > MAX_CLUSTERING_TIME_MS)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Error($"[UniversalClusterService] ⏱ TIMEOUT: Clustering exceeded {MAX_CLUSTERING_TIME_MS / 1000} second limit during FormClusters");
+                    }
+                    System.Windows.Forms.MessageBox.Show(
+                        $"Clustering operation is taking too long and has been cancelled.\n\nTime: {clusteringTimer.ElapsedMilliseconds / 1000} seconds\nLimit: {MAX_CLUSTERING_TIME_MS / 1000} seconds\n\nThis usually indicates:\n• Very large model with many sleeves\n• Infinite loop in clustering algorithm\n• Corrupted XML data\n\nPlease check the log file and try processing in smaller batches.",
+                        "Operation Timeout",
+                        System.Windows.Forms.MessageBoxButtons.OK,
+                        System.Windows.Forms.MessageBoxIcon.Warning);
+                    return (placedCount, deletedCount); // Return partial results
+                }
                 
                 // ✅ DEBUG: Log cluster formation results
                 var totalClusters = clustersByGroup.Values.Sum(clusterList => clusterList.Count);
@@ -402,14 +493,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 catch { }
 
                 // Process each cluster
+                int clusterProcessedCount = 0;
                 foreach (var groupEntry in clustersByGroup)
                 {
+                    // ⚠️ CRITICAL: Check timeout every 5 clusters
+                    clusterProcessedCount++;
+                    if (clusterProcessedCount % 5 == 0 && clusteringTimer.ElapsedMilliseconds > MAX_CLUSTERING_TIME_MS)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Error($"[UniversalClusterService] ⏱ TIMEOUT: Clustering exceeded {MAX_CLUSTERING_TIME_MS / 1000} second limit after processing {clusterProcessedCount} clusters");
+                        }
+                        System.Windows.Forms.MessageBox.Show(
+                            $"Clustering operation is taking too long and has been cancelled.\n\nProcessed: {clusterProcessedCount} of {totalClusters} clusters\nTime: {clusteringTimer.ElapsedMilliseconds / 1000} seconds\nLimit: {MAX_CLUSTERING_TIME_MS / 1000} seconds\n\nThis usually indicates:\n• Very large model\n• Infinite loop\n• Corrupted data\n\nPlease check the log file.",
+                            "Operation Timeout",
+                            System.Windows.Forms.MessageBoxButtons.OK,
+                            System.Windows.Forms.MessageBoxIcon.Warning);
+                        break; // Exit loop to prevent crash
+                    }
+                    
                     var groupKey = groupEntry.Key;
                     var clusters = groupEntry.Value;
 
-                foreach (var cluster in clusters)
-                {
-                    if (cluster.Count <= 1) continue; // Skip individual sleeves
+                    foreach (var cluster in clusters)
+                    {
+                        if (cluster.Count <= 1) continue; // Skip individual sleeves
 
                         try
                         {
@@ -601,7 +709,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// ✅ FIX: Get orientation from SleeveData XML instead of ClashZone cache
         /// </summary>
-        private string GetOrientationFromClashZone(FamilyInstance sleeve)
+        private string GetOrientationFromClashZone(FamilyInstance sleeve, Dictionary<ElementId, Element> mepElementCache = null)
         {
             try
             {
@@ -610,7 +718,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (mepElementIdParam != null && mepElementIdParam.HasValue)
                 {
                     var mepElementId = mepElementIdParam.AsElementId();
-                    var mepElement = sleeve.Document.GetElement(mepElementId);
+                    
+                    // ✅ OPTIMIZATION: Use PRE-POPULATED cache first (calculate once, use many times)
+                    // Check class-level cache first (pre-populated in batch), then parameter cache, then retrieve
+                    Element mepElement = null;
+                    if (_mepElementCache != null && _mepElementCache.TryGetValue(mepElementId, out var classCachedElement))
+                    {
+                        mepElement = classCachedElement; // ✅ Use pre-populated cache (fast)
+                    }
+                    else if (mepElementCache != null && mepElementCache.TryGetValue(mepElementId, out var paramCachedElement))
+                    {
+                        mepElement = paramCachedElement; // Use parameter cache if provided
+                        // Also add to class cache for future use
+                        if (_mepElementCache != null)
+                        {
+                            _mepElementCache[mepElementId] = mepElement;
+                        }
+                    }
+                    else
+                    {
+                        mepElement = sleeve.Document.GetElement(mepElementId); // ❌ Expensive - should be avoided
+                        if (mepElement != null)
+                        {
+                            // Add to both caches for future use
+                            if (_mepElementCache != null)
+                            {
+                                _mepElementCache[mepElementId] = mepElement;
+                            }
+                            if (mepElementCache != null)
+                            {
+                                mepElementCache[mepElementId] = mepElement;
+                            }
+                        }
+                    }
+                    
                     if (mepElement != null)
                     {
                         // Get orientation from MEP element's Wall Direction Type
@@ -636,7 +777,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 
                 // ✅ DYNAMIC: Fallback to geometric analysis
-                var bbox = sleeve.get_BoundingBox(null);
+                // ✅ OPTIMIZATION: Use PRE-POPULATED bbox cache (calculate once, use many times)
+                BoundingBoxXYZ bbox = null;
+                if (_bboxCache != null && _bboxCache.TryGetValue(sleeve, out var cachedBbox))
+                {
+                    bbox = cachedBbox; // ✅ Use pre-populated cache (fast, no API call)
+                }
+                else
+                {
+                    bbox = sleeve.get_BoundingBox(null); // ❌ Expensive - should be avoided (cache should be pre-populated)
+                    if (bbox != null && _bboxCache != null)
+                    {
+                        _bboxCache[sleeve] = bbox; // Add to cache for future use
+                    }
+                }
+                
                 if (bbox != null)
                 {
                     double width = bbox.Max.X - bbox.Min.X;
@@ -664,7 +819,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// ✅ FIX: Get category from SleeveData XML instead of ClashZone cache
         /// </summary>
-        private string GetCategoryFromMepElementId(FamilyInstance sleeve)
+        private string GetCategoryFromMepElementId(FamilyInstance sleeve, Dictionary<ElementId, Element> mepElementCache = null)
         {
             try
             {
@@ -683,7 +838,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (mepElementIdParam != null && mepElementIdParam.HasValue)
                 {
                     var mepElementId = mepElementIdParam.AsElementId();
-                    var mepElement = sleeve.Document.GetElement(mepElementId);
+                    
+                    // ✅ OPTIMIZATION: Use PRE-POPULATED cache first (calculate once, use many times)
+                    // Check class-level cache first (pre-populated in batch), then parameter cache, then retrieve
+                    Element mepElement = null;
+                    if (_mepElementCache != null && _mepElementCache.TryGetValue(mepElementId, out var classCachedElement))
+                    {
+                        mepElement = classCachedElement; // ✅ Use pre-populated cache (fast)
+                    }
+                    else if (mepElementCache != null && mepElementCache.TryGetValue(mepElementId, out var paramCachedElement))
+                    {
+                        mepElement = paramCachedElement; // Use parameter cache if provided
+                        // Also add to class cache for future use
+                        if (_mepElementCache != null)
+                        {
+                            _mepElementCache[mepElementId] = mepElement;
+                        }
+                    }
+                    else
+                    {
+                        mepElement = sleeve.Document.GetElement(mepElementId); // ❌ Expensive - should be avoided
+                        if (mepElement != null)
+                        {
+                            // Add to both caches for future use
+                            if (_mepElementCache != null)
+                            {
+                                _mepElementCache[mepElementId] = mepElement;
+                            }
+                            if (mepElementCache != null)
+                            {
+                                mepElementCache[mepElementId] = mepElement;
+                            }
+                        }
+                    }
+                    
                     if (mepElement != null)
                     {
                         var category = mepElement.Category?.Name;

@@ -21,6 +21,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly UIDocument _uiDocument;
         private readonly Dictionary<string, double> _uiClearances;
         private readonly MarkPrefixSettings _markPrefixes;
+        
+        // ⚠️ CRITICAL: Crash-safe executor for timeout protection (5-minute limit per category)
+        private readonly CrashSafeExecutor _crashSafeExecutor;
 
         public OpeningCommandOrchestrator(Document document, UIDocument uiDocument, Dictionary<string, double> uiClearances = null, MarkPrefixSettings markPrefixes = null)
         {
@@ -28,6 +31,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _uiDocument = uiDocument ?? throw new ArgumentNullException(nameof(uiDocument));
             _uiClearances = uiClearances ?? new Dictionary<string, double>();
             _markPrefixes = markPrefixes ?? new MarkPrefixSettings();
+            
+            // ⚠️ CRITICAL: Initialize crash-safe executor for timeout protection
+            _crashSafeExecutor = new CrashSafeExecutor();
         }
 
         /// <summary>
@@ -263,71 +269,100 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         /// <summary>
         /// Execute clustering for a specific category after sleeve placement
+        /// ⚠️ CRITICAL: Wrapped with timeout protection (5-minute limit per category)
         /// </summary>
         private void ExecuteClusteringForCategory(OpeningFilter filter, bool showProgress)
         {
-            try
+            // Declare variables outside lambda for use after timeout execution
+            List<FamilyInstance> placedClusterSleeves = new List<FamilyInstance>();
+            string categoryString = null;
+            string xmlFilePath = null;
+            
+            // ⚠️ CRITICAL: Execute with timeout protection to prevent infinite hangs
+            var result = _crashSafeExecutor.ExecuteWithTimeout(() =>
             {
-                // 🔥 CRITICAL DEBUG: Log clustering attempt
-                if (!DeploymentConfiguration.DeploymentMode)
+                try
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥 ExecuteClusteringForCategory CALLED for category: {filter.Category} 🔥\n");
-                }
-                
-                // Convert MepCategory enum to string for cluster command
-                string categoryString = filter.Category switch
-                {
-                    Models.MepCategory.Ducts => "Ducts",
-                    Models.MepCategory.DuctAccessories => "Duct Accessories",
-                    Models.MepCategory.Pipes => "Pipes", 
-                    Models.MepCategory.CableTrays => "Cable Trays",
-                    _ => "Ducts"
-                };
-                
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥 Starting clustering for category: {categoryString} 🔥\n");
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[OpeningCommandOrchestrator] Starting clustering for category: {categoryString}");
-                }
-                
-                // ✅ PERFORMANCE FIX: Get XML file path for this category to avoid loading all 22 XML files
-                string xmlFilePath = GetXmlFilePathForFilter(filter);
-                
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    string orchestratorDebugLogPath = SafeFileLogger.GetLogFilePath("orchestrator_debug.log");
+                    // 🔥 CRITICAL DEBUG: Log clustering attempt
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        File.AppendAllText(orchestratorDebugLogPath, $"[{DateTime.Now:HH:mm:ss}] xmlFilePath = {xmlFilePath ?? "NULL"}\n");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥 ExecuteClusteringForCategory CALLED for category: {filter.Category} 🔥\n");
                     }
-                }
-                
-                // Use UniversalClusterService directly (service-based architecture)
-                List<FamilyInstance> placedClusterSleeves = new List<FamilyInstance>();
-                
-                using (var tx = new Transaction(_document, $"Cluster {categoryString} Openings"))
-                {
-                    tx.Start();
                     
-                    var clusterService = new UniversalClusterService();
-                    // ✅ FIX: Pass filter name to clustering service so it can set it on cluster sleeves
-                    var (placedCount, deletedCount) = clusterService.ClusterSleeves(_document, categoryString, _uiDocument, xmlFilePath, filter.Name, placedClusterSleeves);
-                    
-                    tx.Commit();
+                    // Convert MepCategory enum to string for cluster command
+                    categoryString = filter.Category switch
+                    {
+                        Models.MepCategory.Ducts => "Ducts",
+                        Models.MepCategory.DuctAccessories => "Duct Accessories",
+                        Models.MepCategory.Pipes => "Pipes", 
+                        Models.MepCategory.CableTrays => "Cable Trays",
+                        _ => "Ducts"
+                    };
                     
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[OpeningCommandOrchestrator] ✓ Clustering complete for {categoryString}: {placedCount} clusters placed, {deletedCount} individual sleeves deleted");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥 Starting clustering for category: {categoryString} 🔥\n");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[OpeningCommandOrchestrator] Starting clustering for category: {categoryString}");
+                    }
+                    
+                    // ✅ PERFORMANCE FIX: Get XML file path for this category to avoid loading all 22 XML files
+                    xmlFilePath = GetXmlFilePathForFilter(filter);
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        string orchestratorDebugLogPath = SafeFileLogger.GetLogFilePath("orchestrator_debug.log");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            File.AppendAllText(orchestratorDebugLogPath, $"[{DateTime.Now:HH:mm:ss}] xmlFilePath = {xmlFilePath ?? "NULL"}\n");
+                        }
+                    }
+                    
+                    // Use UniversalClusterService directly (service-based architecture)
+                    
+                    using (var tx = new Transaction(_document, $"Cluster {categoryString} Openings"))
+                    {
+                        tx.Start();
+                        
+                        var clusterService = new UniversalClusterService();
+                        // ✅ FIX: Pass filter name to clustering service so it can set it on cluster sleeves
+                        var (placedCount, deletedCount) = clusterService.ClusterSleeves(_document, categoryString, _uiDocument, xmlFilePath, filter.Name, placedClusterSleeves);
+                        
+                        tx.Commit();
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[OpeningCommandOrchestrator] ✓ Clustering complete for {categoryString}: {placedCount} clusters placed, {deletedCount} individual sleeves deleted");
+                        }
+                        
+                        return Autodesk.Revit.UI.Result.Succeeded;
                     }
                 }
-                
-                // ✅ PERFORMANCE FIX: After placing cluster sleeves, regenerate document and save their bounding boxes to XML
-                // This uses SleeveCoordinateService to update coordinates (same as individual sleeves)
-                if (placedClusterSleeves.Count > 0)
+                catch (Exception ex)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Error($"[OpeningCommandOrchestrator] Error in ExecuteClusteringForCategory for {filter.Category}: {ex.Message}");
+                    }
+                    return Autodesk.Revit.UI.Result.Failed;
+                }
+            }, $"Cluster Sleeves for {filter.Category}");
+            
+            if (result != Autodesk.Revit.UI.Result.Succeeded)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Warning($"[OpeningCommandOrchestrator] Clustering for {filter.Category} completed with status: {result}");
+                }
+                return; // Exit early if clustering failed
+            }
+            
+            // ✅ PERFORMANCE FIX: After placing cluster sleeves, regenerate document and save their bounding boxes to XML
+            // This uses SleeveCoordinateService to update coordinates (same as individual sleeves)
+            if (placedClusterSleeves != null && placedClusterSleeves.Count > 0 && categoryString != null && xmlFilePath != null)
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
@@ -412,19 +447,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ❌ ERROR in ExecuteClusteringForCategory: {ex.Message}\n");
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Error($"[OpeningCommandOrchestrator] Error clustering {filter.Category}: {ex.Message}");
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Error($"[OpeningCommandOrchestrator] Stack trace: {ex.StackTrace}");
-                }
-                // Don't throw - clustering failure shouldn't stop the entire process
             }
         }
 
@@ -568,48 +590,54 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         /// <summary>
         /// Execute UniversalSleevePlacementCommand
+        /// ⚠️ CRITICAL: Wrapped with timeout protection (5-minute limit per category)
         /// </summary>
         private void ExecuteUniversalSleevePlacement(OpeningFilter filter, bool showProgress)
         {
-            try
+            // Declare variables outside lambda for use after timeout execution
+            string xmlFilePath = GetXmlFilePathForFilter(filter);
+            var tracePath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+            var placementDebugPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+            
+            // ⚠️ CRITICAL: Execute with timeout protection to prevent infinite hangs
+            var result = _crashSafeExecutor.ExecuteWithTimeout(() =>
             {
-                // 🔥 CRITICAL DEBUG: Direct file logging to trace orchestrator execution
-                var tracePath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                var placementDebugPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
-                // ✅ OVERWRITE placement_debug.log at start of each run
-                try { System.IO.File.WriteAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] === NEW PLACEMENT RUN STARTED ===\n"); } catch { }
-                try {
+                try
+                {
+                    // 🔥 CRITICAL DEBUG: Direct file logging to trace orchestrator execution
+                    // ✅ OVERWRITE placement_debug.log at start of each run
+                    try { System.IO.File.WriteAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] === NEW PLACEMENT RUN STARTED ===\n"); } catch { }
+                    try {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] CLICK_OK: Begin placement for category={filter.Category}, filter={filter.Name}\n");
+                        }
+                    } catch { }
+                    
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] CLICK_OK: Begin placement for category={filter.Category}, filter={filter.Name}\n");
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥 ExecuteUniversalSleevePlacement CALLED 🔥\n");
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Filter Category: {filter.Category}\n");
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] UI Clearances Count: {_uiClearances?.Count ?? 0}\n");
+                        DebugLogger.Info($"[OpeningCommandOrchestrator] Executing UniversalSleevePlacementCommand for {filter.Category}");
                     }
-                } catch { }
-                
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥 ExecuteUniversalSleevePlacement CALLED 🔥\n");
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Filter Category: {filter.Category}\n");
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] UI Clearances Count: {_uiClearances?.Count ?? 0}\n");
-                    DebugLogger.Info($"[OpeningCommandOrchestrator] Executing UniversalSleevePlacementCommand for {filter.Category}");
-                }
 
-                // ✅ CRITICAL FIX: Load clash zones from XML file
-                var clashZones = LoadClashZonesForFilter(filter);
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    DebugLogger.Info($"[OpeningCommandOrchestrator] Loaded {clashZones.Count} clash zones for {filter.Category}");
-                }
-                try {
+                    // ✅ CRITICAL FIX: Load clash zones from XML file
+                    var clashZones = LoadClashZonesForFilter(filter);
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] LOAD_XML: zones={clashZones.Count}\n");
+                        DebugLogger.Info($"[OpeningCommandOrchestrator] Loaded {clashZones.Count} clash zones for {filter.Category}");
                     }
-                } catch { }
+                    try {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] LOAD_XML: zones={clashZones.Count}\n");
+                        }
+                    } catch { }
 
-                if (clashZones.Count > 0)
-                {
-                    // 🔥 CRITICAL DEBUG: Log which XML file we're passing clash zones from
-                    string xmlFilePath = GetXmlFilePathForFilter(filter);
+                    if (clashZones.Count > 0)
+                    {
+                        // 🔥 CRITICAL DEBUG: Log which XML file we're passing clash zones from
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                                                 if (!DeploymentConfiguration.DeploymentMode)
@@ -681,248 +709,250 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // ✅ DEPLOYMENT: Wrapped in deployment mode check
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                                                if (!DeploymentConfiguration.DeploymentMode)
+                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[OpeningCommandOrchestrator] UniversalSleevePlacementCommand completed successfully");
                     }
-                    try {
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] BEFORE_UPDATE_COORDINATES\n");
-                        }
-                    } catch { }
                     
-                    // ✅ CRITICAL: Following reference document - Regenerate FIRST, then read from Revit and save to XML
-                    // Reference: SLEEVE_PLACEMENT_SEQUENCING_REFERENCE.md lines 22-35
-                    // The timing fix: Regenerate ensures bounding boxes are available, then UpdateSleeveCoordinatesInXml reads from Revit
-                    // ✅ CRITICAL: Save individual sleeve bounding boxes BEFORE clustering
-                    // Clustering proximity calculation REQUIRES individual sleeve bounding boxes from XML
-                    try
-                    {
-                        // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ⚠️ ENTERING UpdateSleeveCoordinatesInXml block...\n");
-                        }
-                        try {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] ENTERING_UPDATE_COORD_BLOCK\n");
-                            }
-                    } catch { }
-                        
-                        // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Regenerating document to ensure bounding boxes are available...\n");
-                        }
-                        
-                        // ✅ CRITICAL LOGGING: Log bounding boxes from Revit BEFORE regeneration
-                        // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            try
-                            {
-                                var sleevesBeforeRegen = new FilteredElementCollector(_document)
-                                    .OfClass(typeof(FamilyInstance))
-                                    .Cast<FamilyInstance>()
-                                    .Where(s => s.Symbol.FamilyName.Contains("Opening"))
-                                    .ToList();
-                                
-                                try {
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_BEFORE_REGEN] Found {sleevesBeforeRegen.Count} sleeves before regeneration\n");
-                                    }
-                    } catch { }
-                                foreach (var sleeve in sleevesBeforeRegen.Take(10)) // Log first 10
-                                {
-                                    try
-                                    {
-                                        var bboxBefore = sleeve.get_BoundingBox(null);
-                                        if (bboxBefore != null)
-                                        {
-                                            try { System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_BEFORE_REGEN] Sleeve {sleeve.Id.IntegerValue}: Min=({bboxBefore.Min.X:F6}, {bboxBefore.Min.Y:F6}, {bboxBefore.Min.Z:F6}), Max=({bboxBefore.Max.X:F6}, {bboxBefore.Max.Y:F6}, {bboxBefore.Max.Z:F6})\n"); } catch { }
-                                        }
-                                        else
-                                        {
-                                            try {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                {
-                                                    System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_BEFORE_REGEN] Sleeve {sleeve.Id.IntegerValue}: Bounding box is NULL\n");
-                                                }
-                    } catch { }
-                                        }
-                                    }
-                                    catch { }
-                                }
-                            }
-                            catch { }
-                        }
-                        
-                        // ✅ CRITICAL FIX: Regenerate document BEFORE getting bounding boxes
-                        // Without regeneration, bounding boxes may not be available immediately after placement
-                        try
-                        {
-                            _document.Regenerate();
-                            // Wait for regeneration to complete
-                            System.Threading.Thread.Sleep(200);
-                            // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Document regenerated, now getting bounding boxes...\n");
-                            }
-                        }
-                        catch (Exception regenEx)
-                        {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Warning($"[OpeningCommandOrchestrator] Could not regenerate document: {regenEx.Message}");
-                            }
-                        }
-                        
-                        // ✅ CRITICAL LOGGING: Log bounding boxes from Revit AFTER regeneration
-                        // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            try
-                            {
-                                var sleevesAfterRegen = new FilteredElementCollector(_document)
-                                    .OfClass(typeof(FamilyInstance))
-                                    .Cast<FamilyInstance>()
-                                    .Where(s => s.Symbol.FamilyName.Contains("Opening"))
-                                    .ToList();
-                                
-                                try {
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_AFTER_REGEN] Found {sleevesAfterRegen.Count} sleeves after regeneration\n");
-                                    }
-                    } catch { }
-                                foreach (var sleeve in sleevesAfterRegen.Take(10)) // Log first 10
-                                {
-                                    try
-                                    {
-                                        var bboxAfter = sleeve.get_BoundingBox(null);
-                                        if (bboxAfter != null)
-                                        {
-                                            try { System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_AFTER_REGEN] Sleeve {sleeve.Id.IntegerValue}: Min=({bboxAfter.Min.X:F6}, {bboxAfter.Min.Y:F6}, {bboxAfter.Min.Z:F6}), Max=({bboxAfter.Max.X:F6}, {bboxAfter.Max.Y:F6}, {bboxAfter.Max.Z:F6})\n"); } catch { }
-                                        }
-                                        else
-                                        {
-                                            try {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                {
-                                                    System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_AFTER_REGEN] Sleeve {sleeve.Id.IntegerValue}: Bounding box is NULL\n");
-                                                }
-                    } catch { }
-                                        }
-                                    }
-                                    catch { }
-                                }
-                            }
-                            catch { }
-                        }
-                        
-                        // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Getting individual sleeve bounding boxes from Revit...\n");
-                        }
-                        try {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] BEFORE_UpdateSleeveCoordinatesInXml\n");
-                            }
-                    } catch { }
-                        
-                        var coordinateService = new SleeveCoordinateService(_document);
-                        try {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] SleeveCoordinateService_CREATED\n");
-                            }
-                    } catch { }
-                        
-                        // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ⚠️ About to call UpdateSleeveCoordinatesInXml with xmlFilePath: {xmlFilePath ?? "NULL"}\n");
-                        }
-                        try {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] CALLING_UpdateSleeveCoordinatesInXml: {xmlFilePath ?? "NULL"}\n");
-                            }
-                    } catch { }
-                        
-                        coordinateService.UpdateSleeveCoordinatesInXml(xmlFilePath);
-                        
-                        try {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] AFTER_UpdateSleeveCoordinatesInXml\n");
-                            }
-                    } catch { }
-                        
-                        // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Individual sleeve coordinates saved - clustering can now calculate proximity\n");
-                        }
-                        try {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] UPDATE_COORD_SUCCESS\n");
-                            }
-                    } catch { }
+                    return Autodesk.Revit.UI.Result.Succeeded;
                     }
-                    catch (Exception coordEx)
+                    else
                     {
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ⚠️ Error saving individual coordinates: {coordEx.Message}\n");
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Error($"[OpeningCommandOrchestrator] UpdateSleeveCoordinatesInXml Exception: {coordEx.Message}\n");
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Error($"[OpeningCommandOrchestrator] Stack trace: {coordEx.StackTrace}\n");
-                        }
-                        try {
                             if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] UPDATE_COORD_EXCEPTION: {coordEx.Message}\n");
-                            }
-                    } catch { }
+                                DebugLogger.Warning($"[OpeningCommandOrchestrator] No clash zones found for {filter.Category}, skipping placement");
+                        }
+                        return Autodesk.Revit.UI.Result.Succeeded; // Return success even if no zones to place
                     }
                 }
-                else
+                catch (Exception ex)
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Warning($"[OpeningCommandOrchestrator] No clash zones found for {filter.Category}, skipping placement");
+                        DebugLogger.Error($"[OpeningCommandOrchestrator] Error in ExecuteUniversalSleevePlacement for {filter.Category}: {ex.Message}");
                     }
+                    return Autodesk.Revit.UI.Result.Failed;
                 }
-            }
-            catch (Exception ex)
+            }, $"Place Sleeves for {filter.Category}");
+            
+            if (result != Autodesk.Revit.UI.Result.Succeeded)
             {
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ❌ EXCEPTION in ExecuteUniversalSleevePlacement: {ex.Message}\n");
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Stack trace: {ex.StackTrace}\n");
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Error($"[OpeningCommandOrchestrator] Error executing UniversalSleevePlacementCommand: {ex.Message}");
+                    DebugLogger.Warning($"[OpeningCommandOrchestrator] Sleeve placement for {filter.Category} completed with status: {result}");
                 }
-                throw;
+                return; // Exit early if placement failed
+            }
+            
+            // ✅ CRITICAL: Following reference document - Regenerate FIRST, then read from Revit and save to XML
+            // Reference: SLEEVE_PLACEMENT_SEQUENCING_REFERENCE.md lines 22-35
+            // The timing fix: Regenerate ensures bounding boxes are available, then UpdateSleeveCoordinatesInXml reads from Revit
+            // ✅ CRITICAL: Save individual sleeve bounding boxes BEFORE clustering
+            // Clustering proximity calculation REQUIRES individual sleeve bounding boxes from XML
+            try
+            {
+                // ✅ DEPLOYMENT: Wrapped in deployment mode check
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ⚠️ ENTERING UpdateSleeveCoordinatesInXml block...\n");
+                }
+                try {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] ENTERING_UPDATE_COORD_BLOCK\n");
+                    }
+                } catch { }
+                
+                // ✅ DEPLOYMENT: Wrapped in deployment mode check
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Regenerating document to ensure bounding boxes are available...\n");
+                }
+                
+                // ✅ CRITICAL LOGGING: Log bounding boxes from Revit BEFORE regeneration
+                // ✅ DEPLOYMENT: Wrapped in deployment mode check
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    try
+                    {
+                        var sleevesBeforeRegen = new FilteredElementCollector(_document)
+                            .OfClass(typeof(FamilyInstance))
+                            .Cast<FamilyInstance>()
+                            .Where(s => s.Symbol.FamilyName.Contains("Opening"))
+                            .ToList();
+                        
+                        try {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_BEFORE_REGEN] Found {sleevesBeforeRegen.Count} sleeves before regeneration\n");
+                            }
+                        } catch { }
+                        foreach (var sleeve in sleevesBeforeRegen.Take(10)) // Log first 10
+                        {
+                            try
+                            {
+                                var bboxBefore = sleeve.get_BoundingBox(null);
+                                if (bboxBefore != null)
+                                {
+                                    try { System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_BEFORE_REGEN] Sleeve {sleeve.Id.IntegerValue}: Min=({bboxBefore.Min.X:F6}, {bboxBefore.Min.Y:F6}, {bboxBefore.Min.Z:F6}), Max=({bboxBefore.Max.X:F6}, {bboxBefore.Max.Y:F6}, {bboxBefore.Max.Z:F6})\n"); } catch { }
+                                }
+                                else
+                                {
+                                    try {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_BEFORE_REGEN] Sleeve {sleeve.Id.IntegerValue}: Bounding box is NULL\n");
+                                        }
+                                    } catch { }
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                    catch { }
+                }
+                
+                // ✅ CRITICAL FIX: Regenerate document BEFORE getting bounding boxes
+                // Without regeneration, bounding boxes may not be available immediately after placement
+                try
+                {
+                    _document.Regenerate();
+                    // Wait for regeneration to complete
+                    System.Threading.Thread.Sleep(200);
+                    // ✅ DEPLOYMENT: Wrapped in deployment mode check
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Document regenerated, now getting bounding boxes...\n");
+                    }
+                }
+                catch (Exception regenEx)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[OpeningCommandOrchestrator] Could not regenerate document: {regenEx.Message}");
+                    }
+                }
+                
+                // ✅ CRITICAL LOGGING: Log bounding boxes from Revit AFTER regeneration
+                // ✅ DEPLOYMENT: Wrapped in deployment mode check
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    try
+                    {
+                        var sleevesAfterRegen = new FilteredElementCollector(_document)
+                            .OfClass(typeof(FamilyInstance))
+                            .Cast<FamilyInstance>()
+                            .Where(s => s.Symbol.FamilyName.Contains("Opening"))
+                            .ToList();
+                        
+                        try {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_AFTER_REGEN] Found {sleevesAfterRegen.Count} sleeves after regeneration\n");
+                            }
+                        } catch { }
+                        foreach (var sleeve in sleevesAfterRegen.Take(10)) // Log first 10
+                        {
+                            try
+                            {
+                                var bboxAfter = sleeve.get_BoundingBox(null);
+                                if (bboxAfter != null)
+                                {
+                                    try { System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_AFTER_REGEN] Sleeve {sleeve.Id.IntegerValue}: Min=({bboxAfter.Min.X:F6}, {bboxAfter.Min.Y:F6}, {bboxAfter.Min.Z:F6}), Max=({bboxAfter.Max.X:F6}, {bboxAfter.Max.Y:F6}, {bboxAfter.Max.Z:F6})\n"); } catch { }
+                                }
+                                else
+                                {
+                                    try {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_AFTER_REGEN] Sleeve {sleeve.Id.IntegerValue}: Bounding box is NULL\n");
+                                        }
+                                    } catch { }
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                    catch { }
+                }
+                
+                // ✅ DEPLOYMENT: Wrapped in deployment mode check
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Getting individual sleeve bounding boxes from Revit...\n");
+                }
+                try {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] BEFORE_UpdateSleeveCoordinatesInXml\n");
+                    }
+                } catch { }
+                
+                var coordinateService = new SleeveCoordinateService(_document);
+                try {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] SleeveCoordinateService_CREATED\n");
+                    }
+                } catch { }
+                
+                // ✅ DEPLOYMENT: Wrapped in deployment mode check
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ⚠️ About to call UpdateSleeveCoordinatesInXml with xmlFilePath: {xmlFilePath ?? "NULL"}\n");
+                }
+                try {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] CALLING_UpdateSleeveCoordinatesInXml: {xmlFilePath ?? "NULL"}\n");
+                    }
+                } catch { }
+                
+                coordinateService.UpdateSleeveCoordinatesInXml(xmlFilePath);
+                
+                try {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] AFTER_UpdateSleeveCoordinatesInXml\n");
+                    }
+                } catch { }
+                
+                // ✅ DEPLOYMENT: Wrapped in deployment mode check
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Individual sleeve coordinates saved - clustering can now calculate proximity\n");
+                }
+                try {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] UPDATE_COORD_SUCCESS\n");
+                    }
+                } catch { }
+            }
+            catch (Exception coordEx)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ⚠️ Error saving individual coordinates: {coordEx.Message}\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error($"[OpeningCommandOrchestrator] UpdateSleeveCoordinatesInXml Exception: {coordEx.Message}\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error($"[OpeningCommandOrchestrator] Stack trace: {coordEx.StackTrace}\n");
+                }
+                try {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] UPDATE_COORD_EXCEPTION: {coordEx.Message}\n");
+                    }
+                } catch { }
             }
         }
 
@@ -933,20 +963,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
+                if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[OpeningCommandOrchestrator] Executing {command.GetType().Name} for {filter.Category}");
 
                 // ✅ FIX: No longer using RectangularSleeveClusterCommandV2 - clustering handled by UniversalClusterService
-                                if (!DeploymentConfiguration.DeploymentMode)
+                if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning($"[OpeningCommandOrchestrator] Command {command.GetType().Name} not supported for direct execution - skipping");
             }
             catch (Exception ex)
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
+                if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[OpeningCommandOrchestrator] Error executing {command.GetType().Name}: {ex.Message}");
                 throw;
-    }
-}
-
+            }
+        }
     }
 }

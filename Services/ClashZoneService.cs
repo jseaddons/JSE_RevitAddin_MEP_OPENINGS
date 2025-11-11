@@ -1489,6 +1489,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return;
                 }
                 
+                // ✅ PERFORMANCE OPTIMIZATION: Batch retrieve elements BEFORE loop to avoid duplicate GetElement calls
+                // Pre-retrieve all unique MEP and structural element IDs from duct clash zones (only if needed)
+                var ductClashZones = clashZonesToCheck
+                    .Where(cz => string.Equals(cz.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase) && 
+                                (cz.IsResolved || cz.IsClusterResolved))
+                    .ToList();
+                
+                var elementCache = new Dictionary<ElementId, Element>();
+                if (ductClashZones.Count > 0)
+                {
+                    var mepElementIds = ductClashZones.Select(cz => cz.MepElementId).Distinct().Where(id => id != null && id != ElementId.InvalidElementId).ToList();
+                    var structuralElementIds = ductClashZones.Select(cz => cz.StructuralElementId).Distinct().Where(id => id != null && id != ElementId.InvalidElementId).ToList();
+                    
+                    foreach (var mepId in mepElementIds)
+                    {
+                        var element = document.GetElement(mepId);
+                        if (element != null) elementCache[mepId] = element;
+                    }
+                    foreach (var structId in structuralElementIds)
+                    {
+                        var element = document.GetElement(structId);
+                        if (element != null) elementCache[structId] = element;
+                    }
+                }
+                
                 foreach (var clashZone in clashZonesToCheck)
                 {
                     // ✅ FIX: Check BOTH individual and cluster sleeve flags
@@ -1528,9 +1553,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // ✅ METHOD 3: Check for damper presence before resetting duct clash zones
                         if (string.Equals(clashZone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase))
                         {
-                            // Get the MEP element to check for damper presence
-                            var mepElement = document.GetElement(clashZone.MepElementId);
-                            var structuralElement = document.GetElement(clashZone.StructuralElementId);
+                            // ✅ PERFORMANCE OPTIMIZATION: Use pre-cached elements to avoid duplicate GetElement calls
+                            Element mepElement = null;
+                            Element structuralElement = null;
+                            
+                            if (elementCache.TryGetValue(clashZone.MepElementId, out var cachedMepElement))
+                                mepElement = cachedMepElement;
+                            else
+                                mepElement = document.GetElement(clashZone.MepElementId);
+                            
+                            if (elementCache.TryGetValue(clashZone.StructuralElementId, out var cachedStructElement))
+                                structuralElement = cachedStructElement;
+                            else
+                                structuralElement = document.GetElement(clashZone.StructuralElementId);
                             
                             if (mepElement != null && structuralElement != null)
                             {
