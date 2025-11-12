@@ -203,123 +203,81 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[LOAD-XML] ERROR: xmlFilePath not provided or file doesn't exist: {xmlFilePath}\n");
+                        DebugLogger.Info($"[LOAD-XML] ERROR: xmlFilePath not provided or file doesn't exist: {xmlFilePath}\n");
                     }
                     return clashZones;
                 }
                 
-                var xmlFiles = new[] { xmlFilePath };
-                
-                // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                if (!DeploymentConfiguration.DeploymentMode)
+                // ✅ HIERARCHICAL STRUCTURE ONLY: Use XmlSerializer to load from Filters → FileCombo → ClashZones
+                var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
+                using (var reader = new StreamReader(xmlFilePath))
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[LOAD-XML] Processing ONLY file: {xmlFilePath}\n");
-                }
-                
-                foreach (var xmlFile in xmlFiles)
-                {
-                    try
+                    var filter = (OpeningFilter)serializer.Deserialize(reader);
+                    
+                    // ✅ LOAD FROM HIERARCHICAL STRUCTURE: Filters → FileCombo → ClashZones
+                    if (filter?.ClashZoneStorage?.Filters != null)
                     {
-                        var xmlDoc = new System.Xml.XmlDocument();
-                        xmlDoc.Load(xmlFile);
-                        
-                        var clashNodes = xmlDoc.SelectNodes("//ClashZone");
-                        if (clashNodes != null)
+                        foreach (var filterGroup in filter.ClashZoneStorage.Filters)
                         {
-                            foreach (System.Xml.XmlNode node in clashNodes)
+                            if (filterGroup?.FileCombos != null)
                             {
-                                var clashZone = new ClashZone();
-                                
-                                // ✅ CRITICAL: Load ClashZone ID for matching
-                                if (Guid.TryParse(node.SelectSingleNode("Id")?.InnerText, out Guid clashZoneId))
-                                    clashZone.Id = clashZoneId;
-                                
-                                // Load basic properties
-                                if (int.TryParse(node.SelectSingleNode("SleeveInstanceId")?.InnerText, out int sleeveId))
-                                    clashZone.SleeveInstanceId = sleeveId;
-                                
-                                // Load placement point coordinates (for position matching)
-                                if (double.TryParse(node.SelectSingleNode("SleevePlacementPointX")?.InnerText, out double placeX))
-                                    clashZone.SleevePlacementPointX = placeX;
-                                if (double.TryParse(node.SelectSingleNode("SleevePlacementPointY")?.InnerText, out double placeY))
-                                    clashZone.SleevePlacementPointY = placeY;
-                                if (double.TryParse(node.SelectSingleNode("SleevePlacementPointZ")?.InnerText, out double placeZ))
-                                    clashZone.SleevePlacementPointZ = placeZ;
-                                
-                                // Load bounding box coordinates
-                                if (double.TryParse(node.SelectSingleNode("SleeveBoundingBoxMinX")?.InnerText, out double minX))
-                                    clashZone.SleeveBoundingBoxMinX = minX;
-                                if (double.TryParse(node.SelectSingleNode("SleeveBoundingBoxMinY")?.InnerText, out double minY))
-                                    clashZone.SleeveBoundingBoxMinY = minY;
-                                if (double.TryParse(node.SelectSingleNode("SleeveBoundingBoxMinZ")?.InnerText, out double minZ))
-                                    clashZone.SleeveBoundingBoxMinZ = minZ;
-                                if (double.TryParse(node.SelectSingleNode("SleeveBoundingBoxMaxX")?.InnerText, out double maxX))
-                                    clashZone.SleeveBoundingBoxMaxX = maxX;
-                                if (double.TryParse(node.SelectSingleNode("SleeveBoundingBoxMaxY")?.InnerText, out double maxY))
-                                    clashZone.SleeveBoundingBoxMaxY = maxY;
-                                if (double.TryParse(node.SelectSingleNode("SleeveBoundingBoxMaxZ")?.InnerText, out double maxZ))
-                                    clashZone.SleeveBoundingBoxMaxZ = maxZ;
-                                
-                                // ✅ NEW: Load cluster sleeve instance ID
-                                if (int.TryParse(node.SelectSingleNode("ClusterSleeveInstanceId")?.InnerText, out int clusterSleeveInstanceId))
-                                    clashZone.ClusterSleeveInstanceId = clusterSleeveInstanceId;
-                                
-                                // ✅ DEBUG: Log cluster data loading
-                                // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                                if (!DeploymentConfiguration.DeploymentMode && clashZone.ClusterSleeveInstanceId > 0)
+                                foreach (var fileCombo in filterGroup.FileCombos)
                                 {
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Info($"[LOAD-XML] Loaded ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId} from XML for ClashZone {clashZone.Id}\n");
+                                    if (fileCombo?.ClashZones != null)
+                                    {
+                                        foreach (var cz in fileCombo.ClashZones)
+                                        {
+                                            // ✅ CRITICAL: Reconstruct SleevePlacementPoint from XML-serializable properties
+                                            cz.EnsureSleevePlacementPointReconstructed();
+                                            clashZones.Add(cz);
+                                        }
+                                    }
                                 }
-                                
-                                // ✅ NEW: Load cluster sleeve bounding box coordinates
-                                if (double.TryParse(node.SelectSingleNode("ClusterSleeveBoundingBoxMinX")?.InnerText, out double clusterMinX))
-                                    clashZone.ClusterSleeveBoundingBoxMinX = clusterMinX;
-                                if (double.TryParse(node.SelectSingleNode("ClusterSleeveBoundingBoxMinY")?.InnerText, out double clusterMinY))
-                                    clashZone.ClusterSleeveBoundingBoxMinY = clusterMinY;
-                                if (double.TryParse(node.SelectSingleNode("ClusterSleeveBoundingBoxMinZ")?.InnerText, out double clusterMinZ))
-                                    clashZone.ClusterSleeveBoundingBoxMinZ = clusterMinZ;
-                                if (double.TryParse(node.SelectSingleNode("ClusterSleeveBoundingBoxMaxX")?.InnerText, out double clusterMaxX))
-                                    clashZone.ClusterSleeveBoundingBoxMaxX = clusterMaxX;
-                                if (double.TryParse(node.SelectSingleNode("ClusterSleeveBoundingBoxMaxY")?.InnerText, out double clusterMaxY))
-                                    clashZone.ClusterSleeveBoundingBoxMaxY = clusterMaxY;
-                                if (double.TryParse(node.SelectSingleNode("ClusterSleeveBoundingBoxMaxZ")?.InnerText, out double clusterMaxZ))
-                                    clashZone.ClusterSleeveBoundingBoxMaxZ = clusterMaxZ;
-                                
-                                clashZones.Add(clashZone);
                             }
                         }
-                        
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[DEBUG] Loaded {clashNodes?.Count ?? 0} clash zones from {Path.GetFileName(xmlFile)}\n");
-                        }
                     }
-                    catch (Exception ex)
+                    
+                    // ✅ FALLBACK: Also check flat structure for backward compatibility (but shouldn't be used)
+                    if (clashZones.Count == 0 && filter?.ClashZoneStorage?.AllZones != null)
                     {
-                        if (!DeploymentConfiguration.DeploymentMode)
+                        foreach (var cz in filter.ClashZoneStorage.AllZones)
                         {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[DEBUG] Error loading {xmlFile}: {ex.Message}\n");
+                            cz.EnsureSleevePlacementPointReconstructed();
+                            clashZones.Add(cz);
                         }
                     }
+                }
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[LOAD-XML] Loaded {clashZones.Count} clash zones from hierarchical structure in {Path.GetFileName(xmlFilePath)}\n");
+                    try
+                    {
+                        var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                        foreach (var zone in clashZones.Take(5))
+                        {
+                            System.IO.File.AppendAllText(logPath,
+                                $"[{DateTime.Now:HH:mm:ss}] [COORD-LOAD-DETAIL] Zone {zone.Id} → SleeveId={zone.SleeveInstanceId}\n");
+                        }
+                    }
+                    catch { }
                 }
             }
             catch (Exception ex)
             {
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[DEBUG] Error in LoadClashZonesFromXml: {ex.Message}\n");
+                    DebugLogger.Info($"[LOAD-XML] Error loading {xmlFilePath}: {ex.Message}\n");
                 }
             }
             
             return clashZones;
         }
         
+        /// <summary>
+        /// ✅ CORRECT APPROACH: Use ClashZonePersistenceService to save updated clash zones with bounding boxes
+        /// This ensures the tree structure is maintained correctly using the dedicated service
+        /// </summary>
         public void SaveClashZonesToXml(List<ClashZone> clashZones, string xmlFilePath = null)
         {
             try
@@ -329,230 +287,121 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[SAVE-XML] ERROR: xmlFilePath not provided or file doesn't exist: {xmlFilePath}\n");
+                        DebugLogger.Info($"[SAVE-XML] ERROR: xmlFilePath not provided or file doesn't exist: {xmlFilePath}\n");
                     }
                     return;
                 }
                 
-                var xmlFiles = new[] { xmlFilePath };
+                // ✅ STEP 1: Load Filter XML to get OpeningFilter object
+                var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
+                OpeningFilter filter;
+                
+                using (var reader = new StreamReader(xmlFilePath))
+                {
+                    filter = (OpeningFilter)serializer.Deserialize(reader);
+                }
+                
+                if (filter?.ClashZoneStorage == null)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Warning($"[SAVE-XML] Filter or ClashZoneStorage is null in {Path.GetFileName(xmlFilePath)}\n");
+                    }
+                    return;
+                }
+                
+                // ✅ STEP 2: Extract base filter name from filter (e.g., "Plumbing" from "Plumbing_pipes.xml")
+                var baseFilterName = FilterNameHelper.NormalizeBaseName(null, filter?.Name);
+                if (string.IsNullOrEmpty(baseFilterName))
+                {
+                    // Try to extract from filename
+                    var fileName = Path.GetFileNameWithoutExtension(xmlFilePath);
+                    var parts = fileName.Split('_');
+                    baseFilterName = parts.Length > 0 ? parts[0] : "Unknown";
+                }
+                
+                // ✅ STEP 3: Extract ALL clash zones from tree structure to get complete list
+                var allClashZones = new List<ClashZone>();
+                if (filter.ClashZoneStorage.Filters != null)
+                {
+                    foreach (var filterGroup in filter.ClashZoneStorage.Filters)
+                    {
+                        if (filterGroup?.FileCombos != null)
+                        {
+                            foreach (var fileCombo in filterGroup.FileCombos)
+                            {
+                                if (fileCombo?.ClashZones != null)
+                                {
+                                    foreach (var cz in fileCombo.ClashZones)
+                                    {
+                                        // ✅ CRITICAL: Update bounding boxes from updated clash zones
+                                        var updatedZone = clashZones.FirstOrDefault(c => c.Id == cz.Id);
+                                        if (updatedZone != null)
+                                        {
+                                            // Update individual sleeve bounding boxes only
+                                            // ✅ CONSOLIDATION: Cluster bounding boxes are now handled by UniversalClusterService
+                                            // SleeveCoordinateService only handles individual sleeve bounding boxes
+                                            cz.SleeveBoundingBoxMinX = updatedZone.SleeveBoundingBoxMinX;
+                                            cz.SleeveBoundingBoxMinY = updatedZone.SleeveBoundingBoxMinY;
+                                            cz.SleeveBoundingBoxMinZ = updatedZone.SleeveBoundingBoxMinZ;
+                                            cz.SleeveBoundingBoxMaxX = updatedZone.SleeveBoundingBoxMaxX;
+                                            cz.SleeveBoundingBoxMaxY = updatedZone.SleeveBoundingBoxMaxY;
+                                            cz.SleeveBoundingBoxMaxZ = updatedZone.SleeveBoundingBoxMaxZ;
+
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                            {
+                                                try
+                                                {
+                                                    var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                                                    System.IO.File.AppendAllText(logPath,
+                                                        $"[{DateTime.Now:HH:mm:ss}] [COORD-MERGE-DETAIL] Zone {cz.Id} → BBoxMin=({updatedZone.SleeveBoundingBoxMinX:F3},{updatedZone.SleeveBoundingBoxMinY:F3},{updatedZone.SleeveBoundingBoxMinZ:F3}), BBoxMax=({updatedZone.SleeveBoundingBoxMaxX:F3},{updatedZone.SleeveBoundingBoxMaxY:F3},{updatedZone.SleeveBoundingBoxMaxZ:F3})\n");
+                                                }
+                                                catch { }
+                                            }
+                                             
+                                            // ✅ REMOVED: Cluster bounding box update - now handled by UniversalClusterService immediately after placement
+                                        }
+                                        
+                                        allClashZones.Add(cz);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // ✅ STEP 4: Use ClashZonePersistenceService to save updated clash zones
+                // This ensures tree structure is maintained correctly
+                var guidManager = new GuidManager(_doc);
+                var persistenceService = new ClashZonePersistenceService(_doc, guidManager);
+                persistenceService.SaveClashZones(allClashZones, baseFilterName, filter, allowStructuralUpdates: false);
+                
+                // ✅ STEP 5: Save Filter XML file using FilterManagementService
+                var filterManagementService = new FilterManagementService(_doc, null, null);
+                filterManagementService.SaveFilterToXmlFile(filter, xmlFilePath);
+                
+                // ✅ LOGGING: Confirm save
+                var placementDebugPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                try 
+                { 
+                    var updatedCount = clashZones.Count(cz => cz.SleeveInstanceId > 0 && 
+                        !(cz.SleeveBoundingBoxMinX == 0.0 && cz.SleeveBoundingBoxMinY == 0.0 && cz.SleeveBoundingBoxMinZ == 0.0 &&
+                          cz.SleeveBoundingBoxMaxX == 0.0 && cz.SleeveBoundingBoxMaxY == 0.0 && cz.SleeveBoundingBoxMaxZ == 0.0));
+                    System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [XML_FILE_SAVED] Successfully saved {updatedCount} bounding box updates using ClashZonePersistenceService in {Path.GetFileName(xmlFilePath)}\n"); 
+                } 
+                catch { }
                 
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[SAVE-XML] Saving to ONLY file: {xmlFilePath}\n");
-                }
-                
-                foreach (var xmlFile in xmlFiles)
-                {
-                    try
-                    {
-                        var xmlDoc = new System.Xml.XmlDocument();
-                        xmlDoc.Load(xmlFile);
-                        
-                        var clashNodes = xmlDoc.SelectNodes("//ClashZone");
-                        if (clashNodes != null)
-                        {
-                            foreach (System.Xml.XmlNode node in clashNodes)
-                            {
-                                // ✅ FIX: Match by ClashZone ID instead of wrong SleeveInstanceId
-                                var clashZoneIdText = node.SelectSingleNode("Id")?.InnerText;
-                                if (!string.IsNullOrEmpty(clashZoneIdText) && Guid.TryParse(clashZoneIdText, out Guid clashZoneId))
-                                {
-                                    // Find matching clash zone by ID
-                                    var matchingClashZone = clashZones.FirstOrDefault(cz => cz.Id == clashZoneId);
-                                    if (matchingClashZone != null)
-                                    {
-                                        // ✅ CRITICAL FIX: Update cluster sleeve bounding boxes FIRST (independent of individual sleeve)
-                                        if (matchingClashZone.ClusterSleeveInstanceId > 0)
-                                        {
-                                            UpdateXmlNode(node, "ClusterSleeveInstanceId", matchingClashZone.ClusterSleeveInstanceId.ToString());
-                                            UpdateXmlNode(node, "ClusterSleeveBoundingBoxMinX", matchingClashZone.ClusterSleeveBoundingBoxMinX.ToString("F6"));
-                                            UpdateXmlNode(node, "ClusterSleeveBoundingBoxMinY", matchingClashZone.ClusterSleeveBoundingBoxMinY.ToString("F6"));
-                                            UpdateXmlNode(node, "ClusterSleeveBoundingBoxMinZ", matchingClashZone.ClusterSleeveBoundingBoxMinZ.ToString("F6"));
-                                            UpdateXmlNode(node, "ClusterSleeveBoundingBoxMaxX", matchingClashZone.ClusterSleeveBoundingBoxMaxX.ToString("F6"));
-                                            UpdateXmlNode(node, "ClusterSleeveBoundingBoxMaxY", matchingClashZone.ClusterSleeveBoundingBoxMaxY.ToString("F6"));
-                                            UpdateXmlNode(node, "ClusterSleeveBoundingBoxMaxZ", matchingClashZone.ClusterSleeveBoundingBoxMaxZ.ToString("F6"));
-                                            
-                                            // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                                            if (!DeploymentConfiguration.DeploymentMode)
-                                            {
-                                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                    DebugLogger.Info($"[XML-UPDATE-CLUSTER] Updated cluster sleeve {matchingClashZone.ClusterSleeveInstanceId} bbox\n");
-                                            }
-                                        }
-                                        
-                                        // ✅ CRITICAL FIX: Update individual sleeve if it exists - always save bounding box if SleeveInstanceId > 0
-                                        // The issue was: checking "bbox != 0" prevented saving valid bounding boxes (coordinates can be negative or small)
-                                        // Solution: Check if bbox was actually set (any non-zero value in any coordinate) OR if coordinates differ from default zeros
-                                        if (matchingClashZone.SleeveInstanceId > 0)
-                                        {
-                                            // ✅ CRITICAL LOGGING: Log bounding box values BEFORE saving to XML - Direct file write
-                                            var placementDebugPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
-                                            try 
-                                            { 
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                {
-                                                    File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_BEFORE_XML_SAVE] ClashZone {clashZoneId}, SleeveInstanceId={matchingClashZone.SleeveInstanceId}: " +
-                                                    $"MinX={matchingClashZone.SleeveBoundingBoxMinX:F6}, MinY={matchingClashZone.SleeveBoundingBoxMinY:F6}, MinZ={matchingClashZone.SleeveBoundingBoxMinZ:F6}, " +
-                                                    $"MaxX={matchingClashZone.SleeveBoundingBoxMaxX:F6}, MaxY={matchingClashZone.SleeveBoundingBoxMaxY:F6}, MaxZ={matchingClashZone.SleeveBoundingBoxMaxZ:F6}\n");
-                                                }
-                                            } 
-                                            catch { }
-                                            
-                                            // ✅ CRITICAL: Check if bounding box has been set (any coordinate is non-zero, or all are set but different from 0)
-                                            // Use a more robust check: if ALL coordinates are exactly 0.0, then bbox wasn't set
-                                            bool hasValidBbox = !(matchingClashZone.SleeveBoundingBoxMinX == 0.0 && 
-                                                                matchingClashZone.SleeveBoundingBoxMinY == 0.0 && 
-                                                                matchingClashZone.SleeveBoundingBoxMinZ == 0.0 &&
-                                                                matchingClashZone.SleeveBoundingBoxMaxX == 0.0 && 
-                                                                matchingClashZone.SleeveBoundingBoxMaxY == 0.0 && 
-                                                                matchingClashZone.SleeveBoundingBoxMaxZ == 0.0);
-                                            
-                                            if (hasValidBbox)
-                                            {
-                                                // ✅ CRITICAL: Update SleeveInstanceId with correct Revit element ID
-                                                UpdateXmlNode(node, "SleeveInstanceId", matchingClashZone.SleeveInstanceId.ToString());
-                                                
-                                                // Update bounding box coordinates
-                                                UpdateXmlNode(node, "SleeveBoundingBoxMinX", matchingClashZone.SleeveBoundingBoxMinX.ToString("F6"));
-                                                UpdateXmlNode(node, "SleeveBoundingBoxMinY", matchingClashZone.SleeveBoundingBoxMinY.ToString("F6"));
-                                                UpdateXmlNode(node, "SleeveBoundingBoxMinZ", matchingClashZone.SleeveBoundingBoxMinZ.ToString("F6"));
-                                                UpdateXmlNode(node, "SleeveBoundingBoxMaxX", matchingClashZone.SleeveBoundingBoxMaxX.ToString("F6"));
-                                                UpdateXmlNode(node, "SleeveBoundingBoxMaxY", matchingClashZone.SleeveBoundingBoxMaxY.ToString("F6"));
-                                                UpdateXmlNode(node, "SleeveBoundingBoxMaxZ", matchingClashZone.SleeveBoundingBoxMaxZ.ToString("F6"));
-                                                
-                                                // ✅ CRITICAL LOGGING: Log bounding box values AFTER saving to XML
-                                                // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                {
-                                                    var savedMinX = node.SelectSingleNode("SleeveBoundingBoxMinX")?.InnerText ?? "NULL";
-                                                    var savedMinY = node.SelectSingleNode("SleeveBoundingBoxMinY")?.InnerText ?? "NULL";
-                                                    var savedMinZ = node.SelectSingleNode("SleeveBoundingBoxMinZ")?.InnerText ?? "NULL";
-                                                    var savedMaxX = node.SelectSingleNode("SleeveBoundingBoxMaxX")?.InnerText ?? "NULL";
-                                                    var savedMaxY = node.SelectSingleNode("SleeveBoundingBoxMaxY")?.InnerText ?? "NULL";
-                                                    var savedMaxZ = node.SelectSingleNode("SleeveBoundingBoxMaxZ")?.InnerText ?? "NULL";
-                                                    
-                                                    try 
-                                                    { 
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                                        {
-                                                            File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_AFTER_XML_SAVE] ClashZone {clashZoneId}, SleeveInstanceId={matchingClashZone.SleeveInstanceId}: " +
-                                                            $"XML now has - MinX={savedMinX}, MinY={savedMinY}, MinZ={savedMinZ}, " +
-                                                            $"MaxX={savedMaxX}, MaxY={savedMaxY}, MaxZ={savedMaxZ}\n");
-                                                        }
-                                                    } 
-                                                    catch { }
-                                                }
-                                                
-                                                // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                {
-                                                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                                        DebugLogger.Info($"[XML-UPDATE] Updated ClashZone {clashZoneId} with SleeveInstanceId {matchingClashZone.SleeveInstanceId} and bounding box coordinates\n");
-                                                }
-                                            }
-                                            else
-                                            {
-                                                // Bounding box not set yet - log warning but don't skip SleeveInstanceId update
-                                                UpdateXmlNode(node, "SleeveInstanceId", matchingClashZone.SleeveInstanceId.ToString());
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                {
-                                                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                                        DebugLogger.Warning($"[XML-WARNING] ClashZone {clashZoneId} has SleeveInstanceId={matchingClashZone.SleeveInstanceId} but bounding box is still zero. Run 'Update XML' to refresh from Revit.\n");
-                                                }
-                                            }
-                                        }
-                                        else
-                                        {
-                                            // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                                            if (!DeploymentConfiguration.DeploymentMode)
-                                            {
-                                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                    DebugLogger.Info($"[XML-SKIP] Skipped ClashZone {clashZoneId} - SleeveInstanceId={matchingClashZone.SleeveInstanceId} (no sleeve placed yet)\n");
-                                            }
-                                        }
-                                    }
-                                    else
-                                    {
-                                        // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        {
-                                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                                DebugLogger.Info($"[XML-NO-MATCH] No matching clash zone found for Id {clashZoneId}\n");
-                                        }
-                                    }
-                                }
-                                else
-                                {
-                                    // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[XML-NO-ID] ClashZone node has no valid Id\n");
-                                    }
-                                }
-                            }
-                            
-                            // ✅ CRITICAL: Save the updated XML with error handling
-                            try
-                            {
-                                xmlDoc.Save(xmlFile);
-                                
-                                // ✅ Direct file write to confirm save
-                                var placementDebugPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
-                                try 
-                                { 
-                                    System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [XML_FILE_SAVED] Successfully saved {Path.GetFileName(xmlFile)} to disk\n"); 
-                                } 
-                                catch { }
-                                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Info($"[DEBUG] Updated coordinates in {Path.GetFileName(xmlFile)}\n");
-                                }
-                            }
-                            catch (Exception saveEx)
-                            {
-                                // ✅ CRITICAL: Log save failure
-                                var placementDebugPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
-                                try 
-                                { 
-                                    System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [XML_SAVE_ERROR] FAILED to save {Path.GetFileName(xmlFile)}: {saveEx.Message}\n"); 
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [XML_SAVE_ERROR] Stack trace: {saveEx.StackTrace}\n");
-                                    } 
-                                } 
-                                catch { }
-                                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Error($"[SAVE-XML] ERROR saving {Path.GetFileName(xmlFile)}: {saveEx.Message}\n");
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Error($"[SAVE-XML] Stack trace: {saveEx.StackTrace}\n");
-                                }
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[DEBUG] Error updating {xmlFile}: {ex.Message}\n");
-                        }
-                    }
+                    DebugLogger.Info($"[SAVE-XML] ✅ Updated clash zones with bounding boxes using ClashZonePersistenceService: {Path.GetFileName(xmlFilePath)}\n");
                 }
             }
             catch (Exception ex)
             {
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[DEBUG] Error in SaveClashZonesToXml: {ex.Message}\n");
+                    DebugLogger.Error($"[SAVE-XML] Error saving using ClashZonePersistenceService: {ex.Message}\n");
+                    DebugLogger.Error($"[SAVE-XML] Stack trace: {ex.StackTrace}\n");
                 }
             }
         }
@@ -1285,64 +1134,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                     }
                     
-                    // ✅ NEW: Handle cluster sleeves
-                    if (matchedSleeve == null && clashZone.ClusterSleeveInstanceId > 0)
-                    {
-                        // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[CLUSTER-LOOKUP] Looking for cluster sleeve ID {clashZone.ClusterSleeveInstanceId} in Revit\n");
-                        }
-                        
-                        var clusterSleeveElement = _doc.GetElement(new ElementId(clashZone.ClusterSleeveInstanceId));
-                        if (clusterSleeveElement == null)
-                        {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[CLUSTER-LOOKUP] ERROR: Cluster sleeve ID {clashZone.ClusterSleeveInstanceId} NOT found in Revit!\n");
-                            }
-                        }
-                        else if (clusterSleeveElement is FamilyInstance clusterSleeve && clusterSleeve.Symbol.FamilyName.Contains("Opening"))
-                        {
-                            // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[CLUSTER-LOOKUP] ✓ Found cluster sleeve {clashZone.ClusterSleeveInstanceId} in Revit (Family={clusterSleeve.Symbol.FamilyName})\n");
-                            }
-                            
-                            // Get bounding box for cluster sleeve
-                            var bbox = clusterSleeve.get_BoundingBox(null);
-                            if (bbox != null)
-                            {
-                                // ✅ NEW: Update cluster sleeve bounding box coordinates
-                                clashZone.ClusterSleeveBoundingBoxMinX = bbox.Min.X;
-                                clashZone.ClusterSleeveBoundingBoxMinY = bbox.Min.Y;
-                                clashZone.ClusterSleeveBoundingBoxMinZ = bbox.Min.Z;
-                                clashZone.ClusterSleeveBoundingBoxMaxX = bbox.Max.X;
-                                clashZone.ClusterSleeveBoundingBoxMaxY = bbox.Max.Y;
-                                clashZone.ClusterSleeveBoundingBoxMaxZ = bbox.Max.Z;
-                                
-                                // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Info($"[CLUSTER-SLEEVE] Updated cluster sleeve {clashZone.ClusterSleeveInstanceId} bbox: Min=({bbox.Min.X:F6}, {bbox.Min.Y:F6}), Max=({bbox.Max.X:F6}, {bbox.Max.Y:F6})\n");
-                                }
-                            }
-                        }
-                        else if (clusterSleeveElement != null)
-                        {
-                            // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[CLUSTER-LOOKUP] Element {clashZone.ClusterSleeveInstanceId} is not a FamilyInstance with Opening name\n");
-                            }
-                        }
-                    }
+                    // ✅ CONSOLIDATION: Cluster bounding boxes are now handled by UniversalClusterService immediately after placement
+                    // SleeveCoordinateService only handles individual sleeve bounding boxes
+                    // No need to update cluster bounding boxes here - they're already set correctly by UniversalClusterService
                     
                     // ✅ CRITICAL FIX: If no direct match, try position matching
                     if (matchedSleeve == null && clashZone.SleevePlacementPointX != 0 && clashZone.SleevePlacementPointY != 0)

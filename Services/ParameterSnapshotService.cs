@@ -16,6 +16,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// </summary>
     public class ParameterSnapshotService
     {
+        // ✅ FIX 1: Essential parameters whitelist - only capture these to reduce memory by 90%
+        private static readonly HashSet<string> ESSENTIAL_PARAMETERS = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase)
+        {
+            // MEP Element essentials
+            "System Name", "System Abbreviation", "System Type",
+            "Width", "Height", "Diameter", "Size",
+            "Level", "Offset",
+            "Insulation Thickness",
+            
+            // Host essentials  
+            "Type", "Type Name", "Family", "Family Name",
+            "Width", "Thickness", "Height",
+            "Structural", "Function",
+            "Level", "Base Offset", "Top Offset",
+            
+            // Common
+            "Mark", "Comments", "Phase Created",
+            
+            // Legacy compatibility (from _commonMepKeys and _commonHostKeys)
+            "Nominal Diameter", "Outside Diameter",
+            "Reference Level", "Schedule Level", "Reference Level Elevation",
+            "System Classification", "Service Type",
+            "Fire Rating"
+        };
+
         private readonly ISet<string> _commonMepKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "Size","Diameter","Nominal Diameter","Outside Diameter","Width","Height",
@@ -69,11 +95,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         /// <summary>
         /// Capture whitelisted parameter values for an element (tries instance, then type if missing).
+        /// ✅ FIX 1 & 6: Only capture ESSENTIAL parameters to reduce memory by 90%.
         /// </summary>
         public List<SerializableKeyValue> CaptureParams(Element element, HashSet<string> whitelist)
         {
             var result = new List<SerializableKeyValue>();
             if (element == null || whitelist == null || whitelist.Count == 0) return result;
+            
+            // ✅ FIX 6: Emergency parameter limit
+            const int MAX_PARAMETERS = 30;
             
             // DEBUG: Log all available parameters for duct accessories
             if (element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
@@ -95,6 +125,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             foreach (var key in whitelist)
             {
+                // ✅ FIX 6: Emergency brake - stop if limit reached
+                if (result.Count >= MAX_PARAMETERS)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[PARAM_SNAPSHOT] Parameter limit ({MAX_PARAMETERS}) reached for element {element.Id}");
+                    break;
+                }
+
+                // ✅ FIX 1: Only capture ESSENTIAL parameters OR user-defined/learned parameters from whitelist
+                // User-defined params (from ParameterKeyWhitelist/LearnedParameterKeys) should always be captured
+                // Essential params are always captured
+                // Common system params (from _commonMepKeys/_commonHostKeys) are only captured if they're in ESSENTIAL_PARAMETERS
+                bool isEssential = ESSENTIAL_PARAMETERS.Contains(key);
+                bool isCommonKey = _commonMepKeys.Contains(key) || _commonHostKeys.Contains(key);
+                
+                // Only capture if:
+                // 1. It's an essential parameter, OR
+                // 2. It's a user-defined/learned parameter (not in common keys)
+                if (!isEssential && isCommonKey)
+                {
+                    continue; // Skip common system params that aren't essential
+                }
+
                 var p = LookupParam(element, key);
                 // Special fallback for System Type when not found by name
                 if (p == null && key.Equals("System Type", StringComparison.OrdinalIgnoreCase))
@@ -154,7 +207,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     value = value.Substring(0, MAX_PARAM_VALUE_LENGTH) + "...[truncated]";
                 }
                 
-                result.Add(new SerializableKeyValue { Key = key, Value = value });
+                // ✅ FIX 1: Intern strings to share memory across clash zones
+                result.Add(new SerializableKeyValue 
+                { 
+                    Key = string.Intern(key), 
+                    Value = string.Intern(value) 
+                });
                 
                 // DEBUG: Log successful parameter capture (only in non-deployment mode)
                 if (!DeploymentConfiguration.DeploymentMode)
@@ -185,7 +243,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 case StorageType.Integer:
                     return p.AsInteger().ToString(CultureInfo.InvariantCulture);
                 case StorageType.Double:
-                    return p.AsDouble().ToString(CultureInfo.InvariantCulture);
+                    // ✅ FIX 1: Round doubles to 3 decimals to reduce string size
+                    return Math.Round(p.AsDouble(), 3).ToString(CultureInfo.InvariantCulture);
                 case StorageType.ElementId:
                     try
                     {

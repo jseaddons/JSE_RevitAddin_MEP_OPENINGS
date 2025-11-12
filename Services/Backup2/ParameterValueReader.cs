@@ -123,7 +123,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     var filter = serializer.Deserialize(reader) as OpeningFilter;
 
-                    var zones = filter?.ClashZoneStorage?.ClashZones;
+                    var zones = filter?.ClashZoneStorage?.AllZones;
                     if (zones == null || zones.Count == 0) return result;
 
                     foreach (var cz in zones)

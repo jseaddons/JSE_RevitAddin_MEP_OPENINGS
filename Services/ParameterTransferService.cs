@@ -1287,10 +1287,71 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                             else
                             {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Warning($"[TRANSFER] Source parameter '{mapping.SourceParameter}' not found in sleeve data");
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Source parameter '{mapping.SourceParameter}' not found in sleeve data\n");
+                                // ✅ FALLBACK: If parameter not found in XML snapshot, read directly from Revit element
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Source parameter '{mapping.SourceParameter}' not found in XML snapshot, trying direct Revit read\n");
+                                
+                                string fallbackValue = null;
+                                try
+                                {
+                                    if (useHost)
+                                    {
+                                        // Read from host elements
+                                        var hostElements = GetHostElementsForOpening(doc, opening);
+                                        if (hostElements.Count > 0)
+                                        {
+                                            var hostParam = hostElements[0].LookupParameter(mapping.SourceParameter);
+                                            if (hostParam != null && hostParam.HasValue)
+                                            {
+                                                fallbackValue = ConvertParameterToString(hostElements[0], hostParam);
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // Read from MEP elements
+                                        var mepElements = GetMepElementsInOpening(doc, opening);
+                                        if (mepElements.Count > 0)
+                                        {
+                                            var mepParam = mepElements[0].LookupParameter(mapping.SourceParameter);
+                                            if (mepParam != null && mepParam.HasValue)
+                                            {
+                                                fallbackValue = ConvertParameterToString(mepElements[0], mepParam);
+                                            }
+                                        }
+                                    }
+                                    
+                                    if (!string.IsNullOrEmpty(fallbackValue))
+                                    {
+                                        // ✅ Add to learned keys for next refresh
+                                        ParameterSnapshotService.AddLearnedKey(mapping.SourceParameter);
+                                        
+                                        var targetParam = opening.LookupParameter(mapping.TargetParameter);
+                                        if (targetParam != null)
+                                        {
+                                            bool ok = SetParameterValueSafely(targetParam, fallbackValue);
+                                            if (ok)
+                                            {
+                                                transferredCount++;
+                                                successfullyTransferredSleeveIds?.Add(openingId.IntegerValue);
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] ✓ Fallback: Successfully transferred '{mapping.SourceParameter}' = '{fallbackValue}' from Revit element\n");
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Warning($"[TRANSFER] Source parameter '{mapping.SourceParameter}' not found in XML snapshot or Revit element");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Source parameter '{mapping.SourceParameter}' not found in XML snapshot or Revit element\n");
+                                    }
+                                }
+                                catch (Exception fallbackEx)
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Warning($"[TRANSFER] Fallback read failed for '{mapping.SourceParameter}': {fallbackEx.Message}");
+                                }
                             }
                     }
                     else
@@ -1426,7 +1487,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         using (var reader = new StreamReader(xmlFile))
                         {
                             var filter = (Models.OpeningFilter)serializer.Deserialize(reader);
-                            var zones = filter?.ClashZoneStorage?.ClashZones ?? new List<Models.ClashZone>();
+                            var zones = filter?.ClashZoneStorage?.AllZones ?? new List<Models.ClashZone>();
                             
                             var values = new List<string>();
                             foreach (var zone in zones)
@@ -1552,7 +1613,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 using (var reader = new StreamReader(xmlFile))
                 {
                     var filter = (Models.OpeningFilter)serializer.Deserialize(reader);
-                    var zones = filter?.ClashZoneStorage?.ClashZones ?? new List<Models.ClashZone>();
+                    var zones = filter?.ClashZoneStorage?.AllZones ?? new List<Models.ClashZone>();
                             
                             var values = new List<string>();
                             foreach (var zone in zones)
@@ -1641,7 +1702,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         using (var reader = new StreamReader(xmlFile))
                         {
                             var filter = (Models.OpeningFilter)serializer.Deserialize(reader);
-                            var zones = filter?.ClashZoneStorage?.ClashZones ?? new List<Models.ClashZone>();
+                            var zones = filter?.ClashZoneStorage?.AllZones ?? new List<Models.ClashZone>();
                             
                                                         if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[DIAGNOSE]     {zones.Count} clash zones");
@@ -1749,7 +1810,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 using (var reader = new StreamReader(xmlFile))
                 {
                     var filter = (Models.OpeningFilter)serializer.Deserialize(reader);
-                    var zones = filter?.ClashZoneStorage?.ClashZones ?? new List<Models.ClashZone>();
+                    var zones = filter?.ClashZoneStorage?.AllZones ?? new List<Models.ClashZone>();
                             
                             if (!DeploymentConfiguration.DeploymentMode && zones.Count > 0)
                             {
@@ -1945,6 +2006,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return filterIndex;
         }
         
+        /// <summary>
+        /// Convert a parameter value to a robust invariant string (same logic as ParameterSnapshotService)
+        /// </summary>
+        private string ConvertParameterToString(Element owner, Parameter p)
+        {
+            if (p == null) return string.Empty;
+
+            string value = p.AsString();
+            if (!string.IsNullOrEmpty(value)) return value;
+
+            value = p.AsValueString();
+            if (!string.IsNullOrEmpty(value)) return value;
+
+            switch (p.StorageType)
+            {
+                case StorageType.Integer:
+                    return p.AsInteger().ToString(System.Globalization.CultureInfo.InvariantCulture);
+                case StorageType.Double:
+                    return Math.Round(p.AsDouble(), 3).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                case StorageType.ElementId:
+                    try
+                    {
+                        var elemId = p.AsElementId();
+                        if (elemId != null && elemId.IntegerValue != -1)
+                        {
+                            var elem = owner.Document.GetElement(elemId);
+                            return elem?.Name ?? elemId.IntegerValue.ToString();
+                        }
+                    }
+                    catch { }
+                    return string.Empty;
+                default:
+                    return string.Empty;
+            }
+        }
+
         private List<Element> GetMepElementsInOpening(Document doc, Element opening)
         {
             var mepElements = new List<Element>();

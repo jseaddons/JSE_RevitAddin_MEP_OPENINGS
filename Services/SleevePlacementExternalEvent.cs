@@ -689,36 +689,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         var filter = (OpeningFilter)serializer.Deserialize(reader);
 
-                        if (filter?.ClashZoneStorage?.ClashZones != null)
+                        if (filter?.ClashZoneStorage != null)
                         {
-                            clashZones.AddRange(filter.ClashZoneStorage.ClashZones);
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[SleevePlacementExternalEvent] Loaded {filter.ClashZoneStorage.ClashZones.Count} clash zones from {Path.GetFileName(xmlFilePath)}");
-                            
-                            // ✅ CRITICAL: Log to file
+                            var extractedZones = ExtractClashZonesFromStorage(filter.ClashZoneStorage);
+                            clashZones.AddRange(extractedZones);
+
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[SleevePlacementExternalEvent] Loaded {extractedZones.Count} clash zones from {Path.GetFileName(xmlFilePath)} (tree structure)");
+                            }
+
                             try
                             {
                                 var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] GetClashZonesForCategory: Loaded {clashZones.Count} clash zones from {Path.GetFileName(xmlFilePath)}\n");
+                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] GetClashZonesForCategory: Loaded {extractedZones.Count} clash zones from {Path.GetFileName(xmlFilePath)}\n");
                             }
                             catch { }
-                            
-                            // Debug: Check if document titles are populated
+
                             var clashZonesWithDocTitle = clashZones.Count(cz => !string.IsNullOrEmpty(cz.StructuralElementDocumentTitle));
-                                                        if (!DeploymentConfiguration.DeploymentMode)
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
                                 DebugLogger.Info($"[SleevePlacementExternalEvent] Clash zones with document titles: {clashZonesWithDocTitle}/{clashZones.Count}");
+                            }
                         }
                         else
                         {
-                            // ✅ CRITICAL: Log if filter or clash zones are null
                             try
                             {
                                 var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ GetClashZonesForCategory: Filter or ClashZoneStorage is null in file {Path.GetFileName(xmlFilePath)}\n");
+                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ GetClashZonesForCategory: ClashZoneStorage is null in file {Path.GetFileName(xmlFilePath)}\n");
                             }
                             catch { }
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Warning($"[SleevePlacementExternalEvent] Filter or ClashZoneStorage is null in file {xmlFilePath}");
+
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Warning($"[SleevePlacementExternalEvent] ClashZoneStorage is null in file {xmlFilePath}");
+                            }
                         }
                     }
                 }
@@ -735,6 +741,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             
             return (clashZones, xmlFilePath);
+        }
+
+        /// <summary>
+        /// Extracts clash zones from the hierarchical storage structure.
+        /// Supports both the new tree-based structure and the legacy flat list for backward compatibility.
+        /// </summary>
+        private static List<ClashZone> ExtractClashZonesFromStorage(ClashZoneStorage storage)
+        {
+            var result = new List<ClashZone>();
+
+            if (storage == null)
+                return result;
+
+            // ✅ NEW: Tree structure (Filters → FileCombos → ClashZones)
+            if (storage.Filters != null)
+            {
+                foreach (var filterGroup in storage.Filters)
+                {
+                    if (filterGroup?.FileCombos == null) continue;
+
+                    foreach (var fileCombo in filterGroup.FileCombos)
+                    {
+                        if (fileCombo?.ClashZones == null) continue;
+
+                        result.AddRange(fileCombo.ClashZones);
+                    }
+                }
+            }
+
+            // ✅ BACKWARD COMPATIBILITY: Legacy flat list
+            if (storage.ClashZones != null && storage.ClashZones.Count > 0)
+            {
+                // Avoid duplicates if both structures contain the same zones
+                var existingIds = new HashSet<Guid>(result.Select(z => z.Id));
+                foreach (var cz in storage.ClashZones)
+                {
+                    if (cz != null && existingIds.Add(cz.Id))
+                    {
+                        result.Add(cz);
+                    }
+                }
+            }
+
+            return result;
         }
 
         public string GetName()

@@ -701,12 +701,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     // Write clash zone storage
                     writer.WriteLine("ClashZoneStorage=");
-                    if (profile.Configuration.ClashZoneStorage?.ClashZones != null)
+                    if (profile.Configuration.ClashZoneStorage?.AllZones != null)
                     {
                         writer.WriteLine($"  LastUpdated={profile.Configuration.ClashZoneStorage.LastUpdated:O}");
                         writer.WriteLine($"  DocumentHash={profile.Configuration.ClashZoneStorage.DocumentHash}");
-                        writer.WriteLine($"  ClashZonesCount={profile.Configuration.ClashZoneStorage.ClashZones.Count}");
-                        foreach (var clashZone in profile.Configuration.ClashZoneStorage.ClashZones)
+                        writer.WriteLine($"  ClashZonesCount={profile.Configuration.ClashZoneStorage.AllZones.Count}");
+                        foreach (var clashZone in profile.Configuration.ClashZoneStorage.AllZones)
                         {
                             writer.WriteLine($"  ClashZone: MEP={clashZone.MepElementId}, Structural={clashZone.StructuralElementId}, Resolved={clashZone.IsResolved}");
                         }

@@ -1,0 +1,68 @@
+# Memory Footprint Reduction Plan (Large Project Files)
+
+## 1. Guiding Principles
+- Keep all Revit API calls single-threaded; Revit is not thread-safe.
+- Stream data instead of batch-loading entire collections.
+- Treat geometry caches as short-lived: keep them tiny, clear them often, and log whenever they grow.
+- Instrument memory usage so regressions surface quickly.
+
+## 2. Recommended Code-Level Optimizations
+
+- **Stream structural elements per MEP element**
+  - Compute bounding boxes/solids on demand for each active pairing.
+  - Apply transforms lazily (only when needed for the current comparison).
+  - Fall back to damper-specific routines when line extraction fails.
+
+- **Adaptive chunk sizing**
+  - Select chunk size based on structural count (e.g. 50/100/200/500 MEP elements).
+  - Clear the geometry cache after every chunk and emit memory logs.
+
+- **Smaller, smarter geometry cache**
+  - Replace string cache keys with `(elementId, transformHash)` tuples.
+  - Cap the cache at ~1,000 entries or 5 MB; aggressively evict oldest entries when exceeded.
+  - Force GC after significant evictions (use `GCCollectionMode.Aggressive`).
+
+- **Intersection helpers**
+  - Null out `IntersectionResultArray` references once processed to free memory.
+  - Reuse temporary containers where possible.
+
+- **Spatial partitioning (if used)**
+  - Store element IDs in grid cells; keep bounding boxes/transforms in a side dictionary.
+
+- **Memory logging**
+  - Periodically log `GC.GetTotalMemory(false)` plus Gen0/1/2 collection counts.
+  - Trigger warnings when totals exceed thresholds (e.g. 500 MB).
+
+- **Large-data advisories**
+  - Estimate `MEP_count × structural_count` up front.
+  - If >50 M combinations, log tips for reducing scope (smaller section box, category filtering, etc.).
+
+## 3. Implementation Plan (Current Add-In)
+
+| Phase | Description | Owner | Notes |
+|-------|-------------|-------|-------|
+| **P0** | Refactor intersection flow to stream structural elements, add adaptive chunking, tighten cache. | Core dev team | Replace current pre-load lists and fixed chunk sizes. |
+| **P1** | Add memory logging, cache monitoring, large-dataset warnings. | Core dev team | Wrap with feature toggles if needed. |
+| **P2** | Clean up intersection/damper helpers to reuse objects and clear references. | Geometry specialist | Focus on removing lingering references that hinder GC. |
+| **P3** | Align persistence/services with `ClashZoneStorage.AllZones`; remove writes to deprecated flats. | Persistence team | Includes profile loaders, coordinate services, refresh pipeline. |
+| **P4** | QA validation on large models; ensure no OOM or Revit instability. | QA | Build regressions around 10k+ element scenarios. |
+| **P5** | Document developer guidelines, logging defaults, support runbook updates. | Tech writing | Cover future maintenance and diagnostics. |
+
+## 4. Validation & Observability
+
+- Execute full placement/refresh cycles on large “stress test” models.
+- Capture memory metrics before, during, and after runs.
+- Compare baseline vs optimized branch (target ≥30–40 % peak memory drop).
+- Confirm logs show chunk sizes, cache evictions, memory warnings.
+
+## 5. Rollout Checklist
+
+- [ ] Merge code into `develop`.
+- [ ] Document configuration flags / defaults.
+- [ ] QA sign-off on large-model regression suite.
+- [ ] Update support runbook with new diagnostics.
+- [ ] Notify project teams of streaming and logging changes.
+
+---
+
+By following this plan, the add-in maintains Revit’s single-threaded safety while drastically lowering peak memory usage and improving insight into performance.

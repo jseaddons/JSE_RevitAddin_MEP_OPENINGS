@@ -85,16 +85,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// <summary>
         /// Get remark flag for a specific category
         /// Returns true if remark is enabled for this category, false otherwise
+        /// ✅ CRITICAL FIX: If RemarkAll is true, always return true (remark all categories)
+        /// Otherwise, return the category-specific remark flag
         /// </summary>
         public bool GetRemarkFlag(string category)
         {
+            // ✅ CRITICAL FIX: If RemarkAll is true, remark all categories regardless of individual flags
+            // This handles the "Project Prefix" checkbox which should remark all categories
+            if (RemarkAll || RemarkProjectPrefix)
+                return true;
+            
+            // Otherwise, return category-specific remark flag
             return category switch
             {
                 "Ducts" => RemarkDuctPrefix,
                 "Pipes" => RemarkPipePrefix,
                 "Cable Trays" => RemarkCableTrayPrefix,
                 "Duct Accessories" => RemarkDamperPrefix,
-                _ => RemarkAll // Fallback to global RemarkAll for unknown categories
+                _ => false // Unknown categories: don't remark unless RemarkAll is true
             };
         }
         

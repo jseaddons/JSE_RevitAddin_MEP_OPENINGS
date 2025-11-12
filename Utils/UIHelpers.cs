@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Windows.Forms;
+using Autodesk.Revit.UI;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Utils
 {
@@ -39,6 +40,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Utils
                     // Ignore exceptions (virtual mode, not yet visible, etc.)
                 }
             }
+        }
+        
+        /// <summary>
+        /// ✅ FIXED: Shows a MessageBox that appears on top of all windows
+        /// Ensures the message box is visible even if main dialog is behind other windows
+        /// </summary>
+        public static DialogResult ShowMessageBoxOnTop(string message, string title = "", 
+            MessageBoxButtons buttons = MessageBoxButtons.OK, MessageBoxIcon icon = MessageBoxIcon.Information)
+        {
+            // Create a temporary topmost form to ensure MessageBox appears on top
+            var topForm = new System.Windows.Forms.Form
+            {
+                WindowState = FormWindowState.Minimized,
+                ShowInTaskbar = false,
+                TopMost = true
+            };
+            topForm.Show();
+            
+            try
+            {
+                // Show MessageBox with the topmost form as owner
+                return MessageBox.Show(topForm, message, title, buttons, icon);
+            }
+            finally
+            {
+                topForm.Close();
+                topForm.Dispose();
+            }
+        }
+        
+        /// <summary>
+        /// ✅ FIXED: Shows a TaskDialog that appears on top of all windows
+        /// Ensures the TaskDialog is visible even if main dialog is behind other windows
+        /// </summary>
+        public static TaskDialogResult ShowTaskDialogOnTop(string title, string mainInstruction, 
+            string mainContent = "", TaskDialogCommonButtons buttons = TaskDialogCommonButtons.Ok)
+        {
+            var dialog = new TaskDialog(title)
+            {
+                MainInstruction = mainInstruction,
+                MainContent = mainContent,
+                CommonButtons = buttons
+            };
+            
+            // TaskDialog.Show() automatically appears on top in Revit, but we ensure it's visible
+            return dialog.Show();
         }
     }
 }

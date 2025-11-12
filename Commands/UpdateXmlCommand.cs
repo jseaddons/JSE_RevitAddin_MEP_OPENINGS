@@ -167,7 +167,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                                     using (var reader = new StreamReader(file))
                                     {
                                         var filter = (OpeningFilter)serializer.Deserialize(reader);
-                                        if (filter?.ClashZoneStorage?.ClashZones != null && filter.ClashZoneStorage.ClashZones.Count > 0)
+                                        if (filter?.ClashZoneStorage?.AllZones != null && filter.ClashZoneStorage.AllZones.Count > 0)
                                         {
                                             found = true;
                                             break;

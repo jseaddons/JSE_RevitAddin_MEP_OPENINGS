@@ -54,13 +54,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Enable parallel processing for intersection testing
         /// Default: false (experimental - requires testing)
         /// </summary>
-        public static bool UseParallelProcessing { get; set; } = false;
+        public static bool UseParallelProcessing { get; set; } = true; // ✅ Enabled by default for cluster processing
         
         /// <summary>
         /// Enable two-tier spatial index (grid + R-tree)
-        /// Default: false (new feature - requires testing)
+        /// Default: true (enabled for testing - fixed intersection point issue)
         /// </summary>
-        public static bool UseSpatialGrid { get; set; } = false;
+        public static bool UseSpatialGrid { get; set; } = true;
         
         #endregion
         
@@ -76,7 +76,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Enable diagnostic mode for performance monitoring
         /// Default: false (disabled for deployment)
         /// </summary>
-        public static bool UseDiagnosticMode { get; set; } = false; // ✅ DEPLOYMENT: Diagnostic mode OFF
+        public static bool UseDiagnosticMode { get; set; } = true; // ✅ DEBUG: Diagnostic mode ON - detailed performance logging enabled
         
         #endregion
         
@@ -105,6 +105,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Default: true (safe to enable - already partially implemented)
         /// </summary>
         public static bool UseIncrementalCache { get; set; } = true;
+        
+        /// <summary>
+        /// Enable parallel processing for pre-filtering eligible clash zones (XML-only validation)
+        /// Default: true (safe to enable - multi-threading optimization for flag checking)
+        /// </summary>
+        public static bool UseParallelPreFiltering { get; set; } = true;
         
         #endregion
         
@@ -141,6 +147,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 UseXmlValidation = GetConfigValue("UseXmlValidation", true);
                 UseFamilySymbolCache = GetConfigValue("UseFamilySymbolCache", true);
                 UseIncrementalCache = GetConfigValue("UseIncrementalCache", true);
+                UseParallelPreFiltering = GetConfigValue("UseParallelPreFiltering", true);
                 
                                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[OptimizationFlags] Loaded configuration successfully");
@@ -216,6 +223,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             UseXmlValidation = true;
             UseFamilySymbolCache = true;
             UseIncrementalCache = true;
+            UseParallelPreFiltering = true;
             
                         if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[OptimizationFlags] Reset to safe defaults");

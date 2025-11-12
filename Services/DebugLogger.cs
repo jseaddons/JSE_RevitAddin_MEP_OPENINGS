@@ -239,27 +239,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void InitCustomLogFileOverwrite(string logFileName)
         {
-            // ✅ DEPLOYMENT MODE: Skip all logging if deployment mode is enabled
-            if (DeploymentConfiguration.DeploymentMode)
+            // ✅ DEPLOYMENT MODE: Check is handled by IsLoggingEnabledForCurrentService() - no duplicate check needed
+            if (!IsLoggingEnabledForCurrentService())
                 return;
             
-            // IMMEDIATE DEBUG - Write to file directly to ensure this method is called
+            // ✅ FIX: Use SafeFileLogger instead of direct File.AppendAllText() to follow coding standards
             string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-            try
-            {
-                string debugPath = SafeFileLogger.GetLogFilePath("logger_debug.txt");
-                File.AppendAllText(debugPath, $"[{DateTime.Now}] InitCustomLogFileOverwrite called with: {logFileName} (timestamp: {timestamp})\n");
-            }
-            catch { }
+            SafeFileLogger.SafeAppendText("logger_debug.txt", $"[{DateTime.Now}] InitCustomLogFileOverwrite called with: {logFileName} (timestamp: {timestamp})\n");
 
             if (!IsEnabled)
             {
-                try
-                {
-                    string debugPath = SafeFileLogger.GetLogFilePath("logger_debug.txt");
-                    File.AppendAllText(debugPath, $"[{DateTime.Now}] DebugLogger.IsEnabled = false\n");
-                }
-                catch { }
+                SafeFileLogger.SafeAppendText("logger_debug.txt", $"[{DateTime.Now}] DebugLogger.IsEnabled = false\n");
                 return;
             }
 
@@ -273,10 +263,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!Directory.Exists(logDir))
                 {
                     Directory.CreateDirectory(logDir);
-                    System.Diagnostics.Debug.WriteLine($"Created log directory: {logDir}");
                 }
-
-                System.Diagnostics.Debug.WriteLine($"Log file path set to: {LogFilePath}");
 
                 // Include build/version information
                 var buildTimestamp = File.GetLastWriteTime(_cachedAssemblyPath).ToString("o");
@@ -293,13 +280,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 // Test log to verify the custom file was created
                 Info($"Custom log file initialized: {LogFilePath}");
-
-                // Additional debug output
-                System.Diagnostics.Debug.WriteLine($"SUCCESS: Custom log file created at {LogFilePath}");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"ERROR in InitCustomLogFileOverwrite: {ex.Message}");
+                // ✅ FIX: Use SafeFileLogger instead of direct File.AppendAllText() to follow coding standards
+                SafeFileLogger.SafeAppendText("logger_debug.txt", $"[{DateTime.Now}] ERROR in InitCustomLogFileOverwrite: {ex.Message}\n{ex.StackTrace}\n");
 
                 // Log to fallback log file with timestamp
                 try
@@ -307,12 +292,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     string fallbackTimestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
                     string fallbackLogDir = SafeFileLogger.GetLogDirectory();
                     string fallbackLog = Path.Combine(fallbackLogDir, $"fallback_debug_{fallbackTimestamp}.log");
-                    File.AppendAllText(fallbackLog, $"[{DateTime.Now}] ERROR initializing custom log '{logFileName}': {ex.Message}\n{ex.StackTrace}\n");
-                    System.Diagnostics.Debug.WriteLine($"Fallback log written to: {fallbackLog}");
+                    SafeFileLogger.SafeAppendText($"fallback_debug_{fallbackTimestamp}.log", $"[{DateTime.Now}] ERROR initializing custom log '{logFileName}': {ex.Message}\n{ex.StackTrace}\n");
                 }
                 catch (Exception fallbackEx)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Fallback logging also failed: {fallbackEx.Message}");
+                    SafeFileLogger.SafeAppendText("logger_debug.txt", $"[{DateTime.Now}] Fallback logging also failed: {fallbackEx.Message}\n");
                 }
             }
         }

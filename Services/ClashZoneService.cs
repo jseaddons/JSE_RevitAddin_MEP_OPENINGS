@@ -282,6 +282,60 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 ductWallAfterPriority = ductWallBeforePriority;
             }
             
+            // ✅ OPTIMIZATION: Pre-collect sleeves by category AFTER priority sort (calculate once, use many times)
+            // OOP Pattern: Two paths - optimized if sleeves exist, fallback if no sleeves
+            var sleeveSpatialIndexesByCategory = new Dictionary<string, (Dictionary<(double X, double Y, double Z), int> SpatialIndex, HashSet<int> SleeveIds, List<FamilyInstance> CategorySleeves)>();
+            
+            if (selectedCategories != null && selectedCategories.Count > 0)
+            {
+                foreach (var category in selectedCategories)
+                {
+                    if (string.IsNullOrWhiteSpace(category))
+                        continue;
+                    
+                    var (spatialIndex, sleeveIds, categorySleeves) = PreCollectSleevesByCategory(document, category);
+                    
+                    // Only store if sleeves exist (optimized path)
+                    if (categorySleeves.Count > 0)
+                    {
+                        sleeveSpatialIndexesByCategory[category] = (spatialIndex, sleeveIds, categorySleeves);
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            _log($"[OPTIMIZED-SLEEVE-LOOKUP] Category '{category}': {categorySleeves.Count} sleeves found → Using OPTIMIZED path");
+                    }
+                    else
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            _log($"[OPTIMIZED-SLEEVE-LOOKUP] Category '{category}': No sleeves found → Using FALLBACK path");
+                    }
+                }
+            }
+            else
+            {
+                // If no selected categories, extract unique categories from intersections
+                var uniqueCategories = prioritizedIntersections
+                    .Select(i => GetElementCategoryName(i.Item1))
+                    .Where(c => !string.IsNullOrWhiteSpace(c))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                
+                foreach (var category in uniqueCategories)
+                {
+                    var (spatialIndex, sleeveIds, categorySleeves) = PreCollectSleevesByCategory(document, category);
+                    
+                    if (categorySleeves.Count > 0)
+                    {
+                        sleeveSpatialIndexesByCategory[category] = (spatialIndex, sleeveIds, categorySleeves);
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            _log($"[OPTIMIZED-SLEEVE-LOOKUP] Category '{category}': {categorySleeves.Count} sleeves found → Using OPTIMIZED path");
+                    }
+                    else
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            _log($"[OPTIMIZED-SLEEVE-LOOKUP] Category '{category}': No sleeves found → Using FALLBACK path");
+                    }
+                }
+            }
+            
             // DEBUG: Log each intersection being processed in priority order
             for (int i = 0; i < prioritizedIntersections.Count; i++)
             {
@@ -452,22 +506,59 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 _log($"=== END GEOMETRY ANALYSIS ===");
 
+                // ✅ DUCT-DAMPER FLAG TRACKING: Track if we detected damper for this duct (to set flag on new clash zone)
+                // Declared BEFORE duct-damper check so it's accessible throughout the method
+                bool ductHasDamperNearby = false;
+                
                 // Duct-Damper priority filter: skip ducts when damper is present (cost-effective)
                 try
                 {
                     var mepCat = GetElementCategoryName(mepElement);
                     _log($"[DUCT-DAMPER] Checking element {mepElement.Id} with category '{mepCat}' against {damperLocations.Count} damper locations");
+                    
                     if (string.Equals(mepCat, "Ducts", StringComparison.OrdinalIgnoreCase))
                     {
-                        // ✅ CRITICAL FIX: Check if duct is near damper on the SAME wall
-                        if (IsDuctNearDamperOnSameWall(mepElement, structuralElement.Id, damperLocations))
+                        // ✅ STEP 1: Check existing clash zone for saved flag (fastest check - no proximity calculation needed)
+                        var existingDuctClashZone = FindExistingClashZone(mepElement.Id, structuralElement.Id, intersectionPoint);
+                        if (existingDuctClashZone != null && existingDuctClashZone.HasDamperNearby)
                         {
-                            _log($"[OPTIMIZATION] ❌ SKIP DAMPER CHECK: Duct {mepElement.Id} - damper present on same wall ({structuralElement.Id}), prioritizing damper sleeve");
+                            _log($"[OPTIMIZATION] ❌ SKIP DAMPER CHECK (FLAG): Duct {mepElement.Id} - HasDamperNearby flag is true from previous run, skipping duct");
+                            if (isDuctWall) ductWallSkippedDamper++;
+                            continue;
+                        }
+                        
+                        // ✅ STEP 2: Run proximity check only if flag is not set (first run or flag reset)
+                        bool isNearDamper = IsDuctNearDamperOnSameWall(mepElement, structuralElement.Id, intersectionPoint, damperLocations);
+                        
+                        if (isNearDamper)
+                        {
+                            _log($"[OPTIMIZATION] ❌ SKIP DAMPER CHECK (DETECTED): Duct {mepElement.Id} - damper present on same wall ({structuralElement.Id}) at intersection point, prioritizing damper sleeve");
+                            
+                            // ✅ CRITICAL: Set flag on existing clash zone if found
+                            if (existingDuctClashZone != null)
+                            {
+                                existingDuctClashZone.HasDamperNearby = true;
+                                _log($"[DUCT-DAMPER] ✓ Set HasDamperNearby=true on existing clash zone {existingDuctClashZone.Id}");
+                            }
+                            else
+                            {
+                                // ✅ Track that this duct has damper nearby - will set flag if new clash zone is created
+                                ductHasDamperNearby = true;
+                                _log($"[DUCT-DAMPER] ✓ Duct {mepElement.Id} has damper nearby - will set flag on new clash zone if created");
+                            }
+                            
                             if (isDuctWall) ductWallSkippedDamper++;
                             continue;
                         }
                         else
                         {
+                            // ✅ Clear flag if damper no longer nearby (damper might have been deleted)
+                            if (existingDuctClashZone != null && existingDuctClashZone.HasDamperNearby)
+                            {
+                                existingDuctClashZone.HasDamperNearby = false;
+                                _log($"[DUCT-DAMPER] ✓ Cleared HasDamperNearby flag - damper no longer nearby for clash zone {existingDuctClashZone.Id}");
+                            }
+                            
                             _log($"[OPTIMIZATION] ✅ PASS DAMPER CHECK: Duct {mepElement.Id} - no damper nearby on wall {structuralElement.Id}, proceeding with sleeve placement");
                             if (isDuctWall) ductWallAfterDamperCheck++;
                         }
@@ -631,7 +722,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         _log($"Replacing invalid clash zone {invalidClashZone.Id} with valid ElementIds");
                         _clashZoneStorage.ClashZones.Remove(invalidClashZone);
                         
-                        var newClashZone = CreateClashZone(mepElement, structuralElement, intersectionPoint, boundingBox, document, clearanceSettings);
+                        // ✅ OOP PATTERN: Pass spatial index if available for optimized path
+                        var mepCategoryForLookupInvalid = GetElementCategoryName(mepElement);
+                        Dictionary<(double X, double Y, double Z), int> spatialIndexForCategoryInvalid = null;
+                        HashSet<int> sleeveIdsForCategoryInvalid = null;
+                        
+                        if (sleeveSpatialIndexesByCategory.TryGetValue(mepCategoryForLookupInvalid, out var sleeveDataInvalid))
+                        {
+                            spatialIndexForCategoryInvalid = sleeveDataInvalid.SpatialIndex;
+                            sleeveIdsForCategoryInvalid = sleeveDataInvalid.SleeveIds;
+                        }
+                        
+                        var newClashZone = CreateClashZone(mepElement, structuralElement, intersectionPoint, boundingBox, document, clearanceSettings, spatialIndexForCategoryInvalid, sleeveIdsForCategoryInvalid);
+                        
+                        // ✅ CRITICAL: Set HasDamperNearby flag if duct-damper combo was detected
+                        if (ductHasDamperNearby)
+                        {
+                            newClashZone.HasDamperNearby = true;
+                            _log($"[DUCT-DAMPER] ✓ Set HasDamperNearby=true on REPLACED clash zone {newClashZone.Id} for duct {mepElement.Id}");
+                        }
+                        
                         newClashZone.IsCurrentClash = true; // ✅ DEBUG: Mark as current refresh clash
                         // ✅ MEMORY: Drop heavy API objects immediately after populating numeric fields
                         newClashZone.ClearRevitApiObjects();
@@ -659,13 +769,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             _log($"[⚠️ ZERO POINT WARNING] Creating ClashZone with ZERO intersection point: MEP={mepElement.Id}, Structural={structuralElement.Id}, Point=({intersectionPoint.X},{intersectionPoint.Y},{intersectionPoint.Z})");
                             try 
                             { 
-                                var debugPath = SafeFileLogger.GetLogFilePath("refresh_intersection_debug.log");
-                                File.AppendAllText(debugPath, $"[{DateTime.Now}] ⚠️ ZERO POINT: MEP={mepElement.Id}, Structural={structuralElement.Id}, Point=({intersectionPoint.X},{intersectionPoint.Y},{intersectionPoint.Z}), Document={document?.Title}\n");
+                                // ✅ DEPLOYMENT MODE: Skip file writes
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    var debugPath = SafeFileLogger.GetLogFilePath("refresh_intersection_debug.log");
+                                    File.AppendAllText(debugPath, $"[{DateTime.Now}] ⚠️ ZERO POINT: MEP={mepElement.Id}, Structural={structuralElement.Id}, Point=({intersectionPoint.X},{intersectionPoint.Y},{intersectionPoint.Z}), Document={document?.Title}\n");
+                                }
                             } 
                             catch { }
                         }
                         
-                        var newClashZone = CreateClashZone(mepElement, structuralElement, intersectionPoint, boundingBox, document, clearanceSettings);
+                        // ✅ OOP PATTERN: Pass spatial index if available for optimized path
+                        var mepCategoryForLookup = GetElementCategoryName(mepElement);
+                        Dictionary<(double X, double Y, double Z), int> spatialIndexForCategory = null;
+                        HashSet<int> sleeveIdsForCategory = null;
+                        
+                        if (sleeveSpatialIndexesByCategory.TryGetValue(mepCategoryForLookup, out var sleeveData))
+                        {
+                            spatialIndexForCategory = sleeveData.SpatialIndex;
+                            sleeveIdsForCategory = sleeveData.SleeveIds;
+                        }
+                        
+                        var newClashZone = CreateClashZone(mepElement, structuralElement, intersectionPoint, boundingBox, document, clearanceSettings, spatialIndexForCategory, sleeveIdsForCategory);
+                        
+                        // ✅ CRITICAL: Set HasDamperNearby flag if duct-damper combo was detected
+                        if (ductHasDamperNearby)
+                        {
+                            newClashZone.HasDamperNearby = true;
+                            _log($"[DUCT-DAMPER] ✓ Set HasDamperNearby=true on NEW clash zone {newClashZone.Id} for duct {mepElement.Id}");
+                        }
                         
                         // ✅ CRITICAL DEBUG: Verify coordinates AFTER creation
                         bool xmlIsZero = Math.Abs(newClashZone.IntersectionPointX) < 1e-9 && Math.Abs(newClashZone.IntersectionPointY) < 1e-9 && Math.Abs(newClashZone.IntersectionPointZ) < 1e-9;
@@ -674,8 +806,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             _log($"[⚠️ XML ZERO WARNING] ClashZone created with ZERO XML coordinates: ID={newClashZone.Id}, MEP={mepElement.Id}, Structural={structuralElement.Id}");
                             try 
                             { 
-                                var debugPath = SafeFileLogger.GetLogFilePath("refresh_intersection_debug.log");
-                                File.AppendAllText(debugPath, $"[{DateTime.Now}] ⚠️ XML ZERO: Zone={newClashZone.Id}, MEP={mepElement.Id}, Structural={structuralElement.Id}, IP_XML=({newClashZone.IntersectionPointX},{newClashZone.IntersectionPointY},{newClashZone.IntersectionPointZ})\n");
+                                // ✅ DEPLOYMENT MODE: Skip file writes
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    var debugPath = SafeFileLogger.GetLogFilePath("refresh_intersection_debug.log");
+                                    File.AppendAllText(debugPath, $"[{DateTime.Now}] ⚠️ XML ZERO: Zone={newClashZone.Id}, MEP={mepElement.Id}, Structural={structuralElement.Id}, IP_XML=({newClashZone.IntersectionPointX},{newClashZone.IntersectionPointY},{newClashZone.IntersectionPointZ})\n");
+                                }
                             } 
                             catch { }
                         }
@@ -760,20 +896,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Otherwise fall back to legacy method for backward compatibility
             if (_flagManager != null && _clashZoneStorage?.ClashZones != null)
             {
-                // Use FlagManager - group by category and reset flags for each category
-                var clashZonesByCategory = _clashZoneStorage.ClashZones
-                    .Where(cz => selectedCategories == null || selectedCategories.Contains(cz.MepElementCategory, StringComparer.OrdinalIgnoreCase))
-                    .GroupBy(cz => cz.MepElementCategory)
-                    .ToList();
-                
-                foreach (var categoryGroup in clashZonesByCategory)
+                // ✅ UNIFIED RESET: Use FlagManager unified method - single call handles everything
+                if (selectedCategories != null && selectedCategories.Count > 0)
                 {
-                    var category = categoryGroup.Key;
-                    var categoryClashZones = categoryGroup.ToList();
-                    _flagManager.ResetFlagsForDeletedSleeves(categoryClashZones, category);
+                    // Build Filter XML clash zones dictionary for sync-back
+                var clashZonesByCategory = _clashZoneStorage.ClashZones
+                        .Where(cz => selectedCategories.Contains(cz.MepElementCategory, StringComparer.OrdinalIgnoreCase))
+                    .GroupBy(cz => cz.MepElementCategory)
+                        .ToDictionary(g => g.Key, g => g.ToList());
+                    
+                    // ✅ UNIFIED RESET: Single method call handles everything
+                    int resetCount = _flagManager.ResetFlagsForDeletedSleeves(selectedCategories, clashZonesByCategory);
+                    
+                    if (resetCount > 0)
+                    {
+                        _log($"[FLAG-MANAGER] Reset flags for {resetCount} deleted sleeves using unified FlagManager method");
+                    }
+                    else
+                    {
+                        _log($"[FLAG-MANAGER] No flags reset - all sleeves exist");
+                    }
                 }
-                
-                _log($"[FLAG-MANAGER] Reset flags for deleted sleeves using FlagManager");
             }
             else
             {
@@ -1530,7 +1673,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         try
                         {
                             var globalIndex = GlobalIndexService.LoadOrCreate(document, clashZone.MepElementCategory);
-                            var entry = globalIndex.Entries?.FirstOrDefault(e => e.Id == clashZone.Id.ToString());
+                            
+                            // ✅ CRITICAL FIX: Use GetAllEntries to get entries from BOTH hierarchical and flat structures
+                            // Entries are now stored in Filters → FileCombos → Entries, not just in flat Entries list
+                            var allEntries = GlobalIndexService.GetAllEntries(globalIndex).ToList();
+                            var entry = allEntries?.FirstOrDefault(e => e.Id == clashZone.Id.ToString());
                             if (entry != null)
                             {
                                 globalEntryFound = true;
@@ -1777,7 +1924,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
         
-        private ClashZone CreateClashZone(Element mepElement, Element structuralElement, XYZ intersectionPoint, BoundingBoxXYZ boundingBox, Document document, Dictionary<string, double> clearanceSettings = null)
+        private ClashZone CreateClashZone(Element mepElement, Element structuralElement, XYZ intersectionPoint, BoundingBoxXYZ boundingBox, Document document, Dictionary<string, double> clearanceSettings = null, Dictionary<(double X, double Y, double Z), int> spatialIndex = null, HashSet<int> sleeveIds = null)
         {
             // IMPORTANT: The intersection point is already at the wall center (mid-plane)
             // The MepIntersectionService finds intersections with wall faces and CreateBoundingBox()
@@ -1818,8 +1965,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // OPTIMIZATION: Get MEP element level information during refresh (no linked file access needed during placement)
             var (levelName, levelElevation) = GetMepElementLevelInfo(mepElement);
             
-            // Check for existing sleeve at intersection point (which is the placement point)
-            var hasExistingSleeve = CheckForExistingSleeve(intersectionPoint, document);
+            // ✅ OOP PATTERN: Two paths - optimized if spatial index provided, fallback if not
+            bool hasExistingSleeve = false;
+            int existingSleeveId = -1;
+            
+            if (spatialIndex != null && spatialIndex.Count > 0)
+            {
+                // ✅ OPTIMIZED PATH: Use spatial index for O(1) lookup
+                var (found, sleeveId) = FindSleeveInSpatialIndex(intersectionPoint, spatialIndex);
+                hasExistingSleeve = found;
+                existingSleeveId = sleeveId;
+                
+                if (found && !DeploymentConfiguration.DeploymentMode)
+                    _log($"[OPTIMIZED-SLEEVE-LOOKUP] ✓ Found existing sleeve {sleeveId} at placement point using spatial index");
+            }
+            else
+            {
+                // ✅ FALLBACK PATH: Use old method when no sleeves exist for category
+                hasExistingSleeve = CheckForExistingSleeve(intersectionPoint, document);
+                
+                if (hasExistingSleeve && !DeploymentConfiguration.DeploymentMode)
+                    _log($"[FALLBACK-SLEEVE-LOOKUP] ✓ Found existing sleeve at placement point using fallback method");
+            }
             
             // ⚠️ CRITICAL: Get MEP element category for category-specific processing ⚠️
             // DO NOT REMOVE: This is essential for each placement service to validate its category
@@ -1931,6 +2098,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 InsulationType = insulationType, // Store insulation type (Normal/Insulated) for clearance selection
                 DocumentPath = document.PathName,
                 StructuralElementDocumentTitle = structuralElement.Document.Title,
+                // ✅ CRITICAL: Set SourceDocKey and HostDocKey for hierarchical Global XML structure
+                // These are used to group entries by file combo (LinkedFile + HostFile)
+                // ⚠️ NOTE: Uses Document.Title (same as LinkedFileService after fix)
+                // LinkedFileService now uses RevitLinkInstance.Name when available, which matches what user sees in Revit
+                // ClashZoneService uses Document.Title because we don't have access to RevitLinkInstance here
+                // Both should match since LinkedFileService falls back to Document.Title if Name is empty
+                SourceDocKey = mepElement.Document.Title ?? mepElement.Document.PathName ?? string.Empty,
+                HostDocKey = structuralElement.Document.Title ?? structuralElement.Document.PathName ?? string.Empty,
                 StructuralElementType = structuralElementType,
                 HostOrientation = WallDirectionService.GetHostOrientation(structuralElement), // ✅ OOP: Use centralized service
                 StructuralElementThickness = GetElementThickness(structuralElement),
@@ -1959,6 +2134,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DetectedAt = DateTime.Now,
                 LastUpdated = DateTime.Now
             };
+            
+            // ✅ CRITICAL: Set deterministic GUID for stable identification across detection runs
+            // This ensures the same intersection (MEP+Host+Point) always gets the same GUID
+            // Even if Global XML is deleted/recreated, the GUID will remain stable
+            if (_guidManager != null)
+            {
+                int mepId = clashZone.MepElementId?.IntegerValue ?? clashZone.MepElementIdValue;
+                int hostId = clashZone.StructuralElementId?.IntegerValue ?? clashZone.StructuralElementIdValue;
+                
+                if (mepId > 0 && hostId > 0 && 
+                    Math.Abs(clashZone.IntersectionPointX) > 1e-9 &&
+                    Math.Abs(clashZone.IntersectionPointY) > 1e-9 &&
+                    Math.Abs(clashZone.IntersectionPointZ) > 1e-9)
+                {
+                    clashZone.Id = _guidManager.GenerateDeterministicGuid(
+                        mepId,
+                        hostId,
+                        clashZone.IntersectionPointX,
+                        clashZone.IntersectionPointY,
+                        clashZone.IntersectionPointZ,
+                        tolerance: 0.1); // 0.1ft = ~30mm tolerance (matches GlobalIndexService.FindByMepHostAndPoint)
+                    
+                    if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
+                    {
+                        _log($"[DETERMINISTIC-GUID] Set deterministic GUID {clashZone.Id} for MEP={mepId}, Host={hostId}, Point=({clashZone.IntersectionPointX:F3},{clashZone.IntersectionPointY:F3},{clashZone.IntersectionPointZ:F3})");
+                    }
+                }
+                else
+                {
+                    // Invalid data - keep random GUID from default initialization
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        _log($"[DETERMINISTIC-GUID] Warning: Invalid data for deterministic GUID (MEP={mepId}, Host={hostId}, Point=({clashZone.IntersectionPointX},{clashZone.IntersectionPointY},{clashZone.IntersectionPointZ})) - using random GUID {clashZone.Id}");
+                    }
+                }
+            }
             try
             {
                 var th = clashZone.StructuralElementThickness;
@@ -1980,6 +2191,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _log($"[DEBUG]   MepElementOrientation: {mepOrientation}");
             _log($"[DEBUG]   PipeOpeningType: {pipeOpeningType}");
             _log($"[DEBUG]   IsResolved: {hasExistingSleeve}");
+            
+            // ✅ CRITICAL: Immediately update Global XML when sleeve is found (optimized path)
+            // This ensures flags are set correctly during detection, eliminating need for recovery
+            if (hasExistingSleeve && existingSleeveId > 0 && _guidManager != null)
+            {
+                try
+                {
+                    // Update Global XML entry immediately with sleeve ID and resolved flag
+                    var updates = new List<(Guid Id, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterSleeveInstanceId)>
+                    {
+                        (clashZone.Id, true, false, existingSleeveId, -1)
+                    };
+                    
+                    GlobalIndexService.UpsertFlagsWithIds(document, mepCategory, updates);
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        _log($"[OPTIMIZED-SLEEVE-LOOKUP] ✓ Updated Global XML immediately: Entry {clashZone.Id} → IsResolved=true, SleeveInstanceId={existingSleeveId}");
+                }
+                catch (Exception ex)
+                {
+                    _log($"[OPTIMIZED-SLEEVE-LOOKUP] Error updating Global XML immediately: {ex.Message}");
+                }
+            }
             
             return clashZone;
         }
@@ -2293,10 +2527,147 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
+        /// ✅ OPTIMIZED: Pre-collects sleeves by category and builds spatial index for O(1) lookup
+        /// Uses "calculate once, use many times" strategy (same as recovery method)
+        /// Returns spatial index Dictionary<(roundedX, roundedY, roundedZ), sleeveId> and HashSet of sleeve IDs
+        /// </summary>
+        /// <param name="document">Revit document</param>
+        /// <param name="category">MEP element category name</param>
+        /// <returns>Tuple: (spatialIndex Dictionary, sleeveIds HashSet, categorySleeves List)</returns>
+        private (Dictionary<(double X, double Y, double Z), int> SpatialIndex, HashSet<int> SleeveIds, List<FamilyInstance> CategorySleeves) PreCollectSleevesByCategory(Document document, string category)
+        {
+            var spatialIndex = new Dictionary<(double X, double Y, double Z), int>();
+            var sleeveIds = new HashSet<int>();
+            var categorySleeves = new List<FamilyInstance>();
+            
+            try
+            {
+                // ✅ OPTIMIZATION: Filter sleeves by MEP_Category parameter (no expensive Revit API calls)
+                // Same optimization as recovery method uses
+                var allSleeves = new FilteredElementCollector(document)
+                    .OfClass(typeof(FamilyInstance))
+                    .Cast<FamilyInstance>()
+                    .Where(s => 
+                    {
+                        // Check if it's a sleeve family
+                        bool hasSleeveKeyword = s.Symbol?.FamilyName?.Contains("Sleeve", StringComparison.OrdinalIgnoreCase) == true ||
+                                               s.Symbol?.FamilyName?.Contains("Opening", StringComparison.OrdinalIgnoreCase) == true;
+                        
+                        string familyName = s.Symbol?.FamilyName ?? "";
+                        bool isKnownFamily = familyName.Contains("CircularOpening", StringComparison.OrdinalIgnoreCase) ||
+                                            familyName.Contains("RectangularOpening", StringComparison.OrdinalIgnoreCase);
+                        
+                        if (!((s.Category?.Name == "Generic Models" || s.Category?.Name == "Structural Connections") &&
+                               (hasSleeveKeyword || isKnownFamily)))
+                            return false;
+                        
+                        // ✅ PERFORMANCE: Filter by MEP_Category parameter (no Revit API call needed)
+                        var mepCategoryParam = s.LookupParameter("MEP_Category");
+                        if (mepCategoryParam != null && !string.IsNullOrWhiteSpace(mepCategoryParam.AsString()))
+                        {
+                            string sleeveCategory = mepCategoryParam.AsString();
+                            return string.Equals(sleeveCategory, category, StringComparison.OrdinalIgnoreCase);
+                        }
+                        
+                        // Fallback: If MEP_Category parameter is missing, skip (category unknown)
+                        return false;
+                    })
+                    .ToList();
+                
+                categorySleeves = allSleeves;
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                    _log($"[OPTIMIZED-SLEEVE-LOOKUP] Pre-collected {categorySleeves.Count} sleeves for category '{category}' (filtered by MEP_Category parameter)");
+                
+                // ✅ OPTIMIZATION: Build spatial index with 0.1ft tolerance (matches Global XML and recovery)
+                double pointTolerance = 0.1; // 0.1ft = ~30mm tolerance (matches GlobalIndexService.FindByMepHostAndPoint)
+                
+                foreach (var sleeve in categorySleeves)
+                {
+                    int sleeveId = sleeve.Id.IntegerValue;
+                    sleeveIds.Add(sleeveId);
+                    
+                    // Get sleeve location
+                    XYZ sleeveLocation = null;
+                    if (sleeve.Location is LocationPoint locationPoint)
+                    {
+                        sleeveLocation = locationPoint.Point;
+                    }
+                    else if (sleeve.Location is LocationCurve locationCurve)
+                    {
+                        // For LocationCurve, use the midpoint
+                        sleeveLocation = locationCurve.Curve.Evaluate(0.5, true);
+                    }
+                    
+                    if (sleeveLocation != null)
+                    {
+                        // Round to tolerance for spatial index key
+                        double roundedX = Math.Round(sleeveLocation.X / pointTolerance) * pointTolerance;
+                        double roundedY = Math.Round(sleeveLocation.Y / pointTolerance) * pointTolerance;
+                        double roundedZ = Math.Round(sleeveLocation.Z / pointTolerance) * pointTolerance;
+                        
+                        var key = (roundedX, roundedY, roundedZ);
+                        
+                        // If multiple sleeves at same rounded point, keep the first one (shouldn't happen, but safe)
+                        if (!spatialIndex.ContainsKey(key))
+                        {
+                            spatialIndex[key] = sleeveId;
+                        }
+                    }
+                }
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                    _log($"[OPTIMIZED-SLEEVE-LOOKUP] Built spatial index with {spatialIndex.Count} entries for {categorySleeves.Count} sleeves");
+            }
+            catch (Exception ex)
+            {
+                _log($"[OPTIMIZED-SLEEVE-LOOKUP] Error pre-collecting sleeves: {ex.Message}");
+            }
+            
+            return (spatialIndex, sleeveIds, categorySleeves);
+        }
+        
+        /// <summary>
+        /// ✅ OPTIMIZED: Finds sleeve in spatial index using O(1) lookup
+        /// Returns (found, sleeveId) tuple
+        /// </summary>
+        /// <param name="placementPoint">Placement point to search for</param>
+        /// <param name="spatialIndex">Pre-built spatial index</param>
+        /// <returns>Tuple: (found bool, sleeveId int)</returns>
+        private (bool Found, int SleeveId) FindSleeveInSpatialIndex(XYZ placementPoint, Dictionary<(double X, double Y, double Z), int> spatialIndex)
+        {
+            if (spatialIndex == null || spatialIndex.Count == 0)
+                return (false, -1);
+            
+            try
+            {
+                // Round to same tolerance as spatial index (0.1ft)
+                double pointTolerance = 0.1;
+                double roundedX = Math.Round(placementPoint.X / pointTolerance) * pointTolerance;
+                double roundedY = Math.Round(placementPoint.Y / pointTolerance) * pointTolerance;
+                double roundedZ = Math.Round(placementPoint.Z / pointTolerance) * pointTolerance;
+                
+                var key = (roundedX, roundedY, roundedZ);
+                
+                if (spatialIndex.TryGetValue(key, out int sleeveId))
+                {
+                    return (true, sleeveId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _log($"[OPTIMIZED-SLEEVE-LOOKUP] Error finding sleeve in spatial index: {ex.Message}");
+            }
+            
+            return (false, -1);
+        }
+        
+        /// <summary>
         /// ⚠️ CRITICAL METHOD - DO NOT REMOVE ⚠️
         /// Check if a sleeve exists at the EXACT placement point stored in XML
         /// This is essential for refresh to detect deleted sleeves and reset IsResolved flag
         /// Without this, deleted sleeves cannot be re-placed (duplication suppressor prevents it)
+        /// FALLBACK PATH: Used when no sleeves exist for category (optimization not needed)
         /// </summary>
         private bool CheckForExistingSleeve(XYZ placementPoint, Document document)
         {
@@ -3064,16 +3435,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         if (IsDamperClashZone(clashZone))
                         {
-                            // Try to get the damper element from document
+                            // Try to get the damper element from document (works for active doc and linked files)
                             var damperElement = document.GetElement(clashZone.MepElementId);
+                            
+                            BoundingBoxXYZ damperBbox = null;
                             if (damperElement != null)
                             {
-                                var damperBbox = damperElement.get_BoundingBox(null);
-                                if (damperBbox != null)
+                                // Element is in active document or same linked file
+                                damperBbox = damperElement.get_BoundingBox(null);
+                            }
+                            else
+                            {
+                                // Element might be in a different linked file - try to get from intersection point
+                                // Use stored intersection point coordinates to create bounding box approximation
+                                if (clashZone.IntersectionPointX != 0 || clashZone.IntersectionPointY != 0 || clashZone.IntersectionPointZ != 0)
                                 {
-                                    damperLocations.Add((damperId: clashZone.MepElementId, bbox: damperBbox, wallId: clashZone.StructuralElementId));
-                                    _log($"[PRE-CALC-XML] Damper {clashZone.MepElementId} location cached from XML");
+                                    var intersectionPoint = new XYZ(clashZone.IntersectionPointX, clashZone.IntersectionPointY, clashZone.IntersectionPointZ);
+                                    // Create a small bounding box around intersection point (approx 200mm = 0.66ft cube)
+                                    const double approximateSize = 0.66; // 200mm in feet
+                                    damperBbox = new BoundingBoxXYZ
+                                    {
+                                        Min = new XYZ(intersectionPoint.X - approximateSize, intersectionPoint.Y - approximateSize, intersectionPoint.Z - approximateSize),
+                                        Max = new XYZ(intersectionPoint.X + approximateSize, intersectionPoint.Y + approximateSize, intersectionPoint.Z + approximateSize)
+                                    };
+                                    _log($"[PRE-CALC-XML] Damper {clashZone.MepElementId} in linked file - using intersection point approximation");
                                 }
+                            }
+                            
+                            if (damperBbox != null)
+                            {
+                                damperLocations.Add((damperId: clashZone.MepElementId, bbox: damperBbox, wallId: clashZone.StructuralElementId));
+                                _log($"[PRE-CALC-XML] Damper {clashZone.MepElementId} location cached from XML (wall: {clashZone.StructuralElementId})");
+                            }
+                            else
+                            {
+                                _log($"[PRE-CALC-XML] Warning: Could not get bounding box for damper {clashZone.MepElementId} from XML");
                             }
                         }
                     }
@@ -3084,9 +3480,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     var mepCat = GetElementCategoryName(mepElement);
                     
-                    // Check if it's a damper
-                    if (string.Equals(mepCat, "Duct Accessories", StringComparison.OrdinalIgnoreCase) ||
-                        IsDamperElement(mepElement))
+                    // ✅ SIMPLE: Add all Duct Accessories - category check is sufficient for avoidance
+                    if (IsDamperElement(mepElement))
                     {
                         var damperBbox = mepElement.get_BoundingBox(null);
                         if (damperBbox != null)
@@ -3113,43 +3508,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         /// <summary>
         /// Check if a clash zone represents a damper
+        /// ✅ SIMPLE: Category check is sufficient - all Duct Accessories are treated as dampers for avoidance
         /// </summary>
         private bool IsDamperClashZone(ClashZone clashZone)
         {
             try
             {
-                // First check if it's a duct accessory
-                if (!string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
-                    return false;
-                
-                // Then check if it's specifically a damper by looking at the system abbreviation or other indicators
-                // Dampers typically have system abbreviations like "FD", "MSFD", "MSD", "MD", etc.
-                var systemAbbr = clashZone.MepElementSystemAbbreviation?.ToUpperInvariant() ?? "";
-                
-                // Check for damper-related system abbreviations
-                if (systemAbbr.Contains("FD") || systemAbbr.Contains("MSFD") || systemAbbr.Contains("MSD") || 
-                    systemAbbr.Contains("MD") || systemAbbr.Contains("DAMPER"))
-                {
-                    return true;
-                }
-                
-                // Also check if it's marked as MSFD damper
-                if (clashZone.IsMSFDDamper)
-                {
-                    return true;
-                }
-                
-                // Fallback: check if the formatted size suggests it's a damper
-                // Dampers typically have rectangular sizes (e.g., "400x200") rather than round sizes
-                var formattedSize = clashZone.MepElementFormattedSize?.ToUpperInvariant() ?? "";
-                if (formattedSize.Contains("X") && !formattedSize.Contains("Ø"))
-                {
-                    // It's rectangular, likely a damper
-                    return true;
-                }
-                
-                // If we can't determine, be conservative and exclude it
-                return false;
+                // ✅ SIMPLE: If it's a Duct Accessory category, treat it as a damper
+                return string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase);
             }
             catch
             {
@@ -3161,13 +3527,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Check if a duct is near a damper using pre-calculated locations (Efficient O(n) lookup)
         /// ✅ CRITICAL FIX: Now checks SAME WALL requirement before proximity check
         /// </summary>
-        private bool IsDuctNearDamperOnSameWall(Element ductElement, ElementId wallId, List<(ElementId damperId, BoundingBoxXYZ bbox, ElementId wallId)> damperLocations)
+        private bool IsDuctNearDamperOnSameWall(Element ductElement, ElementId wallId, XYZ intersectionPoint, List<(ElementId damperId, BoundingBoxXYZ bbox, ElementId wallId)> damperLocations)
         {
             try
             {
-                // ✅ INCREASED TOLERANCE: Changed from 0.02ft (0.24") to 0.5ft (6") for better reliability
-                // This accounts for small gaps between connected duct and damper elements
-                const double proximityTolerance = 0.5; // 6 inches tolerance for connected duct-damper pairs
+                // ✅ CRITICAL: Check intersection point proximity FIRST (most reliable - checks damper at duct end where intersection occurs)
+                // Use smaller tolerance for intersection point check (0.2ft = 200mm) - matches old IsDamperAtIntersection logic
+                const double intersectionTolerance = 0.2; // 200mm tolerance for damper at intersection point
+                
+                // ✅ FALLBACK: Increased tolerance for bounding box check (0.5ft = 6") for connected duct-damper pairs
+                const double bboxProximityTolerance = 0.5; // 6 inches tolerance for connected duct-damper pairs
                 
                 // Get duct bounding box
                 var ductBbox = ductElement.get_BoundingBox(null);
@@ -3193,27 +3562,61 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Skip if it's the same element
                     if (damperId == ductElement.Id) continue;
                     
-                    // Check if duct and damper are within proximity tolerance
-                    var distance = GetMinimumDistanceBetweenBoundingBoxes(ductBbox, damperBbox);
+                    // ✅ METHOD 1: Check if damper center/bbox is near intersection point (most reliable for duct-damper combos)
+                    XYZ damperCenter = (damperBbox.Min + damperBbox.Max) * 0.5;
+                    double distanceToIntersection = damperCenter.DistanceTo(intersectionPoint);
                     
-                    if (distance <= proximityTolerance)
+                    if (distanceToIntersection <= intersectionTolerance)
                     {
-                        _log($"[DUCT-DAMPER] ✓ MATCH: Duct {ductElement.Id} is {distance:F4}ft from Damper {damperId} on wall {wallId} (tolerance: {proximityTolerance}ft = 6\")");
+                        _log($"[DUCT-DAMPER] ✓ MATCH AT INTERSECTION: Duct {ductElement.Id} intersection point is {distanceToIntersection:F4}ft from Damper {damperId} center on wall {wallId} (tolerance: {intersectionTolerance}ft = 200mm)");
                         return true;
                     }
-                    else
+                    
+                    // ✅ METHOD 2: Check if damper bbox contains or is near intersection point
+                    if (IsPointNearBoundingBox(intersectionPoint, damperBbox, intersectionTolerance))
                     {
-                        _log($"[DUCT-DAMPER] Distance check: Duct {ductElement.Id} is {distance:F4}ft from Damper {damperId} (tolerance: {proximityTolerance}ft) - too far");
+                        _log($"[DUCT-DAMPER] ✓ MATCH AT INTERSECTION (bbox): Duct {ductElement.Id} intersection point is within {intersectionTolerance}ft of Damper {damperId} bounding box on wall {wallId}");
+                        return true;
+                    }
+                    
+                    // ✅ METHOD 3: Fallback - Check if duct and damper bounding boxes are within proximity (for connected pairs)
+                    var bboxDistance = GetMinimumDistanceBetweenBoundingBoxes(ductBbox, damperBbox);
+                    if (bboxDistance <= bboxProximityTolerance)
+                    {
+                        _log($"[DUCT-DAMPER] ✓ MATCH (bbox proximity): Duct {ductElement.Id} bbox is {bboxDistance:F4}ft from Damper {damperId} bbox on wall {wallId} (tolerance: {bboxProximityTolerance}ft = 6\")");
+                        return true;
                     }
                 }
                 
-                _log($"[DUCT-DAMPER] No dampers found within {proximityTolerance}ft of duct {ductElement.Id} on wall {wallId}");
+                _log($"[DUCT-DAMPER] No dampers found near duct {ductElement.Id} on wall {wallId} (checked intersection point and bbox proximity)");
                 return false;
             }
             catch (Exception ex)
             {
                 _log($"Error checking duct-damper proximity: {ex.Message}");
                 _log($"Stack trace: {ex.StackTrace}");
+                return false;
+            }
+        }
+        
+        /// <summary>
+        /// Check if a point is near a bounding box (within tolerance)
+        /// </summary>
+        private bool IsPointNearBoundingBox(XYZ point, BoundingBoxXYZ bbox, double tolerance)
+        {
+            try
+            {
+                // Expand bbox by tolerance
+                var expandedMin = new XYZ(bbox.Min.X - tolerance, bbox.Min.Y - tolerance, bbox.Min.Z - tolerance);
+                var expandedMax = new XYZ(bbox.Max.X + tolerance, bbox.Max.Y + tolerance, bbox.Max.Z + tolerance);
+                
+                // Check if point is within expanded bbox
+                return point.X >= expandedMin.X && point.X <= expandedMax.X &&
+                       point.Y >= expandedMin.Y && point.Y <= expandedMax.Y &&
+                       point.Z >= expandedMin.Z && point.Z <= expandedMax.Z;
+            }
+            catch
+            {
                 return false;
             }
         }
@@ -3236,19 +3639,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                // First check if it's a duct accessory
-                if (element.Category?.Id.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
-                {
-                    // Then check if it's specifically a damper family
-                    if (element is FamilyInstance famInst)
-                    {
-                        var familyName = famInst.Symbol?.Family?.Name?.ToLowerInvariant();
-                        if (familyName != null && familyName.Contains("damper"))
-                            return true;
-                    }
-                }
-                
-                return false;
+                // ✅ SIMPLE: If it's a Duct Accessory category, treat it as a damper for avoidance logic
+                // No need to check family name - category is sufficient
+                return element.Category?.Id.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory;
             }
             catch
             {

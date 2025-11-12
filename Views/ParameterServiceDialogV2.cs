@@ -1137,13 +1137,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     
                     DebugLogger.Info($"[ParameterServiceDialogV2] Collected {allMappings.Count} parameter mappings from UI");
                     
+                    // ✅ CRITICAL FIX: Add source parameter names to learned keys whitelist
+                    // This ensures these parameters are captured during the next refresh
+                    foreach (var mapping in allMappings)
+                    {
+                        if (!string.IsNullOrWhiteSpace(mapping.SourceParameter))
+                        {
+                            Services.ParameterSnapshotService.AddLearnedKey(mapping.SourceParameter);
+                            DebugLogger.Info($"[ParameterServiceDialogV2] Added '{mapping.SourceParameter}' to learned parameter keys whitelist");
+                        }
+                    }
+                    
                     // Create configuration with all mappings
                     var config = new Models.ParameterTransferConfiguration
                     {
                         SourceCategoryName = "All", // Transfer from all categories
                         Mappings = allMappings
                     };
-                    
+
                     // ExecuteTransferConfiguration creates its own transaction, so we don't need to wrap it
                     var result = transferService.ExecuteTransferConfiguration(_document, openings, config);
                     
@@ -1355,6 +1366,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         DamperPrefix = damperPrefix,
                         NumberFormat = numberFormat
                     };
+
+                    // Sync remark checkboxes so MarkParameterCommand honours the user's selection
+                    markPrefixes.RemarkAll = remarkProject;
+                    markPrefixes.RemarkProjectPrefix = remarkProject;
+                    markPrefixes.RemarkDuctPrefix = remarkDuct;
+                    markPrefixes.RemarkPipePrefix = remarkPipe;
+                    markPrefixes.RemarkCableTrayPrefix = remarkCableTray;
+                    markPrefixes.RemarkDamperPrefix = remarkDamper;
+
+                    // Collect checked System Type Overrides
+                    var systemTypeOverrides = new List<(string systemType, string prefix)>();
+                    foreach (var row in _systemTypeRows)
+                    {
+                        // Find checkbox in row
+                        var checkbox = row.Controls.OfType<WinForms.CheckBox>().FirstOrDefault();
+                        if (checkbox != null && checkbox.Checked)
+                        {
+                            var comboBox = row.Controls.OfType<WinForms.ComboBox>().FirstOrDefault();
+                            var textBox = row.Controls.OfType<WinForms.TextBox>().FirstOrDefault();
+                            
+                            if (comboBox != null && textBox != null)
+                            {
+                                systemTypeOverrides.Add((comboBox.Text, textBox.Text));
+                            }
+                        }
+                    }
+
+                    // Persist any per-system overrides that were checked
+                    foreach (var (systemType, prefix) in systemTypeOverrides)
+                    {
+                        if (!string.IsNullOrWhiteSpace(systemType))
+                        {
+                            markPrefixes.DuctSystemTypeOverrides[systemType] = prefix ?? string.Empty;
+                        }
+                    }
                     
                     // Debug: Log the prefix values being used
                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Apply Marks - Project: '{projectPrefix}', Duct: '{ductPrefix}', Pipe: '{pipePrefix}', CableTray: '{cableTrayPrefix}', Damper: '{damperPrefix}', Format: '{numberFormat}'\n");
@@ -1503,6 +1549,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         NumberFormat = numberFormat
                     };
                     
+                    // Sync remark checkboxes so MarkParameterCommand honours the user's selection
+                    markPrefixes.RemarkAll = remarkProject;
+                    markPrefixes.RemarkProjectPrefix = remarkProject;
+                    markPrefixes.RemarkDuctPrefix = remarkDuct;
+                    markPrefixes.RemarkPipePrefix = remarkPipe;
+                    markPrefixes.RemarkCableTrayPrefix = remarkCableTray;
+                    markPrefixes.RemarkDamperPrefix = remarkDamper;
+                    
+                    // ✅ Add system type overrides from checked rows
+                    foreach (var (systemType, prefix) in systemTypeOverrides)
+                    {
+                        if (!string.IsNullOrWhiteSpace(systemType))
+                        {
+                            markPrefixes.DuctSystemTypeOverrides[systemType] = prefix ?? string.Empty;
+                        }
+                    }
+                    
                     // Remark only checked categories with remarkAll=true
                     int totalProcessed = 0;
                     var categoriesProcessed = new List<string>();
@@ -1619,7 +1682,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                                     using (var reader = new System.IO.StreamReader(file))
                                     {
                                         var filter = (Models.OpeningFilter)serializer.Deserialize(reader);
-                                        if (filter?.ClashZoneStorage?.ClashZones != null && filter.ClashZoneStorage.ClashZones.Count > 0)
+                                        if (filter?.ClashZoneStorage?.AllZones != null && filter.ClashZoneStorage.AllZones.Count > 0)
                                         {
                                             found = true;
                                             break;

@@ -77,8 +77,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 _snapshots.Add(snapshot);
                 
-                // Log significant milestones or at intervals
-                if (clashZoneCount % LOG_INTERVAL == 0 || phase.Contains("START") || phase.Contains("END") || phase.Contains("ERROR"))
+                // ✅ FIX: Always log snapshots when deployment mode is OFF OR diagnostic mode is ON
+                // Log significant milestones or at intervals, but also respect diagnostic mode
+                bool shouldLog = clashZoneCount % LOG_INTERVAL == 0 || 
+                                phase.Contains("START") || phase.Contains("END") || phase.Contains("ERROR") ||
+                                phase.Contains("COMPLETE") || phase.Contains("PARAMETER") || phase.Contains("DETECT") ||
+                                phase.Contains("MERGE") || phase.Contains("GC") ||
+                                OptimizationFlags.UseDiagnosticMode; // ✅ Always log in diagnostic mode
+                
+                if (shouldLog)
                 {
                     LogSnapshot(snapshot);
                 }

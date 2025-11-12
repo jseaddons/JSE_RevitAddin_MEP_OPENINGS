@@ -88,10 +88,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                                 var xmlErrorLogPath = SafeFileLogger.GetLogFilePath("sleeve_placement_errors.log");
                                 var xmlDebugLogPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
                                 
-                                if (filter?.ClashZoneStorage?.ClashZones != null)
+                                if (filter?.ClashZoneStorage?.AllZones != null)
                                 {
                                     _clashZones.Clear();
-                                    _clashZones.AddRange(filter.ClashZoneStorage.ClashZones);
+                                    _clashZones.AddRange(filter.ClashZoneStorage.AllZones);
                                     DebugLogger.Info($"{_logPrefix} Fallback loaded {_clashZones.Count} clash zones from {path}");
                                     
                                     // ✅ CRITICAL FIX: Reconstruct IntersectionPoint and SleevePlacementPoint from XML values
@@ -124,8 +124,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                                             zeroPointCount++;
                                             try
                                             {
-                                                File.AppendAllText(xmlErrorLogPath, $"[{DateTime.Now}] ⚠️⚠️⚠️ ZERO POINT IN XML (After Load): Zone={cz.Id}, MEP={cz.MepElementIdValue}, HOST={cz.StructuralElementIdValue}, IP=({cz.IntersectionPointX},{cz.IntersectionPointY},{cz.IntersectionPointZ}), SPP=({cz.SleevePlacementPointX},{cz.SleevePlacementPointY},{cz.SleevePlacementPointZ})\n");
-                                                File.AppendAllText(xmlDebugLogPath, $"[{DateTime.Now:HH:mm:ss}] XML-LOAD-ZERO: Zone={cz.Id}, MEP={cz.MepElementIdValue}, HOST={cz.StructuralElementIdValue}\n");
+                                                // ✅ DEPLOYMENT MODE: Skip file writes
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                {
+                                                    File.AppendAllText(xmlErrorLogPath, $"[{DateTime.Now}] ⚠️⚠️⚠️ ZERO POINT IN XML (After Load): Zone={cz.Id}, MEP={cz.MepElementIdValue}, HOST={cz.StructuralElementIdValue}, IP=({cz.IntersectionPointX},{cz.IntersectionPointY},{cz.IntersectionPointZ}), SPP=({cz.SleevePlacementPointX},{cz.SleevePlacementPointY},{cz.SleevePlacementPointZ})\n");
+                                                    File.AppendAllText(xmlDebugLogPath, $"[{DateTime.Now:HH:mm:ss}] XML-LOAD-ZERO: Zone={cz.Id}, MEP={cz.MepElementIdValue}, HOST={cz.StructuralElementIdValue}\n");
+                                                }
                                             }
                                             catch { }
                                         }
@@ -136,8 +140,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                                         DebugLogger.Error($"{_logPrefix} ⚠️ WARNING: Found {zeroPointCount} clash zones with ZERO intersection points in XML file! Re-run Refresh to fix.");
                                         try
                                         {
-                                            File.AppendAllText(xmlErrorLogPath, $"[{DateTime.Now}] ⚠️⚠️⚠️ XML FILE HAS {zeroPointCount} ZONES WITH ZERO INTERSECTION POINTS! File: {path}\n");
-                                            File.AppendAllText(xmlErrorLogPath, $"[{DateTime.Now}] ACTION REQUIRED: Delete XML file and re-run Refresh to regenerate correct intersection points\n\n");
+                                            // ✅ DEPLOYMENT MODE: Skip file writes
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                            {
+                                                File.AppendAllText(xmlErrorLogPath, $"[{DateTime.Now}] ⚠️⚠️⚠️ XML FILE HAS {zeroPointCount} ZONES WITH ZERO INTERSECTION POINTS! File: {path}\n");
+                                                File.AppendAllText(xmlErrorLogPath, $"[{DateTime.Now}] ACTION REQUIRED: Delete XML file and re-run Refresh to regenerate correct intersection points\n\n");
+                                            }
                                         }
                                         catch { }
                                     }
@@ -145,7 +153,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                                 else
                                 {
                                     DebugLogger.Warning($"{_logPrefix} Filter XML loaded but ClashZoneStorage or ClashZones is null!");
-                                    try { File.AppendAllText(xmlDebugLogPath, $"[{DateTime.Now:HH:mm:ss}] ❌ XML LOAD FAILED: Filter or ClashZones is null from {Path.GetFileName(path)}\n"); } catch { }
+                                    try 
+                                    { 
+                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            File.AppendAllText(xmlDebugLogPath, $"[{DateTime.Now:HH:mm:ss}] ❌ XML LOAD FAILED: Filter or ClashZones is null from {Path.GetFileName(path)}\n"); 
+                                        }
+                                    } 
+                                    catch { }
                                 }
                             }
                         }
@@ -178,11 +194,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 var debugLogPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
                 try 
                 { 
-                    File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 BEFORE FILTERING: {_clashZones.Count} zones loaded\n");
-                    if (_clashZones.Count > 0)
+                    // ✅ DEPLOYMENT MODE: Skip file writes
+                    if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        var first = _clashZones.First();
-                        File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] Sample: ID={first.Id}, Category='{first.MepElementCategory}', HostType='{first.StructuralElementType}', SourceDoc='{first.SourceDocKey}', HostDoc='{first.StructuralElementDocumentTitle}'\n");
+                        File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 BEFORE FILTERING: {_clashZones.Count} zones loaded\n");
+                        if (_clashZones.Count > 0)
+                        {
+                            var first = _clashZones.First();
+                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] Sample: ID={first.Id}, Category='{first.MepElementCategory}', HostType='{first.StructuralElementType}', SourceDoc='{first.SourceDocKey}', HostDoc='{first.StructuralElementDocumentTitle}'\n");
+                        }
                     }
                 } 
                 catch { }
@@ -202,8 +222,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     DebugLogger.Info($"{_logPrefix} ✅ Diagnostic Mode: UseDiagnosticMode={OptimizationFlags.UseDiagnosticMode}, DeploymentMode={DeploymentConfiguration.DeploymentMode}");
 
                     // Place all sleeves in single transaction (zero linked file access!)
-                        var placerService = new UniversalSleevePlacerService(_doc, _conditions, _strategy, _clearanceSettings, _filterName);
-                        
                         // 🛡️ ARCHITECTURE FIX: Apply comprehensive filtering before placement
                         // This ensures sleeves are only placed for:
                         // 1. Correct MEP category (Pipes, Ducts, etc.)
@@ -238,7 +256,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             System.IO.File.AppendAllText(runLogPath, $"[{DateTime.Now}] CALL PlaceAllSleevesInTransaction: filtered={filteredClashZones?.Count ?? 0}\n"); 
                         } 
                         catch { }
-                        var result = placerService.PlaceAllSleevesInTransaction(filteredClashZones);
+
+                        var placementCoordinator = SleevePlacementCoordinator.CreateDefault();
+                        var placementPath = DeterminePlacementPath();
+                        var placementRequest = new SleevePlacementRequest(
+                            _doc,
+                            filteredClashZones,
+                            _category,
+                            _filterName,
+                            _conditions,
+                            _strategy,
+                            _clearanceSettings,
+                            placementPath);
+
+                        var result = placementCoordinator.Execute(placementRequest);
                         
                         // Commit and check status
                         var status = t.Commit();
@@ -256,9 +287,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             {
                                 message = $"No {_category} sleeves placed\n✗ {result.ErrorCount} error(s) occurred (see sleeve_placement_errors.log)";
                             }
-                            else
+                            else if (result.SkippedCount > 0)
                             {
                                 message = $"No {_category} sleeves placed\n✗ All {result.SkippedCount} were already resolved";
+                            }
+                            else
+                            {
+                                // No zones placed, no errors, no skips - means all zones were filtered out before placement
+                                message = $"No {_category} sleeves placed\n✗ All clash zones were filtered out (already have sleeves or invalid)\nCheck logs for details";
                             }
                             
                             MessageBox.Show(message, $"{_category} Sleeve Placement Complete", 
@@ -337,6 +373,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             }
             
             return canModify;
+        }
+
+        /// <summary>
+        /// Determines which placement path should be executed. For now we default
+        /// to the replay path until sizing/detection triggers are wired in.
+        /// </summary>
+        private SleevePlacementPath DeterminePlacementPath()
+        {
+            return SleevePlacementPath.Replay;
         }
         
         private void LoadConditionsFromXml()
@@ -504,12 +549,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 var filteredZones = clashZones.Where(cz =>
                 {
                     // ✅ CRITICAL: Log to placement_debug.log for each zone being filtered
-                    var zoneDebugPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
-                    try
+                    // ✅ DEPLOYMENT MODE: Skip verbose per-zone logging (major performance impact)
+                    if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        File.AppendAllText(zoneDebugPath, $"[{DateTime.Now:HH:mm:ss}] Checking Zone {cz.Id}: Category='{cz.MepElementCategory}' vs Command='{_category}', HostType='{cz.StructuralElementType}', SourceDoc='{cz.SourceDocKey}', HostDoc='{cz.StructuralElementDocumentTitle}'\n");
+                        var zoneDebugPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                        try
+                        {
+                            File.AppendAllText(zoneDebugPath, $"[{DateTime.Now:HH:mm:ss}] Checking Zone {cz.Id}: Category='{cz.MepElementCategory}' vs Command='{_category}', HostType='{cz.StructuralElementType}', SourceDoc='{cz.SourceDocKey}', HostDoc='{cz.StructuralElementDocumentTitle}'\n");
+                        }
+                        catch { }
                     }
-                    catch { }
                     
                     // 🚨 TROUBLESHOOTING: Re-enabling filters one by one
                     
@@ -518,11 +567,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     if (!categoryMatch)
                     {
                         DebugLogger.Info($"{_logPrefix} Filtered out ClashZone {cz.Id}: MEP category '{cz.MepElementCategory}' doesn't match command category '{_category}'");
-                        try { File.AppendAllText(zoneDebugPath, $"[{DateTime.Now:HH:mm:ss}] ❌ FILTERED: Category mismatch\n"); } catch { }
+                        // ✅ DEPLOYMENT MODE: Skip file writes
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            try { File.AppendAllText(SafeFileLogger.GetLogFilePath("placement_debug.log"), $"[{DateTime.Now:HH:mm:ss}] ❌ FILTERED: Category mismatch\n"); } catch { }
+                        }
                         return false;
                     }
                     afterCategory++;
-                    try { File.AppendAllText(zoneDebugPath, $"[{DateTime.Now:HH:mm:ss}] ✅ Passed category filter\n"); } catch { }
+                    // ✅ DEPLOYMENT MODE: Skip file writes
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        try { File.AppendAllText(SafeFileLogger.GetLogFilePath("placement_debug.log"), $"[{DateTime.Now:HH:mm:ss}] ✅ Passed category filter\n"); } catch { }
+                    }
                     
                     // Filter 2: Host type filtering - RE-ENABLED FOR FINAL TESTING
                     bool hostTypeMatch = selectedHostTypes.Count == 0 || 
@@ -533,11 +590,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     if (!hostTypeMatch)
                     {
                         DebugLogger.Info($"{_logPrefix} Filtered out ClashZone {cz.Id}: Host type '{cz.StructuralElementType}' not in selected types [{string.Join(", ", selectedHostTypes)}]");
-                        try { File.AppendAllText(zoneDebugPath, $"[{DateTime.Now:HH:mm:ss}] ❌ FILTERED: Host type '{cz.StructuralElementType}' not in [{string.Join(", ", selectedHostTypes)}]\n"); } catch { }
+                        // ✅ DEPLOYMENT MODE: Skip file writes
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            try { File.AppendAllText(SafeFileLogger.GetLogFilePath("placement_debug.log"), $"[{DateTime.Now:HH:mm:ss}] ❌ FILTERED: Host type '{cz.StructuralElementType}' not in [{string.Join(", ", selectedHostTypes)}]\n"); } catch { }
+                        }
                         return false;
                     }
                     afterHostType++;
-                    try { File.AppendAllText(zoneDebugPath, $"[{DateTime.Now:HH:mm:ss}] ✅ Passed host type filter\n"); } catch { }
+                    // ✅ DEPLOYMENT MODE: Skip file writes
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        try { File.AppendAllText(SafeFileLogger.GetLogFilePath("placement_debug.log"), $"[{DateTime.Now:HH:mm:ss}] ✅ Passed host type filter\n"); } catch { }
+                    }
                     
                     // Filter 3: Reference linked file filtering - RE-ENABLED WITH DETAILED LOGGING
                     bool referenceFileMatch = selectedReferenceFiles.Count == 0 || 
@@ -546,11 +611,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     if (!referenceFileMatch)
                     {
                         DebugLogger.Info($"{_logPrefix} Filtered out ClashZone {cz.Id}: Reference file '{cz.SourceDocKey}' not in selected files [{string.Join(", ", selectedReferenceFiles)}]");
-                        try { File.AppendAllText(zoneDebugPath, $"[{DateTime.Now:HH:mm:ss}] ❌ FILTERED: Reference file '{cz.SourceDocKey}' not in [{string.Join(", ", selectedReferenceFiles)}]\n"); } catch { }
+                        // ✅ DEPLOYMENT MODE: Skip file writes
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            try { File.AppendAllText(SafeFileLogger.GetLogFilePath("placement_debug.log"), $"[{DateTime.Now:HH:mm:ss}] ❌ FILTERED: Reference file '{cz.SourceDocKey}' not in [{string.Join(", ", selectedReferenceFiles)}]\n"); } catch { }
+                        }
                         return false;
                     }
                     afterRefFile++;
-                    try { File.AppendAllText(zoneDebugPath, $"[{DateTime.Now:HH:mm:ss}] ✅ Passed reference file filter\n"); } catch { }
+                    // ✅ DEPLOYMENT MODE: Skip file writes
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        try { File.AppendAllText(SafeFileLogger.GetLogFilePath("placement_debug.log"), $"[{DateTime.Now:HH:mm:ss}] ✅ Passed reference file filter\n"); } catch { }
+                    }
                     
                     // Filter 4: Host linked file filtering - RE-ENABLED WITH DETAILED LOGGING
                     bool hostFileMatch = selectedHostFiles.Count == 0 || 
@@ -559,11 +632,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     if (!hostFileMatch)
                     {
                         DebugLogger.Info($"{_logPrefix} Filtered out ClashZone {cz.Id}: Host file '{cz.StructuralElementDocumentTitle}' not in selected files [{string.Join(", ", selectedHostFiles)}]");
-                        try { File.AppendAllText(zoneDebugPath, $"[{DateTime.Now:HH:mm:ss}] ❌ FILTERED: Host file '{cz.StructuralElementDocumentTitle}' not in [{string.Join(", ", selectedHostFiles)}]\n"); } catch { }
+                        // ✅ DEPLOYMENT MODE: Skip file writes
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            try { File.AppendAllText(SafeFileLogger.GetLogFilePath("placement_debug.log"), $"[{DateTime.Now:HH:mm:ss}] ❌ FILTERED: Host file '{cz.StructuralElementDocumentTitle}' not in [{string.Join(", ", selectedHostFiles)}]\n"); } catch { }
+                        }
                         return false;
                     }
                     afterHostFile++;
-                    try { File.AppendAllText(zoneDebugPath, $"[{DateTime.Now:HH:mm:ss}] ✅ Passed host file filter\n"); } catch { }
+                    // ✅ DEPLOYMENT MODE: Skip file writes
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        try { File.AppendAllText(SafeFileLogger.GetLogFilePath("placement_debug.log"), $"[{DateTime.Now:HH:mm:ss}] ✅ Passed host file filter\n"); } catch { }
+                    }
                     
                     // Filter 5: 3D section box filtering - DISABLED FOR DEBUG
                     // bool sectionBoxMatch = IsClashZoneVisibleInCurrentSectionBox(cz);
@@ -587,23 +668,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 }).ToList();
                 
                 // ✅ CRITICAL: Log filter results to placement_debug.log
-                var finalDebugPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
-                try
+                // ✅ DEPLOYMENT MODE: Skip file writes
+                if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    File.AppendAllText(finalDebugPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 FILTERING COMPLETED: {clashZones.Count} -> {filteredZones.Count} clash zones\n");
-                    File.AppendAllText(finalDebugPath, $"[{DateTime.Now:HH:mm:ss}] Filter breakdown: afterCategory={afterCategory}, afterHostType={afterHostType}, afterRefFile={afterRefFile}, afterHostFile={afterHostFile}, afterSection={afterSection}\n");
-                    File.AppendAllText(finalDebugPath, $"[{DateTime.Now:HH:mm:ss}] UI Selections: HostTypes=[{string.Join(", ", selectedHostTypes)}], RefFiles=[{string.Join(", ", selectedReferenceFiles)}], HostFiles=[{string.Join(", ", selectedHostFiles)}]\n");
+                    var finalDebugPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                    try
+                    {
+                        File.AppendAllText(finalDebugPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 FILTERING COMPLETED: {clashZones.Count} -> {filteredZones.Count} clash zones\n");
+                        File.AppendAllText(finalDebugPath, $"[{DateTime.Now:HH:mm:ss}] Filter breakdown: afterCategory={afterCategory}, afterHostType={afterHostType}, afterRefFile={afterRefFile}, afterHostFile={afterHostFile}, afterSection={afterSection}\n");
+                        File.AppendAllText(finalDebugPath, $"[{DateTime.Now:HH:mm:ss}] UI Selections: HostTypes=[{string.Join(", ", selectedHostTypes)}], RefFiles=[{string.Join(", ", selectedReferenceFiles)}], HostFiles=[{string.Join(", ", selectedHostFiles)}]\n");
+                    }
+                    catch { }
                 }
-                catch { }
                 
                 // 🚨 DEBUG: Direct file logging to bypass DebugLogger issues
                 DebugLogger.Info($"[{DateTime.Now}] 🚨 FILTERING COMPLETED: {clashZones.Count} -> {filteredZones.Count} clash zones\n");
-                try
+                // ✅ DEPLOYMENT MODE: Skip file writes
+                if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    string placementFilterBreakdownLogPath = SafeFileLogger.GetLogFilePath("placement_filter_breakdown.log");
-                    System.IO.File.AppendAllText(placementFilterBreakdownLogPath, $"[{DateTime.Now}] Counts: afterCategory={afterCategory}, afterHostType={afterHostType}, afterRefFile={afterRefFile}, afterHostFile={afterHostFile}, afterSection={afterSection}, final={filteredZones.Count}\n");
+                    try
+                    {
+                        string placementFilterBreakdownLogPath = SafeFileLogger.GetLogFilePath("placement_filter_breakdown.log");
+                        System.IO.File.AppendAllText(placementFilterBreakdownLogPath, $"[{DateTime.Now}] Counts: afterCategory={afterCategory}, afterHostType={afterHostType}, afterRefFile={afterRefFile}, afterHostFile={afterHostFile}, afterSection={afterSection}, final={filteredZones.Count}\n");
+                    }
+                    catch { }
                 }
-                catch { }
                 
                 DebugLogger.Info($"{_logPrefix} FINAL 5-FILTER SYSTEM: MEP category + host type + reference files + host files + 3D section box filters applied: {clashZones.Count} -> {filteredZones.Count} clash zones");
                 return filteredZones;

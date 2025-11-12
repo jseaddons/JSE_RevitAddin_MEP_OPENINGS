@@ -27,9 +27,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 _logDirectory = InitializeLogDirectory();
                 _logDirectoryInitialized = true;
                 
-                // Log the directory location to debug output for troubleshooting
-                System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Log directory initialized: {_logDirectory}");
-                System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Directory exists: {Directory.Exists(_logDirectory)}");
+                // ✅ DIAGNOSTIC: Log the directory location to diagnostic log file
+                WriteDiagnosticLogInternal("INIT", $"Log directory initialized: {_logDirectory}, Directory exists: {Directory.Exists(_logDirectory)}", _logDirectory, true);
                 
                 return _logDirectory;
             }
@@ -51,16 +50,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (TryCreateDirectory(appDataPath))
                 {
-                    System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] ✅ Ensured AppData Logs directory exists: {appDataPath}");
+                    WriteDiagnosticLogInternal("ENSURE_APPDATA", $"✅ Ensured AppData Logs directory exists: {appDataPath}", appDataPath, true);
                 }
                 else
                 {
-                    System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] ⚠️ Failed to create AppData Logs directory: {appDataPath}");
+                    WriteDiagnosticLogInternal("ENSURE_APPDATA", $"⚠️ Failed to create AppData Logs directory: {appDataPath}", appDataPath, false);
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Error ensuring AppData Logs directory: {ex.Message}");
+                WriteDiagnosticLogInternal("ENSURE_APPDATA", $"Error ensuring AppData Logs directory: {ex.Message}", "unknown", false);
             }
         }
 
@@ -80,11 +79,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     try
                     {
                         Directory.CreateDirectory(baseFolder);
-                        System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Created base folder: {baseFolder}");
+                        WriteDiagnosticLogInternal("INIT_BASE", $"Created base folder: {baseFolder}", baseFolder, true);
                     }
                     catch (Exception baseEx)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Cannot create base folder {baseFolder}: {baseEx.Message}");
+                        WriteDiagnosticLogInternal("INIT_BASE", $"Cannot create base folder {baseFolder}: {baseEx.Message}", baseFolder, false);
                     }
                 }
                 
@@ -92,13 +91,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (TryCreateDirectory(appDataPath))
                 {
-                    System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Using AppData\\Roaming Logs directory: {appDataPath}");
+                    WriteDiagnosticLogInternal("INIT", $"Using AppData\\Roaming Logs directory: {appDataPath}", appDataPath, true);
                     return appDataPath;
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Could not use AppData\\Roaming: {ex.Message}");
+                WriteDiagnosticLogInternal("INIT", $"Could not use AppData\\Roaming: {ex.Message}", "unknown", false);
             }
 
             // Priority 2: Try to use project directory (for development only)
@@ -122,14 +121,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (Directory.Exists(Path.Combine(projectRoot, "Logs")))
                         {
                             string logDir = Path.Combine(projectRoot, "Logs");
-                            System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Using project Logs directory (development): {logDir}");
+                            WriteDiagnosticLogInternal("INIT", $"Using project Logs directory (development): {logDir}", logDir, true);
                             return logDir;
                         }
                         // Also check for "Log" (singular) for backward compatibility
                         if (Directory.Exists(Path.Combine(projectRoot, "Log")))
                         {
                             string logDir = Path.Combine(projectRoot, "Log");
-                            System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Using project Log directory (development - fallback): {logDir}");
+                            WriteDiagnosticLogInternal("INIT", $"Using project Log directory (development - fallback): {logDir}", logDir, true);
                             return logDir;
                         }
                         projectRoot = Directory.GetParent(projectRoot)?.FullName;
@@ -143,7 +142,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         if (TryCreateDirectory(logDir))
                         {
-                            System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Using project Log directory (development): {logDir}");
+                            WriteDiagnosticLogInternal("INIT", $"Using project Log directory (development): {logDir}", logDir, true);
                             return logDir;
                         }
                     }
@@ -152,7 +151,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             catch (Exception ex)
             {
                 // Silently continue to fallback options
-                System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Could not use project directory: {ex.Message}");
+                WriteDiagnosticLogInternal("INIT", $"Could not use project directory: {ex.Message}", "unknown", false);
             }
 
             // Priority 3: Use Temp directory (last resort - always writable)
@@ -200,7 +199,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!Directory.Exists(path))
                 {
                     Directory.CreateDirectory(path);
-                    System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Created directory: {path}");
+                    WriteDiagnosticLogInternal("CREATE_DIR", $"Created directory: {path}", path, true);
                 }
 
                 // Verify we can write to it
@@ -212,8 +211,153 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Failed to create directory {path}: {ex.Message}");
+                WriteDiagnosticLogInternal("CREATE_DIR", $"Failed to create directory {path}: {ex.Message}", path, false);
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// Internal helper to write diagnostic logs without circular dependency
+        /// Uses direct path calculation to avoid calling GetLogDirectory() which might trigger initialization
+        /// </summary>
+        private static void WriteDiagnosticLogInternal(string operation, string message, string path, bool success)
+        {
+            string diagnosticLogPath = null;
+            Exception lastException = null;
+            
+            try
+            {
+                // ✅ FIX: Use direct path calculation to avoid circular dependency with GetLogDirectory()
+                // This ensures diagnostic logs can be written even during initialization
+                
+                // If log directory is already initialized, use it
+                if (_logDirectoryInitialized && !string.IsNullOrEmpty(_logDirectory))
+                {
+                    diagnosticLogPath = Path.Combine(_logDirectory, "safefilelogger_diagnostic.log");
+                }
+                else
+                {
+                    // During initialization, use AppData path directly (same logic as InitializeLogDirectory)
+                    string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                    string baseFolder = Path.Combine(appData, "JSE_MEP_Openings");
+                    diagnosticLogPath = Path.Combine(baseFolder, "Logs", "safefilelogger_diagnostic.log");
+                    
+                    // Ensure directory exists
+                    string diagnosticDir = Path.GetDirectoryName(diagnosticLogPath);
+                    if (!string.IsNullOrEmpty(diagnosticDir) && !Directory.Exists(diagnosticDir))
+                    {
+                        try
+                        {
+                            Directory.CreateDirectory(diagnosticDir);
+                        }
+                        catch (Exception dirEx)
+                        {
+                            lastException = dirEx;
+                            // Try fallback to Desktop
+                            string desktopPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "JSE_MEP_Openings_Diagnostic.log");
+                            try
+                            {
+                                File.AppendAllText(desktopPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SAFEFILELOGGER] Directory creation failed: {dirEx.Message}, Operation={operation}\n");
+                            }
+                            catch { }
+                        }
+                    }
+                }
+                
+                if (diagnosticLogPath != null)
+                {
+                    string diagnosticEntry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SAFEFILELOGGER] Operation={operation}, Message={message}, Path={path}, Success={success}\n";
+                    
+                    // Use direct file write for diagnostic log (only exception - needed to debug logging issues)
+                    File.AppendAllText(diagnosticLogPath, diagnosticEntry);
+                }
+            }
+            catch (Exception ex)
+            {
+                lastException = ex;
+                // ✅ FIX: Try fallback to Desktop if AppData fails
+                try
+                {
+                    string desktopPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "JSE_MEP_Openings_Diagnostic.log");
+                    string fallbackEntry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SAFEFILELOGGER] ERROR: Failed to write diagnostic log. Operation={operation}, Exception={ex.Message}, Type={ex.GetType().Name}, StackTrace={ex.StackTrace}\n";
+                    File.AppendAllText(desktopPath, fallbackEntry);
+                }
+                catch
+                {
+                    // If even Desktop write fails, give up silently
+                }
+            }
+        }
+
+        /// <summary>
+        /// Writes diagnostic information to a diagnostic log file (always writes, even if main logging fails)
+        /// Used for troubleshooting why logs aren't appearing
+        /// </summary>
+        private static void WriteDiagnosticLog(string fileName, string message, string logPath, bool success)
+        {
+            string diagnosticLogPath = null;
+            Exception lastException = null;
+            
+            try
+            {
+                // ✅ FIX: Use direct path calculation to avoid circular dependency with GetLogDirectory()
+                
+                // If log directory is already initialized, use it
+                if (_logDirectoryInitialized && !string.IsNullOrEmpty(_logDirectory))
+                {
+                    diagnosticLogPath = Path.Combine(_logDirectory, "safefilelogger_diagnostic.log");
+                }
+                else
+                {
+                    // During initialization, use AppData path directly
+                    string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                    string baseFolder = Path.Combine(appData, "JSE_MEP_Openings");
+                    diagnosticLogPath = Path.Combine(baseFolder, "Logs", "safefilelogger_diagnostic.log");
+                    
+                    // Ensure directory exists
+                    string diagnosticDir = Path.GetDirectoryName(diagnosticLogPath);
+                    if (!string.IsNullOrEmpty(diagnosticDir) && !Directory.Exists(diagnosticDir))
+                    {
+                        try
+                        {
+                            Directory.CreateDirectory(diagnosticDir);
+                        }
+                        catch (Exception dirEx)
+                        {
+                            lastException = dirEx;
+                            // Try fallback to Desktop
+                            string desktopPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "JSE_MEP_Openings_Diagnostic.log");
+                            try
+                            {
+                                File.AppendAllText(desktopPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SAFEFILELOGGER] Directory creation failed: {dirEx.Message}, fileName={fileName}\n");
+                            }
+                            catch { }
+                        }
+                    }
+                }
+                
+                if (diagnosticLogPath != null)
+                {
+                    string diagnosticEntry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SAFEFILELOGGER] fileName={fileName}, messageLength={message?.Length ?? 0}, DeploymentMode={DeploymentConfiguration.DeploymentMode}, LogPath={logPath}, Success={success}, DirectoryExists={Directory.Exists(Path.GetDirectoryName(logPath))}\n";
+                    
+                    // Use direct file write for diagnostic log (only exception - needed to debug logging issues)
+                    File.AppendAllText(diagnosticLogPath, diagnosticEntry);
+                }
+            }
+            catch (Exception ex)
+            {
+                lastException = ex;
+                // ✅ FIX: Try fallback to Desktop if AppData fails
+                try
+                {
+                    string desktopPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "JSE_MEP_Openings_Diagnostic.log");
+                    string fallbackEntry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SAFEFILELOGGER] ERROR: Failed to write diagnostic log. fileName={fileName}, Exception={ex.Message}, Type={ex.GetType().Name}, StackTrace={ex.StackTrace}\n";
+                    File.AppendAllText(desktopPath, fallbackEntry);
+                }
+                catch
+                {
+                    // If even Desktop write fails, give up silently
+                }
             }
         }
 
@@ -222,39 +366,58 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void SafeAppendText(string fileName, string message)
         {
-            // ✅ DEPLOYMENT MODE: Allow only specific logs
-            // Allowed: performance.log, Refresh_*.log, refresh_memory_profiling_*.log
+            // ✅ DEPLOYMENT MODE: Disable ALL logging in deployment mode
             if (DeploymentConfiguration.DeploymentMode)
             {
-                bool isPerformance = string.Equals(fileName, "performance.log", StringComparison.OrdinalIgnoreCase);
-                bool isRefresh = fileName.StartsWith("Refresh_", StringComparison.OrdinalIgnoreCase) && fileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase);
-                bool isRefreshMemory = fileName.StartsWith("refresh_memory_profiling_", StringComparison.OrdinalIgnoreCase) && fileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase);
-                bool isSleevePlacement = fileName.StartsWith("sleeve_placement_", StringComparison.OrdinalIgnoreCase) && fileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase);
-                if (!isPerformance && !isRefresh && !isRefreshMemory && !isSleevePlacement)
-                    return;
+                // ✅ FIX: Even in deployment mode, write to diagnostic log to track that logging was skipped
+                string logPath = "unknown";
+                try
+                {
+                    if (_logDirectoryInitialized && !string.IsNullOrEmpty(_logDirectory))
+                    {
+                        logPath = Path.Combine(_logDirectory, fileName);
+                    }
+                    else
+                    {
+                        string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                        logPath = Path.Combine(appData, "JSE_MEP_Openings", "Logs", fileName);
+                    }
+                }
+                catch { }
+                WriteDiagnosticLog(fileName, message, logPath, false); // Log skipped attempt
+                return; // Skip all file writes in deployment mode
             }
+            
+            // ✅ DIAGNOSTIC: Log every attempt to write (helps debug missing logs)
+            string logPathFinal = null;
+            bool writeSuccess = false;
                 
             try
             {
                 if (string.IsNullOrEmpty(fileName) || string.IsNullOrEmpty(message))
+                {
+                    WriteDiagnosticLog(fileName ?? "null", message ?? "null", "unknown", false); // Log skipped
                     return;
+                }
 
                 string logDir = GetLogDirectory();
-                string logPath = Path.Combine(logDir, fileName);
+                logPathFinal = Path.Combine(logDir, fileName);
+                
+                WriteDiagnosticLog(fileName, message, logPathFinal, true); // Log attempt
 
                 // Ensure directory exists (should already exist, but double-check)
                 // Directory.CreateDirectory will create all parent directories if they don't exist
-                string directory = Path.GetDirectoryName(logPath);
+                string directory = Path.GetDirectoryName(logPathFinal);
                 if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
                 {
                     try
                     {
                         Directory.CreateDirectory(directory); // Creates parent directories too
-                        System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Created log directory: {directory}");
+                        WriteDiagnosticLog(fileName, $"Created log directory: {directory}", logPathFinal, true);
                     }
                     catch (Exception dirEx)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Failed to create directory {directory}: {dirEx.Message}");
+                        WriteDiagnosticLog(fileName, $"Failed to create directory {directory}: {dirEx.Message}", logPathFinal, false); // Log failure
                         // Continue - will be caught by outer exception handler
                     }
                 }
@@ -267,14 +430,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         // ✅ DEPLOYMENT MODE: Skip file writes
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        File.AppendAllText(logPath, logEntry);
+                        File.AppendAllText(logPathFinal, logEntry);
+                        writeSuccess = true;
+                        WriteDiagnosticLog(fileName, $"SUCCESS: Written to {logPathFinal}", logPathFinal, true); // Log success
+                    }
+                    else
+                    {
+                        WriteDiagnosticLog(fileName, $"SKIPPED: DeploymentMode=true inside lock", logPathFinal, false); // Log skipped
                     }
                 }
             }
             catch (UnauthorizedAccessException)
             {
                 // Silently fail - can't write to log (user doesn't have permission)
-                System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] No permission to write to log: {fileName}");
+                WriteDiagnosticLog(fileName, $"No permission to write to log: {fileName}", logPathFinal ?? "unknown", false); // Log permission error
             }
             catch (DirectoryNotFoundException)
             {
@@ -283,30 +452,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     _logDirectoryInitialized = false; // Force re-initialization
                     string logDir = GetLogDirectory();
-                    string logPath = Path.Combine(logDir, fileName);
-                    string directory = Path.GetDirectoryName(logPath);
+                    logPathFinal = Path.Combine(logDir, fileName);
+                    string directory = Path.GetDirectoryName(logPathFinal);
                     if (!string.IsNullOrEmpty(directory))
                     {
                         // Directory.CreateDirectory creates all parent directories if they don't exist
                         Directory.CreateDirectory(directory);
-                        System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Recreated directory: {directory}");
+                        WriteDiagnosticLog(fileName, $"Recreated directory: {directory}", logPathFinal, true);
                                                 // ✅ DEPLOYMENT MODE: Skip file writes
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            File.AppendAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}\n");
+                            File.AppendAllText(logPathFinal, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}\n");
+                            writeSuccess = true;
+                            WriteDiagnosticLog(fileName, $"SUCCESS after retry: Written to {logPathFinal}", logPathFinal, true); // Log success after retry
                         }
                     }
                 }
                 catch (Exception retryEx)
                 {
-                    // Final failure - log to debug only
-                    System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Failed to recreate directory and write log {fileName}: {retryEx.Message}");
+                    // Final failure - log to diagnostic file
+                    WriteDiagnosticLog(fileName, $"Failed to recreate directory and write log: {retryEx.Message}", logPathFinal ?? "unknown", false); // Log failure
                 }
             }
             catch (Exception ex)
             {
-                // Any other error - log to debug only (don't crash!)
-                System.Diagnostics.Debug.WriteLine($"[SafeFileLogger] Error writing to {fileName}: {ex.Message}");
+                // Any other error - log to diagnostic file (don't crash!)
+                // ✅ INVESTIGATION: Enhanced error logging to diagnose why logs aren't appearing
+                string errorDetails = $"Error writing to {fileName}: {ex.Message}, Exception Type: {ex.GetType().Name}, Stack Trace: {ex.StackTrace}, DeploymentMode: {DeploymentConfiguration.DeploymentMode}, Log Directory: {GetLogDirectory()}, Log Path: {Path.Combine(GetLogDirectory(), fileName)}";
+                
+                WriteDiagnosticLog(fileName, $"{message} [ERROR: {errorDetails}]", logPathFinal ?? "unknown", false); // Log error
+                
+                // ✅ INVESTIGATION: Also try to write error to a separate error log file (using direct write as last resort)
+                try
+                {
+                    string errorLogPath = Path.Combine(GetLogDirectory(), "safefilelogger_errors.log");
+                    File.AppendAllText(errorLogPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {errorDetails}\n\n");
+                }
+                catch
+                {
+                    // If even error logging fails, just give up
+                }
             }
         }
 

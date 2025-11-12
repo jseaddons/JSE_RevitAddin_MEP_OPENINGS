@@ -43,7 +43,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var linkDoc = linkInstance.GetLinkDocument();
                     if (linkDoc == null) continue;
 
-                    var fileName = linkDoc.Title;
+                    // ✅ FIX: Use RevitLinkInstance.Name if available (matches what user sees in Revit)
+                    // Fall back to Document.Title if Name is empty (some links might not have custom names)
+                    var fileName = !string.IsNullOrWhiteSpace(linkInstance.Name) 
+                        ? linkInstance.Name 
+                        : linkDoc.Title;
                     var filePath = linkDoc.PathName;
                     var fileType = LinkedFileDetectionService.DetectFileType(fileName);
                     var isLoaded = true; // Assume loaded if we can access the document

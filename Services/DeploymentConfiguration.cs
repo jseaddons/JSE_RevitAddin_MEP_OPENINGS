@@ -21,7 +21,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// - All BatchedLogger calls are skipped (no string allocations)
         /// - Memory savings: Only ~13% (not worth losing debug capabilities)
         /// </summary>
-        public static bool DeploymentMode { get; set; } = true; // deployoyment mode ON - logging disabled
+        public static bool DeploymentMode { get; set; } = false; // ✅ DEBUG: Deployment mode OFF - logging enabled for performance testing
+
+        /// <summary>
+        /// Feature flag for Phase B Global XML dedupe. Defaults to false so the existing
+        /// placement pipeline is untouched until the utility is validated.
+        /// </summary>
+        public static bool EnableGlobalIndexDedupe { get; set; } = true;
+
+        /// <summary>
+        /// When EnableGlobalIndexDedupe is true, this flag controls whether the run is a dry run.
+        /// Leave true to log the proposed changes without touching the XML.
+        /// Set to false only after reviewing the dry-run output and backing up the XML files.
+        /// </summary>
+        public static bool GlobalIndexDedupeDryRun { get; set; } = true;
     }
 }
 

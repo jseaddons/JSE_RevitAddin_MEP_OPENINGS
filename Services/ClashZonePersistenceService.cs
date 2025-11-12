@@ -37,7 +37,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public void SaveClashZones(
             List<ClashZone> allClashZones,
             string baseFilterName,
-            OpeningFilter targetFilter)
+            OpeningFilter targetFilter,
+            bool allowStructuralUpdates)
         {
             if (allClashZones == null || allClashZones.Count == 0)
             {
@@ -73,7 +74,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         categoryGroup.Key,
                         categoryGroup.ToList(),
                         baseFilterName,
-                        targetFilter);
+                        targetFilter,
+                        allowStructuralUpdates);
 
                     processingSummaries.Add(stats);
                 }
@@ -95,7 +97,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             string category,
             List<ClashZone> categoryClashZones,
             string baseFilterName,
-            OpeningFilter targetFilter)
+            OpeningFilter targetFilter,
+            bool allowStructuralUpdates)
         {
             var stats = new ProcessingStats(category);
 
@@ -124,6 +127,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return stats;
                 }
 
+                // ✅ DEBUG: Log file combo keys before grouping to diagnose missing combos
+                LogRefresh($"[PERSIST-DEBUG] Analyzing {validZones.Count} valid zones for file combo grouping");
+                var comboKeysSample = validZones.Take(10).Select(cz => GetFileComboKey(cz)).ToList();
+                foreach (var key in comboKeysSample)
+                {
+                    LogRefresh($"[PERSIST-DEBUG]   Sample combo key: Linked='{key.LinkedFile}', Host='{key.HostFile}'");
+                }
+
                 var combos = validZones
                     .GroupBy(GetFileComboKey)
                     .Where(g => !string.IsNullOrWhiteSpace(g.Key.LinkedFile) && !string.IsNullOrWhiteSpace(g.Key.HostFile))
@@ -131,6 +142,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 stats.FileComboCount = combos.Count;
                 LogRefresh($"[PERSIST-DEBUG] Valid combos to persist for '{category}': {combos.Count}");
+                foreach (var combo in combos)
+                {
+                    LogRefresh($"[PERSIST-DEBUG]   Combo: Linked='{combo.Key.LinkedFile}', Host='{combo.Key.HostFile}', Zones={combo.Count()}");
+                }
 
                 var filterName = BuildFilterFileName(baseFilterName, category);
                 var globalIndex = GlobalIndexService.LoadOrCreate(_document, category);
@@ -143,11 +158,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     LogRefresh($"[PERSIST-DEBUG]   Combo → Linked='{key.LinkedFile}', Host='{key.HostFile}', Zones={comboClashZones.Count}");
                     LogPlacement($"[PERSIST-COMBO] Linked='{key.LinkedFile}', Host='{key.HostFile}', Count={comboClashZones.Count}, Sample=[{string.Join(", ", comboClashZones.Take(5).Select(z => $"{z.Id}:{z.SleeveInstanceId}"))}]");
 
-                    SaveToGlobalXml(globalIndex, comboClashZones, category, baseFilterName, filterName, key, stats);
+                    SaveToGlobalXml(globalIndex, comboClashZones, category, baseFilterName, filterName, key, stats, allowStructuralUpdates);
 
                     if (targetFilter != null)
                     {
-                        SaveToFilterXml(comboClashZones, category, baseFilterName, targetFilter, key, stats);
+                        SaveToFilterXml(comboClashZones, category, baseFilterName, targetFilter, key, stats, allowStructuralUpdates);
                     }
                 }
 
@@ -170,10 +185,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             string baseFilterName,
             string filterFileName,
             (string LinkedFile, string HostFile) comboKey,
-            ProcessingStats stats)
+            ProcessingStats stats,
+            bool allowStructuralUpdates)
         {
             if (comboClashZones == null || comboClashZones.Count == 0)
+            {
+                LogRefresh($"[PERSIST-GLOBAL] Skipping SaveToGlobalXml - no clash zones for combo Linked='{comboKey.LinkedFile}', Host='{comboKey.HostFile}'");
                 return;
+            }
 
             if (globalIndex.Filters == null)
                 globalIndex.Filters = new List<FilterGroup>();
@@ -189,6 +208,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     FileCombos = new List<FileComboGroup>()
                 };
                 globalIndex.Filters.Add(globalFilterGroup);
+                LogRefresh($"[PERSIST-GLOBAL] Created new FilterGroup '{baseFilterName}' for category '{category}'");
             }
 
             globalFilterGroup.FileCombos ??= new List<FileComboGroup>();
@@ -199,6 +219,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 HostFile = comboKey.HostFile
             };
             var normalizedKey = processedCombo.GetNormalizedKey();
+
+            LogRefresh($"[PERSIST-GLOBAL] Looking for FileComboGroup with normalized key '{normalizedKey}' (Linked='{comboKey.LinkedFile}', Host='{comboKey.HostFile}') in FilterGroup '{baseFilterName}'");
+            LogRefresh($"[PERSIST-GLOBAL] Existing FileComboGroups in FilterGroup '{baseFilterName}': {globalFilterGroup.FileCombos.Count}");
+            foreach (var existingCombo in globalFilterGroup.FileCombos)
+            {
+                LogRefresh($"[PERSIST-GLOBAL]   Existing combo: Linked='{existingCombo.LinkedFile}', Host='{existingCombo.HostFile}', NormalizedKey='{existingCombo.GetNormalizedKey()}'");
+            }
 
             var globalFileCombo = globalFilterGroup.FileCombos
                 .FirstOrDefault(fc => fc.GetNormalizedKey() == normalizedKey);
@@ -214,6 +241,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     Entries = new List<CategoryGlobalIndexEntry>()
                 };
                 globalFilterGroup.FileCombos.Add(globalFileCombo);
+                LogRefresh($"[PERSIST-GLOBAL] ✅ Created NEW FileComboGroup: Linked='{comboKey.LinkedFile}', Host='{comboKey.HostFile}', NormalizedKey='{normalizedKey}', Zones={comboClashZones.Count}");
+            }
+            else
+            {
+                LogRefresh($"[PERSIST-GLOBAL] ✅ Found EXISTING FileComboGroup: Linked='{comboKey.LinkedFile}', Host='{comboKey.HostFile}', NormalizedKey='{normalizedKey}', Zones={comboClashZones.Count}");
             }
 
             globalFileCombo.Entries ??= new List<CategoryGlobalIndexEntry>();
@@ -256,7 +288,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     entriesById[entryId] = comboEntry;
                 }
 
-                UpdateGlobalEntry(comboEntry, clashZone, filterFileName);
+                UpdateGlobalEntry(comboEntry, clashZone, filterFileName, allowStructuralUpdates);
             }
         }
 
@@ -266,7 +298,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             string baseFilterName,
             OpeningFilter targetFilter,
             (string LinkedFile, string HostFile) comboKey,
-            ProcessingStats stats)
+            ProcessingStats stats,
+            bool allowStructuralUpdates)
         {
             if (comboClashZones == null || comboClashZones.Count == 0 || targetFilter == null)
                 return;
@@ -350,7 +383,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 else
                 {
-                    MergeZone(existingZone, newZone, placementLogPath);
+                    MergeZone(existingZone, newZone, placementLogPath, allowStructuralUpdates);
                     stats.FilterUpdated++;
                 }
             }
@@ -641,13 +674,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (clashZone == null)
                 return (string.Empty, string.Empty);
 
-            var linkedFile = FirstNonEmptyNormalized(
-                clashZone.SourceDocKey,
-                clashZone.DocumentPath);
+            // ✅ FIX: Try to get RevitLinkInstance.Name first (matches UI display), then fall back to SourceDocKey/DocumentPath
+            // This ensures file names match between UI selections and clash zone persistence
+            var linkedFile = GetLinkInstanceName(clashZone.SourceDocKey) 
+                ?? FirstNonEmptyNormalized(clashZone.SourceDocKey, clashZone.DocumentPath);
 
-            var hostFile = FirstNonEmptyNormalized(
-                clashZone.HostDocKey,
-                clashZone.StructuralElementDocumentTitle);
+            var hostFile = GetLinkInstanceName(clashZone.HostDocKey)
+                ?? FirstNonEmptyNormalized(clashZone.HostDocKey, clashZone.StructuralElementDocumentTitle);
 
             if (string.IsNullOrWhiteSpace(linkedFile))
             {
@@ -662,6 +695,62 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             return (linkedFile, hostFile);
+        }
+
+        /// <summary>
+        /// ✅ FIX: Get RevitLinkInstance.Name for a document title or path (matches UI display)
+        /// Looks up the link instance in the main document and returns its Name if available
+        /// Handles both Document.Title and full file paths (extracts filename from path)
+        /// </summary>
+        private string GetLinkInstanceName(string documentTitleOrPath)
+        {
+            if (string.IsNullOrWhiteSpace(documentTitleOrPath) || _document == null)
+                return null;
+
+            try
+            {
+                // Extract file name from path if it's a full path (e.g., "C:\...\PH-00001.rvt" -> "PH-00001")
+                string searchFileName = documentTitleOrPath;
+                if (documentTitleOrPath.Contains("\\") || documentTitleOrPath.Contains("/"))
+                {
+                    // It's a path - extract filename
+                    searchFileName = System.IO.Path.GetFileNameWithoutExtension(documentTitleOrPath);
+                }
+                
+                // Normalize for comparison
+                var normalizedSearch = NormalizeFileName(searchFileName);
+                
+                // Find RevitLinkInstance in main document that links to a document with matching title/path
+                var linkInstance = new FilteredElementCollector(_document)
+                    .OfClass(typeof(RevitLinkInstance))
+                    .Cast<RevitLinkInstance>()
+                    .FirstOrDefault(link =>
+                    {
+                        var linkDoc = link.GetLinkDocument();
+                        if (linkDoc == null) return false;
+                        
+                        // Match by title (normalized) - compare both Document.Title and filename from path
+                        var linkTitle = NormalizeFileName(linkDoc.Title);
+                        var linkPathName = NormalizeFileName(System.IO.Path.GetFileNameWithoutExtension(linkDoc.PathName ?? ""));
+                        
+                        return string.Equals(linkTitle, normalizedSearch, StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(linkPathName, normalizedSearch, StringComparison.OrdinalIgnoreCase);
+                    });
+
+                if (linkInstance != null && !string.IsNullOrWhiteSpace(linkInstance.Name))
+                {
+                    // ✅ Return raw name (matches UI format) - normalization happens in GetNormalizedKey() for matching
+                    return linkInstance.Name;
+                }
+            }
+            catch (Exception ex)
+            {
+                // Silently fail - fall back to document title
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[PERSIST] Error looking up link instance name for '{documentTitleOrPath}': {ex.Message}");
+            }
+
+            return null; // Fall back to document title
         }
 
         private string FirstNonEmptyNormalized(params string[] candidates)
@@ -818,18 +907,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// Helper method to normalize file names (matches GetNormalizedKey logic)
+        /// Helper method to normalize file names (matches ProcessedFileCombo.GetNormalizedKey logic exactly)
+        /// ✅ CRITICAL: Must match GetNormalizedKey() normalization to ensure file combos match correctly
         /// </summary>
         private string NormalizeFileName(string fileName)
         {
             if (string.IsNullOrWhiteSpace(fileName)) return string.Empty;
             
             var trimmed = fileName.Trim();
-            trimmed = System.IO.Path.GetFileNameWithoutExtension(trimmed);
             var idxParen = trimmed.IndexOf('(');
-            if (idxParen >= 0) trimmed = trimmed.Substring(0, idxParen).Trim();
-            
-            return trimmed;
+            if (idxParen >= 0) trimmed = trimmed.Substring(0, idxParen);
+            trimmed = System.IO.Path.GetFileNameWithoutExtension(trimmed);
+            trimmed = trimmed.ToLowerInvariant().Replace("_detached", "");
+            trimmed = trimmed.Replace('_', ' ').Replace('-', ' ');
+            trimmed = System.Text.RegularExpressions.Regex.Replace(trimmed, "\\s+", " ");
+            return trimmed.Trim();
         }
 
         private static bool ShouldSkipAdd(ClashZone zone)
@@ -862,28 +954,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return false;
         }
 
-        private static void MergeZone(ClashZone target, ClashZone source, string logPath)
+        private static void MergeZone(ClashZone target, ClashZone source, string logPath, bool allowStructuralUpdates)
         {
             if (target == null || source == null) return;
 
-            if (!string.IsNullOrWhiteSpace(source.SourceDocKey))
-                target.SourceDocKey = source.SourceDocKey;
-            if (!string.IsNullOrWhiteSpace(source.HostDocKey))
-                target.HostDocKey = source.HostDocKey;
+            if (allowStructuralUpdates)
+            {
+                if (!string.IsNullOrWhiteSpace(source.SourceDocKey))
+                    target.SourceDocKey = source.SourceDocKey;
+                if (!string.IsNullOrWhiteSpace(source.HostDocKey))
+                    target.HostDocKey = source.HostDocKey;
 
-            if (source.MepParameterValues != null && source.MepParameterValues.Count > 0)
-                target.MepParameterValues = source.MepParameterValues;
-            if (source.HostParameterValues != null && source.HostParameterValues.Count > 0)
-                target.HostParameterValues = source.HostParameterValues;
+                if (source.MepParameterValues != null && source.MepParameterValues.Count > 0)
+                    target.MepParameterValues = source.MepParameterValues;
+                if (source.HostParameterValues != null && source.HostParameterValues.Count > 0)
+                    target.HostParameterValues = source.HostParameterValues;
 
-            if (source.StructuralElementThickness > 0)
-                target.StructuralElementThickness = source.StructuralElementThickness;
-            if (source.StructuralElementNormal != null)
-                target.StructuralElementNormal = source.StructuralElementNormal;
+                if (source.StructuralElementThickness > 0)
+                    target.StructuralElementThickness = source.StructuralElementThickness;
+                if (source.StructuralElementNormal != null)
+                    target.StructuralElementNormal = source.StructuralElementNormal;
 
-            target.IntersectionPointX = source.IntersectionPointX;
-            target.IntersectionPointY = source.IntersectionPointY;
-            target.IntersectionPointZ = source.IntersectionPointZ;
+                target.IntersectionPointX = source.IntersectionPointX;
+                target.IntersectionPointY = source.IntersectionPointY;
+                target.IntersectionPointZ = source.IntersectionPointZ;
+            }
 
             if (HasPlacementPoint(source))
             {
@@ -960,7 +1055,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                    Math.Abs(zone.SleeveBoundingBoxMaxX) > 1e-9 || Math.Abs(zone.SleeveBoundingBoxMaxY) > 1e-9 || Math.Abs(zone.SleeveBoundingBoxMaxZ) > 1e-9;
         }
 
-        private static void UpdateGlobalEntry(CategoryGlobalIndexEntry entry, ClashZone zone, string filterName)
+        private static void UpdateGlobalEntry(CategoryGlobalIndexEntry entry, ClashZone zone, string filterName, bool allowStructuralUpdates)
         {
             if (entry == null || zone == null) return;
 
@@ -971,30 +1066,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             entry.SleeveInstanceId = zone.SleeveInstanceId;
             entry.ClusterSleeveInstanceId = zone.ClusterSleeveInstanceId;
 
-            entry.SleeveWidth = zone.SleeveWidth;
-            entry.SleeveHeight = zone.SleeveHeight;
-            entry.SleeveDiameter = zone.SleeveDiameter;
-
-            entry.SleevePlacementPointX = zone.SleevePlacementPointX;
-            entry.SleevePlacementPointY = zone.SleevePlacementPointY;
-            entry.SleevePlacementPointZ = zone.SleevePlacementPointZ;
-
-            entry.SleevePlacementPointActiveDocumentX = zone.SleevePlacementPointActiveDocumentX;
-            entry.SleevePlacementPointActiveDocumentY = zone.SleevePlacementPointActiveDocumentY;
-            entry.SleevePlacementPointActiveDocumentZ = zone.SleevePlacementPointActiveDocumentZ;
-
-            entry.SleeveBoundingBoxMinX = zone.SleeveBoundingBoxMinX;
-            entry.SleeveBoundingBoxMinY = zone.SleeveBoundingBoxMinY;
-            entry.SleeveBoundingBoxMinZ = zone.SleeveBoundingBoxMinZ;
-            entry.SleeveBoundingBoxMaxX = zone.SleeveBoundingBoxMaxX;
-            entry.SleeveBoundingBoxMaxY = zone.SleeveBoundingBoxMaxY;
-            entry.SleeveBoundingBoxMaxZ = zone.SleeveBoundingBoxMaxZ;
-
-            entry.MepElementId = zone.MepElementId?.IntegerValue ?? zone.MepElementIdValue;
-            entry.StructuralElementId = zone.StructuralElementId?.IntegerValue ?? zone.StructuralElementIdValue;
-            entry.IntersectionPointX = zone.IntersectionPointX;
-            entry.IntersectionPointY = zone.IntersectionPointY;
-            entry.IntersectionPointZ = zone.IntersectionPointZ;
+            if (allowStructuralUpdates)
+            {
+                entry.MepElementId = zone.MepElementId?.IntegerValue ?? zone.MepElementIdValue;
+                entry.StructuralElementId = zone.StructuralElementId?.IntegerValue ?? zone.StructuralElementIdValue;
+                entry.IntersectionPointX = zone.IntersectionPointX;
+                entry.IntersectionPointY = zone.IntersectionPointY;
+                entry.IntersectionPointZ = zone.IntersectionPointZ;
+            }
         }
 
         private void ConsolidateFileCombos(FilterGroupForStorage filterGroup, string logPath)
@@ -1037,7 +1116,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                             else
                             {
-                                MergeZone(existing, zone, logPath);
+                                MergeZone(existing, zone, logPath, allowStructuralUpdates: true);
                             }
                         }
                     }

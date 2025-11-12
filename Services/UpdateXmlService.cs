@@ -103,16 +103,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 );
                 
                 var filter = filterMgmt.LoadFilterFromXmlFile(xmlFilePath);
-                
-                if (filter?.ClashZoneStorage?.ClashZones == null)
+                var storageZones = filter?.ClashZoneStorage?.AllZones ?? new List<ClashZone>();
+
+                if (storageZones.Count == 0)
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
+                    if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Warning($"[UpdateXmlService] No clash zones in {Path.GetFileName(xmlFilePath)}");
                     return 0;
                 }
 
-                // Get unique cluster sleeve IDs from XML (grouped by category)
-                var clusterSleeveGroups = filter.ClashZoneStorage.ClashZones
+                var clusterSleeveGroups = storageZones
                     .Where(cz => cz.IsClusterResolved && cz.ClusterSleeveInstanceId > 0)
                     .GroupBy(cz => cz.MepElementCategory)
                     .ToList();
@@ -161,7 +161,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var bbox = clusterSleeve.get_BoundingBox(null);
                             
                             // Update all clash zones for this cluster sleeve
-                            var clashZonesForCluster = filter.ClashZoneStorage.ClashZones
+                            var clashZonesForCluster = filter.ClashZoneStorage.AllZones
                                 .Where(cz => cz.ClusterSleeveInstanceId == clusterSleeveId)
                                 .ToList();
 

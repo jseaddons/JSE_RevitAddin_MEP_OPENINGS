@@ -52,39 +52,57 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 
                     // Get all available categories from XML files
                     var availableCategories = GetAllAvailableCategories(doc);
+                    
+                    // ✅ DEBUG: Log available categories
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         string orchestratorLogPath = SafeFileLogger.GetLogFilePath("orchestrator_debug.log");
                         System.IO.File.AppendAllText(orchestratorLogPath,
                         $"[{DateTime.Now:HH:mm:ss}] Found {availableCategories.Count} categories: {string.Join(", ", availableCategories)}\n");
+                    }
 
-                        // Process each category with its specific discipline prefix from UI
-                        foreach (var category in availableCategories)
+                    // ✅ CRITICAL FIX: Process each category OUTSIDE the deployment mode check
+                    // Process each category with its specific discipline prefix from UI
+                    foreach (var category in availableCategories)
+                    {
+                        var disciplinePrefix = _markPrefixes?.GetDisciplinePrefix(category) ?? GetDisciplinePrefixForCategory(category);
+                        // ✅ FIX: Get remark flag per category from MarkPrefixSettings
+                        var remarkFlag = _markPrefixes?.GetRemarkFlag(category) ?? _remarkAll;
+                        
+                        // ✅ DEBUG: Log remark flag details
+                        if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            var disciplinePrefix = _markPrefixes?.GetDisciplinePrefix(category) ?? GetDisciplinePrefixForCategory(category);
-                            // ✅ FIX: Get remark flag per category from MarkPrefixSettings
-                            var remarkFlag = _markPrefixes?.GetRemarkFlag(category) ?? _remarkAll;
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Processing category: {category}, discipline: {disciplinePrefix}, remark: {remarkFlag}\n");
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Processing category: {category}, discipline: {disciplinePrefix}, remark: {remarkFlag}");
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}]   RemarkAll={_markPrefixes?.RemarkAll ?? false}, RemarkProjectPrefix={_markPrefixes?.RemarkProjectPrefix ?? false}");
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}]   RemarkDuctPrefix={_markPrefixes?.RemarkDuctPrefix ?? false}, RemarkPipePrefix={_markPrefixes?.RemarkPipePrefix ?? false}");
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}]   RemarkCableTrayPrefix={_markPrefixes?.RemarkCableTrayPrefix ?? false}, RemarkDamperPrefix={_markPrefixes?.RemarkDamperPrefix ?? false}\n");
+                        }
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Processing category: {category}, discipline: {disciplinePrefix}, remark: {remarkFlag}\n");
 
-                            using (var tx = new Transaction(doc, $"Mark {category} Clusters"))
-                            {
-                                tx.Start();
+                        using (var tx = new Transaction(doc, $"Mark {category} Clusters"))
+                        {
+                            tx.Start();
 
-                                var markService = new MarkParameterService();
-                                var numberFormat = _markPrefixes?.NumberFormat ?? "000";
-                                var (processedCount, errorCount) = markService.ApplyMepMarkToClusters(
-                                    doc, category, _projectPrefix, disciplinePrefix, remarkFlag, numberFormat);
+                            var markService = new MarkParameterService();
+                            var numberFormat = _markPrefixes?.NumberFormat ?? "000";
+                            var (processedCount, errorCount) = markService.ApplyMepMarkToClusters(
+                                doc, category, _projectPrefix, disciplinePrefix, remarkFlag, numberFormat);
 
-                                tx.Commit();
+                            tx.Commit();
 
-                                DebugLogger.Info($"[MarkParameterCommand] ✓ MEPMARK complete for {category}: {processedCount} clusters processed, {errorCount} errors");
-                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Category {category}: {processedCount} processed, {errorCount} errors\n");
-                            }
+                            DebugLogger.Info($"[MarkParameterCommand] ✓ MEPMARK complete for {category}: {processedCount} clusters processed, {errorCount} errors");
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Category {category}: {processedCount} processed, {errorCount} errors\n");
                         }
                     }
-                    else
+                }
+                else
                     {
                         // Process single category
+                        // ✅ CRITICAL FIX: Get remark flag per category from MarkPrefixSettings (not just _remarkAll)
+                        // This ensures that when Remark Selected button is clicked, each category's checkbox state is respected
+                        var remarkFlag = _markPrefixes?.GetRemarkFlag(_targetCategory) ?? _remarkAll;
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Processing single category: {_targetCategory}, discipline: {_disciplinePrefix}, remark: {remarkFlag}\n");
+                        
                         using (var tx = new Transaction(doc, $"Mark {_targetCategory} Clusters"))
                         {
                             tx.Start();
@@ -92,14 +110,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             var markService = new MarkParameterService();
                             var numberFormat = _markPrefixes?.NumberFormat ?? "000";
                             var (processedCount, errorCount) = markService.ApplyMepMarkToClusters(
-                                doc, _targetCategory, _projectPrefix, _disciplinePrefix, _remarkAll, numberFormat);
+                                doc, _targetCategory, _projectPrefix, _disciplinePrefix, remarkFlag, numberFormat);
 
                             tx.Commit();
 
                             DebugLogger.Info($"[MarkParameterCommand] ✓ MEPMARK complete for {_targetCategory}: {processedCount} clusters processed, {errorCount} errors");
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Category {_targetCategory}: {processedCount} processed, {errorCount} errors\n");
                         }
                     }
-                }
             }
             catch (Exception ex)
             {
@@ -136,9 +154,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         using (var reader = new StreamReader(xmlFile))
                         {
                             var filter = (OpeningFilter)serializer.Deserialize(reader);
-                            if (filter?.ClashZoneStorage?.ClashZones != null)
+                            if (filter?.ClashZoneStorage?.AllZones != null)
                             {
-                                foreach (var clashZone in filter.ClashZoneStorage.ClashZones)
+                                foreach (var clashZone in filter.ClashZoneStorage.AllZones)
                                 {
                                     if (!categories.Contains(clashZone.MepElementCategory))
                                     {

@@ -130,6 +130,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 allSleeves.AddRange(clusterSleeves);
                 allSleeves.AddRange(individualSleeves);
                 
+                // ✅ DEBUG: Log sleeve distribution by host type (Wall vs Floor)
+                var sleevesByHostType = allSleeves.GroupBy(s => {
+                    var famName = s.Symbol?.Family?.Name ?? "";
+                    if (famName.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0) return "Wall";
+                    if (famName.IndexOf("OpeningOnSlab", StringComparison.OrdinalIgnoreCase) >= 0) return "Floor";
+                    return "Unknown";
+                }).ToDictionary(g => g.Key, g => g.Count());
+                
                                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[MarkParameterService] Found {clusterSleeves.Count} cluster sleeves + {individualSleeves.Count} individual sleeves = {allSleeves.Count} total for category '{category}'");
                                 // ✅ DEPLOYMENT MODE: Skip file writes
@@ -146,6 +154,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     File.AppendAllText(mepmarkLogPath, $"Total sleeves to mark: {allSleeves.Count}\n");
+                    File.AppendAllText(mepmarkLogPath, $"Sleeves by host type: {string.Join(", ", sleevesByHostType.Select(kvp => $"{kvp.Key}={kvp.Value}"))}\n");
+                    File.AppendAllText(mepmarkLogPath, $"RemarkAll flag: {remarkAll}\n");
                 }
                 
                 if (allSleeves.Count == 0)
@@ -262,6 +272,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var mepElementIdParam = sleeve.LookupParameter("MEP_ElementId");
                         long mepElementId = mepElementIdParam?.AsInteger() ?? -1;
                         var clashZone = GetClashZoneByMepElementId(mepElementId, doc);
+                        
+                        // ✅ DEBUG: Log sleeve host type
+                        var famName = sleeve.Symbol?.Family?.Name ?? "";
+                        var hostType = famName.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0 ? "Wall" :
+                                      famName.IndexOf("OpeningOnSlab", StringComparison.OrdinalIgnoreCase) >= 0 ? "Floor" : "Unknown";
+                        
+                        if (!DeploymentConfiguration.DeploymentMode && i < 10) // Log first 10 sleeves
+                        {
+                            File.AppendAllText(mepmarkLogPath, 
+                                $"[MARK-PROCESS] Sleeve {sleeve.Id}: HostType={hostType}, Family={famName}, MEP_ID={mepElementId}, " +
+                                $"Category={clashZone?.MepElementCategory ?? "null"}, RemarkAll={remarkAll}, ExistingMark='{existingMark ?? "null"}'\n");
+                        }
                         
                                                 // ✅ DEPLOYMENT MODE: Skip file writes
                         if (!DeploymentConfiguration.DeploymentMode)
@@ -702,15 +724,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         using (var reader = new StreamReader(xmlFile))
                         {
                             var filter = (OpeningFilter)serializer.Deserialize(reader);
-                            if (filter?.ClashZoneStorage?.ClashZones != null)
+                            if (filter?.ClashZoneStorage?.AllZones != null)
                             {
-                                int clashZoneCount = filter.ClashZoneStorage.ClashZones.Count;
+                                int clashZoneCount = filter.ClashZoneStorage.AllZones.Count;
                                 File.AppendAllText(mepmarkLogPath, $"[CACHE-INIT] ✓ Loading {Path.GetFileName(xmlFile)}: {clashZoneCount} clash zones found\n");
                                 
                                 // ✅ DEBUG: Log first few clash zones to verify they have MEP element IDs
                                 if (clashZoneCount > 0)
                                 {
-                                    var firstZone = filter.ClashZoneStorage.ClashZones[0];
+                                    var firstZone = filter.ClashZoneStorage.AllZones[0];
                                                                         // ✅ DEPLOYMENT MODE: Skip file writes
                                     if (!DeploymentConfiguration.DeploymentMode)
                                     {
@@ -722,7 +744,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     }
                                 }
                                 
-                                foreach (var clashZone in filter.ClashZoneStorage.ClashZones)
+                                foreach (var clashZone in filter.ClashZoneStorage.AllZones)
                                 {
                                     long key = clashZone.MepElementId.IntegerValue;
                                     if (!_clashZoneCache.ContainsKey(key))
@@ -821,9 +843,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         using (var reader = new StreamReader(xmlFile))
                         {
                             var filter = (OpeningFilter)serializer.Deserialize(reader);
-                            if (filter?.ClashZoneStorage?.ClashZones != null)
+                            if (filter?.ClashZoneStorage?.AllZones != null)
                             {
-                                foreach (var clashZone in filter.ClashZoneStorage.ClashZones)
+                                foreach (var clashZone in filter.ClashZoneStorage.AllZones)
                                 {
                                     if (clashZone.MepElementId.IntegerValue == mepElementId)
                                     {

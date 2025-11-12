@@ -93,6 +93,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.Panel _damperPanel = null!;
         private WinForms.Panel _pipePanel = null!;
         
+        // ✅ UI STATE PERSISTENCE: Store references to host category listboxes for proper save/load
+        private WinForms.CheckedListBox _horizontalCategoriesListBox = null!;
+        private WinForms.CheckedListBox _verticalCategoriesListBox = null!;
+        private bool _hostCategoriesInitialized = false;
+        
         // ═══════════════════════════════════════════════════════════════
         // ✨ NEW: Mark Prefix Panel Controls (MEPMARK Implementation)
         // Added: 2025-10-08 for custom discipline-specific mark generation
@@ -154,6 +159,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _appProfileService = appProfileService;
             _document = document;
             _uiDocument = uiDocument;
+            
+            // ✅ CRITICAL: Check section box BEFORE initializing UI - NO FALLBACK
+            var docToCheck = document ?? uiDocument?.Document;
+            if (docToCheck != null)
+            {
+                var activeView = uiDocument?.ActiveView ?? docToCheck.ActiveView;
+                if (!(activeView is View3D view3D) || !view3D.IsSectionBoxActive)
+                {
+                    // ✅ NO FALLBACK: Section box is REQUIRED - don't initialize UI
+                    throw new InvalidOperationException(
+                        "A 3D view with an active section box is REQUIRED.\n\n" +
+                        "Please:\n" +
+                        "1. Activate a 3D view\n" +
+                        "2. Enable section box in the view properties\n" +
+                        "3. Adjust section box to your desired zone\n" +
+                        "4. Try again\n\n" +
+                        "Section box is required to limit clash detection to specific zones.");
+                }
+                
+                // ✅ DOUBLE CHECK: Verify section box is not null
+                var sectionBox = view3D.GetSectionBox();
+                if (sectionBox == null || sectionBox.Min == null || sectionBox.Max == null)
+                {
+                    throw new InvalidOperationException(
+                        "Section box is active but invalid.\n\n" +
+                        "Please:\n" +
+                        "1. Deactivate section box\n" +
+                        "2. Reactivate section box\n" +
+                        "3. Adjust section box bounds\n" +
+                        "4. Try again");
+                }
+            }
             
             // Ensure per-project Filters directory exists as soon as the dialog opens
             try
@@ -247,6 +284,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 DebugLogger.Info("About to call InitializeComponent()");
                 InitializeComponent();
                 DebugLogger.Info("InitializeComponent() completed successfully");
+                
+                // ✅ AUTO-SAVE: Add FormClosing event handler to save UI state when form closes
+                this.FormClosing += (sender, e) => {
+                    try
+                    {
+                        DebugLogger.Info("[UI_STATE] FormClosing event triggered - saving UI state");
+                        SaveUIStateDirectly();
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLogger.Error($"[UI_STATE] Failed to save UI state on form close: {ex.Message}");
+                    }
+                };
                 
                 // 🔍 DIAGNOSTIC: Count sleeves AFTER InitializeComponent
                 if (_document != null)
@@ -580,7 +630,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             catch { }
 
         }
-
         private void InitializeComponent()
         {
             // 🔍 DIAGNOSTIC: Count sleeves at START of InitializeComponent
@@ -664,63 +713,65 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             _statusBannerPanel.Controls.Add(_statusBannerLabel);
 
-            // Toolbar buttons in header - moved further left
-            int buttonY = 20;
-            int buttonWidth = 70;
-            int buttonHeight = 35;
-            int buttonSpacing = 80;
-            int startX = 450;  // Change this line to move buttons closer
+            // Toolbar buttons in header - positioned on the right side
+            int buttonY = 15;
+            int buttonHeight = 50; // Increased height for 2-line text
+            int buttonWidth = 130; // Width for 2-line text buttons
+            int buttonSpacing = 15; // Spacing between buttons
+            int rightMargin = 15; // Margin from right edge
 
-            _okButton = new WinForms.Button
+            // Button layout (right to left): [Close] [Place Sleeves] [Process Clash Zones]
+            int closeButtonWidth = 70;
+            
+            // ✅ Process Clash Zones Button (2-line text, enlarged) - leftmost
+            _refreshButton = new WinForms.Button
             {
-                Text = "OK",
-                Location = new System.Drawing.Point(startX, buttonY),
-                Size = new System.Drawing.Size(buttonWidth, buttonHeight),
-                BackColor = System.Drawing.Color.FromArgb(0, 122, 204),
-                ForeColor = System.Drawing.Color.White,
-                FlatStyle = WinForms.FlatStyle.Flat,
-                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Bold),
-                Enabled = false // Enable only after Refresh completes
-            };
-            _okButton.Click += OnOkClick;
-            _headerPanel.Controls.Add(_okButton);
-
-            _saveButton = new WinForms.Button
-            {
-                Text = "Save",
-                Location = new System.Drawing.Point(startX + buttonSpacing, buttonY),
-                Size = new System.Drawing.Size(buttonWidth, buttonHeight),
-                BackColor = System.Drawing.Color.FromArgb(40, 167, 69),
-                ForeColor = System.Drawing.Color.White,
-                FlatStyle = WinForms.FlatStyle.Flat,
-                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Bold)
-            };
-            _saveButton.Click += OnSaveClick;
-            _headerPanel.Controls.Add(_saveButton);
-
-            _cancelButton = new WinForms.Button
-            {
-                Text = "Cancel",
-                Location = new System.Drawing.Point(startX + 2 * buttonSpacing, buttonY),
+                Text = "Process" + Environment.NewLine + "Clash Zones",
                 Size = new System.Drawing.Size(buttonWidth, buttonHeight),
                 BackColor = System.Drawing.Color.FromArgb(108, 117, 125),
                 ForeColor = System.Drawing.Color.White,
                 FlatStyle = WinForms.FlatStyle.Flat,
-                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Bold)
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold),
+                TextAlign = System.Drawing.ContentAlignment.MiddleCenter,
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Right
             };
-            _cancelButton.Click += OnCancelClick;
-            _headerPanel.Controls.Add(_cancelButton);
+            int refreshButtonX = _headerPanel.Width - rightMargin - closeButtonWidth - buttonSpacing - buttonWidth - buttonSpacing - buttonWidth;
+            _refreshButton.Location = new System.Drawing.Point(refreshButtonX, buttonY);
+            _refreshButton.Click += OnRefreshClick;
+            _headerPanel.Controls.Add(_refreshButton);
 
+            // ✅ Place Sleeves Button (2-line text, enlarged) - middle
+            _okButton = new WinForms.Button
+            {
+                Text = "Place" + Environment.NewLine + "Sleeves",
+                Size = new System.Drawing.Size(buttonWidth, buttonHeight),
+                BackColor = System.Drawing.Color.FromArgb(0, 122, 204),
+                ForeColor = System.Drawing.Color.White,
+                FlatStyle = WinForms.FlatStyle.Flat,
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold),
+                TextAlign = System.Drawing.ContentAlignment.MiddleCenter,
+                Enabled = false, // Enable only after Refresh completes
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Right
+            };
+            int okButtonX = _headerPanel.Width - rightMargin - closeButtonWidth - buttonSpacing - buttonWidth;
+            _okButton.Location = new System.Drawing.Point(okButtonX, buttonY);
+            _okButton.Click += OnOkClick;
+            _headerPanel.Controls.Add(_okButton);
+            
+            // ✅ Save and Cancel buttons removed - not being used
+
+            // ✅ Close Button - rightmost
             _closeButton = new WinForms.Button
             {
                 Text = "Close",
-                Location = new System.Drawing.Point(startX + 3 * buttonSpacing, buttonY),
-                Size = new System.Drawing.Size(buttonWidth, buttonHeight),
+                Size = new System.Drawing.Size(closeButtonWidth, buttonHeight),
                 BackColor = System.Drawing.Color.FromArgb(220, 53, 69),
                 ForeColor = System.Drawing.Color.White,
                 FlatStyle = WinForms.FlatStyle.Flat,
-                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Bold)
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold),
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Right
             };
+            _closeButton.Location = new System.Drawing.Point(_headerPanel.Width - rightMargin - closeButtonWidth, buttonY);
             _closeButton.Click += OnCloseClick;
             _headerPanel.Controls.Add(_closeButton);
 
@@ -758,25 +809,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             int statusButtonSpacing = 5; // Space between status bar buttons
             int buttonStartX = 220; // Start position for buttons (after status label) - moved further right
             
-            // Refresh Button (before progress bar)
-            _refreshButton = new WinForms.Button
-            {
-                Text = "Refresh",
-                Location = new System.Drawing.Point(buttonStartX, 3), // After status label
-                Size = new System.Drawing.Size(60, 24),
-                BackColor = System.Drawing.Color.FromArgb(108, 117, 125),
-                ForeColor = System.Drawing.Color.White,
-                FlatStyle = WinForms.FlatStyle.Flat,
-                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Bold)
-            };
-            _statusPanel.Controls.Add(_refreshButton);
-            System.Diagnostics.Debug.WriteLine($"Refresh button created at location: {_refreshButton.Location}, Size: {_refreshButton.Size}, Visible: {_refreshButton.Visible}");
-
-            // Configure Button (next to refresh button)
+            // ✅ NOTE: Refresh button moved to header panel (left of OK button)
+            // Config button remains in status panel
+            
+            // Configure Button (now first button in status panel since refresh moved)
             _configureButton = new WinForms.Button
             {
                 Text = "Config",
-                Location = new System.Drawing.Point(buttonStartX + 65 + statusButtonSpacing, 3), // Next to refresh button
+                Location = new System.Drawing.Point(buttonStartX, 3), // Now first button
                 Size = new System.Drawing.Size(60, 24),
                 BackColor = System.Drawing.Color.FromArgb(102, 16, 242),
                 ForeColor = System.Drawing.Color.White,
@@ -788,11 +828,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // Note: Parameter Service is now available as a separate command
             // This keeps the main UI focused on clash detection and sleeve placement
             
-            // Progress Bar (after buttons, can be longer now)
-            int progressBarStartX = buttonStartX + 130 + statusButtonSpacing; // After both buttons (60+60+10)
+            // Progress Bar (after Config button, can be longer now)
+            int progressBarStartX = buttonStartX + 65 + statusButtonSpacing; // After Config button (60+5)
             _progressBar = new WinForms.ProgressBar
             {
-                Location = new System.Drawing.Point(progressBarStartX, 5), // After buttons
+                Location = new System.Drawing.Point(progressBarStartX, 5), // After Config button
                 Size = new System.Drawing.Size(leftSectionRightEdge - progressBarStartX - 10, 20), // Dynamic width to fill remaining space
                 Style = WinForms.ProgressBarStyle.Continuous,
                 Minimum = 0,
@@ -802,31 +842,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _statusPanel.Controls.Add(_progressBar);
             
             // Add event handlers for the buttons
-            _refreshButton.Click += OnRefreshClick;
             _configureButton.Click += OnConfigureClick;
-
-            // EXTENSIVE DEBUG LOGGING FOR BUTTON CREATION
-            System.Diagnostics.Debug.WriteLine($"[BUTTON_DEBUG] Refresh button created: Location=({_refreshButton.Location.X},{_refreshButton.Location.Y}), Size=({_refreshButton.Size.Width},{_refreshButton.Size.Height}), Visible={_refreshButton.Visible}, Enabled={_refreshButton.Enabled}");
-            System.Diagnostics.Debug.WriteLine($"[BUTTON_DEBUG] Refresh button text: '{_refreshButton.Text}'");
-            System.Diagnostics.Debug.WriteLine($"[BUTTON_DEBUG] Refresh button parent: {_refreshButton.Parent?.Name ?? "null"}");
-            System.Diagnostics.Debug.WriteLine($"[BUTTON_DEBUG] Status panel size: {_statusPanel.Size}, location: {_statusPanel.Location}");
-
-            // Log to multiple files to ensure visibility
-            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] REFRESH BUTTON CREATED: Location=({_refreshButton.Location.X},{_refreshButton.Location.Y}), Size=({_refreshButton.Size.Width},{_refreshButton.Size.Height}), Visible={_refreshButton.Visible}, Enabled={_refreshButton.Enabled}\n");
-            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] REFRESH BUTTON CREATED: Visible={_refreshButton.Visible}, Enabled={_refreshButton.Enabled}\n");
-
-            // Test if event handler is attached by checking the Click event
-            var clickEvent = _refreshButton.GetType().GetEvent("Click");
-            if (clickEvent != null)
-            {
-                System.Diagnostics.Debug.WriteLine($"[BUTTON_DEBUG] Click event found on refresh button");
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Click event attached to refresh button\n");
-            }
-            else
-            {
-                System.Diagnostics.Debug.WriteLine($"[BUTTON_DEBUG] ERROR: Click event NOT found on refresh button");
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] ERROR: Click event NOT attached to refresh button\n");
-            }
 
             // Left Panel (expanded to fill most space) - start below header
             _leftPanel = new WinForms.Panel
@@ -1117,6 +1133,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 new System.Collections.Generic.List<string> { "Electrical", "Plumbing", "Ventilation" }
             );
             
+            // ✅ PERSISTENCE: Load all saved filters from directory (shows filters saved in previous sessions)
+            _filterManagementService.LoadAllSavedFilters(filterListBox);
+            
             // 🔍 DIAGNOSTIC: Count sleeves AFTER SeedDefaultFilters
             try
             {
@@ -1385,7 +1404,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
             // DebugLogger.Info("=== CreateFourSectionLayout COMPLETED ===");
         }
-
         // ========================================================================
         // ⚠️  CRITICAL UI LAYOUT - DO NOT MODIFY WITHOUT USER CONSENT  ⚠️
         // ========================================================================
@@ -1413,7 +1431,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             _topLeftPanel.Controls.Add(_verticalSplitter);
         }
-
         // ========================================================================
         // ⚠️  CRITICAL UI LAYOUT - DO NOT MODIFY WITHOUT USER CONSENT  ⚠️
         // ========================================================================
@@ -1488,6 +1505,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             _topLeftPanel.Controls.Add(otherReferenceFilesListBox);
 
+            // ✅ AUTO-SAVE: Add ItemCheck handlers to save UI state automatically when reference files are checked/unchecked
+            referenceFilesListBox.ItemCheck += (sender, e) => {
+                System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
+                timer.Interval = 100; // Small delay to avoid issues during check operation
+                timer.Tick += (s, args) => {
+                    timer.Stop();
+                    timer.Dispose();
+                    SaveUIStateDirectly();
+                };
+                timer.Start();
+            };
+
+            otherReferenceFilesListBox.ItemCheck += (sender, e) => {
+                System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
+                timer.Interval = 100; // Small delay to avoid issues during check operation
+                timer.Tick += (s, args) => {
+                    timer.Stop();
+                    timer.Dispose();
+                    SaveUIStateDirectly();
+                };
+                timer.Start();
+            };
+
             // Always add the active document as a reference element (available by default)
             if (_activeDocument != null)
             {
@@ -1511,15 +1551,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         displayText += " [NOT LOADED]";
                     }
                     
-                    // Show MEP files in main list, others in "Other Files" section
+                    // ✅ Show MEP files in main list
                     bool isAvailableForReference = IsFileAvailableForReference(file.FileType);
                     if (isAvailableForReference)
                     {
                         referenceFilesListBox.Items.Add(displayText, false);
-            }
-            else
-            {
-                        otherRefFilesListBox?.Items.Add(displayText, false);
+                    }
+                    else
+                    {
+                        // ✅ "Other Files" section: Only show files that are NOT in Reference Elements main list AND NOT in Host Elements main list
+                        bool isAvailableForHost = IsFileAvailableForHost(file.FileType);
+                        if (!isAvailableForHost)
+                        {
+                            // File is not in either main section → add to "Other Files"
+                            otherRefFilesListBox?.Items.Add(displayText, false);
+                        }
+                        // If file is available for Host, skip it (it will be shown in Host Elements main list)
                     }
                 }
                 System.Diagnostics.Debug.WriteLine($"Added files to reference elements sections");
@@ -1564,6 +1611,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     timer.Stop();
                     timer.Dispose();
                     UpdateMepTypeBasedOnSelection();
+                    // ✅ AUTO-SAVE: Save UI state automatically when MEP category selection changes
+                    SaveUIStateDirectly();
                 };
                 timer.Start();
             };
@@ -1804,6 +1853,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             _bottomLeftPanel.Controls.Add(otherHostFilesListBox);
 
+            // ✅ AUTO-SAVE: Add ItemCheck handlers to save UI state automatically when host files are checked/unchecked
+            hostFilesListBox.ItemCheck += (sender, e) => {
+                System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
+                timer.Interval = 100; // Small delay to avoid issues during check operation
+                timer.Tick += (s, args) => {
+                    timer.Stop();
+                    timer.Dispose();
+                    SaveUIStateDirectly();
+                };
+                timer.Start();
+            };
+
+            otherHostFilesListBox.ItemCheck += (sender, e) => {
+                System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
+                timer.Interval = 100; // Small delay to avoid issues during check operation
+                timer.Tick += (s, args) => {
+                    timer.Stop();
+                    timer.Dispose();
+                    SaveUIStateDirectly();
+                };
+                timer.Start();
+            };
+
             // ✅ FIX: Active Document should ONLY be in Reference Elements section, NOT in Host Elements
             // Removed: Active Document from Host Elements section
             
@@ -1822,15 +1894,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         displayText += " [NOT LOADED]";
                     }
                     
-                    // Show Architecture/Structural files in main list, others in "Other Files" section
+                    // ✅ Show Architecture/Structural files in main list
                     bool isAvailableForHost = IsFileAvailableForHost(file.FileType);
                     if (isAvailableForHost)
                     {
                         hostFilesListBox.Items.Add(displayText, false);
-            }
-            else
-            {
-                        otherHostFilesListBox2?.Items.Add(displayText, false);
+                    }
+                    else
+                    {
+                        // ✅ "Other Files" section: Only show files that are NOT in Host Elements main list AND NOT in Reference Elements main list
+                        bool isAvailableForReference = IsFileAvailableForReference(file.FileType);
+                        if (!isAvailableForReference)
+                        {
+                            // File is not in either main section → add to "Other Files"
+                            otherHostFilesListBox2?.Items.Add(displayText, false);
+                        }
+                        // If file is available for Reference, skip it (it will be shown in Reference Elements main list)
                     }
                 }
                 System.Diagnostics.Debug.WriteLine($"Added files to host elements sections");
@@ -1873,6 +1952,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Regular)
             };
             _bottomRightPanel.Controls.Add(horizontalCategoriesListBox);
+            _horizontalCategoriesListBox = horizontalCategoriesListBox; // ✅ Store reference for UI state persistence
+
+            // ✅ AUTO-SAVE: Add ItemCheck handler to save UI state automatically when horizontal host categories are checked/unchecked
+            horizontalCategoriesListBox.ItemCheck += (sender, e) => {
+                System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
+                timer.Interval = 100; // Small delay to avoid issues during check operation
+                timer.Tick += (s, args) => {
+                    timer.Stop();
+                    timer.Dispose();
+                    SaveUIStateDirectly();
+                };
+                timer.Start();
+            };
 
             // Always show Walls and Structural Framing categories regardless of linked files
             horizontalCategoriesListBox.Items.Add("Walls", false);
@@ -1901,6 +1993,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Regular)
             };
             _bottomRightPanel.Controls.Add(verticalCategoriesListBox);
+            _verticalCategoriesListBox = verticalCategoriesListBox; // ✅ Store reference for UI state persistence
+
+            // ✅ AUTO-SAVE: Add ItemCheck handler to save UI state automatically when vertical host categories are checked/unchecked
+            verticalCategoriesListBox.ItemCheck += (sender, e) => {
+                System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
+                timer.Interval = 100; // Small delay to avoid issues during check operation
+                timer.Tick += (s, args) => {
+                    timer.Stop();
+                    timer.Dispose();
+                    SaveUIStateDirectly();
+                };
+                timer.Start();
+            };
 
             // Add vertical categories based on available linked files
             if (_linkedFiles.Count > 0 && _linkedFileService != null)
@@ -1941,6 +2046,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     TextAlign = System.Drawing.ContentAlignment.MiddleCenter
                 };
                 _bottomRightPanel.Controls.Add(noDataLabel);
+            }
+
+         _hostCategoriesInitialized =
+            (_horizontalCategoriesListBox != null && _horizontalCategoriesListBox.Items.Count > 0) ||
+            (_verticalCategoriesListBox != null && _verticalCategoriesListBox.Items.Count > 0);
+
+            if (!_hostCategoriesInitialized && !DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Info("[UI-STATE] Host categories not initialized yet; UI state restore will be deferred");
             }
         }
 
@@ -2045,7 +2159,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             var mep = _mepTypeCombo.SelectedItem?.ToString() ?? string.Empty;
             UpdateClearanceVisibilityForCategory(mep);
         }
-
         /// <summary>
         /// Updates clearance panel visibility based on selected MEP category
         /// 
@@ -2101,7 +2214,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 RestoreClearanceValues("Default");
             }
         }
-
         /// <summary>
         /// Updates the discipline prefix textbox based on the selected MEP Type dropdown
         /// ⚠️ NEW METHOD - Updates discipline prefix dynamically when MEP Type changes
@@ -2833,7 +2945,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 }
             }
         }
-
         private void SetPipePanelValues(string normalValue, string insulatedValue)
         {
             if (_pipePanel?.Controls.Count > 0)
@@ -2902,7 +3013,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 DebugLogger.Error($"[SaveCurrentClearanceValues] Error: {ex.Message}");
             }
         }
-
         /// <summary>
         /// Restore clearance values for a category from storage, or set defaults if not saved
         /// </summary>
@@ -3632,7 +3742,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     break;
             }
         }
-
         /// <summary>
         /// Refreshes parameter dropdowns based on selected reference file and categories
         /// </summary>
@@ -3679,8 +3788,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 catch { }
             }
         }
-
-
         private void LoadProfileInfo()
         {
             try
@@ -3812,6 +3919,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
                 CreateFourSectionLayout();
                 DebugLogger.Info("CreateFourSectionLayout completed");
+
+                _hostCategoriesInitialized =
+                    (_horizontalCategoriesListBox != null && _horizontalCategoriesListBox.Items.Count > 0) ||
+                    (_verticalCategoriesListBox != null && _verticalCategoriesListBox.Items.Count > 0);
+                if (_hostCategoriesInitialized)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info("[UI-STATE] Host categories ready after repopulate - restoring UI selections");
+                    LoadUIStateDirectly();
+                }
+                else if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info("[UI-STATE] Host categories still not available after repopulate - UI state restore deferred");
+                }
 
                 // CRITICAL: Reposition and resize panels after recreation
                 PositionPanels();
@@ -4388,7 +4509,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 DebugLogger.Error($"Save configuration failed: {ex.Message}");
             }
         }
-        
         private void SaveCurrentConfiguration()
         {
             try
@@ -4435,7 +4555,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 throw;
             }
         }
-        
         private UserConfiguration CollectCurrentUIState()
         {
             var config = new UserConfiguration();
@@ -4822,37 +4941,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             
             try
             {
-                if (_bottomRightPanel?.Controls.Count > 0)
+                // ✅ CRITICAL FIX: Distinguish between horizontal and vertical listboxes
+                // Horizontal: Walls, Structural Framing
+                // Vertical: Floors, Ceilings
+                var horizontalCategories = new[] { "Walls", "Structural Framing" };
+                var verticalCategories = new[] { "Floors", "Ceilings" };
+                
+                if (_horizontalCategoriesListBox != null)
                 {
-                    foreach (var control in _bottomRightPanel.Controls)
+                    _horizontalCategoriesListBox.BeginUpdate();
+                    for (int i = 0; i < _horizontalCategoriesListBox.Items.Count; i++)
                     {
-                        if (control is WinForms.CheckedListBox listBox)
-                        {
-                            listBox.BeginUpdate();
-                            
-                            // First uncheck ALL items
-                            for (int i = 0; i < listBox.Items.Count; i++)
-                            {
-                                listBox.SetItemChecked(i, false);
-                            }
-                            
-                            // Then check only the saved selections
-                            for (int i = 0; i < listBox.Items.Count; i++)
-                            {
-                                var item = listBox.Items[i]?.ToString();
-                                if (item != null && selectedCategories.Contains(item))
-                                {
-                                    listBox.SetItemChecked(i, true);
-                                    DebugLogger.Info($"Restored host category selection: {item}");
-                                }
-                            }
-                            
-                            listBox.EndUpdate();
-                            listBox.Refresh();
-                            listBox.Invalidate();
-                            listBox.Update();
-                        }
+                        var item = _horizontalCategoriesListBox.Items[i]?.ToString();
+                        bool shouldCheck = item != null && selectedCategories.Contains(item, StringComparer.OrdinalIgnoreCase) &&
+                                          horizontalCategories.Contains(item, StringComparer.OrdinalIgnoreCase);
+                        _horizontalCategoriesListBox.SetItemChecked(i, shouldCheck);
+                        if (shouldCheck)
+                            DebugLogger.Info($"[RESTORE] Restored horizontal host category: {item}");
                     }
+                    _horizontalCategoriesListBox.EndUpdate();
+                }
+                
+                if (_verticalCategoriesListBox != null)
+                {
+                    _verticalCategoriesListBox.BeginUpdate();
+                    for (int i = 0; i < _verticalCategoriesListBox.Items.Count; i++)
+                    {
+                        var item = _verticalCategoriesListBox.Items[i]?.ToString();
+                        bool shouldCheck = item != null && selectedCategories.Contains(item, StringComparer.OrdinalIgnoreCase) &&
+                                          verticalCategories.Contains(item, StringComparer.OrdinalIgnoreCase);
+                        _verticalCategoriesListBox.SetItemChecked(i, shouldCheck);
+                        if (shouldCheck)
+                            DebugLogger.Info($"[RESTORE] Restored vertical host category: {item}");
+                    }
+                    _verticalCategoriesListBox.EndUpdate();
                 }
             }
             catch (Exception ex)
@@ -4890,7 +5012,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 }
                 
                 // SIMPLE FIX: Also load UI state directly
-                LoadUIStateDirectly();
+                if (_hostCategoriesInitialized)
+                {
+                    LoadUIStateDirectly();
+                }
+                else if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info("[UI-STATE] Host categories not initialized during configuration restore - waiting for repopulate");
+                }
                 
                 if (currentProfile?.Configuration != null)
                 {
@@ -4908,8 +5037,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     // Restore MEP category selections (top-right panel)
                     RestoreMepCategorySelections(config.SelectedMepCategories);
                     
-                    // Restore host category selections (bottom-right panel)
-                    RestoreHostCategorySelections(config.SelectedHostCategories);
+                    // ✅ CRITICAL FIX: Skip RestoreHostCategorySelections - UI state is restored by LoadUIStateDirectly()
+                    // LoadUIStateDirectly() runs once host categories are populated (see RepopulateSectionsAfterLoad)
+                    // This prevents config from overwriting UI state persistence
+                    // RestoreHostCategorySelections(config.SelectedHostCategories);
                     
                     // Restore opening settings (right panel)
                     RestoreOpeningSettings(config.OpeningSettings);
@@ -5049,9 +5180,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                                     var countStr = value.Substring("ClashZonesCount=".Length);
                                     if (int.TryParse(countStr, out int count))
                                     {
-                                        if (config.ClashZoneStorage.ClashZones == null)
-                                            config.ClashZoneStorage.ClashZones = new List<ClashZone>();
-                                        
                                         DebugLogger.Info($"Loaded clash zone storage with {count} zones");
                                     }
                                 }
@@ -5084,6 +5212,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         {
             try
             {
+                if (!_hostCategoriesInitialized)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info("[UI-STATE-SAVE] Skipping save; host categories not initialized yet (preventing overwrite of vertical selections)");
+                    return;
+                }
+
                 var uiState = new List<string>();
                 
                 // Save checked reference files
@@ -5140,22 +5275,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     }
                 }
                 
-                // Save checked host categories
-                if (_bottomRightPanel?.Controls.Count > 0)
+                // Save checked host categories (distinguish horizontal and vertical)
+                if (_horizontalCategoriesListBox != null)
                 {
-                    foreach (var control in _bottomRightPanel.Controls)
+                    for (int i = 0; i < _horizontalCategoriesListBox.Items.Count; i++)
                     {
-                        if (control is WinForms.CheckedListBox listBox)
+                        if (_horizontalCategoriesListBox.GetItemChecked(i))
                         {
-                            for (int i = 0; i < listBox.Items.Count; i++)
-                            {
-                                if (listBox.GetItemChecked(i))
-                                {
-                                    uiState.Add($"HOSTCAT:{listBox.Items[i]}");
-                                }
-                            }
+                            uiState.Add($"HOSTCAT_HORIZONTAL:{_horizontalCategoriesListBox.Items[i]}");
                         }
                     }
+                }
+                
+                if (_verticalCategoriesListBox != null)
+                {
+                    for (int i = 0; i < _verticalCategoriesListBox.Items.Count; i++)
+                    {
+                        if (_verticalCategoriesListBox.GetItemChecked(i))
+                        {
+                            var categoryValue = _verticalCategoriesListBox.Items[i]?.ToString() ?? string.Empty;
+                            uiState.Add($"HOSTCAT_VERTICAL:{categoryValue}");
+                            DebugLogger.Info($"[UI-STATE-SAVE] Saving vertical host category: {categoryValue}");
+                        }
+                    }
+                    DebugLogger.Info($"[UI-STATE-SAVE] Vertical categories listbox has {_verticalCategoriesListBox.Items.Count} items, saved {uiState.Count(x => x.StartsWith("HOSTCAT_VERTICAL:"))} checked items");
+                }
+                else
+                {
+                    DebugLogger.Warning("[UI-STATE-SAVE] Vertical categories listbox is NULL - cannot save vertical category selections");
                 }
                 
                 // Save clearance settings
@@ -5167,12 +5314,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 
                 // Save clash zones from current profile
                 var currentProfile = GetCurrentProfile();
-                if (currentProfile?.Configuration?.ClashZoneStorage?.ClashZones != null)
+                if (currentProfile?.Configuration?.ClashZoneStorage?.AllZones != null)
                 {
-                    uiState.Add($"CLASHZONES:Count={currentProfile.Configuration.ClashZoneStorage.ClashZones.Count}");
+                    uiState.Add($"CLASHZONES:Count={currentProfile.Configuration.ClashZoneStorage.AllZones.Count}");
                     uiState.Add($"CLASHZONES:LastUpdated={currentProfile.Configuration.ClashZoneStorage.LastUpdated:O}");
                     uiState.Add($"CLASHZONES:DocumentHash={currentProfile.Configuration.ClashZoneStorage.DocumentHash}");
-                    foreach (var clashZone in currentProfile.Configuration.ClashZoneStorage.ClashZones)
+                    foreach (var clashZone in currentProfile.Configuration.ClashZoneStorage.AllZones)
                     {
                         uiState.Add($"CLASHZONE:MEP={clashZone.MepElementId},Structural={clashZone.StructuralElementId},Resolved={clashZone.IsResolved}");
                     }
@@ -5191,7 +5338,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 DebugLogger.Error($"Failed to save UI state directly: {ex.Message}");
             }
         }
-        
         private void LoadUIStateDirectly()
         {
             try
@@ -5226,11 +5372,68 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     RestoreCheckedItem(_bottomLeftPanel, value);
                 }
                 
-                // Restore host categories
-                foreach (var item in uiState.Where(x => x.StartsWith("HOSTCAT:")))
+                // Restore host categories (distinguish horizontal and vertical)
+                foreach (var item in uiState.Where(x => x.StartsWith("HOSTCAT_HORIZONTAL:")))
                 {
-                    var value = item.Substring(8);
-                    RestoreCheckedItem(_bottomRightPanel, value);
+                    var value = item.Substring(20); // Remove "HOSTCAT_HORIZONTAL:" prefix
+                    if (_horizontalCategoriesListBox != null)
+                    {
+                        for (int i = 0; i < _horizontalCategoriesListBox.Items.Count; i++)
+                        {
+                            if (_horizontalCategoriesListBox.Items[i]?.ToString() == value)
+                            {
+                                _horizontalCategoriesListBox.SetItemChecked(i, true);
+                                DebugLogger.Info($"Restored horizontal host category selection: {value}");
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                foreach (var item in uiState.Where(x => x.StartsWith("HOSTCAT_VERTICAL:")))
+                {
+                    var value = item.Substring(18); // Remove "HOSTCAT_VERTICAL:" prefix
+                    if (_verticalCategoriesListBox != null)
+                    {
+                        bool found = false;
+                        for (int i = 0; i < _verticalCategoriesListBox.Items.Count; i++)
+                        {
+                            var itemValue = _verticalCategoriesListBox.Items[i]?.ToString() ?? string.Empty;
+                            if (itemValue == value)
+                            {
+                                _verticalCategoriesListBox.SetItemChecked(i, true);
+                                DebugLogger.Info($"[UI-STATE-LOAD] ✅ Restored vertical host category selection: {value}");
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (!found)
+                        {
+                            DebugLogger.Warning($"[UI-STATE-LOAD] ⚠️ Vertical host category '{value}' not found in listbox (listbox has {_verticalCategoriesListBox.Items.Count} items)");
+                        }
+                    }
+                    else
+                    {
+                        DebugLogger.Warning($"[UI-STATE-LOAD] ⚠️ Vertical categories listbox is NULL - cannot restore vertical category '{value}'");
+                    }
+                }
+                
+                // ✅ BACKWARD COMPATIBILITY: Also handle old "HOSTCAT:" format (restore to horizontal for compatibility)
+                foreach (var item in uiState.Where(x => x.StartsWith("HOSTCAT:") && !x.StartsWith("HOSTCAT_HORIZONTAL:") && !x.StartsWith("HOSTCAT_VERTICAL:")))
+                {
+                    var value = item.Substring(8); // Remove "HOSTCAT:" prefix
+                    if (_horizontalCategoriesListBox != null)
+                    {
+                        for (int i = 0; i < _horizontalCategoriesListBox.Items.Count; i++)
+                        {
+                            if (_horizontalCategoriesListBox.Items[i]?.ToString() == value)
+                            {
+                                _horizontalCategoriesListBox.SetItemChecked(i, true);
+                                DebugLogger.Info($"Restored host category selection (legacy format): {value}");
+                                break;
+                            }
+                        }
+                    }
                 }
                 
                 // Restore clearance settings
@@ -5736,7 +5939,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             
             return settings;
         }
-        
         private Dictionary<string, double> GetClearanceSettings(string specificCategory = null)
         {
             var clearances = new Dictionary<string, double>();
@@ -6280,82 +6482,59 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] About to check OK button enabling logic\n");
 
                     // Gate: Enable OK only if there are unresolved clash zones after refresh
+                    // ✅ GLOBAL XML SINGLE SOURCE OF TRUTH: Always check Global XML directly for unresolved zones
+                    // Filter XML is ONLY for sleeve placement data (coordinates, dimensions), NOT for decision-making
                     try
                     {
-                        DebugLogger.Info("[OK_BUTTON_DEBUG] Inside try block - about to load clash zones");
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Inside try block - about to load clash zones\n");
+                        DebugLogger.Info("[OK_BUTTON_DEBUG] Checking Global XML for unresolved zones (single source of truth)");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Checking Global XML for unresolved zones\n");
                         
-                        // ✅ CRITICAL FIX: Try loading from filter XML first, then fallback to profile configuration
-                        var selectedFilterName = GetSelectedFilterItems().FirstOrDefault();
-                        var zones = new List<Models.ClashZone>();
+                        int unresolvedCount = 0;
                         
-                        // Try loading from filter XML file
-                        if (!string.IsNullOrEmpty(selectedFilterName))
+                        if (document != null)
                         {
-                            var loaded = _filterManagementService?.LoadFilterAuto(selectedFilterName);
-                            if (loaded?.ClashZoneStorage?.ClashZones != null)
+                            // ✅ CRITICAL FIX: Reuse selectedMepCategories from outer scope (already declared at line 6203)
+                            if (selectedMepCategories != null && selectedMepCategories.Count > 0)
                             {
-                                zones = loaded.ClashZoneStorage.ClashZones;
-                                DebugLogger.Info($"[OK_BUTTON_DEBUG] Loaded {zones.Count} zones from filter XML: {selectedFilterName}");
-                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Loaded {zones.Count} zones from filter XML: {selectedFilterName}\n");
+                                foreach (var category in selectedMepCategories)
+                                {
+                                    if (string.IsNullOrWhiteSpace(category))
+                                        continue;
+                                    
+                                    try
+                                    {
+                                        var globalIndex = Services.GlobalIndexService.LoadOrCreate(document, category);
+                                        
+                                        // ✅ CRITICAL FIX: Use GetAllEntries to get entries from BOTH hierarchical and flat structures
+                                        // Entries are now stored in Filters → FileCombos → Entries, not just in flat Entries list
+                                        var allEntries = Services.GlobalIndexService.GetAllEntries(globalIndex).ToList();
+                                        
+                                        if (allEntries != null && allEntries.Count > 0)
+                                        {
+                                            // ✅ GLOBAL XML SINGLE SOURCE OF TRUTH: Count unresolved entries from Global XML
+                                            // A clash zone is unresolved if BOTH IsResolved=false AND IsClusterResolved=false
+                                            int categoryUnresolved = allEntries.Count(e => !e.IsResolved && !e.IsClusterResolved);
+                                            unresolvedCount += categoryUnresolved;
+                                            
+                                            if (categoryUnresolved > 0)
+                                            {
+                                                DebugLogger.Info($"[OK_BUTTON_DEBUG] Global XML '{category}': {categoryUnresolved} unresolved out of {allEntries.Count} total entries");
+                                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Global XML '{category}': {categoryUnresolved}/{allEntries.Count} unresolved\n");
+                                            }
+                                        }
+                                    }
+                                    catch (Exception globalEx)
+                                    {
+                                        DebugLogger.Warning($"[OK_BUTTON_DEBUG] Error checking Global XML for category '{category}': {globalEx.Message}");
+                                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] ERROR checking Global XML for '{category}': {globalEx.Message}\n");
+                                    }
+                                }
                             }
                         }
                         
-                        // Fallback: Load from profile configuration if filter XML has no zones
-                        if (zones.Count == 0)
-                        {
-                            var currentProfile = _appProfileService?.GetCurrentProfile();
-                            if (currentProfile?.Configuration?.ClashZoneStorage?.ClashZones != null)
-                            {
-                                zones = currentProfile.Configuration.ClashZoneStorage.ClashZones;
-                                DebugLogger.Info($"[OK_BUTTON_DEBUG] Loaded {zones.Count} zones from profile configuration");
-                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Loaded {zones.Count} zones from profile configuration\n");
-                            }
-                        }
-                        
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Final zones count: {zones.Count}\n");
-                        
-                        // DEBUG: Log OK button enabling logic
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Total zones loaded: {zones.Count}\n");
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Unresolved zones: {zones.Count(cz => !cz.IsResolved)}\n");
-                        
-                        // Apply UI host-type filter to existing zones
-                        var allowedHostTypesUI = new HashSet<string>(
-                            Services.FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>(),
-                            StringComparer.OrdinalIgnoreCase);
-                        
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Allowed host types: [{string.Join(", ", allowedHostTypesUI)}]\n");
-                        
-                        if (allowedHostTypesUI.Count > 0)
-                        {
-                            var beforeFilter = zones.Count;
-                            
-                            // DEBUG: Log first 5 zones' structural types and eligibility
-                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Sample zone types (first 5):\n");
-                            foreach (var zone in zones.Take(5))
-                            {
-                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG]   - Type='{zone.StructuralElementType}', IsEligible={zone.IsEligibleByCurrentUi}, Resolved={zone.IsResolved}\n");
-                            }
-                            
-                            // Handle plural/singular mismatch: "Walls" (UI) vs "Wall" (Revit)
-                            zones = zones.Where(cz => 
-                                (allowedHostTypesUI.Contains(cz.StructuralElementType) ||
-                                 allowedHostTypesUI.Contains(cz.StructuralElementType + "s") ||
-                                 allowedHostTypesUI.Any(t => t.TrimEnd('s').Equals(cz.StructuralElementType, StringComparison.OrdinalIgnoreCase))) &&
-                                cz.IsEligibleByCurrentUi).ToList();
-                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] After host type filter: {beforeFilter} -> {zones.Count}\n");
-                        }
-                        
-                        // ✅ CRITICAL FIX: Check both flags with proper hierarchy (cluster takes precedence)
-                        // A clash zone is "resolved" if EITHER cluster OR individual sleeve is placed
-                        // But according to flag hierarchy: if cluster exists, individual doesn't matter
-                        var unresolved = zones.Count(cz => !cz.IsClusterResolved && !cz.IsResolved);
-                        var clusterResolved = zones.Count(cz => cz.IsClusterResolved);
-                        var individualResolved = zones.Count(cz => cz.IsResolved && !cz.IsClusterResolved);
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Total zones: {zones.Count}, Cluster resolved: {clusterResolved}, Individual resolved: {individualResolved}, Unresolved: {unresolved}\n");
-                        
-                        _okButton.Enabled = unresolved > 0;
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] OK button enabled: {_okButton.Enabled}\n");
+                        _okButton.Enabled = unresolvedCount > 0;
+                        DebugLogger.Info($"[OK_BUTTON_DEBUG] ✅ OK button enabled: {_okButton.Enabled} (unresolved: {unresolvedCount} from Global XML)");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] ✅ OK button enabled: {_okButton.Enabled} (unresolved: {unresolvedCount} from Global XML)\n");
                     }
                     catch (Exception ex) 
                     { 
@@ -6436,9 +6615,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         /// <summary>
         /// Updates parameter dropdowns using the existing GetParametersForCategory method
-        /// </summary>
-        /// <summary>
-        /// SIMPLE method to populate parameter dropdowns - calls ParameterExtractionService only
         /// NOTE: This method is no longer used as parameter service has been moved to separate dialog.
         /// </summary>
         private void PopulateParameterDropdowns()
@@ -6508,7 +6684,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 "Size",
             };
         }
-
         /// <summary>
         /// Creates default parameter rows with common MEP and opening parameters
         /// </summary>
@@ -6609,147 +6784,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 DebugLogger.Error($"[PARAMETER_DEFAULT] Error creating default parameter rows: {ex.Message}");
             }
         }
-        /// <summary>
-        /// OLD METHOD - COMMENTED OUT - REPLACED BY SERVICE
-        /// SIMPLE method to update UI dropdowns with parameter lists
-        /// </summary>
-        /*private void UpdateParameterDropdownsInUI(List<string> mepParameters, List<string> openingParameters)
-        {
-            try
-            {
-                DebugLogger.Info($"[PARAMETER_SIMPLE] Updating UI with {mepParameters.Count} MEP and {openingParameters.Count} opening parameters");
-                
-                // DEBUG: Check if _referenceParameterTabs exists
-                DebugLogger.Info($"[PARAMETER_SIMPLE] _referenceParameterTabs exists: {_referenceParameterTabs != null}");
-                if (_referenceParameterTabs != null)
-                {
-                    DebugLogger.Info($"[PARAMETER_SIMPLE] _referenceParameterTabs.TabPages.Count: {_referenceParameterTabs.TabPages.Count}");
-                }
-                
-                if (_referenceParameterTabs?.TabPages.Count > 0)
-                {
-                    foreach (WinForms.TabPage tabPage in _referenceParameterTabs.TabPages)
-                    {
-                        DebugLogger.Info($"[PARAMETER_SIMPLE] Processing tab: '{tabPage.Text}'");
-                        DebugLogger.Info($"[PARAMETER_SIMPLE] Tab has {tabPage.Controls.Count} direct controls");
-                        
-                        // DEBUG: List all control types in the tab
-                        foreach (WinForms.Control control in tabPage.Controls)
-                        {
-                            DebugLogger.Info($"[PARAMETER_SIMPLE] Tab '{tabPage.Text}' contains control: {control.GetType().Name} - '{control.Name}'");
-                        }
-                        
-                        // Find all ComboBoxes in this tab - CORRECT HIERARCHY SEARCH
-                        var allComboBoxes = new List<WinForms.ComboBox>();
-                        
-                        // Step 1: Find the servicePanel in this tab
-                        var servicePanel = tabPage.Controls.OfType<WinForms.Panel>().FirstOrDefault();
-                        DebugLogger.Info($"[PARAMETER_SIMPLE] Found servicePanel: {servicePanel != null} in tab '{tabPage.Text}'");
-                        
-                        if (servicePanel != null)
-                        {
-                            DebugLogger.Info($"[PARAMETER_SIMPLE] servicePanel has {servicePanel.Controls.Count} controls");
-                            
-                            // Step 2: Find all row panels in the servicePanel (excluding the add button)
-                            // The add button is a Button, not a Panel, so we can get all Panels
-                            var rowPanels = servicePanel.Controls.OfType<WinForms.Panel>().ToList();
-                            DebugLogger.Info($"[PARAMETER_SIMPLE] Found {rowPanels.Count} row panels in servicePanel");
-                            
-                            // Step 3: Find ComboBoxes in each row panel
-                            foreach (var rowPanel in rowPanels)
-                            {
-                                DebugLogger.Info($"[PARAMETER_SIMPLE] Row panel has {rowPanel.Controls.Count} controls");
-                                
-                                var rowComboBoxes = rowPanel.Controls.OfType<WinForms.ComboBox>().ToList();
-                                allComboBoxes.AddRange(rowComboBoxes);
-                                DebugLogger.Info($"[PARAMETER_SIMPLE] Found {rowComboBoxes.Count} ComboBoxes in row panel");
-                                
-                                // DEBUG: List all controls in the row panel
-                                foreach (WinForms.Control control in rowPanel.Controls)
-                                {
-                                    DebugLogger.Info($"[PARAMETER_SIMPLE] Row panel contains: {control.GetType().Name} - '{control.Name}'");
-                                }
-                            }
-                        }
-                        
-                        DebugLogger.Info($"[PARAMETER_SIMPLE] TOTAL: Found {allComboBoxes.Count} ComboBoxes in tab '{tabPage.Text}'");
-                        
-                        // Check if ComboBoxes are actually populated with meaningful content
-                        // A ComboBox is considered "populated" if it has items AND has a selected item
-                        bool hasPopulatedComboBoxes = allComboBoxes.Any(cb => cb.Items.Count > 0 && cb.SelectedItem != null);
-                        bool hasEmptyComboBoxes = allComboBoxes.Any(cb => cb.Items.Count == 0 || cb.SelectedItem == null);
-                        
-                        DebugLogger.Info($"[PARAMETER_SIMPLE] ComboBox population check - Total: {allComboBoxes.Count}, HasItems: {allComboBoxes.Count(cb => cb.Items.Count > 0)}, HasSelection: {allComboBoxes.Count(cb => cb.SelectedItem != null)}, HasPopulated: {hasPopulatedComboBoxes}, HasEmpty: {hasEmptyComboBoxes}");
-                        
-                        // If no ComboBoxes found OR there are empty ComboBoxes, create default parameter rows
-                        if (allComboBoxes.Count == 0 || hasEmptyComboBoxes)
-                        {
-                            DebugLogger.Info($"[PARAMETER_SIMPLE] Empty ComboBoxes found in tab '{tabPage.Text}', clearing existing rows and creating default parameter rows");
-                            
-                            // Clear existing rows to prevent overlapping
-                            var existingRows = servicePanel.Controls.OfType<WinForms.Panel>().ToList();
-                            foreach (var row in existingRows)
-                            {
-                                servicePanel.Controls.Remove(row);
-                                row.Dispose();
-                            }
-                            
-                            CreateDefaultParameterRows(tabPage, mepParameters, openingParameters);
-                        }
-                        else
-                        {
-                            // Update existing ComboBoxes
-                            foreach (var comboBox in allComboBoxes)
-                            {
-                                DebugLogger.Info($"[PARAMETER_SIMPLE] Updating ComboBox '{comboBox.Name}' at location ({comboBox.Location.X}, {comboBox.Location.Y})");
-                                
-                                // Store current selection before clearing
-                                var currentSelection = comboBox.SelectedItem?.ToString();
-                                
-                                // Clear existing items
-                                comboBox.Items.Clear();
-                                
-                                // Determine which parameters to add based on ComboBox position or tag
-                                if (comboBox.Tag?.ToString()?.Contains("mep") == true || 
-                                    comboBox.Location.X < 100) // Left side = MEP parameters
-                                {
-                                    comboBox.Items.AddRange(mepParameters.ToArray());
-                                    DebugLogger.Info($"[PARAMETER_SIMPLE] Updated MEP ComboBox '{comboBox.Name}' with {mepParameters.Count} parameters");
-                                    
-                                    // Restore selection if it still exists
-                                    if (!string.IsNullOrEmpty(currentSelection) && mepParameters.Contains(currentSelection))
-                                    {
-                                        comboBox.SelectedItem = currentSelection;
-                                        DebugLogger.Info($"[PARAMETER_SIMPLE] Restored MEP selection: {currentSelection}");
-                                    }
-                                }
-                                else // Right side = Opening parameters
-                                {
-                                    comboBox.Items.AddRange(openingParameters.ToArray());
-                                    DebugLogger.Info($"[PARAMETER_SIMPLE] Updated Opening ComboBox '{comboBox.Name}' with {openingParameters.Count} parameters");
-                                    
-                                    // Restore selection if it still exists
-                                    if (!string.IsNullOrEmpty(currentSelection) && openingParameters.Contains(currentSelection))
-                                    {
-                                        comboBox.SelectedItem = currentSelection;
-                                        DebugLogger.Info($"[PARAMETER_SIMPLE] Restored Opening selection: {currentSelection}");
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                else
-                {
-                    DebugLogger.Warning("[PARAMETER_SIMPLE] No service parameter tabs found!");
-                }
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Error($"[PARAMETER_SIMPLE] Error updating UI dropdowns: {ex.Message}");
-                DebugLogger.Error($"[PARAMETER_SIMPLE] Stack trace: {ex.StackTrace}");
-            }
-        }*/
         /// <summary>
         /// Updates parameter dropdowns with parameters from MEP categories (not clash zones)
         /// </summary>
@@ -6870,45 +6904,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 // Parameter service moved to separate dialog - this functionality is now handled in ParameterServiceDialog
                 DebugLogger.Info($"[PARAMETER_DEBUG] Parameter service moved to separate dialog - no longer updating parameter service dropdowns here");
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [PARAMETER_DEBUG] Parameter service moved to separate dialog - no longer updating parameter service dropdowns here\n");
-                
-                // Parameter service moved to separate dialog - this functionality is now handled in ParameterServiceDialog
-                // Parameter service moved to separate dialog - this functionality is now handled in ParameterServiceDialog
-                // if (_referenceParameterTabs?.TabPages.Count > 0)
-                // {
-                //     var categoryParameters = new Dictionary<string, List<Models.ParameterInfo>>();
-                //     
-                //     // Convert to ParameterInfo objects
-                //     var mepParamInfos = mepParameters.Select(p => new Models.ParameterInfo 
-                //     { 
-                //         Name = p, 
-                //         Type = "Text", 
-                //         IsReadOnly = false 
-                //     }).ToList();
-                //     
-                //     categoryParameters["MEP Elements"] = mepParamInfos;
-                //
-                //     // Include Opening Sleeve Family parameters in a separate dropdown
-                //     var openingParamInfos = openingParameters.Select(p => new Models.ParameterInfo
-                //     {
-                //         Name = p,
-                //         Type = "Text",
-                //         IsReadOnly = false
-                //     }).ToList();
-                //     categoryParameters["Opening Families"] = openingParamInfos;
-                //     
-                //     DebugLogger.Info($"[PARAMETER_DEBUG] About to update dropdowns with {mepParamInfos.Count} MEP params and {openingParamInfos.Count} opening params");
-                //     JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [PARAMETER_DEBUG] About to update dropdowns with {mepParamInfos.Count} MEP params and {openingParamInfos.Count} opening params\n");
-                //     
-                //     // Update the dropdowns
-                //     UpdateParameterServiceDropdowns(categoryParameters);
-                //     DebugLogger.Info("[PARAMETER_DEBUG] Updated parameter service dropdowns");
-                //     JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [PARAMETER_DEBUG] Updated parameter service dropdowns\n");
-                // }
-                // else
-                // {
-                //     DebugLogger.Warning("[PARAMETER_DEBUG] _referenceParameterTabs is null or has no tab pages - cannot update dropdowns");
-                //     JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [PARAMETER_DEBUG] WARNING: _referenceParameterTabs is null or has no tab pages - cannot update dropdowns\n");
-                // }
 
                 // Store parameters globally for later use
                 _allCollectedParameters["MEP Elements"] = mepParameters.Select(p => new Models.ParameterInfo 
@@ -7297,7 +7292,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 return new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
             }
         }
-        
         /// <summary>
         /// Gets the current Revit document
         /// </summary>
@@ -7505,10 +7499,110 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         DebugLogger.Info($"Updated filter '{selectedFilterName}' with current UI state");
                     }
                 }
+                
+                // ✅ AUTO-HIDING PROMPT: Show "Filter is saved" message and hide after 0.7 seconds
+                ShowFilterSavedPrompt();
             }
             catch (Exception ex)
             {
                 DebugLogger.Error($"SaveFilterWithUIState failed: {ex.Message}");
+            }
+        }
+        /// <summary>
+        /// Shows an auto-hiding "Filter is saved" prompt that disappears after 0.7 seconds
+        /// ✅ FIXED: Prompt now appears as a top-level window to ensure visibility
+        /// </summary>
+        private void ShowFilterSavedPrompt()
+        {
+            try
+            {
+                // ✅ FIXED: Create a top-level form instead of a label inside the dialog
+                // This ensures the prompt appears on top of all windows, including the main dialog
+                var promptForm = new WinForms.Form
+                {
+                    Text = "",
+                    FormBorderStyle = WinForms.FormBorderStyle.None,
+                    StartPosition = WinForms.FormStartPosition.Manual,
+                    Size = new System.Drawing.Size(150, 40),
+                    BackColor = System.Drawing.Color.White,
+                    TopMost = true, // ✅ CRITICAL: Keep on top of all windows
+                    ShowInTaskbar = false,
+                    ControlBox = false,
+                    MaximizeBox = false,
+                    MinimizeBox = false
+                };
+                
+                // Create the label inside the form
+                var promptLabel = new WinForms.Label
+                {
+                    Text = "Filter is saved",
+                    Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold),
+                    ForeColor = System.Drawing.Color.Green,
+                    BackColor = System.Drawing.Color.White,
+                    Dock = WinForms.DockStyle.Fill,
+                    TextAlign = System.Drawing.ContentAlignment.MiddleCenter,
+                    Padding = new WinForms.Padding(5, 3, 5, 3)
+                };
+                
+                promptForm.Controls.Add(promptLabel);
+                
+                // Position the form at the center of the main dialog (or screen if dialog not available)
+                if (this.WindowState != WinForms.FormWindowState.Minimized && this.Visible)
+                {
+                    // Position relative to main dialog center
+                    promptForm.Location = new System.Drawing.Point(
+                        this.Left + (this.Width / 2) - 75,
+                        this.Top + (this.Height / 2) - 20
+                    );
+                }
+                else
+                {
+                    // Fallback: Center on screen
+                    var screen = WinForms.Screen.PrimaryScreen.WorkingArea;
+                    promptForm.Location = new System.Drawing.Point(
+                        (screen.Width - promptForm.Width) / 2,
+                        (screen.Height - promptForm.Height) / 2
+                    );
+                }
+                
+                // Bring main dialog to front first, then show prompt
+                this.Activate();
+                this.BringToFront();
+                promptForm.Show();
+                promptForm.BringToFront();
+                    
+                    // Create a Timer to hide the prompt after 0.7 seconds
+                    var timer = new System.Windows.Forms.Timer
+                    {
+                        Interval = 700 // 0.7 seconds
+                    };
+                    
+                    timer.Tick += (s, e) =>
+                    {
+                        timer.Stop();
+                        timer.Dispose();
+                        
+                    if (promptForm != null && !promptForm.IsDisposed)
+                        {
+                        promptForm.Close();
+                        promptForm.Dispose();
+                        }
+                    };
+                    
+                    timer.Start();
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"ShowFilterSavedPrompt failed: {ex.Message}");
+                // Fallback: Update status label directly and bring dialog to front
+                try
+                {
+                    this.Activate();
+                    this.BringToFront();
+                _statusLabel.Text = "Filter is saved";
+                    _statusLabel.ForeColor = System.Drawing.Color.Green;
+                }
+                catch { }
             }
         }
 

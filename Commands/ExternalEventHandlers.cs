@@ -117,6 +117,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         {
             if (_appProfileService == null) return;
             
+            // ✅ CRITICAL: Check section box BEFORE showing main UI - NO FALLBACK
+            var uiDocument = _uiDocument ?? GetCurrentUIDocument();
+            if (uiDocument?.Document != null)
+            {
+                var activeView = uiDocument.ActiveView;
+                if (!(activeView is View3D view3D) || !view3D.IsSectionBoxActive)
+                {
+                    // ✅ NO FALLBACK: Prompt user to activate section box BEFORE showing main UI
+                    var dialog = new TaskDialog("Section Box Required")
+                    {
+                        MainInstruction = "A 3D view with an active section box is REQUIRED.",
+                        MainContent = "Please:\n" +
+                                     "1. Activate a 3D view\n" +
+                                     "2. Enable section box in the view properties\n" +
+                                     "3. Adjust section box to your desired zone\n" +
+                                     "4. Try again\n\n" +
+                                     "Section box is required to limit clash detection to specific zones.",
+                        CommonButtons = TaskDialogCommonButtons.Ok,
+                        MainIcon = TaskDialogIcon.TaskDialogIconWarning
+                    };
+                    dialog.Show();
+                    return; // Stop - don't show main UI
+                }
+                
+                // ✅ DOUBLE CHECK: Verify section box is not null
+                var sectionBox = view3D.GetSectionBox();
+                if (sectionBox == null || sectionBox.Min == null || sectionBox.Max == null)
+                {
+                    var invalidDialog = new TaskDialog("Section Box Invalid")
+                    {
+                        MainInstruction = "Section box is active but invalid.",
+                        MainContent = "Please:\n" +
+                                     "1. Deactivate section box\n" +
+                                     "2. Reactivate section box\n" +
+                                     "3. Adjust section box bounds\n" +
+                                     "4. Try again",
+                        CommonButtons = TaskDialogCommonButtons.Ok,
+                        MainIcon = TaskDialogIcon.TaskDialogIconWarning
+                    };
+                    invalidDialog.Show();
+                    return; // Stop - don't show main UI
+                }
+            }
+            
             // 🔍 DIAGNOSTIC: Log BEFORE creating EmergencyMainDialog
             DebugLogger.Info($"🔍 ShowMainDialog: About to create EmergencyMainDialog");
             DebugLogger.Info($"🔍 ShowMainDialog: _uiDocument = {(_uiDocument != null ? "NOT NULL" : "NULL")}");
@@ -134,31 +178,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             }
             
             // CRITICAL FIX: Get UIDocument from current Revit context if not available
-            var uiDocument = _uiDocument ?? GetCurrentUIDocument();
             DebugLogger.Info($"🔍 ShowMainDialog: Final UIDocument = {(uiDocument != null ? "NOT NULL" : "NULL")}");
             
             // 🔍 DIAGNOSTIC: Log just before constructor call
             DebugLogger.Info($"🔍 ShowMainDialog: About to call EmergencyMainDialog constructor");
             
             // Allow null document - EmergencyMainDialog can acquire it if needed
-            var emergencyMainDlg = new EmergencyMainDialog(_appProfileService, _document, uiDocument);
-            DebugLogger.Info($"🔍 ShowMainDialog: EmergencyMainDialog created successfully");
-            
-            // 🔍 DIAGNOSTIC: Count sleeves AFTER creating dialog (but before showing)
-            if (_document != null)
+            try
             {
-                var sleevesAfterCount = new FilteredElementCollector(_document)
-                    .OfClass(typeof(FamilyInstance))
-                    .Cast<FamilyInstance>()
-                    .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
-                    .Count();
-                DebugLogger.Info($"🔍 ShowMainDialog: Sleeves AFTER creating dialog: {sleevesAfterCount}");
+                var emergencyMainDlg = new EmergencyMainDialog(_appProfileService, _document, uiDocument);
+                DebugLogger.Info($"🔍 ShowMainDialog: EmergencyMainDialog created successfully");
+                
+                // 🔍 DIAGNOSTIC: Count sleeves AFTER creating dialog (but before showing)
+                if (_document != null)
+                {
+                    var sleevesAfterCount = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    DebugLogger.Info($"🔍 ShowMainDialog: Sleeves AFTER creating dialog: {sleevesAfterCount}");
+                }
+                
+                // Show modeless to avoid blocking Revit UI and potential freezes
+                DebugLogger.Info($"🔍 ShowMainDialog: About to show dialog");
+                emergencyMainDlg.Show();
+                DebugLogger.Info($"🔍 ShowMainDialog: Dialog shown successfully");
             }
-            
-            // Show modeless to avoid blocking Revit UI and potential freezes
-            DebugLogger.Info($"🔍 ShowMainDialog: About to show dialog");
-            emergencyMainDlg.Show();
-            DebugLogger.Info($"🔍 ShowMainDialog: Dialog shown successfully");
+            catch (InvalidOperationException ex)
+            {
+                // ✅ NO FALLBACK: Section box check failed - show prompt
+                var errorDialog = new TaskDialog("Section Box Required")
+                {
+                    MainInstruction = "Section Box Required",
+                    MainContent = ex.Message,
+                    CommonButtons = TaskDialogCommonButtons.Ok,
+                    MainIcon = TaskDialogIcon.TaskDialogIconWarning
+                };
+                errorDialog.Show();
+                DebugLogger.Error($"🔍 ShowMainDialog: Section box check failed: {ex.Message}");
+            }
         }
         
         /// <summary>

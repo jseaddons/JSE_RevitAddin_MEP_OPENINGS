@@ -633,6 +633,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 SafeFileLogger.SafeAppendText(refreshLogName, $"Full refresh log path: {fullRefreshLogPath}\n");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"════════════════════════════════════\n");
 
+                if (DeploymentConfiguration.EnableGlobalIndexDedupe &&
+                    selectedMepCategories != null &&
+                    selectedMepCategories.Count > 0)
+                {
+                    var dedupeLogBuilder = new StringBuilder();
+                    var categoriesToDedupe = selectedMepCategories
+                        .Where(cat => !string.IsNullOrWhiteSpace(cat))
+                        .Select(cat => cat.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+
+                    foreach (var category in categoriesToDedupe)
+                    {
+                        try
+                        {
+                            dedupeLogBuilder.AppendLine($"[{DateTime.Now}] [DEDUPER] Category='{category}' DryRun={DeploymentConfiguration.GlobalIndexDedupeDryRun}");
+                            var dedupeResult = GlobalIndexMaintenance.Deduplicate(
+                                _document,
+                                category,
+                                DeploymentConfiguration.GlobalIndexDedupeDryRun,
+                                dedupeLogBuilder);
+
+                            dedupeLogBuilder.AppendLine(
+                                $"[{DateTime.Now}] [DEDUPER]   FiltersRemoved={dedupeResult.FiltersRemoved}, CombosMerged={dedupeResult.CombosMerged}, EntriesMerged={dedupeResult.EntriesMerged}, Applied={dedupeResult.ChangesApplied}, Error='{dedupeResult.ErrorMessage}'");
+                        }
+                        catch (Exception dedupeEx)
+                        {
+                            dedupeLogBuilder.AppendLine($"[{DateTime.Now}] [DEDUPER] ERROR for category '{category}': {dedupeEx}");
+                        }
+                    }
+
+                    if (dedupeLogBuilder.Length > 0)
+                    {
+                        SafeFileLogger.SafeAppendText(refreshLogName, dedupeLogBuilder.ToString());
+                        SafeFileLogger.SafeAppendText("filters_dedupe.log", dedupeLogBuilder.ToString());
+                    }
+                }
+
                 // ✅ DIAGNOSTIC: Write diagnostic info to refresh log file
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[REFRESH] Log directory: {actualLogDir}\n");
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[REFRESH] Full log path: {fullRefreshLogPath}\n");
@@ -875,6 +913,172 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         _refreshButton.Enabled = true;
                         return Autodesk.Revit.UI.Result.Failed;
                     }
+                }
+
+                // Step 5.5: Replace mode shortcut (flag management only, no Filter XML access)
+                // ✅ CRITICAL FIX: REPLACE-MODE should ONLY activate if:
+                // 1. "Adopt to modified document" is OFF (enableThreePointValidation == false)
+                // 2. AND all selected file combos are already processed in Global XML
+                // If there are NEW file combos (e.g., AR+WALL), REPLACE-MODE should NOT activate - run normal detection instead
+                bool hasNewFileCombos = false;
+                if (selectedMepCategories != null && selectedMepCategories.Count > 0 &&
+                    selectedReferenceFiles != null && selectedReferenceFiles.Count > 0 &&
+                    selectedHostFiles != null && selectedHostFiles.Count > 0)
+                {
+                    // Build all file combos from UI selections
+                    var allFileCombos = new List<(string LinkedFile, string HostFile)>();
+                    foreach (var refFile in selectedReferenceFiles)
+                    {
+                        foreach (var hostFile in selectedHostFiles)
+                        {
+                            allFileCombos.Add((refFile, hostFile));
+                        }
+                    }
+
+                    // Check if ANY combo is NEW (not processed) for ANY selected category
+                    foreach (var category in selectedMepCategories)
+                    {
+                        if (string.IsNullOrWhiteSpace(category))
+                            continue;
+
+                        var processedKeys = GlobalIndexService.GetProcessedFileComboKeys(_document, category) ?? Enumerable.Empty<string>();
+                        var comboKeysSet = new HashSet<string>(processedKeys, StringComparer.OrdinalIgnoreCase);
+
+                        foreach (var combo in allFileCombos)
+                        {
+                            var comboNormalized = new ProcessedFileCombo { LinkedFile = combo.LinkedFile, HostFile = combo.HostFile };
+                            var comboKey = comboNormalized.GetNormalizedKey();
+
+                            if (!comboKeysSet.Contains(comboKey))
+                            {
+                                hasNewFileCombos = true;
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[REPLACE-MODE-CHECK] ✅ NEW FILE COMBO DETECTED: Category='{category}', Linked='{combo.LinkedFile}', Host='{combo.HostFile}', NormalizedKey='{comboKey}'");
+                                }
+                                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [REPLACE-MODE-CHECK] ✅ NEW FILE COMBO: Category='{category}', Linked='{combo.LinkedFile}', Host='{combo.HostFile}'\n");
+                                break;
+                            }
+                        }
+
+                        if (hasNewFileCombos)
+                            break;
+                    }
+                }
+
+                // ✅ REPLACE-MODE only activates if BOTH conditions are true:
+                // 1. "Adopt to modified document" is OFF
+                // 2. NO new file combos detected (all combos already processed)
+                bool isReplaceMode = !enableThreePointValidation && !hasNewFileCombos;
+                
+                if (isReplaceMode)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[REPLACE-MODE] ✅ REPLACE-MODE ACTIVATED: enableThreePointValidation={enableThreePointValidation}, hasNewFileCombos={hasNewFileCombos}");
+                    }
+                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [REPLACE-MODE] ✅ ACTIVATED: enableThreePointValidation={enableThreePointValidation}, hasNewFileCombos={hasNewFileCombos}\n");
+                }
+                else if (!enableThreePointValidation && hasNewFileCombos)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[REPLACE-MODE] ❌ REPLACE-MODE SKIPPED: New file combos detected - running normal detection instead");
+                    }
+                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [REPLACE-MODE] ❌ SKIPPED: New file combos detected - running normal detection\n");
+                }
+                
+                if (isReplaceMode)
+                {
+                    _statusLabel.Text = "Replace mode: syncing Global XML flags…";
+                    _progressBar.Visible = true;
+                    _progressBar.Value = 30;
+
+                    SafeFileLogger.SafeAppendText(refreshLogName,
+                        $"[{DateTime.Now}] [REPLACE-MODE] Activated replace mode – skipping Filter XML and detection. Running flag reset only.\n");
+
+                    var categoriesForReset = selectedMepCategories?
+                        .Where(cat => !string.IsNullOrWhiteSpace(cat))
+                        .Select(cat => cat.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList() ?? new List<string>();
+
+                    int resetCount = 0;
+                    if (categoriesForReset.Count == 0)
+                    {
+                        SafeFileLogger.SafeAppendText(refreshLogName,
+                            $"[{DateTime.Now}] [REPLACE-MODE] WARNING: No MEP categories supplied – nothing to reset.\n");
+                    }
+                    else
+                    {
+                        try
+                        {
+                            resetCount = _flagManager.ResetFlagsForDeletedSleeves(categoriesForReset, null, refreshLogName);
+                            SafeFileLogger.SafeAppendText(refreshLogName,
+                                $"[{DateTime.Now}] [REPLACE-MODE] Flag reset completed. Categories={string.Join(", ", categoriesForReset)} → Resets={resetCount}\n");
+                        }
+                        catch (Exception resetEx)
+                        {
+                            SafeFileLogger.SafeAppendText(refreshLogName,
+                                $"[{DateTime.Now}] [REPLACE-MODE] ERROR during flag reset: {resetEx}\n");
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Error($"[REPLACE-MODE] Flag reset failed: {resetEx.Message}");
+                            _statusLabel.Text = $"Replace mode failed: {resetEx.Message}";
+                            _progressBar.Visible = false;
+                            _refreshButton.Enabled = true;
+                            batchedLogger?.Dispose();
+                            batchedLogger = null;
+                            _memoryProfiler?.TakeSnapshot("REPLACE_MODE_ERROR", 0);
+                            _memoryProfiler = null;
+                            return Autodesk.Revit.UI.Result.Failed;
+                        }
+                    }
+
+                    int totalEntries = 0;
+                    int unresolvedEntries = 0;
+                    var summaryBuilder = new StringBuilder();
+
+                    foreach (var category in categoriesForReset)
+                    {
+                        try
+                        {
+                            var globalIndex = GlobalIndexService.LoadOrCreate(_document, category);
+                            var entries = GlobalIndexService.GetAllEntries(globalIndex).ToList();
+                            int categoryTotal = entries.Count;
+                            int categoryUnresolved = entries.Count(e => !e.IsResolved && !e.IsClusterResolved);
+
+                            totalEntries += categoryTotal;
+                            unresolvedEntries += categoryUnresolved;
+
+                            summaryBuilder.AppendLine(
+                                $"[{DateTime.Now}] [REPLACE-MODE] Category '{category}': total={categoryTotal}, unresolved={categoryUnresolved}");
+                        }
+                        catch (Exception summaryEx)
+                        {
+                            summaryBuilder.AppendLine(
+                                $"[{DateTime.Now}] [REPLACE-MODE] ERROR reading Global XML for '{category}': {summaryEx.Message}");
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Warning($"[REPLACE-MODE] Failed to read Global XML for '{category}': {summaryEx.Message}");
+                        }
+                    }
+
+                    if (summaryBuilder.Length > 0)
+                        SafeFileLogger.SafeAppendText(refreshLogName, summaryBuilder.ToString());
+
+                    _progressBar.Value = 100;
+                    _statusLabel.Text = $"Replace mode complete. Reset {resetCount} flags. Unresolved {unresolvedEntries}/{totalEntries}.";
+                    _refreshButton.Enabled = true;
+
+                    SafeFileLogger.SafeAppendText(refreshLogName,
+                        $"[{DateTime.Now}] [REPLACE-MODE] Completed replace mode refresh. TotalResets={resetCount}, Unresolved={unresolvedEntries}, Total={totalEntries}\n");
+
+                    _memoryProfiler?.TakeSnapshot("REPLACE_MODE_END", 0);
+                    _memoryProfiler = null;
+
+                    batchedLogger?.Dispose();
+                    batchedLogger = null;
+
+                    return Autodesk.Revit.UI.Result.Succeeded;
                 }
 
                 // Step 6: Intersection detection will happen later (after existingClashZones is loaded and optimization service is created)
@@ -1576,11 +1780,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Filter XML is ONLY used for placement data, not for detection decisions
                 // CRITICAL: Can only skip detection if Filter XML has data (combo was processed before)
                 bool canUseFilterXmlFromUnresolved = hasUnresolvedZonesInGlobalXml && filterHasPlacementData;
+                // ✅ NEW: When "Adopt to modified document" is OFF (enableThreePointValidation == false) and
+                // we already have placement data in the filter, skip intersection detection even if the combo
+                // was never recorded as processed in Global XML. This honours the replay-only expectation.
+                bool canUseFilterXmlFromSnapshot = !enableThreePointValidation && filterHasPlacementData;
+                bool detectionRan = false;
 
-                if (!enableThreePointValidation && !hasNewSelectionsInUi && (allFileCombosProcessed || canUseFilterXmlFromUnresolved))
+                if (!enableThreePointValidation && !hasNewSelectionsInUi && (allFileCombosProcessed || canUseFilterXmlFromUnresolved || canUseFilterXmlFromSnapshot))
                 {
                     // ✅ PATH 1: Unresolved zones exist AND combo processed → Filter XML has data, skip detection
                     // OR: All combos processed AND all resolved → Skip detection
+                    // OR: Replay-only mode (Adopt OFF) with saved placement data available
                     string path1Reason;
                     if (allFileCombosProcessed)
                     {
@@ -1588,9 +1798,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             ? "Unresolved zones exist in Global XML (combo processed, Filter XML has data)"
                             : "All file combos processed and all resolved";
                     }
-                    else
+                    else if (canUseFilterXmlFromUnresolved)
                     {
                         path1Reason = "Unresolved zones exist and Filter XML already has placement data";
+                    }
+                    else
+                    {
+                        path1Reason = "Replay-only refresh (Adopt OFF) with existing placement snapshot";
                     }
 
                     _statusLabel.Text = $"Using Filter XML for placement data ({path1Reason})...";
@@ -1656,6 +1870,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         path2Reason = "Adopt Document enabled (3-point validation)";
                     }
+
+                    detectionRan = true;
 
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[CLASH_DEBUG] ═══ PATH 2: {path2Reason} - Running intersection detection ═══");
@@ -2909,6 +3125,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[CLASH_DEBUG] ✅ DetectNewClashZones RETURNED: {newClashZones?.Count ?? 0} clash zones");
                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ✅ DetectNewClashZones RETURNED: {newClashZones?.Count ?? 0} clash zones\n");
+
+                    // ✅ DEBUG: Log file combos from detected clash zones to diagnose missing combos in global XML
+                    if (newClashZones != null && newClashZones.Count > 0)
+                    {
+                        var combosFromZones = newClashZones
+                            .GroupBy(cz => new { 
+                                LinkedFile = cz.SourceDocKey ?? cz.DocumentPath ?? "unknown",
+                                HostFile = cz.HostDocKey ?? cz.StructuralElementDocumentTitle ?? "unknown",
+                                HostType = cz.StructuralElementType ?? "unknown"
+                            })
+                            .ToList();
+
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[CLASH-DEBUG] Detected clash zones grouped by file combo: {combosFromZones.Count} combos");
+                            foreach (var combo in combosFromZones.Take(10))
+                            {
+                                DebugLogger.Info($"[CLASH-DEBUG]   Combo: Linked='{combo.Key.LinkedFile}', Host='{combo.Key.HostFile}', HostType='{combo.Key.HostType}', Zones={combo.Count()}");
+                            }
+                        }
+                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH-DEBUG] Detected clash zones grouped by file combo: {combosFromZones.Count} combos\n");
+                        foreach (var combo in combosFromZones.Take(10))
+                        {
+                            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH-DEBUG]   Combo: Linked='{combo.Key.LinkedFile}', Host='{combo.Key.HostFile}', HostType='{combo.Key.HostType}', Zones={combo.Count()}\n");
+                        }
+                    }
                     // Skip zones flagged resolved in per-category globals
                     if (__globalsResolved != null && __globalsResolved.Count > 0 && newClashZones != null)
                     {
@@ -3262,119 +3504,201 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Enabled filter: {(enabledFilter != null ? enabledFilter.Name : "NULL")}\n");
                 if (enabledFilter != null)
                 {
-                    var targetFilter = enabledFilter;
-                    // ✅ FIX: Save ALL clash zones (existing + new), not just new ones
-                    // This preserves flags (IsResolved, IsClusterResolved) from previous runs
-                    var allClashZones = existingClashZones?.ClashZones ?? new List<Models.ClashZone>(); // Use existing loaded clash zones
-                                                                                                        // Merge existing + new zones (avoid duplicates by Id) BEFORE saving, so snapshot bags persist to XML
-                    var existingById = allClashZones.ToDictionary(z => z.Id, z => z);
-
-
-                    foreach (var nz in newClashZones ?? new List<Models.ClashZone>())
-
+                    if (!detectionRan)
                     {
-                        if (!existingById.ContainsKey(nz.Id))
-                        {
-                            existingById[nz.Id] = nz;
-                            allClashZones.Add(nz); // Only one list!
-                        }
-                        else
-                        {
-                            var ez = existingById[nz.Id];
-                            ez.SourceDocKey = nz.SourceDocKey;
-                            ez.HostDocKey = nz.HostDocKey;
-                            ez.MepParameterValues = nz.MepParameterValues;
-                            ez.HostParameterValues = nz.HostParameterValues;
-                            if (nz.StructuralElementThickness > 0)
-                                ez.StructuralElementThickness = nz.StructuralElementThickness;
-                            if (nz.StructuralElementNormal != null)
-                                ez.StructuralElementNormal = nz.StructuralElementNormal;
-                        }
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info("[CLASH_DEBUG] Replay-only refresh: skipping persistence and leaving Filter XML unchanged.");
+                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Replay path detected – Filter/Global XML not modified\n");
                     }
-
-                    // ---------------------------------------------------------------------
-                    // 1. ENSURE ONLY ONE MASTER CLASH ZONE LIST
-                    // ---------------------------------------------------------------------
-                    if (existingClashZones != null && !object.ReferenceEquals(existingClashZones.ClashZones, allClashZones))
-                        existingClashZones.ClashZones = allClashZones;
-
-                    // ✅ SAFEGUARD: Ensure we only persist clash zones for categories selected in the UI
-                    if (selectedMepCategories != null && selectedMepCategories.Count > 0)
+                    else
                     {
-                        var allowedCategories = new HashSet<string>(selectedMepCategories, StringComparer.OrdinalIgnoreCase);
-                        int removedCount = allClashZones.RemoveAll(cz => cz == null || !allowedCategories.Contains(cz.MepElementCategory ?? string.Empty));
+                        var targetFilter = enabledFilter;
+                        // ✅ FIX: Save ALL clash zones (existing + new), not just new ones
+                        // This preserves flags (IsResolved, IsClusterResolved) from previous runs
+                        var allClashZones = existingClashZones?.ClashZones ?? new List<Models.ClashZone>(); // Use existing loaded clash zones
+                                                                                                            // Merge existing + new zones (avoid duplicates by Id) BEFORE saving, so snapshot bags persist to XML
+                        var existingById = allClashZones.ToDictionary(z => z.Id, z => z);
 
-                        if (removedCount > 0)
+                        foreach (var nz in newClashZones ?? new List<Models.ClashZone>())
                         {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[REFRESH] Filtered out {removedCount} clash zones not in UI-selected categories: [{string.Join(", ", allowedCategories)}]");
-
-                            SafeFileLogger.SafeAppendText(refreshLogName,
-                                $"[{DateTime.Now}] [REFRESH] Filtered out {removedCount} clash zones not matching selected categories\n");
+                            if (!existingById.ContainsKey(nz.Id))
+                            {
+                                existingById[nz.Id] = nz;
+                                allClashZones.Add(nz); // Only one list!
+                            }
+                            else
+                            {
+                                var ez = existingById[nz.Id];
+                                ez.SourceDocKey = nz.SourceDocKey;
+                                ez.HostDocKey = nz.HostDocKey;
+                                ez.MepParameterValues = nz.MepParameterValues;
+                                ez.HostParameterValues = nz.HostParameterValues;
+                                if (nz.StructuralElementThickness > 0)
+                                    ez.StructuralElementThickness = nz.StructuralElementThickness;
+                                if (nz.StructuralElementNormal != null)
+                                    ez.StructuralElementNormal = nz.StructuralElementNormal;
+                            }
                         }
 
-                        // ✅ CRITICAL: Persist the current UI selection onto the filter so category-specific saves honor it
-                        try
-                        {
-                            targetFilter.SelectedMepCategoryNames = allowedCategories.ToList();
-                        }
-                        catch
-                        {
-                            targetFilter.SelectedMepCategoryNames = selectedMepCategories.ToList();
-                        }
-                    }
+                        // ---------------------------------------------------------------------
+                        // 1. ENSURE ONLY ONE MASTER CLASH ZONE LIST
+                        // ---------------------------------------------------------------------
+                        if (existingClashZones != null && !object.ReferenceEquals(existingClashZones.ClashZones, allClashZones))
+                            existingClashZones.ClashZones = allClashZones;
 
-                    // ✅ CRITICAL FIX: Use dedicated ClashZonePersistenceService to save to both Global XML and Filter XML
-                    // This ensures data consistency by using the same clash zone objects for both
-                    // Called once for all categories - service internally groups by category and saves to correct files
-                    // Called AFTER allClashZones is ready (line 3090) but BEFORE Filter XML file save (line 3689)
-                    Models.FilterFileComboGroup CloneFilterFileCombo(Models.FilterFileComboGroup combo)
-                    {
-                        if (combo == null)
+                        // ✅ SAFEGUARD: Ensure we only persist clash zones for categories selected in the UI
+                        if (selectedMepCategories != null && selectedMepCategories.Count > 0)
+                        {
+                            var allowedCategories = new HashSet<string>(selectedMepCategories, StringComparer.OrdinalIgnoreCase);
+                            int removedCount = allClashZones.RemoveAll(cz => cz == null || !allowedCategories.Contains(cz.MepElementCategory ?? string.Empty));
+
+                            if (removedCount > 0)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[REFRESH] Filtered out {removedCount} clash zones not in UI-selected categories: [{string.Join(", ", allowedCategories)}]");
+
+                                SafeFileLogger.SafeAppendText(refreshLogName,
+                                    $"[{DateTime.Now}] [REFRESH] Filtered out {removedCount} clash zones not matching selected categories\n");
+                            }
+
+                            // ✅ CRITICAL: Persist the current UI selection onto the filter so category-specific saves honor it
+                            try
+                            {
+                                targetFilter.SelectedMepCategoryNames = allowedCategories.ToList();
+                            }
+                            catch
+                            {
+                                targetFilter.SelectedMepCategoryNames = selectedMepCategories.ToList();
+                            }
+                        }
+
+                        // ✅ CRITICAL FIX: Use dedicated ClashZonePersistenceService to save to both Global XML and Filter XML
+                        // This ensures data consistency by using the same clash zone objects for both
+                        // Called once for all categories - service internally groups by category and saves to correct files
+                        // Called AFTER allClashZones is ready (line 3090) but BEFORE Filter XML file save (line 3689)
+                        Models.FilterFileComboGroup CloneFilterFileCombo(Models.FilterFileComboGroup combo)
+                        {
+                            if (combo == null)
+                                return new Models.FilterFileComboGroup
+                                {
+                                    LinkedFile = string.Empty,
+                                    HostFile = string.Empty,
+                                    ProcessedAt = DateTime.Now,
+                                    ClashZones = new List<Models.ClashZone>()
+                                };
+
                             return new Models.FilterFileComboGroup
                             {
-                                LinkedFile = string.Empty,
-                                HostFile = string.Empty,
-                                ProcessedAt = DateTime.Now,
-                                ClashZones = new List<Models.ClashZone>()
+                                LinkedFile = combo.LinkedFile,
+                                HostFile = combo.HostFile,
+                                ProcessedAt = combo.ProcessedAt,
+                                ClashZones = combo.ClashZones?
+                                    .Where(z => z != null)
+                                    .ToList() ?? new List<Models.ClashZone>()
                             };
+                        }
 
-                        return new Models.FilterFileComboGroup
+                        Models.FilterGroupForStorage CloneFilterGroup(Models.FilterGroupForStorage group)
                         {
-                            LinkedFile = combo.LinkedFile,
-                            HostFile = combo.HostFile,
-                            ProcessedAt = combo.ProcessedAt,
-                            ClashZones = combo.ClashZones?
-                                .Where(z => z != null)
-                                .ToList() ?? new List<Models.ClashZone>()
-                        };
-                    }
+                            if (group == null)
+                                return new Models.FilterGroupForStorage
+                                {
+                                    Name = string.Empty,
+                                    FileCombos = new List<Models.FilterFileComboGroup>()
+                                };
 
-                    Models.FilterGroupForStorage CloneFilterGroup(Models.FilterGroupForStorage group)
-                    {
-                        if (group == null)
                             return new Models.FilterGroupForStorage
                             {
-                                Name = string.Empty,
-                                FileCombos = new List<Models.FilterFileComboGroup>()
+                                Name = group.Name,
+                                FileCombos = group.FileCombos?.Select(CloneFilterFileCombo).ToList() ?? new List<Models.FilterFileComboGroup>()
                             };
+                        }
 
-                        return new Models.FilterGroupForStorage
-                        {
-                            Name = group.Name,
-                            FileCombos = group.FileCombos?.Select(CloneFilterFileCombo).ToList() ?? new List<Models.FilterFileComboGroup>()
-                        };
-                    }
-
-                    try
+                        try
                     {
                         var baseFilterName = targetFilter?.Name ?? enabledFilter?.Name ?? filtersToProcess.FirstOrDefault(f => f.IsEnabled)?.Name ?? string.Empty;
                         var persistenceService = new ClashZonePersistenceService(_document, _guidManager, refreshLogName);
-                        persistenceService.SaveClashZones(allClashZones, baseFilterName, targetFilter);
+                        persistenceService.SaveClashZones(allClashZones, baseFilterName, targetFilter, allowStructuralUpdates: true);
                         SyncFilterStorageFromZones(targetFilter, allClashZones, baseFilterName);
 
                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[REFRESH] ✅ Saved {allClashZones.Count} clash zones using ClashZonePersistenceService");
+
+                        // ✅ CRITICAL FIX: Mark ALL selected file combos as processed in Global XML, even if they have no clash zones
+                        // This ensures that file combos selected in UI are always added to global XML, preventing them from being re-detected
+                        // Example: User selects AR001 + WALL but no intersections found → Still mark combo as processed so it appears in global XML
+                        if (selectedMepCategories != null && selectedMepCategories.Count > 0 &&
+                            selectedReferenceFiles != null && selectedReferenceFiles.Count > 0 &&
+                            selectedHostFiles != null && selectedHostFiles.Count > 0)
+                        {
+                            try
+                            {
+                                // Build all file combos from UI selections
+                                var allSelectedFileCombos = new List<(string LinkedFile, string HostFile)>();
+                                foreach (var refFile in selectedReferenceFiles)
+                                {
+                                    foreach (var hostFile in selectedHostFiles)
+                                    {
+                                        if (!string.IsNullOrWhiteSpace(refFile) && !string.IsNullOrWhiteSpace(hostFile))
+                                        {
+                                            allSelectedFileCombos.Add((refFile, hostFile));
+                                        }
+                                    }
+                                }
+
+                                if (allSelectedFileCombos.Count > 0)
+                                {
+                                    // ✅ DEBUG: Log UI selections before marking as processed
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        DebugLogger.Info($"[GLOBAL-INDEX] UI Selected file combos to mark as processed: {allSelectedFileCombos.Count} combos");
+                                        foreach (var combo in allSelectedFileCombos.Take(10))
+                                        {
+                                            DebugLogger.Info($"[GLOBAL-INDEX]   UI Combo: Linked='{combo.LinkedFile}', Host='{combo.HostFile}'");
+                                        }
+                                    }
+                                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [GLOBAL-INDEX] UI Selected file combos: {allSelectedFileCombos.Count}\n");
+                                    foreach (var combo in allSelectedFileCombos.Take(10))
+                                    {
+                                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [GLOBAL-INDEX]   UI Combo: Linked='{combo.LinkedFile}', Host='{combo.HostFile}'\n");
+                                    }
+
+                                    // Mark all file combos as processed for each category
+                                    foreach (var category in selectedMepCategories)
+                                    {
+                                        if (string.IsNullOrWhiteSpace(category))
+                                            continue;
+
+                                        try
+                                        {
+                                            GlobalIndexService.MarkFileCombosAsProcessed(_document, category, allSelectedFileCombos, baseFilterName);
+                                            
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                            {
+                                                DebugLogger.Info($"[GLOBAL-INDEX] ✅ Marked {allSelectedFileCombos.Count} file combos as processed for category '{category}' (including combos with zero clash zones)");
+                                            }
+                                            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [GLOBAL-INDEX] ✅ Marked {allSelectedFileCombos.Count} file combos as processed for '{category}'\n");
+                                        }
+                                        catch (Exception markEx)
+                                        {
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                            {
+                                                DebugLogger.Warning($"[GLOBAL-INDEX] Error marking file combos as processed for category '{category}': {markEx.Message}");
+                                            }
+                                            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [GLOBAL-INDEX] ERROR marking combos for '{category}': {markEx.Message}\n");
+                                        }
+                                    }
+                                }
+                            }
+                            catch (Exception comboMarkEx)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Warning($"[GLOBAL-INDEX] Error marking file combos as processed: {comboMarkEx.Message}");
+                                }
+                                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [GLOBAL-INDEX] ERROR marking file combos: {comboMarkEx.Message}\n");
+                            }
+                        }
 
                         var persistedFilterGroupCount = targetFilter?.ClashZoneStorage?.Filters?.Count ?? 0;
                         var persistedFileComboCount = targetFilter?.ClashZoneStorage?.Filters?
@@ -3679,8 +4003,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             cz.ClearRevitApiObjects();
                     }
                     catch { }
-                    var savedCount = clashZoneStorage?.ClashZones?.Count ?? 0;
-                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] SUCCESS: Saved {savedCount} clash zones to filter '{targetFilter.Name}' and profile configuration\n");
+                        var savedCount = clashZoneStorage?.ClashZones?.Count ?? 0;
+                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] SUCCESS: Saved {savedCount} clash zones to filter '{targetFilter.Name}' and profile configuration\n");
+                    }
                 }
                 else
                 {

@@ -52,43 +52,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
             set => StructuralElementId = value > 0 ? new ElementId(value) : ElementId.InvalidElementId;
         }
         
-        /// <summary>
-        /// The intersection point where the clash occurs
-        /// </summary>
-        [XmlIgnore]
-        public XYZ IntersectionPoint { get; set; }
-        
-        // ✅ CRITICAL FIX: Backing fields to store X/Y/Z independently of XYZ object
+        // ✅ FIX 3: Backing fields to store X/Y/Z independently of XYZ object (24 bytes total, not 48)
         // This prevents XML serialization from reading 0 when IntersectionPoint is (0,0,0) or null
         private double _intersectionPointX = 0.0;
         private double _intersectionPointY = 0.0;
         private double _intersectionPointZ = 0.0;
         
         /// <summary>
+        /// The intersection point where the clash occurs
+        /// ✅ FIX 3: Computed from backing fields to avoid duplicate storage (reduces memory by 24 bytes)
+        /// </summary>
+        [XmlIgnore]
+        public XYZ IntersectionPoint
+        {
+            get => new XYZ(_intersectionPointX, _intersectionPointY, _intersectionPointZ);
+            set
+            {
+                // ✅ FIX 3: Only update backing fields, don't store XYZ object
+                _intersectionPointX = value?.X ?? 0.0;
+                _intersectionPointY = value?.Y ?? 0.0;
+                _intersectionPointZ = value?.Z ?? 0.0;
+            }
+        }
+        
+        /// <summary>
         /// XML serializable intersection point X coordinate
         /// </summary>
         public double IntersectionPointX
         {
-            get 
-            {
-                // ✅ CRITICAL FIX: Always return backing field (persists independently of XYZ object)
-                // If backing field is still default (0.0), try to sync from XYZ object ONCE
-                if (_intersectionPointX == 0.0 && IntersectionPoint != null && (Math.Abs(IntersectionPoint.X) > 1e-9 || Math.Abs(IntersectionPoint.Y) > 1e-9 || Math.Abs(IntersectionPoint.Z) > 1e-9))
-                {
-                    _intersectionPointX = IntersectionPoint.X;
-                    _intersectionPointY = IntersectionPoint.Y;
-                    _intersectionPointZ = IntersectionPoint.Z;
-                }
-                return _intersectionPointX;
-            }
-            set 
-            { 
-                _intersectionPointX = value; // ✅ CRITICAL: Always store in backing field FIRST
-                if (IntersectionPoint == null) 
-                    IntersectionPoint = new XYZ(value, _intersectionPointY, _intersectionPointZ); 
-                else 
-                    IntersectionPoint = new XYZ(value, IntersectionPoint.Y, IntersectionPoint.Z); 
-            }
+            get => _intersectionPointX;
+            set => _intersectionPointX = value;
         }
         
         /// <summary>
@@ -96,25 +89,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// </summary>
         public double IntersectionPointY
         {
-            get 
-            {
-                // Sync backing fields if needed (see IntersectionPointX getter)
-                if (_intersectionPointY == 0.0 && IntersectionPoint != null && (Math.Abs(IntersectionPoint.X) > 1e-9 || Math.Abs(IntersectionPoint.Y) > 1e-9 || Math.Abs(IntersectionPoint.Z) > 1e-9))
-                {
-                    _intersectionPointX = IntersectionPoint.X;
-                    _intersectionPointY = IntersectionPoint.Y;
-                    _intersectionPointZ = IntersectionPoint.Z;
-                }
-                return _intersectionPointY;
-            }
-            set 
-            { 
-                _intersectionPointY = value; // ✅ CRITICAL: Always store in backing field FIRST
-                if (IntersectionPoint == null) 
-                    IntersectionPoint = new XYZ(_intersectionPointX, value, _intersectionPointZ); 
-                else 
-                    IntersectionPoint = new XYZ(IntersectionPoint.X, value, IntersectionPoint.Z); 
-            }
+            get => _intersectionPointY;
+            set => _intersectionPointY = value;
         }
         
         /// <summary>
@@ -122,25 +98,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// </summary>
         public double IntersectionPointZ
         {
-            get 
-            {
-                // Sync backing fields if needed (see IntersectionPointX getter)
-                if (_intersectionPointZ == 0.0 && IntersectionPoint != null && (Math.Abs(IntersectionPoint.X) > 1e-9 || Math.Abs(IntersectionPoint.Y) > 1e-9 || Math.Abs(IntersectionPoint.Z) > 1e-9))
-                {
-                    _intersectionPointX = IntersectionPoint.X;
-                    _intersectionPointY = IntersectionPoint.Y;
-                    _intersectionPointZ = IntersectionPoint.Z;
-                }
-                return _intersectionPointZ;
-            }
-            set 
-            { 
-                _intersectionPointZ = value; // ✅ CRITICAL: Always store in backing field FIRST
-                if (IntersectionPoint == null) 
-                    IntersectionPoint = new XYZ(_intersectionPointX, _intersectionPointY, value); 
-                else 
-                    IntersectionPoint = new XYZ(IntersectionPoint.X, IntersectionPoint.Y, value); 
-            }
+            get => _intersectionPointZ;
+            set => _intersectionPointZ = value;
         }
         
         /// <summary>
@@ -183,13 +142,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         
         /// <summary>
         /// Whether this clash zone has been resolved (individual sleeve placed)
+        /// ✅ FLAG PERSISTENCE: Stored in both Global XML and Filter XML so refresh + placement share a single view of flag state
+        /// (Global XML remains the source of truth; Filter XML copy assists diagnostics and legacy tools.)
         /// </summary>
         public bool IsResolved { get; set; } = false;
         
         /// <summary>
         /// Whether this clash zone has been resolved by cluster sleeve
+        /// ✅ FLAG PERSISTENCE: Stored in both Global XML and Filter XML for transparency; Global XML is still authoritative.
         /// </summary>
         public bool IsClusterResolved { get; set; } = false;
+        
+        /// <summary>
+        /// ✅ DUCT-DAMPER COMBO FLAG: Indicates this duct is near a damper and should be skipped
+        /// Set to true when duct-damper combo is detected, prevents re-checking on subsequent refreshes
+        /// </summary>
+        public bool HasDamperNearby { get; set; } = false;
         
         /// <summary>
         /// REMOVED: IsClustered flag - replaced by MarkedForClusteringSleeveProcess
@@ -274,25 +242,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// </summary>
         public double SleeveDiameter { get; set; } = 0.0;
         
+        // ✅ FIX 3: Backing fields for sleeve placement point (24 bytes total, not 48)
+        private double _sleevePlacementPointX = 0.0;
+        private double _sleevePlacementPointY = 0.0;
+        private double _sleevePlacementPointZ = 0.0;
+        
         /// <summary>
         /// The actual placement point of the sleeve (in Revit internal units)
         /// Used for simple proximity calculation: check X diff and Y diff
+        /// ✅ FIX 3: Computed from backing fields to avoid duplicate storage (reduces memory by 24 bytes)
         /// </summary>
         [XmlIgnore]
-        public XYZ SleevePlacementPoint { get; set; }
+        public XYZ SleevePlacementPoint
+        {
+            get => new XYZ(_sleevePlacementPointX, _sleevePlacementPointY, _sleevePlacementPointZ);
+            set
+            {
+                // ✅ FIX 3: Only update backing fields, don't store XYZ object
+                _sleevePlacementPointX = value?.X ?? 0.0;
+                _sleevePlacementPointY = value?.Y ?? 0.0;
+                _sleevePlacementPointZ = value?.Z ?? 0.0;
+            }
+        }
         
         /// <summary>
         /// XML serializable sleeve placement point X coordinate
         /// </summary>
         public double SleevePlacementPointX
         {
-            get => SleevePlacementPoint?.X ?? 0.0;
-            set { 
-                if (SleevePlacementPoint == null) 
-                    SleevePlacementPoint = new XYZ(value, 0, 0); 
-                else 
-                    SleevePlacementPoint = new XYZ(value, SleevePlacementPoint.Y, SleevePlacementPoint.Z); 
-            }
+            get => _sleevePlacementPointX;
+            set => _sleevePlacementPointX = value;
         }
         
         /// <summary>
@@ -300,13 +279,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// </summary>
         public double SleevePlacementPointY
         {
-            get => SleevePlacementPoint?.Y ?? 0.0;
-            set { 
-                if (SleevePlacementPoint == null) 
-                    SleevePlacementPoint = new XYZ(0, value, 0); 
-                else 
-                    SleevePlacementPoint = new XYZ(SleevePlacementPoint.X, value, SleevePlacementPoint.Z); 
-            }
+            get => _sleevePlacementPointY;
+            set => _sleevePlacementPointY = value;
         }
         
         /// <summary>
@@ -314,13 +288,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// </summary>
         public double SleevePlacementPointZ
         {
-            get => SleevePlacementPoint?.Z ?? 0.0;
-            set { 
-                if (SleevePlacementPoint == null) 
-                    SleevePlacementPoint = new XYZ(0, 0, value); 
-                else 
-                    SleevePlacementPoint = new XYZ(SleevePlacementPoint.X, SleevePlacementPoint.Y, value);
-            }
+            get => _sleevePlacementPointZ;
+            set => _sleevePlacementPointZ = value;
         }
         
         /// <summary>
@@ -750,8 +719,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// </summary>
         public void ClearRevitApiObjects()
         {
-            IntersectionPoint = null;
-            ClashBoundingBox = null;
+            // ✅ CRITICAL FIX: Do NOT clear IntersectionPoint - it's a computed property that reads from backing fields
+            // Clearing it would zero out _intersectionPointX/Y/Z, losing the intersection point data!
+            // IntersectionPoint getter creates a NEW XYZ from backing fields, so there's no heavy object to clear
+            // ClashBoundingBox = null;  // ✅ PRESERVED: Keep bounding box for normalization fallback
             SleevePlacementPoint = null;
             SleevePlacementPointActiveDocument = null;
             WallDirection = null;
@@ -881,14 +852,80 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
     }
     
     /// <summary>
+    /// ✅ TREE STRUCTURE: FileComboGroup for Filter XML (groups clash zones by file combo)
+    /// Similar to Global XML's FileComboGroup but contains full ClashZone objects instead of just entries
+    /// </summary>
+    public class FilterFileComboGroup
+    {
+        [XmlAttribute("LinkedFile")] public string LinkedFile { get; set; } = string.Empty;
+        [XmlAttribute("HostFile")] public string HostFile { get; set; } = string.Empty;
+        [XmlAttribute("ProcessedAt")] public DateTime ProcessedAt { get; set; } = DateTime.Now;
+        
+        /// <summary>
+        /// Clash zones for this file combo
+        /// </summary>
+        [XmlArray("ClashZones")]
+        [XmlArrayItem("ClashZone")]
+        public List<ClashZone> ClashZones { get; set; } = new List<ClashZone>();
+        
+        /// <summary>
+        /// Creates a normalized key for comparison (case-insensitive, removes path info)
+        /// </summary>
+        public string GetNormalizedKey()
+        {
+            Func<string, string> norm = s =>
+            {
+                if (string.IsNullOrWhiteSpace(s)) return string.Empty;
+                var trimmed = s;
+                var idxParen = trimmed.IndexOf('(');
+                if (idxParen >= 0) trimmed = trimmed.Substring(0, idxParen);
+                trimmed = System.IO.Path.GetFileNameWithoutExtension(trimmed);
+                trimmed = trimmed.ToLowerInvariant().Replace("_detached", "");
+                trimmed = trimmed.Replace('_', ' ').Replace('-', ' ');
+                trimmed = System.Text.RegularExpressions.Regex.Replace(trimmed, "\\s+", " ");
+                return trimmed.Trim();
+            };
+            
+            return $"{norm(LinkedFile)}|{norm(HostFile)}";
+        }
+    }
+    
+    /// <summary>
+    /// ✅ TREE STRUCTURE: FilterGroup for Filter XML (groups file combos by filter)
+    /// Similar to Global XML's FilterGroup but contains full ClashZone objects instead of just entries
+    /// </summary>
+    public class FilterGroupForStorage
+    {
+        [XmlAttribute("Name")] public string Name { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// File combo groups for this filter
+        /// </summary>
+        [XmlElement("FileCombo")]
+        public List<FilterFileComboGroup> FileCombos { get; set; } = new List<FilterFileComboGroup>();
+    }
+
+    /// <summary>
     /// Container for storing clash zones in a profile
+    /// ✅ TREE STRUCTURE: Same hierarchical structure as Global XML - Filter → FileCombo → ClashZones
     /// </summary>
     [XmlRoot("ClashZoneStorage")]
     public class ClashZoneStorage
     {
         /// <summary>
-        /// List of all detected clash zones
+        /// ✅ TREE STRUCTURE: Hierarchical organization - Filter → FileCombo → ClashZones
+        /// This is the PRIMARY structure for Filter XML (same as Global XML)
         /// </summary>
+        [XmlArray("Filters")]
+        [XmlArrayItem("Filter")]
+        public List<FilterGroupForStorage> Filters { get; set; } = new List<FilterGroupForStorage>();
+        
+        /// <summary>
+        /// ⚠️ DEPRECATED: Flat structure - kept for backward compatibility during migration
+        /// Will be migrated to hierarchical structure (Filters) on first load
+        /// </summary>
+        [XmlArray("ClashZones")]
+        [XmlArrayItem("ClashZone")]
         public List<ClashZone> ClashZones { get; set; } = new List<ClashZone>();
         
         /// <summary>
@@ -935,5 +972,63 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         [XmlArray("LearnedParameterKeys")]
         [XmlArrayItem("Key")]
         public List<string> LearnedParameterKeys { get; set; } = new List<string>();
+
+        /// <summary>
+        /// Returns all clash zones in this storage using the primary tree structure,
+        /// falling back to the deprecated flat list for backward compatibility.
+        /// </summary>
+        [XmlIgnore]
+        public List<ClashZone> AllZones
+        {
+            get
+            {
+                var result = new List<ClashZone>();
+                var seen = new HashSet<Guid>();
+
+                if (Filters != null)
+                {
+                    foreach (var filterGroup in Filters)
+                    {
+                        if (filterGroup?.FileCombos == null) continue;
+
+                        foreach (var fileCombo in filterGroup.FileCombos)
+                        {
+                            if (fileCombo?.ClashZones == null) continue;
+
+                            foreach (var cz in fileCombo.ClashZones)
+                            {
+                                if (cz == null) continue;
+                                if (seen.Add(cz.Id))
+                                {
+                                    result.Add(cz);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (ClashZones != null && ClashZones.Count > 0)
+                {
+                    foreach (var cz in ClashZones)
+                    {
+                        if (cz == null) continue;
+                        if (seen.Add(cz.Id))
+                        {
+                            result.Add(cz);
+                        }
+                    }
+                }
+
+                return result;
+            }
+        }
+
+        /// <summary>
+        /// Helper method to enumerate all clash zones.
+        /// </summary>
+        public IEnumerable<ClashZone> EnumerateAllZones()
+        {
+            return AllZones;
+        }
     }
 }

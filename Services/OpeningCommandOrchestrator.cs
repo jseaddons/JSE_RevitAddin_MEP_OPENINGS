@@ -75,10 +75,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             if (!DeploymentConfiguration.DeploymentMode)
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Starting execution of {filters.Count} filters\n");
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[OpeningCommandOrchestrator] Starting execution of {filters.Count} filters");
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Starting execution of {filters.Count} filters\n");
+                DebugLogger.Info($"[OpeningCommandOrchestrator] Starting execution of {filters.Count} filters");
             }
 
             try
@@ -109,16 +107,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info("[OpeningCommandOrchestrator] All filters executed successfully");
+                    DebugLogger.Info("[OpeningCommandOrchestrator] All filters executed successfully");
                 }
             }
             catch (Exception ex)
             {
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Error($"[OpeningCommandOrchestrator] Error executing filters: {ex.Message}");
+                    DebugLogger.Error($"[OpeningCommandOrchestrator] Error executing filters: {ex.Message}");
                 }
                 throw;
             }
@@ -171,10 +167,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             if (!DeploymentConfiguration.DeploymentMode)
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[OpeningCommandOrchestrator] 🔥 ExecuteDisciplineWithMemoryManagement CALLED 🔥");
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[OpeningCommandOrchestrator] Executing discipline: {discipline} with {filters.Count} filters");
+                DebugLogger.Info($"[OpeningCommandOrchestrator] 🔥 ExecuteDisciplineWithMemoryManagement CALLED 🔥");
+                DebugLogger.Info($"[OpeningCommandOrchestrator] Executing discipline: {discipline} with {filters.Count} filters");
             }
 
             try
@@ -183,8 +177,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var orderedFilters = OrderFiltersByPriority(filters);
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[OpeningCommandOrchestrator] Ordered {orderedFilters.Count} filters by priority for discipline: {discipline}");
+                    DebugLogger.Info($"[OpeningCommandOrchestrator] Ordered {orderedFilters.Count} filters by priority for discipline: {discipline}");
                 }
                 
                 // Log the processing order
@@ -195,8 +188,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var priority = GetFilterPriority(filter);
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[OpeningCommandOrchestrator] Processing order {i + 1}: '{filter.Name}' (Categories: {categories}, Priority: {priority})");
+                        DebugLogger.Info($"[OpeningCommandOrchestrator] Processing order {i + 1}: '{filter.Name}' (Categories: {categories}, Priority: {priority})");
                     }
                 }
 
@@ -221,8 +213,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Error($"[OpeningCommandOrchestrator] Error executing discipline {discipline}: {ex.Message}");
+                    DebugLogger.Error($"[OpeningCommandOrchestrator] Error executing discipline {discipline}: {ex.Message}");
                 }
                 throw;
             }
@@ -286,8 +277,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // 🔥 CRITICAL DEBUG: Log clustering attempt
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥 ExecuteClusteringForCategory CALLED for category: {filter.Category} 🔥\n");
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥 ExecuteClusteringForCategory CALLED for category: {filter.Category} 🔥\n");
                     }
                     
                     // Convert MepCategory enum to string for cluster command
@@ -302,10 +292,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥 Starting clustering for category: {categoryString} 🔥\n");
-                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[OpeningCommandOrchestrator] Starting clustering for category: {categoryString}");
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥 Starting clustering for category: {categoryString} 🔥\n");
+                        DebugLogger.Info($"[OpeningCommandOrchestrator] Starting clustering for category: {categoryString}");
                     }
                     
                     // ✅ PERFORMANCE FIX: Get XML file path for this category to avoid loading all 22 XML files
@@ -363,7 +351,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ PERFORMANCE FIX: After placing cluster sleeves, regenerate document and save their bounding boxes to XML
             // This uses SleeveCoordinateService to update coordinates (same as individual sleeves)
             if (placedClusterSleeves != null && placedClusterSleeves.Count > 0 && categoryString != null && xmlFilePath != null)
-                {
+            {
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                                                 if (!DeploymentConfiguration.DeploymentMode)
@@ -447,7 +435,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                     }
                 }
-            }
         }
 
         /// <summary>
@@ -482,22 +469,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ PERFORMANCE FIX: Use the helper method to get XML file path
                 string xmlFilePath = GetXmlFilePathForFilter(filter);
 
-                if (!DeploymentConfiguration.DeploymentMode)
+                // ✅ CRITICAL: Get category from filter
+                string categoryName = filter.Category switch
                 {
+                    Models.MepCategory.Ducts => "Ducts",
+                    Models.MepCategory.DuctAccessories => "Duct Accessories",
+                    Models.MepCategory.Pipes => "Pipes",
+                    Models.MepCategory.CableTrays => "Cable Trays",
+                    _ => "Ducts"
+                };
+
                                         if (!DeploymentConfiguration.DeploymentMode)
+                {
                         DebugLogger.Info($"[OpeningCommandOrchestrator] Looking for clash zones in: {xmlFilePath}");
-                    // 🔥 CRITICAL DEBUG: Force direct file logging to trace orchestrator execution
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔍 GUID-GUIDED LOAD: Category='{categoryName}', Filter='{filter.Name}'\n");
+                }
+
+                // ✅ STEP 1: Load unresolved entries from Global XML (deterministic GUIDs)
+                // Global XML is the single source of truth for which zones need placement
+                var globalIndex = GlobalIndexService.LoadOrCreate(_document, categoryName);
+                var allGlobalEntries = GlobalIndexService.GetAllEntries(globalIndex).ToList();
+                
+                // Get unresolved GUIDs (zones that need placement)
+                var unresolvedGuids = allGlobalEntries
+                    .Where(e => !e.IsResolved && !e.IsClusterResolved)
+                    .Select(e => Guid.Parse(e.Id))
+                    .ToHashSet();
+                
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔍 INDIVIDUAL SLEEVE SERVICE READING FROM: {xmlFilePath}\n");
+                {
+                    DebugLogger.Info($"[GUID-GUIDED-LOAD] Found {unresolvedGuids.Count} unresolved GUIDs in Global XML for category '{categoryName}'");
                 }
 
                 if (!File.Exists(xmlFilePath))
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                                                if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ❌ XML file not found: {xmlFilePath}\n");
-                                                if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Warning($"[OpeningCommandOrchestrator] XML file not found: {xmlFilePath}");
                     }
                     return new List<ClashZone>();
@@ -505,73 +513,104 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ XML file found: {xmlFilePath}\n");
                 }
 
-                // Load clash zones from XML
+                // ✅ STEP 2: Load Filter XML and filter by unresolved GUIDs
                 var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
                 OpeningFilter loadedFilter;
-                
-                // 🔥 CRITICAL DEBUG: Log raw XML content before deserialization
-                string rawXmlContent = File.ReadAllText(xmlFilePath);
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔍 RAW XML CONTENT (first 1000 chars): {rawXmlContent.Substring(0, Math.Min(1000, rawXmlContent.Length))}\n");
-                }
                 
                 using (var reader = new StreamReader(xmlFilePath))
                 {
                     loadedFilter = (OpeningFilter)serializer.Deserialize(reader);
                 }
 
-                // Extract clash zones from the loaded filter
-                var clashZones = new List<ClashZone>();
-                if (loadedFilter?.ClashZoneStorage?.ClashZones != null)
+                // Extract clash zones from the loaded filter (tree-aware)
+                var allClashZones = ExtractClashZonesFromStorage(loadedFilter?.ClashZoneStorage);
+
+                if (allClashZones.Count == 0)
                 {
-                    clashZones = loadedFilter.ClashZoneStorage.ClashZones;
-                    // ✅ CRITICAL FIX: Reconstruct SleevePlacementPoint and IntersectionPoint from XML-serializable properties
-                    foreach (var cz in clashZones)
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        cz.EnsureSleevePlacementPointReconstructed();
-                        // Also reconstruct IntersectionPoint if needed
-                        if (cz.IntersectionPoint == null && (Math.Abs(cz.IntersectionPointX) > 1e-9 || Math.Abs(cz.IntersectionPointY) > 1e-9 || Math.Abs(cz.IntersectionPointZ) > 1e-9))
-                        {
-                            cz.IntersectionPoint = new XYZ(cz.IntersectionPointX, cz.IntersectionPointY, cz.IntersectionPointZ);
-                        }
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ❌ No clash zones found in XML file: {xmlFilePath}\n");
+                            DebugLogger.Warning($"[OpeningCommandOrchestrator] No clash zones found in XML file: {xmlFilePath}");
                     }
+                    return new List<ClashZone>();
+                }
+
+                // ✅ CRITICAL FIX: Reconstruct SleevePlacementPoint and IntersectionPoint from XML-serializable properties
+                foreach (var cz in allClashZones)
+                {
+                    cz.EnsureSleevePlacementPointReconstructed();
+                    if (cz.IntersectionPoint == null && (Math.Abs(cz.IntersectionPointX) > 1e-9 || Math.Abs(cz.IntersectionPointY) > 1e-9 || Math.Abs(cz.IntersectionPointZ) > 1e-9))
+                    {
+                        cz.IntersectionPoint = new XYZ(cz.IntersectionPointX, cz.IntersectionPointY, cz.IntersectionPointZ);
+                    }
+                }
+
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Successfully loaded {allClashZones.Count} total clash zones from {xmlFilePath}\n");
+                }
+
+                // ✅ STEP 3: Filter clash zones by unresolved GUIDs from Global XML
+                // Only load clash zones that match unresolved GUIDs (deterministic GUID guides us to correct Filter XML data)
+                var clashZones = new List<ClashZone>();
+                
+                if (unresolvedGuids.Count > 0)
+                {
+                    // Filter by GUID - only include zones that match unresolved GUIDs from Global XML
+                    clashZones = allClashZones
+                        .Where(cz => unresolvedGuids.Contains(cz.Id))
+                        .ToList();
+                    
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Successfully loaded {clashZones.Count} clash zones from {xmlFilePath}\n");
+                        DebugLogger.Info($"[GUID-GUIDED-LOAD] ✅ Filtered {allClashZones.Count} total zones → {clashZones.Count} zones matching unresolved GUIDs from Global XML");
                         
-                        // 🔥 CRITICAL DEBUG: Check flag values immediately after deserialization
-                        int clusterResolvedCount = clashZones.Count(cz => cz.IsClusterResolved);
-                        int individualResolvedCount = clashZones.Count(cz => cz.IsResolved);
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 📊 FLAGS AFTER XML DESERIALIZATION: IsClusterResolved=True: {clusterResolvedCount}, IsResolved=True: {individualResolvedCount}\n");
-                        
-                        // 🔥 CRITICAL DEBUG: Log individual clash zone flag values to identify the issue
-                        for (int i = 0; i < clashZones.Count && i < 5; i++) // Log first 5 clash zones
+                        // Log which GUIDs were found/not found
+                        var foundGuids = clashZones.Select(cz => cz.Id).ToHashSet();
+                        var missingGuids = unresolvedGuids.Except(foundGuids).ToList();
+                        if (missingGuids.Count > 0)
                         {
-                            var cz = clashZones[i];
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔍 ClashZone {i}: IsResolved={cz.IsResolved}, IsClusterResolved={cz.IsClusterResolved}, ClusterSleeveInstanceId={cz.ClusterSleeveInstanceId}\n");
+                            DebugLogger.Warning($"[GUID-GUIDED-LOAD] ⚠️ {missingGuids.Count} unresolved GUIDs from Global XML not found in Filter XML: {string.Join(", ", missingGuids.Take(5))}{(missingGuids.Count > 5 ? "..." : "")}");
                         }
-                        
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[OpeningCommandOrchestrator] Successfully loaded {clashZones.Count} clash zones from {xmlFilePath}");
                     }
                 }
                 else
                 {
+                    // No unresolved GUIDs - return empty list (all zones are resolved)
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ❌ No clash zones found in XML file: {xmlFilePath}\n");
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Warning($"[OpeningCommandOrchestrator] No clash zones found in XML file: {xmlFilePath}");
+                        DebugLogger.Info($"[GUID-GUIDED-LOAD] ✅ No unresolved GUIDs in Global XML - all zones are resolved, returning empty list");
+                    }
+                    return new List<ClashZone>();
+                }
+
+                // ✅ STEP 4: Sync flags from Global XML (already loaded above)
+                // Since we're GUID-guided, we can sync flags directly by GUID match using FlagManager
+                if (clashZones.Count > 0)
+                {
+                    try
+                    {
+                        // Use FlagManager for efficient flag syncing by GUID
+                        var flagManager = new FlagManager(_document);
+                        flagManager.SyncFlagsFromGlobal(clashZones, categoryName);
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            int clusterResolvedAfterSync = clashZones.Count(cz => cz.IsClusterResolved);
+                            int individualResolvedAfterSync = clashZones.Count(cz => cz.IsResolved);
+                            DebugLogger.Info($"[GUID-GUIDED-LOAD] ✅ Synced flags from Global XML: {clashZones.Count} zones, {clusterResolvedAfterSync} cluster-resolved, {individualResolvedAfterSync} individual-resolved");
+                        }
+                    }
+                    catch (Exception syncEx)
+                    {
+                        // Log error but continue - don't fail placement if sync fails
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Warning($"[GUID-GUIDED-LOAD] Error syncing flags from Global XML: {syncEx.Message}");
+                        }
                     }
                 }
 
@@ -606,7 +645,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     // 🔥 CRITICAL DEBUG: Direct file logging to trace orchestrator execution
                     // ✅ OVERWRITE placement_debug.log at start of each run
-                    try { System.IO.File.WriteAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] === NEW PLACEMENT RUN STARTED ===\n"); } catch { }
+                    // ✅ DEPLOYMENT MODE: Skip file writes
+                    try { 
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                            var assemblyPath = assembly?.Location ?? string.Empty;
+                            var assemblyName = !string.IsNullOrWhiteSpace(assemblyPath) ? System.IO.Path.GetFileName(assemblyPath) : "<unknown>";
+                            var buildTimestamp = !string.IsNullOrWhiteSpace(assemblyPath)
+                                ? System.IO.File.GetLastWriteTime(assemblyPath).ToString("yyyy-MM-dd HH:mm:ss")
+                                : "unknown";
+                            var assemblyVersion = !string.IsNullOrWhiteSpace(assemblyPath)
+                                ? System.Diagnostics.FileVersionInfo.GetVersionInfo(assemblyPath)?.FileVersion ?? "unknown"
+                                : "unknown";
+
+                            var nowStamp = DateTime.Now.ToString("HH:mm:ss");
+                            var header = $"[{nowStamp}] BUILD TIMESTAMP: {buildTimestamp} | Assembly={assemblyName} | Version={assemblyVersion}\n" +
+                                         $"[{nowStamp}] === NEW PLACEMENT RUN STARTED ===\n";
+
+                            System.IO.File.WriteAllText(placementDebugPath, header);
+                        }
+                    } catch { }
                     try {
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
@@ -976,6 +1035,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DebugLogger.Error($"[OpeningCommandOrchestrator] Error executing {command.GetType().Name}: {ex.Message}");
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Extracts clash zones from storage using the hierarchical structure, with legacy support.
+        /// </summary>
+        private static List<ClashZone> ExtractClashZonesFromStorage(ClashZoneStorage storage)
+        {
+            var result = new List<ClashZone>();
+
+            if (storage == null)
+                return result;
+
+            if (storage.Filters != null)
+            {
+                foreach (var filterGroup in storage.Filters)
+                {
+                    if (filterGroup?.FileCombos == null) continue;
+
+                    foreach (var fileCombo in filterGroup.FileCombos)
+                    {
+                        if (fileCombo?.ClashZones == null) continue;
+
+                        result.AddRange(fileCombo.ClashZones);
+                    }
+                }
+            }
+
+            if (storage.ClashZones != null && storage.ClashZones.Count > 0)
+            {
+                var existingIds = new HashSet<Guid>(result.Select(z => z.Id));
+                foreach (var cz in storage.ClashZones)
+                {
+                    if (cz != null && existingIds.Add(cz.Id))
+                    {
+                        result.Add(cz);
+                    }
+                }
+            }
+
+            return result;
         }
     }
 }

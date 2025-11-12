@@ -2875,8 +2875,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     // CRITICAL FIX: Update filter's ClashZoneStorage with filtered clash zones only
                     if (filterWithClashZones.ClashZoneStorage != null)
                     {
-                        filterWithClashZones.ClashZoneStorage.ClashZones.Clear();
-                        filterWithClashZones.ClashZoneStorage.ClashZones.AddRange(filteredClashZones);
+                        filterWithClashZones.ClashZoneStorage.AllZones.Clear();
+                        filterWithClashZones.ClashZoneStorage.AllZones.AddRange(filteredClashZones);
                         DebugLogger.Info($"[FILTER_FIX] Updated filter's ClashZoneStorage with {filteredClashZones.Count} filtered clash zones");
                     }
                     
@@ -3603,8 +3603,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                                     var countStr = value.Substring("ClashZonesCount=".Length);
                                     if (int.TryParse(countStr, out int count))
                                     {
-                                        if (config.ClashZoneStorage.ClashZones == null)
-                                            config.ClashZoneStorage.ClashZones = new List<ClashZone>();
+                                        if (config.ClashZoneStorage.AllZones == null)
+                                            config.ClashZoneStorage.AllZones = new List<ClashZone>();
                                         
                                         DebugLogger.Info($"Loaded clash zone storage with {count} zones");
                                     }
@@ -3722,12 +3722,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 
                 // Save clash zones from current profile
                 var currentProfile = GetCurrentProfile();
-                if (currentProfile?.Configuration?.ClashZoneStorage?.ClashZones != null)
+                if (currentProfile?.Configuration?.ClashZoneStorage?.AllZones != null)
                 {
-                    uiState.Add($"CLASHZONES:Count={currentProfile.Configuration.ClashZoneStorage.ClashZones.Count}");
+                    uiState.Add($"CLASHZONES:Count={currentProfile.Configuration.ClashZoneStorage.AllZones.Count}");
                     uiState.Add($"CLASHZONES:LastUpdated={currentProfile.Configuration.ClashZoneStorage.LastUpdated:O}");
                     uiState.Add($"CLASHZONES:DocumentHash={currentProfile.Configuration.ClashZoneStorage.DocumentHash}");
-                    foreach (var clashZone in currentProfile.Configuration.ClashZoneStorage.ClashZones)
+                    foreach (var clashZone in currentProfile.Configuration.ClashZoneStorage.AllZones)
                     {
                         uiState.Add($"CLASHZONE:MEP={clashZone.MepElementId},Structural={clashZone.StructuralElementId},Resolved={clashZone.IsResolved}");
                     }
@@ -4857,7 +4857,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _statusLabel.Text = "Initializing clash zone service...";
 
             DebugLogger.Info("[CLASH_DEBUG] Initializing ClashZoneService...");
-            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Initializing ClashZoneService with {(currentProfile?.Configuration?.ClashZoneStorage?.ClashZones?.Count ?? 0)} existing zones\n");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [CLASH_DEBUG] Initializing ClashZoneService with {(currentProfile?.Configuration?.ClashZoneStorage?.AllZones?.Count ?? 0)} existing zones\n");
 
             // Create or use existing clash zone storage
             var clashZoneStorage = currentProfile?.Configuration?.ClashZoneStorage ?? new ClashZoneStorage
@@ -5048,12 +5048,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     DebugLogger.Info($"[CLASH_DEBUG]   ClashZoneStorage: {(targetFilter.ClashZoneStorage != null ? "EXISTS" : "NULL")}");
                     if (targetFilter.ClashZoneStorage != null)
                     {
-                        DebugLogger.Info($"[CLASH_DEBUG]   ClashZones Count: {targetFilter.ClashZoneStorage.ClashZones?.Count ?? 0}");
-                        if (targetFilter.ClashZoneStorage.ClashZones != null && targetFilter.ClashZoneStorage.ClashZones.Count > 0)
+                        DebugLogger.Info($"[CLASH_DEBUG]   ClashZones Count: {targetFilter.ClashZoneStorage.AllZones?.Count ?? 0}");
+                        if (targetFilter.ClashZoneStorage.AllZones != null && targetFilter.ClashZoneStorage.AllZones.Count > 0)
                         {
-                            for (int i = 0; i < targetFilter.ClashZoneStorage.ClashZones.Count; i++)
+                            for (int i = 0; i < targetFilter.ClashZoneStorage.AllZones.Count; i++)
                             {
-                                var cz = targetFilter.ClashZoneStorage.ClashZones[i];
+                                var cz = targetFilter.ClashZoneStorage.AllZones[i];
                                 DebugLogger.Info($"[CLASH_DEBUG]   Clash Zone {i + 1} TO BE SAVED:");
                                 DebugLogger.Info($"[CLASH_DEBUG]     ID: {cz.Id}");
                                 DebugLogger.Info($"[CLASH_DEBUG]     MEP Element ID: {cz.MepElementId?.IntegerValue ?? -1}");

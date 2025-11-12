@@ -184,45 +184,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[FLAG-MANAGER] Found {allEntries.Count} total Global XML entries for category '{category}', {resolvedEntries} have resolved flags");
                         
-                        // ✅ OPTIMIZATION: Pre-collect all sleeve IDs by category (calculate once, use many times)
-                        var allSleeves = new FilteredElementCollector(_document)
+                        // ✅ PRE-COLLECT: Gather all sleeves once, then classify by category/GUID
+                        var allSleeveInstances = new FilteredElementCollector(_document)
                             .OfClass(typeof(FamilyInstance))
                             .Cast<FamilyInstance>()
-                            .Where(s => 
+                            .Where(s =>
                             {
-                                // Check if it's a sleeve family
                                 bool hasSleeveKeyword = s.Symbol?.FamilyName?.Contains("Sleeve", StringComparison.OrdinalIgnoreCase) == true ||
-                                                       s.Symbol?.FamilyName?.Contains("Opening", StringComparison.OrdinalIgnoreCase) == true;
-                                
-                                string familyName = s.Symbol?.FamilyName ?? "";
+                                                        s.Symbol?.FamilyName?.Contains("Opening", StringComparison.OrdinalIgnoreCase) == true;
+                                string familyName = s.Symbol?.FamilyName ?? string.Empty;
                                 bool isKnownFamily = familyName.Contains("CircularOpening", StringComparison.OrdinalIgnoreCase) ||
-                                                    familyName.Contains("RectangularOpening", StringComparison.OrdinalIgnoreCase);
-                                
-                                if (!((s.Category?.Name == "Generic Models" || s.Category?.Name == "Structural Connections") &&
-                                       (hasSleeveKeyword || isKnownFamily)))
-                                    return false;
-                                
-                                // ✅ PERFORMANCE: Filter by MEP_Category parameter (no Revit API call needed)
-                                var mepCategoryParam = s.LookupParameter("MEP_Category");
-                                if (mepCategoryParam != null && !string.IsNullOrWhiteSpace(mepCategoryParam.AsString()))
-                                {
-                                    string sleeveCategory = mepCategoryParam.AsString().Trim();
-                                    // ✅ CRITICAL: Exact case-insensitive match required - no fallback
-                                    return string.Equals(sleeveCategory, category, StringComparison.OrdinalIgnoreCase);
-                                }
-                                
-                                // ✅ CRITICAL: Sleeve without MEP_Category parameter cannot be matched to category - exclude it
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    DebugLogger.Warning($"[FLAG-MANAGER] Sleeve {s.Id.IntegerValue}: Missing MEP_Category parameter - cannot match to category '{category}', excluding from reset check");
-                                }
-                                
-                                return false;
+                                                     familyName.Contains("RectangularOpening", StringComparison.OrdinalIgnoreCase);
+                                return (s.Category?.Name == "Generic Models" || s.Category?.Name == "Structural Connections") &&
+                                       (hasSleeveKeyword || isKnownFamily);
                             })
                             .ToList();
-                        
-                        // ✅ OPTIMIZATION: Build HashSet for O(1) lookup (calculate once, use many times)
-                        var existingSleeveIdsSet = new HashSet<int>(allSleeves.Select(s => s.Id.IntegerValue));
+
+                        var sleevesForCategory = new List<FamilyInstance>();
+                        var existingSleeveIdsSet = new HashSet<int>();
+                        var sleeveIdToCategory = new Dictionary<int, string>();
+                        var guidToSleeveId = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+                        foreach (var sleeve in allSleeveInstances)
+                        {
+                            string sleeveCategory = GetSleeveCategory(sleeve);
+                            if (!string.IsNullOrWhiteSpace(sleeveCategory))
+                            {
+                                sleeveCategory = sleeveCategory.Trim();
+                                sleeveIdToCategory[sleeve.Id.IntegerValue] = sleeveCategory;
+
+                                if (string.Equals(sleeveCategory, category, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    sleevesForCategory.Add(sleeve);
+                                    existingSleeveIdsSet.Add(sleeve.Id.IntegerValue);
+                                }
+                            }
+
+                            string clashGuid = GetClashZoneGuidValue(sleeve);
+                            if (!string.IsNullOrWhiteSpace(clashGuid) && !guidToSleeveId.ContainsKey(clashGuid))
+                            {
+                                guidToSleeveId[clashGuid] = sleeve.Id.IntegerValue;
+                            }
+                        }
 
                         void LogToRefresh(string message)
                         {
@@ -253,37 +256,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             else
                             {
                                 // ✅ DEBUG: Log why no sleeves were found
-                                var allSleevesWithoutCategoryFilter = new FilteredElementCollector(_document)
-                                    .OfClass(typeof(FamilyInstance))
-                                    .Cast<FamilyInstance>()
-                                    .Where(s => 
-                                    {
-                                        bool hasSleeveKeyword = s.Symbol?.FamilyName?.Contains("Sleeve", StringComparison.OrdinalIgnoreCase) == true ||
-                                                               s.Symbol?.FamilyName?.Contains("Opening", StringComparison.OrdinalIgnoreCase) == true;
-                                        string familyName = s.Symbol?.FamilyName ?? "";
-                                        bool isKnownFamily = familyName.Contains("CircularOpening", StringComparison.OrdinalIgnoreCase) ||
-                                                            familyName.Contains("RectangularOpening", StringComparison.OrdinalIgnoreCase);
-                                        return (s.Category?.Name == "Generic Models" || s.Category?.Name == "Structural Connections") &&
-                                               (hasSleeveKeyword || isKnownFamily);
-                                    })
-                                    .ToList();
-                                
-                                DebugLogger.Info($"[FLAG-MANAGER] Found {allSleevesWithoutCategoryFilter.Count} total sleeves (without category filter)");
-                                if (allSleevesWithoutCategoryFilter.Count > 0)
+                                DebugLogger.Info($"[FLAG-MANAGER] Found {allSleeveInstances.Count} total sleeves (all categories)");
+                                if (allSleeveInstances.Count > 0)
                                 {
-                                    var categoryBreakdown = allSleevesWithoutCategoryFilter
-                                        .GroupBy(s => 
-                                        {
-                                            var param = s.LookupParameter("MEP_Category");
-                                            return param != null && !string.IsNullOrWhiteSpace(param.AsString()) 
-                                                ? param.AsString().Trim() 
-                                                : "NO_MEP_CATEGORY";
-                                        })
+                                    var categoryBreakdown = allSleeveInstances
+                                        .GroupBy(s => GetSleeveCategory(s) ?? "NO_MEP_CATEGORY")
                                         .ToDictionary(g => g.Key, g => g.Count());
                                     
-                                var breakdown = string.Join(", ", categoryBreakdown.Select(kvp => $"{kvp.Key}={kvp.Value}"));
-                                DebugLogger.Info($"[FLAG-MANAGER] Sleeve category breakdown: {breakdown}");
-                                LogToRefresh($"Sleeve category breakdown (all sleeves detected): {breakdown}");
+                                    var breakdown = string.Join(", ", categoryBreakdown.Select(kvp => $"{kvp.Key}={kvp.Value}"));
+                                    DebugLogger.Info($"[FLAG-MANAGER] Sleeve category breakdown: {breakdown}");
+                                    LogToRefresh($"Sleeve category breakdown (all sleeves detected): {breakdown}");
                                 }
                             }
                         }
@@ -320,51 +302,121 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // ✅ PROTECTED LOGIC: Flag Hierarchy - Check cluster FIRST (cluster flags take precedence)
                             if (globalEntry.IsClusterResolved && globalEntry.ClusterSleeveInstanceId > 0)
                             {
-                                // ✅ OPTIMIZATION: Use pre-collected HashSet for O(1) lookup instead of Revit API call
-                                bool clusterSleeveExists = existingSleeveIdsSet.Contains(globalEntry.ClusterSleeveInstanceId);
+                                int clusterSleeveIdToCheck = globalEntry.ClusterSleeveInstanceId;
+                                bool clusterSleeveExists = existingSleeveIdsSet.Contains(clusterSleeveIdToCheck);
+
+                                if (!clusterSleeveExists &&
+                                    TryResolveSleeveIdFromGuid(globalEntry.Id, guidToSleeveId, sleeveIdToCategory, category, out var discoveredClusterId, out var discoveredClusterCategory))
+                                {
+                                    clusterSleeveExists = discoveredClusterId > 0;
+                                    if (clusterSleeveExists)
+                                    {
+                                        existingSleeveIdsSet.Add(discoveredClusterId);
+
+                                        if (clusterSleeveIdToCheck != discoveredClusterId)
+                                        {
+                                            updates.Add((Guid.Parse(globalEntry.Id), globalEntry.IsResolved, true,
+                                                         globalEntry.SleeveInstanceId, discoveredClusterId,
+                                                         globalEntry.MepElementId, globalEntry.StructuralElementId,
+                                                         globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ));
+                                            LogToRefresh($"Entry {globalEntry.Id}: Cluster sleeve healed via GUID → {discoveredClusterId} (category='{discoveredClusterCategory ?? "UNKNOWN"}').");
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                DebugLogger.Info($"[FLAG-MANAGER] Entry {globalEntry.Id}: Cluster sleeve ID healed via GUID → {discoveredClusterId} (was {clusterSleeveIdToCheck})");
+                                            clusterSleeveIdToCheck = discoveredClusterId;
+                                        }
+                                    }
+                                }
                                 
                                 if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[FLAG-MANAGER]   Entry {globalEntry.Id}: Cluster sleeve {globalEntry.ClusterSleeveInstanceId} exists in Revit: {clusterSleeveExists}");
+                                    DebugLogger.Info($"[FLAG-MANAGER]   Entry {globalEntry.Id}: Cluster sleeve {clusterSleeveIdToCheck} exists in Revit: {clusterSleeveExists}");
                                 if (detailLogBudget-- > 0)
-                                    LogToRefresh($"Entry {globalEntry.Id}: ClusterSleeveId={globalEntry.ClusterSleeveInstanceId}, Exists={clusterSleeveExists}, IsClusterResolved={globalEntry.IsClusterResolved}");
+                                    LogToRefresh($"Entry {globalEntry.Id}: ClusterSleeveId={clusterSleeveIdToCheck}, Exists={clusterSleeveExists}, IsClusterResolved={globalEntry.IsClusterResolved}");
                                 
                                 if (!clusterSleeveExists)
                                 {
-                                    // Cluster sleeve deleted → Reset ALL flags
                                     updates.Add((Guid.Parse(globalEntry.Id), false, false, -1, -1,
                                                 globalEntry.MepElementId, globalEntry.StructuralElementId,
                                                 globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ));
                                     resetCount++;
                                     
                                     if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Info($"[FLAG-MANAGER] ✓ Reset ALL flags for Global XML entry {globalEntry.Id} - cluster sleeve {globalEntry.ClusterSleeveInstanceId} NOT FOUND");
-                                    LogToRefresh($"RESET cluster entry {globalEntry.Id}: ClusterSleeveId={globalEntry.ClusterSleeveInstanceId} missing → Flags cleared.");
+                                        DebugLogger.Info($"[FLAG-MANAGER] ✓ Reset ALL flags for Global XML entry {globalEntry.Id} - cluster sleeve {clusterSleeveIdToCheck} NOT FOUND");
+                                    LogToRefresh($"RESET cluster entry {globalEntry.Id}: ClusterSleeveId={clusterSleeveIdToCheck} missing → Flags cleared.");
                                 }
                                 continue; // Skip individual check if cluster was checked
+                            }
+                            else if (globalEntry.IsClusterResolved && globalEntry.ClusterSleeveInstanceId <= 0)
+                            {
+                                if (TryResolveSleeveIdFromGuid(globalEntry.Id, guidToSleeveId, sleeveIdToCategory, category, out var discoveredClusterId, out var discoveredClusterCategory) &&
+                                    discoveredClusterId > 0)
+                                {
+                                    existingSleeveIdsSet.Add(discoveredClusterId);
+                                    updates.Add((Guid.Parse(globalEntry.Id), globalEntry.IsResolved, true,
+                                                 globalEntry.SleeveInstanceId, discoveredClusterId,
+                                                 globalEntry.MepElementId, globalEntry.StructuralElementId,
+                                                 globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ));
+                                    LogToRefresh($"Entry {globalEntry.Id}: Cluster sleeve ID populated via GUID → {discoveredClusterId} (category='{discoveredClusterCategory ?? "UNKNOWN"}').");
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[FLAG-MANAGER] Entry {globalEntry.Id}: Cluster sleeve ID populated via GUID → {discoveredClusterId} (was missing)");
+                                }
                             }
                             
                             // ✅ PROTECTED LOGIC: Then check individual (only if cluster flag is false)
                             if (globalEntry.IsResolved && globalEntry.SleeveInstanceId > 0)
                             {
-                                // ✅ OPTIMIZATION: Use pre-collected HashSet for O(1) lookup instead of Revit API call
-                                bool individualSleeveExists = existingSleeveIdsSet.Contains(globalEntry.SleeveInstanceId);
+                                int sleeveIdToCheck = globalEntry.SleeveInstanceId;
+                                bool individualSleeveExists = existingSleeveIdsSet.Contains(sleeveIdToCheck);
+
+                                if (!individualSleeveExists &&
+                                    TryResolveSleeveIdFromGuid(globalEntry.Id, guidToSleeveId, sleeveIdToCategory, category, out var discoveredSleeveId, out var discoveredCategory))
+                                {
+                                    individualSleeveExists = discoveredSleeveId > 0;
+                                    if (individualSleeveExists)
+                                    {
+                                        existingSleeveIdsSet.Add(discoveredSleeveId);
+
+                                        if (sleeveIdToCheck != discoveredSleeveId)
+                                        {
+                                            updates.Add((Guid.Parse(globalEntry.Id), true, globalEntry.IsClusterResolved, discoveredSleeveId, globalEntry.ClusterSleeveInstanceId,
+                                                        globalEntry.MepElementId, globalEntry.StructuralElementId,
+                                                        globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ));
+                                            LogToRefresh($"Entry {globalEntry.Id}: Individual sleeve healed via GUID → {discoveredSleeveId} (category='{discoveredCategory ?? "UNKNOWN"}').");
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                DebugLogger.Info($"[FLAG-MANAGER] Entry {globalEntry.Id}: Sleeve ID healed via GUID → {discoveredSleeveId} (was {sleeveIdToCheck})");
+                                            sleeveIdToCheck = discoveredSleeveId;
+                                        }
+                                    }
+                                }
                                 
                                 if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[FLAG-MANAGER]   Entry {globalEntry.Id}: Individual sleeve {globalEntry.SleeveInstanceId} exists in Revit: {individualSleeveExists}");
+                                    DebugLogger.Info($"[FLAG-MANAGER]   Entry {globalEntry.Id}: Individual sleeve {sleeveIdToCheck} exists in Revit: {individualSleeveExists}");
                                 if (detailLogBudget-- > 0)
-                                    LogToRefresh($"Entry {globalEntry.Id}: SleeveId={globalEntry.SleeveInstanceId}, Exists={individualSleeveExists}, IsResolved={globalEntry.IsResolved}");
+                                    LogToRefresh($"Entry {globalEntry.Id}: SleeveId={sleeveIdToCheck}, Exists={individualSleeveExists}, IsResolved={globalEntry.IsResolved}");
                                 
                                 if (!individualSleeveExists)
                                 {
-                                    // Individual sleeve deleted → Reset individual flag only
                                     updates.Add((Guid.Parse(globalEntry.Id), false, globalEntry.IsClusterResolved, -1, globalEntry.ClusterSleeveInstanceId,
                                                 globalEntry.MepElementId, globalEntry.StructuralElementId,
                                                 globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ));
                                     resetCount++;
                                     
                                     if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Info($"[FLAG-MANAGER] ✓ Reset individual flag for Global XML entry {globalEntry.Id} - individual sleeve {globalEntry.SleeveInstanceId} NOT FOUND");
-                                    LogToRefresh($"RESET individual entry {globalEntry.Id}: SleeveId={globalEntry.SleeveInstanceId} missing → IsResolved=false, SleeveInstanceId=-1");
+                                        DebugLogger.Info($"[FLAG-MANAGER] ✓ Reset individual flag for Global XML entry {globalEntry.Id} - individual sleeve {sleeveIdToCheck} NOT FOUND");
+                                    LogToRefresh($"RESET individual entry {globalEntry.Id}: SleeveId={sleeveIdToCheck} missing → IsResolved=false, SleeveInstanceId=-1");
+                                }
+                            }
+                            else if (globalEntry.IsResolved && globalEntry.SleeveInstanceId <= 0)
+                            {
+                                if (TryResolveSleeveIdFromGuid(globalEntry.Id, guidToSleeveId, sleeveIdToCategory, category, out var discoveredSleeveId, out var discoveredCategory) &&
+                                    discoveredSleeveId > 0)
+                                {
+                                    existingSleeveIdsSet.Add(discoveredSleeveId);
+                                    updates.Add((Guid.Parse(globalEntry.Id), true, globalEntry.IsClusterResolved, discoveredSleeveId, globalEntry.ClusterSleeveInstanceId,
+                                                globalEntry.MepElementId, globalEntry.StructuralElementId,
+                                                globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ));
+                                    LogToRefresh($"Entry {globalEntry.Id}: Sleeve ID populated via GUID → {discoveredSleeveId} (category='{discoveredCategory ?? "UNKNOWN"}').");
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[FLAG-MANAGER] Entry {globalEntry.Id}: Sleeve ID populated via GUID → {discoveredSleeveId} (was missing)");
                                 }
                             }
                         }
@@ -1805,6 +1857,67 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DebugLogger.Error($"[FLAG-MANAGER] Error deleting sleeve for intersection point change: {ex.Message}");
                 throw;
             }
+        }
+
+        private static string GetSleeveCategory(FamilyInstance sleeve)
+        {
+            try
+            {
+                var param = sleeve?.LookupParameter("MEP_Category");
+                if (param == null) return null;
+                var value = param.AsString();
+                return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static string GetClashZoneGuidValue(FamilyInstance sleeve)
+        {
+            try
+            {
+                var param = sleeve?.LookupParameter("ClashZone_GUID");
+                if (param == null) return null;
+                var value = param.AsString();
+                return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static bool TryResolveSleeveIdFromGuid(
+            string entryGuid,
+            Dictionary<string, int> guidToSleeveId,
+            Dictionary<int, string> sleeveIdToCategory,
+            string category,
+            out int resolvedSleeveId,
+            out string resolvedCategory)
+        {
+            resolvedSleeveId = -1;
+            resolvedCategory = null;
+
+            if (string.IsNullOrWhiteSpace(entryGuid) || guidToSleeveId == null)
+                return false;
+
+            if (guidToSleeveId.TryGetValue(entryGuid, out var candidateId))
+            {
+                resolvedCategory = sleeveIdToCategory != null && sleeveIdToCategory.TryGetValue(candidateId, out var catValue)
+                    ? catValue
+                    : null;
+
+                if (string.IsNullOrWhiteSpace(resolvedCategory) ||
+                    string.Equals(resolvedCategory, category, StringComparison.OrdinalIgnoreCase))
+                {
+                    resolvedSleeveId = candidateId;
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }

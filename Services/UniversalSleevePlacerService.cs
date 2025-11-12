@@ -31,6 +31,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly ISleevePlacementStrategy _strategy;
         private readonly Dictionary<string, double> _clearanceSettings;
         private readonly string _filterName;
+        private readonly bool _isReplayPath;
         
         // ✅ OOP REFACTORING: Centralized flag management
         private readonly FlagManager _flagManager;
@@ -42,13 +43,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public int SkippedCount { get; private set; }
         public int ErrorCount { get; private set; }
 
-        public UniversalSleevePlacerService(Document doc, OpeningConditions conditions, ISleevePlacementStrategy strategy, Dictionary<string, double> clearanceSettings = null, string filterName = null, FlagManager flagManager = null)
+        public UniversalSleevePlacerService(
+            Document doc,
+            OpeningConditions conditions,
+            ISleevePlacementStrategy strategy,
+            Dictionary<string, double> clearanceSettings = null,
+            string filterName = null,
+            FlagManager flagManager = null,
+            bool isReplayPath = false)
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _conditions = conditions ?? new OpeningConditions();
             _strategy = strategy ?? throw new ArgumentNullException(nameof(strategy));
             _clearanceSettings = clearanceSettings ?? new Dictionary<string, double>();
             _filterName = filterName;
+            _isReplayPath = isReplayPath;
             
             // ✅ OOP REFACTORING: Initialize FlagManager (create if not provided for backward compatibility)
             _flagManager = flagManager ?? new FlagManager(doc);
@@ -965,51 +974,59 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             familySymbol.Activate();
                         }
                         
-                        // ✅ SLEEVE PLACEMENT FLOW - Step 2: Get sleeve placement data from Filter XML
-                        // Filter XML contains all placement data: coordinates, MEP dimensions, host type, family name
-                        // During XML deserialization: 
-                        // 1. IntersectionPoint (XYZ object) is null because it's marked [XmlIgnore]
-                        // 2. Only IntersectionPointX, IntersectionPointY, IntersectionPointZ (doubles) are saved/loaded from XML
-                        // 3. We create the XYZ object from these three values
+                        // ✅ SLEEVE PLACEMENT FLOW - Step 2: Determine placement origin
+                        bool hasSnapshotData = HasSnapshotPlacementData(clashZone);
                         bool usingXmlSnapshot = false;
                         XYZ placementPointChosen;
                         
-                        // Check if XYZ object exists, if not create it from XML properties
-                        if (clashZone.IntersectionPoint == null)
+                        if (_isReplayPath && hasSnapshotData)
                         {
-                            // ✅ STEP 2: Get placement coordinates from Filter XML
-                            // Get values directly from XML (IntersectionPointX, Y, Z)
-                            placementPointChosen = new XYZ(clashZone.IntersectionPointX, clashZone.IntersectionPointY, clashZone.IntersectionPointZ);
-                            clashZone.IntersectionPoint = placementPointChosen; // Set it back so it's available for next time
-                            usingXmlSnapshot = true;
-                            
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[SLEEVE-PLACEMENT-FLOW] Step 2: Got placement coordinates from Filter XML: ({clashZone.IntersectionPointX:F3},{clashZone.IntersectionPointY:F3},{clashZone.IntersectionPointZ:F3})");
+                            placementPointChosen = GetSnapshotPlacementPoint(clashZone);
+
+                            if (HasValidPlacementCoordinate(placementPointChosen))
+                            {
+                                usingXmlSnapshot = true;
+                                clashZone.IntersectionPoint = placementPointChosen;
+                                clashZone.IntersectionPointX = placementPointChosen.X;
+                                clashZone.IntersectionPointY = placementPointChosen.Y;
+                                clashZone.IntersectionPointZ = placementPointChosen.Z;
+                            }
+                            else
+                            {
+                                // Fallback: rely on whatever intersection data we already have
+                                placementPointChosen = clashZone.IntersectionPoint ??
+                                                       new XYZ(clashZone.IntersectionPointX, clashZone.IntersectionPointY, clashZone.IntersectionPointZ);
+                            }
                         }
                         else
                         {
-                            // Use existing XYZ object
+                        if (clashZone.IntersectionPoint == null)
+                        {
+                            placementPointChosen = new XYZ(clashZone.IntersectionPointX, clashZone.IntersectionPointY, clashZone.IntersectionPointZ);
+                                clashZone.IntersectionPoint = placementPointChosen; // Rehydrate for downstream code
+                        }
+                        else
+                        {
                             placementPointChosen = clashZone.IntersectionPoint;
                         }
                         
-                        // ✅ STEP 2 (continued): All placement data comes from Filter XML:
-                        // - Placement coordinates: IntersectionPointX/Y/Z ✅ (from Filter XML)
-                        // - MEP dimensions: MepElementWidth/Height (from Filter XML)
-                        // - Host type: StructuralElementType (from Filter XML)
-                        // - MEP category: MepElementCategory (from Filter XML)
+                            if (_isReplayPath && hasSnapshotData && HasValidPlacementCoordinate(placementPointChosen))
+                            {
+                                usingXmlSnapshot = true;
+                            }
+                        }
+
                         if (!DeploymentConfiguration.DeploymentMode && PlacedCount < 5)
                         {
-                            DebugLogger.Info($"[SLEEVE-PLACEMENT-FLOW] Step 2: Got placement data from Filter XML - " +
-                                $"MEP Size: W={clashZone.MepElementWidth:F3}, H={clashZone.MepElementHeight:F3}, " +
-                                $"Host: {clashZone.StructuralElementType}, Category: {clashZone.MepElementCategory}");
+                            DebugLogger.Info($"[SLEEVE-PLACEMENT-FLOW] Step 2: Placement data snapshot → HasSnapshot={hasSnapshotData}, ReplayPath={_isReplayPath}");
                         }
-                        
-                        // Validate intersection point has valid coordinates (not all zeros)
-                        if (Math.Abs(placementPointChosen.X) < 1e-9 && Math.Abs(placementPointChosen.Y) < 1e-9 && Math.Abs(placementPointChosen.Z) < 1e-9)
+
+                        // Validate placement point has meaningful coordinates
+                        if (!HasValidPlacementCoordinate(placementPointChosen))
                         {
                                                         if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Error($"[UniversalSleevePlacer] ❌ CRITICAL: Cannot place sleeve for Zone {clashZone.Id} - IntersectionPoint is (0,0,0)!");
-                            try { File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 2.3: ❌ SKIPPED - IntersectionPoint is (0,0,0)\n"); } catch { }
+                            DebugLogger.Error($"[UniversalSleevePlacer] ❌ CRITICAL: Cannot place sleeve for Zone {clashZone.Id} - Placement point is (0,0,0)!");
+                            try { File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 2.3: ❌ SKIPPED - Placement point is (0,0,0)\n"); } catch { }
                             SkippedCount++;
                             sleeveTimer.Stop();
                             continue;
@@ -1028,7 +1045,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
                                 var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
-                                var placementSource = usingXmlSnapshot ? "XML snapshot" : "Recomputed intersection";
+                                var placementSource = _isReplayPath
+                                    ? (usingXmlSnapshot ? "XML snapshot" : "Replay fallback (no cached coordinates)")
+                                    : "Recomputed intersection";
                                 File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] [PLACEMENT-ORIGIN] Zone={clashZone.Id}, Source={placementSource}, Point=({placementPointChosen?.X:F3},{placementPointChosen?.Y:F3},{placementPointChosen?.Z:F3})\n");
                                 File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] PLACEMENT: Zone={clashZone.Id}, MEP={clashZone.MepElementIdValue}, HOST={clashZone.StructuralElementIdValue}, Point=({placementPointChosen?.X:F3},{placementPointChosen?.Y:F3},{placementPointChosen?.Z:F3}), SPP_XML=({clashZone.SleevePlacementPointX:F3},{clashZone.SleevePlacementPointY:F3},{clashZone.SleevePlacementPointZ:F3}), IP=({clashZone.IntersectionPointX:F3},{clashZone.IntersectionPointY:F3},{clashZone.IntersectionPointZ:F3})\n");
                             }
@@ -2593,6 +2612,58 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
+        private static bool HasSnapshotPlacementData(ClashZone zone)
+        {
+            if (zone == null)
+                return false;
+
+            const double tol = 1e-9;
+            bool HasValue(double value) => Math.Abs(value) > tol;
+
+            return HasValue(zone.SleevePlacementPointX) ||
+                   HasValue(zone.SleevePlacementPointY) ||
+                   HasValue(zone.SleevePlacementPointZ) ||
+                   HasValue(zone.IntersectionPointX) ||
+                   HasValue(zone.IntersectionPointY) ||
+                   HasValue(zone.IntersectionPointZ);
+        }
+
+        private static XYZ GetSnapshotPlacementPoint(ClashZone zone)
+        {
+            if (zone == null)
+                return new XYZ(0, 0, 0);
+
+            const double tol = 1e-9;
+
+            bool hasPlacementPoint =
+                Math.Abs(zone.SleevePlacementPointX) > tol ||
+                Math.Abs(zone.SleevePlacementPointY) > tol ||
+                Math.Abs(zone.SleevePlacementPointZ) > tol;
+
+            if (hasPlacementPoint)
+            {
+                return new XYZ(
+                    zone.SleevePlacementPointX,
+                    zone.SleevePlacementPointY,
+                    zone.SleevePlacementPointZ);
+            }
+
+            return new XYZ(
+                zone.IntersectionPointX,
+                zone.IntersectionPointY,
+                zone.IntersectionPointZ);
+        }
+
+        private static bool HasValidPlacementCoordinate(XYZ point)
+        {
+            if (point == null) return false;
+
+            const double tol = 1e-9;
+            return Math.Abs(point.X) > tol ||
+                   Math.Abs(point.Y) > tol ||
+                   Math.Abs(point.Z) > tol;
+        }
+
         /// <summary>
         /// Determine if a pipe is insulated (use actual insulation data from strategy analysis)
         /// </summary>
@@ -3646,9 +3717,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] SKIP: Filter XML file not found for pattern {filterFileName}");
                                                                 if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Warning($"[UniversalSleevePlacer] Filter XML file not found: {filterFileName}");
-                        continue;
-                    }
-
+                            continue;
+                        }
+                        
                     diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Target file: {Path.GetFileName(xmlFile)} (size={new FileInfo(xmlFile).Length} bytes)");
 
                     try
@@ -3657,9 +3728,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         Models.OpeningFilter filter = null;
                         try
                         {
-                            using (var reader = new StreamReader(xmlFile))
-                            {
-                                filter = (Models.OpeningFilter)serializer.Deserialize(reader);
+                        using (var reader = new StreamReader(xmlFile))
+                        {
+                            filter = (Models.OpeningFilter)serializer.Deserialize(reader);
                             }
                             diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Step 1 SUCCESS");
                         }
@@ -3680,7 +3751,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 DebugLogger.Warning($"[UniversalSleevePlacer] Filter or ClashZoneStorage is null in {Path.GetFileName(xmlFile)}");
                             continue;
                         }
-
+                        
                         diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Step 2 SUCCESS");
 
                         try
@@ -3697,7 +3768,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                         try
                         {
-                            var effectiveFilterName = GetBaseFilterName(_filterName, filter?.Name, category);
+                            var effectiveFilterName = FilterNameHelper.NormalizeBaseName(_filterName, filter?.Name, category);
                             baseFilterNameForPersistence ??= effectiveFilterName;
                             var persistenceZones = categoryZones
                                 .Select(CloneZoneForPersistence)
@@ -3706,7 +3777,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                             diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Step 3 Snapshot (clone): {string.Join(", ", persistenceZones.Select(z => $"{z.Id}:{z.SleeveInstanceId}").Take(10))}");
 
-                            persistenceService.SaveClashZones(persistenceZones, effectiveFilterName, filter);
+                            persistenceService.SaveClashZones(persistenceZones, effectiveFilterName, filter, allowStructuralUpdates: false);
                             diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Step 3 SUCCESS");
                             }
                         catch (Exception persistEx)
@@ -3748,7 +3819,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 $"[{DateTime.Now:HH:mm:ss}] [XML-MERGE-ERROR] File={Path.GetFileName(xmlFile)} → {categoryEx.Message}\n");
                                 }
                         catch { }
-
+                                    
                                                                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Error($"[UniversalSleevePlacer] Error saving {Path.GetFileName(xmlFile)}: {categoryEx.Message}");
                                 }
@@ -3760,7 +3831,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 //    the category snapshots and the root filter stay aligned.
                 try
                 {
-                    var baseFilterName = baseFilterNameForPersistence ?? GetBaseFilterName(_filterName, sanitizedFilterNameGlobal, string.Empty);
+                    var baseFilterName = baseFilterNameForPersistence ?? FilterNameHelper.NormalizeBaseName(_filterName, sanitizedFilterNameGlobal);
                     if (string.IsNullOrWhiteSpace(baseFilterName))
                     {
                         diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] MAIN FILTER UPDATE SKIPPED → base name missing");
@@ -3828,7 +3899,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     catch (Exception ex)
                     {
                 diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ❌ OUTER ERROR: {ex}");
-                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                                        if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[UniversalSleevePlacer] Error in SaveUpdatedXmlFiles: {ex.Message}");
             }
             finally
@@ -3841,37 +3912,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
         
-        private string GetBaseFilterName(string rawFilterName, string fallbackFilterName, string category)
-        {
-            var source = !string.IsNullOrWhiteSpace(rawFilterName) ? rawFilterName : fallbackFilterName;
-            if (string.IsNullOrWhiteSpace(source))
-            {
-                return fallbackFilterName ?? "Unknown";
-                    }
-
-            source = source.Trim();
-            source = Path.GetFileNameWithoutExtension(source);
-
-            if (string.IsNullOrWhiteSpace(source))
-                return fallbackFilterName ?? "Unknown";
-
-            var normalizedCategory = category?.Trim().ToLowerInvariant() ?? string.Empty;
-            if (!string.IsNullOrEmpty(normalizedCategory))
-            {
-                normalizedCategory = normalizedCategory.Replace(" ", "_");
-                var suffix = "_" + normalizedCategory;
-                if (source.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
-                {
-                    source = source.Substring(0, source.Length - suffix.Length);
-                }
-            }
-
-            if (string.IsNullOrWhiteSpace(source))
-                return fallbackFilterName ?? "Unknown";
-
-            return source;
-        }
-
         private static ClashZone CloneZoneForPersistence(ClashZone source)
         {
             if (source == null) return null;
@@ -4097,9 +4137,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (indexMap.TryGetValue(clone.Id, out var index))
                 {
                     target.ClashZones[index] = clone;
-                }
-                else
-                {
+                                }
+                                else
+                                {
                     indexMap[clone.Id] = target.ClashZones.Count;
                     target.ClashZones.Add(clone);
                 }
@@ -4158,7 +4198,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 var conditionsService = new ConditionsService(filtersDirectory, msg =>
                 {
-                    if (!DeploymentConfiguration.DeploymentMode)
+                                                        if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info(msg);
                 });
 
@@ -4194,7 +4234,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     catch (Exception ex)
                     {
                         diagnosticLog?.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] CONDITIONS SAVE FAILED ({combinedKey}): {ex}");
-                        if (!DeploymentConfiguration.DeploymentMode)
+                                                if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Warning($"[UniversalSleevePlacer] Failed to ensure conditions for '{combinedKey}': {ex.Message}");
                     }
                 }
@@ -4202,7 +4242,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             catch (Exception ex)
             {
                 diagnosticLog?.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] CONDITIONS SERVICE INIT FAILED: {ex}");
-                if (!DeploymentConfiguration.DeploymentMode)
+                                if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning($"[UniversalSleevePlacer] ConditionsService initialization failed: {ex.Message}");
             }
         }

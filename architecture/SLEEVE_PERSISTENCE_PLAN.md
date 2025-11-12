@@ -55,6 +55,37 @@ Build a persistence pipeline that:
 | **Crash recovery** | Master filter (`Plumbing.xml`) retains latest placement data; Global XML holds flag state → restart reads both, no manual cleanup | Avoid double-saving to keep timestamps honest |
 | **Mixed linked files (FP + PH)** | Filter tree stores both combos; refresh iterates only UI-selected combos, but flags for unselected remain untouched | Document expectation that UI selection drives processing scope |
 
+## 4A. Sleeve Placement Paths (Post-Refactor)
+
+To make placement decisions predictable while supporting targeted recomputation, the pipeline now splits into three explicit services. Each path consumes a different slice of persisted data and sets `allowStructuralUpdates` appropriately when calling `ClashZonePersistenceService`.
+
+| Path | Trigger | Service | Data Read | Persistence Behaviour | Notes |
+|------|---------|---------|-----------|------------------------|-------|
+| **Path 1 – Replay Placement** | Default refresh/placement when neither global configuration nor UI overrides changed | `SleevePlacementReplayService` | Uses the latest `{filter}_{category}.xml` snapshot (intersection point, sleeve size, offsets, cluster payload) | After placement, calls `SaveClashZones(..., allowStructuralUpdates: false)` so only flags/IDs flow back to Global XML | Guarantees we place exactly what the snapshot describes. Zones with zeroed coordinates are skipped and flagged for detection. |
+| **Path 2 – Clearance/Type Recalc** | User edits UI clearance/type controls without adopting the document | `SleeveSizingService` (composes Path 1) | Starts from the same snapshot as Path 1, recomputes sleeve width/height/diameter, opening family/type, placement offsets | Persists the new sizing via `SaveClashZones(..., false)` and immediately hands the refreshed snapshot to Path 1 for placement | Detection geometry is untouched; only size-related fields change so replay still honours cached intersection points. |
+| **Path 3 – Detection Rebuild** | “Adopt to modified document” or global configuration change (tolerance, level strategy, etc.) | `SleeveDetectionService` | Runs full clash detection and rebuilds the master tree (`{filter}.xml` + category snapshots) | Calls `SaveClashZones(..., true)` to overwrite intersection geometry, host IDs, and placement payload | Only Path 3 is allowed to mutate detection-derived data. Placement falls back to Path 1 immediately afterwards. |
+
+### Persistence Impact
+- **Snapshot discipline:** Path 1 defines the canonical replay snapshot. Any service that adjusts data (Path 2 or Path 3) must run Path 1 immediately after so sleeve IDs and flags stay synchronized with Global XML.
+- **`allowStructuralUpdates`:** Path 1 and Path 2 always pass `false`; they never rewrite intersection geometry. Path 3 passes `true` because new detection legitimately changes those fields.
+- **Conditions files:** UI overrides (clearance/type) map to Path 2; global configuration edits drive Path 3. Documenting the trigger makes it obvious why a run is “lightweight” versus “heavy.”
+- **Global XML ledger:** All paths still push flag state through `SaveClashZones`, but only Path 3 updates the `(MEP Id, Host Id, Intersection Point)` key that flag reset relies on.
+
+### 4B. Anticipated Risks and Mitigations
+
+Splitting placement into three services introduces new failure modes. The table below lists the main risks we need to watch while implementing the refactor.
+
+| Risk | Description | Mitigation |
+|------|-------------|------------|
+| **Wrong path selection** | Orchestrator misreads state (e.g. hash/timestamp drift) and picks the wrong path, causing stale sleeve sizes or unnecessary detection reruns. | Centralize path decision in one helper that compares persisted fingerprints (UI overrides vs global config). Unit-test the decision matrix and log `[PLACEMENT-PATH]` for each run. |
+| **Snapshot divergence** | Path 2 recalculates sizing but Path 1 reloads an old snapshot from disk, so placement uses stale data. | Treat the sizing output as canonical: persist the updated snapshot before replay and pass the same in-memory instance to Path 1. Add assertions/logging that replay sees refreshed dimensions. |
+| **Misuse of `allowStructuralUpdates`** | A new persistence call forgets to pass `false` for replay/sizing and overwrites intersection points, reintroducing host-centre placement. | Wrap persistence entry points per path (`SaveReplaySnapshot`, `SaveSizingSnapshot`, etc.) so callers never touch the flag directly. Consider a lint/test that forbids raw `SaveClashZones(..., true)` outside detection. |
+| **Conditions misclassification** | UI overrides vs global settings aren’t differentiated correctly; detection fails to run when geometry actually changed (or runs too often). | Maintain separate hashes/timestamps for “global” vs “session/UI” settings, store them with the snapshot, and log the reason a path fired. |
+| **Cluster incompatibility** | Path 2 changes member sizing but forgets to refresh derived cluster payload, so cluster placement uses stale bounding boxes. | After sizing, recompute cluster metadata (or flag clusters for regeneration) before handing off to replay. Tests should verify cluster snapshots update correctly. |
+| **Flag persistence gaps** | Replay routes skip persistence on error, leaving Global XML with stale flags and causing double placement. | Keep `SaveClashZones` calls in `finally` blocks or ensure failures surface with explicit error logging. Track success per path to confirm flags always reach Global XML. |
+| **Legacy callers bypass coordinator** | Other services (cluster, coordinate updates) continue calling old placement entry points, bypassing the new path logic. | Provide a single public coordinator API and migrate every caller to it. Back-stop with logging that warns when legacy code paths are invoked. |
+| **Logging blind spots** | Without distinct log markers per path, diagnosing misbehaviour becomes guesswork. | Emit consistent markers (`[PLACEMENT-PATH] Replay/Sizing/Detection`) and include snapshot fingerprints (hashes, timestamps) for traceability. |
+
 ## 5. Failure Modes & Mitigations
 - **Duplicate GUIDs in Global XML.** Cause: multiple `SaveClashZones` calls or incorrect naming. Mitigation: one call per save, enforce base-name normalization, add dedupe helper for existing data.
 - **Global XML and Filter XML disagree on flags.** Cause: stale duplicates or missing resets. Mitigation: run dedupe, ensure reset logic updates all matching entries, log mismatches with GUID context.
