@@ -25,6 +25,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 		
 		/// <summary>
 		/// Creates a normalized key for comparison (case-insensitive, removes path info)
+		/// ✅ FIX: Handles old format ": X : location Shared" pattern
 		/// </summary>
 		public string GetNormalizedKey()
 		{
@@ -32,6 +33,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 			{
 				if (string.IsNullOrWhiteSpace(s)) return string.Empty;
 				var trimmed = s;
+				
+				// ✅ FIX: Remove old format ": X : location Shared" pattern (e.g., ": 12 : location Shared")
+				// This handles legacy file combo names from Global XML
+				var locationMatch = System.Text.RegularExpressions.Regex.Match(trimmed, @":\s*\d+\s*:\s*location\s+Shared", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+				if (locationMatch.Success)
+				{
+					trimmed = trimmed.Substring(0, locationMatch.Index).Trim();
+				}
+				
 				var idxParen = trimmed.IndexOf('(');
 				if (idxParen >= 0) trimmed = trimmed.Substring(0, idxParen);
 				trimmed = Path.GetFileNameWithoutExtension(trimmed);
@@ -74,6 +84,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 		
 		/// <summary>
 		/// Creates a normalized key for comparison (case-insensitive, removes path info)
+		/// ✅ FIX: Handles old format ": X : location Shared" pattern
 		/// </summary>
 		public string GetNormalizedKey()
 		{
@@ -81,6 +92,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 			{
 				if (string.IsNullOrWhiteSpace(s)) return string.Empty;
 				var trimmed = s;
+				
+				// ✅ FIX: Remove old format ": X : location Shared" pattern (e.g., ": 12 : location Shared")
+				// This handles legacy file combo names from Global XML
+				var locationMatch = System.Text.RegularExpressions.Regex.Match(trimmed, @":\s*\d+\s*:\s*location\s+Shared", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+				if (locationMatch.Success)
+				{
+					trimmed = trimmed.Substring(0, locationMatch.Index).Trim();
+				}
+				
 				var idxParen = trimmed.IndexOf('(');
 				if (idxParen >= 0) trimmed = trimmed.Substring(0, idxParen);
 				trimmed = Path.GetFileNameWithoutExtension(trimmed);

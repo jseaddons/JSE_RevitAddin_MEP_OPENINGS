@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
@@ -13,7 +14,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
     {
         // Core document reference
         public Document Document { get; }
-        public UIDocument UIDocument { get; }
+        public UIDocument UIDocument { get; private set; }
         
         // UI selections (immutable for this refresh)
         public List<string> SelectedFilterNames { get; }
@@ -104,6 +105,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             }
             
             return changed;
+        }
+        
+        /// <summary>
+        /// Reset session state (for reuse if needed)
+        /// </summary>
+        public void ResetSession()
+        {
+            ExistingClashZones?.Clear();
+            NewClashZones?.Clear();
+            AllClashZones?.Clear();
+            CurrentIntersections?.Clear();
+            GeometryCache?.Clear();
+            StringPool?.Clear();
         }
         
         public void Dispose()

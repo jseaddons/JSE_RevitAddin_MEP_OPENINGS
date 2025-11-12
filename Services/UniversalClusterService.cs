@@ -2663,14 +2663,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             DebugLogger.Info($"[UniversalClusterService] Loading cache for cleanup with xmlFilePath={xmlFilePath}, targetCategory={targetCategory}");
             LoadClashZoneCacheFromRegularXml(xmlFilePath, targetCategory, doc, filterName);
             
-            // Log what was loaded
-                        if (!DeploymentConfiguration.DeploymentMode)
-            DebugLogger.Info($"[UniversalClusterService] Cache loaded with {_clashZoneCache.Count} clash zones");
-            foreach (var kvp in _clashZoneCache.Take(5))
+            // ✅ DIAGNOSTIC: Enhanced logging for cache contents after reload
+            if (!DeploymentConfiguration.DeploymentMode)
             {
-                var cz = kvp.Value;
-                                if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Info($"[UniversalClusterService] Cached: SleeveId={cz.SleeveInstanceId}, AfterClusterId={cz.AfterClusterSleevePlacedSleeveInstanceId}, ClusterId={cz.ClusterSleeveInstanceId}");
+                DebugLogger.Info($"[CACHE-RELOAD] Cache loaded with {_clashZoneCache.Count} total clash zones");
+                
+                // Count clash zones by type
+                var withSleeveId = _clashZoneCache.Values.Count(cz => cz.SleeveInstanceId > 0);
+                var withClusterId = _clashZoneCache.Values.Count(cz => cz.ClusterSleeveInstanceId > 0);
+                var withAfterClusterId = _clashZoneCache.Values.Count(cz => cz.AfterClusterSleevePlacedSleeveInstanceId > 0);
+                var withClusterBbox = _clashZoneCache.Values.Count(cz => cz.ClusterSleeveInstanceId > 0 && 
+                    cz.ClusterSleeveBoundingBoxMinX != 0 && cz.ClusterSleeveBoundingBoxMinY != 0);
+                
+                DebugLogger.Info($"[CACHE-RELOAD] Breakdown: SleeveInstanceId>0: {withSleeveId}, ClusterSleeveInstanceId>0: {withClusterId}, AfterClusterId>0: {withAfterClusterId}, WithClusterBbox: {withClusterBbox}");
+                
+                // Group by host type
+                var byHostType = _clashZoneCache.Values
+                    .Where(cz => cz.ClusterSleeveInstanceId > 0)
+                    .GroupBy(cz => GetHostTypeFromClashZone(cz))
+                    .ToDictionary(g => g.Key, g => g.Count());
+                
+                DebugLogger.Info($"[CACHE-RELOAD] Cluster clash zones by host type: {string.Join(", ", byHostType.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
+                
+                // Log sample cluster clash zones with bounding boxes
+                var sampleClusterZones = _clashZoneCache.Values
+                    .Where(cz => cz.ClusterSleeveInstanceId > 0)
+                    .Take(5)
+                    .ToList();
+                
+                foreach (var cz in sampleClusterZones)
+                {
+                    var hostType = GetHostTypeFromClashZone(cz);
+                    DebugLogger.Info($"[CACHE-RELOAD] Sample cluster clash zone: ClusterId={cz.ClusterSleeveInstanceId}, HostType={hostType}, " +
+                        $"BboxMin=({cz.ClusterSleeveBoundingBoxMinX:F6}, {cz.ClusterSleeveBoundingBoxMinY:F6}, {cz.ClusterSleeveBoundingBoxMinZ:F6}), " +
+                        $"BboxMax=({cz.ClusterSleeveBoundingBoxMaxX:F6}, {cz.ClusterSleeveBoundingBoxMaxY:F6}, {cz.ClusterSleeveBoundingBoxMaxZ:F6})");
+                }
+                
+                // Log to file as well
+                string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                System.IO.File.AppendAllText(clusterDebugLogPath, $"[CACHE-RELOAD] Total: {_clashZoneCache.Count}, WithClusterId: {withClusterId}, WithClusterBbox: {withClusterBbox}\n");
+                System.IO.File.AppendAllText(clusterDebugLogPath, $"[CACHE-RELOAD] By host type: {string.Join(", ", byHostType.Select(kvp => $"{kvp.Key}={kvp.Value}"))}\n");
             }
         }
         
@@ -2766,8 +2798,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     DebugLogger.Info($"[UniversalClusterService] Loaded {_clashZoneCache.Count} clash zones from regular XML files");
+                    
+                    // ✅ DIAGNOSTIC: Count clash zones with cluster data
+                    var clusterZones = _clashZoneCache.Values.Where(cz => cz.ClusterSleeveInstanceId > 0).ToList();
+                    var clusterZonesWithBbox = clusterZones.Where(cz => 
+                        cz.ClusterSleeveBoundingBoxMinX != 0 || cz.ClusterSleeveBoundingBoxMinY != 0 || cz.ClusterSleeveBoundingBoxMinZ != 0).ToList();
+                    
+                    DebugLogger.Info($"[CACHE-LOAD] Cluster clash zones: Total={clusterZones.Count}, WithBbox={clusterZonesWithBbox.Count}");
+                    
+                    // Group by host type
+                    var byHostType = clusterZonesWithBbox.GroupBy(cz => GetHostTypeFromClashZone(cz))
+                        .ToDictionary(g => g.Key, g => g.Count());
+                    DebugLogger.Info($"[CACHE-LOAD] Cluster clash zones with bbox by host type: {string.Join(", ", byHostType.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
+                    
                     string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
                     System.IO.File.AppendAllText(clusterDebugLogPath, $"[CACHE] Loaded {_clashZoneCache.Count} clash zones from regular XML files (filtered for {targetCategory ?? "ALL"})\n");
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[CACHE-LOAD] Cluster zones: Total={clusterZones.Count}, WithBbox={clusterZonesWithBbox.Count}, ByHostType: {string.Join(", ", byHostType.Select(kvp => $"{kvp.Key}={kvp.Value}"))}\n");
                 }
             }
             catch (Exception ex)
@@ -4256,20 +4302,64 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     // ✅ OPTIMIZED: Get cluster sleeve bounding box from XML cache (no expensive Revit API calls)                    
                     // Try to find cluster sleeve in cache (after XML save, this will have bounding boxes)
-                    var clusterClashZone = _clashZoneCache.Values.FirstOrDefault(cz => cz.ClusterSleeveInstanceId == clusterId);
-                    if (clusterClashZone == null || 
-                        (clusterClashZone.ClusterSleeveBoundingBoxMinX == 0 && clusterClashZone.ClusterSleeveBoundingBoxMinY == 0))
+                    
+                    // ✅ DIAGNOSTIC: Log cache lookup attempt
+                    if (!DeploymentConfiguration.DeploymentMode)
                     {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[CLEANUP] Cluster sleeve {clusterId} not found in cache or no bbox data (MinX={clusterClashZone?.ClusterSleeveBoundingBoxMinX ?? 0}), skipping\n");
+                        var cacheClusterCount = _clashZoneCache.Values.Count(cz => cz.ClusterSleeveInstanceId > 0);
+                        var cacheClusterIds = _clashZoneCache.Values
+                            .Where(cz => cz.ClusterSleeveInstanceId > 0)
+                            .Select(cz => cz.ClusterSleeveInstanceId)
+                            .Distinct()
+                            .Take(10)
+                            .ToList();
+                        DebugLogger.Info($"[CLEANUP-LOOKUP] Searching for clusterId={clusterId} in cache. Cache has {cacheClusterCount} clash zones with ClusterSleeveInstanceId>0. Sample IDs: {string.Join(", ", cacheClusterIds)}");
+                    }
+                    
+                    var clusterClashZone = _clashZoneCache.Values.FirstOrDefault(cz => cz.ClusterSleeveInstanceId == clusterId);
+                    
+                    // ✅ DIAGNOSTIC: Enhanced logging for lookup result
+                    if (clusterClashZone == null)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[CLEANUP-LOOKUP] ❌ Cluster sleeve {clusterId} NOT FOUND in cache. Cache size: {_clashZoneCache.Count}");
+                            
+                            // Check if there are any clash zones with this cluster ID but different MepElementIdValue
+                            var allWithThisClusterId = _clashZoneCache.Values.Where(cz => cz.ClusterSleeveInstanceId == clusterId).ToList();
+                            DebugLogger.Info($"[CLEANUP-LOOKUP] Clash zones with ClusterSleeveInstanceId={clusterId}: {allWithThisClusterId.Count}");
+                            
+                            // Log host type of cluster sleeve from Revit (reuse existing clusterHostType from line 4292)
+                            DebugLogger.Info($"[CLEANUP-LOOKUP] Cluster sleeve {clusterId} host type from Revit: {clusterHostType}");
+                        }
                         continue;
+                    }
+                    
+                    if (clusterClashZone.ClusterSleeveBoundingBoxMinX == 0 && clusterClashZone.ClusterSleeveBoundingBoxMinY == 0)
+                    {
+                        var clusterHostTypeFromCache = GetHostTypeFromClashZone(clusterClashZone);
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[CLEANUP-LOOKUP] ⚠️ Cluster sleeve {clusterId} found BUT bbox is zero (HostType={clusterHostTypeFromCache}). " +
+                                $"MinX={clusterClashZone.ClusterSleeveBoundingBoxMinX}, MinY={clusterClashZone.ClusterSleeveBoundingBoxMinY}, " +
+                                $"MaxX={clusterClashZone.ClusterSleeveBoundingBoxMaxX}, MaxY={clusterClashZone.ClusterSleeveBoundingBoxMaxY}");
+                        }
+                        continue;
+                    }
+                    
+                    // ✅ DIAGNOSTIC: Log successful lookup
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        var clusterHostTypeFromCache = GetHostTypeFromClashZone(clusterClashZone);
+                        DebugLogger.Info($"[CLEANUP-LOOKUP] ✅ Cluster sleeve {clusterId} FOUND in cache (HostType={clusterHostTypeFromCache}). " +
+                            $"BboxMin=({clusterClashZone.ClusterSleeveBoundingBoxMinX:F6}, {clusterClashZone.ClusterSleeveBoundingBoxMinY:F6}, {clusterClashZone.ClusterSleeveBoundingBoxMinZ:F6}), " +
+                            $"BboxMax=({clusterClashZone.ClusterSleeveBoundingBoxMaxX:F6}, {clusterClashZone.ClusterSleeveBoundingBoxMaxY:F6}, {clusterClashZone.ClusterSleeveBoundingBoxMaxZ:F6})");
                     }
                     
                     // ✅ Use bounding box from XML cache
                     var clusterMin = new XYZ(clusterClashZone.ClusterSleeveBoundingBoxMinX, clusterClashZone.ClusterSleeveBoundingBoxMinY, clusterClashZone.ClusterSleeveBoundingBoxMinZ);
                     var clusterMax = new XYZ(clusterClashZone.ClusterSleeveBoundingBoxMaxX, clusterClashZone.ClusterSleeveBoundingBoxMaxY, clusterClashZone.ClusterSleeveBoundingBoxMaxZ);
-                    
-                                        if (!DeploymentConfiguration.DeploymentMode)
+                                                if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLEANUP] Cluster sleeve {clusterId} bbox from CACHE: Min=({clusterClashZone.ClusterSleeveBoundingBoxMinX:F6}, {clusterClashZone.ClusterSleeveBoundingBoxMinY:F6}), Max=({clusterClashZone.ClusterSleeveBoundingBoxMaxX:F6}, {clusterClashZone.ClusterSleeveBoundingBoxMaxY:F6})\n");
                     
                     // ✅ ENHANCED LOGGING: Show bounding boxes before checking (with Z coordinates for floors)

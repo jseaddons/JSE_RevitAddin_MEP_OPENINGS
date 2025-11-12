@@ -102,7 +102,8 @@
     <Compile Remove="Commands\*BKP*.cs" />
     <Compile Remove="Services\Archive\**\*.cs" />
     <Compile Remove="Archive\**\*.cs" />
-    <Compile Remove="refresh refactor\**\*.cs" />
+    <!-- ✅ ENABLED: refresh refactor files are now included for compilation -->
+    <!-- <Compile Remove="refresh refactor\**\*.cs" /> -->
     <Compile Remove="Commands\Backup\**\*.cs" />
     <Compile Remove="Views\Backup\**\*.cs" />
     <Compile Remove="ViewModels\Backup\**\*.cs" />

@@ -1366,7 +1366,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Dock = WinForms.DockStyle.Fill,
                 BackColor = System.Drawing.Color.FromArgb(245, 245, 245),
-                BorderStyle = WinForms.BorderStyle.FixedSingle
+                BorderStyle = WinForms.BorderStyle.FixedSingle,
+                MinimumSize = new System.Drawing.Size(150, 0)  // ✅ Minimum width for file name section
             };
             _leftPanel.Controls.Add(_topLeftPanel);
                 // DebugLogger.Info("_topLeftPanel created and added");
@@ -1387,7 +1388,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Dock = WinForms.DockStyle.Bottom,
                 Height = _leftPanel.Height / 2,
                 BackColor = System.Drawing.Color.FromArgb(245, 245, 245),
-                BorderStyle = WinForms.BorderStyle.FixedSingle
+                BorderStyle = WinForms.BorderStyle.FixedSingle,
+                MinimumSize = new System.Drawing.Size(150, 0)  // ✅ Minimum width for file name section
             };
             _leftPanel.Controls.Add(_bottomLeftPanel);
                 // DebugLogger.Info("_bottomLeftPanel created and added");
@@ -1416,18 +1418,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _topRightPanel = new WinForms.Panel
             {
                 Dock = WinForms.DockStyle.Right,
-                Width = 200,  // Fixed width for categories
+                Width = 135,  // ✅ Reduced from 200 to 135 pixels (65px total reduction) to make room for file names
+                MinimumSize = new System.Drawing.Size(110, 0),  // ✅ Minimum width for category section
                 BackColor = System.Drawing.Color.FromArgb(250, 250, 250),
                 BorderStyle = WinForms.BorderStyle.FixedSingle
             };
             _topLeftPanel.Controls.Add(_topRightPanel);
 
             // Vertical Splitter (between left and right in top section) - DOCK to RIGHT
+            // ✅ CRITICAL: Splitter must be added AFTER the right panel for proper docking order
             _verticalSplitter = new WinForms.Splitter
             {
                 Dock = WinForms.DockStyle.Right,
-                Width = 3,
-                BackColor = System.Drawing.Color.Gray
+                Width = 5,  // ✅ Increased width for easier grabbing
+                BackColor = System.Drawing.Color.Gray,
+                Cursor = WinForms.Cursors.VSplit  // ✅ Show resize cursor
             };
             _topLeftPanel.Controls.Add(_verticalSplitter);
         }
@@ -1443,18 +1448,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _bottomRightPanel = new WinForms.Panel
             {
                 Dock = WinForms.DockStyle.Right,
-                Width = 200,  // Fixed width for categories
+                Width = 135,  // ✅ Reduced from 200 to 135 pixels (65px total reduction) to make room for file names
+                MinimumSize = new System.Drawing.Size(110, 0),  // ✅ Minimum width for category section
                 BackColor = System.Drawing.Color.FromArgb(250, 250, 250),
                 BorderStyle = WinForms.BorderStyle.FixedSingle
             };
             _bottomLeftPanel.Controls.Add(_bottomRightPanel);
 
             // Vertical Splitter (between left and right in bottom section) - DOCK to RIGHT
+            // ✅ CRITICAL: Splitter must be added AFTER the right panel for proper docking order
             var bottomVerticalSplitter = new WinForms.Splitter
             {
                 Dock = WinForms.DockStyle.Right,
-                Width = 3,
-                BackColor = System.Drawing.Color.Gray
+                Width = 5,  // ✅ Increased width for easier grabbing
+                BackColor = System.Drawing.Color.Gray,
+                Cursor = WinForms.Cursors.VSplit  // ✅ Show resize cursor
             };
             _bottomLeftPanel.Controls.Add(bottomVerticalSplitter);
         }
@@ -1545,7 +1553,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 foreach (var file in _linkedFiles)
                 {
-                    string displayText = $"{file.FileName} ({file.ElementCount} elements)";
+                    // ✅ FIX: Display only filename - no .rvt extension, element count, or location info
+                    string displayText = System.IO.Path.GetFileNameWithoutExtension(file.FileName);
                     if (!file.IsLoaded)
                     {
                         displayText += " [NOT LOADED]";
@@ -1888,7 +1897,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 foreach (var file in _linkedFiles)
                 {
-                    string displayText = $"{file.FileName} ({file.ElementCount} elements)";
+                    // ✅ FIX: Display only filename - no .rvt extension, element count, or location info
+                    string displayText = System.IO.Path.GetFileNameWithoutExtension(file.FileName);
                     if (!file.IsLoaded)
                     {
                         displayText += " [NOT LOADED]";
@@ -5749,7 +5759,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         {
                             if (listBox.GetItemChecked(i))
                             {
-                                selectedFiles.Add(listBox.Items[i].ToString() ?? "");
+                                // ✅ FIX: Extract just filename - remove any extra info like "[NOT LOADED]", .rvt extension, or old format with element count
+                                string itemText = listBox.Items[i].ToString() ?? "";
+                                // Remove "[NOT LOADED]" suffix if present
+                                itemText = itemText.Replace(" [NOT LOADED]", "");
+                                // Remove any old format with element count: "filename (X elements)" or ": location Shared"
+                                int parenIndex = itemText.IndexOf('(');
+                                if (parenIndex > 0) itemText = itemText.Substring(0, parenIndex).Trim();
+                                int colonIndex = itemText.IndexOf(':');
+                                if (colonIndex > 0) itemText = itemText.Substring(0, colonIndex).Trim();
+                                // Remove .rvt extension if present
+                                itemText = System.IO.Path.GetFileNameWithoutExtension(itemText);
+                                selectedFiles.Add(itemText);
                             }
                         }
                     }
@@ -5774,7 +5795,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         {
                             if (listBox.GetItemChecked(i))
                             {
-                                selectedFiles.Add(listBox.Items[i].ToString() ?? "");
+                                // ✅ FIX: Extract just filename - remove any extra info like "[NOT LOADED]", .rvt extension, or old format with element count
+                                string itemText = listBox.Items[i].ToString() ?? "";
+                                // Remove "[NOT LOADED]" suffix if present
+                                itemText = itemText.Replace(" [NOT LOADED]", "");
+                                // Remove any old format with element count: "filename (X elements)" or ": location Shared"
+                                int parenIndex = itemText.IndexOf('(');
+                                if (parenIndex > 0) itemText = itemText.Substring(0, parenIndex).Trim();
+                                int colonIndex = itemText.IndexOf(':');
+                                if (colonIndex > 0) itemText = itemText.Substring(0, colonIndex).Trim();
+                                // Remove .rvt extension if present
+                                itemText = System.IO.Path.GetFileNameWithoutExtension(itemText);
+                                selectedFiles.Add(itemText);
                             }
                         }
                     }
@@ -6438,11 +6470,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         return;
                     }
 
-                    var refreshService = new Services.RefreshService(document, _uiDocument, _appProfileService);
+                    // ✅ FEATURE FLAG: Use factory to create appropriate refresh service (legacy or refactored)
+                    var refreshService = Services.RefreshServiceFactory.Create(document, _uiDocument, _appProfileService);
                     refreshService.SetUIReferences(_statusLabel, _progressBar, _refreshButton);
                     
                     // 🔥 CRITICAL FIX: Load existing clash zone data to preserve cluster information
                     // This prevents the Refresh process from overwriting existing cluster data
+                    // Note: Refactored service loads data internally, but we call this for legacy compatibility
                     refreshService.LoadExistingClashZoneData();
                     
                     refreshService.ExecuteRefresh(selectedFilterItems, selectedMepCategories, selectedReferenceFiles, selectedHostFiles, clearanceSettings);
@@ -7392,7 +7426,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 DebugLogger.Info($"_headerPanel.Bottom: {headerHeight}");
 
                 // Define panel widths
-                var filtersWidth = 200;
+                var filtersWidth = 185;  // ✅ Reduced from 200 to 185 pixels (15px reduction) to make room for file listing section
                 var splitterWidth = 3;
                 var rightPanelWidth = 460;
                 var leftPanelWidth = this.ClientSize.Width - filtersWidth - splitterWidth - rightPanelWidth - splitterWidth;

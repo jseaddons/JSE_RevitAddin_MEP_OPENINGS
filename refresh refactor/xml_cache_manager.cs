@@ -173,6 +173,126 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             return guids.Contains(guid);
         }
         
+        /// <summary>
+        /// Check if all file combos are already processed
+        /// Used by IntersectionProcessor to determine Replace/Replay/FullDetection mode
+        /// </summary>
+        public bool AreAllFileCombosProcessed(
+            List<string> selectedMepCategories,
+            List<string> selectedReferenceFiles,
+            List<string> selectedHostFiles)
+        {
+            if (selectedMepCategories == null || selectedMepCategories.Count == 0)
+                return false;
+            
+            if (selectedReferenceFiles == null || selectedReferenceFiles.Count == 0)
+                return false;
+            
+            if (selectedHostFiles == null || selectedHostFiles.Count == 0)
+                return false;
+            
+            // Build all file combos from selections
+            var allCombos = new List<(string LinkedFile, string HostFile)>();
+            foreach (var refFile in selectedReferenceFiles)
+            {
+                foreach (var hostFile in selectedHostFiles)
+                {
+                    allCombos.Add((refFile, hostFile));
+                }
+            }
+            
+            // Check if all combos are processed for all categories
+            foreach (var category in selectedMepCategories)
+            {
+                var processedKeys = GlobalIndexService.GetProcessedFileComboKeys(_document, category);
+                
+                foreach (var combo in allCombos)
+                {
+                    var normalizedCombo = new ProcessedFileCombo 
+                    { 
+                        LinkedFile = combo.LinkedFile, 
+                        HostFile = combo.HostFile 
+                    };
+                    var comboKey = normalizedCombo.GetNormalizedKey();
+                    
+                    if (!processedKeys.Contains(comboKey))
+                    {
+                        Log($"[XML-CACHE] Combo not processed: Category={category}, Linked={combo.LinkedFile}, Host={combo.HostFile}");
+                        return false;
+                    }
+                }
+            }
+            
+            return true;
+        }
+        
+        /// <summary>
+        /// Load existing clash zones from XML cache
+        /// Used by IntersectionProcessor.PrepareExistingZones()
+        /// </summary>
+        public List<ClashZone> LoadExistingClashZones(
+            List<string> selectedFilterNames,
+            List<string> selectedMepCategories)
+        {
+            var allZones = new List<ClashZone>();
+            
+            // Load from cache if available
+            var cache = LoadAll(selectedFilterNames ?? new List<string>(), selectedMepCategories ?? new List<string>());
+            
+            foreach (var filterName in selectedFilterNames ?? new List<string>())
+            {
+                if (cache.FilterXml.TryGetValue(filterName, out var storage))
+                {
+                    if (storage?.ClashZones != null)
+                    {
+                        allZones.AddRange(storage.ClashZones);
+                    }
+                }
+            }
+            
+            Log($"[XML-CACHE] Loaded {allZones.Count} existing clash zones from cache");
+            return allZones;
+        }
+        
+        /// <summary>
+        /// Update cache with new clash zones
+        /// Used by IntersectionProcessor.PostProcess()
+        /// </summary>
+        public void UpdateCache(XmlCache cache, List<ClashZone> clashZones)
+        {
+            if (cache == null || clashZones == null || clashZones.Count == 0)
+                return;
+            
+            // Group by filter name (extract from clash zones)
+            // For now, update all filter XML entries that match the categories
+            foreach (var kvp in cache.FilterXml.ToList())
+            {
+                var filterName = kvp.Key;
+                var storage = kvp.Value;
+                
+                if (storage?.ClashZones == null)
+                    storage.ClashZones = new List<ClashZone>();
+                
+                // Merge new zones for this filter (avoid duplicates)
+                var existingIds = new HashSet<Guid>(storage.ClashZones.Select(z => z.Id));
+                var matchingZones = clashZones.Where(cz => 
+                {
+                    // Match zones to filters by category (simplified - could be enhanced)
+                    return true; // For now, add all zones to all filters
+                }).ToList();
+                
+                foreach (var zone in matchingZones)
+                {
+                    if (!existingIds.Contains(zone.Id))
+                    {
+                        storage.ClashZones.Add(zone);
+                    }
+                }
+            }
+            
+            Log($"[XML-CACHE] Updated cache with {clashZones.Count} clash zones");
+        }
+        
         private void Log(string message)
         {
             if (!DeploymentConfiguration.DeploymentMode)

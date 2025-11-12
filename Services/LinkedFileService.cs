@@ -43,11 +43,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var linkDoc = linkInstance.GetLinkDocument();
                     if (linkDoc == null) continue;
 
-                    // ✅ FIX: Use RevitLinkInstance.Name if available (matches what user sees in Revit)
-                    // Fall back to Document.Title if Name is empty (some links might not have custom names)
-                    var fileName = !string.IsNullOrWhiteSpace(linkInstance.Name) 
-                        ? linkInstance.Name 
-                        : linkDoc.Title;
+                    // ✅ FIX: Extract filename from PathName, fallback to Name or Title
+                    // Some link instances have Name as "location Shared" which is not useful
+                    // Prefer filename from PathName, then Name (if not "location Shared"), then Title
+                    string fileName = string.Empty;
+                    if (!string.IsNullOrWhiteSpace(linkDoc.PathName))
+                    {
+                        fileName = System.IO.Path.GetFileNameWithoutExtension(linkDoc.PathName);
+                    }
+                    if (string.IsNullOrWhiteSpace(fileName) || fileName.Equals("location Shared", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (!string.IsNullOrWhiteSpace(linkInstance.Name) && 
+                            !linkInstance.Name.Equals("location Shared", StringComparison.OrdinalIgnoreCase))
+                        {
+                            fileName = linkInstance.Name;
+                        }
+                        else if (!string.IsNullOrWhiteSpace(linkDoc.Title))
+                        {
+                            fileName = linkDoc.Title;
+                        }
+                    }
+                    // Final fallback - use PathName filename even if it says "location Shared"
+                    if (string.IsNullOrWhiteSpace(fileName) && !string.IsNullOrWhiteSpace(linkDoc.PathName))
+                    {
+                        fileName = System.IO.Path.GetFileNameWithoutExtension(linkDoc.PathName);
+                    }
                     var filePath = linkDoc.PathName;
                     var fileType = LinkedFileDetectionService.DetectFileType(fileName);
                     var isLoaded = true; // Assume loaded if we can access the document

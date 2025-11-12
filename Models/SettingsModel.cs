@@ -45,6 +45,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// </summary>
         public bool EnableThreePointValidation { get; set; } = true;
 
+        // Refresh Service Feature Flags
+        /// <summary>
+        /// Enable refactored refresh service (new optimized implementation).
+        /// When false, uses legacy RefreshService (original implementation).
+        /// Default: false (use legacy service for stability)
+        /// </summary>
+        public bool UseRefactoredRefreshService { get; set; } = false;
+
         public SettingsModel()
         {
             // Default constructor with default values
@@ -79,7 +87,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
                 RoundAlwaysUp = this.RoundAlwaysUp,
                 MinWallThickness = this.MinWallThickness,
                 IgnoreArchitecturalFloors = this.IgnoreArchitecturalFloors,
-                EnableThreePointValidation = this.EnableThreePointValidation
+                EnableThreePointValidation = this.EnableThreePointValidation,
+                UseRefactoredRefreshService = this.UseRefactoredRefreshService
             };
         }
     }

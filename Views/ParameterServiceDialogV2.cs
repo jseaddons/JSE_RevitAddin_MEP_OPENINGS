@@ -1570,43 +1570,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     int totalProcessed = 0;
                     var categoriesProcessed = new List<string>();
                     
+                    // ✅ CRITICAL FIX: Use markPrefixes.GetRemarkFlag() instead of hardcoded true
+                    // This ensures that each category's checkbox state is respected
+                    
                     // If Project Prefix remark is checked, re-mark ALL categories with new project prefix
                     if (remarkProject)
                     {
-                        var cmd = new MarkParameterCommand("ALL", projectPrefix, "", true, markPrefixes);
+                        // When Project Prefix is checked, process ALL categories
+                        // GetRemarkFlag() will return true for all categories when RemarkProjectPrefix is true
+                        var cmd = new MarkParameterCommand("ALL", projectPrefix, "", false, markPrefixes);
                         cmd.Execute(_uiDocument.Application);
                         categoriesProcessed.Add("All Categories (Project Prefix)");
                         totalProcessed++;
                     }
-                    
-                    // Process individual discipline categories if their checkboxes are checked
-                    if (remarkDuct)
+                    else
                     {
-                        var cmd = new MarkParameterCommand("Ducts", projectPrefix, ductPrefix, true, markPrefixes);
-                        cmd.Execute(_uiDocument.Application);
-                        totalProcessed++;
-                        categoriesProcessed.Add("Ducts");
-                    }
-                    if (remarkPipe)
-                    {
-                        var cmd = new MarkParameterCommand("Pipes", projectPrefix, pipePrefix, true, markPrefixes);
-                        cmd.Execute(_uiDocument.Application);
-                        totalProcessed++;
-                        categoriesProcessed.Add("Pipes");
-                    }
-                    if (remarkCableTray)
-                    {
-                        var cmd = new MarkParameterCommand("Cable Trays", projectPrefix, cableTrayPrefix, true, markPrefixes);
-                        cmd.Execute(_uiDocument.Application);
-                        totalProcessed++;
-                        categoriesProcessed.Add("Cable Trays");
-                    }
-                    if (remarkDamper)
-                    {
-                        var cmd = new MarkParameterCommand("Duct Accessories", projectPrefix, damperPrefix, true, markPrefixes);
-                        cmd.Execute(_uiDocument.Application);
-                        totalProcessed++;
-                        categoriesProcessed.Add("Duct Accessories");
+                        // Process individual discipline categories if their checkboxes are checked
+                        // Only process if Project Prefix is NOT checked (to avoid double-processing)
+                        if (remarkDuct)
+                        {
+                            // remarkAll=false because GetRemarkFlag() will return true for Ducts if RemarkDuctPrefix is true
+                            var cmd = new MarkParameterCommand("Ducts", projectPrefix, ductPrefix, false, markPrefixes);
+                            cmd.Execute(_uiDocument.Application);
+                            totalProcessed++;
+                            categoriesProcessed.Add("Ducts");
+                        }
+                        if (remarkPipe)
+                        {
+                            var cmd = new MarkParameterCommand("Pipes", projectPrefix, pipePrefix, false, markPrefixes);
+                            cmd.Execute(_uiDocument.Application);
+                            totalProcessed++;
+                            categoriesProcessed.Add("Pipes");
+                        }
+                        if (remarkCableTray)
+                        {
+                            var cmd = new MarkParameterCommand("Cable Trays", projectPrefix, cableTrayPrefix, false, markPrefixes);
+                            cmd.Execute(_uiDocument.Application);
+                            totalProcessed++;
+                            categoriesProcessed.Add("Cable Trays");
+                        }
+                        if (remarkDamper)
+                        {
+                            var cmd = new MarkParameterCommand("Duct Accessories", projectPrefix, damperPrefix, false, markPrefixes);
+                            cmd.Execute(_uiDocument.Application);
+                            totalProcessed++;
+                            categoriesProcessed.Add("Duct Accessories");
+                        }
                     }
                     
                     progressForm.Close();

@@ -915,6 +915,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (string.IsNullOrWhiteSpace(fileName)) return string.Empty;
             
             var trimmed = fileName.Trim();
+            
+            // ✅ FIX: Remove old format ": X : location Shared" pattern (e.g., ": 12 : location Shared")
+            // This handles legacy file combo names from Global XML
+            var locationMatch = System.Text.RegularExpressions.Regex.Match(trimmed, @":\s*\d+\s*:\s*location\s+Shared", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (locationMatch.Success)
+            {
+                trimmed = trimmed.Substring(0, locationMatch.Index).Trim();
+            }
+            
             var idxParen = trimmed.IndexOf('(');
             if (idxParen >= 0) trimmed = trimmed.Substring(0, idxParen);
             trimmed = System.IO.Path.GetFileNameWithoutExtension(trimmed);

@@ -48,7 +48,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 return result;
             }
             
-            if (!_context.HasModelChanged() && clashZones.All(cz => cz.ElementHash != 0))
+            // OPTIMIZATION 1: Model timestamp check - skip ALL validation if model unchanged
+            if (!_context.HasModelChanged())
             {
                 Log($"[VALIDATION] ⚡ Model UNCHANGED - skipping all validation (instant)");
                 result.ValidZones = clashZones;
@@ -56,31 +57,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 return result;
             }
             
-            // OPTIMIZATION 2: Hash-based change detection
+            // OPTIMIZATION 2: Hash-based change detection (using element IDs)
+            // Note: ClashZone doesn't have ElementHash property, so we use element IDs for hash comparison
             result.ValidZones = new List<ClashZone>();
             result.InvalidZones = new List<ClashZone>();
             
+            // Cache of zone hashes (MEP ID + Host ID) for quick lookup
+            var zoneHashes = new Dictionary<Guid, int>();
             foreach (var zone in clashZones)
             {
                 try
                 {
                     int currentHash = CalculateElementHash(zone);
+                    zoneHashes[zone.Id] = currentHash;
                     
-                    // Hash matches - elements unchanged
-                    if (currentHash == zone.ElementHash && currentHash != 0)
-                    {
-                        result.ValidZones.Add(zone);
-                        result.SkippedByHash++;
-                        continue;
-                    }
-                    
-                    // Hash changed or first run - validate
+                    // For now, validate all zones if model changed
+                    // TODO: Store hash in ClashZone model or use geometry hash properties for comparison
                     var validationResult = _threePointValidator.Validate(zone, _context.Document);
                     
                     if (validationResult.IsValid)
                     {
-                        // Update hash for next time
-                        zone.ElementHash = currentHash;
+                        // Hash is calculated but not stored (ClashZone.ElementHash doesn't exist)
+                        // Could use MepElementGeometryHash/StructuralElementGeometryHash in future
                         
                         // Update intersection point if changed
                         if (validationResult.UpdatedIntersectionPoint != null)
