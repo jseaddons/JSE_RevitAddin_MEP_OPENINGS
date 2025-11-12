@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 
@@ -55,7 +54,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         
         /// <summary>
         /// Captures minimal parameters with pre-interned strings.
-        /// Can be parallelized for 8x speedup on multi-core CPUs.
+        /// ⚠️ CRITICAL: Revit API calls MUST be on main thread - cannot parallelize element retrieval.
+        /// However, string interning and parameter value conversion are optimized.
         /// </summary>
         public void CaptureParametersParallel(List<ClashZone> clashZones)
         {
@@ -64,42 +64,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             
             var sw = System.Diagnostics.Stopwatch.StartNew();
             
-            Log($"[PARAM-CAPTURE] Starting parallel parameter capture for {clashZones.Count} zones...");
+            Log($"[PARAM-CAPTURE] Starting parameter capture for {clashZones.Count} zones (sequential - Revit API thread-safe requirement)...");
             
-            // Process in batches to avoid overwhelming Revit API
-            var batches = clashZones.Batch(100).ToList();
             int processedCount = 0;
             
-            Parallel.ForEach(batches, new ParallelOptions { MaxDegreeOfParallelism = 4 }, batch =>
+            // ✅ FIX: Sequential processing required - Revit API calls must be on main thread
+            // ElementRetrievalService.GetElementFromDocumentOrLinked() uses Revit API
+            // Parallelization would cause crashes or incorrect behavior
+            foreach (var cz in clashZones)
             {
-                foreach (var cz in batch)
+                try
                 {
-                    try
+                    // Get elements (cached if possible) - MUST be on main thread
+                    var mep = ElementRetrievalService.GetElementFromDocumentOrLinked(
+                        _context.Document, cz.MepElementId, enableLogging: false);
+                    var host = ElementRetrievalService.GetElementFromDocumentOrLinked(
+                        _context.Document, cz.StructuralElementId, enableLogging: false);
+                    
+                    if (mep != null)
                     {
-                        // Get elements (cached if possible)
-                        var mep = ElementRetrievalService.GetElementFromDocumentOrLinked(
-                            _context.Document, cz.MepElementId, enableLogging: false);
-                        var host = ElementRetrievalService.GetElementFromDocumentOrLinked(
-                            _context.Document, cz.StructuralElementId, enableLogging: false);
-                        
-                        if (mep != null)
-                        {
-                            cz.MepParameterValues = CaptureMinimalParams(mep);
-                        }
-                        
-                        if (host != null)
-                        {
-                            cz.HostParameterValues = CaptureMinimalParams(host);
-                        }
-                        
-                        System.Threading.Interlocked.Increment(ref processedCount);
+                        cz.MepParameterValues = CaptureMinimalParams(mep);
                     }
-                    catch (Exception ex)
+                    
+                    if (host != null)
                     {
-                        Log($"[PARAM-CAPTURE] ⚠️ Error capturing params for zone {cz.Id}: {ex.Message}");
+                        cz.HostParameterValues = CaptureMinimalParams(host);
                     }
+                    
+                    processedCount++;
                 }
-            });
+                catch (Exception ex)
+                {
+                    Log($"[PARAM-CAPTURE] ⚠️ Error capturing params for zone {cz.Id}: {ex.Message}");
+                }
+            }
             
             sw.Stop();
             

@@ -112,6 +112,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static bool UseParallelPreFiltering { get; set; } = true;
         
+        /// <summary>
+        /// Enable multi-threading for non-Revit API operations in UniversalClusterService
+        /// Operations: XML loading, parameter extraction, cache population
+        /// Default: true (safe to enable - file I/O and data processing only, no Revit API calls)
+        /// </summary>
+        public static bool UseClusterServiceMultiThreading { get; set; } = true;
+        
         #endregion
         
         #region Configuration Methods
@@ -148,6 +155,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 UseFamilySymbolCache = GetConfigValue("UseFamilySymbolCache", true);
                 UseIncrementalCache = GetConfigValue("UseIncrementalCache", true);
                 UseParallelPreFiltering = GetConfigValue("UseParallelPreFiltering", true);
+                UseClusterServiceMultiThreading = GetConfigValue("UseClusterServiceMultiThreading", true);
                 
                                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[OptimizationFlags] Loaded configuration successfully");
@@ -224,6 +232,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             UseFamilySymbolCache = true;
             UseIncrementalCache = true;
             UseParallelPreFiltering = true;
+            UseClusterServiceMultiThreading = true;
             
                         if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[OptimizationFlags] Reset to safe defaults");

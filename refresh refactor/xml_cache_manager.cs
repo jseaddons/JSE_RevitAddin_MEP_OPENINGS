@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 
@@ -56,31 +58,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         /// <summary>
         /// Loads ALL XML data once at start of refresh.
         /// Eliminates 4+ redundant XML loads (was: load -> sync -> check -> load again).
+        /// ✅ OPTIMIZATION: Parallelized file I/O operations (non-Revit operations).
         /// </summary>
         public XmlCache LoadAll(List<string> filterNames, List<string> categories)
         {
             var cache = new XmlCache();
             
-            Log($"[XML-CACHE] Loading XML data once for reuse...");
+            Log($"[XML-CACHE] Loading XML data once for reuse (parallelized file I/O)...");
             
-            // Load Filter XML for each filter
-            foreach (var filterName in filterNames ?? new List<string>())
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            
+            // ✅ PARALLELIZATION: Load Filter XML files in parallel (pure file I/O, no Revit API)
+            var filterResults = new ConcurrentDictionary<string, ClashZoneStorage>();
+            var validFilterNames = (filterNames ?? new List<string>())
+                .Where(fn => !string.IsNullOrWhiteSpace(fn))
+                .ToList();
+            
+            if (validFilterNames.Count > 0)
             {
-                if (string.IsNullOrWhiteSpace(filterName)) continue;
-                
-                var storage = LoadFilterXml(filterName, categories);
-                if (storage != null)
+                Parallel.ForEach(validFilterNames, filterName =>
                 {
-                    cache.FilterXml[filterName] = storage;
-                    Log($"[XML-CACHE] ✅ Loaded Filter XML: {filterName} ({storage.ClashZones?.Count ?? 0} zones)");
-                }
+                    var storage = LoadFilterXml(filterName, categories);
+                    if (storage != null)
+                    {
+                        filterResults[filterName] = storage;
+                        Log($"[XML-CACHE] ✅ Loaded Filter XML: {filterName} ({storage.ClashZones?.Count ?? 0} zones)");
+                    }
+                });
             }
             
-            // Load Global XML for each category
-            foreach (var category in categories ?? new List<string>())
+            // Copy results to cache (thread-safe - ConcurrentDictionary)
+            foreach (var kvp in filterResults)
             {
-                if (string.IsNullOrWhiteSpace(category)) continue;
-                
+                cache.FilterXml[kvp.Key] = kvp.Value;
+            }
+            
+            // ✅ PARALLELIZATION: Load Global XML files in parallel (pure file I/O, no Revit API)
+            // Note: GlobalIndexService.LoadOrCreate() may use Revit API, so we need to check
+            // For now, keeping sequential for Global XML to be safe, but Filter XML is parallelized
+            var validCategories = (categories ?? new List<string>())
+                .Where(c => !string.IsNullOrWhiteSpace(c))
+                .ToList();
+            
+            foreach (var category in validCategories)
+            {
                 var globalIndex = GlobalIndexService.LoadOrCreate(_document, category);
                 cache.GlobalXml[category] = globalIndex;
                 
@@ -95,7 +116,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 Log($"[XML-CACHE] ✅ Loaded Global XML: {category} ({processedKeys.Count} combos, {resolvedGuids.Count} resolved)");
             }
             
-            Log($"[XML-CACHE] ✅ XML cache loaded: {cache.FilterXml.Count} filters, {cache.GlobalXml.Count} categories");
+            sw.Stop();
+            
+            Log($"[XML-CACHE] ✅ XML cache loaded: {cache.FilterXml.Count} filters, {cache.GlobalXml.Count} categories in {sw.ElapsedMilliseconds}ms");
             
             return cache;
         }

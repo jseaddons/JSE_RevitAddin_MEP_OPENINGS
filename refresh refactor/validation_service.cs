@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 
@@ -62,14 +64,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             result.ValidZones = new List<ClashZone>();
             result.InvalidZones = new List<ClashZone>();
             
-            // Cache of zone hashes (MEP ID + Host ID) for quick lookup
-            var zoneHashes = new Dictionary<Guid, int>();
-            foreach (var zone in clashZones)
+            // ✅ PARALLELIZATION: Calculate hashes in parallel (pure math, no Revit API)
+            var zoneHashes = new ConcurrentDictionary<Guid, int>();
+            Parallel.ForEach(clashZones, zone =>
             {
                 try
                 {
                     int currentHash = CalculateElementHash(zone);
                     zoneHashes[zone.Id] = currentHash;
+                }
+                catch
+                {
+                    // Ignore hash calculation errors - will validate anyway
+                }
+            });
+            
+            // ✅ SEQUENTIAL: Validation must be sequential - uses Revit API (_threePointValidator.Validate)
+            // Hash calculation is done in parallel above, but actual validation requires main thread
+            foreach (var zone in clashZones)
+            {
+                try
+                {
+                    // Hash is already calculated (from parallel step above)
+                    int currentHash = zoneHashes.TryGetValue(zone.Id, out var hash) ? hash : 0;
                     
                     // For now, validate all zones if model changed
                     // TODO: Store hash in ClashZone model or use geometry hash properties for comparison

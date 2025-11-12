@@ -26,7 +26,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <param name="category">Target category (Ducts, Pipes, Cable Trays, etc.)</param>
         /// <param name="projectPrefix">Project prefix (e.g., "SLEEVE_")</param>
         /// <param name="disciplinePrefix">Discipline prefix (e.g., "DCT", "PLU", "ELE")</param>
+        /// <param name="remarkAll">If true, re-apply marks even if they already exist</param>
+        /// <param name="numberFormat">Number format (e.g., "000" for 001, 002, etc.)</param>
+        /// <param name="markPrefixes">Optional MarkPrefixSettings to check RemarkProjectPrefix flag</param>
         /// <returns>Tuple of (processedCount, errorCount)</returns>
+        public (int processedCount, int errorCount) ApplyMepMarkToClusters(
+            Document doc, string category, string projectPrefix, string disciplinePrefix, bool remarkAll = false, string numberFormat = "000", MarkPrefixSettings markPrefixes = null)
+        {
+            // Call the internal implementation
+            return ApplyMepMarkToClustersInternal(doc, category, projectPrefix, disciplinePrefix, remarkAll, numberFormat, markPrefixes);
+        }
+        
         /// <summary>
         /// Ensure shared parameters are loaded into the project
         /// </summary>
@@ -83,9 +93,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Continue anyway - parameters might already be loaded
             }
         }
-
-        public (int processedCount, int errorCount) ApplyMepMarkToClusters(
-            Document doc, string category, string projectPrefix, string disciplinePrefix, bool remarkAll = false, string numberFormat = "000")
+        
+        public (int processedCount, int errorCount) ApplyMepMarkToClustersInternal(
+            Document doc, string category, string projectPrefix, string disciplinePrefix, bool remarkAll = false, string numberFormat = "000", MarkPrefixSettings markPrefixes = null)
         {
             int processedCount = 0;
             int errorCount = 0;
@@ -278,11 +288,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var hostType = famName.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0 ? "Wall" :
                                       famName.IndexOf("OpeningOnSlab", StringComparison.OrdinalIgnoreCase) >= 0 ? "Floor" : "Unknown";
                         
-                        if (!DeploymentConfiguration.DeploymentMode && i < 10) // Log first 10 sleeves
+                        // ✅ ENHANCED LOGGING: Log ALL sleeves (not just first 10) to diagnose floor sleeve issue
+                        if (!DeploymentConfiguration.DeploymentMode)
                         {
                             File.AppendAllText(mepmarkLogPath, 
                                 $"[MARK-PROCESS] Sleeve {sleeve.Id}: HostType={hostType}, Family={famName}, MEP_ID={mepElementId}, " +
-                                $"Category={clashZone?.MepElementCategory ?? "null"}, RemarkAll={remarkAll}, ExistingMark='{existingMark ?? "null"}'\n");
+                                $"Category={clashZone?.MepElementCategory ?? "null"}, RequestedCategory={category}, " +
+                                $"CategoryMatch={clashZone?.MepElementCategory == category}, RemarkAll={remarkAll}, ExistingMark='{existingMark ?? "null"}'\n");
+                        }
+                        
+                        // ✅ CRITICAL FIX: Check if clash zone category matches requested category
+                        // This ensures floor sleeves are only processed if their category matches
+                        if (clashZone != null && clashZone.MepElementCategory != category)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                File.AppendAllText(mepmarkLogPath, 
+                                    $"[MARK-PROCESS] ⚠️ SKIP: Sleeve {sleeve.Id} category mismatch - XML='{clashZone.MepElementCategory}' vs Requested='{category}'\n");
+                            }
+                            continue; // Skip sleeves that don't match the requested category
                         }
                         
                                                 // ✅ DEPLOYMENT MODE: Skip file writes
@@ -294,13 +318,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                         
                         string markValue = GenerateMarkValue(disciplinePrefix, numberToUse, numberFormat);
-                        string fullMarkValue = $"{projectPrefix}{markValue}";
+                        
+                        // ✅ CRITICAL FIX: Preserve existing project prefix when only remarking discipline prefix
+                        // If RemarkProjectPrefix is false, extract and preserve the existing project prefix from the mark
+                        string effectiveProjectPrefix = projectPrefix;
+                        if (remarkAll && !string.IsNullOrEmpty(existingMark) && markPrefixes != null && !markPrefixes.RemarkProjectPrefix)
+                        {
+                            // Extract existing project prefix from mark (everything before the discipline prefix)
+                            string extractedProjectPrefix = ExtractProjectPrefixFromMark(existingMark, disciplinePrefix);
+                            if (!string.IsNullOrEmpty(extractedProjectPrefix))
+                            {
+                                effectiveProjectPrefix = extractedProjectPrefix;
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    File.AppendAllText(mepmarkLogPath, 
+                                    $"[MARK-ASSIGN] Preserving existing project prefix '{effectiveProjectPrefix}' from mark '{existingMark}' (RemarkProjectPrefix=false)\n");
+                                }
+                            }
+                        }
+                        
+                        string fullMarkValue = $"{effectiveProjectPrefix}{markValue}";
                         
                                                 // ✅ DEPLOYMENT MODE: Skip file writes
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             File.AppendAllText(mepmarkLogPath, 
-                            $"[MARK-ASSIGN] Generating mark: prefix='{projectPrefix}', discipline='{disciplinePrefix}', number={numberToUse} → '{fullMarkValue}'\n");
+                            $"[MARK-ASSIGN] Generating mark: prefix='{effectiveProjectPrefix}', discipline='{disciplinePrefix}', number={numberToUse} → '{fullMarkValue}'\n");
                         }
                         
                         try
@@ -942,6 +985,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[MarkParameterService] Error getting max existing mark number for category: {ex.Message}");
                 return 0; // Start from 1 if error
+            }
+        }
+        
+        /// <summary>
+        /// Extract project prefix from existing mark value
+        /// Returns everything before the discipline prefix
+        /// Example: "PROJ_DCT001" → "PROJ_", "OLD_PRE_PLU002" → "OLD_PRE_", "PLU003" → ""
+        /// </summary>
+        private string ExtractProjectPrefixFromMark(string markValue, string disciplinePrefix)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(markValue) || string.IsNullOrEmpty(disciplinePrefix))
+                    return string.Empty;
+                
+                // Look for discipline prefix in the mark
+                int prefixIndex = markValue.LastIndexOf(disciplinePrefix, StringComparison.OrdinalIgnoreCase);
+                if (prefixIndex < 0)
+                    return string.Empty; // No discipline prefix found, return empty
+                
+                // Return everything before the discipline prefix
+                return markValue.Substring(0, prefixIndex);
+            }
+            catch
+            {
+                return string.Empty;
             }
         }
         

@@ -39,6 +39,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         // ✅ PERFORMANCE OPTIMIZATION: Cache parameters to avoid redundant LookupParameter calls
         private Dictionary<FamilyInstance, Dictionary<string, Parameter>> _parameterCache;
         
+        // ✅ PHASE 1 OPTIMIZATION: Cache loaded clash zones to avoid duplicate XML loading
+        private List<ClashZone> _loadedClashZonesCache;
+        
         // Helper struct for grouping key
         private struct SleeveGroupKey
         {
@@ -141,8 +144,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ CRITICAL: Small delay to ensure XML files are fully written to disk
                 System.Threading.Thread.Sleep(100);
                 
-                // ✅ DYNAMIC: Load clash zone cache from regular XML files (not _CLUSTER.xml)
-                LoadClashZoneCacheFromRegularXml(xmlFilePath, targetCategory, doc, filterName);
+                // ✅ PHASE 1 OPTIMIZATION: Load XML ONCE and cache for reuse (was loaded 4 times before!)
+                // This eliminates 75% of file I/O overhead
+                if (_loadedClashZonesCache == null)
+                {
+                    _loadedClashZonesCache = LoadClashZonesFromRegularXml(xmlFilePath, targetCategory, doc);
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[UniversalClusterService] ✅ PHASE 1: Loaded {_loadedClashZonesCache.Count} clash zones from XML (cached for reuse)");
+                }
+                var allClashZonesFromXml = _loadedClashZonesCache;
+                
+                // ✅ PHASE 1 OPTIMIZATION: Populate clash zone cache from loaded XML (single load, reuse)
+                LoadClashZoneCacheFromLoadedClashZones(allClashZonesFromXml, targetCategory);
                 
                 // ✅ NEW: Use cheaper bounding box overlap algorithm instead of expensive PreCalculatedClusterService
                 // This uses saved bounding box coordinates from sleeve placement (no Revit API calls needed)
@@ -160,9 +173,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var toleranceDist = UnitUtils.ConvertToInternalUnits(toleranceMm, UnitTypeId.Millimeters);
                                 if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[UniversalClusterService] Using cheaper bounding box overlap algorithm with tolerance: {toleranceMm}mm");
-                
-                // ✅ DYNAMIC: Reload cache with updated cluster flags from regular XML
-                LoadClashZoneCacheFromRegularXml(xmlFilePath, targetCategory, doc, filterName);
                 
                 // Get cluster configuration
                 if (!string.IsNullOrEmpty(targetCategory) && targetCategory.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -189,7 +199,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 File.AppendAllText(clusterLogPath, $"Target category: {targetCategory ?? "ALL"}\n");
                 }
 
-                // ✅ XML-BASED CLUSTERING: Load ALL clash zones from XML (NO Revit API calls needed!)
+                // ✅ XML-BASED CLUSTERING: Use cached clash zones (already loaded above)
                 // All data needed for clustering is already in XML after sleeve placement:
                 // - SleeveBoundingBoxMinX/Y/Z, MaxX/Y/Z (bounding boxes from XML)
                 // - SleeveInstanceId (sleeve IDs from XML)
@@ -197,7 +207,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // - StructuralElementIdValue (for wall host checking from XML)
                 // ❌ REMOVED: Unnecessary Revit API calls (FilteredElementCollector, get_BoundingBox, LookupParameter)
                 // Clustering uses XML data exclusively - no pre-calculation needed!
-                var allClashZonesFromXml = LoadClashZonesFromRegularXml(xmlFilePath, targetCategory, doc);
                 
                                 if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Log($"[UniversalClusterService] ✅ XML-BASED CLUSTERING: Loading clash zones from XML (no Revit API calls)");
@@ -240,20 +249,65 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING-FILTER] By HostType: {string.Join(", ", byHostType.Select(kvp => $"{kvp.Key}={kvp.Value}"))}\n");
                 }
                 
-                var rawSleeves = allClashZonesFromXml
+                // ✅ PHASE 1 OPTIMIZATION: Multi-threading for pre-calculation (filtering and data extraction)
+                // These are pure XML data operations - safe for parallel processing
+                var filteredClashZones = allClashZonesFromXml
                     .Where(cz => cz.SleeveInstanceId > 0) // Only placed sleeves
                     .Where(cz => !cz.IsClusterResolved) // ✅ CRITICAL: Skip sleeves already resolved by cluster
                     .Where(cz => string.IsNullOrEmpty(targetCategory) || 
                                 string.Equals(cz.MepElementCategory, targetCategory, StringComparison.OrdinalIgnoreCase))
-                    .Select(cz => new { 
-                        SleeveInstanceId = cz.SleeveInstanceId,
-                        Category = cz.MepElementCategory,
-                        HostType = GetHostTypeFromClashZone(cz),
-                        Orientation = GetEffectiveOrientationForClustering(cz),
-                        BoundingBox = GetBoundingBoxFromClashZone(cz),
-                        ClashZone = cz  // ✅ DEBUG: Keep reference for logging
-                    })
                     .ToList();
+                
+                // ✅ PHASE 1 OPTIMIZATION: Parallel pre-calculation of host type, orientation, bounding box
+                // Uses multi-threading flag for safe rollout
+                var rawSleeves = new List<dynamic>();
+                if (OptimizationFlags.UseClusterServiceMultiThreading && filteredClashZones.Count > 100)
+                {
+                    // Parallel processing for large datasets (100+ sleeves)
+                    var parallelResults = new System.Collections.Concurrent.ConcurrentBag<dynamic>();
+                    
+                    System.Threading.Tasks.Parallel.ForEach(filteredClashZones, cz =>
+                    {
+                        try
+                        {
+                            dynamic sleeveData = new { 
+                                SleeveInstanceId = cz.SleeveInstanceId,
+                                Category = cz.MepElementCategory,
+                                HostType = GetHostTypeFromClashZone(cz),
+                                Orientation = GetEffectiveOrientationForClustering(cz),
+                                BoundingBox = GetBoundingBoxFromClashZone(cz),
+                                ClashZone = cz  // ✅ DEBUG: Keep reference for logging
+                            };
+                            parallelResults.Add(sleeveData);
+                        }
+                        catch (Exception ex)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Warning($"[UniversalClusterService] Error in parallel pre-calculation for clash zone {cz?.Id}: {ex.Message}");
+                        }
+                    });
+                    
+                    rawSleeves.AddRange(parallelResults);
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[UniversalClusterService] ✅ PHASE 1: Pre-calculated {rawSleeves.Count} sleeves using multi-threading");
+                }
+                else
+                {
+                    // Sequential processing (fallback or small datasets)
+                    foreach (var cz in filteredClashZones)
+                    {
+                        dynamic sleeveData = new { 
+                            SleeveInstanceId = cz.SleeveInstanceId,
+                            Category = cz.MepElementCategory,
+                            HostType = GetHostTypeFromClashZone(cz),
+                            Orientation = GetEffectiveOrientationForClustering(cz),
+                            BoundingBox = GetBoundingBoxFromClashZone(cz),
+                            ClashZone = cz  // ✅ DEBUG: Keep reference for logging
+                        };
+                        rawSleeves.Add(sleeveData);
+                    }
+                }
                 
                 // ✅ DEBUG: Log bounding box filtering separately
                 var beforeBboxFilter = rawSleeves.Count;
@@ -677,19 +731,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             DebugLogger.Warning($"[UniversalClusterService] Cache miss for MEP element {mepElementId} in GetOrientationFromClashZone - cache should be pre-populated");
                         }
-                        mepElement = sleeve.Document.GetElement(mepElementId); // ❌ Expensive - cache should be pre-populated
-                        if (mepElement != null)
-                        {
-                            // Add to both caches for future use
-                            if (_mepElementCache != null)
-                            {
-                                _mepElementCache[mepElementId] = mepElement;
-                            }
-                            if (mepElementCache != null)
-                            {
-                                mepElementCache[mepElementId] = mepElement;
-                            }
-                        }
+                        // ✅ PHASE 1 OPTIMIZATION: Commented out expensive fallback - cache should be pre-populated
+                        // If cache miss occurs, this indicates a bug in cache population logic
+                        // mepElement = sleeve.Document.GetElement(mepElementId); // ❌ Expensive - cache should be pre-populated
+                        // TODO: Pre-populate _mepElementCache before calling this method
                     }
                     
                     if (mepElement != null)
@@ -832,21 +877,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // ✅ PERFORMANCE: Cache should always be populated, but log warning if miss occurs
                         if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
                         {
-                            DebugLogger.Warning($"[UniversalClusterService] Cache miss for MEP element {mepElementId} in GetOrientationFromClashZone - cache should be pre-populated");
+                            DebugLogger.Warning($"[UniversalClusterService] Cache miss for MEP element {mepElementId} in GetCategoryFromMepElementId - cache should be pre-populated");
                         }
-                        mepElement = sleeve.Document.GetElement(mepElementId); // ❌ Expensive - cache should be pre-populated
-                        if (mepElement != null)
-                        {
-                            // Add to both caches for future use
-                            if (_mepElementCache != null)
-                            {
-                                _mepElementCache[mepElementId] = mepElement;
-                            }
-                            if (mepElementCache != null)
-                            {
-                                mepElementCache[mepElementId] = mepElement;
-                            }
-                        }
+                        // ✅ PHASE 1 OPTIMIZATION: Commented out expensive fallback - cache should be pre-populated
+                        // If cache miss occurs, this indicates a bug in cache population logic
+                        // mepElement = sleeve.Document.GetElement(mepElementId); // ❌ Expensive - cache should be pre-populated
+                        // TODO: Pre-populate _mepElementCache before calling this method
                     }
                     
                     if (mepElement != null)
@@ -2324,91 +2360,182 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private List<ClashZone> LoadClashZonesFromRegularXml(string xmlFilePath, string targetCategory, Document doc)
         {
             var clashZones = new List<ClashZone>();
-            
+
             try
             {
                 var filtersDirectory = ProjectPathService.GetFiltersDirectory(_doc);
-                
+
                 if (!Directory.Exists(filtersDirectory))
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Warning($"[UniversalClusterService] Filters directory not found: {filtersDirectory}");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[UniversalClusterService] Filters directory not found: {filtersDirectory}");
                     return clashZones;
                 }
 
                 // Load from regular XML files
-                var xmlFiles = string.IsNullOrEmpty(xmlFilePath) 
+                var xmlFiles = string.IsNullOrEmpty(xmlFilePath)
                     ? Directory.GetFiles(filtersDirectory, "*.xml")
                     : new[] { xmlFilePath };
 
-                foreach (var xmlFile in xmlFiles)
+                // ✅ PHASE 1 OPTIMIZATION: Multi-threading for XML loading (non-Revit operations only)
+                if (OptimizationFlags.UseClusterServiceMultiThreading && xmlFiles.Length > 1)
                 {
-                    // Skip CONDITIONS files
-                    if (Path.GetFileName(xmlFile).Contains("CONDITIONS", StringComparison.OrdinalIgnoreCase))
-                        continue;
-                        
-                    // Skip _CLUSTER.xml files - we want regular XML files
-                    if (Path.GetFileName(xmlFile).Contains("_CLUSTER", StringComparison.OrdinalIgnoreCase))
-                        continue;
+                    // Parallel XML loading for multiple files (file I/O only, no Revit API)
+                    var loadedZones = new System.Collections.Concurrent.ConcurrentBag<ClashZone>();
 
-                    if (File.Exists(xmlFile))
+                    System.Threading.Tasks.Parallel.ForEach(xmlFiles, xmlFile =>
                     {
-                        var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
-                        using (var reader = new StreamReader(xmlFile))
+                        try
                         {
-                            var filter = (OpeningFilter)serializer.Deserialize(reader);
-                            
-                            // ✅ CRITICAL FIX: Load from BOTH hierarchical structure (Filters → FileCombos → ClashZones) AND flat structure
-                            // UpdateSleeveCoordinatesInXml updates both structures, so we must read from both
-                            
-                            // 1. Load from hierarchical structure (PRIMARY)
-                            if (filter?.ClashZoneStorage?.Filters != null)
+                            // Skip CONDITIONS files
+                            if (Path.GetFileName(xmlFile).Contains("CONDITIONS", StringComparison.OrdinalIgnoreCase))
+                                return;
+
+                            // Skip _CLUSTER.xml files - we want regular XML files
+                            if (Path.GetFileName(xmlFile).Contains("_CLUSTER", StringComparison.OrdinalIgnoreCase))
+                                return;
+
+                            if (!File.Exists(xmlFile))
+                                return;
+
+                            var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
+                            using (var reader = new StreamReader(xmlFile))
                             {
-                                foreach (var filterGroup in filter.ClashZoneStorage.Filters)
+                                var filter = (OpeningFilter)serializer.Deserialize(reader);
+
+                                // Load from hierarchical structure (PRIMARY)
+                                if (filter?.ClashZoneStorage?.Filters != null)
                                 {
-                                    if (filterGroup?.FileCombos != null)
+                                    foreach (var filterGroup in filter.ClashZoneStorage.Filters)
                                     {
-                                        foreach (var fileCombo in filterGroup.FileCombos)
+                                        if (filterGroup?.FileCombos != null)
                                         {
-                                            if (fileCombo?.ClashZones != null)
+                                            foreach (var fileCombo in filterGroup.FileCombos)
                                             {
-                                                foreach (var cz in fileCombo.ClashZones)
+                                                if (fileCombo?.ClashZones != null)
                                                 {
-                                                    // Filter by target category during loading
-                                                    if (!string.IsNullOrEmpty(targetCategory))
+                                                    foreach (var cz in fileCombo.ClashZones)
                                                     {
-                                                        if (!string.Equals(cz.MepElementCategory, targetCategory, StringComparison.OrdinalIgnoreCase))
-                                                            continue;
-                                                    }
-                                                    
-                                                    // Only process clash zones with valid SleeveInstanceId (placed sleeves)
-                                                    if (cz.SleeveInstanceId > 0)
-                                                    {
-                                                        // ✅ CRITICAL: Reconstruct SleevePlacementPoint from XML-serializable properties
-                                                        cz.EnsureSleevePlacementPointReconstructed();
-                                                        clashZones.Add(cz);
+                                                        if (!string.IsNullOrEmpty(targetCategory))
+                                                        {
+                                                            if (!string.Equals(cz.MepElementCategory, targetCategory, StringComparison.OrdinalIgnoreCase))
+                                                                continue;
+                                                        }
+
+                                                        if (cz.SleeveInstanceId > 0)
+                                                        {
+                                                            cz.EnsureSleevePlacementPointReconstructed();
+                                                            loadedZones.Add(cz);
+                                                        }
                                                     }
                                                 }
                                             }
                                         }
                                     }
                                 }
-                            }
-                            
-                            // 2. Load from flat structure (BACKWARD COMPATIBILITY)
-                            foreach (var cz in GetStorageZones(filter))
-                            {
-                                if (cz == null) continue;
-                                if (!string.IsNullOrEmpty(targetCategory) &&
-                                    !string.Equals(cz.MepElementCategory, targetCategory, StringComparison.OrdinalIgnoreCase))
+
+                                // Load from flat structure (BACKWARD COMPATIBILITY)
+                                foreach (var cz in GetStorageZones(filter))
                                 {
-                                    continue;
+                                    if (cz == null) continue;
+                                    if (!string.IsNullOrEmpty(targetCategory) &&
+                                        !string.Equals(cz.MepElementCategory, targetCategory, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        continue;
+                                    }
+
+                                    if (cz.SleeveInstanceId > 0 && !loadedZones.Any(c => c.Id == cz.Id))
+                                    {
+                                        cz.EnsureSleevePlacementPointReconstructed();
+                                        loadedZones.Add(cz);
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Warning($"[UniversalClusterService] Error loading XML file {xmlFile} in parallel: {ex.Message}");
+                        }
+                    });
+
+                    clashZones.AddRange(loadedZones);
+
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[UniversalClusterService] ✅ PHASE 1: Loaded {clashZones.Count} clash zones using multi-threading ({xmlFiles.Length} files)");
+                }
+                else
+                {
+                    // Sequential loading (fallback or single file)
+                    foreach (var xmlFile in xmlFiles)
+                    {
+                        // Skip CONDITIONS files
+                        if (Path.GetFileName(xmlFile).Contains("CONDITIONS", StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        // Skip _CLUSTER.xml files - we want regular XML files
+                        if (Path.GetFileName(xmlFile).Contains("_CLUSTER", StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        if (File.Exists(xmlFile))
+                        {
+                            var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
+                            using (var reader = new StreamReader(xmlFile))
+                            {
+                                var filter = (OpeningFilter)serializer.Deserialize(reader);
+
+                                // ✅ CRITICAL FIX: Load from BOTH hierarchical structure (Filters → FileCombos → ClashZones) AND flat structure
+                                // UpdateSleeveCoordinatesInXml updates both structures, so we must read from both
+
+                                // 1. Load from hierarchical structure (PRIMARY)
+                                if (filter?.ClashZoneStorage?.Filters != null)
+                                {
+                                    foreach (var filterGroup in filter.ClashZoneStorage.Filters)
+                                    {
+                                        if (filterGroup?.FileCombos != null)
+                                        {
+                                            foreach (var fileCombo in filterGroup.FileCombos)
+                                            {
+                                                if (fileCombo?.ClashZones != null)
+                                                {
+                                                    foreach (var cz in fileCombo.ClashZones)
+                                                    {
+                                                        // Filter by target category during loading
+                                                        if (!string.IsNullOrEmpty(targetCategory))
+                                                        {
+                                                            if (!string.Equals(cz.MepElementCategory, targetCategory, StringComparison.OrdinalIgnoreCase))
+                                                                continue;
+                                                        }
+
+                                                        // Only process clash zones with valid SleeveInstanceId (placed sleeves)
+                                                        if (cz.SleeveInstanceId > 0)
+                                                        {
+                                                            // ✅ CRITICAL: Reconstruct SleevePlacementPoint from XML-serializable properties
+                                                            cz.EnsureSleevePlacementPointReconstructed();
+                                                            clashZones.Add(cz);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
 
-                                if (cz.SleeveInstanceId > 0 && !clashZones.Any(c => c.Id == cz.Id))
+                                // 2. Load from flat structure (BACKWARD COMPATIBILITY)
+                                foreach (var cz in GetStorageZones(filter))
                                 {
-                                    cz.EnsureSleevePlacementPointReconstructed();
-                                    clashZones.Add(cz);
+                                    if (cz == null) continue;
+                                    if (!string.IsNullOrEmpty(targetCategory) &&
+                                        !string.Equals(cz.MepElementCategory, targetCategory, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        continue;
+                                    }
+
+                                    if (cz.SleeveInstanceId > 0 && !clashZones.Any(c => c.Id == cz.Id))
+                                    {
+                                        cz.EnsureSleevePlacementPointReconstructed();
+                                        clashZones.Add(cz);
+                                    }
                                 }
                             }
                         }
@@ -2417,8 +2544,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Error($"[UniversalClusterService] Error loading clash zones from regular XML: {ex.Message}");
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[UniversalClusterService] Error loading clash zones from regular XML: {ex.Message}");
             }
             
             return clashZones;
@@ -2661,7 +2788,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
                         if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[UniversalClusterService] Loading cache for cleanup with xmlFilePath={xmlFilePath}, targetCategory={targetCategory}");
-            LoadClashZoneCacheFromRegularXml(xmlFilePath, targetCategory, doc, filterName);
+            // ✅ PHASE 1 OPTIMIZATION: Use cached clash zones if available (avoid duplicate XML loading)
+            if (_loadedClashZonesCache != null && _loadedClashZonesCache.Count > 0)
+            {
+                LoadClashZoneCacheFromLoadedClashZones(_loadedClashZonesCache, targetCategory);
+            }
+            else
+            {
+                LoadClashZoneCacheFromRegularXml(xmlFilePath, targetCategory, doc, filterName);
+            }
             
             // ✅ DIAGNOSTIC: Enhanced logging for cache contents after reload
             if (!DeploymentConfiguration.DeploymentMode)
@@ -2820,6 +2955,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[UniversalClusterService] Error loading clash zone cache from regular XML: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// ✅ PHASE 1 OPTIMIZATION: Populate clash zone cache from already-loaded clash zones
+        /// Avoids duplicate XML loading - uses cached clash zones instead
+        /// </summary>
+        private void LoadClashZoneCacheFromLoadedClashZones(List<ClashZone> clashZones, string targetCategory = null)
+        {
+            _clashZoneCache.Clear();
+            
+            try
+            {
+                foreach (var cz in clashZones)
+                {
+                    if (cz == null)
+                        continue;
+
+                    if (!string.IsNullOrEmpty(targetCategory) &&
+                        !string.Equals(cz.MepElementCategory, targetCategory, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    if (cz.SleeveInstanceId <= 0 && cz.ClusterSleeveInstanceId <= 0 && cz.AfterClusterSleevePlacedSleeveInstanceId <= 0)
+                    {
+                        continue;
+                    }
+
+                    if (cz.MepElementIdValue <= 0)
+                        continue;
+
+                    cz.EnsureSleevePlacementPointReconstructed();
+                    cz.IsCurrentClash = true;
+                    _clashZoneCache[cz.MepElementIdValue] = cz;
+                }
+
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[UniversalClusterService] ✅ PHASE 1: Populated cache from {clashZones.Count} loaded clash zones (filtered for {targetCategory ?? "ALL"})");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[UniversalClusterService] Error populating cache from loaded clash zones: {ex.Message}");
             }
         }
 
