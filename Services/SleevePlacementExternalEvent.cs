@@ -586,160 +586,68 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
+        private ClashZoneDataService CreateDataService()
+        {
+            return new ClashZoneDataService(
+                _document,
+                message =>
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info(message);
+                });
+        }
+
         private (List<ClashZone> clashZones, string xmlFilePath) GetClashZonesForCategory(string category)
         {
-            // Implementation to read category-specific XML files
-            // and return relevant clash zones WITH the source XML file path
             var clashZones = new List<ClashZone>();
             string xmlFilePath = string.Empty;
-            
+
             try
             {
-                // ✅ CRITICAL FIX: Check for null category parameter
-                if (string.IsNullOrEmpty(category))
+                if (string.IsNullOrWhiteSpace(category))
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
+                    if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Error("[SleevePlacementExternalEvent] category parameter is null or empty in GetClashZonesForCategory");
                     return (clashZones, xmlFilePath);
                 }
-                
-                // ✅ CRITICAL FIX: Use project-specific directory (matches Refresh saves)
-                var filtersDirectory = _document != null 
+
+                var normalizedCategory = MepCategoryConstants.Normalize(category);
+                var filtersDirectory = _document != null
                     ? ProjectPathService.GetFiltersDirectory(_document)
                     : ProjectPathService.GetFiltersDirectory(_document);
-                
-                // ✅ CRITICAL: Log which directory we're looking in
-                                if (!DeploymentConfiguration.DeploymentMode)
+
+                if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[SleevePlacementExternalEvent] GetClashZonesForCategory: Looking in directory: {filtersDirectory}");
-                try
-                {
-                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                                        // ✅ DEPLOYMENT MODE: Skip file writes
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] GetClashZonesForCategory: category='{category}', directory='{filtersDirectory}', filterName='{_selectedFilterName}'\n");
-                    }
-                }
-                catch { }
-                
-                // ✅ CRITICAL FIX: Use MepCategoryConstants.GetXmlSuffix() for consistent naming
-                // This matches RefreshService normalization EXACTLY
-                var categoryPattern = GetXmlSuffix(category);
-                
-                // ✅ EXACT FILE NAME MATCH: Extract base filter name (remove any category suffix) to match RefreshService
-                // RefreshService saves as: {baseFilterName}_{normalizedCategory}.xml
-                // We must load as: {baseFilterName}_{categoryPattern}.xml
-                string baseFilterName = ExtractBaseFilterName(_selectedFilterName, categoryPattern);
-                
-                // ✅ EXACT FILE NAME MATCH: No variations, no case-insensitive, no fallbacks
+
+                var categoryPattern = MepCategoryConstants.GetXmlSuffix(normalizedCategory);
+                var baseFilterName = FilterNameHelper.NormalizeBaseName(_selectedFilterName, _selectedFilterName, normalizedCategory);
                 var exactFileName = $"{baseFilterName}_{categoryPattern}.xml";
                 xmlFilePath = Path.Combine(filtersDirectory, exactFileName);
-                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[SleevePlacementExternalEvent] Looking for EXACT file: '{exactFileName}'");
-                try
+
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[SleevePlacementExternalEvent] Expected file name: '{exactFileName}'");
+
+                var dataService = CreateDataService();
+                clashZones = dataService.LoadClashZonesForCategory(baseFilterName, normalizedCategory);
+
+                if (clashZones.Count == 0)
                 {
-                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                                        // ✅ DEPLOYMENT MODE: Skip file writes
                     if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] GetClashZonesForCategory: Looking for EXACT file: '{exactFileName}'\n");
-                    }
-                }
-                catch { }
-                
-                // ✅ EXACT FILE EXISTENCE CHECK: No variations, no fallbacks
-                if (!File.Exists(xmlFilePath))
-                {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Warning($"[SleevePlacementExternalEvent] ❌ EXACT file not found: '{exactFileName}' in directory '{filtersDirectory}'");
-                    try
-                    {
-                        var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                        if (!Directory.Exists(filtersDirectory))
-                        {
-                                                        // ✅ DEPLOYMENT MODE: Skip file writes
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ GetClashZonesForCategory: Directory does not exist: {filtersDirectory}\n");
-                            }
+                        DebugLogger.Warning($"[SleevePlacementExternalEvent] No clash zones found via SQLite/XML for filter '{baseFilterName}', category '{normalizedCategory}'");
                 }
                 else
                 {
-                            var allFiles = Directory.GetFiles(filtersDirectory, "*.xml");
-                                                        // ✅ DEPLOYMENT MODE: Skip file writes
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ GetClashZonesForCategory: EXACT file '{exactFileName}' not found. Directory has {allFiles.Length} XML files.\n");
-                            }
-                            if (allFiles.Length > 0)
-                    {
-                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] GetClashZonesForCategory: Available files: {string.Join(", ", allFiles.Select(Path.GetFileName))}\n");
-                            }
-                        }
-                    }
-                    catch { }
-                    return (clashZones, string.Empty);
-                }
-                
-                if (!string.IsNullOrEmpty(xmlFilePath))
-                {
-                    var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
-                    using (var reader = new StreamReader(xmlFilePath))
-                    {
-                        var filter = (OpeningFilter)serializer.Deserialize(reader);
-
-                        if (filter?.ClashZoneStorage != null)
-                        {
-                            var extractedZones = ExtractClashZonesFromStorage(filter.ClashZoneStorage);
-                            clashZones.AddRange(extractedZones);
-
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                DebugLogger.Info($"[SleevePlacementExternalEvent] Loaded {extractedZones.Count} clash zones from {Path.GetFileName(xmlFilePath)} (tree structure)");
-                            }
-
-                            try
-                            {
-                                var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] GetClashZonesForCategory: Loaded {extractedZones.Count} clash zones from {Path.GetFileName(xmlFilePath)}\n");
-                            }
-                            catch { }
-
-                            var clashZonesWithDocTitle = clashZones.Count(cz => !string.IsNullOrEmpty(cz.StructuralElementDocumentTitle));
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                DebugLogger.Info($"[SleevePlacementExternalEvent] Clash zones with document titles: {clashZonesWithDocTitle}/{clashZones.Count}");
-                            }
-                        }
-                        else
-                        {
-                            try
-                            {
-                                var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ GetClashZonesForCategory: ClashZoneStorage is null in file {Path.GetFileName(xmlFilePath)}\n");
-                            }
-                            catch { }
-
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                DebugLogger.Warning($"[SleevePlacementExternalEvent] ClashZoneStorage is null in file {xmlFilePath}");
-                            }
-                        }
-                    }
-                }
-                else
-                {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Warning($"[SleevePlacementExternalEvent] No XML files found for category '{category}' with filter '{_selectedFilterName}' in directory: {filtersDirectory}");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[SleevePlacementExternalEvent] Loaded {clashZones.Count} clash zones for filter '{baseFilterName}', category '{normalizedCategory}'");
                 }
             }
             catch (Exception ex)
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Error($"[SleevePlacementExternalEvent] Error loading clash zones for {category}: {ex.Message}");
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[SleevePlacementExternalEvent] Error loading clash zones for category '{category}': {ex.Message}");
+                return (new List<ClashZone>(), xmlFilePath);
             }
-            
+
             return (clashZones, xmlFilePath);
         }
 

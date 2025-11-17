@@ -4,26 +4,75 @@ using System.Linq;
 using System.IO;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using Autodesk.Revit.DB;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
     /// <summary>
-    /// ✅ DEDICATED OOP SERVICE: Saves clash zones to both Global XML and Filter XML
-    /// Ensures data consistency by using the same clash zone objects for both
-    /// Handles tree structure correctly for Global XML
+    /// ✅ DEDICATED OOP SERVICE: Saves clash zones to SQLite (PRIMARY) and Global XML (for flags)
+    /// ✅ PHASE SQLITE-2: SQLite is now the primary operational store
+    /// - SQLite: Primary data store for clash zones
+    /// - Global XML: Still written for IsResolved flag management (required)
+    /// - Filter XML: Skipped when UseSqliteAsPrimary=true (redundant, SQLite has the data)
     /// Called after intersection detection completes
     /// </summary>
-    public class ClashZonePersistenceService
+    public class ClashZonePersistenceService : IDisposable
     {
         private readonly Document _document;
         private readonly GuidManager _guidManager;
-        private readonly string _refreshLogName;
+        private readonly string? _refreshLogName;
+        private SleeveDbContext? _sqliteContext;
+        private IClashZoneRepository? _sqliteRepository;
 
-        public ClashZonePersistenceService(Document document, GuidManager guidManager, string refreshLogName = null)
+        public ClashZonePersistenceService(Document document, GuidManager guidManager, string? refreshLogName = null)
         {
             _document = document ?? throw new ArgumentNullException(nameof(document));
             _guidManager = guidManager ?? throw new ArgumentNullException(nameof(guidManager));
             _refreshLogName = refreshLogName ?? "refresh.log";
+            
+            // ✅ PHASE SQLITE-2: Initialize SQLite context as PRIMARY data store
+            // SQLite is the operational store; XML is optional/backup (Global XML still used for flags)
+            try
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info("[CLASH-ZONE-PERSISTENCE] 🔄 Initializing SQLite context...");
+                
+                _sqliteContext = new SleeveDbContext(_document, msg => 
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[SQLite] {msg}");
+                    SafeFileLogger.SafeAppendText(_refreshLogName, $"[{DateTime.Now}] [SQLite] {msg}\n");
+                });
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] ✅ SQLite context created: {_sqliteContext.DatabasePath}");
+                
+                _sqliteRepository = new ClashZoneRepository(_sqliteContext, msg =>
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[SQLite] {msg}");
+                    SafeFileLogger.SafeAppendText(_refreshLogName, $"[{DateTime.Now}] [SQLite] {msg}\n");
+                });
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info("[CLASH-ZONE-PERSISTENCE] ✅ SQLite dual-write enabled");
+                
+                SafeFileLogger.SafeAppendText(_refreshLogName, 
+                    $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] ✅ SQLite dual-write enabled: {_sqliteContext.DatabasePath}\n");
+            }
+            catch (Exception ex)
+            {
+                // ✅ CRITICAL: Don't fail XML writes if SQLite fails
+                // Log error but continue with XML-only mode
+                var errorMsg = $"[CLASH-ZONE-PERSISTENCE] ⚠️ SQLite initialization failed, continuing with XML-only: {ex.Message}";
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning(errorMsg);
+                SafeFileLogger.SafeAppendText(_refreshLogName, $"[{DateTime.Now}] {errorMsg}\n");
+                SafeFileLogger.SafeAppendText(_refreshLogName, $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] Stack trace: {ex.StackTrace}\n");
+                _sqliteContext = null;
+                _sqliteRepository = null;
+            }
         }
 
         /// <summary>
@@ -40,10 +89,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             OpeningFilter targetFilter,
             bool allowStructuralUpdates)
         {
+            // ✅ DIAGNOSTIC: Log entry to method
+            if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] SaveClashZones CALLED: Zones={allClashZones?.Count ?? 0}, Filter='{baseFilterName}', TargetFilter={(targetFilter != null ? targetFilter.Name : "NULL")}, SQLiteRepo={(_sqliteRepository != null ? "EXISTS" : "NULL")}");
+            SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", 
+                $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] SaveClashZones CALLED: Zones={allClashZones?.Count ?? 0}, Filter='{baseFilterName}', TargetFilter={(targetFilter != null ? targetFilter.Name : "NULL")}, SQLiteRepo={(_sqliteRepository != null ? "EXISTS" : "NULL")}\n");
+            
             if (allClashZones == null || allClashZones.Count == 0)
             {
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info("[CLASH-ZONE-PERSISTENCE] No clash zones to save");
+                SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", 
+                    $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] No clash zones to save\n");
                 return;
             }
 
@@ -54,6 +111,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 EnsureFilterStorageInitialized(targetFilter);
                 DeduplicateFilterStorage(targetFilter);
+            }
+            else
+            {
+                // ⚠️ CRITICAL: Target filter is null - this will prevent saving
+                var errorMsg = $"[CLASH-ZONE-PERSISTENCE] ⚠️ WARNING: targetFilter is NULL - clash zones may not be saved properly";
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning(errorMsg);
+                SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", $"[{DateTime.Now}] {errorMsg}\n");
             }
 
             try
@@ -67,9 +132,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] Saving {allClashZones.Count} clash zones across {clashZonesByCategory.Count} categories");
+                SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", 
+                    $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] Saving {allClashZones.Count} clash zones across {clashZonesByCategory.Count} categories\n");
 
                 foreach (var categoryGroup in clashZonesByCategory)
                 {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] Processing category '{categoryGroup.Key}' with {categoryGroup.Count()} zones");
+                    SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", 
+                        $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] Processing category '{categoryGroup.Key}' with {categoryGroup.Count()} zones\n");
+                    
                     var stats = SaveCategory(
                         categoryGroup.Key,
                         categoryGroup.ToList(),
@@ -78,6 +150,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         allowStructuralUpdates);
 
                     processingSummaries.Add(stats);
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] Category '{categoryGroup.Key}' completed: {stats}");
+                    SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", 
+                        $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] Category '{categoryGroup.Key}' completed: {stats}\n");
                 }
 
                 LogAggregate(processingSummaries, baseFilterName);
@@ -150,24 +227,135 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var filterName = BuildFilterFileName(baseFilterName, category);
                 var globalIndex = GlobalIndexService.LoadOrCreate(_document, category);
 
-                foreach (var comboGroup in combos)
+                // ✅ PHASE SQLITE-2: Write to SQLite FIRST (primary store), then XML (optional/backup)
+                if (_sqliteRepository == null)
                 {
-                    var key = comboGroup.Key;
-                    var comboClashZones = comboGroup.ToList();
-
-                    LogRefresh($"[PERSIST-DEBUG]   Combo → Linked='{key.LinkedFile}', Host='{key.HostFile}', Zones={comboClashZones.Count}");
-                    LogPlacement($"[PERSIST-COMBO] Linked='{key.LinkedFile}', Host='{key.HostFile}', Count={comboClashZones.Count}, Sample=[{string.Join(", ", comboClashZones.Take(5).Select(z => $"{z.Id}:{z.SleeveInstanceId}"))}]");
-
-                    SaveToGlobalXml(globalIndex, comboClashZones, category, baseFilterName, filterName, key, stats, allowStructuralUpdates);
-
-                    if (targetFilter != null)
+                    // ⚠️ CRITICAL: SQLite repository is null - clash zones will NOT be saved to database
+                    var errorMsg = $"[CLASH-ZONE-PERSISTENCE] ❌ CRITICAL: _sqliteRepository is NULL - clash zones will NOT be saved to database for category '{category}'";
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error(errorMsg);
+                    SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", $"[{DateTime.Now}] {errorMsg}\n");
+                    HandleException(errorMsg, new InvalidOperationException("SQLite repository is null - database save will be skipped"));
+                }
+                else if (validZones.Count == 0)
+                {
+                    // ⚠️ WARNING: No valid zones to save
+                    var warningMsg = $"[CLASH-ZONE-PERSISTENCE] ⚠️ No valid zones to save for category '{category}' (total zones: {categoryClashZones?.Count ?? 0})";
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning(warningMsg);
+                    SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", $"[{DateTime.Now}] {warningMsg}\n");
+                }
+                else if (_sqliteRepository != null && validZones.Count > 0)
+                {
+                    try
                     {
-                        SaveToFilterXml(comboClashZones, category, baseFilterName, targetFilter, key, stats, allowStructuralUpdates);
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] 🔄 Attempting to save {validZones.Count} zones to SQLite for category '{category}', filter '{baseFilterName}'");
+                        SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", 
+                            $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] 🔄 Attempting to save {validZones.Count} zones to SQLite for category '{category}', filter '{baseFilterName}'\n");
+                        
+                        _sqliteRepository.InsertOrUpdateClashZones(validZones, baseFilterName, category);
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] ✅ PHASE 2: Saved to SQLite (PRIMARY): {validZones.Count} zones for '{category}'");
+                        SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", 
+                            $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] ✅ PHASE 2: Saved to SQLite (PRIMARY): {validZones.Count} zones for '{category}'\n");
+                    }
+                    catch (Exception sqliteEx)
+                    {
+                        // ✅ CRITICAL: If SQLite fails in Phase 2, fail the operation (SQLite is primary)
+                        HandleException($"[CLASH-ZONE-PERSISTENCE] ❌ SQLite save failed (PRIMARY STORE): {sqliteEx.Message}", sqliteEx);
+                        throw; // Fail the operation since SQLite is primary
                     }
                 }
 
-                CleanupGlobalIndex(globalIndex, validZones, stats);
-                GlobalIndexService.Save(_document, globalIndex);
+                // ✅ PHASE SQLITE-2: XML writes are now optional/backup (only if UseSqliteAsPrimary is false or for compatibility)
+                if (!DeploymentConfiguration.UseSqliteAsPrimary)
+                {
+                    // Legacy mode: XML is primary, write to XML
+                    foreach (var comboGroup in combos)
+                    {
+                        var key = comboGroup.Key;
+                        var comboClashZones = comboGroup.ToList();
+
+                        LogRefresh($"[PERSIST-DEBUG]   Combo → Linked='{key.LinkedFile}', Host='{key.HostFile}', Zones={comboClashZones.Count}");
+                        LogPlacement($"[PERSIST-COMBO] Linked='{key.LinkedFile}', Host='{key.HostFile}', Count={comboClashZones.Count}, Sample=[{string.Join(", ", comboClashZones.Take(5).Select(z => $"{z.Id}:{z.SleeveInstanceId}"))}]");
+
+                        // ✅ PHASE 2: Only update Global XML in-memory if XML creation is enabled
+                        if (!DeploymentConfiguration.DisableXmlCreation)
+                        {
+                        SaveToGlobalXml(globalIndex, comboClashZones, category, baseFilterName, filterName, key, stats, allowStructuralUpdates);
+                        }
+                        else
+                        {
+                            LogRefresh($"[PERSIST-GLOBAL] ⚠️ XML creation disabled - skipping SaveToGlobalXml (database only mode). Combo: Linked='{key.LinkedFile}', Host='{key.HostFile}', Zones={comboClashZones?.Count ?? 0}");
+                        }
+
+                        if (targetFilter != null)
+                        {
+                            SaveToFilterXml(comboClashZones, category, baseFilterName, targetFilter, key, stats, allowStructuralUpdates);
+                        }
+                    }
+
+                    CleanupGlobalIndex(globalIndex, validZones, stats);
+                    
+                    // ✅ PHASE 2: Only save Global XML if XML creation is enabled
+                    if (!DeploymentConfiguration.DisableXmlCreation)
+                    {
+                    GlobalIndexService.Save(_document, globalIndex);
+                    }
+                    else
+                    {
+                        LogRefresh($"[PERSIST-GLOBAL] ⚠️ XML creation disabled - skipping GlobalIndexService.Save() (database only mode)");
+                    }
+                }
+                else
+                {
+                    // ✅ PHASE SQLITE-2: SQLite is primary - still update in-memory filter storage and global XML
+                    foreach (var comboGroup in combos)
+                    {
+                        var key = comboGroup.Key;
+                        var comboClashZones = comboGroup.ToList();
+
+                        // Maintain target filter storage so downstream consumers (Place Sleeves, clustering) see the zones
+                        if (targetFilter != null)
+                        {
+                            SaveToFilterXml(comboClashZones, category, baseFilterName, targetFilter, key, stats, allowStructuralUpdates);
+                        }
+
+                        // ✅ PHASE 2: Only update Global XML in-memory if XML creation is enabled
+                        if (!DeploymentConfiguration.DisableXmlCreation)
+                        {
+                        SaveToGlobalXml(globalIndex, comboClashZones, category, baseFilterName, filterName, key, stats, allowStructuralUpdates);
+                        }
+                        else
+                        {
+                            LogRefresh($"[PERSIST-GLOBAL] ⚠️ XML creation disabled - skipping SaveToGlobalXml (database only mode). Combo: Linked='{key.LinkedFile}', Host='{key.HostFile}', Zones={comboClashZones?.Count ?? 0}");
+                        }
+                    }
+
+                    CleanupGlobalIndex(globalIndex, validZones, stats);
+                    
+                    // ✅ PHASE 2: Only save Global XML if XML creation is enabled
+                    if (!DeploymentConfiguration.DisableXmlCreation)
+                    {
+                    // ✅ CRITICAL: Save Global XML so "Place Sleeves" button can check for unresolved zones
+                    GlobalIndexService.Save(_document, globalIndex);
+                    }
+                    else
+                    {
+                        LogRefresh($"[PERSIST-GLOBAL] ⚠️ XML creation disabled - skipping GlobalIndexService.Save() (database only mode)");
+                    }
+                    
+                    // ✅ DEBUG: Log Global XML save completion
+                    var unresolvedInGlobal = GlobalIndexService.GetAllEntries(globalIndex)
+                        .Count(e => !e.IsResolved && !e.IsClusterResolved);
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] ✅ PHASE 2: Saved Global XML for '{category}' - {unresolvedInGlobal} unresolved entries (total: {GlobalIndexService.GetAllEntries(globalIndex).Count()})");
+
+                    // Skip Filter XML writes - SQLite is the source of truth for clash zone data
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] ✅ PHASE 2: Skipped Filter XML writes - SQLite is primary store");
+                }
             }
             catch (Exception ex)
             {
@@ -188,6 +376,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             ProcessingStats stats,
             bool allowStructuralUpdates)
         {
+            // ✅ PHASE 2: Skip XML creation if disabled - database is single source of truth
+            if (DeploymentConfiguration.DisableXmlCreation)
+            {
+                LogRefresh($"[PERSIST-GLOBAL] ⚠️ XML creation disabled - skipping SaveToGlobalXml (database only mode). Combo: Linked='{comboKey.LinkedFile}', Host='{comboKey.HostFile}', Zones={comboClashZones?.Count ?? 0}");
+                return;
+            }
+
             if (comboClashZones == null || comboClashZones.Count == 0)
             {
                 LogRefresh($"[PERSIST-GLOBAL] Skipping SaveToGlobalXml - no clash zones for combo Linked='{comboKey.LinkedFile}', Host='{comboKey.HostFile}'");
@@ -245,7 +440,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             else
             {
-                LogRefresh($"[PERSIST-GLOBAL] ✅ Found EXISTING FileComboGroup: Linked='{comboKey.LinkedFile}', Host='{comboKey.HostFile}', NormalizedKey='{normalizedKey}', Zones={comboClashZones.Count}");
+                // ✅ Update ProcessedAt timestamp to reflect that this combo was just processed
+                globalFileCombo.ProcessedAt = DateTime.Now;
+                globalFileCombo.IsProcessed = true;
+                LogRefresh($"[PERSIST-GLOBAL] ✅ Found EXISTING FileComboGroup: Linked='{comboKey.LinkedFile}', Host='{comboKey.HostFile}', NormalizedKey='{normalizedKey}', Zones={comboClashZones.Count}, Updated ProcessedAt={globalFileCombo.ProcessedAt}");
             }
 
             globalFileCombo.Entries ??= new List<CategoryGlobalIndexEntry>();
@@ -301,8 +499,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             ProcessingStats stats,
             bool allowStructuralUpdates)
         {
-            if (comboClashZones == null || comboClashZones.Count == 0 || targetFilter == null)
+            // ✅ PHASE 2: Skip XML creation if disabled - database is single source of truth
+            if (DeploymentConfiguration.DisableXmlCreation)
+            {
+                LogPlacement($"[PERSIST-FILTER] ⚠️ XML creation disabled - skipping SaveToFilterXml (database only mode). Category='{category}', Filter='{baseFilterName}', Combo: Linked='{comboKey.LinkedFile}', Host='{comboKey.HostFile}', Zones={comboClashZones?.Count ?? 0}");
                 return;
+            }
+
+            if (comboClashZones == null || comboClashZones.Count == 0)
+            {
+                LogPlacement($"[PERSIST-FILTER] ⚠️ Skipping SaveToFilterXml: comboClashZones is null or empty (Count={comboClashZones?.Count ?? 0})");
+                return;
+            }
+            if (targetFilter == null)
+            {
+                LogPlacement($"[PERSIST-FILTER] ⚠️ Skipping SaveToFilterXml: targetFilter is null for category '{category}', combo Linked='{comboKey.LinkedFile}', Host='{comboKey.HostFile}'");
+                return;
+            }
+            
+            LogPlacement($"[PERSIST-FILTER] ✅ SaveToFilterXml called: Category='{category}', BaseFilter='{baseFilterName}', Combo Linked='{comboKey.LinkedFile}', Host='{comboKey.HostFile}', Zones={comboClashZones.Count}");
 
             targetFilter.ClashZoneStorage ??= new ClashZoneStorage
             {
@@ -642,17 +857,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         private static string BuildFilterFileName(string baseFilterName, string category)
         {
+            // ✅ CRITICAL FIX: Use MepCategoryConstants.GetXmlSuffix() for consistent naming
+            // This ensures "Ducts" → "ducts", "Cable Trays" → "cable_trays", "Duct Accessories" → "duct_accessories"
+            // Matches what Place Sleeve expects (OpeningCommandOrchestrator.GetXmlFilePathForFilter)
             if (string.IsNullOrWhiteSpace(baseFilterName))
-                return category?.ToLowerInvariant() switch
-                {
-                    null or "" => string.Empty,
-                    _ => $"{category.ToLowerInvariant()}.xml"
-                };
+            {
+                if (string.IsNullOrWhiteSpace(category))
+                    return string.Empty;
+                
+                var suffix = MepCategoryConstants.GetXmlSuffix(category);
+                return $"{suffix}.xml";
+            }
 
             if (string.IsNullOrWhiteSpace(category))
                 return $"{baseFilterName}.xml";
 
-            return $"{baseFilterName}_{category.ToLowerInvariant()}.xml";
+            var categorySuffix = MepCategoryConstants.GetXmlSuffix(category);
+            return $"{baseFilterName}_{categorySuffix}.xml";
         }
 
         private static string BuildFilterGroupName(string baseFilterName, string category)
@@ -660,7 +881,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (string.IsNullOrWhiteSpace(category))
                 return baseFilterName ?? string.Empty;
 
-            var suffix = "_" + category.ToLowerInvariant();
+            // ✅ CRITICAL FIX: Use MepCategoryConstants.GetXmlSuffix() for consistent naming
+            // This ensures "Ducts" → "ducts", "Cable Trays" → "cable_trays", "Duct Accessories" → "duct_accessories"
+            // Matches what Place Sleeve expects (OpeningCommandOrchestrator.GetXmlFilePathForFilter)
+            var categorySuffix = MepCategoryConstants.GetXmlSuffix(category);
+            var suffix = "_" + categorySuffix;
+            
             if (string.IsNullOrWhiteSpace(baseFilterName))
                 return suffix.TrimStart('_');
 
@@ -979,14 +1205,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (source.HostParameterValues != null && source.HostParameterValues.Count > 0)
                     target.HostParameterValues = source.HostParameterValues;
 
-                if (source.StructuralElementThickness > 0)
+                // ✅ CRITICAL: Update thickness values based on structural element type
+                // StructuralElementThickness: Always update (used for floors, walls, and framing)
                     target.StructuralElementThickness = source.StructuralElementThickness;
+                
+                // WallThickness: Only update if structural type is Wall
+                if (source.StructuralElementType == "Wall" || source.StructuralElementType == "Walls")
+                {
+                    target.WallThickness = source.WallThickness;
+                }
+                
+                // FramingThickness: Only update if structural type is Structural Framing
+                if (string.Equals(source.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase))
+                {
+                    target.FramingThickness = source.FramingThickness;
+                }
+                
                 if (source.StructuralElementNormal != null)
                     target.StructuralElementNormal = source.StructuralElementNormal;
 
                 target.IntersectionPointX = source.IntersectionPointX;
                 target.IntersectionPointY = source.IntersectionPointY;
                 target.IntersectionPointZ = source.IntersectionPointZ;
+                
+                // ✅ CRITICAL: Always update MEP orientation properties (needed for sleeve rotation)
+                target.MepElementOrientation = source.MepElementOrientation;
+                target.MepElementOrientationDirection = source.MepElementOrientationDirection;
+                target.MepElementRotationAngle = source.MepElementRotationAngle;
+                target.MepElementOrientationX = source.MepElementOrientationX;
+                target.MepElementOrientationY = source.MepElementOrientationY;
+                target.MepElementOrientationZ = source.MepElementOrientationZ;
             }
 
             if (HasPlacementPoint(source))
@@ -1070,10 +1318,63 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             entry.FilterName = filterName ?? entry.FilterName ?? string.Empty;
 
+            // ✅ CRITICAL FIX: Smart flag/ID preservation logic to handle both deleted sleeves and moved MEP elements
+            // Flags and SleeveInstanceIds are a PAIR - they must be consistent!
+            // Flags are managed by FlagManager (ResetFlagsForDeletedSleeves, UpdateFlagsForPlacement, DeleteSleeveForIntersectionPointChange)
+            // 
+            // Logic:
+            // 1. New entry: Use clash zone flags/IDs (will be false/-1 for new zones)
+            // 2. Existing entry with sleeve in clash zone: Update flags to true and sleeve IDs (new sleeve was placed)
+            // 3. Existing entry WITHOUT sleeve in clash zone:
+            //    a. If entry in Global XML has flags=false and IDs=-1: ALWAYS PRESERVE (FlagManager already reset - sleeve was deleted)
+            //       This is the CRITICAL case: FlagManager just reset flags, but SaveClashZones runs after with stale ClashZone objects
+            //    b. If entry in Global XML has flags=true and IDs>0: Update to clash zone values (MEP moved, old sleeve deleted, new sleeve will be placed)
+            //    This handles the "Adopt to Document" scenario where MEP moves, old sleeve is deleted, new sleeve will be placed
+            bool entryExists = !string.IsNullOrWhiteSpace(entry.Id);
+            bool zoneHasSleeve = zone.SleeveInstanceId > 0 || zone.ClusterSleeveInstanceId > 0;
+            bool entryWasResetByFlagManager = entryExists && !entry.IsResolved && !entry.IsClusterResolved && 
+                                              entry.SleeveInstanceId <= 0 && entry.ClusterSleeveInstanceId <= 0;
+            
+            // ✅ CRITICAL: Check if entry is in reset state FIRST - this takes priority over everything else
+            // If FlagManager just reset the flags (flags=false, IDs=-1), ALWAYS preserve them, even if ClashZone has stale values
+            if (entryWasResetByFlagManager)
+            {
+                // Existing entry WITHOUT sleeve, and FlagManager already reset it (flags=false, IDs=-1)
+                // PRESERVE the reset values - don't overwrite with stale clash zone values
+                // This handles: Sleeve was deleted manually, FlagManager reset flags/IDs, SaveClashZones runs after with stale ClashZone objects
+                // Do nothing - keep existing flags=false, IDs=-1
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] ✅ PRESERVING reset flags for entry {entry.Id}: IsResolved=false, IsClusterResolved=false (FlagManager reset, ClashZone has stale values)");
+                return; // Exit early - don't update flags/IDs
+            }
+            
+            if (!entryExists)
+            {
+                // New entry - use clash zone flags and IDs (will be false/-1 for new zones)
             entry.IsResolved = zone.IsResolved;
             entry.IsClusterResolved = zone.IsClusterResolved;
             entry.SleeveInstanceId = zone.SleeveInstanceId;
             entry.ClusterSleeveInstanceId = zone.ClusterSleeveInstanceId;
+            }
+            else if (zoneHasSleeve)
+            {
+                // Existing entry with sleeve placement - set flags to true and update sleeve IDs (sleeve exists)
+                entry.IsResolved = true;
+                entry.IsClusterResolved = zone.ClusterSleeveInstanceId > 0;
+                entry.SleeveInstanceId = zone.SleeveInstanceId;
+                entry.ClusterSleeveInstanceId = zone.ClusterSleeveInstanceId;
+            }
+            else
+            {
+                // Existing entry WITHOUT sleeve, but entry in Global XML still has flags=true, IDs>0
+                // This means: MEP element moved, old sleeve was deleted, FlagManager hasn't reset yet (or intersection point changed)
+                // Update with clash zone values (flags=false, IDs=-1) to reflect that sleeve is gone
+                // New sleeve will be placed at new intersection point, and flags will be updated by FlagManager.UpdateFlagsForPlacement
+                entry.IsResolved = zone.IsResolved;
+                entry.IsClusterResolved = zone.IsClusterResolved;
+                entry.SleeveInstanceId = zone.SleeveInstanceId;
+                entry.ClusterSleeveInstanceId = zone.ClusterSleeveInstanceId;
+            }
 
             if (allowStructuralUpdates)
             {
@@ -1228,6 +1529,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 storage.Filters.Add(targetGroup);
             }
+        }
+
+        /// <summary>
+        /// ✅ PHASE SQLITE-1: Dispose SQLite context
+        /// </summary>
+        public void Dispose()
+        {
+            _sqliteContext?.Dispose();
+            _sqliteContext = null;
+            _sqliteRepository = null;
         }
     }
 }

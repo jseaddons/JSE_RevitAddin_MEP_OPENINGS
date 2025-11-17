@@ -1,0 +1,181 @@
+using System;
+using System.Collections.Generic;
+using System.Data.SQLite;
+using System.Text.Json;
+
+namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
+{
+    /// <summary>
+    /// Repository for reading sleeve parameter snapshots from SQLite.
+    /// </summary>
+    public class SleeveSnapshotRepository
+    {
+        private readonly SleeveDbContext _context;
+        private readonly Action<string> _logger;
+
+        public SleeveSnapshotRepository(SleeveDbContext context, Action<string>? logger = null)
+        {
+            _context = context ?? throw new ArgumentNullException(nameof(context));
+            _logger = logger ?? (_ => { });
+        }
+
+        public SleeveSnapshotIndex LoadSnapshotIndex()
+        {
+            var index = new SleeveSnapshotIndex();
+
+            using (var cmd = _context.Connection.CreateCommand())
+            {
+                cmd.CommandText = @"
+                    SELECT
+                        SnapshotId,
+                        SleeveInstanceId,
+                        ClusterInstanceId,
+                        SourceType,
+                        FilterId,
+                        ComboId,
+                        MepElementIdsJson,
+                        HostElementIdsJson,
+                        MepParametersJson,
+                        HostParametersJson,
+                        SourceDocKeysJson,
+                        HostDocKeysJson
+                    FROM SleeveSnapshots";
+
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        try
+                        {
+                            var view = new SleeveSnapshotView
+                            {
+                                SnapshotId = reader.GetInt32(reader.GetOrdinal("SnapshotId")),
+                                SleeveInstanceId = reader.IsDBNull(reader.GetOrdinal("SleeveInstanceId"))
+                                    ? (int?)null
+                                    : reader.GetInt32(reader.GetOrdinal("SleeveInstanceId")),
+                                ClusterInstanceId = reader.IsDBNull(reader.GetOrdinal("ClusterInstanceId"))
+                                    ? (int?)null
+                                    : reader.GetInt32(reader.GetOrdinal("ClusterInstanceId")),
+                                SourceType = SafeGetString(reader, "SourceType") ?? "Individual",
+                                FilterId = reader.IsDBNull(reader.GetOrdinal("FilterId"))
+                                    ? (int?)null
+                                    : reader.GetInt32(reader.GetOrdinal("FilterId")),
+                                ComboId = reader.IsDBNull(reader.GetOrdinal("ComboId"))
+                                    ? (int?)null
+                                    : reader.GetInt32(reader.GetOrdinal("ComboId")),
+                                MepElementIds = DeserializeIntList(SafeGetString(reader, "MepElementIdsJson")),
+                                HostElementIds = DeserializeIntList(SafeGetString(reader, "HostElementIdsJson")),
+                                MepParameters = DeserializeDictionary(SafeGetString(reader, "MepParametersJson")),
+                                HostParameters = DeserializeDictionary(SafeGetString(reader, "HostParametersJson")),
+                                SourceDocKeys = DeserializeStringList(SafeGetString(reader, "SourceDocKeysJson")),
+                                HostDocKeys = DeserializeStringList(SafeGetString(reader, "HostDocKeysJson"))
+                            };
+
+                            if (view.SleeveInstanceId.HasValue && view.SleeveInstanceId.Value > 0)
+                            {
+                                index.BySleeve[view.SleeveInstanceId.Value] = view;
+                            }
+
+                            if (view.ClusterInstanceId.HasValue && view.ClusterInstanceId.Value > 0)
+                            {
+                                index.ByCluster[view.ClusterInstanceId.Value] = view;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger?.Invoke($"[SQLite] ⚠️ Failed to parse sleeve snapshot row: {ex.Message}");
+                        }
+                    }
+                }
+            }
+
+            _logger?.Invoke($"[SQLite] ✅ Loaded {index.BySleeve.Count} individual and {index.ByCluster.Count} cluster snapshots");
+            return index;
+        }
+
+        private string SafeGetString(SQLiteDataReader reader, string column)
+        {
+            var ordinal = reader.GetOrdinal(column);
+            return reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+        }
+
+        private Dictionary<string, string> DeserializeDictionary(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+                return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            try
+            {
+                return JsonSerializer.Deserialize<Dictionary<string, string>>(json) ??
+                       new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            }
+        }
+
+        private List<int> DeserializeIntList(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+                return new List<int>();
+
+            try
+            {
+                return JsonSerializer.Deserialize<List<int>>(json) ?? new List<int>();
+            }
+            catch
+            {
+                return new List<int>();
+            }
+        }
+
+        private List<string> DeserializeStringList(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+                return new List<string>();
+
+            try
+            {
+                return JsonSerializer.Deserialize<List<string>>(json) ?? new List<string>();
+            }
+            catch
+            {
+                return new List<string>();
+            }
+        }
+    }
+
+    public class SleeveSnapshotIndex
+    {
+        public Dictionary<int, SleeveSnapshotView> BySleeve { get; } = new Dictionary<int, SleeveSnapshotView>();
+        public Dictionary<int, SleeveSnapshotView> ByCluster { get; } = new Dictionary<int, SleeveSnapshotView>();
+
+        public bool TryGetBySleeve(int sleeveInstanceId, out SleeveSnapshotView view)
+        {
+            return BySleeve.TryGetValue(sleeveInstanceId, out view);
+        }
+
+        public bool TryGetByCluster(int clusterInstanceId, out SleeveSnapshotView view)
+        {
+            return ByCluster.TryGetValue(clusterInstanceId, out view);
+        }
+    }
+
+    public class SleeveSnapshotView
+    {
+        public int SnapshotId { get; set; }
+        public int? SleeveInstanceId { get; set; }
+        public int? ClusterInstanceId { get; set; }
+        public string SourceType { get; set; } = "Individual";
+        public int? FilterId { get; set; }
+        public int? ComboId { get; set; }
+        public List<int> MepElementIds { get; set; } = new List<int>();
+        public List<int> HostElementIds { get; set; } = new List<int>();
+        public Dictionary<string, string> MepParameters { get; set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string> HostParameters { get; set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        public List<string> SourceDocKeys { get; set; } = new List<string>();
+        public List<string> HostDocKeys { get; set; } = new List<string>();
+    }
+}
+

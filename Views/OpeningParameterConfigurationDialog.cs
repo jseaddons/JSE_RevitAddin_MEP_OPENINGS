@@ -10,7 +10,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
     /// </summary>
     public partial class OpeningParameterConfigurationDialog : System.Windows.Forms.Form
     {
-        private OpeningParameterConfiguration _config;
+        private OpeningParameterConfiguration? _config;
         
         // Dimension parameter controls
         private TextBox _widthParameterTextBox;
@@ -30,7 +30,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private Button _resetDefaultsButton;
         private Button _loadFromProjectButton;
         
-        public OpeningParameterConfigurationDialog(OpeningParameterConfiguration config = null)
+        public OpeningParameterConfigurationDialog(OpeningParameterConfiguration? config = null)
         {
             _config = config ?? new OpeningParameterConfiguration();
             InitializeComponent();
@@ -267,7 +267,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         
-        public OpeningParameterConfiguration GetConfiguration()
+        public OpeningParameterConfiguration? GetConfiguration()
         {
             return _config;
         }

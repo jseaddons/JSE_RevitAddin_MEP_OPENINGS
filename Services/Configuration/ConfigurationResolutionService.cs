@@ -50,7 +50,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Configuration
         /// <param name="uiPreference">UI preference ("Circular" or "Rectangular")</param>
         /// <param name="hostType">Host element type ("Wall", "Floor", "Structural Framing")</param>
         /// <returns>Resolved opening type</returns>
-        public string ResolveOpeningType(string category, ElementProperties elementProps, string uiPreference, string hostType = null)
+        public string ResolveOpeningType(string category, ElementProperties elementProps, string uiPreference, string? hostType = null)
         {
             try
             {
@@ -193,7 +193,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Configuration
         /// <param name="uiPreferences">UI user preferences</param>
         /// <param name="hostType">Host element type</param>
         /// <returns>Resolved configuration</returns>
-        public ResolvedConfiguration ResolveConfiguration(string category, ElementProperties elementProps, UIUserPreferences uiPreferences, string hostType = null)
+        public ResolvedConfiguration ResolveConfiguration(string category, ElementProperties elementProps, UIUserPreferences uiPreferences, string? hostType = null)
         {
             return new ResolvedConfiguration
             {

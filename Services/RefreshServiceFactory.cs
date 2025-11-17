@@ -10,43 +10,28 @@ using JSE_RevitAddin_MEP_OPENINGS.Services;
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
     /// <summary>
-    /// Factory for creating RefreshService instances with feature flag support
-    /// Allows switching between legacy and refactored refresh service implementations
+    /// Factory for creating RefreshService instances
+    /// ✅ PHASE 2: Legacy RefreshService removed - only refactored service is used
     /// </summary>
     public static class RefreshServiceFactory
     {
         /// <summary>
-        /// Creates the appropriate RefreshService implementation based on feature flag
+        /// Creates the refactored RefreshService implementation
         /// </summary>
         /// <param name="document">Revit document</param>
         /// <param name="uiDocument">Revit UI document</param>
         /// <param name="appProfileService">Application profile service</param>
-        /// <returns>IRefreshService implementation (legacy or refactored)</returns>
+        /// <returns>IRefreshService implementation (refactored)</returns>
         public static IRefreshService Create(
             Document document,
             UIDocument uiDocument,
             ApplicationProfileService appProfileService)
         {
-            // Check feature flag from settings
-            var settings = appProfileService?.GetCurrentSettings();
-            bool useRefactoredRefresh = settings?.UseRefactoredRefreshService ?? false;
-
-            if (useRefactoredRefresh)
-            {
-                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info("[RefreshServiceFactory] Using REFACTORED RefreshService");
-                
-                return new RefreshServiceRefactoredWrapper(
-                    new RefreshServiceRefactored(document, uiDocument, appProfileService));
-            }
-            else
-            {
-                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info("[RefreshServiceFactory] Using LEGACY RefreshService");
-                
-                return new RefreshServiceLegacyWrapper(
-                    new RefreshService(document, uiDocument, appProfileService));
-            }
+            if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info("[RefreshServiceFactory] Creating REFACTORED RefreshService");
+            
+            return new RefreshServiceRefactoredWrapper(
+                new RefreshServiceRefactored(document, uiDocument, appProfileService));
         }
     }
 
@@ -68,47 +53,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             Dictionary<string, double> clearanceSettings);
 
         void LoadExistingClashZoneData();
-    }
-
-    /// <summary>
-    /// Wrapper for legacy RefreshService to implement IRefreshService interface
-    /// </summary>
-    internal class RefreshServiceLegacyWrapper : IRefreshService
-    {
-        private readonly RefreshService _service;
-
-        public RefreshServiceLegacyWrapper(RefreshService service)
-        {
-            _service = service ?? throw new ArgumentNullException(nameof(service));
-        }
-
-        public void SetUIReferences(
-            System.Windows.Forms.Label statusLabel,
-            System.Windows.Forms.ProgressBar progressBar,
-            System.Windows.Forms.Button refreshButton)
-        {
-            _service.SetUIReferences(statusLabel, progressBar, refreshButton);
-        }
-
-        public void ExecuteRefresh(
-            List<string> selectedFilterItems,
-            List<string> selectedMepCategories,
-            List<string> selectedReferenceFiles,
-            List<string> selectedHostFiles,
-            Dictionary<string, double> clearanceSettings)
-        {
-            _service.ExecuteRefresh(
-                selectedFilterItems,
-                selectedMepCategories,
-                selectedReferenceFiles,
-                selectedHostFiles,
-                clearanceSettings);
-        }
-
-        public void LoadExistingClashZoneData()
-        {
-            _service.LoadExistingClashZoneData();
-        }
     }
 
     /// <summary>
@@ -138,18 +82,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             List<string> selectedHostFiles,
             Dictionary<string, double> clearanceSettings)
         {
-            // Refactored service returns Result, but we need void for compatibility
-            // Convert Result to void (errors are logged internally)
-            var result = _service.ExecuteRefresh(
-                selectedFilterItems,
-                selectedMepCategories,
-                selectedReferenceFiles,
-                selectedHostFiles,
-                clearanceSettings);
-
-            if (result != Autodesk.Revit.UI.Result.Succeeded && !DeploymentConfiguration.DeploymentMode)
+            try
             {
-                DebugLogger.Warning($"[RefreshServiceRefactoredWrapper] Refresh completed with result: {result}");
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info("[RefreshServiceRefactoredWrapper] Starting refactored refresh service...");
+                
+                // Refactored service returns Result, but we need void for compatibility
+                // Convert Result to void (errors are logged internally)
+                var result = _service.ExecuteRefresh(
+                    selectedFilterItems,
+                    selectedMepCategories,
+                    selectedReferenceFiles,
+                    selectedHostFiles,
+                    clearanceSettings);
+
+                if (result == Autodesk.Revit.UI.Result.Succeeded)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info("[RefreshServiceRefactoredWrapper] ✅ Refresh completed successfully");
+                }
+                else if (result == Autodesk.Revit.UI.Result.Cancelled)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning("[RefreshServiceRefactoredWrapper] ⚠️ Refresh was cancelled (missing selections)");
+                }
+                else
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error($"[RefreshServiceRefactoredWrapper] ❌ Refresh failed with result: {result}");
+                    
+                    // Show error to user
+                    System.Windows.Forms.MessageBox.Show(
+                        $"Refresh failed. Check logs for details.\nResult: {result}",
+                        "Refresh Error",
+                        System.Windows.Forms.MessageBoxButtons.OK,
+                        System.Windows.Forms.MessageBoxIcon.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                // ✅ CRITICAL: Catch and log ALL exceptions
+                var errorMsg = $"Refactored refresh service threw exception: {ex.Message}";
+                DebugLogger.Error($"[RefreshServiceRefactoredWrapper] ❌ {errorMsg}\n{ex.StackTrace}");
+                
+                // Show error to user
+                System.Windows.Forms.MessageBox.Show(
+                    $"{errorMsg}\n\nCheck debug logs for full details.",
+                    "Refresh Exception",
+                    System.Windows.Forms.MessageBoxButtons.OK,
+                    System.Windows.Forms.MessageBoxIcon.Error);
             }
         }
 

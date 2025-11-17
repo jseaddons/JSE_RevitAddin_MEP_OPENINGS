@@ -1,0 +1,364 @@
+using System;
+using System.Data.SQLite;
+using System.Text.Json;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
+using JSE_RevitAddin_MEP_OPENINGS.Models;
+
+namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
+{
+    /// <summary>
+    /// Repository for persisting opening conditions (clearances, opening types, etc.) in SQLite.
+    /// </summary>
+    public class ConditionRepository
+    {
+        private readonly SleeveDbContext _context;
+        private readonly Action<string> _logger;
+
+        public ConditionRepository(SleeveDbContext context, Action<string>? logger = null)
+        {
+            _context = context ?? throw new ArgumentNullException(nameof(context));
+            _logger = logger ?? (_ => { });
+        }
+
+        /// <summary>
+        /// ⚠️⚠️⚠️ PROTECTED METHOD - DO NOT MODIFY WITHOUT EXTENSIVE TESTING ⚠️⚠️⚠️
+        /// 
+        /// Upserts (inserts or updates) opening conditions in SQLite database.
+        /// 
+        /// ✅ WORKING AS OF 2025-11-15: Conditions are successfully populating in SQLite database
+        /// 
+        /// ⚠️ CRITICAL VALIDATION CHECKS (DO NOT REMOVE):
+        /// 1. FilterId must be > 0 (indicates filter was successfully registered)
+        /// 2. CombinedKey must not be null or empty (required for unique identification)
+        /// 3. Conditions object must not be null (required for data persistence)
+        /// 
+        /// 🔒 LOCKED BEHAVIOR:
+        /// - All validation failures result in early return (no data saved)
+        /// - All validation failures are logged
+        /// - Existing conditions are updated, new conditions are inserted
+        /// - All operations are logged for debugging
+        /// 
+        /// ⚠️ DO NOT:
+        /// - Remove validation checks
+        /// - Remove early returns
+        /// - Remove logging statements
+        /// - Change method signature
+        /// - Bypass GetConditionId check
+        /// </summary>
+        public void UpsertConditions(int filterId, string combinedKey, string normalizedCategory, OpeningConditions conditions)
+        {
+            // ⚠️ CRITICAL VALIDATION #1: FilterId must be valid (indicates filter registration succeeded)
+            if (filterId <= 0)
+            {
+                _logger($"[SQLite] ❌ UpsertConditions skipped: FilterId={filterId} (must be > 0)");
+                return; // ⚠️ DO NOT remove this early return - prevents invalid data from being saved
+            }
+            
+            // ⚠️ CRITICAL VALIDATION #2: CombinedKey must be valid (required for unique identification)
+            if (string.IsNullOrWhiteSpace(combinedKey))
+            {
+                _logger($"[SQLite] ❌ UpsertConditions skipped: CombinedKey is null or empty");
+                return; // ⚠️ DO NOT remove this early return - prevents invalid data from being saved
+            }
+            
+            // ⚠️ CRITICAL VALIDATION #3: Conditions object must not be null
+            if (conditions == null)
+            {
+                _logger($"[SQLite] ❌ UpsertConditions skipped: Conditions is null");
+                return; // ⚠️ DO NOT remove this early return - prevents null reference exceptions
+            }
+
+            int? existingId = GetConditionId(combinedKey);
+
+            if (existingId.HasValue)
+            {
+                _logger($"[SQLite] Updating existing conditions for '{combinedKey}' (ConditionId={existingId.Value}, FilterId={filterId})");
+                UpdateConditions(existingId.Value, filterId, combinedKey, normalizedCategory, conditions);
+            }
+            else
+            {
+                _logger($"[SQLite] Inserting new conditions for '{combinedKey}' (FilterId={filterId}, Category={normalizedCategory})");
+                InsertConditions(filterId, combinedKey, normalizedCategory, conditions);
+            }
+        }
+
+        /// <summary>
+        /// ⚠️ PROTECTED METHOD - DO NOT MODIFY SQL STATEMENT WITHOUT TESTING ⚠️
+        /// 
+        /// Inserts new opening conditions into SQLite database.
+        /// 
+        /// ✅ WORKING AS OF 2025-11-15: Conditions are successfully populating in SQLite database
+        /// 
+        /// ⚠️ DO NOT modify the SQL INSERT statement without:
+        /// 1. Testing with actual database
+        /// 2. Verifying all columns match the database schema
+        /// 3. Ensuring AddCommonParameters provides all required values
+        /// </summary>
+        private void InsertConditions(int filterId, string combinedKey, string normalizedCategory, OpeningConditions conditions)
+        {
+            using (var cmd = _context.Connection.CreateCommand())
+            {
+                // ⚠️ PROTECTED SQL: DO NOT modify without testing against actual database schema
+                cmd.CommandText = @"
+                    INSERT INTO Conditions (
+                        FilterId,
+                        CombinedKey,
+                        Category,
+                        RectNormal,
+                        RectInsulated,
+                        RoundNormal,
+                        RoundInsulated,
+                        PipesNormal,
+                        PipesInsulated,
+                        CableTrayTop,
+                        CableTrayOther,
+                        DuctAccessoryMepNormal,
+                        DuctAccessoryOtherNormal,
+                        OpeningPrefs,
+                        HorizontalLevel,
+                        VerticalLevel,
+                        CreationMode,
+                        UpdatedAt
+                    ) VALUES (
+                        @FilterId,
+                        @CombinedKey,
+                        @Category,
+                        @RectNormal,
+                        @RectInsulated,
+                        @RoundNormal,
+                        @RoundInsulated,
+                        @PipesNormal,
+                        @PipesInsulated,
+                        @CableTrayTop,
+                        @CableTrayOther,
+                        @DuctAccessoryMepNormal,
+                        @DuctAccessoryOtherNormal,
+                        @OpeningPrefs,
+                        @HorizontalLevel,
+                        @VerticalLevel,
+                        @CreationMode,
+                        CURRENT_TIMESTAMP
+                    )";
+
+                AddCommonParameters(cmd, filterId, combinedKey, normalizedCategory, conditions);
+                cmd.ExecuteNonQuery();
+                _logger($"[SQLite] ✅ Inserted conditions for '{combinedKey}'.");
+            }
+        }
+
+        /// <summary>
+        /// ⚠️ PROTECTED METHOD - DO NOT MODIFY SQL STATEMENT WITHOUT TESTING ⚠️
+        /// 
+        /// Updates existing opening conditions in SQLite database.
+        /// 
+        /// ✅ WORKING AS OF 2025-11-15: Conditions are successfully populating in SQLite database
+        /// 
+        /// ⚠️ DO NOT modify the SQL UPDATE statement without:
+        /// 1. Testing with actual database
+        /// 2. Verifying all columns match the database schema
+        /// 3. Ensuring AddCommonParameters provides all required values
+        /// </summary>
+        private void UpdateConditions(int conditionId, int filterId, string combinedKey, string normalizedCategory, OpeningConditions conditions)
+        {
+            using (var cmd = _context.Connection.CreateCommand())
+            {
+                // ⚠️ PROTECTED SQL: DO NOT modify without testing against actual database schema
+                cmd.CommandText = @"
+                    UPDATE Conditions SET
+                        FilterId = @FilterId,
+                        CombinedKey = @CombinedKey,
+                        Category = @Category,
+                        RectNormal = @RectNormal,
+                        RectInsulated = @RectInsulated,
+                        RoundNormal = @RoundNormal,
+                        RoundInsulated = @RoundInsulated,
+                        PipesNormal = @PipesNormal,
+                        PipesInsulated = @PipesInsulated,
+                        CableTrayTop = @CableTrayTop,
+                        CableTrayOther = @CableTrayOther,
+                        DuctAccessoryMepNormal = @DuctAccessoryMepNormal,
+                        DuctAccessoryOtherNormal = @DuctAccessoryOtherNormal,
+                        OpeningPrefs = @OpeningPrefs,
+                        HorizontalLevel = @HorizontalLevel,
+                        VerticalLevel = @VerticalLevel,
+                        CreationMode = @CreationMode,
+                        UpdatedAt = CURRENT_TIMESTAMP
+                    WHERE ConditionId = @ConditionId";
+
+                cmd.Parameters.AddWithValue("@ConditionId", conditionId);
+                AddCommonParameters(cmd, filterId, combinedKey, normalizedCategory, conditions);
+                cmd.ExecuteNonQuery();
+                _logger($"[SQLite] ✅ Updated conditions for '{combinedKey}'.");
+            }
+        }
+
+        /// <summary>
+        /// ⚠️ PROTECTED METHOD - DO NOT MODIFY WITHOUT TESTING ⚠️
+        /// 
+        /// Adds common parameters to SQLite command for both INSERT and UPDATE operations.
+        /// 
+        /// ✅ WORKING AS OF 2025-11-15: Conditions are successfully populating in SQLite database
+        /// 
+        /// ⚠️ DO NOT modify parameter names or values without:
+        /// 1. Verifying they match the SQL INSERT/UPDATE statements
+        /// 2. Testing with actual database
+        /// 3. Ensuring all required columns are populated
+        /// 
+        /// This method is used by BOTH InsertConditions and UpdateConditions - any changes affect both operations.
+        /// 
+        /// 🔒 LOCKED PARAMETERS (DO NOT REMOVE):
+        /// - @FilterId, @CombinedKey, @Category (required for identification)
+        /// - All clearance parameters (RectNormal, RectInsulated, RoundNormal, etc.)
+        /// - OpeningPrefs (JSON serialized)
+        /// - LevelConstraints (HorizontalLevel, VerticalLevel)
+        /// - CreationMode
+        /// </summary>
+        private void AddCommonParameters(SQLiteCommand cmd, int filterId, string combinedKey, string normalizedCategory, OpeningConditions conditions)
+        {
+            // ⚠️ PROTECTED: DO NOT remove or modify these parameter assignments
+            // They must match the SQL INSERT/UPDATE statements exactly
+            cmd.Parameters.AddWithValue("@FilterId", filterId);
+            cmd.Parameters.AddWithValue("@CombinedKey", combinedKey);
+            cmd.Parameters.AddWithValue("@Category", normalizedCategory ?? string.Empty);
+
+            var clearance = conditions.ClearanceSettings ?? new ClearanceSettings();
+            cmd.Parameters.AddWithValue("@RectNormal", clearance.RectangularNormal);
+            cmd.Parameters.AddWithValue("@RectInsulated", clearance.RectangularInsulated);
+            cmd.Parameters.AddWithValue("@RoundNormal", clearance.RoundNormal);
+            cmd.Parameters.AddWithValue("@RoundInsulated", clearance.RoundInsulated);
+            cmd.Parameters.AddWithValue("@PipesNormal", clearance.PipesNormal);
+            cmd.Parameters.AddWithValue("@PipesInsulated", clearance.PipesInsulated);
+            cmd.Parameters.AddWithValue("@CableTrayTop", clearance.CableTrayTop);
+            cmd.Parameters.AddWithValue("@CableTrayOther", clearance.CableTrayOther);
+            cmd.Parameters.AddWithValue("@DuctAccessoryMepNormal", clearance.DuctAccessoryMepNormal);
+            cmd.Parameters.AddWithValue("@DuctAccessoryOtherNormal", clearance.DuctAccessoryOtherNormal);
+
+            var openingPrefs = conditions.OpeningTypePreferences ?? new OpeningTypePreferences();
+            string openingPrefsJson = JsonSerializer.Serialize(openingPrefs);
+            cmd.Parameters.AddWithValue("@OpeningPrefs", openingPrefsJson);
+
+            var levelConstraints = conditions.LevelConstraints ?? new LevelConstraints();
+            cmd.Parameters.AddWithValue("@HorizontalLevel", levelConstraints.HorizontalLevel ?? string.Empty);
+            cmd.Parameters.AddWithValue("@VerticalLevel", levelConstraints.VerticalLevel ?? string.Empty);
+
+            cmd.Parameters.AddWithValue("@CreationMode", conditions.CreationMode ?? string.Empty);
+        }
+
+        public OpeningConditions GetConditions(string combinedKey)
+        {
+            if (string.IsNullOrWhiteSpace(combinedKey))
+                return null;
+
+            using (var cmd = _context.Connection.CreateCommand())
+            {
+                cmd.CommandText = @"
+                    SELECT 
+                        c.FilterId,
+                        c.CombinedKey,
+                        c.Category,
+                        c.RectNormal,
+                        c.RectInsulated,
+                        c.RoundNormal,
+                        c.RoundInsulated,
+                        c.PipesNormal,
+                        c.PipesInsulated,
+                        c.CableTrayTop,
+                        c.CableTrayOther,
+                        c.DuctAccessoryMepNormal,
+                        c.DuctAccessoryOtherNormal,
+                        c.OpeningPrefs,
+                        c.HorizontalLevel,
+                        c.VerticalLevel,
+                        c.CreationMode,
+                        f.FilterName,
+                        f.Category AS FilterCategory,
+                        c.UpdatedAt
+                    FROM Conditions c
+                    INNER JOIN Filters f ON c.FilterId = f.FilterId
+                    WHERE c.CombinedKey = @CombinedKey
+                    LIMIT 1";
+                cmd.Parameters.AddWithValue("@CombinedKey", combinedKey);
+
+                using (var reader = cmd.ExecuteReader())
+                {
+                    if (!reader.Read())
+                        return null;
+
+                    var conditions = new OpeningConditions
+                    {
+                        FilterName = reader["FilterName"]?.ToString() ?? string.Empty,
+                        Category = reader["FilterCategory"]?.ToString() ?? string.Empty,
+                        LastModified = reader["UpdatedAt"] is DBNull
+                            ? DateTime.Now
+                            : Convert.ToDateTime(reader["UpdatedAt"]),
+                        ClearanceSettings = new ClearanceSettings
+                        {
+                            RectangularNormal = GetDouble(reader, "RectNormal"),
+                            RectangularInsulated = GetDouble(reader, "RectInsulated"),
+                            RoundNormal = GetDouble(reader, "RoundNormal"),
+                            RoundInsulated = GetDouble(reader, "RoundInsulated"),
+                            PipesNormal = GetDouble(reader, "PipesNormal"),
+                            PipesInsulated = GetDouble(reader, "PipesInsulated"),
+                            CableTrayTop = GetDouble(reader, "CableTrayTop"),
+                            CableTrayOther = GetDouble(reader, "CableTrayOther"),
+                            DuctAccessoryMepNormal = GetDouble(reader, "DuctAccessoryMepNormal"),
+                            DuctAccessoryOtherNormal = GetDouble(reader, "DuctAccessoryOtherNormal")
+                        }
+                    };
+
+                    var openingPrefsJson = reader["OpeningPrefs"]?.ToString();
+                    if (!string.IsNullOrWhiteSpace(openingPrefsJson))
+                    {
+                        try
+                        {
+                            conditions.OpeningTypePreferences = JsonSerializer.Deserialize<OpeningTypePreferences>(openingPrefsJson)
+                                ?? new OpeningTypePreferences();
+                        }
+                        catch
+                        {
+                            conditions.OpeningTypePreferences = new OpeningTypePreferences();
+                        }
+                    }
+
+                    conditions.LevelConstraints = new LevelConstraints
+                    {
+                        HorizontalLevel = reader["HorizontalLevel"]?.ToString() ?? "Host Level",
+                        VerticalLevel = reader["VerticalLevel"]?.ToString() ?? "Host Level"
+                    };
+
+                    conditions.CreationMode = reader["CreationMode"]?.ToString() ?? "Opening";
+                    return conditions;
+                }
+            }
+        }
+
+        private int? GetConditionId(string combinedKey)
+        {
+            using (var cmd = _context.Connection.CreateCommand())
+            {
+                cmd.CommandText = @"
+                    SELECT ConditionId FROM Conditions
+                    WHERE CombinedKey = @CombinedKey";
+                cmd.Parameters.AddWithValue("@CombinedKey", combinedKey);
+
+                var result = cmd.ExecuteScalar();
+                if (result != null && int.TryParse(result.ToString(), out int conditionId))
+                {
+                    return conditionId;
+                }
+            }
+
+            return null;
+        }
+
+        private static double GetDouble(SQLiteDataReader reader, string columnName)
+        {
+            var ordinal = reader.GetOrdinal(columnName);
+            if (reader.IsDBNull(ordinal))
+                return 0.0;
+
+            return Convert.ToDouble(reader.GetValue(ordinal));
+        }
+    }
+}
+

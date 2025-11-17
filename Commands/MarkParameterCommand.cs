@@ -21,7 +21,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         private readonly bool _remarkAll;
         private readonly MarkPrefixSettings _markPrefixes;
         
-        public MarkParameterCommand(string targetCategory, string projectPrefix, string disciplinePrefix, bool remarkAll = false, MarkPrefixSettings markPrefixes = null)
+        public MarkParameterCommand(string targetCategory, string projectPrefix, string disciplinePrefix, bool remarkAll = false, MarkPrefixSettings? markPrefixes = null)
         {
             _targetCategory = targetCategory ?? throw new ArgumentNullException(nameof(targetCategory));
             _projectPrefix = projectPrefix ?? throw new ArgumentNullException(nameof(projectPrefix));

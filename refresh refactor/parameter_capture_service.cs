@@ -29,27 +29,53 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         {
             return new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
-                // MEP essential (5 params)
-                "Width", 
-                "Height", 
-                "Diameter", 
-                "System Type", 
+                "Width",
+                "Height",
+                "Diameter",
+                "Size",
                 "Level",
-                
-                // Host essential (5 params)
-                "Thickness", 
-                "Width", 
-                "Type", 
-                "Family", 
-                "Level",
-                
-                // Additional useful (5 params)
+                "System Type",
+                "Service Type",  // ✅ ADDED: For Cable Trays and Conduits
+                "System Name",
+                "System Abbreviation",
+                "Fire Rating",
                 "Comments",
-                "Mark",
-                "Workset",
-                "Design Option",
-                "Phase Created"
+                "Mark"
+                // ✅ REMOVED: Workset - not needed
             };
+        }
+
+        private static readonly Dictionary<string, string> AliasToCanonicalMap = CreateAliasToCanonicalMap();
+
+        private static Dictionary<string, string> CreateAliasToCanonicalMap()
+        {
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            void AddAliases(string canonical, params string[] aliases)
+            {
+                foreach (var alias in aliases)
+                {
+                    if (string.IsNullOrWhiteSpace(alias)) continue;
+                    if (!map.ContainsKey(alias))
+                        map.Add(alias, canonical);
+                }
+            }
+
+            AddAliases("Width", "Width");
+            AddAliases("Height", "Height");
+            AddAliases("Diameter", "Diameter");
+            AddAliases("Size", "Size", "MEP Size", "Service Size", "Nominal Diameter", "Outside Diameter");
+            AddAliases("Level", "Level", "Reference Level", "Schedule Level", "Reference Level Elevation");
+            AddAliases("System Type", "System Type", "MEP System Type", "System Classification", "MEP System Classification", "MEP System Type Name");
+            AddAliases("Service Type", "Service Type", "MEP Service Type");  // ✅ ADDED: For Cable Trays and Conduits
+            AddAliases("System Name", "System Name", "MEP System Name");
+            AddAliases("System Abbreviation", "System Abbreviation", "System Abbr", "Abbreviation", "Abbr", "MEP System Abbreviation");
+            AddAliases("Fire Rating", "Fire Rating");
+            AddAliases("Comments", "Comments");
+            AddAliases("Mark", "Mark");
+            // ✅ REMOVED: Workset aliases - not in whitelist anymore
+
+            return map;
         }
         
         /// <summary>
@@ -115,7 +141,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         private List<SerializableKeyValue> CaptureMinimalParams(Element element)
         {
             var result = new List<SerializableKeyValue>();
-            
+            var collected = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
             try
             {
                 foreach (Parameter param in element.Parameters)
@@ -126,32 +153,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     var paramName = param.Definition?.Name;
                     if (string.IsNullOrEmpty(paramName))
                         continue;
-                    
-                    // AGGRESSIVE FILTER: Only capture whitelisted parameters
-                    if (!MinimalWhitelist.Contains(paramName))
+
+                    if (!AliasToCanonicalMap.TryGetValue(paramName, out var canonicalName))
                         continue;
-                    
-                    var paramValue = GetParameterValueAsString(param);
+
+                    // ✅ FIX: Only capture parameters that are in the whitelist
+                    if (!MinimalWhitelist.Contains(canonicalName))
+                        continue;
+
+                    if (collected.ContainsKey(canonicalName))
+                        continue;
+
+                    // ✅ CRITICAL FIX: Pass element owner to resolve ElementId parameters (Level, etc.)
+                    var paramValue = GetParameterValueAsString(param, element);
                     if (string.IsNullOrEmpty(paramValue))
                         continue;
-                    
-                    // PRE-INTERN: Use string pool before adding to list
-                    result.Add(new SerializableKeyValue
-                    {
-                        Key = _context.StringPool.Intern(paramName),
-                        Value = _context.StringPool.Intern(paramValue)
-                    });
+
+                    collected[canonicalName] = paramValue;
                 }
+
+                // Built-in fallbacks for essential parameters that may not have direct parameter names
+                EnsureSystemType(element, collected);
+                EnsureSystemName(element, collected);
+                EnsureSystemAbbreviation(element, collected);
             }
             catch (Exception ex)
             {
                 Log($"[PARAM-CAPTURE] ⚠️ Error reading parameters from element {element.Id}: {ex.Message}");
             }
+
+            // ✅ FIX: Only add parameters that are in the whitelist
+            foreach (var kv in collected)
+            {
+                if (!MinimalWhitelist.Contains(kv.Key))
+                    continue;
+
+                result.Add(new SerializableKeyValue
+                {
+                    Key = _context.StringPool.Intern(kv.Key),
+                    Value = _context.StringPool.Intern(kv.Value)
+                });
+            }
             
             return result;
         }
         
-        private string GetParameterValueAsString(Parameter param)
+        private string GetParameterValueAsString(Parameter param, Element? owner = null)
         {
             try
             {
@@ -167,7 +214,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                         return param.AsDouble().ToString("F3");
                     
                     case StorageType.ElementId:
+                        // ✅ CRITICAL FIX: Resolve ElementId to actual element name (for Level, etc.)
                         var id = param.AsElementId();
+                        if (id != null && id.IntegerValue > 0 && owner != null)
+                        {
+                            try
+                            {
+                                var referencedElement = owner.Document?.GetElement(id);
+                                if (referencedElement != null)
+                                {
+                                    // For Level parameters, get the Level name
+                                    if (referencedElement is Level level)
+                                    {
+                                        return level.Name ?? id.IntegerValue.ToString();
+                                    }
+                                    // For other ElementId types, get the element name
+                                    return referencedElement.Name ?? id.IntegerValue.ToString();
+                                }
+                            }
+                            catch
+                            {
+                                // Fall back to ID if resolution fails
+                            }
+                        }
                         return id?.IntegerValue.ToString() ?? string.Empty;
                     
                     default:
@@ -178,6 +247,154 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             {
                 return string.Empty;
             }
+        }
+
+        private static void EnsureSystemType(Element element, Dictionary<string, string> collected)
+        {
+            if (collected.ContainsKey("System Type"))
+                return;
+
+            // ✅ FIX: Only capture if System Type is in whitelist
+            if (!MinimalWhitelist.Contains("System Type"))
+                return;
+
+            Parameter param = element.get_Parameter(BuiltInParameter.RBS_DUCT_SYSTEM_TYPE_PARAM) ??
+                              element.get_Parameter(BuiltInParameter.RBS_PIPING_SYSTEM_TYPE_PARAM) ??
+                              element.get_Parameter(BuiltInParameter.RBS_SYSTEM_CLASSIFICATION_PARAM);
+
+            if (param == null)
+                return;
+
+            // ✅ FIX: Get text value from System Type parameter (resolves ElementId to element name)
+            string value = string.Empty;
+            
+            // Try AsString() first (for string parameters)
+            value = param.AsString();
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                collected["System Type"] = value.Trim();
+                return;
+            }
+
+            // Try AsValueString() (formatted display value)
+            value = param.AsValueString();
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                collected["System Type"] = value.Trim();
+                return;
+            }
+
+            // ✅ CRITICAL FIX: For ElementId storage type, resolve to system type element name
+            if (param.StorageType == StorageType.ElementId)
+            {
+                try
+                {
+                    var systemTypeId = param.AsElementId();
+                    if (systemTypeId != null && systemTypeId.IntegerValue > 0)
+                    {
+                        var systemTypeElement = element.Document?.GetElement(systemTypeId);
+                        if (systemTypeElement != null)
+                        {
+                            // Get the name of the system type element (e.g., "Supply Air", "Return Air")
+                            value = systemTypeElement.Name;
+                            if (!string.IsNullOrWhiteSpace(value))
+                            {
+                                collected["System Type"] = value.Trim();
+                                return;
+                            }
+                        }
+                    }
+                }
+                catch
+                {
+                    // Ignore errors resolving system type element
+                }
+            }
+        }
+
+        private static void EnsureSystemName(Element element, Dictionary<string, string> collected)
+        {
+            if (collected.ContainsKey("System Name"))
+                return;
+
+            // ✅ FIX: Only capture if System Name is in whitelist
+            if (!MinimalWhitelist.Contains("System Name"))
+                return;
+
+            Parameter param = element.get_Parameter(BuiltInParameter.RBS_SYSTEM_NAME_PARAM);
+            if (param == null)
+                return;
+
+            var value = ParameterValueToString(element, param);
+            if (!string.IsNullOrWhiteSpace(value))
+                collected["System Name"] = value;
+        }
+
+        private static void EnsureSystemAbbreviation(Element element, Dictionary<string, string> collected)
+        {
+            if (collected.ContainsKey("System Abbreviation"))
+                return;
+
+            // ✅ FIX: Only capture if System Abbreviation is in whitelist
+            if (!MinimalWhitelist.Contains("System Abbreviation"))
+                return;
+
+            Parameter param = element.get_Parameter(BuiltInParameter.RBS_SYSTEM_ABBREVIATION_PARAM);
+            if (param == null)
+                return;
+
+            var value = ParameterValueToString(element, param);
+            if (!string.IsNullOrWhiteSpace(value))
+                collected["System Abbreviation"] = value;
+        }
+
+        private static string ParameterValueToString(Element owner, Parameter parameter)
+        {
+            if (parameter == null)
+                return string.Empty;
+
+            var value = parameter.AsString();
+            if (!string.IsNullOrEmpty(value))
+                return value;
+
+            value = parameter.AsValueString();
+            if (!string.IsNullOrEmpty(value))
+                return value;
+
+            if (parameter.StorageType == StorageType.ElementId)
+            {
+                try
+                {
+                    var id = parameter.AsElementId();
+                    if (id != null && id.IntegerValue > 0 && owner != null)
+                    {
+                        var referenced = owner.Document?.GetElement(id);
+                        if (referenced != null)
+                        {
+                            // ✅ CRITICAL FIX: For Level parameters, get the Level name
+                            if (referenced is Level level)
+                            {
+                                return level.Name ?? id.IntegerValue.ToString();
+                            }
+                            // For other ElementId types, get the element name
+                            return referenced.Name ?? id.IntegerValue.ToString();
+                        }
+                    }
+                    return id?.IntegerValue.ToString() ?? string.Empty;
+                }
+                catch
+                {
+                    return string.Empty;
+                }
+            }
+
+            if (parameter.StorageType == StorageType.Double)
+                return parameter.AsDouble().ToString();
+
+            if (parameter.StorageType == StorageType.Integer)
+                return parameter.AsInteger().ToString();
+
+            return string.Empty;
         }
         
         private void Log(string message)

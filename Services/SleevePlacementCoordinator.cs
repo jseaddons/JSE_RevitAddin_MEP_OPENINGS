@@ -222,34 +222,58 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     }
 
     /// <summary>
-    /// Placeholder for the sizing path. For now it reuses replay logic until the
-    /// recalculation workflow is wired in.
+    /// ✅ PATH 2 (Sizing): Performs full detection/sizing for fresh filter+category combos.
+    /// Calculates clearance, sleeve dimensions, and placement points from scratch.
+    /// Used when IsFilterComboNew = true (fresh filter+category combo).
     /// </summary>
     internal sealed class SleeveSizingService : ISleevePlacementPathHandler
     {
-        private readonly SleevePlacementReplayService _replayService = new SleevePlacementReplayService();
-
         public SleevePlacementPath Path => SleevePlacementPath.Sizing;
 
         public SleevePlacementResult Execute(SleevePlacementRequest request)
         {
             if (request == null) throw new ArgumentNullException(nameof(request));
 
-            // Sizing recalculation will be implemented in a follow-up task. Until then,
-            // fall back to replay so behaviour remains unchanged.
+            // ✅ PATH 2: Full detection/sizing - calculate everything from scratch
             try
             {
                 var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
                 System.IO.File.AppendAllText(
                     logPath,
-                    $"[{DateTime.Now:HH:mm:ss}] [PLACEMENT-PATH] Sizing path currently delegates to replay (placeholder).\n");
+                    $"[{DateTime.Now:HH:mm:ss}] [PLACEMENT-PATH] PATH 2 (Sizing) executing: Full detection/sizing for fresh filter+category combo.\n");
             }
             catch
             {
                 // Ignore logging failures
             }
 
-            return _replayService.Execute(request.WithPath(SleevePlacementPath.Replay));
+            var clearanceSettings = request.ClearanceSettings != null
+                ? request.ClearanceSettings.ToDictionary(kv => kv.Key, kv => kv.Value)
+                : new Dictionary<string, double>();
+
+            // ✅ CRITICAL: isReplayPath = false for PATH 2 (Sizing)
+            // This makes UniversalSleevePlacerService use PATH 2/3 logic:
+            // - Full clearance calculation from conditions
+            // - Calculate sleeve placement points
+            // - Calculate sleeve dimensions
+            // - Save all data to DB/XML
+            var placerService = new UniversalSleevePlacerService(
+                request.Document,
+                request.Conditions,
+                request.Strategy,
+                clearanceSettings,
+                request.FilterName,
+                request.FlagManager,
+                isReplayPath: false); // ✅ PATH 2: Full calculation, not replay
+
+            var placementOutcome = placerService.PlaceAllSleevesInTransaction(
+                request.ClashZones?.ToList() ?? new List<ClashZone>());
+
+            return SleevePlacementResult.FromCounts(
+                placementOutcome.PlacedCount,
+                placementOutcome.SkippedCount,
+                placementOutcome.ErrorCount,
+                SleevePlacementPath.Sizing); // ✅ Return Sizing path, not Replay
         }
     }
 

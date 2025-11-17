@@ -10,7 +10,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders
     /// </summary>
     public class CableTrayClearanceProvider : IClearanceProvider
     {
-        public double GetClearance(Element mepElement, Dictionary<string, double> uiClearances = null)
+        public double GetClearance(Element mepElement, Dictionary<string, double>? uiClearances = null)
         {
             if (mepElement is CableTray cableTray)
             {
@@ -52,7 +52,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders
         /// <param name="side">The side: "top", "other", or "all"</param>
         /// <param name="uiClearances">UI clearance settings</param>
         /// <returns>Clearance value in internal units</returns>
-        public double GetClearanceForSide(Element mepElement, string side, Dictionary<string, double> uiClearances = null)
+        public double GetClearanceForSide(Element mepElement, string side, Dictionary<string, double>? uiClearances = null)
         {
             if (mepElement is CableTray cableTray)
             {

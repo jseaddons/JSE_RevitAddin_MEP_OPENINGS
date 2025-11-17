@@ -23,7 +23,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <param name="settingsService">Settings service to check if 3-point validation is enabled</param>
         public IntersectionOptimizationService(
             ClashZoneStorage existingClashZones,
-            SettingsService settingsService = null)
+            SettingsService? settingsService = null)
         {
             _settingsService = settingsService ?? new SettingsService();
             _knownValidPairs = new HashSet<(int, int)>();

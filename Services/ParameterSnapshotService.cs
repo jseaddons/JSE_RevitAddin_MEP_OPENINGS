@@ -22,12 +22,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             // MEP Element essentials
             "System Name", "System Abbreviation", "System Type",
+            "MEP System Name", "MEP System Abbreviation", "MEP System Type", "MEP System Classification",
+            "MEP Size",
             "Width", "Height", "Diameter", "Size",
             "Level", "Offset",
             "Insulation Thickness",
             
             // Host essentials  
-            "Type", "Type Name", "Family", "Family Name",
+            "Family", "Family Name",
             "Width", "Thickness", "Height",
             "Structural", "Function",
             "Level", "Base Offset", "Top Offset",
@@ -46,7 +48,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             "Size","Diameter","Nominal Diameter","Outside Diameter","Width","Height",
             "Reference Level","Level","Schedule Level","Reference Level Elevation",
-            "System Type","System Classification","Service Type","System Abbreviation"
+            "System Type","System Classification","Service Type","System Abbreviation",
+            "MEP System Type","MEP System Name","MEP System Abbreviation","MEP Size"
         };
 
         private readonly ISet<string> _commonHostKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)

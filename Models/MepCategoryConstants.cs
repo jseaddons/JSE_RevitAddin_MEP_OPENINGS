@@ -115,6 +115,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
             // Return as-is if no match
             return normalized;
         }
+
+        /// <summary>
+        /// Convert an XML file suffix back to a normalized display category (e.g. "cable_trays" → "Cable Trays").
+        /// </summary>
+        public static string FromXmlSuffix(string suffix)
+        {
+            if (string.IsNullOrWhiteSpace(suffix))
+                return DUCTS;
+
+            var normalized = suffix.Trim().ToLowerInvariant();
+
+            return normalized switch
+            {
+                DUCTS_XML_SUFFIX => DUCTS,
+                PIPES_XML_SUFFIX => PIPES,
+                CABLE_TRAYS_XML_SUFFIX => CABLE_TRAYS,
+                DUCT_ACCESSORIES_XML_SUFFIX => DUCT_ACCESSORIES,
+                _ => System.Globalization.CultureInfo.CurrentCulture.TextInfo
+                        .ToTitleCase(normalized.Replace("_", " "))
+            };
+        }
     }
 }
 

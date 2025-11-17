@@ -5,7 +5,8 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
-
+using JSE_RevitAddin_MEP_OPENINGS.Data;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
@@ -127,8 +128,92 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 var coordinateUpdater = new SleeveCoordinateUpdater(_doc);
                 
-                // ✅ DYNAMIC: Load clash zones from specific XML file
-                var clashZones = LoadClashZonesFromXml(xmlFilePath);
+                // ✅ PHASE 2: DATABASE-FIRST - Load clash zones from database first (primary source of truth)
+                // Fallback to XML only if database has no data (backward compatibility)
+                var clashZones = new List<ClashZone>();
+                
+                // Try to determine category from XML file path or load from database
+                string category = null;
+                if (!string.IsNullOrEmpty(xmlFilePath))
+                {
+                    // Extract category from filename (e.g., "Electrical_cable_trays.xml" -> "Cable Trays")
+                    var fileName = Path.GetFileNameWithoutExtension(xmlFilePath);
+                    if (fileName.Contains("_"))
+                    {
+                        var parts = fileName.Split('_');
+                        if (parts.Length >= 2)
+                        {
+                            // Try to map to category name - take last part and capitalize properly
+                            var categoryPart = parts[parts.Length - 1];
+                            // Convert "cable_trays" -> "Cable Trays"
+                            var words = categoryPart.Split('_');
+                            category = string.Join(" ", words.Select(w => 
+                                w.Length > 0 ? char.ToUpper(w[0]) + (w.Length > 1 ? w.Substring(1).ToLower() : "") : w));
+                        }
+                    }
+                }
+                
+                // ✅ DATABASE-FIRST: Load from database if category is known
+                if (!string.IsNullOrEmpty(category))
+                {
+                    try
+                    {
+                        using (var dbContext = new Data.SleeveDbContext(_doc))
+                        {
+                            var repository = new Data.Repositories.ClashZoneRepository(dbContext);
+                            var dbZones = repository.GetClashZonesByCategory(category);
+                            
+                            if (dbZones != null && dbZones.Count > 0)
+                            {
+                                // ✅ CRITICAL FIX: Load ALL zones (not just those with SleeveInstanceId > 0)
+                                // SleeveInstanceId may not be saved to DB yet after placement, so we need to match by position
+                                clashZones = dbZones.Where(z => z != null).ToList();
+                                
+                                foreach (var cz in clashZones)
+                                {
+                                    // ✅ CRITICAL: Reconstruct SleevePlacementPoint from database properties
+                                    cz.EnsureSleevePlacementPointReconstructed();
+                                }
+                                
+                                // ✅ DEBUG: Log sample zone data to diagnose matching issues
+                                var zonesWithPlacementPoint = clashZones.Count(z => z != null && (z.SleevePlacementPointX != 0 || z.SleevePlacementPointY != 0 || z.SleevePlacementPointZ != 0));
+                                var zonesWithSleeveId = clashZones.Count(z => z != null && z.SleeveInstanceId > 0);
+                                
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[SleeveCoordinateService] ✅ DATABASE-FIRST: Loaded {clashZones.Count} clash zones from database for category '{category}' (all zones, will match by position)");
+                                    File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ✅ DATABASE-FIRST: Loaded {clashZones.Count} clash zones from database for category '{category}' (all zones)\n");
+                                    File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] DEBUG: Zones with placement point: {zonesWithPlacementPoint}/{clashZones.Count}, Zones with SleeveInstanceId>0: {zonesWithSleeveId}/{clashZones.Count}\n");
+                                    
+                                    // Log sample placement points
+                                    var sampleZones = clashZones.Where(z => z != null && (z.SleevePlacementPointX != 0 || z.SleevePlacementPointY != 0)).Take(3).ToList();
+                                    foreach (var sample in sampleZones)
+                                    {
+                                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] SAMPLE: Zone {sample.Id}, SPP=({sample.SleevePlacementPointX:F3}, {sample.SleevePlacementPointY:F3}, {sample.SleevePlacementPointZ:F3}), SleeveId={sample.SleeveInstanceId}\n");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception dbEx)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Warning($"[SleeveCoordinateService] ⚠️ Database load failed, falling back to XML: {dbEx.Message}");
+                            File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ⚠️ Database load failed: {dbEx.Message} (falling back to XML)\n");
+                        }
+                    }
+                }
+                
+                // ✅ FALLBACK: Load from XML if database has no data
+                if (clashZones.Count == 0)
+                {
+                    clashZones = LoadClashZonesFromXml(xmlFilePath);
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ⚠️ Loaded {clashZones.Count} clash zones from XML (fallback)\n");
+                    }
+                }
                 
                 // ✅ CRITICAL DEBUG: Log how many have SleeveInstanceId (calculate outside condition for use later)
                 var withSleeveId = clashZones.Count(cz => cz.SleeveInstanceId > 0);
@@ -169,8 +254,73 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 catch { }
                 
-                // Save updated XML
-                SaveClashZonesToXml(clashZones, xmlFilePath);
+                // ✅ PHASE 2: DATABASE-FIRST - Save SleeveInstanceId and bounding boxes to database (primary source of truth)
+                // ⚠️ PROTECTED CODE: DO NOT MODIFY THIS SECTION WITHOUT UNDERSTANDING THE IMPACT
+                // This code is critical for clustering to work correctly. It saves:
+                // 1. SleeveInstanceId - Required for clustering to find sleeves in the database
+                // 2. Bounding box coordinates - Required for clustering to calculate cluster bounding boxes
+                // If this code is broken, clustering will fail because it won't find sleeves with valid bounding boxes.
+                try
+                {
+                    using (var dbContext = new Data.SleeveDbContext(_doc))
+                    {
+                        var repository = new Data.Repositories.ClashZoneRepository(dbContext);
+                        
+                        int dbUpdatedCount = 0;
+                        int dbSleeveIdUpdatedCount = 0;
+                        foreach (var cz in clashZones)
+                        {
+                            if (cz != null && cz.SleeveInstanceId > 0)
+                            {
+                                // ✅ CRITICAL: Save SleeveInstanceId first (needed for clustering to find sleeves)
+                                // This must be saved immediately after placement so clustering can find the sleeves
+                                repository.UpdateSleeveInstanceId(cz.Id, cz.SleeveInstanceId);
+                                dbSleeveIdUpdatedCount++;
+                                
+                                // ✅ Save bounding boxes if they're not zero
+                                // Bounding boxes are required for clustering to calculate cluster bounding boxes
+                                // Without these, clustering will find 0 sleeves with valid bounding boxes
+                                if (!(cz.SleeveBoundingBoxMinX == 0.0 && cz.SleeveBoundingBoxMinY == 0.0 && cz.SleeveBoundingBoxMinZ == 0.0 &&
+                                      cz.SleeveBoundingBoxMaxX == 0.0 && cz.SleeveBoundingBoxMaxY == 0.0 && cz.SleeveBoundingBoxMaxZ == 0.0))
+                                {
+                                    repository.UpdateSleeveBoundingBoxes(
+                                        cz.Id,
+                                        cz.SleeveBoundingBoxMinX, cz.SleeveBoundingBoxMinY, cz.SleeveBoundingBoxMinZ,
+                                        cz.SleeveBoundingBoxMaxX, cz.SleeveBoundingBoxMaxY, cz.SleeveBoundingBoxMaxZ);
+                                    dbUpdatedCount++;
+                                }
+                            }
+                        }
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[SleeveCoordinateService] ✅ DATABASE: Updated SleeveInstanceId for {dbSleeveIdUpdatedCount} clash zones, bounding boxes for {dbUpdatedCount} clash zones in database");
+                            File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ✅ DATABASE: Updated SleeveInstanceId for {dbSleeveIdUpdatedCount} zones, bounding boxes for {dbUpdatedCount} zones\n");
+                        }
+                    }
+                }
+                catch (Exception dbEx)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Warning($"[SleeveCoordinateService] ⚠️ Failed to save SleeveInstanceId/bounding boxes to database: {dbEx.Message}");
+                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ⚠️ Database save failed: {dbEx.Message}\n");
+                    }
+                }
+                
+                // ✅ FALLBACK: Save updated XML (only if XML creation is enabled)
+                if (!DeploymentConfiguration.DisableXmlCreation)
+                {
+                    SaveClashZonesToXml(clashZones, xmlFilePath);
+                }
+                else
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[SleeveCoordinateService] ⚠️ XML creation disabled - skipping SaveClashZonesToXml (database only mode)");
+                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ⚠️ XML creation disabled - skipping XML save (database only mode)\n");
+                    }
+                }
                 
                 // ✅ Direct file write
                 try {
@@ -1139,18 +1289,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // No need to update cluster bounding boxes here - they're already set correctly by UniversalClusterService
                     
                     // ✅ CRITICAL FIX: If no direct match, try position matching
-                    if (matchedSleeve == null && clashZone.SleevePlacementPointX != 0 && clashZone.SleevePlacementPointY != 0)
+                    // Use SleevePlacementPoint if available, otherwise fall back to IntersectionPoint
+                    double matchX = clashZone.SleevePlacementPointX;
+                    double matchY = clashZone.SleevePlacementPointY;
+                    double matchZ = clashZone.SleevePlacementPointZ;
+                    string matchPointType = "SleevePlacementPoint";
+                    
+                    // ✅ FALLBACK: Use IntersectionPoint if SleevePlacementPoint is zero (for zones not yet placed)
+                    if (matchX == 0 && matchY == 0 && clashZone.IntersectionPoint != null)
                     {
+                        matchX = clashZone.IntersectionPoint.X;
+                        matchY = clashZone.IntersectionPoint.Y;
+                        matchZ = clashZone.IntersectionPoint.Z;
+                        matchPointType = "IntersectionPoint";
+                    }
+                    
+                    if (matchedSleeve == null && (matchX != 0 || matchY != 0))
+                    {
+                        double minDistance = double.MaxValue;
+                        FamilyInstance closestSleeve = null;
+                        
                         foreach (var sleeve in allSleeves)
                         {
                             var bbox = sleeve.get_BoundingBox(null);
                             if (bbox != null)
                             {
-                                // Check if sleeve position matches clash zone placement point (within 1mm tolerance)
+                                // Check if sleeve position matches clash zone point (within 1mm tolerance)
                                 var distance = Math.Sqrt(
-                                    Math.Pow(bbox.Min.X - clashZone.SleevePlacementPointX, 2) +
-                                    Math.Pow(bbox.Min.Y - clashZone.SleevePlacementPointY, 2) +
-                                    Math.Pow(bbox.Min.Z - clashZone.SleevePlacementPointZ, 2));
+                                    Math.Pow(bbox.Min.X - matchX, 2) +
+                                    Math.Pow(bbox.Min.Y - matchY, 2) +
+                                    Math.Pow(bbox.Min.Z - matchZ, 2));
+                                
+                                if (distance < minDistance)
+                                {
+                                    minDistance = distance;
+                                    closestSleeve = sleeve;
+                                }
                                 
                                 if (distance < 0.00328) // 1mm tolerance in feet
                                 {
@@ -1159,13 +1333,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     // ✅ DEPLOYMENT: Wrapped in deployment mode check
                                     if (!DeploymentConfiguration.DeploymentMode)
                                     {
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[POSITION-MATCH] Found sleeve {sleeve.Id.IntegerValue} by position (distance: {distance:F6}ft)\n");
+                                        System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [POSITION-MATCH] Found sleeve {sleeve.Id.IntegerValue} by position for zone {clashZone.Id} using {matchPointType}, distance: {distance:F6}ft, MatchPoint=({matchX:F3}, {matchY:F3}, {matchZ:F3}), bbox.Min=({bbox.Min.X:F3}, {bbox.Min.Y:F3}, {bbox.Min.Z:F3})\n");
                                     }
                                     break;
                                 }
                             }
                         }
+                        
+                        // ✅ DEBUG: Log if no match found but there was a closest sleeve
+                        if (matchedSleeve == null && closestSleeve != null && !DeploymentConfiguration.DeploymentMode)
+                        {
+                            System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [POSITION-MATCH-FAILED] Zone {clashZone.Id}: No match within 1mm tolerance using {matchPointType}. Closest sleeve {closestSleeve.Id.IntegerValue} at distance {minDistance:F6}ft ({minDistance * 304.8:F2}mm). MatchPoint=({matchX:F3}, {matchY:F3}, {matchZ:F3})\n");
+                        }
+                    }
+                    else if (matchedSleeve == null && matchX == 0 && matchY == 0 && !DeploymentConfiguration.DeploymentMode)
+                    {
+                        System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [POSITION-MATCH-SKIP] Zone {clashZone.Id}: Both SleevePlacementPoint and IntersectionPoint are zero, cannot match by position. SPP=({clashZone.SleevePlacementPointX:F3}, {clashZone.SleevePlacementPointY:F3}, {clashZone.SleevePlacementPointZ:F3}), IP=({clashZone.IntersectionPoint?.X:F3}, {clashZone.IntersectionPoint?.Y:F3}, {clashZone.IntersectionPoint?.Z:F3})\n");
                     }
                     
                     // Update coordinates if sleeve found

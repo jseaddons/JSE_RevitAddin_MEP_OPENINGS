@@ -139,44 +139,139 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 // Reuse a static serializer to avoid per-refresh type cache allocations
                 var serializer = OpeningFilterSerializer;
+                Models.OpeningFilter filter = null;
                 using (var reader = new StreamReader(mostRecentFile))
                 {
-                    var filter = (Models.OpeningFilter)serializer.Deserialize(reader);
+                    filter = (Models.OpeningFilter)serializer.Deserialize(reader);
+                }
 
-                    if (filter?.ClashZoneStorage?.AllZones != null)
+                // ✅ PHASE SQLITE-2: Load from SQLite FIRST (primary source), XML as fallback
+                if (DeploymentConfiguration.UseSqliteAsPrimary)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[RefreshService] PHASE 2: Loading from SQLite (PRIMARY) for filter '{filter?.Name ?? "Unknown"}'");
+
+                    try
                     {
-                        // ✅ GLOBAL XML FLAG MANAGEMENT: Sync flags from Global XML immediately after loading Filter XML
-                        // Flags are NOT persisted to Filter XML - must sync from Global XML (single source of truth)
+                        // Extract categories from filter or load all categories from SQLite for this filter
+                        var categoriesToLoad = filter?.SelectedMepCategoryNames?.ToList() ?? new List<string>();
+                        
+                        // If no categories in filter, try common categories
+                        if (categoriesToLoad.Count == 0)
+                        {
+                            categoriesToLoad = new List<string> { "Ducts", "Pipes", "Cable Trays", "Duct Accessories" };
+                        }
+
+                        var sqliteZones = LoadClashZonesFromSqliteFallback(filter, categoriesToLoad);
+                        if (sqliteZones != null && sqliteZones.Count > 0)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[RefreshService] ✅ PHASE 2: Loaded {sqliteZones.Count} clash zones from SQLite (PRIMARY)");
+
+                            // Create ClashZoneStorage from SQLite zones
+                            if (filter == null)
+                            {
+                                filter = new Models.OpeningFilter
+                                {
+                                    Name = Path.GetFileNameWithoutExtension(mostRecentFile),
+                                    ClashZoneStorage = new Models.ClashZoneStorage()
+                                };
+                            }
+
+                            filter.ClashZoneStorage ??= new Models.ClashZoneStorage();
+                            filter.ClashZoneStorage.ClashZones = sqliteZones;
+                        }
+                        else
+                        {
+                            // SQLite has no zones - fallback to XML if available
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[RefreshService] PHASE 2: SQLite has no zones, falling back to XML");
+                        }
+                    }
+                    catch (Exception sqliteEx)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[RefreshService] PHASE 2: SQLite load failed, falling back to XML: {sqliteEx.Message}");
+                        // Fall through to use XML as fallback
+                    }
+                }
+                else
+                {
+                    // Legacy mode: XML is primary, SQLite is fallback
+                    if (filter?.ClashZoneStorage?.AllZones == null || filter.ClashZoneStorage.AllZones.Count == 0)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[RefreshService] XML file has no zones, attempting SQLite fallback for filter '{filter?.Name ?? "Unknown"}'");
+
                         try
                         {
-                            var flagManager = new FlagManager(_document);
-                            var clashZonesByCategory = filter.ClashZoneStorage.AllZones
-                                .GroupBy(cz => cz.MepElementCategory)
-                                .ToList();
-
-                            foreach (var categoryGroup in clashZonesByCategory)
+                            var categoriesToLoad = filter?.SelectedMepCategoryNames?.ToList() ?? new List<string>();
+                            if (categoriesToLoad.Count == 0)
                             {
-                                var category = categoryGroup.Key;
-                                var categoryClashZones = categoryGroup.ToList();
+                                categoriesToLoad = new List<string> { "Ducts", "Pipes", "Cable Trays", "Duct Accessories" };
+                            }
 
-                                if (!string.IsNullOrWhiteSpace(category) && categoryClashZones.Count > 0)
+                            var sqliteZones = LoadClashZonesFromSqliteFallback(filter, categoriesToLoad);
+                            if (sqliteZones != null && sqliteZones.Count > 0)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[RefreshService] ✅ SQLite fallback loaded {sqliteZones.Count} clash zones");
+
+                                if (filter == null)
                                 {
-                                    flagManager.SyncFlagsFromGlobal(categoryClashZones, category);
+                                    filter = new Models.OpeningFilter
+                                    {
+                                        Name = Path.GetFileNameWithoutExtension(mostRecentFile),
+                                        ClashZoneStorage = new Models.ClashZoneStorage()
+                                    };
                                 }
+
+                                filter.ClashZoneStorage ??= new Models.ClashZoneStorage();
+                                filter.ClashZoneStorage.ClashZones = sqliteZones;
                             }
                         }
-                        catch (Exception flagEx)
+                        catch (Exception sqliteEx)
                         {
                             if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Warning($"[RefreshService] Failed to sync flags from Global XML: {flagEx.Message}");
+                                DebugLogger.Warning($"[RefreshService] SQLite fallback failed: {sqliteEx.Message}");
                         }
+                    }
+                }
 
-                        // ✅ CRITICAL: Preserve existing clash zone data including cluster information
-                        _clashZoneService = new ClashZoneService(filter.ClashZoneStorage, msg =>
+                if (filter?.ClashZoneStorage?.AllZones != null && filter.ClashZoneStorage.AllZones.Count > 0)
+                {
+                    // ✅ GLOBAL XML FLAG MANAGEMENT: Sync flags from Global XML immediately after loading Filter XML
+                    // Flags are NOT persisted to Filter XML - must sync from Global XML (single source of truth)
+                    try
+                    {
+                        var flagManager = new FlagManager(_document);
+                        var clashZonesByCategory = filter.ClashZoneStorage.AllZones
+                            .GroupBy(cz => cz.MepElementCategory)
+                            .ToList();
+
+                        foreach (var categoryGroup in clashZonesByCategory)
                         {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info(msg);
-                        });
+                            var category = categoryGroup.Key;
+                            var categoryClashZones = categoryGroup.ToList();
+
+                            if (!string.IsNullOrWhiteSpace(category) && categoryClashZones.Count > 0)
+                            {
+                                flagManager.SyncFlagsFromGlobal(categoryClashZones, category);
+                            }
+                        }
+                    }
+                    catch (Exception flagEx)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[RefreshService] Failed to sync flags from Global XML: {flagEx.Message}");
+                    }
+
+                    // ✅ CRITICAL: Preserve existing clash zone data including cluster information
+                    _clashZoneService = new ClashZoneService(filter.ClashZoneStorage, msg =>
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info(msg);
+                    });
 
                         int clusterResolvedCount = filter.ClashZoneStorage.AllZones.Count(cz => cz.IsClusterResolved);
                         int individualResolvedCount = filter.ClashZoneStorage.AllZones.Count(cz => cz.IsResolved);
@@ -189,7 +284,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info("[RefreshService] No clash zone data found in existing XML file");
                     }
-                }
             }
             catch (Exception ex)
             {
@@ -197,6 +291,79 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DebugLogger.Error($"[RefreshService] Error loading existing clash zone data: {ex.Message}");
                 // Continue with empty storage if loading fails
             }
+        }
+
+        /// <summary>
+        /// ✅ SQLITE FALLBACK: Load clash zones from SQLite database when XML is empty or missing
+        /// </summary>
+        private List<Models.ClashZone> LoadClashZonesFromSqliteFallback(Models.OpeningFilter filter, List<string> categoriesToLoad)
+        {
+            var allZones = new List<Models.ClashZone>();
+
+            if (filter == null || string.IsNullOrWhiteSpace(filter.Name))
+                return allZones;
+
+            // If no categories specified, try common categories
+            if (categoriesToLoad == null || categoriesToLoad.Count == 0)
+            {
+                categoriesToLoad = new List<string> { "Ducts", "Pipes", "Cable Trays", "Duct Accessories" };
+            }
+
+            try
+            {
+                using (var context = new Data.SleeveDbContext(_document, msg =>
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[RefreshService][SQLite] {msg}");
+                }))
+                {
+                    var repository = new Data.Repositories.ClashZoneRepository(context, msg =>
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[RefreshService][SQLite] {msg}");
+                    });
+
+                    // Load zones for each category
+                    foreach (var category in categoriesToLoad)
+                    {
+                        if (string.IsNullOrWhiteSpace(category))
+                            continue;
+
+                        try
+                        {
+                            // Load all zones (not just unresolved) for refresh operations
+                            var categoryZones = repository.GetClashZonesByFilter(filter.Name, category, unresolvedOnly: false) ?? new List<Models.ClashZone>();
+                            
+                            foreach (var zone in categoryZones)
+                            {
+                                if (zone != null)
+                                {
+                                    zone.EnsureSleevePlacementPointReconstructed();
+                                    zone.EnsureSleevePlacementPointActiveDocumentReconstructed();
+                                    allZones.Add(zone);
+                                }
+                            }
+
+                            if (categoryZones.Count > 0 && !DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[RefreshService] ✅ SQLite fallback loaded {categoryZones.Count} zones for filter '{filter.Name}', category '{category}'");
+                            }
+                        }
+                        catch (Exception categoryEx)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Warning($"[RefreshService] SQLite fallback failed for category '{category}': {categoryEx.Message}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[RefreshService] SQLite fallback failed: {ex.Message}");
+            }
+
+            return allZones;
         }
 
         /// <summary>
@@ -1304,6 +1471,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[FLAG-MANAGER] All sleeves exist - no flags reset");
                                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER] All sleeves exist - no flags reset\n");
+                            }
+                            
+                            // ✅ CRITICAL FIX: Re-sync flags from Global XML after reset completes
+                            // This ensures zones loaded from SQLite get the updated (reset) flags from Global XML
+                            // Global XML is the source of truth, and reset just updated it
+                            // Always re-sync, even if no resets occurred, to ensure zones have latest flags
+                            if (clashZonesByCategory != null && categoriesToCheck.Count > 0)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[FLAG-MANAGER] Re-syncing flags from Global XML after reset for {categoriesToCheck.Count} categories");
+                                
+                                foreach (var category in categoriesToCheck)
+                                {
+                                    if (string.IsNullOrWhiteSpace(category))
+                                        continue;
+                                    
+                                    if (clashZonesByCategory.TryGetValue(category, out var categoryZones) && categoryZones != null && categoryZones.Count > 0)
+                                    {
+                                        _flagManager.SyncFlagsFromGlobal(categoryZones, category);
+                                        var categoryUnresolvedCount = categoryZones.Count(z => !z.IsResolved && !z.IsClusterResolved);
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[FLAG-MANAGER] ✅ Re-synced flags for {categoryZones.Count} zones in category '{category}' from Global XML ({categoryUnresolvedCount} unresolved)");
+                                    }
+                                }
                             }
                         }
                         else
@@ -3309,7 +3500,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                         // ✅ MEMORY TRACKING: Log parameter counts for debugging (always log for memory analysis)
                         // Note: Even in deployment mode, we want memory debug logs to analyze memory usage
-                        if (newClashZones.Count % 100 == 0)
+                        if (newClashZones != null && newClashZones.Count % 100 == 0)
                         {
                             int totalParams = (mepBag?.Count ?? 0) + (hostBag?.Count ?? 0);
                             int paramBytes = totalParams * 150; // Rough estimate: 150 bytes per parameter
@@ -3320,7 +3511,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     // ✅ FIX 4: Optimize string storage with interning - share strings across ALL clash zones
                     // Combine new and existing clash zones for interning
-                    var allClashZones = newClashZones.Concat(existingClashZones?.ClashZones ?? Enumerable.Empty<Models.ClashZone>()).ToList();
+                    var allClashZones = (newClashZones ?? Enumerable.Empty<Models.ClashZone>()).Concat(existingClashZones?.ClashZones ?? Enumerable.Empty<Models.ClashZone>()).ToList();
                     foreach (var cz in allClashZones)
                     {
                         // Intern parameter keys and values
@@ -3710,21 +3901,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         SafeFileLogger.SafeAppendText(refreshLogName,
                             $"[{DateTime.Now}] [REFRESH-PERSIST] After SaveClashZones → FilterGroups={persistedFilterGroupCount}, FileCombos={persistedFileComboCount}, Zones={persistedZoneCount}\n");
 
-                        // Persist updated filter tree to XML files (main + per-category)
-                        try
+                        // ✅ PHASE SQLITE-2: Skip Filter XML persistence when SQLite is primary (SQLite has the data)
+                        if (!DeploymentConfiguration.UseSqliteAsPrimary)
                         {
-                            var filterDir = ProjectPathService.GetFiltersDirectory(_document);
-                            if (!Directory.Exists(filterDir))
-                                Directory.CreateDirectory(filterDir);
-
-                            if (targetFilter != null)
+                            // Legacy mode: Persist updated filter tree to XML files (main + per-category)
+                            try
                             {
-                                var mainFilePath = Path.Combine(filterDir, $"{targetFilter.Name}.xml");
+                                var filterDir = ProjectPathService.GetFiltersDirectory(_document);
+                                if (!Directory.Exists(filterDir))
+                                    Directory.CreateDirectory(filterDir);
 
-                                SafeFileLogger.SafeAppendText(refreshLogName,
-                                    $"[{DateTime.Now}] [REFRESH-PERSIST] Saving main filter '{targetFilter.Name}' (Zones={targetFilter.ClashZoneStorage?.EnumerateAllZones()?.Count() ?? 0})\n");
+                                if (targetFilter != null)
+                                {
+                                    // ✅ PHASE 2: Only save to XML if XML creation is enabled
+                                    if (!DeploymentConfiguration.DisableXmlCreation)
+                                    {
+                                        var mainFilePath = Path.Combine(filterDir, $"{targetFilter.Name}.xml");
 
-                                _filterManagementService.SaveFilterToXmlFile(targetFilter, mainFilePath);
+                                        SafeFileLogger.SafeAppendText(refreshLogName,
+                                            $"[{DateTime.Now}] [REFRESH-PERSIST] Saving main filter '{targetFilter.Name}' (Zones={targetFilter.ClashZoneStorage?.EnumerateAllZones()?.Count() ?? 0})\n");
+
+                                        _filterManagementService.SaveFilterToXmlFile(targetFilter, mainFilePath);
+                                    }
+                                    else
+                                    {
+                                        SafeFileLogger.SafeAppendText(refreshLogName,
+                                            $"[{DateTime.Now}] [REFRESH-PERSIST] ⚠️ XML creation disabled - skipping filter XML save (database only mode)\n");
+                                    }
 
                                 if (targetFilter.ClashZoneStorage?.Filters != null)
                                 {
@@ -3763,6 +3966,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                             .Select(g => g.First())
                                             .ToList() ?? new List<Models.ClashZone>();
 
+                                        // ✅ FIX: Skip groups that have no zones after extraction (even if they have FileCombos)
+                                        // This prevents saving empty XML files for groups like 'Electrical' when zones are in 'Electrical_cable_trays'
+                                        if (groupZones.Count == 0)
+                                        {
+                                            SafeFileLogger.SafeAppendText(refreshLogName,
+                                                $"[{DateTime.Now}] [REFRESH-PERSIST]   Group '{filterGroup.Name}' has no zones after extraction - skipping XML write\n");
+                                            continue;
+                                        }
+
                                         var categoryFilter = new Models.OpeningFilter
                                         {
                                             Name = filterGroup.Name,
@@ -3791,14 +4003,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     }
                                 }
                             }
-                        }
-                        catch (Exception xmlPersistEx)
-                        {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                DebugLogger.Warning($"[REFRESH] Failed to persist filter XML files after unified save: {xmlPersistEx.Message}");
-                                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [REFRESH] WARNING: Failed to persist filter XML files: {xmlPersistEx.Message}\n");
                             }
+                            catch (Exception xmlPersistEx)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Warning($"[REFRESH] Failed to persist filter XML files after unified save: {xmlPersistEx.Message}");
+                                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [REFRESH] WARNING: Failed to persist filter XML files: {xmlPersistEx.Message}\n");
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // ✅ PHASE SQLITE-2: SQLite is primary - skip Filter XML persistence
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[REFRESH] ✅ PHASE 2: Skipped Filter XML persistence - SQLite is primary store");
+                            SafeFileLogger.SafeAppendText(refreshLogName,
+                                $"[{DateTime.Now}] [REFRESH-PERSIST] ✅ PHASE 2: Skipped Filter XML persistence - SQLite is primary store\n");
                         }
                     }
                     catch (Exception persistenceEx)

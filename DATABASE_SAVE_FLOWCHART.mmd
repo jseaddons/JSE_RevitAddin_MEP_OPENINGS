@@ -1,0 +1,97 @@
+flowchart TD
+    Start([User Clicks Refresh]) --> OnRefresh[OnRefreshClick<br/>EmergencyMainDialog]
+    OnRefresh --> RefreshService[RefreshServiceRefactored<br/>ExecuteRefresh]
+    RefreshService --> LoadFilter[LoadEnabledFilter<br/>Get or Create Filter]
+    
+    LoadFilter --> FilterExists{Filter<br/>Exists?}
+    FilterExists -->|No| CreateFilter[CreateFilterFromCurrentUIState<br/>Create New Filter]
+    FilterExists -->|Yes| MarkEnabled[Mark Filter as Enabled]
+    CreateFilter --> RegisterFilter[RegisterFilterInDatabase<br/>Save to Filters Table]
+    RegisterFilter --> SaveUIState[SaveFilterUIState<br/>Save SelectedHostElementTypes<br/>and OpeningSettings]
+    SaveUIState --> MarkEnabled
+    MarkEnabled --> MergeAndSave[MergeAndSave<br/>Process Clash Zones]
+    
+    MergeAndSave --> PersistenceService[ClashZonePersistenceService<br/>SaveClashZones]
+    PersistenceService --> CheckRepo{SQLite<br/>Repository<br/>Exists?}
+    CheckRepo -->|No| Error1[❌ ERROR: Repository NULL<br/>Log Error and Skip]
+    CheckRepo -->|Yes| GroupByCategory[Group Clash Zones<br/>by Category]
+    
+    GroupByCategory --> ForEachCategory[For Each Category]
+    ForEachCategory --> ValidateZones[Validate Clash Zones<br/>IsValidClashZone]
+    ValidateZones --> ValidZones{Valid<br/>Zones?}
+    ValidZones -->|No| SkipCategory[Skip Category<br/>Log Warning]
+    ValidZones -->|Yes| GroupByCombo[Group by File Combo<br/>LinkedFile + HostFile]
+    
+    GroupByCombo --> InsertOrUpdate[ClashZoneRepository<br/>InsertOrUpdateClashZones]
+    InsertOrUpdate --> BeginTransaction[Begin Transaction]
+    BeginTransaction --> Step1[STEP 1: Get or Create Filter]
+    
+    Step1 --> CheckFilter{Filter<br/>Exists in DB?}
+    CheckFilter -->|No| CreateFilterDB[INSERT INTO Filters<br/>FilterName, Category<br/>Return FilterId]
+    CheckFilter -->|Yes| GetFilterId[SELECT FilterId<br/>FROM Filters]
+    CreateFilterDB --> GetFilterId
+    GetFilterId --> FilterIdCheck{FilterId<br/>> 0?}
+    FilterIdCheck -->|No| Rollback1[❌ Rollback Transaction<br/>Return]
+    FilterIdCheck -->|Yes| Step2[STEP 2: Process Each Clash Zone]
+    
+    Step2 --> ForEachZone[For Each Clash Zone]
+    ForEachZone --> ExtractKeys[Extract File Keys<br/>LinkedFileKey: SourceDocKey/DocumentPath<br/>HostFileKey: HostDocKey/StructuralElementDocumentTitle]
+    ExtractKeys --> ValidateKeys{Keys<br/>Valid?}
+    ValidateKeys -->|No| SkipZone1[❌ Skip Zone<br/>Log Error]
+    ValidateKeys -->|Yes| CheckCombo{File Combo<br/>Exists?}
+    
+    CheckCombo -->|No| CreateCombo[INSERT INTO FileCombos<br/>FilterId, LinkedFileKey, HostFileKey<br/>IsFilterComboNew=1<br/>Return ComboId]
+    CheckCombo -->|Yes| GetComboId[SELECT ComboId<br/>FROM FileCombos]
+    CreateCombo --> GetComboId
+    GetComboId --> ComboIdCheck{ComboId<br/>> 0?}
+    ComboIdCheck -->|No| SkipZone2[❌ Skip Zone<br/>Log Critical Error]
+    ComboIdCheck -->|Yes| InsertClashZone[Insert or Update Clash Zone]
+    
+    InsertClashZone --> CheckByGuid{Clash Zone<br/>Exists by GUID?}
+    CheckByGuid -->|Yes| UpdateByGuid[UPDATE ClashZones<br/>Set all fields]
+    CheckByGuid -->|No| CheckByMEP{Clash Zone<br/>Exists by MEP+Host+Point?}
+    CheckByMEP -->|Yes| UpdateByMEP[UPDATE ClashZones<br/>Set all fields]
+    CheckByMEP -->|No| InsertNew[INSERT INTO ClashZones<br/>ComboId, MepElementId, HostElementId<br/>IntersectionX/Y/Z, SleeveState<br/>BoundingBox, All Properties]
+    
+    UpdateByGuid --> NextZone{More<br/>Zones?}
+    UpdateByMEP --> NextZone
+    InsertNew --> NextZone
+    SkipZone1 --> NextZone
+    SkipZone2 --> NextZone
+    NextZone -->|Yes| ForEachZone
+    NextZone -->|No| Step3[STEP 3: Insert/Update<br/>Sleeve Snapshots]
+    
+    Step3 --> ForEachSleeve[For Each Zone with<br/>SleeveInstanceId > 0]
+    ForEachSleeve --> CheckSnapshot{Snapshot<br/>Exists?}
+    CheckSnapshot -->|Yes| UpdateSnapshot[UPDATE SleeveSnapshots]
+    CheckSnapshot -->|No| InsertSnapshot[INSERT INTO SleeveSnapshots]
+    UpdateSnapshot --> Step4
+    InsertSnapshot --> Step4
+    
+    Step4[STEP 4: Commit Transaction]
+    Step4 --> Commit{Commit<br/>Success?}
+    Commit -->|Yes| Success[✅ SUCCESS<br/>All Tables Populated<br/>Filters ✅<br/>FileCombos ✅<br/>ClashZones ✅<br/>SleeveSnapshots ✅]
+    Commit -->|No| Rollback2[❌ Rollback Transaction<br/>Log Error<br/>No Data Saved]
+    
+    SkipCategory --> NextCategory{More<br/>Categories?}
+    NextCategory -->|Yes| ForEachCategory
+    NextCategory -->|No| End([End])
+    Error1 --> End
+    Rollback1 --> End
+    Rollback2 --> End
+    Success --> End
+    
+    style Start fill:#90EE90
+    style Success fill:#90EE90
+    style Error1 fill:#FFB6C1
+    style Rollback1 fill:#FFB6C1
+    style Rollback2 fill:#FFB6C1
+    style SkipZone1 fill:#FFD700
+    style SkipZone2 fill:#FFD700
+    style SkipCategory fill:#FFD700
+    style CreateFilter fill:#87CEEB
+    style CreateFilterDB fill:#87CEEB
+    style CreateCombo fill:#87CEEB
+    style InsertNew fill:#87CEEB
+    style InsertSnapshot fill:#87CEEB
+

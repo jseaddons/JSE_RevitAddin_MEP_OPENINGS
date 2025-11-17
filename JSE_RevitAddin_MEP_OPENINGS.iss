@@ -25,13 +25,17 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 ; Main add-in DLL and manifest for Revit 2024
 Source: "bin\Release R24\Release R24\JSE_RevitAddin_MEP_OPENINGS.dll"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2024"; Flags: ignoreversion
 Source: "bin\Release R24\Release R24\JSE_RevitAddin_MEP_OPENINGS.addin"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2024"; Flags: ignoreversion
+; ✅ SQLite native DLL - required for SQLite functionality
+Source: "bin\Release R24\Release R24\e_sqlite3.dll"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2024"; Flags: ignoreversion
 
 ; Revit 2023 support - use both R24 and R23 builds for compatibility
 Source: "bin\Release R24\Release R24\JSE_RevitAddin_MEP_OPENINGS.dll"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2023"; Flags: ignoreversion
 Source: "bin\Release R24\Release R24\JSE_RevitAddin_MEP_OPENINGS.addin"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2023"; Flags: ignoreversion
+Source: "bin\Release R24\Release R24\e_sqlite3.dll"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2023"; Flags: ignoreversion
 ; Also include the 2023-targeted release build output
 Source: "bin\Release R23\Release R23\JSE_RevitAddin_MEP_OPENINGS.dll"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2023"; Flags: ignoreversion
 Source: "bin\Release R23\Release R23\JSE_RevitAddin_MEP_OPENINGS.addin"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2023"; Flags: ignoreversion
+Source: "bin\Release R23\Release R23\e_sqlite3.dll"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2023"; Flags: ignoreversion
 
 ; ✅ RESOURCES FOLDER: Copy opening family files for auto-load functionality
 ; Resources folder must be next to DLL for auto-load to work

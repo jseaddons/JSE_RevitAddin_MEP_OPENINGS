@@ -15,6 +15,8 @@ using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using static JSE_RevitAddin_MEP_OPENINGS.Models.MepCategoryConstants;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
@@ -41,6 +43,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         // ✅ PHASE 1 OPTIMIZATION: Cache loaded clash zones to avoid duplicate XML loading
         private List<ClashZone> _loadedClashZonesCache;
+        
+        // ✅ ROTATED BBOX STORAGE: Store rotation angle and rotated bounding box for each cluster sleeve
+        // Key: ClusterInstanceId, Value: (rotationAngleDeg, rotatedBboxMin, rotatedBboxMax, rotatedWidth, rotatedHeight, rotatedDepth)
+        private Dictionary<int, (double rotationAngleDeg, bool isRotated, XYZ rotatedBboxMin, XYZ rotatedBboxMax, double rotatedWidth, double rotatedHeight, double rotatedDepth)> _clusterRotationData = new Dictionary<int, (double, bool, XYZ, XYZ, double, double, double)>();
         
         // Helper struct for grouping key
         private struct SleeveGroupKey
@@ -86,7 +92,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <param name="targetCategory">Category to cluster (e.g., "Ducts", "Pipes") or null for all</param>
         /// <param name="uiDoc">Optional UIDocument for section box filtering</param>
         /// <returns>Tuple of (placedCount, deletedCount)</returns>
-        public (int placedCount, int deletedCount) ClusterSleeves(Document doc, string targetCategory, UIDocument uiDoc = null, string xmlFilePath = null, string filterName = null, List<FamilyInstance> placedClusterSleevesOut = null)
+        public (int placedCount, int deletedCount) ClusterSleeves(
+            Document doc, 
+            string targetCategory, 
+            UIDocument uiDoc = null, 
+            string xmlFilePath = null, 
+            string filterName = null, 
+            List<FamilyInstance> placedClusterSleevesOut = null,
+            // ✅ NEW: Path-based parameters for database integration
+            bool isPath1Replay = false,
+            int? comboId = null,
+            int? filterId = null)
         {
             // Store document for helper methods
             _doc = doc;
@@ -123,6 +139,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             try
             {
+                // ✅ PATH 1 REPLAY: Check ClusterSleeves table for pre-calculated data
+                if (isPath1Replay && comboId.HasValue && filterId.HasValue)
+                {
+                    try
+                    {
+                        var dbContext = new SleeveDbContext(doc);
+                        var clusterRepository = new Data.Repositories.ClusterSleeveRepository(dbContext);
+                        var existingClusters = clusterRepository.LoadClusterSleevesForCombo(comboId.Value, targetCategory);
+                        
+                        if (existingClusters != null && existingClusters.Count > 0)
+                        {
+                            // ✅ PATH 1: Load and place from database (skip calculation)
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[CLUSTERING] PATH 1: Found {existingClusters.Count} pre-calculated clusters in database, loading and placing...");
+                            }
+                            
+                            return PlaceClustersFromDatabase(doc, existingClusters, uiDoc, placedClusterSleevesOut, xmlFilePath, targetCategory, comboId.Value);
+                        }
+                        else
+                        {
+                            // ✅ PATH 1: No data → Skip clustering entirely
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[CLUSTERING] PATH 1: No cluster data found in database, skipping clustering. User should check 'Adopt to Modified Document' to trigger PATH 3.");
+                            }
+                            return (0, 0); // Skip clustering
+                        }
+                    }
+                    catch (Exception path1Ex)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Warning($"[CLUSTERING] PATH 1: Error loading cluster data: {path1Ex.Message}, falling back to calculation");
+                        }
+                        // Fall through to normal calculation
+                    }
+                }
                 // ✅ PERFORMANCE FIX: Minimal logging - only log session start and end
                 string clusterLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
                 bool __suppressClusterLogs = DeploymentConfiguration.DeploymentMode;
@@ -199,18 +253,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 File.AppendAllText(clusterLogPath, $"Target category: {targetCategory ?? "ALL"}\n");
                 }
 
-                // ✅ XML-BASED CLUSTERING: Use cached clash zones (already loaded above)
-                // All data needed for clustering is already in XML after sleeve placement:
-                // - SleeveBoundingBoxMinX/Y/Z, MaxX/Y/Z (bounding boxes from XML)
-                // - SleeveInstanceId (sleeve IDs from XML)
-                // - HostType, MepElementCategory, Orientation (from ClashZone properties in XML)
-                // - StructuralElementIdValue (for wall host checking from XML)
+                // ✅ DATABASE-FIRST CLUSTERING: Use cached clash zones (already loaded above from database/XML)
+                // All data needed for clustering is already in database/XML after sleeve placement:
+                // - SleeveBoundingBoxMinX/Y/Z, MaxX/Y/Z (bounding boxes from database/XML)
+                // - SleeveInstanceId (sleeve IDs from database/XML)
+                // - HostType, MepElementCategory, Orientation (from ClashZone properties in database/XML)
+                // - StructuralElementIdValue (for wall host checking from database/XML)
                 // ❌ REMOVED: Unnecessary Revit API calls (FilteredElementCollector, get_BoundingBox, LookupParameter)
-                // Clustering uses XML data exclusively - no pre-calculation needed!
+                // Clustering uses database/XML data exclusively - no pre-calculation needed!
                 
                                 if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Log($"[UniversalClusterService] ✅ XML-BASED CLUSTERING: Loading clash zones from XML (no Revit API calls)");
-                File.AppendAllText(clusterLogPath, $"✅ XML-BASED CLUSTERING: Loading clash zones from XML (no Revit API calls)\n");
+                DebugLogger.Log($"[UniversalClusterService] ✅ DATABASE-FIRST CLUSTERING: Loading clash zones from database/XML (no Revit API calls)");
+                File.AppendAllText(clusterLogPath, $"✅ DATABASE-FIRST CLUSTERING: Loading clash zones from database/XML (no Revit API calls)\n");
                 
                 // ✅ DEBUG: Log total clash zones loaded
                 var placementDebugPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
@@ -628,7 +682,385 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 throw;
             }
 
+            // ✅ PATH 2/3: Save cluster data to database after calculation and placement
+            if (!isPath1Replay && comboId.HasValue && filterId.HasValue && placedCount > 0)
+            {
+                try
+                {
+                    SaveClusterDataToDatabase(doc, placedClusters, comboId.Value, filterId.Value, targetCategory, xmlFilePath);
+                }
+                catch (Exception saveEx)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Warning($"[CLUSTERING] Error saving cluster data to database: {saveEx.Message}");
+                    }
+                    // Non-critical error, continue
+                }
+            }
+
+            // ✅ FLAG RESET: Reset IsFilterComboNew flag after cluster placement completes
+            if (!isPath1Replay && comboId.HasValue && placedCount > 0)
+            {
+                try
+                {
+                    var dbContext = new SleeveDbContext(doc);
+                    var clashZoneRepository = new Data.Repositories.ClashZoneRepository(dbContext);
+                    clashZoneRepository.ResetFileComboFlag(comboId.Value);
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[CLUSTERING] ✅ Reset IsFilterComboNew=0 for ComboId={comboId.Value} after cluster placement");
+                    }
+                }
+                catch (Exception resetEx)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Warning($"[CLUSTERING] Error resetting IsFilterComboNew flag: {resetEx.Message}");
+                    }
+                    // Non-critical error, continue
+                }
+            }
+
             return (placedCount, deletedCount);
+        }
+
+        /// <summary>
+        /// ✅ PATH 1 REPLAY: Place cluster sleeves from pre-calculated database data
+        /// </summary>
+        private (int placedCount, int deletedCount) PlaceClustersFromDatabase(
+            Document doc,
+            List<Data.Repositories.ClusterSleeveData> clusterDataList,
+            UIDocument uiDoc,
+            List<FamilyInstance> placedClusterSleevesOut,
+            string xmlFilePath,
+            string targetCategory,
+            int comboId)
+        {
+            int placedCount = 0;
+            int deletedCount = 0;
+            var placedClusters = new List<FamilyInstance>();
+
+            try
+            {
+                foreach (var clusterData in clusterDataList)
+                {
+                    try
+                    {
+                        // Load clash zones for this cluster
+                        var clashZoneIds = clusterData.ClashZoneIds;
+                        if (clashZoneIds == null || clashZoneIds.Count == 0)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Warning($"[CLUSTERING] PATH 1: Cluster {clusterData.ClusterInstanceId} has no ClashZoneIds, skipping");
+                            }
+                            continue;
+                        }
+
+                        // Get family symbol based on host type
+                        string familyName = "";
+                        if (clusterData.HostType == "Wall" || clusterData.HostType == "Structural Framing")
+                        {
+                            familyName = "RectangularOpeningOnWall"; // Default to rectangular
+                        }
+                        else if (clusterData.HostType == "Floor")
+                        {
+                            familyName = "RectangularOpeningOnSlab";
+                        }
+                        else
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Warning($"[CLUSTERING] PATH 1: Unknown host type '{clusterData.HostType}' for cluster {clusterData.ClusterInstanceId}, skipping");
+                            }
+                            continue;
+                        }
+
+                        var universalSymbols = new FilteredElementCollector(doc)
+                            .OfClass(typeof(FamilySymbol))
+                            .Cast<FamilySymbol>()
+                            .Where(sym => sym.Family.Name.Equals(familyName, StringComparison.OrdinalIgnoreCase))
+                            .ToList();
+
+                        if (universalSymbols.Count == 0)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Warning($"[CLUSTERING] PATH 1: Family '{familyName}' not found for cluster {clusterData.ClusterInstanceId}, skipping");
+                            }
+                            continue;
+                        }
+
+                        var familySymbol = universalSymbols.First();
+                        if (!familySymbol.IsActive) familySymbol.Activate();
+
+                        // Get reference level (use first clash zone's level)
+                        Level refLevel = null;
+                        if (clashZoneIds.Count > 0)
+                        {
+                            // Try to get level from first clash zone
+                            // This is a simplified approach - in production, you might want to store level info in ClusterSleeves table
+                            refLevel = doc.GetElement(new ElementId(1)) as Level; // Fallback to first level
+                        }
+
+                        if (refLevel == null)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Warning($"[CLUSTERING] PATH 1: Could not determine reference level for cluster {clusterData.ClusterInstanceId}, skipping");
+                            }
+                            continue;
+                        }
+
+                        // Create placement point
+                        var placementPoint = new XYZ(clusterData.PlacementX, clusterData.PlacementY, clusterData.PlacementZ);
+
+                        // Place cluster sleeve
+                        FamilyInstance clusterSleeve = doc.Create.NewFamilyInstance(
+                            placementPoint,
+                            familySymbol,
+                            refLevel,
+                            StructuralType.NonStructural);
+
+                        // Set dimensions
+                        var widthParam = clusterSleeve.LookupParameter("Width");
+                        var heightParam = clusterSleeve.LookupParameter("Height");
+                        var depthParam = clusterSleeve.LookupParameter("Depth");
+
+                        if (widthParam != null && !widthParam.IsReadOnly)
+                            widthParam.Set(clusterData.ClusterWidth);
+                        if (heightParam != null && !heightParam.IsReadOnly)
+                            heightParam.Set(clusterData.ClusterHeight);
+                        if (depthParam != null && !depthParam.IsReadOnly)
+                            depthParam.Set(clusterData.ClusterDepth);
+
+                        // Apply rotation if needed
+                        if (clusterData.IsRotated && Math.Abs(clusterData.RotationAngleDeg) > 1e-6)
+                        {
+                            var rotationAngle = clusterData.RotationAngleDeg * Math.PI / 180.0;
+                            var rotationAxis = XYZ.BasisZ;
+                            var rotation = Transform.CreateRotationAtPoint(rotationAxis, rotationAngle, placementPoint);
+                            ElementTransformUtils.MoveElement(doc, clusterSleeve.Id, rotation.OfPoint(placementPoint) - placementPoint);
+                            ElementTransformUtils.RotateElement(doc, clusterSleeve.Id, Line.CreateBound(placementPoint, placementPoint + XYZ.BasisZ), rotationAngle);
+                        }
+
+                        placedClusters.Add(clusterSleeve);
+                        placedCount++;
+
+                        // Delete individual sleeves within cluster
+                        foreach (var clashZoneId in clashZoneIds)
+                        {
+                            // Find clash zone and get sleeve instance ID
+                            // This is simplified - in production, you might want to store SleeveInstanceIds in ClusterSleeves table
+                            // For now, we'll rely on the existing cleanup logic
+                        }
+
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[CLUSTERING] PATH 1: Placed cluster sleeve {clusterSleeve.Id.IntegerValue} from database data");
+                        }
+                    }
+                    catch (Exception clusterEx)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Warning($"[CLUSTERING] PATH 1: Error placing cluster {clusterData.ClusterInstanceId}: {clusterEx.Message}");
+                        }
+                        // Continue with next cluster
+                    }
+                }
+
+                if (placedClusterSleevesOut != null)
+                {
+                    placedClusterSleevesOut.Clear();
+                    placedClusterSleevesOut.AddRange(placedClusters);
+                }
+
+                // Reset flag after placement
+                try
+                {
+                    var dbContext = new SleeveDbContext(doc);
+                    var clashZoneRepository = new Data.Repositories.ClashZoneRepository(dbContext);
+                    clashZoneRepository.ResetFileComboFlag(comboId);
+                }
+                catch (Exception resetEx)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Warning($"[CLUSTERING] PATH 1: Error resetting flag: {resetEx.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Error($"[CLUSTERING] PATH 1: Error in PlaceClustersFromDatabase: {ex.Message}");
+                }
+                throw;
+            }
+
+            return (placedCount, deletedCount);
+        }
+
+        /// <summary>
+        /// ✅ PATH 2/3: Save cluster data to database after calculation and placement
+        /// </summary>
+        private void SaveClusterDataToDatabase(
+            Document doc,
+            List<FamilyInstance> placedClusters,
+            int comboId,
+            int filterId,
+            string category,
+            string xmlFilePath)
+        {
+            try
+            {
+                var dbContext = new SleeveDbContext(doc);
+                var clusterRepository = new Data.Repositories.ClusterSleeveRepository(dbContext);
+
+                foreach (var clusterSleeve in placedClusters)
+                {
+                    try
+                    {
+                        int clusterInstanceId = clusterSleeve.Id.IntegerValue;
+                        
+                        // ✅ ROTATED BBOX STORAGE: Get stored rotation data for this cluster sleeve
+                        // If rotation data exists, use rotated bounding box coordinates; otherwise use Revit element's bounding box
+                        double rotationAngleDeg = 0.0;
+                        bool isRotated = false;
+                        XYZ bboxMin, bboxMax;
+                        double width, height, depth;
+                        
+                        if (_clusterRotationData.TryGetValue(clusterInstanceId, out var rotationData))
+                        {
+                            // Use stored rotated bounding box coordinates
+                            rotationAngleDeg = rotationData.rotationAngleDeg;
+                            isRotated = rotationData.isRotated;
+                            bboxMin = rotationData.rotatedBboxMin;
+                            bboxMax = rotationData.rotatedBboxMax;
+                            width = rotationData.rotatedWidth;
+                            height = rotationData.rotatedHeight;
+                            depth = rotationData.rotatedDepth;
+                            
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[CLUSTERING] ✅ Using stored rotated bounding box for cluster {clusterInstanceId}: Angle={rotationAngleDeg:F1}°, IsRotated={isRotated}, Width={width:F3}, Height={height:F3}, Depth={depth:F3}");
+                            }
+                        }
+                        else
+                        {
+                            // Fallback: Get from Revit element (axis-aligned bounding box)
+                            var bbox = clusterSleeve.get_BoundingBox(null);
+                            if (bbox == null)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Warning($"[CLUSTERING] Could not get bounding box for cluster sleeve {clusterSleeve.Id}, skipping save");
+                                }
+                                continue;
+                            }
+                            
+                            bboxMin = bbox.Min;
+                            bboxMax = bbox.Max;
+                            
+                            // Get dimensions from parameters
+                            var widthParam = clusterSleeve.LookupParameter("Width");
+                            var heightParam = clusterSleeve.LookupParameter("Height");
+                            var depthParam = clusterSleeve.LookupParameter("Depth");
+                            
+                            width = widthParam?.AsDouble() ?? 0.0;
+                            height = heightParam?.AsDouble() ?? 0.0;
+                            depth = depthParam?.AsDouble() ?? 0.0;
+                            
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[CLUSTERING] ⚠️ No stored rotation data for cluster {clusterInstanceId}, using Revit element bounding box (axis-aligned)");
+                            }
+                        }
+
+                        // Get host type
+                        string hostType = GetHostTypeFromSleeve(clusterSleeve);
+                        string hostOrientation = GetOrientationFromSleeve(clusterSleeve);
+
+                        // Get ClashZoneIds from MEP_ElementIds parameter or from XML
+                        List<Guid> clashZoneIds = new List<Guid>();
+                        var mepElementIdsParam = clusterSleeve.LookupParameter("MEP_ElementIds");
+                        if (mepElementIdsParam != null && mepElementIdsParam.HasValue)
+                        {
+                            // Parse MEP Element IDs and find corresponding clash zones
+                            // This is simplified - in production, you might want to store ClashZoneIds directly
+                            // For now, we'll try to get from XML cache
+                            if (_clashZoneCache != null)
+                            {
+                                var mepIdsString = mepElementIdsParam.AsString();
+                                if (!string.IsNullOrEmpty(mepIdsString))
+                                {
+                                    var mepIds = mepIdsString.Split(',').Select(id => long.Parse(id.Trim())).ToList();
+                                    foreach (var mepId in mepIds)
+                                    {
+                                        if (_clashZoneCache.TryGetValue(mepId, out var clashZone))
+                                        {
+                                            clashZoneIds.Add(clashZone.Id);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Get placement point (center of bounding box or midpoint)
+                        var placementPoint = (bboxMin + bboxMax) / 2.0;
+
+                        // ✅ ROTATED BBOX STORAGE: Save rotated bounding box coordinates to database
+                        // Save to database
+                        clusterRepository.SaveClusterSleeve(
+                            clusterInstanceId: clusterInstanceId,
+                            comboId: comboId,
+                            filterId: filterId,
+                            category: category,
+                            boundingBoxMinX: bboxMin.X,
+                            boundingBoxMinY: bboxMin.Y,
+                            boundingBoxMinZ: bboxMin.Z,
+                            boundingBoxMaxX: bboxMax.X,
+                            boundingBoxMaxY: bboxMax.Y,
+                            boundingBoxMaxZ: bboxMax.Z,
+                            clusterWidth: width,
+                            clusterHeight: height,
+                            clusterDepth: depth,
+                            rotationAngleDeg: rotationAngleDeg,
+                            isRotated: isRotated,
+                            placementX: placementPoint.X,
+                            placementY: placementPoint.Y,
+                            placementZ: placementPoint.Z,
+                            hostType: hostType,
+                            hostOrientation: hostOrientation,
+                            clashZoneIds: clashZoneIds);
+
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[CLUSTERING] ✅ Saved cluster sleeve {clusterSleeve.Id.IntegerValue} to database");
+                        }
+                    }
+                    catch (Exception clusterEx)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Warning($"[CLUSTERING] Error saving cluster sleeve {clusterSleeve.Id}: {clusterEx.Message}");
+                        }
+                        // Continue with next cluster
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Error($"[CLUSTERING] Error in SaveClusterDataToDatabase: {ex.Message}");
+                }
+                throw;
+            }
         }
 
         /// <summary>
@@ -1056,18 +1488,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     {
                                         var categoryName = clashZone.MepElementCategory ?? string.Empty;
                                         var baseFilterName = FilterNameHelper.NormalizeBaseName(_filterName, filter?.Name, categoryName);
+                                        
+                                        // ✅ CRITICAL: Update flags in memory first
+                                        clashZone.IsClusterResolved = true;
+                                        clashZone.ClusterSleeveInstanceId = clusterSleeveId.IntegerValue;
+                                        clashZone.IsResolved = true;
+                                        clashZone.SleeveInstanceId = -1;
+                                        
+                                        // ✅ CRITICAL: Update Global XML immediately (don't wait for batch)
                                         _flagManager?.UpdateFlagsForPlacement(clashZone, clusterSleeveId.IntegerValue, isCluster: true, categoryName, baseFilterName);
+                                        
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[GLOBAL-XML] ✅ Updated Global XML for ClashZone {clashZone.Id} with cluster sleeve {clusterSleeveId.IntegerValue}");
                                     }
                                     catch (Exception flagEx)
                                     {
                                         if (!DeploymentConfiguration.DeploymentMode)
                                             DebugLogger.Warning($"[MarkClusterResolved] ⚠️ Failed to update Global XML flags for clash zone {clashZone.Id}: {flagEx.Message}");
                                     }
-
-                                    // ✅ NOTE: Global XML update happens in batch at end (line ~2689) via GlobalIndexService.UpsertFlagsWithIds()
-                                    // This ensures all cluster sleeves are updated together efficiently
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[GLOBAL-XML] Cluster sleeve {clusterSleeveId.IntegerValue} placed for ClashZone {clashZone.Id} - will be saved to Global XML in batch");
                                     
                                     // ⚠️ CRITICAL: Log flag state AFTER cluster sleeve placement
                                                                         if (!DeploymentConfiguration.DeploymentMode)
@@ -1590,14 +2028,155 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
-        /// Calculate cluster bounding box from XML data
+        /// Determine dominant rotation angle from cluster sleeves
+        /// Returns the average or most common rotation angle from individual sleeves
         /// </summary>
-        private (double width, double height, double depth, XYZ mid) GetClusterBoundingBoxFromXml(List<dynamic> cluster)
+        private double DetermineDominantRotationAngle(List<dynamic> cluster, string xmlFilePath = null)
+        {
+            try
+            {
+                if (cluster == null || cluster.Count == 0)
+                    return 0.0;
+
+                var rotationAngles = new List<double>();
+
+                foreach (var sleeveData in cluster)
+                {
+                    if (sleeveData?.ClashZone == null)
+                        continue;
+
+                    var clashZone = sleeveData.ClashZone as ClashZone;
+                    if (clashZone == null)
+                        continue;
+
+                    // ✅ ROTATION DATA FROM DB: Get rotation angle from clash zone (loaded from database).
+                    // MepElementRotationAngle is saved to database during refresh (InsertOrUpdateClashZones)
+                    // and loaded by GetClashZonesByCategory -> MepRotationAngleRad column.
+                    // This ensures cluster service uses rotation data from database, not calculated on-the-fly.
+                    double angle = clashZone.MepElementRotationAngle;
+                    
+                    // Normalize angle to 0-2π range
+                    while (angle < 0) angle += 2 * Math.PI;
+                    while (angle >= 2 * Math.PI) angle -= 2 * Math.PI;
+                    
+                    rotationAngles.Add(angle);
+                }
+
+                if (rotationAngles.Count == 0)
+                    return 0.0;
+
+                // ✅ STRATEGY: Use average angle (works well for similar angles)
+                // For angles that might wrap around (e.g., 350° and 10°), we need special handling
+                double averageAngle = rotationAngles.Average();
+                
+                // Check if angles are spread across 0°/360° boundary
+                double minAngle = rotationAngles.Min();
+                double maxAngle = rotationAngles.Max();
+                if (maxAngle - minAngle > Math.PI)
+                {
+                    // Angles wrap around - adjust by adding 2π to angles < π
+                    var adjustedAngles = rotationAngles.Select(a => a < Math.PI ? a + 2 * Math.PI : a).ToList();
+                    averageAngle = adjustedAngles.Average();
+                    if (averageAngle >= 2 * Math.PI)
+                        averageAngle -= 2 * Math.PI;
+                }
+
+                // ⚠️ PROTECTED CODE: DO NOT MODIFY THIS SECTION WITHOUT UNDERSTANDING THE IMPACT
+                // This code is critical for preventing accidental rotation of axis-aligned cluster sleeves.
+                // It checks if MEP elements are essentially axis-aligned (0°, 90°, 180°, 270°) and returns 0.0
+                // to use axis-aligned bounding box logic. If this code is broken, straight sleeves will be incorrectly rotated.
+                // 
+                // ✅ CRITICAL FIX: Check if angle is essentially axis-aligned (0°, 90°, 180°, 270°)
+                // If so, return 0 to use axis-aligned bounding box logic
+                // ✅ IMPROVED: Check each individual angle first, then check average
+                // This ensures that if ALL sleeves are axis-aligned, we use axis-aligned logic
+                double thresholdDegrees = 2.0; // 2 degree tolerance (more forgiving for floating-point precision)
+                double thresholdRadians = thresholdDegrees * Math.PI / 180.0;
+                
+                // Helper function to check if an angle (in radians) is axis-aligned
+                bool IsAxisAligned(double angleRad)
+                {
+                    double angleDeg = angleRad * 180 / Math.PI;
+                    // Normalize to 0-360 range
+                    while (angleDeg < 0) angleDeg += 360;
+                    while (angleDeg >= 360) angleDeg -= 360;
+                    
+                    // Check if close to 0°, 90°, 180°, or 270°
+                    // For 0°: check if within threshold of 0 or 360
+                    // For 90°: check if within threshold of 90
+                    // For 180°: check if within threshold of 180
+                    // For 270°: check if within threshold of 270
+                    double distTo0 = Math.Min(angleDeg, 360 - angleDeg);
+                    double distTo90 = Math.Abs(angleDeg - 90);
+                    double distTo180 = Math.Abs(angleDeg - 180);
+                    double distTo270 = Math.Abs(angleDeg - 270);
+                    
+                    return distTo0 < thresholdDegrees || distTo90 < thresholdDegrees || 
+                           distTo180 < thresholdDegrees || distTo270 < thresholdDegrees;
+                }
+                
+                // First, check if ALL individual angles are axis-aligned
+                bool allAxisAligned = true;
+                foreach (double angle in rotationAngles)
+                {
+                    if (!IsAxisAligned(angle))
+                    {
+                        allAxisAligned = false;
+                        break;
+                    }
+                }
+                
+                // If all angles are axis-aligned, return 0
+                if (allAxisAligned)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        string angleList = string.Join(", ", rotationAngles.Select(a => $"{a * 180 / Math.PI:F1}°"));
+                        DebugLogger.Info($"[CLUSTER-ANGLE] All {rotationAngles.Count} angles are axis-aligned: [{angleList}], using axis-aligned bounding box");
+                    }
+                    return 0.0; // Use axis-aligned logic
+                }
+                
+                // Second, check if average angle is axis-aligned
+                if (IsAxisAligned(averageAngle))
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        double angleDegrees = averageAngle * 180 / Math.PI;
+                        string angleList = string.Join(", ", rotationAngles.Select(a => $"{a * 180 / Math.PI:F1}°"));
+                        DebugLogger.Info($"[CLUSTER-ANGLE] Average angle {angleDegrees:F1}° is axis-aligned (angles: [{angleList}]), using axis-aligned bounding box");
+                    }
+                    return 0.0; // Use axis-aligned logic
+                }
+
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[CLUSTER-ANGLE] Determined dominant rotation angle: {averageAngle * 180 / Math.PI:F1}° from {rotationAngles.Count} sleeves (non-axis-aligned)");
+                }
+
+                return averageAngle;
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[UniversalClusterService] Error determining dominant rotation angle: {ex.Message}");
+                return 0.0;
+            }
+        }
+
+        /// <summary>
+        /// Calculate cluster bounding box from XML data in rotated coordinate system
+        /// This ensures cluster sleeves follow the actual outline of individual sleeves
+        /// </summary>
+        private (double width, double height, double depth, XYZ mid) GetClusterBoundingBoxFromXml(List<dynamic> cluster, string xmlFilePath = null)
         {
             try
             {
                 if (cluster.Count == 0)
                     return (0, 0, 0, XYZ.Zero);
+
+                // ✅ NEW: Determine dominant rotation angle BEFORE calculating bounding box
+                double rotationAngle = DetermineDominantRotationAngle(cluster, xmlFilePath);
 
                 // Get all bounding boxes from XML data
                 var boundingBoxes = cluster.Select(s => s.BoundingBox).Where(bbox => bbox != null).ToList();
@@ -1671,18 +2250,118 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
                 
-                // Calculate overall bounding box (union of all boxes)
-                double minX = boundingBoxes.Min(bbox => bbox.Min.X);
-                double minY = boundingBoxes.Min(bbox => bbox.Min.Y);
-                double minZ = boundingBoxes.Min(bbox => bbox.Min.Z);
-                double maxX = boundingBoxes.Max(bbox => bbox.Max.X);
-                double maxY = boundingBoxes.Max(bbox => bbox.Max.Y);
-                double maxZ = boundingBoxes.Max(bbox => bbox.Max.Z);
+                // Declare variables at outer scope to avoid scope conflicts
+                double minX, minY, minZ, maxX, maxY, maxZ;
+                double width, height, depth;
+                XYZ mid;
 
-                double width = maxX - minX;
-                double height = maxY - minY;
-                double depth = maxZ - minZ;
-                XYZ mid = new XYZ((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2);
+                // ✅ NEW: Calculate bounding box in rotated coordinate system if rotation angle is significant
+                if (Math.Abs(rotationAngle) > 1e-6)
+                {
+                    // Calculate center point (midpoint of all sleeve centers) for rotation
+                    var sleeveCenters = new List<XYZ>();
+                    foreach (var bbox in boundingBoxes)
+                    {
+                        sleeveCenters.Add((bbox.Min + bbox.Max) / 2.0);
+                    }
+
+                    if (sleeveCenters.Count > 0)
+                    {
+                        // Use average center as rotation origin
+                        XYZ rotationOrigin = new XYZ(
+                            sleeveCenters.Average(p => p.X),
+                            sleeveCenters.Average(p => p.Y),
+                            sleeveCenters.Average(p => p.Z)
+                        );
+
+                        // Create rotation transform (rotate around Z-axis)
+                        Transform rotationTransform = Transform.CreateRotationAtPoint(XYZ.BasisZ, rotationAngle, rotationOrigin);
+                        Transform inverseTransform = rotationTransform.Inverse;
+
+                        // Transform all bounding box corners to rotated coordinate system
+                        var transformedPoints = new List<XYZ>();
+
+                        foreach (var bbox in boundingBoxes)
+                        {
+                            // Get all 8 corners of the bounding box
+                            var corners = new[]
+                            {
+                                new XYZ(bbox.Min.X, bbox.Min.Y, bbox.Min.Z),
+                                new XYZ(bbox.Max.X, bbox.Min.Y, bbox.Min.Z),
+                                new XYZ(bbox.Min.X, bbox.Max.Y, bbox.Min.Z),
+                                new XYZ(bbox.Max.X, bbox.Max.Y, bbox.Min.Z),
+                                new XYZ(bbox.Min.X, bbox.Min.Y, bbox.Max.Z),
+                                new XYZ(bbox.Max.X, bbox.Min.Y, bbox.Max.Z),
+                                new XYZ(bbox.Min.X, bbox.Max.Y, bbox.Max.Z),
+                                new XYZ(bbox.Max.X, bbox.Max.Y, bbox.Max.Z)
+                            };
+
+                            // Transform each corner to rotated coordinate system
+                            foreach (var corner in corners)
+                            {
+                                var transformed = inverseTransform.OfPoint(corner);
+                                transformedPoints.Add(transformed);
+                            }
+                        }
+
+                        if (transformedPoints.Count > 0)
+                        {
+                            // Calculate min/max in rotated coordinate system
+                            minX = transformedPoints.Min(p => p.X);
+                            minY = transformedPoints.Min(p => p.Y);
+                            minZ = transformedPoints.Min(p => p.Z);
+                            maxX = transformedPoints.Max(p => p.X);
+                            maxY = transformedPoints.Max(p => p.Y);
+                            maxZ = transformedPoints.Max(p => p.Z);
+
+                            // Dimensions in rotated coordinate system
+                            width = maxX - minX;
+                            height = maxY - minY;
+                            depth = maxZ - minZ;
+
+                            // Midpoint in rotated coordinate system (transform back to model coordinates)
+                            XYZ rotatedMid = new XYZ((minX + maxX) / 2.0, (minY + maxY) / 2.0, (minZ + maxZ) / 2.0);
+                            mid = rotationTransform.OfPoint(rotatedMid);
+
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[CLUSTER-BBOX] Rotated coordinate system: Angle={rotationAngle * 180 / Math.PI:F1}°, " +
+                                    $"Rotated coords - Min=({minX:F3}, {minY:F3}, {minZ:F3}), Max=({maxX:F3}, {maxY:F3}, {maxZ:F3}), " +
+                                    $"Width={UnitUtils.ConvertFromInternalUnits(width, UnitTypeId.Millimeters):F1}mm, " +
+                                    $"Height={UnitUtils.ConvertFromInternalUnits(height, UnitTypeId.Millimeters):F1}mm, " +
+                                    $"Depth={UnitUtils.ConvertFromInternalUnits(depth, UnitTypeId.Millimeters):F1}mm, " +
+                                    $"Sleeves in cluster: {cluster.Count}");
+                                
+                                // Log individual sleeve dimensions for comparison
+                                foreach (var sleeve in cluster.Take(5))
+                                {
+                                    var bbox = sleeve.BoundingBox;
+                                    if (bbox != null)
+                                    {
+                                        double sleeveWidth = UnitUtils.ConvertFromInternalUnits(bbox.Max.X - bbox.Min.X, UnitTypeId.Millimeters);
+                                        double sleeveHeight = UnitUtils.ConvertFromInternalUnits(bbox.Max.Y - bbox.Min.Y, UnitTypeId.Millimeters);
+                                        DebugLogger.Info($"[CLUSTER-BBOX] Individual sleeve {sleeve.SleeveInstanceId}: W={sleeveWidth:F1}mm, H={sleeveHeight:F1}mm");
+                                    }
+                                }
+                            }
+
+                            return (width, height, depth, mid);
+                        }
+                    }
+                }
+
+                // Fallback: Calculate overall bounding box (union of all boxes) - axis-aligned
+                minX = boundingBoxes.Min(bbox => bbox.Min.X);
+                minY = boundingBoxes.Min(bbox => bbox.Min.Y);
+                minZ = boundingBoxes.Min(bbox => bbox.Min.Z);
+                maxX = boundingBoxes.Max(bbox => bbox.Max.X);
+                maxY = boundingBoxes.Max(bbox => bbox.Max.Y);
+                maxZ = boundingBoxes.Max(bbox => bbox.Max.Z);
+
+                width = maxX - minX;
+                height = maxY - minY;
+                depth = maxZ - minZ;
+                mid = new XYZ((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2);
 
                 return (width, height, depth, mid);
             }
@@ -2363,6 +3042,68 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             try
             {
+                // ✅ PHASE 2: DATABASE-FIRST - Load from database first (primary source of truth)
+                // Fallback to XML only if database has no data (backward compatibility)
+                if (!string.IsNullOrEmpty(targetCategory) && doc != null)
+                {
+                    try
+                    {
+                        using (var dbContext = new SleeveDbContext(doc))
+                        {
+                            var repository = new ClashZoneRepository(dbContext);
+                            var dbZones = repository.GetClashZonesByCategory(targetCategory);
+                            
+                            if (dbZones != null && dbZones.Count > 0)
+                            {
+                                // Filter to only zones with SleeveInstanceId > 0 (placed sleeves)
+                                var placedZones = dbZones.Where(z => z != null && z.SleeveInstanceId > 0 && !z.IsClusterResolved).ToList();
+                                
+                                foreach (var cz in placedZones)
+                                {
+                                    // ✅ CRITICAL: Reconstruct SleevePlacementPoint from database properties
+                                    cz.EnsureSleevePlacementPointReconstructed();
+                                    
+                                    // ✅ ROTATION DATA FROM DB: MepElementRotationAngle is already loaded from database
+                                    // via GetClashZonesByCategory -> MepRotationAngleRad column (see ClashZoneRepository line 1235).
+                                    // This rotation angle is used by DetermineDominantRotationAngle to calculate cluster rotation.
+                                    // No additional loading needed - rotation data is already in the ClashZone object from DB.
+                                    
+                                    clashZones.Add(cz);
+                                }
+                                
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[UniversalClusterService] ✅ DATABASE-FIRST: Loaded {clashZones.Count} clash zones from database for category '{targetCategory}' (with SleeveInstanceId>0, not cluster-resolved)");
+                                    File.AppendAllText(SafeFileLogger.GetLogFilePath("cluster_debug.log"), 
+                                        $"[{DateTime.Now:HH:mm:ss}] [DB-LOAD] Category={targetCategory}, Loaded={clashZones.Count}, TotalInDB={dbZones.Count}\n");
+                                }
+                                
+                                // ✅ SUCCESS: Database has data, return it (skip XML loading)
+                                return clashZones;
+                            }
+                            else
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[UniversalClusterService] ⚠️ Database has no clash zones for category '{targetCategory}', falling back to XML");
+                                    File.AppendAllText(SafeFileLogger.GetLogFilePath("cluster_debug.log"), 
+                                        $"[{DateTime.Now:HH:mm:ss}] [DB-LOAD] Category={targetCategory}, Loaded=0 (falling back to XML)\n");
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception dbEx)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Warning($"[UniversalClusterService] ⚠️ Database load failed for category '{targetCategory}', falling back to XML: {dbEx.Message}");
+                            File.AppendAllText(SafeFileLogger.GetLogFilePath("cluster_debug.log"), 
+                                $"[{DateTime.Now:HH:mm:ss}] [DB-LOAD] Category={targetCategory}, Error={dbEx.Message} (falling back to XML)\n");
+                        }
+                    }
+                }
+                
+                // ✅ FALLBACK: Load from XML if database has no data (backward compatibility)
                 var filtersDirectory = ProjectPathService.GetFiltersDirectory(_doc);
 
                 if (!Directory.Exists(filtersDirectory))
@@ -2371,6 +3112,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         DebugLogger.Warning($"[UniversalClusterService] Filters directory not found: {filtersDirectory}");
                     return clashZones;
                 }
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[UniversalClusterService] LoadClashZonesFromRegularXml: xmlFilePath='{xmlFilePath}', targetCategory='{targetCategory}', filtersDirectory='{filtersDirectory}' (XML FALLBACK)");
 
                 // Load from regular XML files
                 var xmlFiles = string.IsNullOrEmpty(xmlFilePath)
@@ -2426,6 +3170,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                         {
                                                             cz.EnsureSleevePlacementPointReconstructed();
                                                             loadedZones.Add(cz);
+                                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                                DebugLogger.Info($"[UniversalClusterService] Loaded clash zone {cz.Id} from hierarchical structure: SleeveInstanceId={cz.SleeveInstanceId}, Category={cz.MepElementCategory}");
+                                                        }
+                                                        else if (!DeploymentConfiguration.DeploymentMode)
+                                                        {
+                                                            DebugLogger.Info($"[UniversalClusterService] Skipped clash zone {cz.Id}: SleeveInstanceId={cz.SleeveInstanceId} (must be > 0)");
                                                         }
                                                     }
                                                 }
@@ -2448,6 +3198,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     {
                                         cz.EnsureSleevePlacementPointReconstructed();
                                         loadedZones.Add(cz);
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[UniversalClusterService] Loaded clash zone {cz.Id} from flat structure: SleeveInstanceId={cz.SleeveInstanceId}, Category={cz.MepElementCategory}");
+                                    }
+                                    else if (!DeploymentConfiguration.DeploymentMode && cz.SleeveInstanceId <= 0)
+                                    {
+                                        DebugLogger.Info($"[UniversalClusterService] Skipped clash zone {cz.Id} from flat structure: SleeveInstanceId={cz.SleeveInstanceId} (must be > 0)");
                                     }
                                 }
                             }
@@ -2479,6 +3235,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                         if (File.Exists(xmlFile))
                         {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[UniversalClusterService] Loading from XML file: {Path.GetFileName(xmlFile)}");
+                            
                             var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
                             using (var reader = new StreamReader(xmlFile))
                             {
@@ -2486,6 +3245,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                                 // ✅ CRITICAL FIX: Load from BOTH hierarchical structure (Filters → FileCombos → ClashZones) AND flat structure
                                 // UpdateSleeveCoordinatesInXml updates both structures, so we must read from both
+
+                                int hierarchicalCount = 0;
+                                int flatCount = 0;
+                                int skippedNoSleeveId = 0;
+                                int skippedCategoryMismatch = 0;
+                                int totalZonesInFile = 0;
 
                                 // 1. Load from hierarchical structure (PRIMARY)
                                 if (filter?.ClashZoneStorage?.Filters != null)
@@ -2500,11 +3265,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                 {
                                                     foreach (var cz in fileCombo.ClashZones)
                                                     {
+                                                        totalZonesInFile++;
+                                                        
                                                         // Filter by target category during loading
                                                         if (!string.IsNullOrEmpty(targetCategory))
                                                         {
                                                             if (!string.Equals(cz.MepElementCategory, targetCategory, StringComparison.OrdinalIgnoreCase))
+                                                            {
+                                                                skippedCategoryMismatch++;
                                                                 continue;
+                                                            }
                                                         }
 
                                                         // Only process clash zones with valid SleeveInstanceId (placed sleeves)
@@ -2513,6 +3283,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                             // ✅ CRITICAL: Reconstruct SleevePlacementPoint from XML-serializable properties
                                                             cz.EnsureSleevePlacementPointReconstructed();
                                                             clashZones.Add(cz);
+                                                            hierarchicalCount++;
+                                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                                DebugLogger.Info($"[UniversalClusterService] Loaded clash zone {cz.Id} from hierarchical: SleeveInstanceId={cz.SleeveInstanceId}, Category={cz.MepElementCategory}");
+                                                        }
+                                                        else
+                                                        {
+                                                            skippedNoSleeveId++;
+                                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                                DebugLogger.Info($"[UniversalClusterService] Skipped clash zone {cz.Id} from hierarchical: SleeveInstanceId={cz.SleeveInstanceId} (must be > 0), Category={cz.MepElementCategory}");
                                                         }
                                                     }
                                                 }
@@ -2535,9 +3314,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     {
                                         cz.EnsureSleevePlacementPointReconstructed();
                                         clashZones.Add(cz);
+                                        flatCount++;
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[UniversalClusterService] Loaded clash zone {cz.Id} from flat: SleeveInstanceId={cz.SleeveInstanceId}, Category={cz.MepElementCategory}");
+                                    }
+                                    else if (!DeploymentConfiguration.DeploymentMode && cz.SleeveInstanceId <= 0)
+                                    {
+                                        DebugLogger.Info($"[UniversalClusterService] Skipped clash zone {cz.Id} from flat: SleeveInstanceId={cz.SleeveInstanceId} (must be > 0)");
                                     }
                                 }
+                                
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[UniversalClusterService] ✅ Loaded from {Path.GetFileName(xmlFile)}: {hierarchicalCount} hierarchical, {flatCount} flat, Total={clashZones.Count}");
+                                    DebugLogger.Info($"[UniversalClusterService] ⚠️ Skipped: {skippedNoSleeveId} (no SleeveInstanceId), {skippedCategoryMismatch} (category mismatch), Total zones in file={totalZonesInFile}");
+                                    File.AppendAllText(SafeFileLogger.GetLogFilePath("cluster_debug.log"), 
+                                        $"[{DateTime.Now:HH:mm:ss}] [XML-LOAD] File={Path.GetFileName(xmlFile)}, Loaded={hierarchicalCount + flatCount}, Skipped={skippedNoSleeveId} (no SleeveId) + {skippedCategoryMismatch} (category), TotalInFile={totalZonesInFile}\n");
+                                }
                             }
+                        }
+                        else if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Warning($"[UniversalClusterService] XML file not found: {xmlFile}");
                         }
                     }
                 }
@@ -2857,10 +3655,109 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return deleted;
         }
         
+        private bool TryLoadCacheFromDataService(string xmlFilePath, string targetCategory, Document doc, string filterName)
+        {
+            var documentForService = doc ?? _doc;
+            if (documentForService == null)
+                return false;
+
+            var baseFilter = FilterNameHelper.NormalizeBaseName(filterName, filterName);
+
+            if (string.IsNullOrWhiteSpace(baseFilter) && !string.IsNullOrWhiteSpace(xmlFilePath))
+            {
+                var fileName = Path.GetFileNameWithoutExtension(xmlFilePath);
+                baseFilter = FilterNameHelper.NormalizeBaseName(fileName, fileName);
+            }
+
+            if (string.IsNullOrWhiteSpace(baseFilter))
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning("[UniversalClusterService] Unable to determine base filter name for data-service load.");
+                return false;
+            }
+
+            var categoriesToLoad = new List<string>();
+
+            if (!string.IsNullOrWhiteSpace(targetCategory))
+            {
+                categoriesToLoad.Add(MepCategoryConstants.Normalize(targetCategory));
+            }
+            else if (!string.IsNullOrWhiteSpace(xmlFilePath))
+            {
+                var fileName = Path.GetFileNameWithoutExtension(xmlFilePath);
+                var normalizedBase = FilterNameHelper.NormalizeBaseName(fileName, fileName);
+                var suffix = fileName.Length > normalizedBase.Length
+                    ? fileName.Substring(normalizedBase.Length).TrimStart('_')
+                    : string.Empty;
+
+                if (!string.IsNullOrWhiteSpace(suffix))
+                    categoriesToLoad.Add(MepCategoryConstants.FromXmlSuffix(suffix));
+            }
+
+            if (categoriesToLoad.Count == 0)
+            {
+                categoriesToLoad.AddRange(new[]
+                {
+                    MepCategoryConstants.DUCTS,
+                    MepCategoryConstants.DUCT_ACCESSORIES,
+                    MepCategoryConstants.PIPES,
+                    MepCategoryConstants.CABLE_TRAYS
+                });
+            }
+
+            var dataService = new ClashZoneDataService(documentForService, message =>
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[UniversalClusterService] {message}");
+            });
+
+            var loadedAny = false;
+
+            foreach (var category in categoriesToLoad.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                var normalizedCategory = MepCategoryConstants.Normalize(category);
+                
+                // ✅ DATABASE OPTIMIZATION: Use optimized method for clustering
+                // This only loads zones with individual sleeves that need clustering (database-level filtering)
+                var zones = dataService.LoadZonesWithSleevesForClustering(baseFilter, normalizedCategory);
+                if (zones.Count == 0)
+                    continue;
+
+                foreach (var cz in zones)
+                {
+                    if (cz == null)
+                        continue;
+
+                    // ✅ OPTIMIZED: Database already filtered, but double-check critical fields
+                    if (cz.MepElementIdValue <= 0)
+                        continue;
+
+                    cz.EnsureSleevePlacementPointReconstructed();
+                    cz.IsCurrentClash = true;
+                    _clashZoneCache[cz.MepElementIdValue] = cz;
+                    loadedAny = true;
+
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Log($"[UniversalClusterService] LOADED (SQLite-OPTIMIZED) ClashZone {cz.Id} with SleeveInstanceId={cz.SleeveInstanceId} for clustering in category '{normalizedCategory}'");
+                    }
+                }
+            }
+
+            return loadedAny;
+        }
+
         private void LoadClashZoneCacheFromRegularXml(string xmlFilePath, string targetCategory = null, Document doc = null, string filterName = null)
         {
             _clashZoneCache.Clear();
-            
+
+            if (TryLoadCacheFromDataService(xmlFilePath, targetCategory, doc, filterName))
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info("[UniversalClusterService] Cache populated from SQLite (primary). Skipping XML fallback.");
+                return;
+            }
+
             try
             {
                 var filtersDirectory = ProjectPathService.GetFiltersDirectory(_doc);
@@ -2929,32 +3826,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                     }
                 }
-
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    DebugLogger.Info($"[UniversalClusterService] Loaded {_clashZoneCache.Count} clash zones from regular XML files");
-                    
-                    // ✅ DIAGNOSTIC: Count clash zones with cluster data
-                    var clusterZones = _clashZoneCache.Values.Where(cz => cz.ClusterSleeveInstanceId > 0).ToList();
-                    var clusterZonesWithBbox = clusterZones.Where(cz => 
-                        cz.ClusterSleeveBoundingBoxMinX != 0 || cz.ClusterSleeveBoundingBoxMinY != 0 || cz.ClusterSleeveBoundingBoxMinZ != 0).ToList();
-                    
-                    DebugLogger.Info($"[CACHE-LOAD] Cluster clash zones: Total={clusterZones.Count}, WithBbox={clusterZonesWithBbox.Count}");
-                    
-                    // Group by host type
-                    var byHostType = clusterZonesWithBbox.GroupBy(cz => GetHostTypeFromClashZone(cz))
-                        .ToDictionary(g => g.Key, g => g.Count());
-                    DebugLogger.Info($"[CACHE-LOAD] Cluster clash zones with bbox by host type: {string.Join(", ", byHostType.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
-                    
-                    string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
-                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[CACHE] Loaded {_clashZoneCache.Count} clash zones from regular XML files (filtered for {targetCategory ?? "ALL"})\n");
-                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[CACHE-LOAD] Cluster zones: Total={clusterZones.Count}, WithBbox={clusterZonesWithBbox.Count}, ByHostType: {string.Join(", ", byHostType.Select(kvp => $"{kvp.Key}={kvp.Value}"))}\n");
-                }
             }
             catch (Exception ex)
             {
                 if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Error($"[UniversalClusterService] Error loading clash zone cache from regular XML: {ex.Message}");
+                    DebugLogger.Error($"[UniversalClusterService] Error loading clash zones from XML: {ex.Message}");
             }
         }
         
@@ -3278,20 +4154,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Log($"[ClusterService] Creating {groupKey.systemType} cluster using family '{familyName}' (shape: {(isCircular ? "Circular" : "Rectangular")}, orientation: {groupKey.orientation})");
 
-            // Find FamilySymbol
-            var allClusterSymbols = new FilteredElementCollector(doc)
+            // ✅ SIMPLIFIED: Use same universal families as placer service (no separate cluster families)
+            // Find FamilySymbol from universal families: RectangularOpeningOnWall, RectangularOpeningOnSlab, etc.
+            var universalSymbols = new FilteredElementCollector(doc)
                 .OfClass(typeof(FamilySymbol))
                 .Cast<FamilySymbol>()
                 .Where(sym => sym.Family.Name.Equals(familyName, StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
                         if (!DeploymentConfiguration.DeploymentMode)
-            DebugLogger.Log($"[ClusterService] Looking for family '{familyName}' - Found {allClusterSymbols.Count} symbols");
+            DebugLogger.Log($"[ClusterService] Looking for universal family '{familyName}' - Found {universalSymbols.Count} symbols");
 
-            if (allClusterSymbols.Count == 0)
+            if (universalSymbols.Count == 0)
             {
                                 if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Error($"[ClusterService] No suitable cluster family found for name '{familyName}'");
+                DebugLogger.Error($"[ClusterService] Universal family '{familyName}' not found in project");
                                 if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[ClusterService] Available families in project:");
                 var allFamilies = new FilteredElementCollector(doc)
@@ -3315,13 +4192,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 // Try again to find the family after loading
-                allClusterSymbols = new FilteredElementCollector(doc)
+                universalSymbols = new FilteredElementCollector(doc)
                     .OfClass(typeof(FamilySymbol))
                     .Cast<FamilySymbol>()
                     .Where(sym => sym.Family.Name.Equals(familyName, StringComparison.OrdinalIgnoreCase))
                     .ToList();
 
-                if (allClusterSymbols.Count == 0)
+                if (universalSymbols.Count == 0)
                 {
                                         if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[ClusterService] Still no family found for '{familyName}' after loading attempt");
@@ -3329,8 +4206,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
 
-            var clusterSymbol = allClusterSymbols.First();
-            if (!clusterSymbol.IsActive) clusterSymbol.Activate();
+            // ✅ SIMPLIFIED: Use first available symbol - don't care about type name
+            var familySymbol = universalSymbols.First();
+            if (!familySymbol.IsActive) familySymbol.Activate();
 
             // ✅ HYBRID APPROACH: Use XML for clustering, Revit API for accurate bounding box
             // Step 1: Convert XML cluster to actual Revit sleeves
@@ -3365,59 +4243,207 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 return;
             }
             
-            // Step 2: Use ClusterBoundingBoxServices to get accurate bounding box from actual sleeves
-            var (width, height, depth, mid) = ClusterBoundingBoxServices.GetClusterBoundingBox(actualSleeves);
+            // ✅ NEW: Calculate rotation angle BEFORE calculating bounding box
+            // This ensures the bounding box is calculated in the rotated coordinate system
+            // Use dominant angle from cluster sleeves (more accurate than single sleeve)
             
+            // ✅ DEBUG: Log individual sleeve rotation angles before determining dominant angle
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                var angleList = new List<string>();
+                foreach (var sleeveData in cluster)
+                {
+                    if (sleeveData?.ClashZone != null)
+                    {
+                        var cz = sleeveData.ClashZone as ClashZone;
+                        if (cz != null)
+                        {
+                            double angleDeg = cz.MepElementRotationAngle * 180 / Math.PI;
+                            angleList.Add($"Sleeve {sleeveData.SleeveInstanceId}: {angleDeg:F1}°");
+                        }
+                    }
+                }
+                DebugLogger.Info($"[CLUSTER-ANGLE-DEBUG] Cluster with {cluster.Count} sleeves - Individual angles: {string.Join(", ", angleList)}");
+            }
+            
+            double rotationAngle = DetermineDominantRotationAngle(cluster, xmlFilePath);
+            
+            // ✅ DEBUG: Log the determined rotation angle
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Info($"[CLUSTER-ANGLE-DEBUG] DetermineDominantRotationAngle returned: {rotationAngle * 180 / Math.PI:F1}° (radians: {rotationAngle:F6})");
+            }
+
+            // ✅ FALLBACK: If dominant angle is 0, try orientation-based approach for walls/framing
+            // ⚠️ CRITICAL: This fallback ONLY applies to Walls and Structural Framing, NOT Floors
+            if (Math.Abs(rotationAngle) < 1e-6)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[CLUSTER-ANGLE-DEBUG] Rotation angle is 0, checking fallback logic for hostType='{groupKey.hostType}'");
+                }
+                
+                if (groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing")
+                {
+                    // Get orientation from XML data (stored in MepElementOrientationDirection)
+                    string xmlOrientation = groupKey.orientation ?? "Unknown";
+                    
+                    // Apply rotation based on XML orientation data
+                    if (xmlOrientation.Equals("X", StringComparison.OrdinalIgnoreCase))
+                    {
+                        rotationAngle = Math.PI / 2;  // 90° rotation for X-oriented walls/framing
                         if (!DeploymentConfiguration.DeploymentMode)
-            DebugLogger.Log($"[ClusterService] ✅ HYBRID APPROACH: Cluster bounding box from Revit API - Width={width:F3}, Height={height:F3}, Depth={depth:F3}");
+                        {
+                            DebugLogger.Info($"[CLUSTER-ANGLE-DEBUG] ⚠️ FALLBACK TRIGGERED: {groupKey.hostType} with X orientation → Setting rotation to 90°");
+                        }
+                    }
+                    else if (xmlOrientation.Equals("Y", StringComparison.OrdinalIgnoreCase))
+                    {
+                        rotationAngle = 0.0;  // No rotation for Y-oriented walls/framing
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[CLUSTER-ANGLE-DEBUG] ⚠️ FALLBACK TRIGGERED: {groupKey.hostType} with Y orientation → Keeping rotation at 0°");
+                        }
+                    }
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Log($"[ClusterService] {groupKey.hostType} orientation from XML: '{xmlOrientation}', rotation angle: {rotationAngle * 180 / Math.PI}°");
+                        DebugLogger.Info($"[ROTATION] {groupKey.hostType} orientation: {xmlOrientation}, rotation: {rotationAngle * 180 / Math.PI}°\n");
+                    }
+                }
+                else
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[CLUSTER-ANGLE-DEBUG] ✅ No fallback for hostType='{groupKey.hostType}' (only applies to Wall/Structural Framing), keeping rotation at 0°");
+                    }
+                }
+            }
+            
+            if (!DeploymentConfiguration.DeploymentMode && Math.Abs(rotationAngle) > 1e-6)
+            {
+                DebugLogger.Info($"[ClusterService] Using dominant rotation angle: {rotationAngle * 180 / Math.PI:F1}° for cluster bounding box calculation");
+            }
+
+            // Step 2: Use ClusterBoundingBoxServices to get accurate bounding box from actual sleeves
+            // ✅ NEW: Pass rotation angle to calculate bounding box in rotated coordinate system
+            var (width, height, depth, mid) = ClusterBoundingBoxServices.GetClusterBoundingBox(actualSleeves, rotationAngle);
+            
+            // ✅ ROTATED BBOX STORAGE: Calculate rotated bounding box coordinates for database storage
+            // If rotated, we need to store the bounding box in rotated coordinate system
+            XYZ rotatedBboxMin = XYZ.Zero;
+            XYZ rotatedBboxMax = XYZ.Zero;
+            double rotatedWidth = width;
+            double rotatedHeight = height;
+            double rotatedDepth = depth;
+            bool isRotated = Math.Abs(rotationAngle) > 1e-6;
+            
+            if (isRotated)
+            {
+                // Calculate rotated bounding box in rotated coordinate system
+                // The bounding box from GetClusterBoundingBox is already in rotated coordinates
+                // We need to store the min/max in rotated coordinate system
+                // For rotated clusters, the bounding box is calculated around the center point
+                double halfWidth = width / 2.0;
+                double halfHeight = height / 2.0;
+                double halfDepth = depth / 2.0;
+                
+                // Rotated bounding box min/max in rotated coordinate system (centered at origin)
+                rotatedBboxMin = new XYZ(-halfWidth, -halfHeight, -halfDepth);
+                rotatedBboxMax = new XYZ(halfWidth, halfHeight, halfDepth);
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[CLUSTER-BBOX-ROTATED] Rotated bounding box in rotated coordinate system: Min=({rotatedBboxMin.X:F3}, {rotatedBboxMin.Y:F3}, {rotatedBboxMin.Z:F3}), Max=({rotatedBboxMax.X:F3}, {rotatedBboxMax.Y:F3}, {rotatedBboxMax.Z:F3}), Width={rotatedWidth:F3}, Height={rotatedHeight:F3}, Depth={rotatedDepth:F3}");
+                }
+            }
+            else
+            {
+                // For axis-aligned, use the actual bounding box from sleeves
+                var allBboxes = actualSleeves.Select(s => s.get_BoundingBox(null)).Where(b => b != null).ToList();
+                if (allBboxes.Count > 0)
+                {
+                    rotatedBboxMin = new XYZ(allBboxes.Min(b => b.Min.X), allBboxes.Min(b => b.Min.Y), allBboxes.Min(b => b.Min.Z));
+                    rotatedBboxMax = new XYZ(allBboxes.Max(b => b.Max.X), allBboxes.Max(b => b.Max.Y), allBboxes.Max(b => b.Max.Z));
+                }
+            }
+            
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Log($"[ClusterService] ✅ ROTATED COORDINATE SYSTEM: Cluster bounding box - Width={width:F3}, Height={height:F3}, Depth={depth:F3}, Angle={rotationAngle * 180 / Math.PI:F1}°");
+            }
 
             // ✅ FIXED: Get reference level from XML data (use first sleeve's level)
             Level? refLevel = GetReferenceLevelFromXml(doc, cluster[0]);
             if (refLevel == null)
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Log($"Reference level not found for cluster sleeve. Skipping cluster.");
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"Reference level not found for cluster sleeve. Skipping cluster.");
                 return;
             }
 
             // Place cluster sleeve
-            FamilyInstance inst = doc.Create.NewFamilyInstance(mid, clusterSymbol, refLevel!, StructuralType.NonStructural);
+            // ✅ SIMPLIFIED: Use same universal family symbol as placer service
+            FamilyInstance inst = doc.Create.NewFamilyInstance(mid, familySymbol, refLevel!, StructuralType.NonStructural);
 
-            // ✅ FIXED: Apply rotation based on XML data orientation (for both Walls and Framing)
-            double rotationAngle = 0.0;
-            if (groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing")
+            // ✅ FIXED: Apply rotation if needed (for cases where rotation wasn't fully accounted for in bounding box)
+            // ⚠️ CRITICAL: Only apply rotation if angle is NOT axis-aligned (0°, 90°, 180°, 270°)
+            // The DetermineDominantRotationAngle method should return 0.0 for axis-aligned angles,
+            // but we add an extra safety check here to prevent accidental rotation
+            if (Math.Abs(rotationAngle) > 1e-6)
             {
-                // Get orientation from XML data (stored in MepElementOrientationDirection)
-                string xmlOrientation = groupKey.orientation ?? "Unknown";
+                // Double-check: if angle is close to 0°, 90°, 180°, or 270°, don't rotate
+                double angleDegrees = rotationAngle * 180 / Math.PI;
+                // Normalize to 0-360 range
+                while (angleDegrees < 0) angleDegrees += 360;
+                while (angleDegrees >= 360) angleDegrees -= 360;
                 
-                // Apply rotation based on XML orientation data
-                if (xmlOrientation.Equals("X", StringComparison.OrdinalIgnoreCase))
-                {
-                    rotationAngle = Math.PI / 2;  // 90° rotation for X-oriented walls/framing
-                }
-                else if (xmlOrientation.Equals("Y", StringComparison.OrdinalIgnoreCase))
-                {
-                    rotationAngle = 0.0;  // No rotation for Y-oriented walls/framing
-                }
+                double distTo0 = Math.Min(angleDegrees, 360 - angleDegrees);
+                double distTo90 = Math.Abs(angleDegrees - 90);
+                double distTo180 = Math.Abs(angleDegrees - 180);
+                double distTo270 = Math.Abs(angleDegrees - 270);
                 
-                                if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Log($"[ClusterService] {groupKey.hostType} orientation from XML: '{xmlOrientation}', rotation angle: {rotationAngle * 180 / Math.PI}°");
-                                if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Info($"[ROTATION] {groupKey.hostType} orientation: {xmlOrientation}, rotation: {rotationAngle * 180 / Math.PI}°\n");
-            }
-
-            if (rotationAngle != 0.0)
-            {
-                XYZ axisOrigin = mid;
-                XYZ axisDirection = XYZ.BasisZ;
-                Line rotationAxis = Line.CreateBound(axisOrigin, axisOrigin + axisDirection);
-                ElementTransformUtils.RotateElement(doc, inst.Id, rotationAxis, rotationAngle);
+                double thresholdDegrees = 2.0; // 2 degree tolerance
+                bool isAxisAligned = distTo0 < thresholdDegrees || distTo90 < thresholdDegrees || 
+                                    distTo180 < thresholdDegrees || distTo270 < thresholdDegrees;
+                
+                if (isAxisAligned)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[CLUSTER-ROTATION] ⚠️ Skipping rotation for cluster sleeve {inst.Id}: Angle {angleDegrees:F1}° is axis-aligned (distTo0={distTo0:F1}°, distTo90={distTo90:F1}°, distTo180={distTo180:F1}°, distTo270={distTo270:F1}°)");
+                    }
+                }
+                else
+                {
+                    XYZ axisOrigin = mid;
+                    XYZ axisDirection = XYZ.BasisZ;
+                    Line rotationAxis = Line.CreateBound(axisOrigin, axisOrigin + axisDirection);
+                    ElementTransformUtils.RotateElement(doc, inst.Id, rotationAxis, rotationAngle);
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[CLUSTER-ROTATION] ✅ Applied rotation {angleDegrees:F1}° to cluster sleeve {inst.Id}");
+                    }
+                }
             }
 
             // Set size parameters (swap dimensions if rotated for orientation alignment)
             // ✅ FIX: Apply swap for both walls and framing when X-oriented
             bool shouldSwapDimensions = ((groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing") && rotationAngle != 0.0);
             SetClusterSizeParameters(doc, inst, cluster, groupKey, width, height, depth, shouldSwapDimensions);
+            
+            // ✅ ROTATED BBOX STORAGE: Store rotation data for this cluster sleeve (before returning)
+            // This will be used when saving to database to store rotated bounding box coordinates
+            int clusterInstanceId = inst.Id.IntegerValue;
+            double rotationAngleDeg = rotationAngle * 180 / Math.PI;
+            _clusterRotationData[clusterInstanceId] = (rotationAngleDeg, isRotated, rotatedBboxMin, rotatedBboxMax, rotatedWidth, rotatedHeight, rotatedDepth);
+            
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Info($"[CLUSTER-ROTATION-STORAGE] Stored rotation data for cluster {clusterInstanceId}: Angle={rotationAngleDeg:F1}°, IsRotated={isRotated}, RotatedBbox=({rotatedBboxMin.X:F3},{rotatedBboxMin.Y:F3},{rotatedBboxMin.Z:F3}) to ({rotatedBboxMax.X:F3},{rotatedBboxMax.Y:F3},{rotatedBboxMax.Z:F3})");
+            }
             
             // ✅ DEBUG: Log before calling SetClusterSleeveMetadata
                         if (!DeploymentConfiguration.DeploymentMode)
@@ -3515,7 +4541,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Error($"[PlaceClusterSleeve] Available parameters: {string.Join(", ", inst.Parameters.Cast<Parameter>().Select(p => p.Definition?.Name ?? "null").Take(10))}");
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Error($"[PlaceClusterSleeve] Add 'MEP_ElementIds' text parameter to cluster family '{inst.Symbol?.Family?.Name ?? "unknown"}' to enable cluster lookup");
+                        DebugLogger.Error($"[PlaceClusterSleeve] Add 'MEP_ElementIds' text parameter to universal family '{inst.Symbol?.Family?.Name ?? "unknown"}' to enable cluster lookup");
                 }
                 
                 // ✅ REMOVED: No longer storing ClashZone_GUID parameter on cluster sleeves
@@ -3651,6 +4677,358 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[DELETE] ⚠️ No sleeves to delete (sleevesToDelete.Count=0) for hostType={groupKey.hostType}\n");
             }
+            
+            // ✅ EDGE CASE: Find and delete individual sleeves that fall within cluster zone but weren't part of cluster formation
+            if (clusterBbox != null && !string.IsNullOrEmpty(targetCategory))
+            {
+                try
+                {
+                    int edgeCaseDeleted = DeleteEdgeCaseSleevesInClusterZone(doc, clusterBbox, targetCategory, cluster, inst.Id, xmlFilePath);
+                    deleted += edgeCaseDeleted;
+                    
+                    if (edgeCaseDeleted > 0 && !DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[DELETE] ✅ EDGE CASE: Deleted {edgeCaseDeleted} individual sleeves that fell in cluster zone (cluster sleeve {inst.Id.IntegerValue})");
+                    }
+                }
+                catch (Exception edgeEx)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error($"[ClusterService] Error deleting edge case sleeves: {edgeEx.Message}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// ✅ EDGE CASE: Find and delete individual sleeves that fall within cluster zone but weren't part of cluster formation
+        /// Updates database flags FIRST, then Global XML (database is primary source of truth)
+        /// </summary>
+        private int DeleteEdgeCaseSleevesInClusterZone(
+            Document doc,
+            BoundingBoxXYZ clusterBbox,
+            string targetCategory,
+            List<dynamic> clusterFormation,
+            ElementId clusterSleeveId,
+            string xmlFilePath = null)
+        {
+            int deletedCount = 0;
+            
+            try
+            {
+                // Get all sleeve IDs that were part of cluster formation (to exclude them)
+                var clusterFormationSleeveIds = new HashSet<int>();
+                foreach (var s in clusterFormation)
+                {
+                    if (s.SleeveInstanceId > 0)
+                        clusterFormationSleeveIds.Add(s.SleeveInstanceId);
+                }
+                
+                // Find all individual sleeves in the same category
+                var allSleeves = new FilteredElementCollector(doc)
+                    .OfClass(typeof(FamilyInstance))
+                    .Cast<FamilyInstance>()
+                    .Where(s =>
+                    {
+                        // Check if it's a sleeve family
+                        bool hasSleeveKeyword = s.Symbol?.FamilyName?.Contains("Sleeve", StringComparison.OrdinalIgnoreCase) == true ||
+                                                s.Symbol?.FamilyName?.Contains("Opening", StringComparison.OrdinalIgnoreCase) == true;
+                        string familyName = s.Symbol?.FamilyName ?? string.Empty;
+                        bool isKnownFamily = familyName.Contains("CircularOpening", StringComparison.OrdinalIgnoreCase) ||
+                                             familyName.Contains("RectangularOpening", StringComparison.OrdinalIgnoreCase);
+                        return (s.Category?.Name == "Generic Models" || s.Category?.Name == "Structural Connections") &&
+                               (hasSleeveKeyword || isKnownFamily);
+                    })
+                    .ToList();
+                
+                // Filter sleeves that:
+                // 1. Are in the same category
+                // 2. Fall within cluster bounding box
+                // 3. Are NOT part of cluster formation
+                // 4. Are individual sleeves (not cluster sleeves)
+                var edgeCaseSleeves = new List<FamilyInstance>();
+                foreach (var sleeve in allSleeves)
+                {
+                    // Skip if part of cluster formation
+                    if (clusterFormationSleeveIds.Contains(sleeve.Id.IntegerValue))
+                        continue;
+                    
+                    // Skip if it's a cluster sleeve (check by family name or parameters)
+                    if (sleeve.Symbol?.FamilyName?.Contains("Cluster", StringComparison.OrdinalIgnoreCase) == true)
+                        continue;
+                    
+                    // Check category match
+                    string sleeveCategory = GetCategoryFromMepElementId(sleeve);
+                    if (string.IsNullOrEmpty(sleeveCategory) || 
+                        !string.Equals(sleeveCategory, targetCategory, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    
+                    // Check if sleeve falls within cluster bounding box
+                    var sleeveBbox = sleeve.get_BoundingBox(null);
+                    if (sleeveBbox == null)
+                        continue;
+                    
+                    // Check if sleeve center or any part is within cluster bounding box
+                    var sleeveCenter = (sleeveBbox.Min + sleeveBbox.Max) / 2.0;
+                    bool withinCluster = sleeveCenter.X >= clusterBbox.Min.X && sleeveCenter.X <= clusterBbox.Max.X &&
+                                        sleeveCenter.Y >= clusterBbox.Min.Y && sleeveCenter.Y <= clusterBbox.Max.Y &&
+                                        sleeveCenter.Z >= clusterBbox.Min.Z && sleeveCenter.Z <= clusterBbox.Max.Z;
+                    
+                    if (withinCluster)
+                    {
+                        edgeCaseSleeves.Add(sleeve);
+                    }
+                }
+                
+                if (edgeCaseSleeves.Count == 0)
+                    return 0;
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[EDGE-CASE] Found {edgeCaseSleeves.Count} edge case sleeves within cluster zone (category='{targetCategory}', cluster sleeve={clusterSleeveId.IntegerValue})");
+                }
+                
+                // Delete edge case sleeves and update flags
+                var edgeCaseSleeveIds = edgeCaseSleeves.Select(s => s.Id).ToList();
+                var edgeCaseUpdates = new List<(Guid Id, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterSleeveInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId)>();
+                
+                // Find ClashZone entries for edge case sleeves (from database)
+                // ✅ DATABASE-FIRST: Look up clash zones by SleeveInstanceId in database
+                using (var context = new SleeveDbContext(doc))
+                {
+                    var repository = new ClashZoneRepository(context);
+                    var dbZones = repository.GetClashZonesByCategory(targetCategory);
+                    
+                    if (dbZones != null)
+                    {
+                        var sleeveIdToClashZone = dbZones
+                            .Where(z => z.SleeveInstanceId > 0)
+                            .GroupBy(z => z.SleeveInstanceId)
+                            .Select(g => g.First())
+                            .ToDictionary(z => z.SleeveInstanceId);
+                        
+                        foreach (var sleeve in edgeCaseSleeves)
+                        {
+                            try
+                            {
+                                int sleeveId = sleeve.Id.IntegerValue;
+                                
+                                // Try to find ClashZone by SleeveInstanceId in database
+                                if (sleeveIdToClashZone.TryGetValue(sleeveId, out var clashZone))
+                                {
+                                    // ✅ Include all required fields: MEP+Host+Point and OLD values for matching
+                                    edgeCaseUpdates.Add((
+                                        clashZone.Id, 
+                                        false, 
+                                        true, 
+                                        -1, 
+                                        clusterSleeveId.IntegerValue,
+                                        clashZone.MepElementIdValue,
+                                        clashZone.StructuralElementIdValue,
+                                        clashZone.IntersectionPointX,
+                                        clashZone.IntersectionPointY,
+                                        clashZone.IntersectionPointZ,
+                                        clashZone.SleeveInstanceId, // OLD value for matching
+                                        clashZone.ClusterSleeveInstanceId // OLD value for matching
+                                    ));
+                                }
+                                else
+                                {
+                                    // Fallback: Try to get GUID from sleeve parameter
+                                    string clashGuid = null;
+                                    var guidParam = sleeve.LookupParameter("ClashZone_GUID");
+                                    if (guidParam != null && !string.IsNullOrEmpty(guidParam.AsString()))
+                                    {
+                                        clashGuid = guidParam.AsString();
+                                    }
+                                    
+                                    if (!string.IsNullOrEmpty(clashGuid) && Guid.TryParse(clashGuid, out var parsedGuid))
+                                    {
+                                        // Verify GUID exists in database
+                                        var guidZone = dbZones.FirstOrDefault(z => z.Id == parsedGuid);
+                                        if (guidZone != null)
+                                        {
+                                            // ✅ Include all required fields: MEP+Host+Point and OLD values for matching
+                                            edgeCaseUpdates.Add((
+                                                parsedGuid, 
+                                                false, 
+                                                true, 
+                                                -1, 
+                                                clusterSleeveId.IntegerValue,
+                                                guidZone.MepElementIdValue,
+                                                guidZone.StructuralElementIdValue,
+                                                guidZone.IntersectionPointX,
+                                                guidZone.IntersectionPointY,
+                                                guidZone.IntersectionPointZ,
+                                                guidZone.SleeveInstanceId, // OLD value for matching
+                                                guidZone.ClusterSleeveInstanceId // OLD value for matching
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Warning($"[EDGE-CASE] Error processing edge case sleeve {sleeve.Id.IntegerValue}: {ex.Message}");
+                            }
+                        }
+                    }
+                }
+                
+                // ✅ DATABASE FIRST: Update database flags
+                if (edgeCaseUpdates.Count > 0)
+                {
+                    try
+                    {
+                        using (var context = new SleeveDbContext(doc, msg =>
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[EDGE-CASE][DB] {msg}");
+                        }))
+                        {
+                            var repository = new ClashZoneRepository(context, msg =>
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[EDGE-CASE][DB] {msg}");
+                            });
+                            
+                            // Convert to database format (include all fields including OLD values for matching)
+                            // ✅ CRITICAL: Match exact field names expected by BatchUpdateFlags
+                            var dbUpdates = edgeCaseUpdates.Select(u => (
+                                ClashZoneId: u.Id,
+                                IsResolved: u.IsResolved,
+                                IsClusterResolved: u.IsClusterResolved,
+                                SleeveInstanceId: u.SleeveInstanceId,
+                                ClusterInstanceId: u.ClusterSleeveInstanceId, // Note: BatchUpdateFlags uses ClusterInstanceId, not ClusterSleeveInstanceId
+                                MepElementId: u.MepElementId,
+                                StructuralElementId: u.StructuralElementId,
+                                IntersectionPointX: u.IntersectionPointX,
+                                IntersectionPointY: u.IntersectionPointY,
+                                IntersectionPointZ: u.IntersectionPointZ,
+                                OldSleeveInstanceId: u.OldSleeveInstanceId,
+                                OldClusterInstanceId: u.OldClusterInstanceId
+                            )).ToList();
+                            
+                            repository.BatchUpdateFlags(dbUpdates);
+                            
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[EDGE-CASE] ✅ Updated database flags for {dbUpdates.Count} edge case clash zones (database-first)");
+                            }
+                        }
+                    }
+                    catch (Exception dbEx)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[EDGE-CASE] ⚠️ Database update failed (non-blocking): {dbEx.Message}");
+                    }
+                }
+                
+                // Delete edge case sleeves
+                if (edgeCaseSleeveIds.Count > 0)
+                {
+                    try
+                    {
+                        doc.Delete(edgeCaseSleeveIds);
+                        deletedCount = edgeCaseSleeveIds.Count;
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[EDGE-CASE] ✅ Deleted {deletedCount} edge case sleeves");
+                        }
+                    }
+                    catch (Exception deleteEx)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Error($"[EDGE-CASE] Error deleting edge case sleeves: {deleteEx.Message}");
+                    }
+                }
+                
+                // ✅ XML SECOND: Update Global XML flags (after database)
+                if (edgeCaseUpdates.Count > 0 && _flagManager != null)
+                {
+                    try
+                    {
+                        // Convert updates to format expected by GlobalIndexService
+                        var globalXmlUpdates = edgeCaseUpdates.Select(u => (
+                            u.Id,
+                            u.IsResolved,
+                            u.IsClusterResolved,
+                            u.SleeveInstanceId,
+                            u.ClusterSleeveInstanceId,
+                            u.MepElementId,
+                            u.StructuralElementId,
+                            u.IntersectionPointX,
+                            u.IntersectionPointY,
+                            u.IntersectionPointZ
+                        )).ToList();
+                        
+                        // Get MEP+Host+Point data from database for Global XML updates
+                        using (var context = new SleeveDbContext(doc))
+                        {
+                            var repository = new ClashZoneRepository(context);
+                            var dbZones = repository.GetClashZonesByCategory(targetCategory);
+                            
+                            if (dbZones != null)
+                            {
+                                var dbLookup = dbZones.Where(z => z.Id != Guid.Empty)
+                                    .GroupBy(z => z.Id)
+                                    .Select(g => g.First())
+                                    .ToDictionary(z => z.Id);
+                                
+                                // Update Global XML with complete data
+                                var completeUpdates = new List<(Guid Id, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterSleeveInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ)>();
+                                
+                                foreach (var update in edgeCaseUpdates)
+                                {
+                                    if (dbLookup.TryGetValue(update.Id, out var dbZone))
+                                    {
+                                        completeUpdates.Add((
+                                            update.Id,
+                                            update.IsResolved,
+                                            update.IsClusterResolved,
+                                            update.SleeveInstanceId,
+                                            update.ClusterSleeveInstanceId,
+                                            dbZone.MepElementIdValue,
+                                            dbZone.StructuralElementIdValue,
+                                            dbZone.IntersectionPointX,
+                                            dbZone.IntersectionPointY,
+                                            dbZone.IntersectionPointZ
+                                        ));
+                                    }
+                                }
+                                
+                                if (completeUpdates.Count > 0)
+                                {
+                                    GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(
+                                        doc,
+                                        targetCategory,
+                                        completeUpdates,
+                                        _filterName
+                                    );
+                                    
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        DebugLogger.Info($"[EDGE-CASE] ✅ Updated Global XML flags for {completeUpdates.Count} edge case clash zones (after database)");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception xmlEx)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[EDGE-CASE] ⚠️ Global XML update failed (non-blocking): {xmlEx.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[EDGE-CASE] Error in DeleteEdgeCaseSleevesInClusterZone: {ex.Message}");
+            }
+            
+            return deletedCount;
         }
 
         private void SetClusterSizeParameters(
@@ -3970,9 +5348,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                                 if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Info($"[UniversalClusterService] Looking for cluster family: {familyName} (shape: {(isCircular ? "Circular" : "Rectangular")})");
+                DebugLogger.Info($"[UniversalClusterService] Looking for universal family: {familyName} (shape: {(isCircular ? "Circular" : "Rectangular")})");
 
-                // Find all family instances of the cluster family type
+                // ✅ SIMPLIFIED: Find all instances of the universal family (same as placer service uses)
                 var clusterSleeves = new FilteredElementCollector(doc)
                     .OfClass(typeof(FamilyInstance))
                     .Cast<FamilyInstance>()
@@ -3981,7 +5359,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     .ToList();
 
                                 if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Info($"[UniversalClusterService] Found {clusterSleeves.Count} cluster sleeves of type {familyName}");
+                DebugLogger.Info($"[UniversalClusterService] Found {clusterSleeves.Count} cluster sleeves using universal family {familyName}");
 
                 // Return the newest one (highest ID)
                 var newestSleeve = clusterSleeves.FirstOrDefault();

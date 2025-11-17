@@ -83,7 +83,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         
         // Bottom control bar buttons (scaffolding only)
         private WinForms.Button _refreshButton = null!;
-        private WinForms.Button _configureButton = null!;
+        // ✅ REMOVED: Configure button - Settings integrated into right panel
         
         
         // Dynamic UI controls (only what we actually use)
@@ -92,6 +92,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.Panel _cableTrayPanel = null!;
         private WinForms.Panel _damperPanel = null!;
         private WinForms.Panel _pipePanel = null!;
+        
+        // ✅ INTEGRATED SETTINGS: Settings controls in right panel (below Clearance)
+        private WinForms.CheckBox _enableThreePointValidationCheckBox = null!;
+        private WinForms.TextBox _ignoreOpeningsSmallerThanTextBox = null!;
+        private WinForms.TextBox _roundOpeningsRectangularTextBox = null!;
+        private WinForms.TextBox _joinOpeningsDistanceTextBox = null!;
+        private WinForms.TextBox _roundingValueTextBox = null!;
+        private WinForms.CheckBox _roundAlwaysUpCheckBox = null!;
+        private WinForms.TextBox _minWallThicknessTextBox = null!;
+        private WinForms.CheckBox _ignoreArchitecturalFloorsCheckBox = null!;
+        private WinForms.Panel _settingsPanel = null!; // Scrollable panel for settings
         
         // ✅ UI STATE PERSISTENCE: Store references to host category listboxes for proper save/load
         private WinForms.CheckedListBox _horizontalCategoriesListBox = null!;
@@ -251,6 +262,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             DebugLogger.Info("🔍 Constructor: ApplicationProfileService initialized");
             
             _filterManagementService = new FilterManagementService(
+                document,
                 msg => DebugLogger.Info(msg),
                 msg => _statusLabel.Text = msg
             );
@@ -389,10 +401,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 {
                     try
                     {
-                        this.Show();
-                        this.Activate();
-                        // Orchestrator stops at cluster command - no automatic mark/parameter execution
-                        // Users can manually open Parameter Service UI when needed
+                        if (this.IsHandleCreated)
+                        {
+                            this.BeginInvoke(new Action(() =>
+                            {
+                                CompletePlacementProgress("Sleeve placement complete");
+                                _okButton.Enabled = true;
+                                _refreshButton.Enabled = true;
+                                this.Show();
+                                this.Activate();
+                            }));
+                        }
                     }
                     catch { }
                 };
@@ -630,6 +649,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             catch { }
 
         }
+        
+        private void StartPlacementProgress(string status)
+        {
+            try
+            {
+                if (_progressBar != null)
+                {
+                    _progressBar.Style = WinForms.ProgressBarStyle.Marquee;
+                    _progressBar.MarqueeAnimationSpeed = 30;
+                    _progressBar.Value = Math.Max(_progressBar.Minimum, Math.Min(_progressBar.Maximum, _progressBar.Value));
+                    _progressBar.Visible = true;
+                }
+                
+                if (_statusLabel != null)
+                {
+                    _statusLabel.Text = status;
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[EmergencyMainDialog] Failed to start placement progress: {ex.Message}");
+            }
+        }
+        
+        private void CompletePlacementProgress(string status)
+        {
+            try
+            {
+                if (_progressBar != null)
+                {
+                    _progressBar.MarqueeAnimationSpeed = 0;
+                    _progressBar.Style = WinForms.ProgressBarStyle.Continuous;
+                    _progressBar.Value = _progressBar.Minimum;
+                    _progressBar.Visible = false;
+                }
+                
+                if (_statusLabel != null)
+                {
+                    _statusLabel.Text = status;
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[EmergencyMainDialog] Failed to complete placement progress: {ex.Message}");
+            }
+        }
         private void InitializeComponent()
         {
             // 🔍 DIAGNOSTIC: Count sleeves at START of InitializeComponent
@@ -812,37 +877,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // ✅ NOTE: Refresh button moved to header panel (left of OK button)
             // Config button remains in status panel
             
-            // Configure Button (now first button in status panel since refresh moved)
-            _configureButton = new WinForms.Button
-            {
-                Text = "Config",
-                Location = new System.Drawing.Point(buttonStartX, 3), // Now first button
-                Size = new System.Drawing.Size(60, 24),
-                BackColor = System.Drawing.Color.FromArgb(102, 16, 242),
-                ForeColor = System.Drawing.Color.White,
-                FlatStyle = WinForms.FlatStyle.Flat,
-                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Bold)
-            };
-            _statusPanel.Controls.Add(_configureButton);
-
+            // ✅ REMOVED: Configure button - Settings integrated into right panel below Clearance
+            // ✅ REMOVED: Progress bar - Will use progress dialog during refresh instead
             // Note: Parameter Service is now available as a separate command
             // This keeps the main UI focused on clash detection and sleeve placement
             
-            // Progress Bar (after Config button, can be longer now)
-            int progressBarStartX = buttonStartX + 65 + statusButtonSpacing; // After Config button (60+5)
+            // ✅ CREATE: Progress bar displayed in status panel for refresh feedback
             _progressBar = new WinForms.ProgressBar
             {
-                Location = new System.Drawing.Point(progressBarStartX, 5), // After Config button
-                Size = new System.Drawing.Size(leftSectionRightEdge - progressBarStartX - 10, 20), // Dynamic width to fill remaining space
+                Location = new System.Drawing.Point(buttonStartX, 5),
+                Size = new System.Drawing.Size(_statusPanel.Width - buttonStartX - 10, 20),
                 Style = WinForms.ProgressBarStyle.Continuous,
                 Minimum = 0,
                 Maximum = 100,
-                Value = 0
+                Value = 0,
+                Visible = false,
+                Anchor = WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right | WinForms.AnchorStyles.Top
             };
             _statusPanel.Controls.Add(_progressBar);
-            
-            // Add event handlers for the buttons
-            _configureButton.Click += OnConfigureClick;
 
             // Left Panel (expanded to fill most space) - start below header
             _leftPanel = new WinForms.Panel
@@ -870,12 +922,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 throw;
             }
 
-            // Right Panel - keep original width
+            // Right Panel - keep original width, make scrollable for Settings section
             _rightPanel = new WinForms.Panel
             {
                 BackColor = System.Drawing.Color.White,
                 BorderStyle = WinForms.BorderStyle.FixedSingle,
-                Width = 460  // Restored to original width
+                Width = 460,  // Restored to original width
+                AutoScroll = true // ✅ Enable scrolling for Settings section below Clearance
             };
             this.Controls.Add(_rightPanel);
             // DebugLogger.Info($"_rightPanel created: Width={_rightPanel.Width}, Location={_rightPanel.Location}, Dock={_rightPanel.Dock}");
@@ -2156,10 +2209,273 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
             // Parameter service section removed - now available as separate dialog
             
+            // ✅ INTEGRATED SETTINGS: Add Settings section below Clearance panels
+            CreateSettingsSection();
+            
             // Ensure correct panel visible at startup
             UpdateClearanceVisibility();
             // Initialize discipline prefix based on default MEP Type selection
             UpdateDisciplinePrefix(); // ⚠️ NEW: Set initial discipline prefix
+        }
+        /// <summary>
+        /// ✅ INTEGRATED SETTINGS: Create Settings section in right panel below Clearance
+        /// Shows "Adopt to modified document" and all Limits settings
+        /// </summary>
+        private void CreateSettingsSection()
+        {
+            // Settings start below Clearance panels (Y=75 + 110 height = 185, add 10px gap = 195)
+            int settingsStartY = 195;
+            
+            // Settings GroupBox
+            var settingsGroupBox = new WinForms.GroupBox
+            {
+                Text = "Settings",
+                Location = new System.Drawing.Point(10, settingsStartY),
+                Size = new System.Drawing.Size(_rightPanel.Width - 20, 280), // Height for all settings
+                BackColor = System.Drawing.Color.FromArgb(248, 249, 250),
+                // ✅ NOTE: GroupBox doesn't have BorderStyle property - it has a border by default
+                Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right
+            };
+            _rightPanel.Controls.Add(settingsGroupBox);
+            
+            int yPos = 25;
+            
+            // ✅ VISIBLE: Adopt to modified document checkbox
+            var adoptModificationLabel = new WinForms.Label
+            {
+                Text = "Adopt to modified document:",
+                Location = new System.Drawing.Point(15, yPos),
+                Size = new System.Drawing.Size(350, 20),
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular)
+            };
+            settingsGroupBox.Controls.Add(adoptModificationLabel);
+            
+            _enableThreePointValidationCheckBox = new WinForms.CheckBox
+            {
+                Text = "",
+                Location = new System.Drawing.Point(370, yPos),
+                Size = new System.Drawing.Size(20, 20),
+                Checked = true // Default enabled
+            };
+            settingsGroupBox.Controls.Add(_enableThreePointValidationCheckBox);
+            yPos += 30;
+            
+            // ✅ ALL LIMITS SETTINGS VISIBLE:
+            
+            // Ignore openings smaller than
+            var ignoreSmallLabel = new WinForms.Label
+            {
+                Text = "Ignore openings smaller than (mm):",
+                Location = new System.Drawing.Point(15, yPos),
+                Size = new System.Drawing.Size(350, 20),
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular)
+            };
+            settingsGroupBox.Controls.Add(ignoreSmallLabel);
+            
+            _ignoreOpeningsSmallerThanTextBox = new WinForms.TextBox
+            {
+                Text = "0.1",
+                Location = new System.Drawing.Point(370, yPos),
+                Size = new System.Drawing.Size(50, 20)
+            };
+            settingsGroupBox.Controls.Add(_ignoreOpeningsSmallerThanTextBox);
+            yPos += 25;
+            
+            // Round openings rectangular
+            var roundRectLabel = new WinForms.Label
+            {
+                Text = "Round → Rectangular if diameter > (mm):",
+                Location = new System.Drawing.Point(15, yPos),
+                Size = new System.Drawing.Size(350, 20),
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular)
+            };
+            settingsGroupBox.Controls.Add(roundRectLabel);
+            
+            _roundOpeningsRectangularTextBox = new WinForms.TextBox
+            {
+                Text = "200",
+                Location = new System.Drawing.Point(370, yPos),
+                Size = new System.Drawing.Size(50, 20)
+            };
+            settingsGroupBox.Controls.Add(_roundOpeningsRectangularTextBox);
+            yPos += 25;
+            
+            // Join openings distance
+            var joinDistanceLabel = new WinForms.Label
+            {
+                Text = "Join openings if distance < (mm):",
+                Location = new System.Drawing.Point(15, yPos),
+                Size = new System.Drawing.Size(350, 20),
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular)
+            };
+            settingsGroupBox.Controls.Add(joinDistanceLabel);
+            
+            _joinOpeningsDistanceTextBox = new WinForms.TextBox
+            {
+                Text = "200",
+                Location = new System.Drawing.Point(370, yPos),
+                Size = new System.Drawing.Size(50, 20)
+            };
+            settingsGroupBox.Controls.Add(_joinOpeningsDistanceTextBox);
+            yPos += 25;
+            
+            // Round opening sizes
+            var roundSizesLabel = new WinForms.Label
+            {
+                Text = "Round sizes to nearest (mm):",
+                Location = new System.Drawing.Point(15, yPos),
+                Size = new System.Drawing.Size(350, 20),
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular)
+            };
+            settingsGroupBox.Controls.Add(roundSizesLabel);
+            
+            _roundingValueTextBox = new WinForms.TextBox
+            {
+                Text = "5",
+                Location = new System.Drawing.Point(370, yPos),
+                Size = new System.Drawing.Size(50, 20)
+            };
+            settingsGroupBox.Controls.Add(_roundingValueTextBox);
+            yPos += 25;
+            
+            // Always round up
+            var roundUpLabel = new WinForms.Label
+            {
+                Text = "Always round up:",
+                Location = new System.Drawing.Point(15, yPos),
+                Size = new System.Drawing.Size(350, 20),
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular)
+            };
+            settingsGroupBox.Controls.Add(roundUpLabel);
+            
+            _roundAlwaysUpCheckBox = new WinForms.CheckBox
+            {
+                Text = "",
+                Location = new System.Drawing.Point(370, yPos),
+                Size = new System.Drawing.Size(20, 20),
+                Checked = false
+            };
+            settingsGroupBox.Controls.Add(_roundAlwaysUpCheckBox);
+            yPos += 25;
+            
+            // Ignore walls if thickness below
+            var minWallThicknessLabel = new WinForms.Label
+            {
+                Text = "Ignore walls if thickness < (mm):",
+                Location = new System.Drawing.Point(15, yPos),
+                Size = new System.Drawing.Size(350, 20),
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular)
+            };
+            settingsGroupBox.Controls.Add(minWallThicknessLabel);
+            
+            _minWallThicknessTextBox = new WinForms.TextBox
+            {
+                Text = "0",
+                Location = new System.Drawing.Point(370, yPos),
+                Size = new System.Drawing.Size(50, 20)
+            };
+            settingsGroupBox.Controls.Add(_minWallThicknessTextBox);
+            yPos += 25;
+            
+            // Ignore architectural floors
+            var ignoreArchFloorsLabel = new WinForms.Label
+            {
+                Text = "Ignore architectural floors:",
+                Location = new System.Drawing.Point(15, yPos),
+                Size = new System.Drawing.Size(350, 20),
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular)
+            };
+            settingsGroupBox.Controls.Add(ignoreArchFloorsLabel);
+            
+            _ignoreArchitecturalFloorsCheckBox = new WinForms.CheckBox
+            {
+                Text = "",
+                Location = new System.Drawing.Point(370, yPos),
+                Size = new System.Drawing.Size(20, 20),
+                Checked = false
+            };
+            settingsGroupBox.Controls.Add(_ignoreArchitecturalFloorsCheckBox);
+            
+            // Load settings from file
+            LoadSettingsToRightPanel();
+            
+            // Auto-save settings when changed
+            _enableThreePointValidationCheckBox.CheckedChanged += (s, e) => SaveSettingsFromRightPanel();
+            _ignoreOpeningsSmallerThanTextBox.TextChanged += (s, e) => SaveSettingsFromRightPanel();
+            _roundOpeningsRectangularTextBox.TextChanged += (s, e) => SaveSettingsFromRightPanel();
+            _joinOpeningsDistanceTextBox.TextChanged += (s, e) => SaveSettingsFromRightPanel();
+            _roundingValueTextBox.TextChanged += (s, e) => SaveSettingsFromRightPanel();
+            _roundAlwaysUpCheckBox.CheckedChanged += (s, e) => SaveSettingsFromRightPanel();
+            _minWallThicknessTextBox.TextChanged += (s, e) => SaveSettingsFromRightPanel();
+            _ignoreArchitecturalFloorsCheckBox.CheckedChanged += (s, e) => SaveSettingsFromRightPanel();
+        }
+        
+        /// <summary>
+        /// Load settings from file into right panel controls
+        /// </summary>
+        private void LoadSettingsToRightPanel()
+        {
+            try
+            {
+                var settingsService = new SettingsService();
+                var settings = settingsService.LoadSettings();
+                
+                if (_enableThreePointValidationCheckBox != null)
+                    _enableThreePointValidationCheckBox.Checked = settings.EnableThreePointValidation;
+                if (_ignoreOpeningsSmallerThanTextBox != null)
+                    _ignoreOpeningsSmallerThanTextBox.Text = settings.IgnoreOpeningsSmallerThan.ToString();
+                if (_roundOpeningsRectangularTextBox != null)
+                    _roundOpeningsRectangularTextBox.Text = settings.RoundOpeningsRectangular.ToString();
+                if (_joinOpeningsDistanceTextBox != null)
+                    _joinOpeningsDistanceTextBox.Text = settings.JoinOpeningsDistance.ToString();
+                if (_roundingValueTextBox != null)
+                    _roundingValueTextBox.Text = settings.RoundingValue.ToString();
+                if (_roundAlwaysUpCheckBox != null)
+                    _roundAlwaysUpCheckBox.Checked = settings.RoundAlwaysUp;
+                if (_minWallThicknessTextBox != null)
+                    _minWallThicknessTextBox.Text = settings.MinWallThickness.ToString();
+                if (_ignoreArchitecturalFloorsCheckBox != null)
+                    _ignoreArchitecturalFloorsCheckBox.Checked = settings.IgnoreArchitecturalFloors;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[EmergencyMainDialog] Error loading settings to right panel: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Save settings from right panel controls to file
+        /// </summary>
+        private void SaveSettingsFromRightPanel()
+        {
+            try
+            {
+                var settingsService = new SettingsService();
+                var settings = settingsService.LoadSettings();
+                
+                if (_enableThreePointValidationCheckBox != null)
+                    settings.EnableThreePointValidation = _enableThreePointValidationCheckBox.Checked;
+                if (_ignoreOpeningsSmallerThanTextBox != null && double.TryParse(_ignoreOpeningsSmallerThanTextBox.Text, out double ignoreSmall))
+                    settings.IgnoreOpeningsSmallerThan = ignoreSmall;
+                if (_roundOpeningsRectangularTextBox != null && double.TryParse(_roundOpeningsRectangularTextBox.Text, out double roundRect))
+                    settings.RoundOpeningsRectangular = roundRect;
+                if (_joinOpeningsDistanceTextBox != null && double.TryParse(_joinOpeningsDistanceTextBox.Text, out double joinDist))
+                    settings.JoinOpeningsDistance = joinDist;
+                if (_roundingValueTextBox != null && double.TryParse(_roundingValueTextBox.Text, out double roundValue))
+                    settings.RoundingValue = roundValue;
+                if (_roundAlwaysUpCheckBox != null)
+                    settings.RoundAlwaysUp = _roundAlwaysUpCheckBox.Checked;
+                if (_minWallThicknessTextBox != null && double.TryParse(_minWallThicknessTextBox.Text, out double minWallThickness))
+                    settings.MinWallThickness = minWallThickness;
+                if (_ignoreArchitecturalFloorsCheckBox != null)
+                    settings.IgnoreArchitecturalFloors = _ignoreArchitecturalFloorsCheckBox.Checked;
+                
+                settingsService.SaveSettings(settings);
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[EmergencyMainDialog] Error saving settings from right panel: {ex.Message}");
+            }
         }
 
 
@@ -3132,9 +3448,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
 
         // Reference elements master tab removed - now in separate parameter service dialog
-
         // Host elements master tab removed - now in separate parameter service dialog
-
         // Service tab creation removed - now in separate parameter service dialog
 
         // AddServiceParameterRow method removed - now in separate parameter service dialog
@@ -3906,7 +4220,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 // CRITICAL: Restore configuration AFTER UI is fully populated
                 RestoreConfigurationToUI();
         }
-
         private void RepopulateSectionsAfterLoad()
         {
             DebugLogger.Info("=== STARTING RepopulateSectionsAfterLoad ===");
@@ -4026,7 +4339,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 // Use project-specific Filters directory
                 string projectFiltersDir = _document != null ? ProjectPathService.GetFiltersDirectory(_document) : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
-                var conditionsService = new ConditionsService(projectFiltersDir, msg => DebugLogger.Info(msg));
+                var conditionsService = new ConditionsService(_document, projectFiltersDir, msg => DebugLogger.Info(msg));
                 
                 // Get selected filters
                 var selectedFilters = GetSelectedFilters();
@@ -4277,8 +4590,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 // This implements proper architecture: Conditions saved to XML, not in static properties
                 SaveConditionsToXml(selectedCategories);
                 
-                // Show immediate feedback via status label (non-blocking)
-                _statusLabel.Text = $"Processing {selectedCategories.Count} categories...";
+                // Show placement progress on main UI
+                StartPlacementProgress($"Placing sleeves for {selectedCategories.Count} categories...");
+                _okButton.Enabled = false;
+                _refreshButton.Enabled = false;
                 DebugLogger.Info($"[OnOkClick] Starting sleeve placement for categories: {string.Join(", ", selectedCategories)}");
 
                 // Initialize RevitTask if not already done
@@ -4296,9 +4611,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 var selectedFilterName = selectedFilterNames.Count > 0 ? selectedFilterNames[0] : "Default";
                 _sleevePlacementHandler.SetContext(selectedCategories, markPrefixes, selectedFilterName);
 
-                // Hide UI while processing to show prompts clearly
-                this.Hide();
                 try { SafeFileLogger.SafeAppendText("placement_event_trace.log", $"[{DateTime.Now:HH:mm:ss}] CLICK_OK: raising external event\n"); } catch { }
+
+                // Hide UI while placement runs to prevent re-entrancy and follow transaction guidelines
+                this.Hide();
 
                 // Raise external event (non-blocking)
                 _sleevePlacementEvent.Raise();
@@ -4306,14 +4622,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 DebugLogger.Info($"[EmergencyMainDialog] External event raised for categories: {string.Join(", ", selectedCategories)}");
                 try { SafeFileLogger.SafeAppendText("placement_event_trace.log", $"[{DateTime.Now:HH:mm:ss}] CLICK_OK: external event raised\n"); } catch { }
 
-                // UI will be restored by PlacementCompleted callback
-                this.Hide(); // Hide instead of Close to keep dialog in memory for status updates
                 var __okEnd = DateTime.Now;
                 var __okMs = (long)(__okEnd - __okStart).TotalMilliseconds;
                 SafeFileLogger.SafeAppendText("performance.log", $"OK_END {__okEnd:O} DURATION_MS {__okMs}");
             }
             catch (Exception ex)
             {
+                CompletePlacementProgress($"Error starting sleeve placement: {ex.Message}");
+                this.Show();
+                _okButton.Enabled = true;
+                _refreshButton.Enabled = true;
                 DebugLogger.Error($"[EmergencyMainDialog] Exception in OnOkClick: {ex.Message}");
                 try { SafeFileLogger.SafeAppendText("placement_event_trace.log", $"[{DateTime.Now:HH:mm:ss}] CLICK_OK: exception {ex.Message}\n"); } catch { }
                 MessageBox.Show($"Error starting sleeve placement: {ex.Message}", "Error", 
@@ -4389,7 +4707,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 // CRITICAL: Don't show success immediately - External Event is asynchronous
                 _statusLabel.Text = $"Raising external event for {selectedCategories.Count} categories...";
                 
-                // Raise external event - it will call orchestrator with proper transaction context
                 _sleevePlacementEvent.Raise();
                 
                 _statusLabel.Text = $"External event raised - processing {selectedCategories.Count} categories...";
@@ -4652,7 +4969,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 // Don't throw - we can continue with defaults
             }
         }
-        
         /// <summary>
         /// Restore clearance settings from saved configuration
         /// </summary>
@@ -5971,7 +6287,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             
             return settings;
         }
-        private Dictionary<string, double> GetClearanceSettings(string specificCategory = null)
+        private Dictionary<string, double> GetClearanceSettings(string? specificCategory = null)
         {
             var clearances = new Dictionary<string, double>();
             
@@ -6469,6 +6785,80 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [ON_REFRESH_CLICK] Cancelled - No filter selected\n");
                         return;
                     }
+                    
+                    // ✅ SAVE FILTER CHECK: Prompt user to save filter if it's not saved
+                    var selectedFilterName = selectedFilterItems.FirstOrDefault();
+                    if (!string.IsNullOrWhiteSpace(selectedFilterName) && !_filterManagementService.IsFilterSaved(selectedFilterName))
+                    {
+                        // Bring main dialog to front
+                        this.BringToFront();
+                        this.Activate();
+                        this.TopMost = true;
+                        this.TopMost = false;
+                        
+                        var result = System.Windows.Forms.MessageBox.Show(
+                            $"Filter '{selectedFilterName}' has not been saved.\n\nPlease save the filter before running Refresh.\n\nWould you like to save it now?",
+                            "Filter Not Saved",
+                            System.Windows.Forms.MessageBoxButtons.YesNo,
+                            System.Windows.Forms.MessageBoxIcon.Warning,
+                            System.Windows.Forms.MessageBoxDefaultButton.Button1);
+                        
+                        if (result == System.Windows.Forms.DialogResult.Yes)
+                        {
+                            // Find the filter listbox and save the filter
+                            WinForms.ListBox filterListBox = null;
+                            if (_filtersPanel?.Controls.Count > 0)
+                            {
+                                foreach (var control in _filtersPanel.Controls)
+                                {
+                                    if (control is WinForms.ListBox lb)
+                                    {
+                                        filterListBox = lb;
+                                        break;
+                                    }
+                                }
+                            }
+                            
+                            if (filterListBox != null)
+                            {
+                                // Select the filter in listbox if not already selected
+                                if (filterListBox.SelectedItem?.ToString() != selectedFilterName)
+                                {
+                                    for (int i = 0; i < filterListBox.Items.Count; i++)
+                                    {
+                                        if (filterListBox.Items[i]?.ToString() == selectedFilterName)
+                                        {
+                                            filterListBox.SelectedIndex = i;
+                                            break;
+                                        }
+                                    }
+                                }
+                                
+                                // Save the filter
+                                SaveFilterWithUIState(filterListBox);
+                                _statusLabel.Text = $"Filter '{selectedFilterName}' saved";
+                            }
+                            else
+                            {
+                                System.Windows.Forms.MessageBox.Show(
+                                    "Could not find filter list. Please save the filter manually using the Save (↓) button.",
+                                    "Save Filter",
+                                    System.Windows.Forms.MessageBoxButtons.OK,
+                                    System.Windows.Forms.MessageBoxIcon.Information);
+                                _statusLabel.Text = "Please save filter manually";
+                                _refreshButton.Enabled = true;
+                                return;
+                            }
+                        }
+                        else
+                        {
+                            // User chose not to save - cancel refresh
+                            _statusLabel.Text = "Refresh cancelled - Filter not saved";
+                            _refreshButton.Enabled = true;
+                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [ON_REFRESH_CLICK] Cancelled - Filter not saved\n");
+                            return;
+                        }
+                    }
 
                     // ✅ FEATURE FLAG: Use factory to create appropriate refresh service (legacy or refactored)
                     var refreshService = Services.RefreshServiceFactory.Create(document, _uiDocument, _appProfileService);
@@ -6516,59 +6906,108 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] About to check OK button enabling logic\n");
 
                     // Gate: Enable OK only if there are unresolved clash zones after refresh
-                    // ✅ GLOBAL XML SINGLE SOURCE OF TRUTH: Always check Global XML directly for unresolved zones
-                    // Filter XML is ONLY for sleeve placement data (coordinates, dimensions), NOT for decision-making
+                    // ✅ PHASE 2: DATABASE-FIRST - Check database for unresolved zones (primary source of truth)
+                    // Fallback to Global XML only if database has no data (backward compatibility)
                     try
                     {
-                        DebugLogger.Info("[OK_BUTTON_DEBUG] Checking Global XML for unresolved zones (single source of truth)");
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Checking Global XML for unresolved zones\n");
+                        DebugLogger.Info("[OK_BUTTON_DEBUG] Checking database for unresolved zones (database-first)");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Checking database for unresolved zones\n");
                         
                         int unresolvedCount = 0;
+                        bool usedDatabase = false;
                         
                         if (document != null)
                         {
-                            // ✅ CRITICAL FIX: Reuse selectedMepCategories from outer scope (already declared at line 6203)
-                            if (selectedMepCategories != null && selectedMepCategories.Count > 0)
+                            // ✅ PHASE 2: Try database first
+                            try
                             {
-                                foreach (var category in selectedMepCategories)
+                                using (var dbContext = new Data.SleeveDbContext(document))
                                 {
-                                    if (string.IsNullOrWhiteSpace(category))
-                                        continue;
+                                    var repository = new Data.Repositories.ClashZoneRepository(dbContext);
                                     
-                                    try
+                                    // ✅ CRITICAL FIX: Reuse selectedMepCategories from outer scope (already declared at line 6203)
+                                    if (selectedMepCategories != null && selectedMepCategories.Count > 0)
                                     {
-                                        var globalIndex = Services.GlobalIndexService.LoadOrCreate(document, category);
-                                        
-                                        // ✅ CRITICAL FIX: Use GetAllEntries to get entries from BOTH hierarchical and flat structures
-                                        // Entries are now stored in Filters → FileCombos → Entries, not just in flat Entries list
-                                        var allEntries = Services.GlobalIndexService.GetAllEntries(globalIndex).ToList();
-                                        
-                                        if (allEntries != null && allEntries.Count > 0)
+                                        foreach (var category in selectedMepCategories)
                                         {
-                                            // ✅ GLOBAL XML SINGLE SOURCE OF TRUTH: Count unresolved entries from Global XML
-                                            // A clash zone is unresolved if BOTH IsResolved=false AND IsClusterResolved=false
-                                            int categoryUnresolved = allEntries.Count(e => !e.IsResolved && !e.IsClusterResolved);
-                                            unresolvedCount += categoryUnresolved;
+                                            if (string.IsNullOrWhiteSpace(category))
+                                                continue;
                                             
-                                            if (categoryUnresolved > 0)
+                                            try
                                             {
-                                                DebugLogger.Info($"[OK_BUTTON_DEBUG] Global XML '{category}': {categoryUnresolved} unresolved out of {allEntries.Count} total entries");
-                                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Global XML '{category}': {categoryUnresolved}/{allEntries.Count} unresolved\n");
+                                                // Get unresolved clash zones from database
+                                                var allZones = repository.GetClashZonesByCategory(category);
+                                                if (allZones != null && allZones.Count > 0)
+                                                {
+                                                    // A clash zone is unresolved if BOTH IsResolved=false AND IsClusterResolved=false
+                                                    int categoryUnresolved = allZones.Count(z => !z.IsResolved && !z.IsClusterResolved);
+                                                    unresolvedCount += categoryUnresolved;
+                                                    usedDatabase = true;
+                                                    
+                                                    if (categoryUnresolved > 0)
+                                                    {
+                                                        DebugLogger.Info($"[OK_BUTTON_DEBUG] Database '{category}': {categoryUnresolved} unresolved out of {allZones.Count} total zones");
+                                                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Database '{category}': {categoryUnresolved}/{allZones.Count} unresolved\n");
+                                                    }
+                                                }
+                                            }
+                                            catch (Exception dbEx)
+                                            {
+                                                DebugLogger.Warning($"[OK_BUTTON_DEBUG] Error checking database for category '{category}': {dbEx.Message}");
+                                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] ERROR checking database for '{category}': {dbEx.Message}\n");
                                             }
                                         }
                                     }
-                                    catch (Exception globalEx)
+                                }
+                            }
+                            catch (Exception dbEx)
+                            {
+                                DebugLogger.Warning($"[OK_BUTTON_DEBUG] Database check failed, falling back to Global XML: {dbEx.Message}");
+                                usedDatabase = false;
+                            }
+                            
+                            // ✅ FALLBACK: Use Global XML if database has no data (backward compatibility)
+                            if (!usedDatabase || unresolvedCount == 0)
+                            {
+                                DebugLogger.Info("[OK_BUTTON_DEBUG] Falling back to Global XML (database has no data or no unresolved zones)");
+                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Falling back to Global XML\n");
+                                
+                                if (selectedMepCategories != null && selectedMepCategories.Count > 0)
+                                {
+                                    foreach (var category in selectedMepCategories)
                                     {
-                                        DebugLogger.Warning($"[OK_BUTTON_DEBUG] Error checking Global XML for category '{category}': {globalEx.Message}");
-                                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] ERROR checking Global XML for '{category}': {globalEx.Message}\n");
+                                        if (string.IsNullOrWhiteSpace(category))
+                                            continue;
+                                        
+                                        try
+                                        {
+                                            var globalIndex = Services.GlobalIndexService.LoadOrCreate(document, category);
+                                            var allEntries = Services.GlobalIndexService.GetAllEntries(globalIndex).ToList();
+                                            
+                                            if (allEntries != null && allEntries.Count > 0)
+                                            {
+                                                int categoryUnresolved = allEntries.Count(e => !e.IsResolved && !e.IsClusterResolved);
+                                                unresolvedCount += categoryUnresolved;
+                                                
+                                                if (categoryUnresolved > 0)
+                                                {
+                                                    DebugLogger.Info($"[OK_BUTTON_DEBUG] Global XML '{category}': {categoryUnresolved} unresolved out of {allEntries.Count} total entries (FALLBACK)");
+                                                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Global XML '{category}': {categoryUnresolved}/{allEntries.Count} unresolved (FALLBACK)\n");
+                                                }
+                                            }
+                                        }
+                                        catch (Exception globalEx)
+                                        {
+                                            DebugLogger.Warning($"[OK_BUTTON_DEBUG] Error checking Global XML for category '{category}': {globalEx.Message}");
+                                        }
                                     }
                                 }
                             }
                         }
                         
                         _okButton.Enabled = unresolvedCount > 0;
-                        DebugLogger.Info($"[OK_BUTTON_DEBUG] ✅ OK button enabled: {_okButton.Enabled} (unresolved: {unresolvedCount} from Global XML)");
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] ✅ OK button enabled: {_okButton.Enabled} (unresolved: {unresolvedCount} from Global XML)\n");
+                        DebugLogger.Info($"[OK_BUTTON_DEBUG] ✅ OK button enabled: {_okButton.Enabled} (unresolved: {unresolvedCount} from {(usedDatabase ? "database" : "Global XML fallback")})");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] ✅ OK button enabled: {_okButton.Enabled} (unresolved: {unresolvedCount} from {(usedDatabase ? "database" : "Global XML")})\n");
                     }
                     catch (Exception ex) 
                     { 
@@ -7514,24 +7953,96 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 DebugLogger.Info("SaveFilterWithUIState called");
                 
-                // Save the filter with current UI state
-                _filterManagementService.SaveFilter(filterListBox);
-                
-                // Also save the current UI selections to the filter
+                // ✅ CRITICAL FIX: Update UI state BEFORE saving (not after!)
                 if (filterListBox.SelectedItem != null)
                 {
                     var selectedFilterName = filterListBox.SelectedItem.ToString();
-                    var currentFilter = _filterManagementService.LoadFilterAuto(selectedFilterName);
                     
-                    if (currentFilter != null)
+                    if (_document == null)
                     {
-                        // Update the filter with current UI state
-                        UpdateFilterWithCurrentUIState(currentFilter);
-                        var filterDir = _filterManagementService.GetDefaultFilterDirectory();
-                        var filePath = System.IO.Path.Combine(filterDir, $"{selectedFilterName}.xml");
-                        _filterManagementService.SaveFilterToXmlFile(currentFilter, filePath);
-                        DebugLogger.Info($"Updated filter '{selectedFilterName}' with current UI state");
+                        DebugLogger.Error("[FILTER-SAVE] ❌ Document is null - cannot determine filter directory");
+                        throw new InvalidOperationException("Document is null - cannot save filter");
                     }
+                    
+                    // ✅ OOP: Use ProjectPathService to get and ensure directory exists
+                    ProjectPathService.EnsureFiltersDirectory(_document);
+                    var filterDir = ProjectPathService.GetFiltersDirectory(_document);
+                    var filePath = System.IO.Path.Combine(filterDir, $"{selectedFilterName}.xml");
+                    
+                    OpeningFilter currentFilter;
+                    
+                    // ✅ LOGIC FIX: Only load filter if file exists, otherwise create new from UI state
+                    if (System.IO.File.Exists(filePath))
+                    {
+                        DebugLogger.Info($"[FILTER-SAVE] Filter file exists, loading: {filePath}");
+                        currentFilter = _filterManagementService.LoadFilterAuto(selectedFilterName);
+                        if (currentFilter == null)
+                        {
+                            DebugLogger.Warning($"[FILTER-SAVE] LoadFilterAuto returned null, creating new filter from UI state");
+                            currentFilter = _filterManagementService.CreateFilterFromCurrentUIState(selectedFilterName);
+                        }
+                        else
+                        {
+                            // ✅ FIX: Update the existing filter with current UI state BEFORE saving
+                            UpdateFilterWithCurrentUIState(currentFilter);
+                            DebugLogger.Info($"Updated existing filter '{selectedFilterName}' with current UI state BEFORE save");
+                        }
+                    }
+                    else
+                    {
+                        DebugLogger.Info($"[FILTER-SAVE] Filter file does NOT exist, creating new filter from UI state: {filePath}");
+                        // ✅ CREATE NEW: Create filter from current UI state (new filter)
+                        currentFilter = _filterManagementService.CreateFilterFromCurrentUIState(selectedFilterName);
+                        DebugLogger.Info($"Created new filter '{selectedFilterName}' from current UI state");
+                    }
+                    
+                    DebugLogger.Info($"[FILTER-SAVE] Attempting to save filter '{selectedFilterName}' to: {filePath}");
+                    DebugLogger.Info($"[FILTER-SAVE] Directory exists: {System.IO.Directory.Exists(filterDir)}");
+                    DebugLogger.Info($"[FILTER-SAVE] Filter is null: {currentFilter == null}");
+                    
+                    if (currentFilter == null)
+                    {
+                        DebugLogger.Error($"[FILTER-SAVE] ❌ Filter is null after creation/load - cannot save");
+                        throw new InvalidOperationException($"Filter '{selectedFilterName}' is null - cannot save");
+                    }
+                    
+                    try
+                    {
+                        _filterManagementService.SaveFilterToXmlFile(currentFilter, filePath);
+                        DebugLogger.Info($"✅ Saved filter '{selectedFilterName}' with UI state to: {filePath}");
+                        
+                        // ✅ VERIFY: Check if file was actually created
+                        if (System.IO.File.Exists(filePath))
+                        {
+                            var fileInfo = new System.IO.FileInfo(filePath);
+                            DebugLogger.Info($"✅ Verified: Filter XML file exists ({fileInfo.Length} bytes) at: {filePath}");
+                        }
+                        else
+                        {
+                            DebugLogger.Warning($"⚠️ WARNING: Filter XML file was NOT created at: {filePath}");
+                        }
+                    }
+                    catch (Exception saveEx)
+                    {
+                        DebugLogger.Error($"❌ Failed to save filter '{selectedFilterName}' to '{filePath}': {saveEx.Message}");
+                        DebugLogger.Error($"❌ Exception type: {saveEx.GetType().Name}");
+                        DebugLogger.Error($"❌ Stack trace: {saveEx.StackTrace}");
+                        if (saveEx.InnerException != null)
+                        {
+                            DebugLogger.Error($"❌ Inner exception: {saveEx.InnerException.Message}");
+                        }
+                        throw;
+                    }
+                    
+                    // ✅ FUTURE-PROOF: Register in database now (will be sole storage in future)
+                    var category = _filterManagementService.GetDisplayCategory(currentFilter);
+                    _filterManagementService.RegisterFilterInDatabase(selectedFilterName, category);
+                    DebugLogger.Info($"Registered filter '{selectedFilterName}' in database for category '{category}'");
+                    
+                    // ✅ CRITICAL FIX: Update the in-memory filter object so it matches what was saved
+                    // This ensures that when the filter is selected again, it uses the updated state
+                    _filterManagementService.UpdateFilterInMemory(selectedFilterName, currentFilter);
+                    DebugLogger.Info($"Updated in-memory filter object for '{selectedFilterName}' with saved UI state");
                 }
                 
                 // ✅ AUTO-HIDING PROMPT: Show "Filter is saved" message and hide after 0.7 seconds
@@ -7689,6 +8200,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     filter.SelectedHostFiles = selectedHostFiles;
                     DebugLogger.Info($"Updated filter with {selectedHostFiles?.Count ?? 0} host files");
                     
+                    // ✅ FIX: Get current selected host element types (host categories) and save to filter
+                    // This includes BOTH horizontal (Walls, Structural Framing) AND vertical (Floors, Ceilings) categories
+                    var selectedHostElementTypes = FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>();
+                    filter.SelectedHostElementTypes = selectedHostElementTypes;
+                    
+                    // ✅ ENHANCED LOGGING: Show breakdown of horizontal vs vertical categories
+                    var horizontal = selectedHostElementTypes.Where(h => h.Equals("Walls", StringComparison.OrdinalIgnoreCase) || 
+                                                                        h.Equals("Structural Framing", StringComparison.OrdinalIgnoreCase)).ToList();
+                    var vertical = selectedHostElementTypes.Where(v => v.Equals("Floors", StringComparison.OrdinalIgnoreCase) || 
+                                                                       v.Equals("Ceilings", StringComparison.OrdinalIgnoreCase)).ToList();
+                    DebugLogger.Info($"Updated filter with {selectedHostElementTypes?.Count ?? 0} host element types:");
+                    DebugLogger.Info($"  Horizontal: {horizontal.Count} ({string.Join(", ", horizontal)})");
+                    DebugLogger.Info($"  Vertical: {vertical.Count} ({string.Join(", ", vertical)})");
+                    DebugLogger.Info($"  All: {string.Join(", ", selectedHostElementTypes)}");
+                    
                     // Get current clearance settings and store in OpeningSettings
                     var clearanceSettings = GetClearanceSettings();
                     if (filter.OpeningSettings == null)
@@ -7739,6 +8265,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     {
                         RestoreHostFileSelections(filter.SelectedHostFiles);
                         DebugLogger.Info($"Restored {filter.SelectedHostFiles.Count} host file selections");
+                    }
+                    
+                    // ✅ FIX: Restore host element types (host categories) selections
+                    // This includes BOTH horizontal (Walls, Structural Framing) AND vertical (Floors, Ceilings) categories
+                    if (filter.SelectedHostElementTypes != null && filter.SelectedHostElementTypes.Any())
+                    {
+                        // ✅ ENHANCED LOGGING: Show breakdown before restoration
+                        var horizontal = filter.SelectedHostElementTypes.Where(h => h.Equals("Walls", StringComparison.OrdinalIgnoreCase) || 
+                                                                                   h.Equals("Structural Framing", StringComparison.OrdinalIgnoreCase)).ToList();
+                        var vertical = filter.SelectedHostElementTypes.Where(v => v.Equals("Floors", StringComparison.OrdinalIgnoreCase) || 
+                                                                                  v.Equals("Ceilings", StringComparison.OrdinalIgnoreCase)).ToList();
+                        DebugLogger.Info($"Restoring {filter.SelectedHostElementTypes.Count} host element type selections:");
+                        DebugLogger.Info($"  Horizontal: {horizontal.Count} ({string.Join(", ", horizontal)})");
+                        DebugLogger.Info($"  Vertical: {vertical.Count} ({string.Join(", ", vertical)})");
+                        
+                        RestoreHostCategorySelections(filter.SelectedHostElementTypes);
+                        DebugLogger.Info($"✅ Restored all host element types: {string.Join(", ", filter.SelectedHostElementTypes)}");
                     }
                     
                     // Restore clearance settings

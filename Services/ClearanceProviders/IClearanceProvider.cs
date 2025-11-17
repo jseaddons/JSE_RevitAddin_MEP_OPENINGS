@@ -15,7 +15,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders
         /// <param name="mepElement">The MEP element to calculate clearance for</param>
         /// <param name="uiClearances">Optional UI clearance settings to override defaults</param>
         /// <returns>Clearance value in internal units (feet)</returns>
-        double GetClearance(Element mepElement, Dictionary<string, double> uiClearances = null);
+        double GetClearance(Element mepElement, Dictionary<string, double>? uiClearances = null);
         
         /// <summary>
         /// Get the category this provider handles

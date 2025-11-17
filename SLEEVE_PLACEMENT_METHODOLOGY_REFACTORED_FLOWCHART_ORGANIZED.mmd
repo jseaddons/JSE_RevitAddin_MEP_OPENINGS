@@ -1,0 +1,429 @@
+flowchart TD
+    Start([User Clicks Refresh]) --> ValidateUI[Validate UI Selections]
+    ValidateUI -->|Invalid| ShowError1[Show Validation Error<br/>Missing Required Fields]
+    ShowError1 --> Cancel([Cancel Refresh])
+    ValidateUI -->|Valid| TryConnectDB{Database<br/>Connection OK?}
+    
+    TryConnectDB -->|Failed| DBError1[Show DB Connection Error<br/>Check SQLite File]
+    DBError1 --> Cancel
+    TryConnectDB -->|Success| CheckFilterDB{Filter Exists<br/>in Database?}
+    
+    CheckFilterDB -->|Yes| TryLoadFilter{Load Filter<br/>Success?}
+    TryLoadFilter -->|Failed| DBError2[DB Read Error<br/>Corrupt Filter Data]
+    DBError2 --> Cancel
+    TryLoadFilter -->|Success| LoadFilter[Load Filter from DB<br/>Filters table]
+    
+    CheckFilterDB -->|No| ValidateFilter{Valid Filter<br/>Definition?}
+    
+    ValidateFilter -->|Invalid| Cancel
+    ValidateFilter -->|Valid| TryCreateFilter{Create Filter<br/>Success?}
+    
+    TryCreateFilter -->|Failed| DBError3[DB Insert Error<br/>Transaction Failed]
+    DBError3 --> Rollback1[Rollback Transaction]
+    Rollback1 --> LogError1[Log Error Details]
+    LogError1 --> Cancel
+    TryCreateFilter -->|Success| CreateFilter[Create Filter in DB<br/>INSERT Filters<br/>IsFilterComboNew=0]
+    
+    CreateFilter --> TrySaveUI{Save UI State<br/>Success?}
+    TrySaveUI -->|Failed| DBError4[DB Update Error]
+    DBError4 --> Rollback2[Rollback Transaction]
+    Rollback2 --> LogError2[Log Error]
+    LogError2 --> Cancel
+    TrySaveUI -->|Success| SaveUIState[Save UI State<br/>UPDATE Filters<br/>SelectedHostCategories<br/>OpeningSettings]
+    
+    LoadFilter --> CheckFileComboDB{FileCombo Exists<br/>in Database?}
+    SaveUIState --> CheckFileComboDB
+    
+    CheckFileComboDB -->|Yes| TryLoadCombo{Load FileCombo<br/>Success?}
+    TryLoadCombo -->|Failed| DBError5[DB Read Error]
+    DBError5 --> Cancel
+    TryLoadCombo -->|Success| LoadFileCombo[Load FileCombo<br/>SELECT ComboId<br/>IsFilterComboNew]
+    
+    CheckFileComboDB -->|No| TryCreateCombo{Create FileCombo<br/>Success?}
+    TryCreateCombo -->|Failed| DBError6[DB Insert Error]
+    DBError6 --> Rollback3[Rollback Transaction]
+    Rollback3 --> LogError3[Log Error]
+    LogError3 --> Cancel
+    TryCreateCombo -->|Success| CreateFileCombo[Create FileCombo<br/>INSERT FileCombos<br/>IsFilterComboNew=1]
+    
+    LoadFileCombo --> DetermineRefreshPath[Determine Refresh Path]
+    CreateFileCombo --> DetermineRefreshPath
+    
+    DetermineRefreshPath --> CheckAdopt{Adopt to Modified<br/>Document ON?}
+    
+    CheckAdopt -->|OFF| CheckFlag{IsFilterComboNew<br/>= 0?}
+    CheckAdopt -->|ON| CheckExisting{Filter Has<br/>Existing Zones?}
+    
+    CheckFlag -->|Yes = 0| PATH1[PATH 1: REPLAY MODE<br/>Skip Detection]
+    CheckFlag -->|No = 1| PATH2[PATH 2: FRESH PLACEMENT<br/>Run Detection]
+    
+    CheckExisting -->|No| PATH2
+    CheckExisting -->|Yes| PATH3[PATH 3: FULL DETECTION<br/>WITH VALIDATION]
+    
+    %% PATH 1: REPLAY MODE
+    PATH1 --> TryLoadP1{Load Existing<br/>Zones Success?}
+    TryLoadP1 -->|Failed| DBError7[DB Read Error<br/>or XML Parse Error]
+    DBError7 --> Cancel
+    TryLoadP1 -->|Success| P1_LoadZones[Load Existing Zones<br/>FROM ClashZones<br/>PRIMARY: Database<br/>FALLBACK: XML]
+    P1_LoadZones --> P1_Skip[Skip Intersection<br/>Detection]
+    P1_Skip --> P1_ResetFlags[Reset Flags for<br/>Deleted Sleeves Only]
+    P1_ResetFlags --> P1_NoSave[No Database Save<br/>Zones Already Exist]
+    P1_NoSave --> PlacementFlow
+    
+    %% PATH 2: FRESH PLACEMENT
+    PATH2 --> TryLoadXML2{Load XML Cache<br/>Success?}
+    TryLoadXML2 -->|Failed| XMLError1[XML Parse Error<br/>Invalid XML Structure]
+    XMLError1 --> Cancel
+    TryLoadXML2 -->|Success| P2_LoadXML[Load XML Cache<br/>OPTIONAL Fallback]
+    P2_LoadXML --> TryDetect2{Intersection<br/>Detection Success?}
+    TryDetect2 -->|Failed| DetectError1[Detection Failed<br/>Invalid Geometry<br/>or Missing Elements]
+    DetectError1 --> LogError4[Log Error Details]
+    LogError4 --> Cancel
+    TryDetect2 -->|Success| P2_Detect[Run Intersection<br/>Detection<br/>MEP vs Structural]
+    P2_Detect --> P2_SkipVal[Skip 3-Point<br/>Validation]
+    P2_SkipVal --> P2_CreateZones[Create Clash Zones<br/>All New]
+    P2_CreateZones --> TrySaveP2{Save to DB<br/>Success?}
+    TrySaveP2 -->|Failed| DBError8[DB Insert Error<br/>Transaction Failed]
+    DBError8 --> Rollback4[Rollback Transaction]
+    Rollback4 --> LogError5[Log Error]
+    LogError5 --> Cancel
+    TrySaveP2 -->|Success| P2_SaveDB[Save to Database<br/>INSERT ClashZones<br/>INSERT SleeveSnapshots<br/>FileCombo flag stays = 1]
+    P2_SaveDB --> TryCommitP2{Commit<br/>Transaction<br/>Success?}
+    TryCommitP2 -->|Failed| DBError9[Commit Failed<br/>DB Lock or Constraint]
+    DBError9 --> Rollback5[Rollback Transaction]
+    Rollback5 --> LogError6[Log Error]
+    LogError6 --> Cancel
+    TryCommitP2 -->|Success| P2_Commit[Commit Transaction]
+    P2_Commit --> PlacementFlow
+    
+    %% PATH 3: FULL DETECTION WITH VALIDATION
+    PATH3 --> TryLoadXML3{Load XML Cache<br/>Success?}
+    TryLoadXML3 -->|Failed| XMLError2[XML Parse Error]
+    XMLError2 --> Cancel
+    TryLoadXML3 -->|Success| P3_LoadXML[Load XML Cache<br/>OPTIONAL Fallback]
+    P3_LoadXML --> TryLoadExist{Load Existing<br/>Zones Success?}
+    TryLoadExist -->|Failed| DBError10[DB Read Error]
+    DBError10 --> Cancel
+    TryLoadExist -->|Success| P3_LoadExisting[Load Existing Zones<br/>FROM ClashZones]
+    P3_LoadExisting --> TryDetect3{Intersection<br/>Detection Success?}
+    TryDetect3 -->|Failed| DetectError2[Detection Failed<br/>Invalid Geometry]
+    DetectError2 --> LogError7[Log Error]
+    LogError7 --> Cancel
+    TryDetect3 -->|Success| P3_Detect[Run Intersection<br/>Detection<br/>MEP vs Structural]
+    P3_Detect --> TryValidate{3-Point<br/>Validation Success?}
+    TryValidate -->|Failed| ValidateError[Validation Failed<br/>Element Access Error]
+    ValidateError --> LogError8[Log Error]
+    LogError8 --> Cancel
+    TryValidate -->|Success| P3_Validate[3-Point Validation<br/>For Each Existing Zone:<br/>1. MEP Element Exists?<br/>2. Structural Element Exists?<br/>3. Elements Still Intersect?]
+    
+    P3_Validate --> P3_Split[Split Zones by Result<br/>- All Pass = Validated<br/>- Any Fail = Invalidated<br/>- Not in Existing = New]
+    
+    P3_Split --> P3_Validated[Validated Zones<br/>Route to PATH 1 Logic]
+    P3_Split --> P3_Invalidated[Invalidated Zones<br/>Needs Merge & Update]
+    P3_Split --> P3_New[New Zones<br/>Route to PATH 2 Logic]
+    
+    P3_Invalidated --> P3_Merge[Merge Required<br/>Update Intersection Points<br/>Handle Moved Elements]
+    P3_Merge --> TrySaveInval{Save Invalidated<br/>Zones Success?}
+    TrySaveInval -->|Failed| DBError11[DB Update Error]
+    DBError11 --> Rollback6[Rollback Transaction]
+    Rollback6 --> LogError9[Log Error]
+    LogError9 --> Cancel
+    TrySaveInval -->|Success| P3_SaveInval[Save Invalidated Zones<br/>UPDATE ClashZones<br/>Updated Geometry]
+    P3_SaveInval --> TryCommitP3{Commit<br/>Transaction<br/>Success?}
+    TryCommitP3 -->|Failed| DBError12[Commit Failed]
+    DBError12 --> Rollback7[Rollback Transaction]
+    Rollback7 --> LogError10[Log Error]
+    LogError10 --> Cancel
+    TryCommitP3 -->|Success| P3_Commit[Commit Transaction]
+    
+    P3_Validated --> PlacementFlow
+    P3_New --> PlacementFlow
+    P3_Commit --> PlacementFlow
+    
+    %% PLACEMENT FLOW
+    PlacementFlow[Determine Placement Path] --> CheckPlacementPath{Which Path<br/>Route?}
+    
+    CheckPlacementPath -->|PATH 1<br/>Replay| P1_Placement
+    CheckPlacementPath -->|PATH 2<br/>Sizing| P2_Placement
+    CheckPlacementPath -->|PATH 3<br/>Validated| P1_Placement
+    CheckPlacementPath -->|PATH 3<br/>Invalidated| P3_Inval_Placement
+    CheckPlacementPath -->|PATH 3<br/>New| P2_Placement
+    
+    %% PATH 1 PLACEMENT (Replay Logic)
+    P1_Placement[PATH 1 Placement:<br/>Check Conditions] --> P1_CheckConditions{Conditions<br/>Changed?}
+    
+    P1_CheckConditions -->|Yes| P2_Placement
+    P1_CheckConditions -->|No| TryLoadPlace1{Load Zones<br/>Success?}
+    TryLoadPlace1 -->|Failed| DBError13[DB Read Error]
+    DBError13 --> Cancel
+    TryLoadPlace1 -->|Success| P1_LoadPlaceZones[Load Zones from DB]
+    
+    P1_LoadPlaceZones --> TrySyncFlags{Sync Flags<br/>Success?}
+    TrySyncFlags -->|Failed| FlagError1[Flag Sync Error<br/>DB or XML Issue]
+    FlagError1 --> LogError11[Log Error]
+    LogError11 --> Cancel
+    TrySyncFlags -->|Success| P1_SyncFlags[Sync Flags<br/>PRIMARY: Database<br/>FALLBACK: Global XML]
+    P1_SyncFlags --> P1_Loop{For Each Zone}
+    
+    P1_Loop --> P1_CheckSleeve{Sleeve Exists?<br/>MEP+Host+Point}
+    P1_CheckSleeve -->|Yes| P1_Skip[Skip - Already Placed]
+    P1_CheckSleeve -->|No| TryPlace1{Place Sleeve<br/>Success?}
+    TryPlace1 -->|Failed| PlaceError1[Placement Failed<br/>Invalid Family<br/>or Parameters]
+    PlaceError1 --> LogError12[Log Error]
+    LogError12 --> P1_Loop
+    TryPlace1 -->|Success| P1_Place[Place Sleeve<br/>Using Saved Data]
+    
+    P1_Place --> TryUpdateFlags1{Update Flags<br/>Success?}
+    TryUpdateFlags1 -->|Failed| FlagError2[Flag Update Error]
+    FlagError2 --> LogError13[Log Error]
+    LogError13 --> P1_Loop
+    TryUpdateFlags1 -->|Success| P1_UpdateFlags[Update Flags<br/>IsResolved = true<br/>SleeveInstanceId]
+    P1_UpdateFlags --> P1_Loop
+    P1_Skip --> P1_Loop
+    
+    P1_Loop -->|Complete| P1_ClusterDecision
+    
+    %% PATH 2 PLACEMENT (Sizing Logic)
+    P2_Placement[PATH 2 Placement:<br/>Calculate Size] --> TryLoadCond2{Load Conditions<br/>Success?}
+    TryLoadCond2 -->|Failed| DBError14[DB Read Error<br/>Missing OpeningSettings]
+    DBError14 --> Cancel
+    TryLoadCond2 -->|Success| P2_LoadConditions[Load Conditions<br/>FROM Filters.OpeningSettings]
+    P2_LoadConditions --> TryCalcSize{Calculate Size<br/>Success?}
+    TryCalcSize -->|Failed| CalcError1[Calculation Error<br/>Invalid Parameters<br/>or Dimensions]
+    CalcError1 --> LogError14[Log Error]
+    LogError14 --> Cancel
+    TryCalcSize -->|Success| P2_CalcSize[Calculate Sleeve Size<br/>Apply Clearance Settings<br/>to MEP Dimensions]
+    P2_CalcSize --> TryPlace2{Place Sleeve<br/>Success?}
+    TryPlace2 -->|Failed| PlaceError2[Placement Failed<br/>Invalid Family<br/>or Size Out of Range]
+    PlaceError2 --> LogError15[Log Error]
+    LogError15 --> Cancel
+    TryPlace2 -->|Success| P2_Place[Place Sleeve<br/>With Calculated Size]
+    P2_Place --> TryUpdateFlags2{Update Flags<br/>Success?}
+    TryUpdateFlags2 -->|Failed| FlagError3[Flag Update Error]
+    FlagError3 --> LogError16[Log Error]
+    LogError16 --> Cancel
+    TryUpdateFlags2 -->|Success| P2_UpdateFlags[Update Flags<br/>IsResolved = true<br/>SleeveInstanceId<br/>NOTE: FileCombo flag stays = 1]
+    P2_UpdateFlags --> P2_ClusterDecision
+    
+    %% PATH 3 INVALIDATED PLACEMENT
+    P3_Inval_Placement[PATH 3 Invalidated:<br/>Handle Moved Elements] --> TryLoadCond3{Load Conditions<br/>Success?}
+    TryLoadCond3 -->|Failed| DBError15[DB Read Error]
+    DBError15 --> Cancel
+    TryLoadCond3 -->|Success| P3_LoadCond[Load Conditions<br/>FROM Filters.OpeningSettings]
+    P3_LoadCond --> TryDetectMoved{Detect Moved<br/>Success?}
+    TryDetectMoved -->|Failed| DetectError3[Detection Failed<br/>Element Access Error]
+    DetectError3 --> LogError17[Log Error]
+    LogError17 --> Cancel
+    TryDetectMoved -->|Success| P3_DetectMoved[Run Detection<br/>for Moved Elements]
+    P3_DetectMoved --> TryDelete{Delete Affected<br/>Sleeves Success?}
+    TryDelete -->|Failed| DeleteError1[Delete Failed<br/>Element Locked<br/>or Not Found]
+    DeleteError1 --> LogError18[Log Error]
+    LogError18 --> P3_ResetDel
+    TryDelete -->|Success| P3_Delete[Delete Affected<br/>Placed Sleeves]
+    P3_Delete --> P3_ResetDel[Reset Deleted Flags<br/>IsResolved = true<br/>Prevent Re-placement]
+    P3_ResetDel --> TryCalcSize3{Calculate Size<br/>Success?}
+    TryCalcSize3 -->|Failed| CalcError2[Calculation Error]
+    CalcError2 --> LogError19[Log Error]
+    LogError19 --> Cancel
+    TryCalcSize3 -->|Success| P3_CalcSize[Calculate New Size<br/>Apply Clearance Settings]
+    P3_CalcSize --> TryPlace3{Place New Sleeve<br/>Success?}
+    TryPlace3 -->|Failed| PlaceError3[Placement Failed]
+    PlaceError3 --> LogError20[Log Error]
+    LogError20 --> Cancel
+    TryPlace3 -->|Success| P3_PlaceNew[Place New Sleeve<br/>No Flag Check Before]
+    P3_PlaceNew --> TryUpdateFlags3{Update Flags<br/>Success?}
+    TryUpdateFlags3 -->|Failed| FlagError4[Flag Update Error]
+    FlagError4 --> LogError21[Log Error]
+    LogError21 --> Cancel
+    TryUpdateFlags3 -->|Success| P3_UpdatePlaced[Update Flags<br/>IsResolved = true<br/>SleeveInstanceId]
+    P3_UpdatePlaced --> P3_ClusterDecision
+    
+    %% CLUSTERING DECISIONS
+    P1_ClusterDecision[PATH 1 Clustering<br/>Decision] --> TryCheckClusterDB{Check ClusterSleeves<br/>Success?}
+    TryCheckClusterDB -->|Failed| DBError16[DB Read Error]
+    DBError16 --> LogError22[Log Error]
+    LogError22 --> SkipClusterP1[Skip Clustering<br/>Due to Error]
+    SkipClusterP1 --> ResetFlag
+    TryCheckClusterDB -->|Success| P1_CheckClusterDB{Cluster Data Exists<br/>in ClusterSleeves?}
+    
+    P1_CheckClusterDB -->|Yes| TryLoadCluster1{Load Cluster<br/>Data Success?}
+    TryLoadCluster1 -->|Failed| DBError17[DB Read Error<br/>Corrupt Cluster Data]
+    DBError17 --> LogError23[Log Error]
+    LogError23 --> P1_CalcCluster
+    TryLoadCluster1 -->|Success| P1_LoadCluster[Load Cluster Data<br/>FROM ClusterSleeves<br/>Skip Calculation]
+    P1_CheckClusterDB -->|No| P1_CalcCluster[Calculate Clustering<br/>No Data Available<br/>Run Calculation]
+    
+    P1_LoadCluster --> TryPlaceCluster1{Place Cluster<br/>Success?}
+    TryPlaceCluster1 -->|Failed| ClusterError1[Cluster Placement Failed<br/>Invalid Family or Size]
+    ClusterError1 --> LogError24[Log Error]
+    LogError24 --> ResetFlag
+    TryPlaceCluster1 -->|Success| P1_PlaceCluster[Place Cluster Sleeves<br/>Using Stored Data]
+    P1_CalcCluster --> ClusterCalc1[Clustering Calculation<br/>PATH 1]
+    
+    P2_ClusterDecision[PATH 2 Clustering<br/>Decision] --> P2_AlwaysCluster[Always Calculate<br/>Fresh Detection]
+    P2_AlwaysCluster --> ClusterCalc2[Clustering Calculation<br/>PATH 2]
+    
+    P3_ClusterDecision[PATH 3 Clustering<br/>Decision] --> P3_CheckType{Zone Type?}
+    
+    P3_CheckType -->|Validated| TryCheckClusterDB3{Check ClusterSleeves<br/>Success?}
+    TryCheckClusterDB3 -->|Failed| DBError18[DB Read Error]
+    DBError18 --> LogError25[Log Error]
+    LogError25 --> P3_Val_Calc
+    TryCheckClusterDB3 -->|Success| P3_Val_CheckDB{Cluster Data<br/>Exists?}
+    P3_CheckType -->|Invalidated| P3_Inval_Calc[Always Calculate<br/>Geometry Changed]
+    P3_CheckType -->|New| P3_New_Calc[Always Calculate<br/>Fresh Detection]
+    
+    P3_Val_CheckDB -->|Yes| TryLoadCluster3{Load Cluster<br/>Data Success?}
+    TryLoadCluster3 -->|Failed| DBError19[DB Read Error]
+    DBError19 --> LogError26[Log Error]
+    LogError26 --> P3_Val_Calc
+    TryLoadCluster3 -->|Success| P3_Val_Load[Load Cluster Data<br/>Skip Calculation]
+    P3_Val_CheckDB -->|No| P3_Val_Calc[Calculate Clustering]
+    
+    P3_Val_Load --> TryPlaceCluster3{Place Cluster<br/>Success?}
+    TryPlaceCluster3 -->|Failed| ClusterError2[Cluster Placement Failed]
+    ClusterError2 --> LogError27[Log Error]
+    LogError27 --> ResetFlag
+    TryPlaceCluster3 -->|Success| P3_Val_Place[Place Using Stored Data]
+    P3_Inval_Calc --> ClusterCalc3_Inval[Clustering Calculation<br/>PATH 3 Invalidated]
+    P3_New_Calc --> ClusterCalc3_New[Clustering Calculation<br/>PATH 3 New]
+    P3_Val_Calc --> ClusterCalc3_Val[Clustering Calculation<br/>PATH 3 Validated]
+    
+    %% CLUSTERING CALCULATION (Simplified - showing error handling points)
+    ClusterCalc1 --> TryCalcCluster1{Clustering<br/>Calculation<br/>Success?}
+    ClusterCalc2 --> TryCalcCluster2{Clustering<br/>Calculation<br/>Success?}
+    ClusterCalc3_Inval --> TryCalcCluster3I{Clustering<br/>Calculation<br/>Success?}
+    ClusterCalc3_New --> TryCalcCluster3N{Clustering<br/>Calculation<br/>Success?}
+    ClusterCalc3_Val --> TryCalcCluster3V{Clustering<br/>Calculation<br/>Success?}
+    
+    TryCalcCluster1 -->|Failed| ClusterCalcError1[Calculation Error<br/>Invalid Geometry<br/>or Grouping Failed]
+    ClusterCalcError1 --> LogError28[Log Error]
+    LogError28 --> ResetFlag
+    TryCalcCluster1 -->|Success| SaveCluster1[Save to ClusterSleeves<br/>Place Cluster Sleeves]
+    
+    TryCalcCluster2 -->|Failed| ClusterCalcError2[Calculation Error]
+    ClusterCalcError2 --> LogError29[Log Error]
+    LogError29 --> ResetFlag
+    TryCalcCluster2 -->|Success| SaveCluster2[Save to ClusterSleeves<br/>Place Cluster Sleeves]
+    
+    TryCalcCluster3I -->|Failed| ClusterCalcError3[Calculation Error]
+    ClusterCalcError3 --> LogError30[Log Error]
+    LogError30 --> ResetFlag
+    TryCalcCluster3I -->|Success| CheckNeed3I{Cluster Needed?}
+    CheckNeed3I -->|Yes| SaveCluster3I_Add[Add Cluster Sleeve]
+    CheckNeed3I -->|No| SaveCluster3I_Rem[Remove Cluster Sleeve]
+    
+    TryCalcCluster3N -->|Failed| ClusterCalcError4[Calculation Error]
+    ClusterCalcError4 --> LogError31[Log Error]
+    LogError31 --> ResetFlag
+    TryCalcCluster3N -->|Success| SaveCluster3N[Save to ClusterSleeves<br/>Place Cluster Sleeves]
+    
+    TryCalcCluster3V -->|Failed| ClusterCalcError5[Calculation Error]
+    ClusterCalcError5 --> LogError32[Log Error]
+    LogError32 --> ResetFlag
+    TryCalcCluster3V -->|Success| SaveCluster3V[Save to ClusterSleeves<br/>Place Cluster Sleeves]
+    
+    SaveCluster1 --> TryDelIndiv1{Delete Individual<br/>Sleeves Success?}
+    SaveCluster2 --> TryDelIndiv2{Delete Individual<br/>Sleeves Success?}
+    SaveCluster3I_Add --> TryDelIndiv3I{Delete Individual<br/>Sleeves Success?}
+    SaveCluster3I_Rem --> Update3I_Flags
+    SaveCluster3N --> TryDelIndiv3N{Delete Individual<br/>Sleeves Success?}
+    P1_PlaceCluster --> TryDelIndiv1
+    P3_Val_Place --> TryDelIndiv3V{Delete Individual<br/>Sleeves Success?}
+    SaveCluster3V --> TryDelIndiv3V
+    
+    TryDelIndiv1 -->|Failed| DelError1[Delete Failed<br/>Element Locked]
+    DelError1 --> LogError33[Log Warning<br/>Continue Anyway]
+    LogError33 --> Update1_Flags
+    TryDelIndiv1 -->|Success| Del1[Delete Individual Sleeves<br/>Within Clusters]
+    Del1 --> Update1_Flags[Update Cluster Flags<br/>IsClusterResolved = true<br/>ClusterSleeveInstanceId<br/>Clear SleeveInstanceId]
+    
+    TryDelIndiv2 -->|Failed| DelError2[Delete Failed]
+    DelError2 --> LogError34[Log Warning]
+    LogError34 --> Update2_Flags
+    TryDelIndiv2 -->|Success| Del2[Delete Individual Sleeves]
+    Del2 --> Update2_Flags[Update Cluster Flags<br/>IsClusterResolved = true<br/>ClusterSleeveInstanceId<br/>Clear SleeveInstanceId]
+    
+    TryDelIndiv3I -->|Failed| DelError3[Delete Failed]
+    DelError3 --> LogError35[Log Warning]
+    LogError35 --> Update3I_Flags
+    TryDelIndiv3I -->|Success| Del3I[Delete Individual Sleeves]
+    Del3I --> Update3I_Flags[Update Cluster Flags<br/>PATH 3 Invalidated]
+    
+    TryDelIndiv3N -->|Failed| DelError4[Delete Failed]
+    DelError4 --> LogError36[Log Warning]
+    LogError36 --> Update3N_Flags
+    TryDelIndiv3N -->|Success| Del3N[Delete Individual Sleeves]
+    Del3N --> Update3N_Flags[Update Cluster Flags<br/>IsClusterResolved = true<br/>ClusterSleeveInstanceId<br/>Clear SleeveInstanceId]
+    
+    TryDelIndiv3V -->|Failed| DelError5[Delete Failed]
+    DelError5 --> LogError37[Log Warning]
+    LogError37 --> Update3V_Flags
+    TryDelIndiv3V -->|Success| Del3V[Delete Individual Sleeves]
+    Del3V --> Update3V_Flags[Update Cluster Flags<br/>IsClusterResolved = true<br/>ClusterSleeveInstanceId<br/>Clear SleeveInstanceId]
+    
+    Update1_Flags --> TryResetFlag1{Reset FileCombo<br/>Flag Success?}
+    Update2_Flags --> TryResetFlag2{Reset FileCombo<br/>Flag Success?}
+    Update3I_Flags --> TryResetFlag3{Reset FileCombo<br/>Flag Success?}
+    Update3N_Flags --> TryResetFlag4{Reset FileCombo<br/>Flag Success?}
+    Update3V_Flags --> TryResetFlag5{Reset FileCombo<br/>Flag Success?}
+    
+    TryResetFlag1 -->|Failed| FlagError5[Flag Reset Error]
+    FlagError5 --> LogError38[Log Error<br/>Flag May Be Out of Sync]
+    LogError38 --> FinalEnd
+    TryResetFlag1 -->|Success| ResetFlag
+    
+    TryResetFlag2 -->|Failed| FlagError6[Flag Reset Error]
+    FlagError6 --> LogError39[Log Error]
+    LogError39 --> FinalEnd
+    TryResetFlag2 -->|Success| ResetFlag
+    
+    TryResetFlag3 -->|Failed| FlagError7[Flag Reset Error]
+    FlagError7 --> LogError40[Log Error]
+    LogError40 --> FinalEnd
+    TryResetFlag3 -->|Success| ResetFlag
+    
+    TryResetFlag4 -->|Failed| FlagError8[Flag Reset Error]
+    FlagError8 --> LogError41[Log Error]
+    LogError41 --> FinalEnd
+    TryResetFlag4 -->|Success| ResetFlag
+    
+    TryResetFlag5 -->|Failed| FlagError9[Flag Reset Error]
+    FlagError9 --> LogError42[Log Error]
+    LogError42 --> FinalEnd
+    TryResetFlag5 -->|Success| ResetFlag
+    
+    ResetFlag[Reset FileCombo Flag<br/>IsFilterComboNew = 0<br/>ONLY After Cluster Complete<br/>via ClashZoneRepository] --> FinalEnd([Complete])
+    
+    %% Styling
+    classDef path1 fill:#ffcccc,stroke:#cc0000,stroke-width:2px,color:#000
+    classDef path2 fill:#ffe6cc,stroke:#cc6600,stroke-width:2px,color:#000
+    classDef path3 fill:#ccffcc,stroke:#00cc00,stroke-width:2px,color:#000
+    classDef path3val fill:#d9f2d9,stroke:#339933,stroke-width:2px,color:#000
+    classDef path3inval fill:#a3d9a5,stroke:#006600,stroke-width:2px,color:#000
+    classDef path3new fill:#c2e0c2,stroke:#009900,stroke-width:2px,color:#000
+    classDef database fill:#cce5ff,stroke:#0066cc,stroke-width:2px,color:#000
+    classDef decision fill:#ffffcc,stroke:#cccc00,stroke-width:2px,color:#000
+    classDef error fill:#ffb3b3,stroke:#cc0000,stroke-width:3px,color:#000
+    classDef errorlog fill:#ff9999,stroke:#990000,stroke-width:2px,color:#000
+    classDef cluster fill:#f0e6ff,stroke:#6600cc,stroke-width:2px,color:#000
+    
+    class PATH1,P1_LoadZones,P1_Skip,P1_ResetFlags,P1_NoSave,P1_Placement,P1_CheckConditions,P1_LoadPlaceZones,P1_SyncFlags,P1_Loop,P1_CheckSleeve,P1_Place,P1_UpdateFlags,P1_ClusterDecision,P1_CheckClusterDB,P1_LoadCluster,P1_CalcCluster,P1_PlaceCluster,Del1,Update1_Flags path1
+    
+    class PATH2,P2_LoadXML,P2_Detect,P2_CreateZones,P2_SaveDB,P2_Commit,P2_Placement,P2_LoadConditions,P2_CalcSize,P2_Place,P2_UpdateFlags,P2_ClusterDecision,P2_AlwaysCluster,ClusterCalc2,SaveCluster2,Del2,Update2_Flags path2
+
+    class PATH3,P3_LoadXML,P3_Detect,P3_Validate,P3_Split,P3_Merge,P3_SaveInval,P3_Commit,P3_Placement,P3_LoadCond,P3_CalcSize,P3_PlaceNew,P3_UpdatePlaced,P3_ClusterDecision,P3_CheckType,ClusterCalc3_Val,ClusterCalc3_Inval,ClusterCalc3_New path3
+
+    class P3_Validate,P3_Val_Load,P3_Val_Place,SaveCluster3V,Update3V_Flags path3val
+    class P3_Invalidated,P3_Inval_Calc,SaveCluster3I_Add,SaveCluster3I_Rem,Update3I_Flags path3inval
+    class P3_New,P3_New_Calc,SaveCluster3N,Update3N_Flags path3new
+
+    class TryConnectDB,CheckFilterDB,LoadFilter,CreateFilter,SaveUIState,LoadFileCombo,CreateFileCombo database
+    class TryLoadCombo,TryCreateCombo,TryLoadXML2,TryDetect2,TrySaveP2,TryCommitP2,TryLoadXML3,TryDetect3,TryValidate,TrySaveInval,TryCommitP3,TryLoadCond2,TryCalcSize,TryPlace2,TryUpdateFlags2 decision
+    class ShowError1,DBError1,DBError2,DBError3,DBError4,DBError5,DBError6,DBError7,DBError8,DBError9,DBError10,DBError11,DBError12,DBError13,DBError14,DBError15,DBError16,DBError17,DBError18,DBError19,XMLError1,XMLError2,DetectError1,DetectError2,DetectError3,ValidateError,PlaceError1,PlaceError2,PlaceError3,FlagError1,FlagError2,FlagError3,FlagError4,FlagError5,FlagError6,FlagError7,FlagError8,FlagError9,CalcError1,CalcError2,DeleteError1,ClusterError1,ClusterError2,ClusterCalcError1,ClusterCalcError2,ClusterCalcError3,ClusterCalcError4,ClusterCalcError5,DelError1,DelError2,DelError3,DelError4,DelError5 error
+    class LogError1,LogError2,LogError3,LogError4,LogError5,LogError6,LogError7,LogError8,LogError9,LogError10,LogError11,LogError12,LogError13,LogError14,LogError15,LogError16,LogError17,LogError18,LogError19,LogError20,LogError21,LogError22,LogError23,LogError24,LogError25,LogError26,LogError27,LogError28,LogError29,LogError30,LogError31,LogError32,LogError33,LogError34,LogError35,LogError36,LogError37,LogError38,LogError39,LogError40,LogError41,LogError42 errorlog
+    class ClusterCalc1,ClusterCalc2,ClusterCalc3_Inval,ClusterCalc3_New,ClusterCalc3_Val,SaveCluster1,SaveCluster2,SaveCluster3I_Add,SaveCluster3I_Rem,SaveCluster3N,SaveCluster3V cluster    class TryConnectDB,CheckFilterDB,LoadFilter,CreateFilter,SaveUIState,LoadFileCombo,CreateFileCombo database
+    class TryLoadCombo,TryCreateCombo,TryLoadXML2,TryDetect2,TrySaveP2,TryCommitP2,TryLoadXML3,TryDetect3,TryValidate,TrySaveInval,TryCommitP3,TryLoadCond2,TryCalcSize,TryPlace2,TryUpdateFlags2 decision
+    class ShowError1,DBError1,DBError2,DBError3,DBError4,DBError5,DBError6,DBError7,DBError8,DBError9,DBError10,DBError11,DBError12,DBError13,DBError14,DBError15,DBError16,DBError17,DBError18,DBError19,XMLError1,XMLError2,DetectError1,DetectError2,DetectError3,ValidateError,PlaceError1,PlaceError2,PlaceError3,FlagError1,FlagError2,FlagError3,FlagError4,FlagError5,FlagError6,FlagError7,FlagError8,FlagError9,CalcError1,CalcError2,DeleteError1,ClusterError1,ClusterError2,ClusterCalcError1,ClusterCalcError2,ClusterCalcError3,ClusterCalcError4,ClusterCalcError5,DelError1,DelError2,DelError3,DelError4,DelError5 error
+    class LogError1,LogError2,LogError3,LogError4,LogError5,LogError6,LogError7,LogError8,LogError9,LogError10,LogError11,LogError12,LogError13,LogError14,LogError15,LogError16,LogError17,LogError18,LogError19,LogError20,LogError21,LogError22,LogError23,LogError24,LogError25,LogError26,LogError27,LogError28,LogError29,LogError30,LogError31,LogError32,LogError33,LogError34,LogError35,LogError36,LogError37,LogError38,LogError39,LogError40,LogError41,LogError42 errorlog
+    class ClusterCalc1,ClusterCalc2,ClusterCalc3_Inval,ClusterCalc3_New,ClusterCalc3_Val,SaveCluster1,SaveCluster2,SaveCluster3I_Add,SaveCluster3I_Rem,SaveCluster3N,SaveCluster3V cluster

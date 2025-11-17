@@ -204,10 +204,12 @@ Flags track the state of sleeve placement:
 **UI Button:** "Process Clash Zones" (formerly "Refresh" button)
 
 **Services Involved:**
-- `RefreshService` - Main orchestrator
-- `IntersectionDetectionService` - Detects MEP vs Structural clashes
+- `RefreshServiceRefactored` - Main orchestrator (✅ REFACTORED SERVICE - Database-driven)
+- `IntersectionProcessor` - Detects MEP vs Structural clashes (with Replace/Replay/FullDetection modes)
 - `ClashZoneService` - Creates and manages ClashZone objects
-- `FlagManager` - Syncs flags from Global XML to in-memory objects
+- `FlagManager` - Syncs flags from Database (PRIMARY) or Global XML (fallback) to in-memory objects
+- `ClashZoneRepository` - Database operations for clash zones (PRIMARY source)
+- `FilterRepository` - Database operations for filters and UI state
 
 **What Happens:**
 1. **Detect Intersections:** Find MEP elements intersecting structural elements
@@ -224,8 +226,10 @@ Flags track the state of sleeve placement:
 **Purpose:** Validate existing clash zones and remove stale entries when elements are deleted or no longer intersect
 
 **Services Involved:**
-- `RefreshService` - Performs validation during refresh
-- `GlobalIndexService` - Clears invalid entries from Global XML
+- `RefreshServiceRefactored` - Performs validation during refresh (✅ REFACTORED SERVICE)
+- `ValidationService` - 3-point validation logic
+- `ClashZoneRepository` - Database operations (PRIMARY source)
+- `GlobalIndexService` - Clears invalid entries from Global XML (fallback only)
 
 **What Happens:**
 1. **Load Existing ClashZones:** From Filter XML files created in previous runs
@@ -312,6 +316,180 @@ Flags track the state of sleeve placement:
 8. **Update Flags:** Set `IsClusterResolved = true`, save `ClusterSleeveInstanceId`, clear `SleeveInstanceId`
 
 **Output:** Cluster sleeves placed, individual sleeves deleted, flags updated
+
+---
+
+## 4.5. Refresh Service Architecture - Three Paths System
+
+### 4.5.1 Overview
+
+The refresh process uses a **refactored service** (`RefreshServiceRefactored`) that implements a **three-path execution system** based on the `IsFilterComboNew` flag in the `FileCombos` database table. The legacy `RefreshService.cs` has been **completely removed** from the codebase.
+
+### 4.5.2 Service Architecture
+
+**Refactored Service:**
+- **Location**: `refresh refactor/refresh_service_refactored.cs`
+- **Factory**: `RefreshServiceFactory.Create()` - Always returns `RefreshServiceRefactoredWrapper`
+- **Access**: All refresh operations go through the refactored service
+- **Database-First**: All operations prioritize database over XML
+
+**Legacy Service (Removed):**
+- ❌ `Services/RefreshService.cs` - **EXCLUDED from compilation**
+- ❌ All references removed
+- ❌ No longer accessible in codebase
+
+### 4.5.3 FileCombo Flag Decision System
+
+The `IsFilterComboNew` flag in the `FileCombos` table is the **primary decision mechanism** for path selection:
+
+**Database Query:**
+```sql
+SELECT IsFilterComboNew 
+FROM FileCombos 
+WHERE FilterId = @FilterId
+```
+
+**Flag Values:**
+- `IsFilterComboNew = 0`: File combo already processed → **PATH 1**
+- `IsFilterComboNew = 1`: New file combo needs processing → **PATH 2** (if Adopt OFF) or **PATH 3** (if Adopt ON)
+
+**Flag Reset:**
+- After successful sleeve placement: `IsFilterComboNew` reset to `0` via `OpeningCommandOrchestrator.ResetFilterComboFlagAfterPlacement()`
+- Next refresh will use PATH 1 (Replay Mode)
+
+### 4.5.4 Three Paths Detailed Flow
+
+#### PATH 1: REPLAY MODE
+
+**Trigger Conditions:**
+- `IsFilterComboNew = 0` (from FileCombos table in DB)
+- File combos already processed in database
+
+**Execution Flow:**
+1. Load existing clash zones from Database (PRIMARY source)
+2. Check if sleeves exist (validation)
+3. If sleeve NOT present → Place sleeve using saved data from DB
+4. ResetFlagsForDeletedSleeves - Update flags in DB for deleted sleeves
+5. Skip MergeAndSave - No database save of new zones
+6. Go directly to Place Sleeves - Only for deleted sleeves
+
+**Database Operations:**
+- **READ**: `SELECT * FROM ClashZones WHERE FilterId = @FilterId`
+- **UPDATE**: `UPDATE ClashZones SET IsResolvedFlag = 0 WHERE SleeveInstanceId = @SleeveId AND Sleeve NOT EXISTS`
+- **NO INSERT**: No new clash zones created
+
+**Key Characteristics:**
+- ✅ **No merge required** - Uses existing zones as-is
+- ✅ **No sync required** - Only flag updates
+- ✅ **Fastest path** - Minimal processing
+- ✅ **Adopt setting affects behavior** - If ON, may need validation checks
+
+#### PATH 2: FRESH PLACEMENT MODE
+
+**Trigger Conditions:**
+- `IsFilterComboNew = 1` (from FileCombos table in DB - new file combos)
+- **Adopt to Modified Document setting is IRRELEVANT** - Does NOT affect PATH 2 behavior
+
+**Execution Flow:**
+1. Run intersection detection (find all MEP vs Structural intersections)
+2. **SKIP 3-Point Validation** - No validation required (fresh placement)
+3. Create clash zones from new intersections
+4. MergeAndSave to Database - Save all clash zones to DB
+5. Database save sequence:
+   - Get/Create Filter (DB)
+   - Get/Create FileCombo (DB, IsFilterComboNew=1)
+   - Insert/Update ClashZones (DB)
+   - Insert/Update SleeveSnapshots (DB)
+   - Commit Transaction
+
+**Database Operations:**
+- **INSERT**: `INSERT INTO FileCombos (FilterId, LinkedFileKey, HostFileKey, IsFilterComboNew=1)`
+- **INSERT/UPDATE**: `INSERT INTO ClashZones (...) ON CONFLICT UPDATE ...`
+- **INSERT/UPDATE**: `INSERT INTO SleeveSnapshots (...) ON CONFLICT UPDATE ...`
+
+**Key Characteristics:**
+- ✅ **No merge required** - Fresh detection only, no existing zones to merge
+- ✅ **No validation** - Assumes all zones are valid (fresh placement)
+- ✅ **Fast path** - No validation overhead
+- ✅ **Adopt setting irrelevant** - Does not affect behavior
+
+#### PATH 3: FULL DETECTION WITH VALIDATION
+
+**Trigger Conditions:**
+- `enableThreePointValidation = true` (Adopt to Modified Document = ON)
+- **Adopt setting MUST be ON** to trigger PATH 3
+
+**Execution Flow:**
+1. Run intersection detection (find all MEP vs Structural intersections)
+2. **3-Point Validation ENABLED** - Validate existing zones from DB:
+   - MEP Element exists
+   - Structural Element exists
+   - Elements still intersect
+3. **Process three zone categories**:
+   - **Validated zones** (all 3 points pass):
+     - Go to PATH 1 logic
+     - Check sleeve presence
+     - Place if missing using saved data from DB
+     - **NO merge required**
+   - **Invalidated zones** (any point fails):
+     - **MERGE REQUIRED**
+     - Update intersection points
+     - Handle moved elements
+     - Merge with new zones
+   - **New zones** (not in existing zones):
+     - Go to PATH 2 logic
+     - Save to DB (duplicate data)
+     - **NO merge required**
+4. MergeAndSave to Database - Save validated/invalidated/new zones to DB
+5. Database save sequence (same as PATH 2)
+
+**Database Operations:**
+- **READ**: `SELECT * FROM ClashZones WHERE FilterId = @FilterId` (for validation)
+- **INSERT**: `INSERT INTO FileCombos (FilterId, LinkedFileKey, HostFileKey, IsFilterComboNew=1)`
+- **INSERT/UPDATE**: `INSERT INTO ClashZones (...) ON CONFLICT UPDATE ...` (for all zone types)
+- **UPDATE**: `UPDATE ClashZones SET IntersectionX/Y/Z = @NewCoords WHERE ClashZoneId = @Id` (for invalidated zones)
+- **INSERT/UPDATE**: `INSERT INTO SleeveSnapshots (...) ON CONFLICT UPDATE ...`
+
+**Key Characteristics:**
+- ✅ **Merge required ONLY for invalidated zones**
+- ✅ **Validated zones use PATH 1** - No merge, just check sleeve presence
+- ✅ **New zones use PATH 2** - No merge, direct save
+- ✅ **Most thorough path** - Validates all existing zones
+- ✅ **Adopt setting MUST be ON** - Required to trigger PATH 3
+
+### 4.5.5 Database-Driven Operations
+
+**All operations prioritize database over XML:**
+
+**Read Operations:**
+- ✅ Clash zones loaded from `ClashZones` table (PRIMARY)
+- ✅ FileCombo flags read from `FileCombos` table (PRIMARY)
+- ✅ Filter metadata read from `Filters` table (PRIMARY)
+- ✅ XML used only as fallback if database has no data
+
+**Write Operations:**
+- ✅ All clash zones saved to `ClashZones` table (PRIMARY)
+- ✅ All flags updated in `ClashZones` table (PRIMARY)
+- ✅ FileCombo flags updated in `FileCombos` table (PRIMARY)
+- ✅ XML writes disabled when `DeploymentConfiguration.DisableXmlCreation = true`
+
+**Transaction Management:**
+- ✅ All database operations wrapped in SQLite transactions
+- ✅ Atomic commits ensure data consistency
+- ✅ Rollback on any error prevents partial data
+
+### 4.5.6 Path Selection Summary
+
+| Path | Trigger | Validation | Merge | Database Save | Use Case |
+|------|---------|------------|-------|--------------|----------|
+| **PATH 1** | IsFilterComboNew = 0 (DB) | Sleeve existence check only | ❌ No | ❌ No | Replay existing zones |
+| **PATH 2** | IsFilterComboNew = 1 (DB) AND enableThreePointValidation = false | ❌ Skip | ❌ No | ✅ Yes | Fresh placement, no validation |
+| **PATH 3** | enableThreePointValidation = true | ✅ Yes (3-point) | ✅ Yes (invalidated only) | ✅ Yes | Full detection with validation |
+
+**Key Distinctions:**
+- **PATH 1 vs PATH 2**: PATH 1 skips detection, PATH 2 runs detection
+- **PATH 2 vs PATH 3**: PATH 2 has no validation, PATH 3 has validation
+- **PATH 3 Merge**: Only invalidated zones merge, validated zones use PATH 1, new zones use PATH 2
 
 ---
 
@@ -513,6 +691,41 @@ if (MarkedForClusteringSleeveProcess == true) → PROCESS (sleeve is proximate, 
 if (MarkedForClusteringSleeveProcess == false) → SKIP (sleeve is not proximate, keep individual)
 if (MarkedForClusteringSleeveProcess == null) → PROCESS (not yet processed, check proximity)
 ```
+
+### 7.4 Edge Case: Individual Sleeves in Cluster Zones
+
+**Problem:**
+When cluster sleeves are placed, individual sleeves within the cluster are deleted. However, there may be individual sleeves that fall within the cluster zone but weren't part of the original cluster formation. When these "edge case" sleeves are deleted, we need to set `IsClusterResolved=true` for their entries.
+
+**Solution:**
+During cluster placement, when deleting individual sleeves:
+1. Check for other individual sleeves that fall within the cluster bounding box
+2. These sleeves weren't part of the original cluster formation but fall in the cluster zone
+3. When deleting these edge case sleeves, set `IsClusterResolved=true` for their entries
+
+**Implementation:**
+- **Location:** `Services/UniversalClusterService.cs` - `PlaceClusterSleeve` method
+- **Process:**
+  1. After deleting cluster formation sleeves, check for other individual sleeves within cluster bounding box
+  2. For each edge case sleeve found:
+     - Delete the sleeve
+     - Find its ClashZone entry (by SleeveInstanceId or GUID)
+     - **DATABASE FIRST:** Update database flags using `ClashZoneRepository.BatchUpdateFlags()` or `UpdateFlags()`
+       - Set `IsClusterResolvedFlag=true`, `ClusterSleeveInstanceId=clusterSleeveId`, `SleeveInstanceId=-1`
+     - **XML SECOND:** Then update Global XML via `FlagManager.UpdateFlagsForPlacement()` or `GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData()`
+       - Set `IsClusterResolved=true`, `ClusterSleeveInstanceId=clusterSleeveId`, `SleeveInstanceId=-1`
+  3. **Priority:** Database is always updated first as the primary source of truth (XML will be discarded in future)
+
+**Expected Behavior:**
+1. **Normal cluster deletion:** Sleeves that formed the cluster are deleted and marked as `IsClusterResolved=true` (existing behavior)
+   - Database updated first, then Global XML
+2. **Edge case deletion:** Individual sleeves that fall within cluster zone but weren't part of cluster formation are also deleted and marked as `IsClusterResolved=true` (new behavior)
+   - Database updated first, then Global XML
+
+**Key Principle:**
+- Database is the primary source of truth for flags
+- All flag updates must update database FIRST, then sync to Global XML
+- This ensures consistency and prepares for future XML removal
 
 ---
 

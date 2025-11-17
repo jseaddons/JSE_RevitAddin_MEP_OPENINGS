@@ -1,0 +1,61 @@
+flowchart TD
+    Start([User Clicks Save Filter]) --> GetSelectedFilter[Get Selected Filter from ListBox]
+    GetSelectedFilter --> CollectUIState[Collect Current UI State]
+    
+    CollectUIState --> GetHostElementTypes[Get SelectedHostElementTypes<br/>from FilterUiStateProvider.GetSelectedHostElementTypes]
+    CollectUIState --> GetHostCategories[Get SelectedHostCategories<br/>from FilterUiStateProvider.GetSelectedHostCategories]
+    CollectUIState --> GetClearanceSettings[Get ClearanceSettings<br/>from FilterUiStateProvider.GetClearanceSettings]
+    CollectUIState --> GetMepCategories[Get SelectedMepCategoryNames<br/>from FilterUiStateProvider.GetSelectedMepCategoryNames]
+    CollectUIState --> GetRefFiles[Get SelectedReferenceFiles<br/>from FilterUiStateProvider.GetSelectedReferenceFiles]
+    CollectUIState --> GetHostFiles[Get SelectedHostFiles<br/>from FilterUiStateProvider.GetSelectedHostFiles]
+    
+    GetHostElementTypes --> BuildOpeningSettings[Build OpeningSettings Object]
+    GetClearanceSettings --> BuildOpeningSettings
+    BuildOpeningSettings --> OpeningSettings[OpeningSettings:<br/>- ClearanceSettings Dictionary<br/>- SelectedMepType]
+    
+    GetHostElementTypes --> UpdateFilterObject[Update Filter Object<br/>with Current UI State]
+    GetHostCategories --> UpdateFilterObject
+    OpeningSettings --> UpdateFilterObject
+    GetMepCategories --> UpdateFilterObject
+    GetRefFiles --> UpdateFilterObject
+    GetHostFiles --> UpdateFilterObject
+    
+    UpdateFilterObject --> RegisterDB[Register Filter in Database<br/>FilterRepository.EnsureFilter]
+    RegisterDB --> CheckFilterId{FilterId > 0?}
+    
+    CheckFilterId -->|No| ErrorLog[Log Error:<br/>Filter not registered]
+    ErrorLog --> End([End - Save Failed])
+    
+    CheckFilterId -->|Yes| SaveUIState[Save UI State to Database<br/>FilterRepository.SaveFilterUIState]
+    
+    SaveUIState --> PrepareJSON[Prepare JSON Data]
+    PrepareJSON --> SerializeHostTypes[Serialize SelectedHostElementTypes<br/>to JSON Array]
+    PrepareJSON --> SerializeOpeningSettings[Serialize OpeningSettings<br/>to JSON Object]
+    
+    SerializeHostTypes --> ExecuteSQL[Execute SQL UPDATE]
+    SerializeOpeningSettings --> ExecuteSQL
+    
+    ExecuteSQL --> SQLUpdate["UPDATE Filters SET<br/>SelectedHostElementTypes = @SelectedHostElementTypes,<br/>OpeningSettings = @OpeningSettings,<br/>UpdatedAt = CURRENT_TIMESTAMP<br/>WHERE FilterId = @FilterId<br/><br/>Table: Filters<br/>Columns:<br/>- SelectedHostElementTypes TEXT JSON array<br/>- OpeningSettings TEXT JSON object<br/>- UpdatedAt DATETIME"]
+    
+    SQLUpdate --> CheckRowsAffected{Rows Affected > 0?}
+    
+    CheckRowsAffected -->|No| LogWarning[Log Warning:<br/>No rows updated]
+    LogWarning --> End
+    
+    CheckRowsAffected -->|Yes| LogSuccess[Log Success:<br/>UI State Saved]
+    LogSuccess --> SaveXML{XML Creation<br/>Enabled?}
+    
+    SaveXML -->|No| End
+    SaveXML -->|Yes| SaveToXML[Save Filter to XML<br/>for Backward Compatibility]
+    SaveToXML --> End
+    
+    style Start fill:#90EE90
+    style End fill:#FFB6C1
+    style SaveUIState fill:#87CEEB
+    style SQLUpdate fill:#DDA0DD
+    style CheckFilterId fill:#FFD700
+    style CheckRowsAffected fill:#FFD700
+    style CollectUIState fill:#98FB98
+    style BuildOpeningSettings fill:#98FB98
+    style UpdateFilterObject fill:#98FB98
+

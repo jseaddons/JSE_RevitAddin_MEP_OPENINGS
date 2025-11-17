@@ -602,6 +602,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public string MepElementOrientationDirection { get; set; }
         
         /// <summary>
+        /// Pre-calculated MEP element rotation angle in radians for floor sleeves
+        /// Calculated once during refresh, used many times during placement (no Revit calls)
+        /// For floors: angle = atan2(MepElementOrientation.Y, MepElementOrientation.X) projected onto XY plane
+        /// </summary>
+        public double MepElementRotationAngle { get; set; }
+        
+        /// <summary>
         /// XML serializable MEP element orientation X component
         /// </summary>
         public double MepElementOrientationX

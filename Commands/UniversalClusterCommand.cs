@@ -14,7 +14,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         private readonly string _targetCategory;
         private readonly string _xmlFilePath;
 
-        public UniversalClusterCommand(string targetCategory, string xmlFilePath = null)
+        public UniversalClusterCommand(string targetCategory, string? xmlFilePath = null)
         {
             _targetCategory = targetCategory ?? throw new ArgumentNullException(nameof(targetCategory));
             _xmlFilePath = xmlFilePath; // Optional - if null, searches all XML files (backward compatibility)

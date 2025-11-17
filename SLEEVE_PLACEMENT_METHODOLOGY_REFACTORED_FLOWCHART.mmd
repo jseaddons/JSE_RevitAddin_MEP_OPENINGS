@@ -1,0 +1,295 @@
+flowchart TD
+    Start([User Clicks Refresh]) --> ValidateUI[Validate UI Selections<br/>1. SelectedFilterNames<br/>2. SelectedMepCategories<br/>3. SelectedReferenceFiles<br/>4. SelectedHostFiles<br/>5. SelectedHostCategories]
+    ValidateUI -->|Invalid| Cancel([Cancel Refresh])
+    ValidateUI -->|Valid| CheckFilterDB{Check Filter in Database<br/>TABLE: Filters<br/>QUERY: SELECT FilterId FROM Filters<br/>WHERE FilterName = @FilterName<br/>AND Category = @Category}
+    
+    CheckFilterDB -->|Filter EXISTS| LoadFilter["Load Filter from Database<br/>TABLE: Filters<br/>QUERY: SELECT FilterId, FilterName, Category, SelectedHostCategories, OpeningSettings FROM Filters WHERE FilterId = @FilterId<br/>RETURNS: FilterId INTEGER, FilterName TEXT, Category TEXT, SelectedHostCategories TEXT JSON, OpeningSettings TEXT JSON"]
+    
+    CheckFilterDB -->|Filter NOT FOUND<br/>No FilterId| ValidateFilter{Validate Filter<br/>- UI Selections Valid ✓<br/>- Filter Name Not Empty<br/>- Category Valid}
+    
+    ValidateFilter -->|Invalid| Cancel
+    ValidateFilter -->|Valid| CreateFilter["Create Filter in Database<br/>TABLE: Filters<br/>INSERT INTO Filters (FilterName, Category, IsFilterComboNew, CreatedAt, UpdatedAt) VALUES (@FilterName, @Category, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)<br/>POPULATES: FilterId AUTO-GENERATED, FilterName from UI, Category from UI, IsFilterComboNew=0, CreatedAt NOW, UpdatedAt NOW"]
+    
+    CreateFilter --> CheckCreateFilter{Database<br/>Operation<br/>Success?}
+    CheckCreateFilter -->|Failed| RollbackCreateFilter[Rollback Transaction<br/>Log Error: Filter Creation Failed]
+    RollbackCreateFilter --> Cancel
+    CheckCreateFilter -->|Success| SaveUIState["Save UI State to Database<br/>TABLE: Filters<br/>UPDATE Filters SET SelectedHostCategories = @SelectedHostCategories, OpeningSettings = @OpeningSettings, UpdatedAt = CURRENT_TIMESTAMP WHERE FilterId = @FilterId<br/>POPULATES: SelectedHostCategories JSON array, OpeningSettings JSON object"]
+    
+    SaveUIState --> CheckSaveUIState{Database<br/>Operation<br/>Success?}
+    CheckSaveUIState -->|Failed| RollbackSaveUIState[Rollback Transaction<br/>Log Error: UI State Save Failed]
+    RollbackSaveUIState --> Cancel
+    CheckSaveUIState -->|Success| CheckFileComboDB
+    
+    LoadFilter --> CheckLoadFilter{Database<br/>Load<br/>Success?}
+    CheckLoadFilter -->|Failed| LogLoadFilterError[Log Error: Filter Load Failed<br/>Fallback to XML or Cancel]
+    LogLoadFilterError --> Cancel
+    CheckLoadFilter -->|Success| CheckFileComboDB{Check FileCombo in Database<br/>TABLE: FileCombos<br/>QUERY: SELECT ComboId, IsFilterComboNew<br/>FROM FileCombos<br/>WHERE FilterId = @FilterId<br/>AND LinkedFileKey = @LinkedFileKey<br/>AND HostFileKey = @HostFileKey}
+    
+    SaveUIState --> CheckFileComboDB
+    
+    CheckFileComboDB -->|FileCombo EXISTS| LoadFileCombo["Load FileCombo from Database<br/>TABLE: FileCombos<br/>SELECT ComboId, IsFilterComboNew FROM FileCombos WHERE ComboId = @ComboId<br/>RETURNS: ComboId INTEGER, IsFilterComboNew 0 or 1"]
+    
+    CheckFileComboDB -->|FileCombo NOT FOUND| CreateFileCombo["Create FileCombo in Database<br/>TABLE: FileCombos<br/>INSERT INTO FileCombos (FilterId, LinkedFileKey, HostFileKey, IsFilterComboNew, ProcessedAt, CreatedAt, UpdatedAt) VALUES (@FilterId, @LinkedFileKey, @HostFileKey, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)<br/>POPULATES: ComboId AUTO-GENERATED, FilterId from Filter, LinkedFileKey normalized, HostFileKey normalized, IsFilterComboNew=1 NEW, ProcessedAt NOW, CreatedAt NOW, UpdatedAt NOW"]
+    
+    CreateFileCombo --> CheckCreateFileCombo{Database<br/>Operation<br/>Success?}
+    CheckCreateFileCombo -->|Failed| RollbackCreateFileCombo[Rollback Transaction<br/>Log Error: FileCombo Creation Failed]
+    RollbackCreateFileCombo --> Cancel
+    CheckCreateFileCombo -->|Success| CheckFileComboFlag{Check IsFilterComboNew<br/>Flag Value<br/>From Loaded FileCombo<br/>Value: 0 or 1}
+    
+    LoadFileCombo --> CheckFileComboFlag
+    
+    CheckFileComboFlag --> CheckAdopt{Adopt to Modified<br/>Document?<br/>EnableThreePointValidation}
+    
+    CheckAdopt -->|OFF| CheckFileComboValue{IsFilterComboNew<br/>= 0?}
+    CheckAdopt -->|ON| CheckExisting{Filter has<br/>existing zones?}
+    
+    CheckFileComboValue -->|Yes| PATH1[PATH 1: REPLAY MODE]
+    CheckFileComboValue -->|No| PATH2[PATH 2: FRESH PLACEMENT<br/>Flag = 1, New FileCombo]
+    
+    CheckExisting -->|No| PATH2
+    CheckExisting -->|Yes| PATH3[PATH 3: FULL DETECTION<br/>WITH VALIDATION]
+    
+    PATH1 --> LoadExisting1[Load Existing Clash Zones<br/>from Database PRIMARY<br/>or XML Fallback]
+    LoadExisting1 --> CheckLoadExisting1{Data Load<br/>Success?}
+    CheckLoadExisting1 -->|Failed| LogLoadExistingError[Log Error: No Zones Found<br/>Fallback to XML or Cancel]
+    LogLoadExistingError --> Cancel
+    CheckLoadExisting1 -->|Success| SkipDetection1[Skip Intersection Detection]
+    SkipDetection1 --> ResetFlags1[Reset Flags for<br/>Deleted Sleeves]
+    ResetFlags1 --> NoSave1[No Database Save]
+    NoSave1 --> PlaceSleeves1[Place Sleeves<br/>for Deleted Only]
+    PlaceSleeves1 --> End1([End: PATH 1])
+    
+    PATH2 --> LoadXML2[Load XML Cache Once<br/>OPTIONAL - Fallback Only]
+    LoadXML2 --> RunDetection2[Run Intersection Detection]
+    RunDetection2 --> SkipValidation2[Skip 3-Point Validation]
+    SkipValidation2 --> CreateZones2[Create Clash Zones]
+    CreateZones2 --> SaveDB2["Save to Database<br/>- INSERT ClashZones all new zones<br/>- INSERT SleeveSnapshots all new<br/>NOTE: FileCombo already created<br/>with IsFilterComboNew=1"]
+    SaveDB2 --> CheckSaveDB2{Database<br/>Operation<br/>Success?}
+    CheckSaveDB2 -->|Failed| RollbackSaveDB2[Rollback Transaction<br/>Log Error: ClashZones Save Failed]
+    RollbackSaveDB2 --> Cancel
+    CheckSaveDB2 -->|Success| Commit2[Commit Transaction]
+    Commit2 --> CheckCommit2{Transaction<br/>Commit<br/>Success?}
+    CheckCommit2 -->|Failed| RollbackCommit2[Rollback Transaction<br/>Log Error: Transaction Commit Failed]
+    RollbackCommit2 --> Cancel
+    CheckCommit2 -->|Success| End2([End: PATH 2])
+    
+    PATH3 --> LoadXML3[Load XML Cache Once<br/>OPTIONAL - Fallback Only]
+    LoadXML3 --> RunDetection3[Run Intersection Detection]
+    RunDetection3 --> Validate3[3-Point Validation<br/>- MEP Element Exists?<br/>- Structural Element Exists?<br/>- Elements Still Intersect?]
+    
+    Validate3 --> SplitZones[Split Zones by Validation Result<br/>For Each Existing Zone:<br/>- MEP Element Exists? → Validated<br/>- Structural Element Exists? → Validated<br/>- Elements Still Intersect? → Validated<br/>- Any Point Fails → Invalidated<br/>- Not in Existing → New]
+    
+    SplitZones --> ValidatedZones[Validated Zones<br/>All 3 Points Pass]
+    SplitZones --> InvalidatedZones[Invalidated Zones<br/>Any Point Fails]
+    SplitZones --> NewZones[New Zones<br/>Not in Existing]
+    
+    ValidatedZones -->|→ PATH 1 Placement Logic| LoadZonesPlace1
+    InvalidatedZones --> MergeRequired[MERGE REQUIRED<br/>- Update Intersection Points<br/>- Handle Moved Elements<br/>- Structural Updates Allowed]
+    MergeRequired --> MergeZones[Merge with New Zones]
+    MergeZones --> SaveInvalidated[Save Invalidated Zones<br/>to Database<br/>With Updated Geometry]
+    SaveInvalidated --> CheckSaveInvalidated{Database<br/>Operation<br/>Success?}
+    CheckSaveInvalidated -->|Failed| RollbackSaveInvalidated[Rollback Transaction<br/>Log Error: Invalidated Zones Save Failed]
+    RollbackSaveInvalidated --> Cancel
+    CheckSaveInvalidated -->|Success| Commit3[Commit Transaction]
+    Commit3 --> CheckCommit3{Transaction<br/>Commit<br/>Success?}
+    CheckCommit3 -->|Failed| RollbackCommit3[Rollback Transaction<br/>Log Error: Transaction Commit Failed]
+    RollbackCommit3 --> Cancel
+    CheckCommit3 -->|Success| LoadConditions3[Load Conditions from Database<br/>TABLE: Filters<br/>SELECT OpeningSettings<br/>PATH 3 Invalidated]
+    
+    LoadConditions3 --> CheckLoadConditions3{Database<br/>Load<br/>Success?}
+    CheckLoadConditions3 -->|Failed| LogLoadConditionsError3[Log Error: Conditions Load Failed<br/>Use Default Settings or Cancel]
+    LogLoadConditionsError3 --> Cancel
+    CheckLoadConditions3 -->|Success| RunDetection3Invalidated
+    
+    NewZones -->|→ PATH 2 Placement Logic| LoadConditions2
+    
+    %% Placement Flow
+    End1 --> PlacementFlow[Placement Flow]
+    End2 --> PlacementFlow
+    
+    PlacementFlow --> CheckPlacementPath{Determine Placement<br/>Path<br/>Check IsFilterComboNew Flag}
+    
+    CheckPlacementPath -->|IsFilterComboNew=0| LoadUISettings[Load Current UI Settings<br/>OpeningSettings from UI State]
+    CheckPlacementPath -->|IsFilterComboNew=1| SizingPath[PATH 2: SIZING<br/>Calculate Sleeve Sizes]
+    
+    LoadUISettings --> LoadDBSettings[Load DB Settings<br/>SELECT OpeningSettings FROM Filters<br/>WHERE FilterId = @FilterId]
+    LoadDBSettings --> CheckLoadDBSettings{Database<br/>Load<br/>Success?}
+    CheckLoadDBSettings -->|Failed| LogLoadDBError[Log Error: DB Settings Load Failed<br/>Assume Conditions Changed]
+    LogLoadDBError --> SizingPath
+    CheckLoadDBSettings -->|Success| CheckConditionsChanged{Conditions Changed?<br/>Compare UI OpeningSettings<br/>with DB OpeningSettings<br/>PATH 1}
+    
+    CheckConditionsChanged -->|Conditions Changed| SizingPath
+    CheckConditionsChanged -->|Conditions NOT Changed| ReplayPath[PATH 1: REPLAY<br/>Use Saved Data from DB]
+    
+    %% PATH 3 Placement - Direct Routing (No Flag Check)
+    %% Validated zones already routed to LoadZonesPlace1 above
+    %% Invalidated/New zones already routed to LoadConditions2 above
+    
+    %% PATH 1: REPLAY - Distinct Flow
+    ReplayPath --> LoadZonesPlace1[Load Clash Zones<br/>from Database]
+    LoadZonesPlace1 --> SyncFlags1[Sync Flags from Database<br/>PRIMARY or Global XML Fallback]
+    SyncFlags1 --> LoopZones1{For Each<br/>Clash Zone}
+    
+    LoopZones1 --> CheckSleeve1{Sleeve Exists?<br/>MEP+Host+Point}
+    CheckSleeve1 -->|Yes| Skip1[SKIP - Sleeve Already Exists]
+    CheckSleeve1 -->|No| PlaceSleeve1[Place Sleeve<br/>Using Saved Data from DB]
+    
+    PlaceSleeve1 --> CheckPlaceSleeve1{Sleeve<br/>Placement<br/>Success?}
+    CheckPlaceSleeve1 -->|Failed| LogPlaceError1[Log Error: Sleeve Placement Failed<br/>Continue with Next Zone]
+    LogPlaceError1 --> LoopZones1
+    CheckPlaceSleeve1 -->|Success| UpdateFlags1[Update Flags in Database<br/>PRIMARY and Global XML Fallback<br/>- IsResolved = true<br/>- SleeveInstanceId]
+    
+    UpdateFlags1 --> CheckUpdateFlags1{Database<br/>Operation<br/>Success?}
+    CheckUpdateFlags1 -->|Failed| LogFlagError1[Log Error: Flag Update Failed<br/>Continue with Next Zone]
+    LogFlagError1 --> LoopZones1
+    CheckUpdateFlags1 -->|Success| LoopZones1
+    
+    Skip1 --> LoopZones1
+    
+    LoopZones1 -->|All Individual<br/>Sleeves Placed| CheckClusterData1{Check ClusterSleeves Table<br/>Cluster data exists<br/>for ComboId?<br/>PATH 1}
+    
+    CheckClusterData1 -->|Cluster Data EXISTS| LoadClusterData1[Load Cluster Data<br/>from Database<br/>PATH 1<br/>NO CALCULATION]
+    CheckClusterData1 -->|No Cluster Data| SkipClustering1[Skip Clustering<br/>No Data Available<br/>PATH 1]
+    
+    LoadClusterData1 --> PlaceCluster1[Place Cluster Sleeves<br/>Using Stored Data from DB<br/>PATH 1]
+    PlaceCluster1 --> DeleteIndividual1[Delete Individual Sleeves<br/>within Clusters<br/>PATH 1]
+    DeleteIndividual1 --> UpdateClusterFlags1[Update Flags in Database<br/>- IsClusterResolved = true<br/>- ClusterSleeveInstanceId<br/>- Clear SleeveInstanceId<br/>PATH 1]
+    
+    SkipClustering1 --> UpdateClusterFlags1
+    
+    %% PATH 3 Validated Zones - After PATH 1 Placement
+    %% Validated zones use PATH 1 placement, but always recalculate clusters
+    %% (nearby zone changes may affect cluster formation)
+    UpdateFlags1 --> CheckValidatedFromPath3{Validated Zones<br/>from PATH 3?}
+    CheckValidatedFromPath3 -->|Yes PATH 3 Validated| AlwaysCluster3Validated[Always Run Clustering<br/>Recalculation<br/>PATH 3 Validated<br/>Nearby zones may have changed]
+    CheckValidatedFromPath3 -->|No PATH 1 Only| UpdateClusterFlags1
+    
+    %% PATH 3 Validated Zones Clustering - Always Calculate
+    AlwaysCluster3Validated --> ClusterFlow3Validated[Cluster Flow - Calculation<br/>PATH 3 Validated<br/>FRESH CALCULATION]
+    ClusterFlow3Validated --> LoadClusterZones3Validated[Load Clash Zones from DB<br/>PATH 3 Validated]
+    LoadClusterZones3Validated --> GroupSleeves3Validated[Group Sleeves<br/>PATH 3 Validated]
+    GroupSleeves3Validated --> CalculateProximity3Validated[Calculate Proximity<br/>PATH 3 Validated]
+    CalculateProximity3Validated --> FormClusters3Validated[Form Clusters<br/>PATH 3 Validated]
+    FormClusters3Validated --> CheckRotation3Validated{Need Rotated<br/>Bounding Box?<br/>PATH 3 Validated}
+    CheckRotation3Validated -->|Axis-Aligned| AxisAligned3Validated[Calculate Axis-Aligned<br/>PATH 3 Validated]
+    CheckRotation3Validated -->|Rotated| Rotated3Validated[Calculate Rotated<br/>PATH 3 Validated]
+    AxisAligned3Validated --> CalculateClusterData3Validated[Calculate Cluster Data<br/>PATH 3 Validated]
+    Rotated3Validated --> CalculateClusterData3Validated
+    CalculateClusterData3Validated --> SaveClusterData3Validated[Save Cluster Data<br/>PATH 3 Validated]
+    SaveClusterData3Validated --> PlaceClusterCalc3Validated[Place Cluster Sleeves<br/>Using Calculated Data<br/>PATH 3 Validated]
+    PlaceClusterCalc3Validated --> DeleteIndividual3Validated[Delete Individual Sleeves<br/>PATH 3 Validated]
+    DeleteIndividual3Validated --> UpdateClusterFlags3Validated[Update Flags in Database<br/>PATH 3 Validated]
+    UpdateClusterFlags3Validated --> ResetFlagAfterCluster
+    
+    %% PATH 2: SIZING - Distinct Flow
+    SizingPath --> LoadConditions2[Load Conditions from Database<br/>TABLE: Filters<br/>SELECT OpeningSettings<br/>WHERE FilterId = @FilterId<br/>Contains: ClearanceSettings JSON]
+    LoadConditions2 --> CheckLoadConditions2{Database<br/>Load<br/>Success?}
+    CheckLoadConditions2 -->|Failed| LogLoadConditionsError2[Log Error: Conditions Load Failed<br/>Use Default Settings or Cancel]
+    LogLoadConditionsError2 --> Cancel
+    CheckLoadConditions2 -->|Success| CalculateSize[Calculate Sleeve Size<br/>- Read Clearance Settings from DB<br/>- Read Conditions from DB<br/>- Apply Clearance to MEP Dimensions]
+    CalculateSize --> PlaceSleeve2[Place Sleeve<br/>With Calculated Size<br/>No Flag Management]
+    PlaceSleeve2 --> CheckPlaceSleeve2{Sleeve<br/>Placement<br/>Success?}
+    CheckPlaceSleeve2 -->|Failed| LogPlaceError2[Log Error: Sleeve Placement Failed<br/>Continue with Next Zone]
+    LogPlaceError2 --> CheckNewFromPath3
+    CheckPlaceSleeve2 -->|Success| UpdateFlags2[Update Flags in Database<br/>- IsResolved = true<br/>- SleeveInstanceId<br/>PATH 2<br/>NOTE: FileCombo flag stays = 1<br/>Reset AFTER clustering]
+    
+    UpdateFlags2 --> CheckUpdateFlags2{Database<br/>Operation<br/>Success?}
+    CheckUpdateFlags2 -->|Failed| LogFlagError2[Log Error: Flag Update Failed<br/>Continue with Next Zone]
+    LogFlagError2 --> CheckNewFromPath3
+    CheckUpdateFlags2 -->|Success| CheckNewFromPath3{New Zones<br/>from PATH 3?}
+    CheckNewFromPath3 -->|Yes PATH 3 New| AlwaysCluster3New[Always Run Clustering<br/>Calculation<br/>PATH 3 New]
+    CheckNewFromPath3 -->|No PATH 2 Only| AlwaysCluster2[Always Run Clustering<br/>Calculation<br/>PATH 2]
+    
+    AlwaysCluster2 --> ClusterFlow2[Cluster Flow - Calculation<br/>PATH 2<br/>FRESH CALCULATION]
+    
+    %% PATH 3 New Zones Clustering
+    AlwaysCluster3New --> ClusterFlow3New[Cluster Flow - Calculation<br/>PATH 3 New<br/>FRESH CALCULATION]
+    ClusterFlow3New --> LoadClusterZones3New[Load Clash Zones from DB<br/>PATH 3 New]
+    LoadClusterZones3New --> GroupSleeves3New[Group Sleeves<br/>PATH 3 New]
+    GroupSleeves3New --> CalculateProximity3New[Calculate Proximity<br/>PATH 3 New]
+    CalculateProximity3New --> FormClusters3New[Form Clusters<br/>PATH 3 New]
+    FormClusters3New --> CheckRotation3New{Need Rotated<br/>Bounding Box?<br/>PATH 3 New}
+    CheckRotation3New -->|Axis-Aligned| AxisAligned3New[Calculate Axis-Aligned<br/>PATH 3 New]
+    CheckRotation3New -->|Rotated| Rotated3New[Calculate Rotated<br/>PATH 3 New]
+    AxisAligned3New --> CalculateClusterData3New[Calculate Cluster Data<br/>PATH 3 New]
+    Rotated3New --> CalculateClusterData3New
+    CalculateClusterData3New --> SaveClusterData3New[Save Cluster Data<br/>PATH 3 New]
+    SaveClusterData3New --> PlaceClusterCalc3New[Place Cluster Sleeves<br/>Using Calculated Data<br/>PATH 3 New]
+    PlaceClusterCalc3New --> DeleteIndividual3New[Delete Individual Sleeves<br/>PATH 3 New]
+    DeleteIndividual3New --> UpdateClusterFlags3New[Update Flags in Database<br/>PATH 3 New]
+    UpdateClusterFlags3New --> ResetFlagAfterCluster
+    ClusterFlow2 --> LoadClusterZones2[Load Clash Zones from DB<br/>- SleeveInstanceId > 0<br/>- IsClusterResolved = false<br/>PATH 2]
+    LoadClusterZones2 --> GroupSleeves2[Group Sleeves by:<br/>- Host Type<br/>- System Type<br/>- Orientation<br/>PATH 2]
+    GroupSleeves2 --> CalculateProximity2[Calculate Proximity<br/>Using Bounding Boxes<br/>PATH 2]
+    CalculateProximity2 --> FormClusters2[Form Clusters<br/>Based on Join Distance<br/>PATH 2]
+    FormClusters2 --> CheckRotation2{Need Rotated<br/>Bounding Box?<br/>PATH 2}
+    CheckRotation2 -->|Axis-Aligned| AxisAligned2[Calculate Axis-Aligned<br/>Bounding Box<br/>PATH 2]
+    CheckRotation2 -->|Rotated| Rotated2[Calculate Rotated<br/>Bounding Box<br/>PATH 2]
+    AxisAligned2 --> CalculateClusterData2[Calculate Cluster Data<br/>PATH 2]
+    Rotated2 --> CalculateClusterData2
+    CalculateClusterData2 --> SaveClusterData2[Save Cluster Data to Database<br/>PATH 2]
+    SaveClusterData2 --> PlaceCluster2[Place Cluster Sleeves<br/>Using Calculated Data<br/>PATH 2]
+    PlaceCluster2 --> DeleteIndividual2[Delete Individual Sleeves<br/>within Clusters<br/>PATH 2]
+    DeleteIndividual2 --> UpdateClusterFlags2[Update Flags in Database<br/>- IsClusterResolved = true<br/>- ClusterSleeveInstanceId<br/>- Clear SleeveInstanceId<br/>PATH 2]
+    
+    %% PATH 3: INVALIDATED ZONES - Distinct Placement Flow
+    LoadConditions3 --> RunDetection3Invalidated[Run Intersection Detection<br/>for Moved MEP/Host Elements<br/>PATH 3 Invalidated]
+    RunDetection3Invalidated --> DeleteAffectedSleeves[Delete Placed Sleeves<br/>Affected by Invalid Clash Zone<br/>PATH 3]
+    DeleteAffectedSleeves --> ResetFlagsDeleted[Reset Flags for Deleted Sleeves<br/>Set IsResolved = true<br/>So they won't be placed again<br/>PATH 3]
+    ResetFlagsDeleted --> CalculateSize3[Calculate Sleeve Size<br/>- Read Clearance Settings from DB<br/>- Apply Clearance to MEP Dimensions<br/>PATH 3]
+    CalculateSize3 --> PlaceSleeve3[Place New Sleeve<br/>With Calculated Size<br/>No Flag Check Before Placement<br/>PATH 3]
+    PlaceSleeve3 --> CheckPlaceSleeve3{Sleeve<br/>Placement<br/>Success?}
+    CheckPlaceSleeve3 -->|Failed| LogPlaceError3[Log Error: Sleeve Placement Failed<br/>Continue with Next Zone]
+    LogPlaceError3 --> AlwaysCluster3Invalidated
+    CheckPlaceSleeve3 -->|Success| UpdateFlags3[Update Flags for Placed Sleeves<br/>- IsResolved = true<br/>- SleeveInstanceId<br/>PATH 3]
+    
+    UpdateFlags3 --> CheckUpdateFlags3{Database<br/>Operation<br/>Success?}
+    CheckUpdateFlags3 -->|Failed| LogFlagError3[Log Error: Flag Update Failed<br/>Continue with Next Zone]
+    LogFlagError3 --> AlwaysCluster3Invalidated
+    CheckUpdateFlags3 -->|Success| AlwaysCluster3Invalidated[Always Run Clustering<br/>Recalculation<br/>PATH 3 Invalidated]
+    AlwaysCluster3Invalidated --> ClusterFlow3Invalidated[Cluster Flow - Calculation<br/>PATH 3 Invalidated<br/>FRESH CALCULATION]
+    ClusterFlow3Invalidated --> LoadClusterZones3Invalidated[Load Clash Zones from DB<br/>PATH 3 Invalidated]
+    LoadClusterZones3Invalidated --> GroupSleeves3Invalidated[Group Sleeves<br/>PATH 3 Invalidated]
+    GroupSleeves3Invalidated --> CalculateProximity3Invalidated[Calculate Proximity<br/>PATH 3 Invalidated]
+    CalculateProximity3Invalidated --> FormClusters3Invalidated[Form Clusters<br/>Based on Join Distance<br/>PATH 3 Invalidated]
+    FormClusters3Invalidated --> CheckRotation3Invalidated{Need Rotated<br/>Bounding Box?<br/>PATH 3 Invalidated}
+    CheckRotation3Invalidated -->|Axis-Aligned| AxisAligned3Invalidated[Calculate Axis-Aligned<br/>PATH 3 Invalidated]
+    CheckRotation3Invalidated -->|Rotated| Rotated3Invalidated[Calculate Rotated<br/>PATH 3 Invalidated]
+    AxisAligned3Invalidated --> CalculateClusterData3Invalidated[Calculate Cluster Data<br/>PATH 3 Invalidated]
+    Rotated3Invalidated --> CalculateClusterData3Invalidated
+    CalculateClusterData3Invalidated --> SaveClusterData3Invalidated[Save Cluster Data<br/>PATH 3 Invalidated]
+    SaveClusterData3Invalidated --> CheckClusterNeed3{Cluster Needed<br/>for Affected Zones?<br/>PATH 3}
+    CheckClusterNeed3 -->|Cluster Not Needed| RemoveCluster3[Remove Cluster Sleeve<br/>Delete from Revit<br/>PATH 3]
+    CheckClusterNeed3 -->|Cluster Needed| PlaceClusterCalc3Invalidated[Place Cluster Sleeves<br/>Using Calculated Data<br/>PATH 3 Invalidated]
+    PlaceClusterCalc3Invalidated --> DeleteIndividual3InvalidatedCluster[Delete Individual Sleeves<br/>within Clusters<br/>PATH 3 Invalidated]
+    DeleteIndividual3InvalidatedCluster --> UpdateClusterFlags3Invalidated[Update Cluster Flags<br/>- IsClusterResolved = true<br/>- ClusterSleeveInstanceId<br/>- Clear SleeveInstanceId<br/>PATH 3 Invalidated]
+    RemoveCluster3 --> UpdateClusterFlags3Invalidated
+    UpdateClusterFlags3Invalidated --> ResetFlagAfterCluster
+    
+    %% Convergence Point - ONLY After Cluster Placement and Flag Update
+    %% Reset FileCombo Flag (IsFilterComboNew = 0) ONLY after:
+    %% - Cluster sleeves placed (or skipped)
+    %% - Cluster flags updated
+    UpdateClusterFlags1 --> ResetFlagAfterCluster[Reset FileCombo Flag<br/>IsFilterComboNew = 0<br/>ONLY After:<br/>- Cluster sleeves placed<br/>- Cluster flags updated<br/>via ClashZoneRepository]
+    UpdateClusterFlags2 --> ResetFlagAfterCluster
+    
+    ResetFlagAfterCluster --> FinalEnd([Complete])
+    
+    %% Styling
+    classDef path1 fill:#ffcccc,stroke:#ff0000,stroke-width:2px
+    classDef path2 fill:#ffe6cc,stroke:#ff8800,stroke-width:2px
+    classDef path3 fill:#ccffcc,stroke:#00ff00,stroke-width:2px
+    classDef database fill:#cce5ff,stroke:#0066cc,stroke-width:2px
+    classDef decision fill:#ffffcc,stroke:#ffcc00,stroke-width:2px
+    classDef process fill:#e6e6e6,stroke:#666666,stroke-width:1px
+    classDef error fill:#ffcccc,stroke:#cc0000,stroke-width:2px,stroke-dasharray: 5 5
+    
+    class CheckCreateFilter,CheckSaveUIState,CheckCreateFileCombo,CheckSaveDB2,CheckCommit2,CheckSaveInvalidated,CheckCommit3,CheckLoadFilter,CheckLoadExisting1,CheckLoadConditions2,CheckLoadConditions3,CheckLoadDBSettings,CheckPlaceSleeve1,CheckPlaceSleeve2,CheckPlaceSleeve3,CheckUpdateFlags1,CheckUpdateFlags2,CheckUpdateFlags3 decision
+    class RollbackCreateFilter,RollbackSaveUIState,RollbackCreateFileCombo,RollbackSaveDB2,RollbackCommit2,RollbackSaveInvalidated,RollbackCommit3,LogLoadFilterError,LogLoadExistingError,LogLoadConditionsError2,LogLoadConditionsError3,LogLoadDBError,LogPlaceError1,LogPlaceError2,LogPlaceError3,LogFlagError1,LogFlagError2,LogFlagError3 error
+    
+    class PATH1,SkipDetection1,LoadExisting1,ResetFlags1,NoSave1,PlaceSleeves1,End1,ReplayPath,LoadZonesPlace1,SyncFlags1,LoopZones1,CheckSleeve1,PlaceSleeve1,UpdateFlags1,Skip1,CheckClusterData1,LoadClusterData1,PlaceCluster1,DeleteIndividual1,UpdateClusterFlags1,SkipClustering1,LoadUISettings,LoadDBSettings,CheckLoadExisting1,LogLoadExistingError,CheckPlaceSleeve1,LogPlaceError1,CheckUpdateFlags1,LogFlagError1 path1
+    class PATH2,LoadXML2,RunDetection2,SkipValidation2,CreateZones2,SaveDB2,Commit2,End2,SizingPath,LoadConditions2,CalculateSize,PlaceSleeve2,UpdateFlags2,AlwaysCluster2,ClusterFlow2,LoadClusterZones2,GroupSleeves2,CalculateProximity2,FormClusters2,CheckRotation2,AxisAligned2,Rotated2,CalculateClusterData2,SaveClusterData2,PlaceCluster2,DeleteIndividual2,UpdateClusterFlags2,CheckSaveDB2,RollbackSaveDB2,CheckCommit2,RollbackCommit2,CheckLoadConditions2,LogLoadConditionsError2,CheckPlaceSleeve2,LogPlaceError2,CheckUpdateFlags2,LogFlagError2 path2
+    class PATH3,LoadXML3,RunDetection3,Validate3,InvalidatedZones,MergeRequired,MergeZones,SaveInvalidated,Commit3,End3,LoadConditions3,RunDetection3Invalidated,DeleteAffectedSleeves,ResetFlagsDeleted,CalculateSize3,PlaceSleeve3,UpdateFlags3,AlwaysCluster3Invalidated,ClusterFlow3Invalidated,LoadClusterZones3Invalidated,GroupSleeves3Invalidated,CalculateProximity3Invalidated,FormClusters3Invalidated,CheckRotation3Invalidated,AxisAligned3Invalidated,Rotated3Invalidated,CalculateClusterData3Invalidated,SaveClusterData3Invalidated,PlaceClusterCalc3Invalidated,DeleteIndividual3InvalidatedCluster,CheckClusterNeed3,RemoveCluster3,UpdateClusterFlags3Invalidated,AlwaysCluster3Validated,ClusterFlow3Validated,LoadClusterZones3Validated,GroupSleeves3Validated,CalculateProximity3Validated,FormClusters3Validated,CheckRotation3Validated,AxisAligned3Validated,Rotated3Validated,CalculateClusterData3Validated,SaveClusterData3Validated,PlaceClusterCalc3Validated,DeleteIndividual3Validated,UpdateClusterFlags3Validated,AlwaysCluster3New,ClusterFlow3New,LoadClusterZones3New,GroupSleeves3New,CalculateProximity3New,FormClusters3New,CheckRotation3New,AxisAligned3New,Rotated3New,CalculateClusterData3New,SaveClusterData3New,PlaceClusterCalc3New,DeleteIndividual3New,UpdateClusterFlags3New,CheckNewFromPath3,SplitZones,CheckSaveInvalidated,RollbackSaveInvalidated,CheckCommit3,RollbackCommit3,CheckLoadConditions3,LogLoadConditionsError3,CheckPlaceSleeve3,LogPlaceError3,CheckUpdateFlags3,LogFlagError3 path3
+    class CheckFilterDB,LoadFilter,CreateFilter,SaveUIState,CheckFileComboDB,LoadFileCombo,CreateFileCombo,LoadZonesPlace1,LoadConditions2,LoadConditions3,SaveDB2,SaveInvalidated,UpdateFlags1,UpdateFlags2,UpdateFlags3,ResetFlagAfterCluster,ResetFlagAfterClusterFromData,LoadClusterZones,SaveClusterData,UpdateClusterFlags,UpdateClusterFlagsFromData,LoadClusterData,CheckCreateFilter,CheckSaveUIState,CheckCreateFileCombo,CheckLoadFilter,CheckLoadDBSettings database
+    class ValidateUI,CheckFilterDB,ValidateFilter,CheckFileComboFlag,CheckAdopt,CheckFileComboValue,CheckExisting,CheckPlacementPath,CheckConditionsChanged,CheckSleeve1,LoopZones1,CheckRotation,CheckClusteringPath1,CheckClusteringPath2,ClusterDecision,CheckClusterData,CheckValidatedFromPath3,CheckNewFromPath3,CheckClusterNeed3,CheckRotation2,CheckRotation3Invalidated,CheckRotation3Validated,CheckRotation3New decision
+    class ValidateUI,LoadXML2,LoadXML3,RunDetection2,RunDetection3,Validate3,SplitZones,PlaceSleeve,GroupSleeves,FormClusters,PlaceCluster,CalculateClusterData process

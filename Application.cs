@@ -4,7 +4,12 @@ using JSE_RevitAddin_MEP_OPENINGS.Security;
 using Nice3point.Revit.Toolkit.External;
 using Serilog;
 using Serilog.Events;
+using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Xml.Linq;
 
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 namespace JSE_RevitAddin_MEP_OPENINGS
@@ -39,6 +44,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS
             try
             {
                 CreateLogger();
+                
+                // ✅ CRITICAL: Copy native SQLite DLL to temporary execution directory
+                // Revit copies the add-in DLL to a temp directory but doesn't copy native DLLs
+                CopyNativeSqliteDllToExecutionDirectory();
                 
                 // Initialize optimization services (Phase 1 - Foundation)
                 InitializeOptimizationServices();
@@ -196,6 +205,206 @@ namespace JSE_RevitAddin_MEP_OPENINGS
                 DebugLogger.Warning($"[Application] Error initializing optimization services: {ex.Message}");
                 // Fallback to safe defaults
                 OptimizationFlags.ResetToSafeDefaults();
+            }
+        }
+        
+        /// <summary>
+        /// Copy e_sqlite3.dll to the temporary execution directory where Revit loads the add-in
+        /// Revit creates a temp directory like: C:\Users\...\AppData\Local\Temp\RevitAddins\JSE_RevitAddin_MEP_OPENINGS-Executing-{timestamp}\
+        /// The native DLL must be in the same directory as the executing DLL for SQLite to work
+        /// </summary>
+        private static void CopyNativeSqliteDllToExecutionDirectory()
+        {
+            try
+            {
+                var executingAssembly = Assembly.GetExecutingAssembly();
+                var executionDirectory = Path.GetDirectoryName(executingAssembly.Location);
+                if (string.IsNullOrEmpty(executionDirectory))
+                {
+                    Log.Warning("[SQLite] Execution directory is null; cannot verify native dependencies.");
+                    return;
+                }
+
+                Log.Debug($"[SQLite] Execution directory: {executionDirectory}");
+
+                var dependencies = new (string RelativePath, bool PreferX64)[]
+                {
+                    ("System.Data.SQLite.dll", false),
+                    (Path.Combine("x64", "SQLite.Interop.dll"), true)
+                };
+
+                foreach (var dependency in dependencies)
+                {
+                    var targetPath = Path.Combine(executionDirectory, dependency.RelativePath);
+                    if (File.Exists(targetPath))
+                    {
+                        Log.Debug($"[SQLite] Dependency already present: {targetPath}");
+                        continue;
+                    }
+
+                    var sourcePath = LocateDependency(dependency.RelativePath, dependency.PreferX64);
+                    if (sourcePath == null)
+                    {
+                        Log.Warning($"[SQLite] ⚠️ Unable to locate dependency '{dependency.RelativePath}'. SQLite may fail to load.");
+                        continue;
+                    }
+
+                    try
+                    {
+                        var destinationDirectory = Path.GetDirectoryName(targetPath);
+                        if (!string.IsNullOrEmpty(destinationDirectory))
+                        {
+                            Directory.CreateDirectory(destinationDirectory);
+                        }
+
+                        File.Copy(sourcePath, targetPath, overwrite: true);
+                        Log.Information($"[SQLite] ✅ Copied dependency: {sourcePath} -> {targetPath}");
+                    }
+                    catch (Exception copyEx)
+                    {
+                        Log.Error(copyEx, $"[SQLite] ❌ Failed to copy dependency '{dependency.RelativePath}'");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Don't fail startup if DLL copy fails - SQLite will handle the error gracefully
+                Log.Warning(ex, "[SQLite] Error during native DLL copy operation");
+            }
+
+            static string? LocateDependency(string relativePath, bool preferX64)
+            {
+                var fileName = Path.GetFileName(relativePath);
+                var candidatePaths = new List<string>();
+
+                void AddPath(string? path)
+                {
+                    if (!string.IsNullOrEmpty(path))
+                    {
+                        candidatePaths.Add(path);
+                    }
+                }
+
+                var revitVersions = new[] { "2023", "2024", "2025" };
+                foreach (var version in revitVersions)
+                {
+                    var appDataDir = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                        @"Autodesk\Revit\Addins", version);
+                    AddPath(Path.Combine(appDataDir, fileName));
+                    AddPath(Path.Combine(appDataDir, "x64", fileName));
+
+                    var programDataDir = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                        @"Autodesk\Revit\Addins", version);
+                    AddPath(Path.Combine(programDataDir, fileName));
+                    AddPath(Path.Combine(programDataDir, "x64", fileName));
+                }
+
+                try
+                {
+                    var addinManifests = new[]
+                    {
+                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"Autodesk\Revit\Addins\2024\JSE_RevitAddin_MEP_OPENINGS.addin"),
+                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"Autodesk\Revit\Addins\2023\JSE_RevitAddin_MEP_OPENINGS.addin"),
+                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), @"Autodesk\Revit\Addins\2024\JSE_RevitAddin_MEP_OPENINGS.addin"),
+                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), @"Autodesk\Revit\Addins\2023\JSE_RevitAddin_MEP_OPENINGS.addin")
+                    };
+
+                    foreach (var manifest in addinManifests)
+                    {
+                        if (!File.Exists(manifest)) continue;
+
+                        var addinXml = XDocument.Load(manifest);
+                        var assemblyElement = addinXml.Descendants("Assembly").FirstOrDefault();
+                        if (assemblyElement == null) continue;
+
+                        var assemblyPath = assemblyElement.Value;
+                        if (!Path.IsPathRooted(assemblyPath) || !File.Exists(assemblyPath)) continue;
+
+                        var assemblyDir = Path.GetDirectoryName(assemblyPath);
+                        AddPath(Path.Combine(assemblyDir ?? string.Empty, fileName));
+                        AddPath(Path.Combine(assemblyDir ?? string.Empty, "x64", fileName));
+                    }
+                }
+                catch (Exception manifestEx)
+                {
+                    Log.Debug($"[SQLite] Error parsing .addin manifests: {manifestEx.Message}");
+                }
+
+                var nugetRoot = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                    @".nuget\packages\system.data.sqlite.core\1.0.118.0");
+
+                if (relativePath.EndsWith("System.Data.SQLite.dll", StringComparison.OrdinalIgnoreCase))
+                {
+                    AddPath(Path.Combine(nugetRoot, @"lib\net46\System.Data.SQLite.dll"));
+                    AddPath(Path.Combine(nugetRoot, @"build\net46\System.Data.SQLite.dll"));
+                }
+                else if (relativePath.EndsWith("SQLite.Interop.dll", StringComparison.OrdinalIgnoreCase))
+                {
+                    AddPath(Path.Combine(nugetRoot, @"runtimes\win-x64\native\SQLite.Interop.dll"));
+                }
+
+                // .addin manifest lookup – handles deployments where files live in a custom subfolder
+                try
+                {
+                    var manifestDirectories = new[]
+                    {
+                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"Autodesk\Revit\Addins\2024"),
+                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"Autodesk\Revit\Addins\2023"),
+                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), @"Autodesk\Revit\Addins\2024"),
+                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), @"Autodesk\Revit\Addins\2023")
+                    };
+
+                    foreach (var manifestDir in manifestDirectories)
+                    {
+                        if (!Directory.Exists(manifestDir)) continue;
+
+                        foreach (var manifest in Directory.EnumerateFiles(manifestDir, "JSE_RevitAddin_MEP_OPENINGS.addin", SearchOption.AllDirectories))
+                        {
+                            try
+                            {
+                                var addinXml = XDocument.Load(manifest);
+                                var assemblyElement = addinXml.Descendants("Assembly").FirstOrDefault();
+                                if (assemblyElement == null) continue;
+
+                                var assemblyPath = assemblyElement.Value;
+                                if (!Path.IsPathRooted(assemblyPath) || !File.Exists(assemblyPath)) continue;
+
+                                var assemblyDir = Path.GetDirectoryName(assemblyPath);
+                                AddPath(Path.Combine(assemblyDir ?? string.Empty, fileName));
+                                AddPath(Path.Combine(assemblyDir ?? string.Empty, "x64", fileName));
+                            }
+                            catch (Exception manifestEx)
+                            {
+                                Log.Debug($"[SQLite] Error parsing manifest '{manifest}': {manifestEx.Message}");
+                            }
+                        }
+                    }
+                }
+                catch (Exception manifestSearchEx)
+                {
+                    Log.Debug($"[SQLite] Error searching manifests for dependency locations: {manifestSearchEx.Message}");
+                }
+
+                string? fallback = null;
+                foreach (var path in candidatePaths)
+                {
+                    if (!File.Exists(path)) continue;
+
+                    if (preferX64 && path.IndexOf("x64", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        return path;
+                    }
+
+                    if (fallback == null)
+                    {
+                        fallback = path;
+                    }
+                }
+
+                return fallback;
             }
         }
     }

@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
@@ -23,11 +25,293 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
-        /// ✅ GLOBAL XML FLAG MANAGEMENT: Syncs flags from Global XML (single source of truth) to in-memory clash zones.
-        /// Global XML is the authoritative source - flags are NOT stored in Filter XML files.
-        /// Called during refresh to ensure in-memory clash zones reflect the current state from Global XML.
+        /// ✅ DATABASE-FIRST: Resets instance IDs for deleted sleeves (DB first, then XML).
+        /// Sets SleeveInstanceId and ClusterSleeveInstanceId to -1 when sleeves are deleted.
         /// </summary>
-        /// <param name="clashZones">List of in-memory clash zones to sync (loaded from Filter XML)</param>
+        /// <param name="categories">List of categories to check</param>
+        /// <param name="clashZonesByCategory">Optional dictionary of clash zones by category</param>
+        /// <param name="refreshLogName">Optional refresh log file name</param>
+        /// <returns>Number of instance IDs reset</returns>
+        public int ResetInstanceIdsForDeletedSleeves(List<string> categories, Dictionary<string, List<ClashZone>> clashZonesByCategory = null, string refreshLogName = null)
+        {
+            if (categories == null || categories.Count == 0)
+                return 0;
+            
+            int totalResetCount = 0;
+            
+            foreach (var category in categories)
+            {
+                if (string.IsNullOrWhiteSpace(category))
+                    continue;
+                
+                try
+                {
+                    // ✅ PHASE 2: DATABASE-FIRST - Get clash zones with sleeve IDs from database
+                    List<ClashZone> dbZones = null;
+                    try
+                    {
+                        using (var context = new SleeveDbContext(_document))
+                        {
+                            var repository = new ClashZoneRepository(context);
+                            dbZones = repository.GetClashZonesByCategory(category)
+                                ?.Where(z => z != null && (z.SleeveInstanceId > 0 || z.ClusterSleeveInstanceId > 0))
+                                .ToList();
+                        }
+                    }
+                    catch (Exception dbEx)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[FLAG-MANAGER] ⚠️ Failed to load from database for category '{category}', falling back to Global XML: {dbEx.Message}");
+                    }
+                    
+                    // ✅ FALLBACK: Use Global XML if database has no data
+                    List<(Guid Id, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterSleeveInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ)> allEntries = null;
+                    
+                    if (dbZones != null && dbZones.Count > 0)
+                    {
+                        // ✅ Use database data
+                        allEntries = dbZones.Select(z => (
+                            z.Id,
+                            z.IsResolved,
+                            z.IsClusterResolved,
+                            z.SleeveInstanceId,
+                            z.ClusterSleeveInstanceId,
+                            z.MepElementId?.IntegerValue ?? z.MepElementIdValue,
+                            z.StructuralElementId?.IntegerValue ?? z.StructuralElementIdValue,
+                            z.IntersectionPointX,
+                            z.IntersectionPointY,
+                            z.IntersectionPointZ
+                        )).ToList();
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[FLAG-MANAGER] ✅ [INSTANCE-ID-RESET] Using database for category '{category}' ({allEntries.Count} zones with sleeve IDs)");
+                    }
+                    else
+                    {
+                        // ✅ FALLBACK: Use Global XML
+                        var globalIndex = GlobalIndexService.LoadOrCreate(_document, category);
+                        var globalEntries = GlobalIndexService.GetAllEntries(globalIndex)
+                            .Where(e => e != null && !string.IsNullOrWhiteSpace(e.Id) && (e.SleeveInstanceId > 0 || e.ClusterSleeveInstanceId > 0))
+                            .ToList();
+                        
+                        if (globalEntries != null && globalEntries.Count > 0)
+                        {
+                            allEntries = globalEntries.Select(e => (
+                                Guid.Parse(e.Id),
+                                e.IsResolved,
+                                e.IsClusterResolved,
+                                e.SleeveInstanceId,
+                                e.ClusterSleeveInstanceId,
+                                e.MepElementId,
+                                e.StructuralElementId,
+                                e.IntersectionPointX,
+                                e.IntersectionPointY,
+                                e.IntersectionPointZ
+                            )).ToList();
+                            
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Warning($"[FLAG-MANAGER] ⚠️ [INSTANCE-ID-RESET] Using Global XML fallback for category '{category}' ({allEntries.Count} entries)");
+                        }
+                    }
+                    
+                    if (allEntries == null || allEntries.Count == 0)
+                        continue;
+                    
+                    // Collect sleeve IDs to check
+                    var sleeveIdsToCheck = new HashSet<int>();
+                    foreach (var entry in allEntries)
+                    {
+                        if (entry.SleeveInstanceId > 0)
+                            sleeveIdsToCheck.Add(entry.SleeveInstanceId);
+                        if (entry.ClusterSleeveInstanceId > 0)
+                            sleeveIdsToCheck.Add(entry.ClusterSleeveInstanceId);
+                    }
+                    
+                    // Check which sleeves exist in Revit
+                    var existingSleeveIds = new HashSet<int>();
+                    foreach (var sleeveId in sleeveIdsToCheck)
+                    {
+                        try
+                        {
+                            var element = _document.GetElement(new ElementId(sleeveId));
+                            if (element != null && element is FamilyInstance sleeve)
+                            {
+                                bool isSleeve = (sleeve.Category?.Name == "Generic Models" || sleeve.Category?.Name == "Structural Connections") &&
+                                                (sleeve.Symbol?.FamilyName?.Contains("Sleeve", StringComparison.OrdinalIgnoreCase) == true ||
+                                                 sleeve.Symbol?.FamilyName?.Contains("Opening", StringComparison.OrdinalIgnoreCase) == true);
+                                if (isSleeve)
+                                    existingSleeveIds.Add(sleeveId);
+                            }
+                        }
+                        catch
+                        {
+                            // Sleeve doesn't exist
+                        }
+                    }
+                    
+                    // Build updates for deleted sleeves
+                    var updates = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterSleeveInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId)>();
+                    
+                    foreach (var entry in allEntries)
+                    {
+                        bool needsUpdate = false;
+                        int newSleeveId = entry.SleeveInstanceId;
+                        int newClusterId = entry.ClusterSleeveInstanceId;
+                        
+                        // Check cluster sleeve
+                        if (entry.ClusterSleeveInstanceId > 0 && !existingSleeveIds.Contains(entry.ClusterSleeveInstanceId))
+                        {
+                            newClusterId = -1;
+                            needsUpdate = true;
+                        }
+                        
+                        // Check individual sleeve (only if cluster is not resolved)
+                        if (!entry.IsClusterResolved && entry.SleeveInstanceId > 0 && !existingSleeveIds.Contains(entry.SleeveInstanceId))
+                        {
+                            newSleeveId = -1;
+                            needsUpdate = true;
+                        }
+                        
+                        if (needsUpdate)
+                        {
+                            updates.Add((
+                                entry.Id,
+                                entry.IsResolved && newSleeveId > 0,
+                                entry.IsClusterResolved && newClusterId > 0,
+                                newSleeveId,
+                                newClusterId,
+                                entry.MepElementId,
+                                entry.StructuralElementId,
+                                entry.IntersectionPointX,
+                                entry.IntersectionPointY,
+                                entry.IntersectionPointZ,
+                                entry.SleeveInstanceId,
+                                entry.ClusterSleeveInstanceId
+                            ));
+                            totalResetCount++;
+                        }
+                    }
+                    
+                    if (updates.Count > 0)
+                    {
+                        // ✅ STEP 1: Update database FIRST
+                        try
+                        {
+                            using (var context = new SleeveDbContext(_document, msg =>
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[FLAG-MANAGER][INSTANCE-ID-RESET][SQLite] {msg}");
+                                if (!string.IsNullOrWhiteSpace(refreshLogName))
+                                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [INSTANCE-ID-RESET][SQLite] {msg}\n");
+                            }))
+                            {
+                                var repository = new ClashZoneRepository(context, msg =>
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[FLAG-MANAGER][INSTANCE-ID-RESET][SQLite] {msg}");
+                                    if (!string.IsNullOrWhiteSpace(refreshLogName))
+                                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [INSTANCE-ID-RESET][SQLite] {msg}\n");
+                                });
+                                
+                                var dbUpdates = updates.Select(u => (
+                                    ClashZoneId: u.ClashZoneId,
+                                    IsResolved: u.IsResolved,
+                                    IsClusterResolved: u.IsClusterResolved,
+                                    SleeveInstanceId: u.SleeveInstanceId,
+                                    ClusterInstanceId: u.ClusterSleeveInstanceId,
+                                    MepElementId: u.MepElementId,
+                                    StructuralElementId: u.StructuralElementId,
+                                    IntersectionPointX: u.IntersectionPointX,
+                                    IntersectionPointY: u.IntersectionPointY,
+                                    IntersectionPointZ: u.IntersectionPointZ,
+                                    OldSleeveInstanceId: u.OldSleeveInstanceId,
+                                    OldClusterInstanceId: u.OldClusterInstanceId
+                                )).ToList();
+                                
+                                repository.BatchUpdateFlags(dbUpdates);
+                                
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[FLAG-MANAGER] ✅ [INSTANCE-ID-RESET] Updated database for {dbUpdates.Count} clash zones in category '{category}' (DB FIRST)");
+                                
+                                if (!string.IsNullOrWhiteSpace(refreshLogName))
+                                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [INSTANCE-ID-RESET] ✅ Database updated: {dbUpdates.Count} zones in category '{category}'\n");
+                            }
+                        }
+                        catch (Exception dbEx)
+                        {
+                            DebugLogger.Error($"[FLAG-MANAGER] ❌ [INSTANCE-ID-RESET] Database update failed for category '{category}': {dbEx.Message}");
+                            if (!string.IsNullOrWhiteSpace(refreshLogName))
+                                SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [INSTANCE-ID-RESET] ❌ Database update failed: {dbEx.Message}\n");
+                            // Continue to XML update even if DB fails
+                        }
+                        
+                        // ✅ PHASE 2: Update XML only if XML creation is enabled (for backward compatibility)
+                        if (!DeploymentConfiguration.DisableXmlCreation)
+                        {
+                            try
+                            {
+                                var globalXmlUpdates = updates.Select(u => (
+                                    u.ClashZoneId,
+                                    u.IsResolved,
+                                    u.IsClusterResolved,
+                                    u.SleeveInstanceId,
+                                    u.ClusterSleeveInstanceId,
+                                    u.MepElementId,
+                                    u.StructuralElementId,
+                                    u.IntersectionPointX,
+                                    u.IntersectionPointY,
+                                    u.IntersectionPointZ
+                                )).ToList();
+                                
+                                // ✅ PHASE 2: Only update Global XML if XML creation is enabled
+                                if (!DeploymentConfiguration.DisableXmlCreation)
+                                {
+                                    GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, globalXmlUpdates, filterName: null, refreshLogName: refreshLogName);
+                                    
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[FLAG-MANAGER] ✅ [INSTANCE-ID-RESET] Updated XML for {globalXmlUpdates.Count} entries in category '{category}' (XML SECOND)");
+                                }
+                                else
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[FLAG-MANAGER] ⚠️ [INSTANCE-ID-RESET] XML creation disabled - skipping Global XML update for {globalXmlUpdates.Count} entries in category '{category}' (database only mode)");
+                                }
+                                
+                                if (!string.IsNullOrWhiteSpace(refreshLogName))
+                                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [INSTANCE-ID-RESET] ✅ XML updated: {globalXmlUpdates.Count} entries in category '{category}'\n");
+                            }
+                            catch (Exception xmlEx)
+                            {
+                                DebugLogger.Error($"[FLAG-MANAGER] ❌ [INSTANCE-ID-RESET] XML update failed for category '{category}': {xmlEx.Message}");
+                                if (!string.IsNullOrWhiteSpace(refreshLogName))
+                                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [INSTANCE-ID-RESET] ❌ XML update failed: {xmlEx.Message}\n");
+                                // Don't throw - XML is optional in Phase 2
+                            }
+                        }
+                        else
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[FLAG-MANAGER] ⚠️ [INSTANCE-ID-RESET] Skipping XML update (XML creation disabled) for category '{category}'");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Error($"[FLAG-MANAGER] ❌ [INSTANCE-ID-RESET] Error processing category '{category}': {ex.Message}");
+                    if (!string.IsNullOrWhiteSpace(refreshLogName))
+                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [INSTANCE-ID-RESET] ❌ Error processing category '{category}': {ex.Message}\n");
+                }
+            }
+            
+            return totalResetCount;
+        }
+        
+        /// <summary>
+        /// ✅ DATABASE FLAG MANAGEMENT: Syncs flags from database (single source of truth) to in-memory clash zones.
+        /// Database is the authoritative source - flags are NOT stored in Filter XML files.
+        /// Called during refresh to ensure in-memory clash zones reflect the current state from database.
+        /// </summary>
+        /// <param name="clashZones">List of in-memory clash zones to sync (loaded from Filter XML or SQLite)</param>
         /// <param name="category">MEP element category name</param>
         public void SyncFlagsFromGlobal(List<ClashZone> clashZones, string category)
         {
@@ -39,6 +323,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             try
             {
+                // ✅ PHASE 2: DATABASE-FIRST FLAG MANAGEMENT - Use database as primary source of truth
+                if (TrySyncFlagsFromDatabase(clashZones, category))
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[FLAG-MANAGER] ✅ Synced flags from database for {clashZones.Count} zones in category '{category}'");
+                    return;
+                }
+
+                // ✅ FALLBACK: Only use Global XML if database has no data (backward compatibility during migration)
+                // This fallback will be removed once all data is migrated to database
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[FLAG-MANAGER] ⚠️ Database has no flags for category '{category}', falling back to Global XML (legacy mode)");
+
                 var globalIndex = GlobalIndexService.LoadOrCreate(_document, category);
                 
                 // ✅ CRITICAL FIX: Pre-load all entries from hierarchical structure (calculate once, use many times)
@@ -54,9 +351,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     if (globalEntry != null)
                     {
-                        // ✅ SYNC: Copy flags FROM Global XML (on disk) TO in-memory clash zones (loaded from Filter XML)
-                        // Filter XML does NOT store flags ([XmlIgnore]) - flags default to false when loaded
-                        // This sync ensures in-memory clash zones have correct flag values from Global XML (single source of truth)
+                        // ✅ FALLBACK SYNC: Copy flags FROM Global XML (on disk) TO in-memory clash zones
+                        // This is only used during migration period when database may not have flags yet
                         bool flagChanged = false;
                         
                         if (clashZone.IsResolved != globalEntry.IsResolved)
@@ -71,7 +367,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             flagChanged = true;
                         }
                         
-                        // ✅ CRITICAL FIX: Always sync SleeveInstanceId from Global XML (authoritative source)
+                        // ✅ CRITICAL FIX: Always sync SleeveInstanceId from Global XML (authoritative source during fallback)
                         // If Global XML says -1, reset in-memory clash zone even if it has old values
                         // If Global XML says resolved with ID, update in-memory clash zone
                         var globalSleeveId = globalEntry.SleeveInstanceId;
@@ -90,7 +386,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             flagChanged = true;
                         }
                         
-                        // ✅ CRITICAL FIX: Always sync ClusterSleeveInstanceId from Global XML (authoritative source)
+                        // ✅ CRITICAL FIX: Always sync ClusterSleeveInstanceId from Global XML (authoritative source during fallback)
                         // If Global XML says -1, reset in-memory clash zone even if it has old values
                         // If Global XML says resolved with ID, update in-memory clash zone
                         var globalClusterId = globalEntry.ClusterSleeveInstanceId;
@@ -126,6 +422,92 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 throw;
             }
         }
+
+        private bool TrySyncFlagsFromDatabase(List<ClashZone> clashZones, string category)
+        {
+            try
+            {
+                using (var context = new SleeveDbContext(_document, msg =>
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[FLAG-MANAGER][SQLite] {msg}");
+                }))
+                {
+                    var repository = new ClashZoneRepository(context, msg =>
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[FLAG-MANAGER][SQLite] {msg}");
+                    });
+
+                    var persistedZones = repository.GetClashZonesByCategory(category);
+                    if (persistedZones == null || persistedZones.Count == 0)
+                        return false;
+
+                    var lookup = persistedZones
+                        .Where(z => z != null && z.Id != Guid.Empty)
+                        .GroupBy(z => z.Id)
+                        .Select(g => g.First())
+                        .ToDictionary(z => z.Id);
+
+                    int syncedCount = 0;
+                    foreach (var clashZone in clashZones)
+                    {
+                        if (clashZone == null || clashZone.Id == Guid.Empty)
+                            continue;
+
+                        if (!lookup.TryGetValue(clashZone.Id, out var persisted))
+                            continue;
+
+                        bool flagChanged = false;
+
+                        if (clashZone.IsResolved != persisted.IsResolved)
+                        {
+                            clashZone.IsResolved = persisted.IsResolved;
+                            flagChanged = true;
+                        }
+
+                        if (clashZone.IsClusterResolved != persisted.IsClusterResolved)
+                        {
+                            clashZone.IsClusterResolved = persisted.IsClusterResolved;
+                            flagChanged = true;
+                        }
+
+                        if (clashZone.SleeveInstanceId != persisted.SleeveInstanceId)
+                        {
+                            clashZone.SleeveInstanceId = persisted.SleeveInstanceId;
+                            flagChanged = true;
+                        }
+
+                        if (clashZone.ClusterSleeveInstanceId != persisted.ClusterSleeveInstanceId)
+                        {
+                            clashZone.ClusterSleeveInstanceId = persisted.ClusterSleeveInstanceId;
+                            flagChanged = true;
+                        }
+
+                        clashZone.AfterClusterSleevePlacedSleeveInstanceId = persisted.AfterClusterSleevePlacedSleeveInstanceId;
+                        clashZone.MarkedForClusteringSleeveProcess = persisted.MarkedForClusteringSleeveProcess;
+                        clashZone.HasDamperNearby = persisted.HasDamperNearby;
+                        clashZone.IsCurrentClash = persisted.IsCurrentClash;
+
+                        if (flagChanged)
+                        {
+                            syncedCount++;
+                        }
+                    }
+
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[FLAG-MANAGER] Synced flags from SQLite for category '{category}'. Updated zones: {syncedCount}/{clashZones.Count}");
+
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[FLAG-MANAGER] SQLite sync failed for category '{category}': {ex.Message}");
+                return false;
+            }
+        }
         
         /// <summary>
         /// ✅ UNIFIED RESET METHOD: Resets flags for deleted sleeves across all categories.
@@ -144,6 +526,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <returns>Total number of flags reset</returns>
         public int ResetFlagsForDeletedSleeves(List<string> categories, Dictionary<string, List<ClashZone>> clashZonesByCategory = null, string refreshLogName = null)
         {
+            // ✅ CRITICAL: UNMISTAKABLE MARKER - This confirms the NEW code is running
+            // ✅ VERSION MARKER: v2.0 - Enhanced logging with build timestamps and verification
+            // ✅ ALWAYS LOG TO REFRESH FILE FIRST (bypasses DebugLogger filtering)
+            if (!string.IsNullOrWhiteSpace(refreshLogName))
+            {
+                try
+                {
+                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] ═══════════════════════════════════════════════════════════════════════════════\n");
+                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER] ⭐⭐⭐ NEW CODE VERSION v2.0 IS RUNNING ⭐⭐⭐\n");
+                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER] ✅ Enhanced logging with build timestamps and verification enabled\n");
+                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER] ✅ Database-first flag updates with detailed tracking\n");
+                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER] ✅ Global XML update tracking with entry lookup logging\n");
+                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] ═══════════════════════════════════════════════════════════════════════════════\n");
+                }
+                catch (Exception fileEx)
+                {
+                    // If file logging fails, try DebugLogger as fallback
+                    try { DebugLogger.Error($"[FLAG-MANAGER] Error writing version marker to file: {fileEx.Message}"); } catch { }
+                }
+            }
+            
+            // ✅ ALSO LOG VIA DebugLogger (may be filtered in deployment mode, but file logging above ensures it's captured)
+            try
+            {
+                DebugLogger.Info("═══════════════════════════════════════════════════════════════════════════════");
+                DebugLogger.Info("[FLAG-MANAGER] ⭐⭐⭐ NEW CODE VERSION v2.0 IS RUNNING ⭐⭐⭐");
+                DebugLogger.Info("[FLAG-MANAGER] ✅ Enhanced logging with build timestamps and verification enabled");
+                DebugLogger.Info("[FLAG-MANAGER] ✅ Database-first flag updates with detailed tracking");
+                DebugLogger.Info("[FLAG-MANAGER] ✅ Global XML update tracking with entry lookup logging");
+                DebugLogger.Info("═══════════════════════════════════════════════════════════════════════════════");
+            }
+            catch (Exception markerEx)
+            {
+                // Even if logging fails, try to log the error
+                try { DebugLogger.Error($"[FLAG-MANAGER] Error logging version marker: {markerEx.Message}"); } catch { }
+            }
+            
             if (categories == null || categories.Count == 0)
                 return 0;
             
@@ -151,6 +570,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             try
             {
+                // ✅ BUILD TIMESTAMP: Always log build timestamp (even in deployment mode for troubleshooting)
+                try
+                {
+                    var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                    string buildTimestamp = assembly.GetName().Version?.ToString() ?? "Unknown";
+                    DateTime buildTime = DateTime.MinValue;
+                    string location = assembly.Location;
+                    if (!string.IsNullOrEmpty(location) && System.IO.File.Exists(location))
+                    {
+                        buildTime = System.IO.File.GetLastWriteTime(location);
+                    }
+                    else
+                    {
+                        // Fallback: Use current time if location unavailable
+                        buildTime = DateTime.Now;
+                    }
+                    DebugLogger.Info($"[FLAG-MANAGER] ===== BUILD INFO: Version={buildTimestamp}, BuildTime={buildTime:yyyy-MM-dd HH:mm:ss}, Location={location ?? "N/A"}, Method=ResetFlagsForDeletedSleeves =====");
+                }
+                catch (Exception buildEx)
+                {
+                    DebugLogger.Info($"[FLAG-MANAGER] ===== BUILD INFO: Error getting build info: {buildEx.Message}, Method=ResetFlagsForDeletedSleeves =====");
+                }
+                
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[FLAG-MANAGER] ===== UNIFIED RESET: CHECKING FOR DELETED SLEEVES FOR {categories.Count} CATEGORIES =====");
                 
@@ -184,8 +626,126 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[FLAG-MANAGER] Found {allEntries.Count} total Global XML entries for category '{category}', {resolvedEntries} have resolved flags");
                         
-                        // ✅ PRE-COLLECT: Gather all sleeves once, then classify by category/GUID
-                        var allSleeveInstances = new FilteredElementCollector(_document)
+                        // ✅ DATABASE-FIRST: Get sleeve IDs from database, fall back to Global XML only if needed
+                        var sleeveIdsToCheck = new HashSet<int>();
+                        bool useDatabase = false;
+                        
+                        try
+                        {
+                            using (var context = new SleeveDbContext(_document, msg =>
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[FLAG-MANAGER][DB] {msg}");
+                            }))
+                            {
+                                var repository = new ClashZoneRepository(context, msg =>
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[FLAG-MANAGER][DB] {msg}");
+                                });
+                                
+                                var dbZones = repository.GetClashZonesByCategory(category);
+                                if (dbZones != null && dbZones.Count > 0)
+                                {
+                                    // ✅ DATABASE-FIRST: Get sleeve IDs from database
+                                    foreach (var zone in dbZones)
+                                    {
+                                        if (zone.SleeveInstanceId > 0)
+                                            sleeveIdsToCheck.Add(zone.SleeveInstanceId);
+                                        if (zone.ClusterSleeveInstanceId > 0)
+                                            sleeveIdsToCheck.Add(zone.ClusterSleeveInstanceId);
+                                    }
+                                    useDatabase = true;
+                                    
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        DebugLogger.Info($"[FLAG-MANAGER] ✅ DATABASE-FIRST: Found {sleeveIdsToCheck.Count} sleeve IDs from database for category '{category}'");
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception dbEx)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Warning($"[FLAG-MANAGER] ⚠️ Database lookup failed (non-blocking), falling back to Global XML: {dbEx.Message}");
+                        }
+                        
+                        // ✅ FALLBACK: Use Global XML only if database didn't provide sleeve IDs
+                        if (!useDatabase || sleeveIdsToCheck.Count == 0)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[FLAG-MANAGER] ⚠️ FALLBACK: Getting sleeve IDs from Global XML (database had {sleeveIdsToCheck.Count} IDs)");
+                            }
+                            
+                            foreach (var entry in dedupedEntries)
+                            {
+                                if (entry.SleeveInstanceId > 0)
+                                    sleeveIdsToCheck.Add(entry.SleeveInstanceId);
+                                if (entry.ClusterSleeveInstanceId > 0)
+                                    sleeveIdsToCheck.Add(entry.ClusterSleeveInstanceId);
+                            }
+                            
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[FLAG-MANAGER] FALLBACK: Found {sleeveIdsToCheck.Count} sleeve IDs from Global XML for category '{category}'");
+                            }
+                        }
+                        
+                        // ✅ EFFICIENT: Use doc.GetElement() for O(1) lookup instead of scanning all sleeves
+                        var existingSleeveIdsSet = new HashSet<int>();
+                        var sleeveIdToCategory = new Dictionary<int, string>();
+                        var guidToSleeveId = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                        
+                        foreach (var sleeveId in sleeveIdsToCheck)
+                        {
+                            try
+                            {
+                                // ✅ EFFICIENT: Direct ElementId lookup (O(1)) instead of scanning all elements
+                                var element = _document.GetElement(new ElementId(sleeveId));
+                                if (element != null && element is FamilyInstance sleeve)
+                                {
+                                    // Verify it's actually a sleeve (check category and family name)
+                                    bool isSleeve = (sleeve.Category?.Name == "Generic Models" || sleeve.Category?.Name == "Structural Connections") &&
+                                                    (sleeve.Symbol?.FamilyName?.Contains("Sleeve", StringComparison.OrdinalIgnoreCase) == true ||
+                                                     sleeve.Symbol?.FamilyName?.Contains("Opening", StringComparison.OrdinalIgnoreCase) == true ||
+                                                     sleeve.Symbol?.FamilyName?.Contains("CircularOpening", StringComparison.OrdinalIgnoreCase) == true ||
+                                                     sleeve.Symbol?.FamilyName?.Contains("RectangularOpening", StringComparison.OrdinalIgnoreCase) == true);
+                                    
+                                    if (isSleeve)
+                                    {
+                                        existingSleeveIdsSet.Add(sleeveId);
+                                        
+                                        string sleeveCategory = GetSleeveCategory(sleeve);
+                                        if (!string.IsNullOrWhiteSpace(sleeveCategory))
+                                        {
+                                            sleeveCategory = sleeveCategory.Trim();
+                                            sleeveIdToCategory[sleeveId] = sleeveCategory;
+                                        }
+                                        
+                                        string clashGuid = GetClashZoneGuidValue(sleeve);
+                                        if (!string.IsNullOrWhiteSpace(clashGuid) && !guidToSleeveId.ContainsKey(clashGuid))
+                                        {
+                                            guidToSleeveId[clashGuid] = sleeveId;
+                                        }
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                // Element doesn't exist or error accessing it - sleeve was deleted
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[FLAG-MANAGER] Sleeve ID {sleeveId} not found in Revit (likely deleted): {ex.Message}");
+                            }
+                        }
+                        
+                        // ✅ FALLBACK: Still collect all sleeves for GUID discovery (needed for TryResolveSleeveIdFromGuid)
+                        // But only if we need to discover sleeves by GUID
+                        var allSleeveInstances = new List<FamilyInstance>();
+                        if (dedupedEntries.Any(e => (e.IsResolved && e.SleeveInstanceId <= 0) || (e.IsClusterResolved && e.ClusterSleeveInstanceId <= 0)))
+                        {
+                            // Only scan if we need GUID discovery (sleeve IDs are missing)
+                            allSleeveInstances = new FilteredElementCollector(_document)
                             .OfClass(typeof(FamilyInstance))
                             .Cast<FamilyInstance>()
                             .Where(s =>
@@ -200,40 +760,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             })
                             .ToList();
 
-                        var sleevesForCategory = new List<FamilyInstance>();
-                        var existingSleeveIdsSet = new HashSet<int>();
-                        var sleeveIdToCategory = new Dictionary<int, string>();
-                        var guidToSleeveId = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-
+                            // Build GUID lookup from all sleeves (for discovery)
                         foreach (var sleeve in allSleeveInstances)
                         {
+                                string clashGuid = GetClashZoneGuidValue(sleeve);
+                                if (!string.IsNullOrWhiteSpace(clashGuid) && !guidToSleeveId.ContainsKey(clashGuid))
+                                {
+                                    guidToSleeveId[clashGuid] = sleeve.Id.IntegerValue;
+                                    
                             string sleeveCategory = GetSleeveCategory(sleeve);
                             if (!string.IsNullOrWhiteSpace(sleeveCategory))
                             {
-                                sleeveCategory = sleeveCategory.Trim();
-                                sleeveIdToCategory[sleeve.Id.IntegerValue] = sleeveCategory;
-
-                                if (string.Equals(sleeveCategory, category, StringComparison.OrdinalIgnoreCase))
-                                {
-                                    sleevesForCategory.Add(sleeve);
-                                    existingSleeveIdsSet.Add(sleeve.Id.IntegerValue);
+                                        sleeveIdToCategory[sleeve.Id.IntegerValue] = sleeveCategory.Trim();
                                 }
                             }
-
-                            string clashGuid = GetClashZoneGuidValue(sleeve);
-                            if (!string.IsNullOrWhiteSpace(clashGuid) && !guidToSleeveId.ContainsKey(clashGuid))
-                            {
-                                guidToSleeveId[clashGuid] = sleeve.Id.IntegerValue;
                             }
                         }
 
                         void LogToRefresh(string message)
                         {
-                            if (string.IsNullOrWhiteSpace(refreshLogName))
-                                return;
+                            // ✅ CRITICAL: Always log to DebugLogger (even if refreshLogName is null)
+                            DebugLogger.Info($"[FLAG-MANAGER] {message}");
 
+                            // ✅ Also log to refresh log file if provided
+                            if (!string.IsNullOrWhiteSpace(refreshLogName))
+                            {
                             SafeFileLogger.SafeAppendText(refreshLogName,
                                 $"[{DateTime.Now}] [FLAG-MANAGER] {message}\n");
+                            }
                         }
 
                         if (existingSleeveIdsSet.Count > 0)
@@ -256,7 +810,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             else
                             {
                                 // ✅ DEBUG: Log why no sleeves were found
-                                DebugLogger.Info($"[FLAG-MANAGER] Found {allSleeveInstances.Count} total sleeves (all categories)");
+                                int sleevesCheckedCount = allSleeveInstances.Count > 0 ? allSleeveInstances.Count : existingSleeveIdsSet.Count;
+                                DebugLogger.Info($"[FLAG-MANAGER] Found {sleevesCheckedCount} sleeves checked (direct lookup: {existingSleeveIdsSet.Count}, full scan: {allSleeveInstances.Count})");
                                 if (allSleeveInstances.Count > 0)
                                 {
                                     var categoryBreakdown = allSleeveInstances
@@ -270,7 +825,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                         }
                         
-                        var updates = new List<(Guid Id, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterSleeveInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ)>();
+                        var updates = new List<(Guid Id, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterSleeveInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId)>();
                         int resetCount = 0;
                         
                         // ✅ DEBUG: Log which entries will be checked
@@ -290,6 +845,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         int detailLogBudget = 30;
 
+                        // ✅ CRITICAL DEBUG: Log all sleeve IDs that will be checked
+                        DebugLogger.Info($"[FLAG-MANAGER] Category '{category}': Will check {entriesToCheck.Count} entries with resolved flags");
+                        var allSleeveIdsToCheck = new HashSet<int>();
+                        foreach (var entry in entriesToCheck)
+                        {
+                            if (entry.ClusterSleeveInstanceId > 0)
+                                allSleeveIdsToCheck.Add(entry.ClusterSleeveInstanceId);
+                            if (entry.SleeveInstanceId > 0)
+                                allSleeveIdsToCheck.Add(entry.SleeveInstanceId);
+                        }
+                        DebugLogger.Info($"[FLAG-MANAGER] Category '{category}': Checking {allSleeveIdsToCheck.Count} unique sleeve IDs: {string.Join(", ", allSleeveIdsToCheck.Take(20))}{(allSleeveIdsToCheck.Count > 20 ? "..." : "")}");
+                        DebugLogger.Info($"[FLAG-MANAGER] Category '{category}': Sleeve IDs found in Revit: {string.Join(", ", existingSleeveIdsSet.Take(20))}{(existingSleeveIdsSet.Count > 20 ? "..." : "")}");
+
                         // Check ALL Global XML entries (even if not in Filter XML)
                         foreach (var globalEntry in dedupedEntries)
                         {
@@ -303,7 +871,97 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             if (globalEntry.IsClusterResolved && globalEntry.ClusterSleeveInstanceId > 0)
                             {
                                 int clusterSleeveIdToCheck = globalEntry.ClusterSleeveInstanceId;
+                                
+                                // ✅ DATABASE VERIFICATION: Check if sleeve ID exists in database first
+                                bool sleeveExistsInDb = false;
+                                try
+                                {
+                                    using (var context = new SleeveDbContext(_document, msg =>
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[FLAG-MANAGER][DB-CHECK] {msg}");
+                                    }))
+                                    {
+                                        var repository = new ClashZoneRepository(context, msg =>
+                                        {
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                DebugLogger.Info($"[FLAG-MANAGER][DB-CHECK] {msg}");
+                                        });
+                                        
+                                        // Check if this sleeve ID exists in database for this category
+                                        var dbZones = repository.GetClashZonesByCategory(category);
+                                        sleeveExistsInDb = dbZones?.Any(z => z.ClusterSleeveInstanceId == clusterSleeveIdToCheck || z.SleeveInstanceId == clusterSleeveIdToCheck) == true;
+                                        
+                                        DebugLogger.Info($"[FLAG-MANAGER] Entry {globalEntry.Id}: Cluster sleeve ID {clusterSleeveIdToCheck} - EXISTS IN DATABASE: {sleeveExistsInDb}");
+                                    }
+                                }
+                                catch (Exception dbEx)
+                                {
+                                    DebugLogger.Warning($"[FLAG-MANAGER] Entry {globalEntry.Id}: Database check failed for cluster sleeve ID {clusterSleeveIdToCheck}: {dbEx.Message}");
+                                }
+                                
+                                // Check Revit
                                 bool clusterSleeveExists = existingSleeveIdsSet.Contains(clusterSleeveIdToCheck);
+                                
+                                // ✅ CRITICAL: Also verify the sleeve is actually a cluster sleeve (not just any sleeve)
+                                // A cluster sleeve should have the cluster sleeve parameter set
+                                bool isActualClusterSleeve = false;
+                                if (clusterSleeveExists)
+                                {
+                                    try
+                                    {
+                                        var clusterElement = _document.GetElement(new ElementId(clusterSleeveIdToCheck));
+                                        if (clusterElement is FamilyInstance clusterSleeve)
+                                        {
+                                            // Check if this sleeve has cluster metadata (MEP Element IDs parameter)
+                                            var mepElementIdsParam = clusterSleeve.LookupParameter("MEP Element IDs");
+                                            if (mepElementIdsParam != null && mepElementIdsParam.HasValue)
+                                            {
+                                                var mepElementIdsValue = mepElementIdsParam.AsString();
+                                                // Cluster sleeves should have multiple MEP element IDs (comma-separated)
+                                                isActualClusterSleeve = !string.IsNullOrWhiteSpace(mepElementIdsValue) && mepElementIdsValue.Contains(",");
+                                            }
+                                            
+                                            if (!isActualClusterSleeve && !DeploymentConfiguration.DeploymentMode)
+                                            {
+                                                DebugLogger.Warning($"[FLAG-MANAGER] ⚠️ Entry {globalEntry.Id}: Sleeve ID {clusterSleeveIdToCheck} exists but is NOT a cluster sleeve (no cluster metadata) - resetting cluster flag");
+                                            }
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Warning($"[FLAG-MANAGER] Error verifying cluster sleeve {clusterSleeveIdToCheck}: {ex.Message}");
+                                    }
+                                }
+                                
+                                // ✅ CRITICAL DEBUG: Log complete sleeve existence check (DB + Revit + Cluster verification)
+                                DebugLogger.Info($"[FLAG-MANAGER] Entry {globalEntry.Id}: Checking cluster sleeve ID {clusterSleeveIdToCheck} - DB={sleeveExistsInDb}, Revit={clusterSleeveExists}, IsClusterSleeve={isActualClusterSleeve}, Final={clusterSleeveExists && isActualClusterSleeve}");
+                                
+                                // ✅ CRITICAL: If sleeve exists in DB but NOT in Revit, it was deleted - reset flags
+                                // ✅ CRITICAL: If sleeve exists in Revit but is NOT a cluster sleeve, reset cluster flag
+                                if (sleeveExistsInDb && !clusterSleeveExists)
+                                {
+                                    DebugLogger.Warning($"[FLAG-MANAGER] ⚠️ Entry {globalEntry.Id}: Cluster sleeve ID {clusterSleeveIdToCheck} EXISTS IN DATABASE but NOT IN REVIT - sleeve was deleted, resetting flags");
+                                }
+                                
+                                if (clusterSleeveExists && !isActualClusterSleeve)
+                                {
+                                    DebugLogger.Warning($"[FLAG-MANAGER] ⚠️ Entry {globalEntry.Id}: Sleeve ID {clusterSleeveIdToCheck} exists but is NOT a cluster sleeve - resetting cluster flag (keeping individual flag if valid)");
+                                    // Reset cluster flag but preserve individual flag if individual sleeve exists
+                                    bool individualSleeveExists = globalEntry.SleeveInstanceId > 0 && existingSleeveIdsSet.Contains(globalEntry.SleeveInstanceId);
+                                    updates.Add((Guid.Parse(globalEntry.Id), individualSleeveExists ? globalEntry.IsResolved : false, false,
+                                                 individualSleeveExists ? globalEntry.SleeveInstanceId : -1, -1,
+                                                 globalEntry.MepElementId, globalEntry.StructuralElementId,
+                                                 globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ,
+                                                 globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId)); // ✅ OLD values for matching
+                                    resetCount++;
+                                    LogToRefresh($"RESET cluster flag for entry {globalEntry.Id}: Sleeve {clusterSleeveIdToCheck} is not a cluster sleeve → IsClusterResolved=false");
+                                    continue; // Skip individual check (already processed)
+                                }
+                                
+                                // Update final check result
+                                clusterSleeveExists = clusterSleeveExists && isActualClusterSleeve;
 
                                 if (!clusterSleeveExists &&
                                     TryResolveSleeveIdFromGuid(globalEntry.Id, guidToSleeveId, sleeveIdToCategory, category, out var discoveredClusterId, out var discoveredClusterCategory))
@@ -312,13 +970,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     if (clusterSleeveExists)
                                     {
                                         existingSleeveIdsSet.Add(discoveredClusterId);
+                                        DebugLogger.Info($"[FLAG-MANAGER] Entry {globalEntry.Id}: Cluster sleeve ID {clusterSleeveIdToCheck} NOT found, but discovered via GUID: {discoveredClusterId}");
 
                                         if (clusterSleeveIdToCheck != discoveredClusterId)
                                         {
                                             updates.Add((Guid.Parse(globalEntry.Id), globalEntry.IsResolved, true,
                                                          globalEntry.SleeveInstanceId, discoveredClusterId,
                                                          globalEntry.MepElementId, globalEntry.StructuralElementId,
-                                                         globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ));
+                                                         globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ,
+                                                         globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId)); // ✅ OLD values for matching
                                             LogToRefresh($"Entry {globalEntry.Id}: Cluster sleeve healed via GUID → {discoveredClusterId} (category='{discoveredClusterCategory ?? "UNKNOWN"}').");
                                             if (!DeploymentConfiguration.DeploymentMode)
                                                 DebugLogger.Info($"[FLAG-MANAGER] Entry {globalEntry.Id}: Cluster sleeve ID healed via GUID → {discoveredClusterId} (was {clusterSleeveIdToCheck})");
@@ -330,42 +990,106 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[FLAG-MANAGER]   Entry {globalEntry.Id}: Cluster sleeve {clusterSleeveIdToCheck} exists in Revit: {clusterSleeveExists}");
                                 if (detailLogBudget-- > 0)
-                                    LogToRefresh($"Entry {globalEntry.Id}: ClusterSleeveId={clusterSleeveIdToCheck}, Exists={clusterSleeveExists}, IsClusterResolved={globalEntry.IsClusterResolved}");
+                                    LogToRefresh($"Entry {globalEntry.Id}: ClusterSleeveId={clusterSleeveIdToCheck}, Exists={clusterSleeveExists}, IsClusterResolved={globalEntry.IsClusterResolved} (BEFORE check)");
                                 
                                 if (!clusterSleeveExists)
                                 {
+                                    // ✅ CRITICAL: Log BEFORE and AFTER states for clarity
+                                    DebugLogger.Info($"[FLAG-MANAGER] ✓✓✓ RESETTING Entry {globalEntry.Id}: Cluster sleeve {clusterSleeveIdToCheck} NOT FOUND in Revit");
+                                    DebugLogger.Info($"[FLAG-MANAGER]   BEFORE: IsClusterResolved={globalEntry.IsClusterResolved}, IsResolved={globalEntry.IsResolved}, ClusterSleeveId={globalEntry.ClusterSleeveInstanceId}, SleeveId={globalEntry.SleeveInstanceId}");
+                                    DebugLogger.Info($"[FLAG-MANAGER]   AFTER:  IsClusterResolved=false, IsResolved=false, ClusterSleeveId=-1, SleeveId=-1");
+                                    
                                     updates.Add((Guid.Parse(globalEntry.Id), false, false, -1, -1,
                                                 globalEntry.MepElementId, globalEntry.StructuralElementId,
-                                                globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ));
+                                                globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ,
+                                                globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId)); // ✅ OLD values for matching
                                     resetCount++;
                                     
                                     if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Info($"[FLAG-MANAGER] ✓ Reset ALL flags for Global XML entry {globalEntry.Id} - cluster sleeve {clusterSleeveIdToCheck} NOT FOUND");
-                                    LogToRefresh($"RESET cluster entry {globalEntry.Id}: ClusterSleeveId={clusterSleeveIdToCheck} missing → Flags cleared.");
+                                    LogToRefresh($"RESET cluster entry {globalEntry.Id}: ClusterSleeveId={clusterSleeveIdToCheck} missing → IsClusterResolved: {globalEntry.IsClusterResolved}→false, IsResolved: {globalEntry.IsResolved}→false");
                                 }
                                 continue; // Skip individual check if cluster was checked
                             }
                             else if (globalEntry.IsClusterResolved && globalEntry.ClusterSleeveInstanceId <= 0)
                             {
-                                if (TryResolveSleeveIdFromGuid(globalEntry.Id, guidToSleeveId, sleeveIdToCategory, category, out var discoveredClusterId, out var discoveredClusterCategory) &&
-                                    discoveredClusterId > 0)
+                                // ✅ CRITICAL: IsClusterResolved=true but ClusterSleeveInstanceId is missing/invalid
+                                // Try to discover via GUID, but if not found, reset cluster flag
+                                bool discovered = TryResolveSleeveIdFromGuid(globalEntry.Id, guidToSleeveId, sleeveIdToCategory, category, out var discoveredClusterId, out var discoveredClusterCategory) &&
+                                                 discoveredClusterId > 0;
+                                
+                                if (discovered)
                                 {
                                     existingSleeveIdsSet.Add(discoveredClusterId);
                                     updates.Add((Guid.Parse(globalEntry.Id), globalEntry.IsResolved, true,
                                                  globalEntry.SleeveInstanceId, discoveredClusterId,
                                                  globalEntry.MepElementId, globalEntry.StructuralElementId,
-                                                 globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ));
+                                                 globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ,
+                                                 globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId)); // ✅ OLD values for matching
                                     LogToRefresh($"Entry {globalEntry.Id}: Cluster sleeve ID populated via GUID → {discoveredClusterId} (category='{discoveredClusterCategory ?? "UNKNOWN"}').");
                                     if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Info($"[FLAG-MANAGER] Entry {globalEntry.Id}: Cluster sleeve ID populated via GUID → {discoveredClusterId} (was missing)");
                                 }
+                                else
+                                {
+                                    // ✅ CRITICAL FIX: Cluster flag is true but ID is missing and can't be discovered → Reset cluster flag
+                                    DebugLogger.Warning($"[FLAG-MANAGER] ⚠️ Entry {globalEntry.Id}: IsClusterResolved=true but ClusterSleeveInstanceId={globalEntry.ClusterSleeveInstanceId} and cannot be discovered via GUID → Resetting cluster flag");
+                                    updates.Add((Guid.Parse(globalEntry.Id), globalEntry.IsResolved, false, globalEntry.SleeveInstanceId, -1,
+                                                 globalEntry.MepElementId, globalEntry.StructuralElementId,
+                                                 globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ,
+                                                 globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId)); // ✅ OLD values for matching
+                                    resetCount++;
+                                    LogToRefresh($"RESET cluster flag for entry {globalEntry.Id}: ClusterSleeveInstanceId missing and not discoverable → IsClusterResolved=false");
+                                }
+                                continue; // Skip individual check (cluster was processed)
                             }
                             
-                            // ✅ PROTECTED LOGIC: Then check individual (only if cluster flag is false)
-                            if (globalEntry.IsResolved && globalEntry.SleeveInstanceId > 0)
+                            // ✅ PROTECTED LOGIC: Then check individual (ONLY if cluster flag is false)
+                            // ⚠️ CRITICAL: If IsClusterResolved=true, individual sleeves were deleted during clustering
+                            // So we should NOT check individual sleeves if cluster is resolved
+                            if (!globalEntry.IsClusterResolved && globalEntry.IsResolved && globalEntry.SleeveInstanceId > 0)
                             {
                                 int sleeveIdToCheck = globalEntry.SleeveInstanceId;
+                                
+                                // ✅ DATABASE VERIFICATION: Check if sleeve ID exists in database first
+                                bool sleeveExistsInDb = false;
+                                try
+                                {
+                                    using (var context = new SleeveDbContext(_document, msg =>
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[FLAG-MANAGER][DB-CHECK] {msg}");
+                                    }))
+                                    {
+                                        var repository = new ClashZoneRepository(context, msg =>
+                                        {
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                DebugLogger.Info($"[FLAG-MANAGER][DB-CHECK] {msg}");
+                                        });
+                                        
+                                        // Check if this sleeve ID exists in database for this category
+                                        var dbZones = repository.GetClashZonesByCategory(category);
+                                        sleeveExistsInDb = dbZones?.Any(z => z.SleeveInstanceId == sleeveIdToCheck || z.ClusterSleeveInstanceId == sleeveIdToCheck) == true;
+                                        
+                                        DebugLogger.Info($"[FLAG-MANAGER] Entry {globalEntry.Id}: Individual sleeve ID {sleeveIdToCheck} - EXISTS IN DATABASE: {sleeveExistsInDb}");
+                                    }
+                                }
+                                catch (Exception dbEx)
+                                {
+                                    DebugLogger.Warning($"[FLAG-MANAGER] Entry {globalEntry.Id}: Database check failed for individual sleeve ID {sleeveIdToCheck}: {dbEx.Message}");
+                                }
+                                
+                                // Check Revit
                                 bool individualSleeveExists = existingSleeveIdsSet.Contains(sleeveIdToCheck);
+                                
+                                // ✅ CRITICAL DEBUG: Log complete sleeve existence check (DB + Revit)
+                                DebugLogger.Info($"[FLAG-MANAGER] Entry {globalEntry.Id}: Checking individual sleeve ID {sleeveIdToCheck} - DB={sleeveExistsInDb}, Revit={individualSleeveExists}, Final={individualSleeveExists}");
+                                
+                                // ✅ CRITICAL: If sleeve exists in DB but NOT in Revit, it was deleted - reset flags
+                                if (sleeveExistsInDb && !individualSleeveExists)
+                                {
+                                    DebugLogger.Warning($"[FLAG-MANAGER] ⚠️ Entry {globalEntry.Id}: Individual sleeve ID {sleeveIdToCheck} EXISTS IN DATABASE but NOT IN REVIT - sleeve was deleted, resetting flags");
+                                }
 
                                 if (!individualSleeveExists &&
                                     TryResolveSleeveIdFromGuid(globalEntry.Id, guidToSleeveId, sleeveIdToCategory, category, out var discoveredSleeveId, out var discoveredCategory))
@@ -374,12 +1098,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     if (individualSleeveExists)
                                     {
                                         existingSleeveIdsSet.Add(discoveredSleeveId);
+                                        DebugLogger.Info($"[FLAG-MANAGER] Entry {globalEntry.Id}: Individual sleeve ID {sleeveIdToCheck} NOT found, but discovered via GUID: {discoveredSleeveId}");
 
                                         if (sleeveIdToCheck != discoveredSleeveId)
                                         {
                                             updates.Add((Guid.Parse(globalEntry.Id), true, globalEntry.IsClusterResolved, discoveredSleeveId, globalEntry.ClusterSleeveInstanceId,
                                                         globalEntry.MepElementId, globalEntry.StructuralElementId,
-                                                        globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ));
+                                                        globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ,
+                                                        globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId)); // ✅ OLD values for matching
                                             LogToRefresh($"Entry {globalEntry.Id}: Individual sleeve healed via GUID → {discoveredSleeveId} (category='{discoveredCategory ?? "UNKNOWN"}').");
                                             if (!DeploymentConfiguration.DeploymentMode)
                                                 DebugLogger.Info($"[FLAG-MANAGER] Entry {globalEntry.Id}: Sleeve ID healed via GUID → {discoveredSleeveId} (was {sleeveIdToCheck})");
@@ -391,43 +1117,331 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[FLAG-MANAGER]   Entry {globalEntry.Id}: Individual sleeve {sleeveIdToCheck} exists in Revit: {individualSleeveExists}");
                                 if (detailLogBudget-- > 0)
-                                    LogToRefresh($"Entry {globalEntry.Id}: SleeveId={sleeveIdToCheck}, Exists={individualSleeveExists}, IsResolved={globalEntry.IsResolved}");
+                                    LogToRefresh($"Entry {globalEntry.Id}: SleeveId={sleeveIdToCheck}, Exists={individualSleeveExists}, IsResolved={globalEntry.IsResolved} (BEFORE check)");
                                 
                                 if (!individualSleeveExists)
                                 {
+                                    // ✅ EDGE CASE: Check if individual sleeve was deleted because it fell in a cluster zone
+                                    // Look for cluster sleeves at/near this location
+                                    int foundClusterSleeveId = -1;
+                                    const double clusterProximityTolerance = 1.0; // 1 foot tolerance for cluster zone detection
+                                    
+                                    // Check other Global XML entries with same MEP+Structural+nearby point that have IsClusterResolved=true
+                                    var nearbyClusterEntry = dedupedEntries
+                                        .Where(e => e != null && 
+                                                    e.Id != globalEntry.Id &&
+                                                    e.IsClusterResolved &&
+                                                    e.ClusterSleeveInstanceId > 0 &&
+                                                    e.MepElementId == globalEntry.MepElementId &&
+                                                    e.StructuralElementId == globalEntry.StructuralElementId)
+                                        .Where(e =>
+                                        {
+                                            double dx = e.IntersectionPointX - globalEntry.IntersectionPointX;
+                                            double dy = e.IntersectionPointY - globalEntry.IntersectionPointY;
+                                            double dz = e.IntersectionPointZ - globalEntry.IntersectionPointZ;
+                                            double distance = Math.Sqrt(dx * dx + dy * dy + dz * dz);
+                                            return distance <= clusterProximityTolerance;
+                                        })
+                                        .FirstOrDefault();
+                                    
+                                    if (nearbyClusterEntry != null)
+                                    {
+                                        foundClusterSleeveId = nearbyClusterEntry.ClusterSleeveInstanceId;
+                                        // Verify cluster sleeve exists in Revit
+                                        if (existingSleeveIdsSet.Contains(foundClusterSleeveId))
+                                        {
+                                            // ✅ EDGE CASE: Individual sleeve was deleted because it fell in cluster zone
+                                            DebugLogger.Info($"[FLAG-MANAGER] ✅ EDGE CASE: Entry {globalEntry.Id}: Individual sleeve {sleeveIdToCheck} NOT FOUND, but cluster sleeve {foundClusterSleeveId} exists nearby");
+                                            DebugLogger.Info($"[FLAG-MANAGER]   BEFORE: IsClusterResolved={globalEntry.IsClusterResolved}, IsResolved={globalEntry.IsResolved}, ClusterSleeveId={globalEntry.ClusterSleeveInstanceId}, SleeveId={globalEntry.SleeveInstanceId}");
+                                            DebugLogger.Info($"[FLAG-MANAGER]   AFTER:  IsClusterResolved=true, IsResolved=false, ClusterSleeveId={foundClusterSleeveId}, SleeveId=-1");
+                                            updates.Add((Guid.Parse(globalEntry.Id), false, true, -1, foundClusterSleeveId,
+                                                        globalEntry.MepElementId, globalEntry.StructuralElementId,
+                                                        globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ,
+                                                        globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId)); // ✅ OLD values for matching
+                                            resetCount++;
+                                            LogToRefresh($"EDGE CASE: Entry {globalEntry.Id}: Individual sleeve deleted (fell in cluster zone) → IsClusterResolved: {globalEntry.IsClusterResolved}→true, ClusterSleeveInstanceId={foundClusterSleeveId}");
+                                            continue; // Skip to next entry
+                                        }
+                                    }
+                                    
+                                    // No cluster sleeve found nearby - individual was deleted manually
+                                    DebugLogger.Info($"[FLAG-MANAGER] ✓✓✓ RESETTING Entry {globalEntry.Id}: Individual sleeve {sleeveIdToCheck} NOT FOUND in Revit");
+                                    DebugLogger.Info($"[FLAG-MANAGER]   BEFORE: IsClusterResolved={globalEntry.IsClusterResolved}, IsResolved={globalEntry.IsResolved}, ClusterSleeveId={globalEntry.ClusterSleeveInstanceId}, SleeveId={globalEntry.SleeveInstanceId}");
+                                    DebugLogger.Info($"[FLAG-MANAGER]   AFTER:  IsClusterResolved={globalEntry.IsClusterResolved}, IsResolved=false, ClusterSleeveId={globalEntry.ClusterSleeveInstanceId}, SleeveId=-1");
                                     updates.Add((Guid.Parse(globalEntry.Id), false, globalEntry.IsClusterResolved, -1, globalEntry.ClusterSleeveInstanceId,
                                                 globalEntry.MepElementId, globalEntry.StructuralElementId,
-                                                globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ));
+                                                globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ,
+                                                globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId)); // ✅ OLD values for matching
                                     resetCount++;
                                     
                                     if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Info($"[FLAG-MANAGER] ✓ Reset individual flag for Global XML entry {globalEntry.Id} - individual sleeve {sleeveIdToCheck} NOT FOUND");
-                                    LogToRefresh($"RESET individual entry {globalEntry.Id}: SleeveId={sleeveIdToCheck} missing → IsResolved=false, SleeveInstanceId=-1");
+                                    LogToRefresh($"RESET individual entry {globalEntry.Id}: SleeveId={sleeveIdToCheck} missing → IsResolved: {globalEntry.IsResolved}→false, SleeveInstanceId=-1");
                                 }
                             }
-                            else if (globalEntry.IsResolved && globalEntry.SleeveInstanceId <= 0)
+                            else if (!globalEntry.IsClusterResolved && globalEntry.IsResolved && globalEntry.SleeveInstanceId <= 0)
                             {
-                                if (TryResolveSleeveIdFromGuid(globalEntry.Id, guidToSleeveId, sleeveIdToCategory, category, out var discoveredSleeveId, out var discoveredCategory) &&
-                                    discoveredSleeveId > 0)
+                                // ✅ CRITICAL: IsResolved=true but SleeveInstanceId is missing/invalid
+                                // Try to discover via GUID, but if not found, reset individual flag
+                                bool discovered = TryResolveSleeveIdFromGuid(globalEntry.Id, guidToSleeveId, sleeveIdToCategory, category, out var discoveredSleeveId, out var discoveredCategory) &&
+                                                 discoveredSleeveId > 0;
+                                
+                                if (discovered)
                                 {
                                     existingSleeveIdsSet.Add(discoveredSleeveId);
                                     updates.Add((Guid.Parse(globalEntry.Id), true, globalEntry.IsClusterResolved, discoveredSleeveId, globalEntry.ClusterSleeveInstanceId,
                                                 globalEntry.MepElementId, globalEntry.StructuralElementId,
-                                                globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ));
+                                                globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ,
+                                                globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId)); // ✅ OLD values for matching
                                     LogToRefresh($"Entry {globalEntry.Id}: Sleeve ID populated via GUID → {discoveredSleeveId} (category='{discoveredCategory ?? "UNKNOWN"}').");
                                     if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Info($"[FLAG-MANAGER] Entry {globalEntry.Id}: Sleeve ID populated via GUID → {discoveredSleeveId} (was missing)");
                                 }
+                                else
+                                {
+                                    // ✅ CRITICAL FIX: Individual flag is true but ID is missing and can't be discovered → Reset individual flag
+                                    DebugLogger.Warning($"[FLAG-MANAGER] ⚠️ Entry {globalEntry.Id}: IsResolved=true but SleeveInstanceId={globalEntry.SleeveInstanceId} and cannot be discovered via GUID → Resetting individual flag");
+                                    updates.Add((Guid.Parse(globalEntry.Id), false, globalEntry.IsClusterResolved, -1, globalEntry.ClusterSleeveInstanceId,
+                                                globalEntry.MepElementId, globalEntry.StructuralElementId,
+                                                globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ,
+                                                globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId)); // ✅ OLD values for matching
+                                    resetCount++;
+                                    LogToRefresh($"RESET individual flag for entry {globalEntry.Id}: SleeveInstanceId missing and not discoverable → IsResolved=false");
+                                }
                             }
                         }
                         
-                        // Save updated flags to Global XML
-                        LogToRefresh($"Category '{category}' scan complete → updates={updates.Count}, resetCount={resetCount}");
+                        // ✅ CRITICAL DEBUG: Verify updates list before persisting
+                        // ✅ ALWAYS LOG TO FILE (bypasses DebugLogger filtering)
+                        LogToRefresh($"===== VERIFICATION: Category '{category}' scan complete =====");
+                        LogToRefresh($"updates.Count={updates.Count}, resetCount={resetCount}");
+                        DebugLogger.Info($"[FLAG-MANAGER] ===== VERIFICATION: Category '{category}' scan complete =====");
+                        DebugLogger.Info($"[FLAG-MANAGER] updates.Count={updates.Count}, resetCount={resetCount}");
+                        
+                        if (updates.Count != resetCount)
+                        {
+                            LogToRefresh($"❌ BUG DETECTED: updates.Count ({updates.Count}) != resetCount ({resetCount})! This indicates a logic error.");
+                            DebugLogger.Error($"[FLAG-MANAGER] ❌ BUG DETECTED: updates.Count ({updates.Count}) != resetCount ({resetCount})! This indicates a logic error.");
+                        }
 
                         if (updates.Count > 0)
                         {
+                            LogToRefresh($"===== ABOUT TO PERSIST {updates.Count} UPDATES =====");
+                            LogToRefresh($"First update: GUID={updates[0].Id}, IsResolved={updates[0].IsResolved}, IsClusterResolved={updates[0].IsClusterResolved}, SleeveId={updates[0].SleeveInstanceId}, ClusterId={updates[0].ClusterSleeveInstanceId}");
+                            DebugLogger.Info($"[FLAG-MANAGER] ===== ABOUT TO PERSIST {updates.Count} UPDATES =====");
+                            DebugLogger.Info($"[FLAG-MANAGER] First update: GUID={updates[0].Id}, IsResolved={updates[0].IsResolved}, IsClusterResolved={updates[0].IsClusterResolved}, SleeveId={updates[0].SleeveInstanceId}, ClusterId={updates[0].ClusterSleeveInstanceId}");
+                            if (updates.Count > 1)
+                            {
+                                LogToRefresh($"Last update: GUID={updates[updates.Count - 1].Id}, IsResolved={updates[updates.Count - 1].IsResolved}, IsClusterResolved={updates[updates.Count - 1].IsClusterResolved}, SleeveId={updates[updates.Count - 1].SleeveInstanceId}, ClusterId={updates[updates.Count - 1].ClusterSleeveInstanceId}");
+                                DebugLogger.Info($"[FLAG-MANAGER] Last update: GUID={updates[updates.Count - 1].Id}, IsResolved={updates[updates.Count - 1].IsResolved}, IsClusterResolved={updates[updates.Count - 1].IsClusterResolved}, SleeveId={updates[updates.Count - 1].SleeveInstanceId}, ClusterId={updates[updates.Count - 1].ClusterSleeveInstanceId}");
+                            }
+                            
+                            // Log sample of updates for verification
+                            for (int i = 0; i < Math.Min(5, updates.Count); i++)
+                            {
+                                var update = updates[i];
+                                LogToRefresh($"Update #{i + 1}/{updates.Count}: GUID={update.Id}, IsResolved={update.IsResolved}, IsClusterResolved={update.IsClusterResolved}, SleeveId={update.SleeveInstanceId}, ClusterId={update.ClusterSleeveInstanceId}");
+                                DebugLogger.Info($"[FLAG-MANAGER] Update #{i + 1}/{updates.Count}: GUID={update.Id}, IsResolved={update.IsResolved}, IsClusterResolved={update.IsClusterResolved}, SleeveId={update.SleeveInstanceId}, ClusterId={update.ClusterSleeveInstanceId}");
+                            }
+                        }
+                        else if (resetCount > 0)
+                        {
+                            LogToRefresh($"❌ CRITICAL BUG: updates list is EMPTY but resetCount={resetCount}! Updates were detected but not added to list.");
+                            DebugLogger.Error($"[FLAG-MANAGER] ❌ CRITICAL BUG: updates list is EMPTY but resetCount={resetCount}! Updates were detected but not added to list.");
+                        }
+                        else
+                        {
+                            LogToRefresh($"No updates needed - all sleeves exist or no resolved flags found.");
+                            DebugLogger.Info($"[FLAG-MANAGER] No updates needed - all sleeves exist or no resolved flags found.");
+                        }
+                        
+                        // ✅ OPTION 4: DATABASE-FIRST APPROACH - Update database first, then sync to Global XML
+                        // ✅ CRITICAL: Always log this summary (even if refreshLogName is null)
+                        var summaryMsg = $"Category '{category}' scan complete → updates={updates.Count}, resetCount={resetCount}";
+                        DebugLogger.Info($"[FLAG-MANAGER] {summaryMsg}");
+                        LogToRefresh(summaryMsg);
+                        
+                        // ✅ CRITICAL DEBUG: Always log these details (even in deployment mode for troubleshooting)
+                        DebugLogger.Info($"[FLAG-MANAGER] Category '{category}': Found {updates.Count} updates, {resetCount} flags to reset");
+                        DebugLogger.Info($"[FLAG-MANAGER] Category '{category}': Checked {dedupedEntries.Count} Global XML entries, {entriesToCheck.Count} had resolved flags");
+                        DebugLogger.Info($"[FLAG-MANAGER] Category '{category}': Found {existingSleeveIdsSet.Count} sleeves in Revit for this category");
+                        int totalSleevesScanned = allSleeveInstances.Count > 0 ? allSleeveInstances.Count : existingSleeveIdsSet.Count;
+                        DebugLogger.Info($"[FLAG-MANAGER] Category '{category}': Sleeves checked (direct lookup: {existingSleeveIdsSet.Count}, full scan: {allSleeveInstances.Count})");
+                        
+                        // ✅ ENHANCED DEBUG: Log all sleeve IDs from Global XML that should be checked
+                        var allGlobalSleeveIds = new HashSet<int>();
+                        foreach (var entry in entriesToCheck)
+                        {
+                            if (entry.SleeveInstanceId > 0) allGlobalSleeveIds.Add(entry.SleeveInstanceId);
+                            if (entry.ClusterSleeveInstanceId > 0) allGlobalSleeveIds.Add(entry.ClusterSleeveInstanceId);
+                        }
+                        DebugLogger.Info($"[FLAG-MANAGER] Category '{category}': Global XML has {allGlobalSleeveIds.Count} unique sleeve IDs that should exist: {string.Join(", ", allGlobalSleeveIds.Take(20))}{(allGlobalSleeveIds.Count > 20 ? "..." : "")}");
+                        
+                        // ✅ ENHANCED DEBUG: Find which sleeve IDs from Global XML are missing in Revit
+                        var missingSleeveIds = allGlobalSleeveIds.Where(id => !existingSleeveIdsSet.Contains(id)).ToList();
+                        if (missingSleeveIds.Count > 0)
+                        {
+                            DebugLogger.Warning($"[FLAG-MANAGER] ⚠️ Category '{category}': {missingSleeveIds.Count} sleeve IDs from Global XML are MISSING in Revit: {string.Join(", ", missingSleeveIds.Take(20))}{(missingSleeveIds.Count > 20 ? "..." : "")}");
+                        }
+                        else if (allGlobalSleeveIds.Count > 0)
+                        {
+                            DebugLogger.Info($"[FLAG-MANAGER] Category '{category}': All {allGlobalSleeveIds.Count} sleeve IDs from Global XML exist in Revit - no reset needed");
+                        }
+                        
+                        if (updates.Count > 0)
+                        {
+                            var sampleUpdate = updates.First();
+                            DebugLogger.Info($"[FLAG-MANAGER] Sample update: GUID={sampleUpdate.Id}, IsResolved={sampleUpdate.IsResolved}, IsClusterResolved={sampleUpdate.IsClusterResolved}, SleeveId={sampleUpdate.SleeveInstanceId}, ClusterId={sampleUpdate.ClusterSleeveInstanceId}");
+                        }
+                        else if (resetCount > 0)
+                        {
+                            DebugLogger.Warning($"[FLAG-MANAGER] ⚠️ Category '{category}': resetCount={resetCount} but updates.Count=0 - this shouldn't happen!");
+                        }
+                        else if (entriesToCheck.Count > 0 && missingSleeveIds.Count == 0)
+                        {
+                            DebugLogger.Info($"[FLAG-MANAGER] Category '{category}': All {entriesToCheck.Count} entries with resolved flags have valid sleeves in Revit - no reset needed");
+                        }
+                        else if (entriesToCheck.Count > 0 && missingSleeveIds.Count > 0)
+                        {
+                            DebugLogger.Error($"[FLAG-MANAGER] ❌ Category '{category}': BUG DETECTED - {missingSleeveIds.Count} sleeves are missing but updates.Count=0! This indicates a logic error in flag reset detection.");
+                        }
+
+                        if (updates.Count > 0)
+                        {
+                            // ✅ CRITICAL DEBUG: Log ALL updates before persisting (always log, even in deployment mode)
+                            LogToRefresh($"===== PERSISTING {updates.Count} UPDATES FOR CATEGORY '{category}' =====");
+                            DebugLogger.Info($"[FLAG-MANAGER] ===== PERSISTING {updates.Count} UPDATES FOR CATEGORY '{category}' =====");
+                            for (int i = 0; i < Math.Min(10, updates.Count); i++)
+                            {
+                                var update = updates[i];
+                                LogToRefresh($"Update #{i + 1}/{updates.Count}: GUID={update.Id}, IsResolved={update.IsResolved}, IsClusterResolved={update.IsClusterResolved}, SleeveId={update.SleeveInstanceId}, ClusterId={update.ClusterSleeveInstanceId}, MEP={update.MepElementId}, Host={update.StructuralElementId}, Point=({update.IntersectionPointX:F3}, {update.IntersectionPointY:F3}, {update.IntersectionPointZ:F3})");
+                                DebugLogger.Info($"[FLAG-MANAGER] Update #{i + 1}/{updates.Count}: GUID={update.Id}, IsResolved={update.IsResolved}, IsClusterResolved={update.IsClusterResolved}, SleeveId={update.SleeveInstanceId}, ClusterId={update.ClusterSleeveInstanceId}, MEP={update.MepElementId}, Host={update.StructuralElementId}, Point=({update.IntersectionPointX:F3}, {update.IntersectionPointY:F3}, {update.IntersectionPointZ:F3})");
+                            }
+                            if (updates.Count > 10)
+                            {
+                                LogToRefresh($"... and {updates.Count - 10} more updates");
+                            }
+                            
+                            // Step 1: Update database first (triggers will auto-compute SleeveState)
+                            try
+                            {
+                                LogToRefresh($"===== DATABASE UPDATE: Starting database update for {updates.Count} clash zones =====");
+                                using (var context = new SleeveDbContext(_document, msg =>
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[FLAG-MANAGER][SQLite] {msg}");
+                                    // ✅ ALWAYS LOG TO FILE (bypasses DebugLogger filtering)
+                                    if (!string.IsNullOrWhiteSpace(refreshLogName))
+                                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER][SQLite] {msg}\n");
+                                }))
+                                {
+                                    var repository = new ClashZoneRepository(context, msg =>
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[FLAG-MANAGER][SQLite] {msg}");
+                                        // ✅ ALWAYS LOG TO FILE (bypasses DebugLogger filtering)
+                                        if (!string.IsNullOrWhiteSpace(refreshLogName))
+                                            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER][SQLite] {msg}\n");
+                                    });
+                                    
+                                    // Convert updates to database format (include OLD SleeveInstanceId/ClusterInstanceId for direct matching)
+                                    // ✅ CRITICAL: Match exact field names expected by BatchUpdateFlags
+                                    var dbUpdates = updates.Select(u => (
+                                        ClashZoneId: u.Id,
+                                        IsResolved: u.IsResolved,
+                                        IsClusterResolved: u.IsClusterResolved,
+                                        SleeveInstanceId: u.SleeveInstanceId,
+                                        ClusterInstanceId: u.ClusterSleeveInstanceId, // Note: BatchUpdateFlags uses ClusterInstanceId, not ClusterSleeveInstanceId
+                                        MepElementId: u.MepElementId,
+                                        StructuralElementId: u.StructuralElementId,
+                                        IntersectionPointX: u.IntersectionPointX,
+                                        IntersectionPointY: u.IntersectionPointY,
+                                        IntersectionPointZ: u.IntersectionPointZ,
+                                        OldSleeveInstanceId: u.OldSleeveInstanceId,
+                                        OldClusterInstanceId: u.OldClusterInstanceId
+                                    )).ToList();
+                                    
+                                    LogToRefresh($"✅ DATABASE UPDATE: Calling BatchUpdateFlags with {dbUpdates.Count} updates");
+                                    DebugLogger.Info($"[FLAG-MANAGER] ✅ DATABASE UPDATE: Calling BatchUpdateFlags with {dbUpdates.Count} updates");
+                                    repository.BatchUpdateFlags(dbUpdates);
+                                    LogToRefresh($"✅ DATABASE UPDATE: BatchUpdateFlags completed successfully for {dbUpdates.Count} clash zones in category '{category}'");
+                                    DebugLogger.Info($"[FLAG-MANAGER] ✅ DATABASE UPDATE: BatchUpdateFlags completed successfully for {dbUpdates.Count} clash zones in category '{category}'");
+                                    
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[FLAG-MANAGER] ✅ Updated database flags for {dbUpdates.Count} clash zones in category '{category}' (database-first)");
+                                }
+                            }
+                            catch (Exception dbEx)
+                            {
+                                // ✅ NON-BLOCKING: Log database error but continue with Global XML sync
+                                LogToRefresh($"❌ DATABASE UPDATE FAILED for category '{category}': {dbEx.Message}");
+                                LogToRefresh($"❌ DATABASE UPDATE Stack trace: {dbEx.StackTrace}");
+                                DebugLogger.Error($"[FLAG-MANAGER] ❌ DATABASE UPDATE FAILED for category '{category}': {dbEx.Message}");
+                                DebugLogger.Error($"[FLAG-MANAGER] ❌ DATABASE UPDATE Stack trace: {dbEx.StackTrace}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Warning($"[FLAG-MANAGER] ⚠️ Failed to update database flags for category '{category}': {dbEx.Message}");
+                            }
+                            
+                            // Step 2: Sync to Global XML (for backward compatibility and cross-filter tracking)
                             // ✅ CRITICAL FIX: FilterName is preserved from Global XML entry (not overwritten)
-                            GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, updates, filterName: null);
+                            try
+                            {
+                                // ✅ ENHANCED DEBUG: Log what we're about to update
+                                LogToRefresh($"===== GLOBAL XML UPDATE: About to update Global XML for category '{category}' with {updates.Count} updates =====");
+                                DebugLogger.Info($"[FLAG-MANAGER] ===== GLOBAL XML UPDATE: About to update Global XML for category '{category}' with {updates.Count} updates =====");
+                                foreach (var update in updates.Take(5))
+                                {
+                                    LogToRefresh($"  Update: GUID={update.Id}, IsResolved={update.IsResolved}, IsClusterResolved={update.IsClusterResolved}, SleeveId={update.SleeveInstanceId}, ClusterId={update.ClusterSleeveInstanceId}");
+                                    DebugLogger.Info($"[FLAG-MANAGER]   Update: GUID={update.Id}, IsResolved={update.IsResolved}, IsClusterResolved={update.IsClusterResolved}, SleeveId={update.SleeveInstanceId}, ClusterId={update.ClusterSleeveInstanceId}");
+                                }
+                                if (updates.Count > 5)
+                                {
+                                    LogToRefresh($"  ... and {updates.Count - 5} more updates");
+                                    DebugLogger.Info($"[FLAG-MANAGER]   ... and {updates.Count - 5} more updates");
+                                }
+                                
+                                LogToRefresh($"✅ GLOBAL XML UPDATE: Calling UpsertFlagsWithIdsAndClashZoneData");
+                                DebugLogger.Info($"[FLAG-MANAGER] ✅ GLOBAL XML UPDATE: Calling UpsertFlagsWithIdsAndClashZoneData");
+                                // ✅ Convert to format expected by GlobalIndexService (remove OldSleeveInstanceId and OldClusterInstanceId)
+                                var globalXmlUpdates = updates.Select(u => (
+                                    u.Id,
+                                    u.IsResolved,
+                                    u.IsClusterResolved,
+                                    u.SleeveInstanceId,
+                                    u.ClusterSleeveInstanceId,
+                                    u.MepElementId,
+                                    u.StructuralElementId,
+                                    u.IntersectionPointX,
+                                    u.IntersectionPointY,
+                                    u.IntersectionPointZ
+                                )).ToList();
+                                
+                                // ✅ PHASE 2: Only update Global XML if XML creation is enabled
+                                if (!DeploymentConfiguration.DisableXmlCreation)
+                                {
+                                    GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, globalXmlUpdates, filterName: null, refreshLogName: refreshLogName);
+                                    LogToRefresh($"✅ GLOBAL XML UPDATE: UpsertFlagsWithIdsAndClashZoneData completed successfully");
+                                    DebugLogger.Info($"[FLAG-MANAGER] ✅ GLOBAL XML UPDATE: UpsertFlagsWithIdsAndClashZoneData completed successfully");
+                                    
+                                    DebugLogger.Info($"[FLAG-MANAGER] ✅ Updated Global XML for {updates.Count} entries in category '{category}' (reset {resetCount} flags)");
+                                    LogToRefresh($"✅ Updated Global XML: {updates.Count} entries, {resetCount} flags reset for category '{category}'");
+                                }
+                                else
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[FLAG-MANAGER] ⚠️ XML creation disabled - skipping Global XML update for {updates.Count} entries in category '{category}' (database only mode)");
+                                    LogToRefresh($"⚠️ XML creation disabled - skipping Global XML update for category '{category}' (database only mode)");
+                                }
+                            }
+                            catch (Exception xmlEx)
+                            {
+                                // ✅ CRITICAL: Log Global XML update failure - this is blocking!
+                                DebugLogger.Error($"[FLAG-MANAGER] ❌ FAILED to update Global XML for category '{category}': {xmlEx.Message}");
+                                DebugLogger.Error($"[FLAG-MANAGER] ❌ Stack trace: {xmlEx.StackTrace}");
+                                LogToRefresh($"❌ ERROR: Failed to update Global XML for category '{category}': {xmlEx.Message}");
+                                throw; // Re-throw - Global XML update is critical
+                            }
+                            
                             totalResetCount += resetCount;
                             
                             if (!DeploymentConfiguration.DeploymentMode)
@@ -697,13 +1711,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     if (updatesWithData.Count > 0)
                     {
+                        // ✅ PHASE 2: Only update Global XML if XML creation is enabled
+                        if (!DeploymentConfiguration.DisableXmlCreation)
+                    {
                         // ✅ CRITICAL FIX: Try to preserve FilterName from Global XML entries when resetting flags
                         // If FilterName exists in Global XML, use it; otherwise leave empty
                         GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, updatesWithData, filterName: null);
-                    }
                     
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[FLAG-MANAGER] Updated Global XML for {updates.Count} clash zones with reset flags in category '{category}'");
+                        }
+                        else
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[FLAG-MANAGER] ⚠️ XML creation disabled - skipping Global XML update for {updates.Count} clash zones in category '{category}' (database only mode)");
+                        }
+                    }
                 }
                 
                 if (resetCount > 0)
@@ -755,7 +1778,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (allEntries == null || allEntries.Count == 0)
                             continue;
                         
-                        var updates = new List<(Guid Id, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterSleeveInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ)>();
+                        var updates = new List<(Guid Id, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterSleeveInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId)>();
                         int resetCount = 0;
                         
                         // Check ALL Global XML entries (even if not in Filter XML)
@@ -779,7 +1802,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     // Cluster sleeve deleted → Reset ALL flags
                                     updates.Add((Guid.Parse(globalEntry.Id), false, false, -1, -1,
                                                 globalEntry.MepElementId, globalEntry.StructuralElementId,
-                                                globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ));
+                                                globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ,
+                                                globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId)); // ✅ OLD values for matching
                                     resetCount++;
                                     
                                     if (!DeploymentConfiguration.DeploymentMode)
@@ -797,7 +1821,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     // Individual sleeve deleted → Reset individual flag only
                                     updates.Add((Guid.Parse(globalEntry.Id), false, globalEntry.IsClusterResolved, -1, globalEntry.ClusterSleeveInstanceId,
                                                 globalEntry.MepElementId, globalEntry.StructuralElementId,
-                                                globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ));
+                                                globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ,
+                                                globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId)); // ✅ OLD values for matching
                                     resetCount++;
                                     
                                     if (!DeploymentConfiguration.DeploymentMode)
@@ -810,11 +1835,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (updates.Count > 0)
                         {
                             // ✅ CRITICAL FIX: FilterName is preserved from Global XML entry (not overwritten)
-                            GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, updates, filterName: null);
+                            // ✅ Convert to format expected by GlobalIndexService (remove OldSleeveInstanceId and OldClusterInstanceId)
+                            var globalXmlUpdates = updates.Select(u => (
+                                u.Id,
+                                u.IsResolved,
+                                u.IsClusterResolved,
+                                u.SleeveInstanceId,
+                                u.ClusterSleeveInstanceId,
+                                u.MepElementId,
+                                u.StructuralElementId,
+                                u.IntersectionPointX,
+                                u.IntersectionPointY,
+                                u.IntersectionPointZ
+                            )).ToList();
+                            
+                            // ✅ PHASE 2: Only update Global XML if XML creation is enabled
+                            if (!DeploymentConfiguration.DisableXmlCreation)
+                            {
+                                GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, globalXmlUpdates, filterName: null);
                             totalResetCount += resetCount;
                             
                             if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[FLAG-MANAGER] ✅ Reset {resetCount} Global XML entries in category '{category}' - sleeves were deleted");
+                            }
+                            else
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[FLAG-MANAGER] ⚠️ XML creation disabled - skipping Global XML reset for {resetCount} entries in category '{category}' (database only mode)");
+                            }
                         }
                     }
                     catch (Exception categoryEx)
@@ -877,11 +1925,60 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Note: IsClusterResolved remains false for individual sleeves
                 }
                 
-                // Update Global XML using existing service with MEP+Host+Point data
-                // ✅ CRITICAL FIX: Pass FilterName to ensure Global XML knows which Filter XML file contains placement data
+                // ✅ OPTION 4: DATABASE-FIRST APPROACH - Update database first (authoritative source), then sync to Global XML
                 int mepId = clashZone.MepElementId?.IntegerValue ?? clashZone.MepElementIdValue;
                 int hostId = clashZone.StructuralElementId?.IntegerValue ?? clashZone.StructuralElementIdValue;
                 
+                // Step 1: Update database first (triggers will auto-compute SleeveState)
+                try
+                {
+                    using (var context = new SleeveDbContext(_document, msg =>
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[FLAG-MANAGER][SQLite] {msg}");
+                    }))
+                    {
+                        var repository = new ClashZoneRepository(context, msg =>
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[FLAG-MANAGER][SQLite] {msg}");
+                        });
+                        
+                        // ✅ Use BatchUpdateFlags for single update (database-first approach)
+                        var singleUpdate = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId)>
+                        {
+                            (
+                                clashZone.Id,
+                                clashZone.IsResolved,
+                                clashZone.IsClusterResolved,
+                                clashZone.SleeveInstanceId,
+                                clashZone.ClusterSleeveInstanceId,
+                                clashZone.MepElementIdValue,
+                                clashZone.StructuralElementIdValue,
+                                clashZone.IntersectionPointX,
+                                clashZone.IntersectionPointY,
+                                clashZone.IntersectionPointZ,
+                                clashZone.SleeveInstanceId, // OldSleeveInstanceId
+                                clashZone.ClusterSleeveInstanceId // OldClusterInstanceId
+                            )
+                        };
+                        repository.BatchUpdateFlags(singleUpdate);
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[FLAG-MANAGER] ✅ Updated database flags for ClashZone {clashZone.Id} (database-first)");
+                    }
+                }
+                catch (Exception dbEx)
+                {
+                    // ✅ NON-BLOCKING: Log database error but continue with Global XML sync
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[FLAG-MANAGER] ⚠️ Failed to update database flags for ClashZone {clashZone.Id}: {dbEx.Message}");
+                }
+                
+                // Step 2: Sync to Global XML (for backward compatibility and cross-filter tracking)
+                // ✅ PHASE 2: Only update Global XML if XML creation is enabled
+                if (!DeploymentConfiguration.DisableXmlCreation)
+                {
                 GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, new[] { 
                     (clashZone.Id, clashZone.IsResolved, clashZone.IsClusterResolved, 
                      clashZone.SleeveInstanceId, clashZone.ClusterSleeveInstanceId,
@@ -890,6 +1987,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[FLAG-MANAGER] Updated flags for ClashZone {clashZone.Id} after {(isCluster ? "cluster" : "individual")} sleeve placement (SleeveId={sleeveId}, Filter='{filterName ?? "N/A"}')");
+                }
+                else
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[FLAG-MANAGER] ⚠️ XML creation disabled - skipping Global XML update for ClashZone {clashZone.Id} (database only mode)");
+                }
             }
             catch (Exception ex)
             {
@@ -1624,10 +2727,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ STEP 6: Update existing entries with sleeve IDs and flags
                 if (updatesToExisting.Count > 0)
                 {
+                    // ✅ PHASE 2: Only update Global XML if XML creation is enabled
+                    if (!DeploymentConfiguration.DisableXmlCreation)
+                {
                     GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, updatesToExisting, filterName: null);
                     
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[FLAG-MANAGER] ✅ Updated {updatedCount} existing entries and created {createdCount} new entries with sleeve IDs from Revit for category '{category}'");
+                    }
+                    else
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[FLAG-MANAGER] ⚠️ XML creation disabled - skipping Global XML update for {updatesToExisting.Count} entries in category '{category}' (database only mode)");
+                    }
                 }
                 else
                 {
@@ -1839,6 +2951,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     int mepId = clashZone.MepElementId?.IntegerValue ?? clashZone.MepElementIdValue;
                     int hostId = clashZone.StructuralElementId?.IntegerValue ?? clashZone.StructuralElementIdValue;
                     
+                    // ✅ PHASE 2: Only update Global XML if XML creation is enabled
+                    if (!DeploymentConfiguration.DisableXmlCreation)
+                    {
                     // ✅ CRITICAL FIX: FilterName not available in this context, but flag reset will preserve existing FilterName
                     GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, new[] { 
                         (clashZone.Id, false, false, -1, -1,
@@ -1847,6 +2962,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[FLAG-MANAGER] ✅ Reset flags for ClashZone {clashZone.Id} after sleeve deletion due to intersection point change");
+                    }
+                    else
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[FLAG-MANAGER] ⚠️ XML creation disabled - skipping Global XML reset for ClashZone {clashZone.Id} (database only mode)");
+                    }
                 }
                 
                 return deleted;

@@ -9,7 +9,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders
     /// </summary>
     public class FireDamperClearanceProvider : IClearanceProvider
     {
-        public double GetClearance(Element mepElement, Dictionary<string, double> uiClearances = null)
+        public double GetClearance(Element mepElement, Dictionary<string, double>? uiClearances = null)
         {
             if (mepElement is FamilyInstance damper)
             {

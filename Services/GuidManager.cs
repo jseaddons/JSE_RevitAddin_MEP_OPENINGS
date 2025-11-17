@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
@@ -20,6 +22,78 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _document = document ?? throw new ArgumentNullException(nameof(document));
         }
         
+        /// <summary>
+        /// ✅ DATABASE-FIRST GUID MANAGEMENT: Gets or creates deterministic GUID using database-first approach.
+        /// Checks database first (fast, indexed), falls back to Global XML, then generates deterministic GUID if not found.
+        /// </summary>
+        /// <param name="mepId">MEP element ID (integer value)</param>
+        /// <param name="hostId">Host/Structural element ID (integer value)</param>
+        /// <param name="intersectionPointX">Intersection point X coordinate</param>
+        /// <param name="intersectionPointY">Intersection point Y coordinate</param>
+        /// <param name="intersectionPointZ">Intersection point Z coordinate</param>
+        /// <param name="tolerance">Tolerance for rounding coordinates (default 0.1ft = ~30mm)</param>
+        /// <returns>Deterministic GUID that is stable for the same 3-point combo</returns>
+        public Guid GetOrCreateDeterministicGuidDatabaseFirst(int mepId, int hostId, double intersectionPointX, double intersectionPointY, double intersectionPointZ, double tolerance = 0.1)
+        {
+            if (mepId <= 0 || hostId <= 0)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[GUID-MANAGER] Invalid IDs for deterministic GUID (MEP={mepId}, Host={hostId}) - using random GUID");
+                return Guid.NewGuid();
+            }
+
+            try
+            {
+                // Step 1: Check database first (fast, indexed lookup)
+                using (var context = new SleeveDbContext(_document, msg =>
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[GUID-MANAGER][SQLite] {msg}");
+                }))
+                {
+                    var repository = new ClashZoneRepository(context, msg =>
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[GUID-MANAGER][SQLite] {msg}");
+                    });
+
+                    var existingGuid = repository.FindGuidByMepHostAndPoint(mepId, hostId, intersectionPointX, intersectionPointY, intersectionPointZ, tolerance);
+                    if (existingGuid.HasValue)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[GUID-MANAGER] ✅ Found existing GUID {existingGuid.Value} in database for MEP={mepId}, Host={hostId}, Point=({intersectionPointX:F3},{intersectionPointY:F3},{intersectionPointZ:F3})");
+                        return existingGuid.Value;
+                    }
+
+                    // Step 2: GUID not in database - generate deterministic GUID and store it
+                    var deterministicGuid = GenerateDeterministicGuid(mepId, hostId, intersectionPointX, intersectionPointY, intersectionPointZ, tolerance);
+                    
+                    // Store in database (will be stored when clash zone is inserted, but we can pre-store it)
+                    try
+                    {
+                        repository.GetOrCreateDeterministicGuid(mepId, hostId, intersectionPointX, intersectionPointY, intersectionPointZ, GenerateDeterministicGuid, tolerance);
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[GUID-MANAGER] ✅ Stored deterministic GUID {deterministicGuid} in database for MEP={mepId}, Host={hostId}");
+                    }
+                    catch (Exception dbEx)
+                    {
+                        // Non-blocking: Log but continue (GUID will be stored when clash zone is inserted)
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[GUID-MANAGER] ⚠️ Could not pre-store GUID in database: {dbEx.Message}");
+                    }
+
+                    return deterministicGuid;
+                }
+            }
+            catch (Exception ex)
+            {
+                // Fallback: Generate deterministic GUID even if database fails
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[GUID-MANAGER] ⚠️ Database lookup failed, generating deterministic GUID: {ex.Message}");
+                return GenerateDeterministicGuid(mepId, hostId, intersectionPointX, intersectionPointY, intersectionPointZ, tolerance);
+            }
+        }
+
         /// <summary>
         /// ✅ CRITICAL: Generates a deterministic GUID from stable identifiers (MEP+Host+Point)
         /// This ensures the same intersection always gets the same GUID across detection runs
@@ -404,8 +478,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (removedCount > 0)
                 {
-                    GlobalIndexService.Save(_document, globalIndex);
-                                        if (!DeploymentConfiguration.DeploymentMode)
+                    // ✅ PHASE 2: Only save Global XML if XML creation is enabled
+                    if (!DeploymentConfiguration.DisableXmlCreation)
+                    {
+                        GlobalIndexService.Save(_document, globalIndex);
+                    }
+                    if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[GUID-MANAGER] Removed ClashZone {guid} from Global XML for category '{category}' ({removedCount} entry removed)");
                 }
                 else

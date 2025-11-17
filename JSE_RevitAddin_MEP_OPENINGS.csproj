@@ -27,25 +27,43 @@
     <RevitVersion>2021</RevitVersion>
     <TargetFramework>net48</TargetFramework>
   </PropertyGroup>
+  <PropertyGroup Condition="$(Configuration.Contains('R21'))">
+    <DefineConstants>$(DefineConstants);REVIT2023_OR_LESS</DefineConstants>
+  </PropertyGroup>
   <PropertyGroup Condition="$(Configuration.Contains('R22'))">
     <RevitVersion>2022</RevitVersion>
     <TargetFramework>net48</TargetFramework>
+  </PropertyGroup>
+  <PropertyGroup Condition="$(Configuration.Contains('R22'))">
+    <DefineConstants>$(DefineConstants);REVIT2023_OR_LESS</DefineConstants>
   </PropertyGroup>
   <PropertyGroup Condition="$(Configuration.Contains('R23'))">
     <RevitVersion>2023</RevitVersion>
     <TargetFramework>net48</TargetFramework>
   </PropertyGroup>
+  <PropertyGroup Condition="$(Configuration.Contains('R23'))">
+    <DefineConstants>$(DefineConstants);REVIT2023_OR_LESS</DefineConstants>
+  </PropertyGroup>
   <PropertyGroup Condition="$(Configuration.Contains('R24'))">
     <RevitVersion>2024</RevitVersion>
     <TargetFramework>net48</TargetFramework>
+  </PropertyGroup>
+  <PropertyGroup Condition="$(Configuration.Contains('R24'))">
+    <DefineConstants>$(DefineConstants);REVIT2024_OR_GREATER</DefineConstants>
   </PropertyGroup>
   <PropertyGroup Condition="$(Configuration.Contains('R25'))">
     <RevitVersion>2025</RevitVersion>
     <TargetFramework>net8.0-windows</TargetFramework>
   </PropertyGroup>
+  <PropertyGroup Condition="$(Configuration.Contains('R25'))">
+    <DefineConstants>$(DefineConstants);REVIT2024_OR_GREATER</DefineConstants>
+  </PropertyGroup>
   <PropertyGroup Condition="$(Configuration.Contains('R26'))">
     <RevitVersion>2026</RevitVersion>
     <TargetFramework>net8.0-windows</TargetFramework>
+  </PropertyGroup>
+  <PropertyGroup Condition="$(Configuration.Contains('R26'))">
+    <DefineConstants>$(DefineConstants);REVIT2024_OR_GREATER</DefineConstants>
   </PropertyGroup>
 
   <!-- Launch configuration -->
@@ -63,6 +81,14 @@
     <Company>JSE</Company>
     <Description>OPENING PLACEMENT</Description>
   </PropertyGroup>
+  
+  <!-- ✅ Exclude native DLLs from ILRepack (native DLLs cannot be merged) -->
+  <!-- ILRepack will fail if it tries to merge native DLLs like e_sqlite3.dll -->
+  <!-- Native DLLs must remain as separate files and be copied alongside the merged DLL -->
+  <!-- Nice3point.Revit.Build.Tasks uses RepackBinariesExcludes property to exclude files from ILRepack -->
+  <PropertyGroup Condition="'$(IsRepackable)' == 'true'">
+    <RepackBinariesExcludes>e_sqlite3.dll</RepackBinariesExcludes>
+  </PropertyGroup>
 
   <ItemGroup>
     <Compile Remove="Commands\ApplyOpeningsFromCsvCommand.cs" />
@@ -78,10 +104,26 @@
     <PackageReference Include="Serilog.Sinks.Debug" Version="3.0.0" />
     <PackageReference Include="ILRepack" Version="2.0.41" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+    <PackageReference Include="System.Data.SQLite.Core" Version="1.0.118.0" />
+    <PackageReference Include="System.Text.Json" Version="6.0.11" />
   </ItemGroup>
 
   <ItemGroup>
     <None Update="JSE_RevitAddin_MEP_OPENINGS.addin">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- ✅ Ensure SQLite native DLLs are copied to output directory for team deployment -->
+  <ItemGroup>
+    <!-- Managed provider assembly -->
+    <None Include="$(NuGetPackageRoot)system.data.sqlite.core\1.0.118.0\lib\net46\System.Data.SQLite.dll" Condition="Exists('$(NuGetPackageRoot)system.data.sqlite.core\1.0.118.0\lib\net46\System.Data.SQLite.dll')">
+      <Link>System.Data.SQLite.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- Ensure System.Data.SQLite native runtime (x64) is available in output -->
+    <None Include="$(NuGetPackageRoot)system.data.sqlite.core\1.0.118.0\runtimes\win-x64\native\SQLite.Interop.dll" Condition="Exists('$(NuGetPackageRoot)system.data.sqlite.core\1.0.118.0\runtimes\win-x64\native\SQLite.Interop.dll')">
+      <Link>x64\SQLite.Interop.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
@@ -91,8 +133,29 @@
       <RevitAddinFolder>C:\ProgramData\Autodesk\Revit\Addins\$(RevitVersion)\</RevitAddinFolder>
     </PropertyGroup>
     <MakeDir Directories="$(RevitAddinFolder)" />
+    <!-- Copy main add-in DLL -->
     <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(RevitAddinFolder)" SkipUnchangedFiles="true" />
+    <!-- Copy .addin manifest -->
     <Copy SourceFiles="$(MSBuildProjectDirectory)\$(AssemblyName).addin" DestinationFolder="$(RevitAddinFolder)" SkipUnchangedFiles="true" />
+    <!-- ✅ Copy SQLite native DLLs for team deployment -->
+    <ItemGroup>
+      <SqliteDlls Include="$(OutputPath)System.Data.SQLite.dll" Condition="Exists('$(OutputPath)System.Data.SQLite.dll')" />
+      <SqliteDlls Include="$(OutputPath)SQLite.Interop.dll" Condition="Exists('$(OutputPath)SQLite.Interop.dll')" />
+    </ItemGroup>
+    <Message Text="[PostBuild] Copying SQLite DLLs to $(RevitAddinFolder)" Importance="high" />
+    <Message Text="[PostBuild] Found @(SqliteDlls->Count()) SQLite DLL(s) to copy" Importance="high" />
+    <Copy SourceFiles="@(SqliteDlls)" DestinationFolder="$(RevitAddinFolder)" SkipUnchangedFiles="true">
+      <Output TaskParameter="CopiedFiles" ItemName="CopiedSqliteDlls" />
+    </Copy>
+    <Message Text="[PostBuild] Copied @(CopiedSqliteDlls->Count()) SQLite DLL(s)" Importance="high" />
+    <!-- Copy architecture-specific native runtime if present -->
+    <ItemGroup>
+      <SqliteInteropX64 Include="$(OutputPath)x64\SQLite.Interop.dll" Condition="Exists('$(OutputPath)x64\SQLite.Interop.dll')" />
+    </ItemGroup>
+    <MakeDir Directories="$(RevitAddinFolder)x64\" Condition="@(SqliteInteropX64) != ''" />
+    <Copy SourceFiles="@(SqliteInteropX64)" DestinationFolder="$(RevitAddinFolder)x64\" SkipUnchangedFiles="true" Condition="@(SqliteInteropX64) != ''" />
+    <!-- Warn if critical native DLL is missing -->
+    <Warning Text="[PostBuild] ⚠️ WARNING: SQLite.Interop.dll not found in build output! SQLite will not work. Check System.Data.SQLite package restore." Condition="!Exists('$(OutputPath)SQLite.Interop.dll') AND !Exists('$(OutputPath)x64\SQLite.Interop.dll')" />
   </Target>
 
   <!-- Exclude backup files and reference files -->
@@ -111,6 +174,8 @@
     <Page Remove="Views\Backup\**\*.xaml" />
     <Compile Remove="Services\Backup\**\*.cs" />
     <Compile Remove="Services\Backup2\**\*.cs" />
+    <!-- ✅ PHASE 2: Legacy RefreshService excluded - only refactored service is used -->
+    <Compile Remove="Services\RefreshService.cs" />
     <Compile Remove="Commands\ClusterMergeCommand.cs" />
     <Compile Remove="Commands\CleanCableTraySleevesCommand.cs" />
     <Compile Remove="Commands\IndividualDuctSleeveCommand.cs" />

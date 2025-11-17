@@ -86,12 +86,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // Form properties
             this.Text = "Settings";
             // Form height calculation:
-            // Manage section: Y=20, Height=150, ends at Y=170
-            // Elements section: Y=180, Height=80, ends at Y=260
-            // Limits section: Y=270, Height=220, ends at Y=490
-            // Buttons: Y=500, Height=30, ends at Y=530
-            // Need extra margin at bottom to show buttons fully, so total height = 570px
-            this.Size = new Drawing.Size(800, 570); // Adjusted height after removing CreateConstraint
+            // Manage section: Y=20, Height=60, ends at Y=80
+            // Elements section: REMOVED (nothing to show)
+            // Limits section: Y=90, Height=220, ends at Y=310
+            // Buttons: Y=320, Height=30, ends at Y=350
+            // Need extra margin at bottom to show buttons fully, so total height = 390px
+            this.Size = new Drawing.Size(800, 390); // Compact height - Manage (1 item) + Limits (all items)
             this.AutoScroll = false; // Fixed size - no scroll needed
             this.StartPosition = WinForms.FormStartPosition.CenterParent; // Center on parent window
             this.FormBorderStyle = WinForms.FormBorderStyle.FixedDialog;
@@ -105,7 +105,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             
             // Create sections
             CreateManageSection();
-            CreateElementsSection();
+            // Elements section removed - nothing to show (pipe opening type controlled by UI)
             CreateElementFilterSection();
             CreateLimitsSection();
             CreateActionButtons();
@@ -115,74 +115,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         private void CreateManageSection()
         {
-            // Manage Section Group - INCREASED to accommodate 4 items (added Clash Detection checkbox)
+            // Manage Section Group - Only "Adopt to modified document" visible (others hidden but still loaded/saved)
             var manageGroupBox = new WinForms.GroupBox
             {
                 Text = "Manage",
                 Location = new Drawing.Point(20, 20),
-                Size = new Drawing.Size(600, 150), // Increased height for 4 items (was 120 for 3 items)
+                Size = new Drawing.Size(600, 60), // Height for 1 visible item
                 Font = new Drawing.Font("Microsoft Sans Serif", 9F, Drawing.FontStyle.Bold)
             };
             this.Controls.Add(manageGroupBox);
 
             int yPos = 25;
 
-            // Reset approval status checkbox - CHECKBOX ON RIGHT, TEXT ON LEFT
-            var resetLabel = new WinForms.Label
-            {
-                Text = "Reset approval status of openings when changes occur:",
-                Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(500, 20) // Match other sections
-            };
-            manageGroupBox.Controls.Add(resetLabel);
-            
+            // ✅ HIDDEN: Reset approval status checkbox - Still created for loading/saving but not visible
             _resetApprovalStatusCheckBox = new WinForms.CheckBox
             {
-                Text = "", // No text, just checkbox
-                Location = new Drawing.Point(520, yPos), // Match other sections
+                Text = "",
+                Location = new Drawing.Point(-1000, -1000), // Off-screen
                 Size = new Drawing.Size(20, 20),
-                Checked = true
+                Checked = true,
+                Visible = false // Hidden from UI
             };
             manageGroupBox.Controls.Add(_resetApprovalStatusCheckBox);
-            yPos += 30; // More space for 2-line text
 
-            // Dimension change threshold - LABEL ON LEFT, INPUT ON RIGHT
-            var dimensionLabel = new WinForms.Label
-            {
-                Text = "Openings won't be marked as changed if change in dimensions is less than:",
-                Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(500, 20) // Match other sections
-            };
-            manageGroupBox.Controls.Add(dimensionLabel);
-
+            // ✅ HIDDEN: Dimension change threshold - Still created for loading/saving but not visible
             _dimensionChangeThresholdTextBox = new WinForms.TextBox
             {
                 Text = "1mm",
-                Location = new Drawing.Point(520, yPos), // Fixed: removed the -2 offset
-                Size = new Drawing.Size(50, 20)
+                Location = new Drawing.Point(-1000, -1000), // Off-screen
+                Size = new Drawing.Size(50, 20),
+                Visible = false // Hidden from UI
             };
             manageGroupBox.Controls.Add(_dimensionChangeThresholdTextBox);
-            yPos += 30; // More space for 2-line text
 
-            // Location change threshold - LABEL ON LEFT, INPUT ON RIGHT
-            var locationLabel = new WinForms.Label
-            {
-                Text = "Openings won't be marked as changed if change in location is less than:",
-                Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(500, 20) // Match other sections
-            };
-            manageGroupBox.Controls.Add(locationLabel);
-
+            // ✅ HIDDEN: Location change threshold - Still created for loading/saving but not visible
             _locationChangeThresholdTextBox = new WinForms.TextBox
             {
                 Text = "1mm",
-                Location = new Drawing.Point(520, yPos), // Fixed: removed the -2 offset
-                Size = new Drawing.Size(50, 20)
+                Location = new Drawing.Point(-1000, -1000), // Off-screen
+                Size = new Drawing.Size(50, 20),
+                Visible = false // Hidden from UI
             };
             manageGroupBox.Controls.Add(_locationChangeThresholdTextBox);
-            yPos += 30; // More space for next item
 
-            // ✅ NEW: Adopt to modified document checkbox - CHECKBOX ON RIGHT, TEXT ON LEFT
+            // ✅ VISIBLE: Adopt to modified document checkbox - CHECKBOX ON RIGHT, TEXT ON LEFT
             var adoptModificationLabel = new WinForms.Label
             {
                 Text = "Adopt to modified document to adjust clash detections automatically:",
@@ -201,58 +177,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             manageGroupBox.Controls.Add(_enableThreePointValidationCheckBox);
         }
 
-        private void CreateElementsSection()
-        {
-            // Elements Section Group - 2 ITEMS (removed CreateConstraint - not implemented)
-            // Positioned after Manage section (20 + 150 height + 10 gap = 180)
-            var elementsGroupBox = new WinForms.GroupBox
-            {
-                Text = "Elements",
-                Location = new Drawing.Point(20, 180), // Positioned after bigger Manage section (was 150)
-                Size = new Drawing.Size(600, 80), // Reduced height for 2 items (was 105 for 3 items)
-                Font = new Drawing.Font("Microsoft Sans Serif", 9F, Drawing.FontStyle.Bold)
-            };
-            this.Controls.Add(elementsGroupBox);
-
-            int yPos = 25;
-
-            // Cut opening with hosts checkbox - CHECKBOX ON RIGHT, TEXT ON LEFT
-            var cutLabel = new WinForms.Label
-            {
-                Text = "Cut opening with Hosts:",
-                Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(500, 20) // Increased width for more text space
-            };
-            elementsGroupBox.Controls.Add(cutLabel);
-            
-            _cutOpeningWithHostsCheckBox = new WinForms.CheckBox
-            {
-                Text = "", // No text, just checkbox
-                Location = new Drawing.Point(520, yPos), // Moved further right
-                Size = new Drawing.Size(20, 20),
-                Checked = false
-            };
-            elementsGroupBox.Controls.Add(_cutOpeningWithHostsCheckBox);
-            yPos += 25;
-
-            // Pipe Opening Type Rectangular checkbox - CHECKBOX ON RIGHT, TEXT ON LEFT
-            var pipeOpeningLabel = new WinForms.Label
-            {
-                Text = "Pipe Opening Type to be Rectangular:",
-                Location = new Drawing.Point(15, yPos),
-                Size = new Drawing.Size(500, 20) // Increased width for more text space
-            };
-            elementsGroupBox.Controls.Add(pipeOpeningLabel);
-            
-            _pipeOpeningTypeRectangularCheckBox = new WinForms.CheckBox
-            {
-                Text = "", // No text, just checkbox
-                Location = new Drawing.Point(520, yPos), // Moved further right
-                Size = new Drawing.Size(20, 20),
-                Checked = false // Default to circular (unchecked = circular, checked = rectangular)
-            };
-            elementsGroupBox.Controls.Add(_pipeOpeningTypeRectangularCheckBox);
-        }
+        // ✅ REMOVED: Elements section - Nothing to show (pipe opening type controlled by UI)
+        // Cut opening with hosts and pipe opening type are still loaded/saved but not shown in UI
+        // Hidden controls are created in LoadSettings() to ensure they exist for loading/saving
 
         private void CreateElementFilterSection()
         {
@@ -262,13 +189,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         private void CreateLimitsSection()
         {
-            // Limits Section Group - 8 ITEMS (including new rounding controls, min wall thickness, and ignore architectural floors)
-            // Positioned after Elements section (180 + 80 height + 10 gap = 270)
+            // Limits Section Group - ALL 8 ITEMS VISIBLE
+            // Positioned after Manage section (20 + 60 height + 10 gap = 90)
             var limitsGroupBox = new WinForms.GroupBox
             {
                 Text = "Limits",
-                Location = new Drawing.Point(20, 270), // Positioned after Elements section (was 295, now 180 + 80 + 10)
-                Size = new Drawing.Size(600, 220), // Increased height for 8 items
+                Location = new Drawing.Point(20, 90), // Positioned after Manage section (was 270, now 20 + 60 + 10)
+                Size = new Drawing.Size(600, 220), // Height for 8 items
                 Font = new Drawing.Font("Microsoft Sans Serif", 9F, Drawing.FontStyle.Bold)
             };
             this.Controls.Add(limitsGroupBox);
@@ -419,11 +346,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private void CreateActionButtons()
         {
             // Reset Button
-            // Positioned after Limits section (270 + 220 height + 10 gap = 500)
+            // Positioned after Limits section (90 + 220 height + 10 gap = 320)
             _resetButton = new WinForms.Button
             {
                 Text = "Reset",
-                Location = new Drawing.Point(20, 500), // Positioned after Limits section (was 525, now 270 + 220 + 10)
+                Location = new Drawing.Point(20, 320), // Positioned after Limits section (was 500, now 90 + 220 + 10)
                 Size = new Drawing.Size(75, 30),
                 BackColor = Drawing.Color.FromArgb(200, 200, 200),
                 FlatStyle = WinForms.FlatStyle.Flat
@@ -435,7 +362,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _okButton = new WinForms.Button
             {
                 Text = "OK",
-                Location = new Drawing.Point(450, 500), // Positioned after Limits section (was 525, now 270 + 220 + 10)
+                Location = new Drawing.Point(450, 320), // Positioned after Limits section (was 500, now 90 + 220 + 10)
                 Size = new Drawing.Size(75, 30),
                 BackColor = Drawing.Color.FromArgb(0, 120, 215),
                 ForeColor = Drawing.Color.White,
@@ -448,7 +375,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _cancelButton = new WinForms.Button
             {
                 Text = "Cancel",
-                Location = new Drawing.Point(535, 500), // Positioned after Limits section (was 525, now 270 + 220 + 10)
+                Location = new Drawing.Point(535, 320), // Positioned after Limits section (was 500, now 90 + 220 + 10)
                 Size = new Drawing.Size(75, 30),
                 BackColor = Drawing.Color.FromArgb(200, 200, 200),
                 FlatStyle = WinForms.FlatStyle.Flat
@@ -484,10 +411,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             if (_locationChangeThresholdTextBox != null)
                 _locationChangeThresholdTextBox.Text = _settings.LocationChangeThreshold.ToString();
             
-            if (_cutOpeningWithHostsCheckBox != null)
-                _cutOpeningWithHostsCheckBox.Checked = _settings.CutOpeningWithHosts;
-            if (_pipeOpeningTypeRectangularCheckBox != null)
-                _pipeOpeningTypeRectangularCheckBox.Checked = _settings.PipeOpeningTypeRectangular;
+            // ✅ HIDDEN: Elements section controls - Create hidden controls if they don't exist
+            if (_cutOpeningWithHostsCheckBox == null)
+            {
+                _cutOpeningWithHostsCheckBox = new WinForms.CheckBox
+                {
+                    Visible = false,
+                    Location = new Drawing.Point(-1000, -1000) // Off-screen
+                };
+            }
+            _cutOpeningWithHostsCheckBox.Checked = _settings.CutOpeningWithHosts;
+            
+            if (_pipeOpeningTypeRectangularCheckBox == null)
+            {
+                _pipeOpeningTypeRectangularCheckBox = new WinForms.CheckBox
+                {
+                    Visible = false,
+                    Location = new Drawing.Point(-1000, -1000) // Off-screen
+                };
+            }
+            _pipeOpeningTypeRectangularCheckBox.Checked = _settings.PipeOpeningTypeRectangular;
             if (_createVerticalOpeningsCheckBox != null)
                 _createVerticalOpeningsCheckBox.Checked = _settings.CreateVerticalOpenings;
             if (_createHorizontalOpeningsCheckBox != null)

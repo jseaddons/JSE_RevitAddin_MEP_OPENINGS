@@ -1,0 +1,169 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="Three Paths Flowchart" id="three-paths-flowchart">
+    <mxGraphModel dx="2400" dy="1600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2400" pageHeight="3200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- Start -->
+        <mxCell id="start" value="User Clicks Refresh" style="ellipse;whiteSpace=wrap;html=1;fillColor=#90EE90;strokeColor=#006400;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="40" width="200" height="80" as="geometry" />
+        </mxCell>
+        
+        <!-- OnRefreshClick -->
+        <mxCell id="onRefresh" value="OnRefreshClick&#xa;EmergencyMainDialog" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="160" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- RefreshServiceRefactored -->
+        <mxCell id="refreshService" value="RefreshServiceRefactored&#xa;ExecuteRefresh" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="260" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- LoadEnabledFilter -->
+        <mxCell id="loadFilter" value="LoadEnabledFilter&#xa;Get or Create Filter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="360" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Mark Filter Enabled -->
+        <mxCell id="markEnabled" value="Mark Filter as Enabled" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="460" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Check Adopt Setting -->
+        <mxCell id="checkAdopt" value="Check Setting:&#xa;Adopt to Modified Document" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="1000" y="560" width="200" height="80" as="geometry" />
+        </mxCell>
+        
+        <!-- Adopt Decision -->
+        <mxCell id="adoptDecision" value="Adopt to Modified&#xa;Document&#xa;Enabled?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="1020" y="680" width="160" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- Check FileCombos -->
+        <mxCell id="checkFileCombos" value="Check FileCombos Table&#xa;IsFilterComboNew Flag" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="1000" y="820" width="200" height="80" as="geometry" />
+        </mxCell>
+        
+        <!-- Query FileCombos -->
+        <mxCell id="queryFileCombos" value="SELECT IsFilterComboNew&#xa;FROM FileCombos&#xa;WHERE FilterId = @FilterId" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="940" width="200" height="80" as="geometry" />
+        </mxCell>
+        
+        <!-- PATH Decision -->
+        <mxCell id="pathDecision" value="Determine Path Based On:&#xa;1. Adopt Setting&#xa;2. IsFilterComboNew Flag" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="1000" y="1060" width="200" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- PATH 1: REPLAY MODE -->
+        <mxCell id="path1" value="PATH 1: REPLAY MODE&#xa;&#xa;TRIGGER:&#xa;IsFilterComboNew = 0&#xa;(File combos already processed)&#xa;&#xa;ACTIONS:&#xa;• Skip intersection detection&#xa;• Load existing clash zones&#xa;• Reset flags for deleted sleeves&#xa;• Go to sleeve placement only" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF9999;strokeColor=#8B0000;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="200" y="1200" width="300" height="200" as="geometry" />
+        </mxCell>
+        
+        <!-- PATH 1 Steps -->
+        <mxCell id="path1Load" value="Load Existing Clash Zones&#xa;from Database/XML" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;" vertex="1" parent="1">
+          <mxGeometry x="200" y="1440" width="300" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="path1Reset" value="ResetFlagsForDeletedSleeves&#xa;Mark deleted sleeves as unresolved" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;" vertex="1" parent="1">
+          <mxGeometry x="200" y="1540" width="300" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="path1Skip" value="Skip MergeAndSave&#xa;Go Directly to Place Sleeves" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;" vertex="1" parent="1">
+          <mxGeometry x="200" y="1640" width="300" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="path1End" value="End (PATH 1)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#90EE90;strokeColor=#006400;" vertex="1" parent="1">
+          <mxGeometry x="200" y="1740" width="300" height="80" as="geometry" />
+        </mxCell>
+        
+        <!-- PATH 2: REPLACE MODE -->
+        <mxCell id="path2" value="PATH 2: REPLACE MODE&#xa;&#xa;TRIGGER:&#xa;Adopt = OFF&#xa;AND&#xa;IsFilterComboNew = 0&#xa;(No new file combos)&#xa;&#xa;ACTIONS:&#xa;• Skip Filter XML and detection&#xa;• Sync Global XML flags only&#xa;• Reset flags for deleted sleeves&#xa;• No clash zone processing" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFCC99;strokeColor=#CC6600;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="1200" width="300" height="200" as="geometry" />
+        </mxCell>
+        
+        <!-- PATH 2 Steps -->
+        <mxCell id="path2Sync" value="Sync Global XML Flags&#xa;Update resolved flags" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="1440" width="300" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="path2Reset" value="ResetFlagsForDeletedSleeves&#xa;Mark deleted sleeves as unresolved" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="1540" width="300" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="path2Skip" value="Skip Filter XML and Detection&#xa;No clash zone processing" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="1640" width="300" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="path2End" value="End (PATH 2)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#90EE90;strokeColor=#006400;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="1740" width="300" height="80" as="geometry" />
+        </mxCell>
+        
+        <!-- PATH 3: FULL DETECTION MODE -->
+        <mxCell id="path3" value="PATH 3: FULL DETECTION MODE&#xa;&#xa;TRIGGER:&#xa;Adopt = ON&#xa;OR&#xa;IsFilterComboNew = 1&#xa;(New file combos detected)&#xa;&#xa;ACTIONS:&#xa;• Full intersection detection&#xa;• Process all clash zones&#xa;• Save to database&#xa;• Validate and size zones" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#99FF99;strokeColor=#006400;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1800" y="1200" width="300" height="200" as="geometry" />
+        </mxCell>
+        
+        <!-- PATH 3 Steps -->
+        <mxCell id="path3Detect" value="Full Intersection Detection&#xa;Find all MEP vs Structural intersections" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="1800" y="1440" width="300" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="path3Validate" value="Validate Clash Zones&#xa;3-Point Validation (if enabled)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="1800" y="1540" width="300" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="path3Merge" value="MergeAndSave&#xa;Process and Save Clash Zones" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="1800" y="1640" width="300" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- PATH 3: Database Save Sequence -->
+        <mxCell id="path3DB" value="Database Save Sequence:&#xa;1. Get/Create Filter&#xa;2. Get/Create FileCombo (IsFilterComboNew=1)&#xa;3. Insert/Update ClashZones&#xa;4. Insert/Update SleeveSnapshots&#xa;5. Commit Transaction" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#87CEEB;strokeColor=#4682B4;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1800" y="1740" width="300" height="120" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="path3End" value="End (PATH 3)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#90EE90;strokeColor=#006400;" vertex="1" parent="1">
+          <mxGeometry x="1800" y="1900" width="300" height="80" as="geometry" />
+        </mxCell>
+        
+        <!-- Arrows -->
+        <mxCell id="arrow1" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="start" target="onRefresh" />
+        <mxCell id="arrow2" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="onRefresh" target="refreshService" />
+        <mxCell id="arrow3" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="refreshService" target="loadFilter" />
+        <mxCell id="arrow4" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="loadFilter" target="markEnabled" />
+        <mxCell id="arrow5" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="markEnabled" target="checkAdopt" />
+        <mxCell id="arrow6" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="checkAdopt" target="adoptDecision" />
+        <mxCell id="arrow7" value="No" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="adoptDecision" target="checkFileCombos" />
+        <mxCell id="arrow8" value="Yes" style="endArrow=classic;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#00FF00;fontColor=#00FF00;" edge="1" parent="1" source="adoptDecision" target="path3" />
+        <mxCell id="arrow9" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="checkFileCombos" target="queryFileCombos" />
+        <mxCell id="arrow10" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="queryFileCombos" target="pathDecision" />
+        
+        <!-- PATH Decision Arrows -->
+        <mxCell id="arrow11" value="IsFilterComboNew = 0" style="endArrow=classic;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#FF0000;fontColor=#FF0000;fontStyle=1" edge="1" parent="1" source="pathDecision" target="path1" />
+        <mxCell id="arrow12" value="Adopt=OFF&#xa;AND&#xa;IsFilterComboNew=0" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#FF6600;fontColor=#FF6600;fontStyle=1" edge="1" parent="1" source="pathDecision" target="path2" />
+        <mxCell id="arrow13" value="Adopt=ON&#xa;OR&#xa;IsFilterComboNew=1" style="endArrow=classic;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#00FF00;fontColor=#00FF00;fontStyle=1" edge="1" parent="1" source="pathDecision" target="path3" />
+        
+        <!-- PATH 1 Arrows -->
+        <mxCell id="arrow14" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="path1" target="path1Load" />
+        <mxCell id="arrow15" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="path1Load" target="path1Reset" />
+        <mxCell id="arrow16" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="path1Reset" target="path1Skip" />
+        <mxCell id="arrow17" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="path1Skip" target="path1End" />
+        
+        <!-- PATH 2 Arrows -->
+        <mxCell id="arrow18" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="path2" target="path2Sync" />
+        <mxCell id="arrow19" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="path2Sync" target="path2Reset" />
+        <mxCell id="arrow20" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="path2Reset" target="path2Skip" />
+        <mxCell id="arrow21" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="path2Skip" target="path2End" />
+        
+        <!-- PATH 3 Arrows -->
+        <mxCell id="arrow22" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="path3" target="path3Detect" />
+        <mxCell id="arrow23" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="path3Detect" target="path3Validate" />
+        <mxCell id="arrow24" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="path3Validate" target="path3Merge" />
+        <mxCell id="arrow25" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="path3Merge" target="path3DB" />
+        <mxCell id="arrow26" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="path3DB" target="path3End" />
+        
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
+

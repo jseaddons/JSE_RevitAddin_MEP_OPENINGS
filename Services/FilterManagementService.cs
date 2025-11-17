@@ -5,7 +5,8 @@ using System.Linq;
 using System.Windows.Forms;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
-using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -45,6 +46,134 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _updateStatus?.Invoke(message);
         }
 
+        /// <summary>
+        /// ✅ PUBLIC: Get display category for a filter (needed for database registration)
+        /// </summary>
+        public string GetDisplayCategory(OpeningFilter filter)
+        {
+            if (filter == null)
+                return string.Empty;
+
+            if (!string.IsNullOrWhiteSpace(filter.SelectedMepCategoryName))
+                return MepCategoryConstants.Normalize(filter.SelectedMepCategoryName);
+
+            return MepCategoryConstants.Normalize(filter.Category.ToString());
+        }
+
+        /// <summary>
+        /// ✅ INTERNAL: Allows access to FilterRepository for advanced operations
+        /// Used by refresh service to save UI state after filter creation
+        /// </summary>
+        internal void UseFilterRepository(Action<FilterRepository> action)
+        {
+            if (_document == null || action == null)
+                return;
+
+            try
+            {
+                using (var context = new SleeveDbContext(_document, msg => Log($"[FILTER_MGMT][SQLite] {msg}")))
+                {
+                    var repository = new FilterRepository(context, msg => Log($"[FILTER_MGMT][SQLite] {msg}"));
+                    action(repository);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"[FILTER_MGMT] SQLite filter operation failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// ✅ DATABASE-FIRST: Register filter in database (primary storage).
+        /// Returns FilterId if successful, -1 if failed.
+        /// </summary>
+        public int RegisterFilterInDatabase(string filterName, string category)
+        {
+            if (string.IsNullOrWhiteSpace(filterName) || string.IsNullOrWhiteSpace(category))
+                return -1;
+
+            int filterId = -1;
+            UseFilterRepository(repo => 
+            {
+                filterId = repo.EnsureFilter(filterName, category);
+            });
+            return filterId;
+        }
+        
+        /// <summary>
+        /// ✅ CHECK FILTER SAVED: Checks if filter is saved (exists in database or XML)
+        /// Returns true if filter is saved, false if it's a new/unsaved filter
+        /// </summary>
+        public bool IsFilterSaved(string filterName)
+        {
+            if (string.IsNullOrWhiteSpace(filterName))
+                return false;
+
+            try
+            {
+                // Check database first (primary storage)
+                if (_document != null)
+                {
+                    int filterId = -1;
+                    UseFilterRepository(repo =>
+                    {
+                        // Check if filter exists for any category
+                        var allFilters = repo.GetAllFilters();
+                        if (allFilters.Any(f => f.FilterName.Equals(filterName, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            filterId = 1; // Filter exists
+                        }
+                    });
+                    
+                    if (filterId > 0)
+                    {
+                        return true; // Filter exists in database
+                    }
+                }
+                
+                // Check XML file (backward compatibility)
+                string filterDir;
+                if (_document != null)
+                {
+                    ProjectPathService.EnsureFiltersDirectory(_document);
+                    filterDir = ProjectPathService.GetFiltersDirectory(_document);
+                }
+                else
+                {
+                    filterDir = GetDefaultFilterDirectory();
+                }
+                
+                var xmlFilePath = Path.Combine(filterDir, $"{filterName}.xml");
+                if (File.Exists(xmlFilePath))
+                {
+                    return true; // Filter exists in XML
+                }
+                
+                return false; // Filter not saved
+            }
+            catch (Exception ex)
+            {
+                _log($"[FILTER_MGMT] Error checking if filter is saved: {ex.Message}");
+                return false; // Assume not saved on error
+            }
+        }
+
+        private void UpdateFilterNameInDatabase(string oldName, string category, string newName)
+        {
+            if (string.IsNullOrWhiteSpace(oldName) || string.IsNullOrWhiteSpace(newName) || string.IsNullOrWhiteSpace(category))
+                return;
+
+            UseFilterRepository(repo => repo.UpdateFilterName(oldName, category, newName));
+        }
+
+        private void DeleteFilterFromDatabase(string filterName, string category)
+        {
+            if (string.IsNullOrWhiteSpace(filterName) || string.IsNullOrWhiteSpace(category))
+                return;
+
+            UseFilterRepository(repo => repo.DeleteFilter(filterName, category));
+        }
+
         #region Public Methods
 
         /// <summary>
@@ -60,19 +189,76 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (string.IsNullOrEmpty(filterName)) return;
 
                 var newFilter = CreateFilterFromCurrentUIState(filterName);
-                AddFilterToList(filterListBox, newFilter);
                 
-                // ✅ AUTO-SAVE: Save filter automatically to persistent storage
-                var filterDir = GetDefaultFilterDirectory();
-                if (!Directory.Exists(filterDir))
+                // ✅ CRITICAL: DATABASE-FIRST - Register filter in database FIRST (before adding to UI)
+                // Filter is only usable if it exists in DB, so we must create it in DB before UI
+                var categoryDisplay = GetDisplayCategory(newFilter);
+                var filterId = RegisterFilterInDatabase(newFilter.Name, categoryDisplay);
+                
+                if (filterId > 0)
                 {
-                    Directory.CreateDirectory(filterDir);
+                    _log($"[FILTER_MGMT] ✅ Created filter '{filterName}' in database (FilterId={filterId})");
+                    
+                    // ⚠️⚠️⚠️ CRITICAL: UI STATE PERSISTENCE - DO NOT REMOVE OR MODIFY ⚠️⚠️⚠️
+                    // ✅ STEP 2: Save UI state to database (captured from CreateFilterFromCurrentUIState)
+                    // This ensures SelectedHostElementTypes and OpeningSettings are preserved when filter is loaded
+                    // PROTECTED CODE: Removing this will cause UI state to be lost when filters are saved/loaded
+                    try
+                    {
+                        UseFilterRepository(repo =>
+                        {
+                            repo.SaveFilterUIState(
+                                newFilter.Name,
+                                categoryDisplay,
+                                newFilter.SelectedHostElementTypes ?? new List<string>(),
+                                newFilter.OpeningSettings
+                            );
+                        });
+                        _log($"[FILTER_MGMT] ✅ Saved UI state for new filter '{filterName}' to database");
+                    }
+                    catch (Exception uiStateEx)
+                    {
+                        // ⚠️ CRITICAL: Log error but don't fail filter creation - UI state save is important but non-blocking
+                        _log($"[FILTER_MGMT] ⚠️ Warning: Could not save UI state to database (non-critical): {uiStateEx.Message}");
+                    }
+                    
+                    // ✅ STEP 3: Only add to UI AFTER successful DB creation
+                AddFilterToList(filterListBox, newFilter);
+                    _updateStatus($"Created new filter: {filterName}");
+                
+                    // ✅ STEP 4: XML SECOND - Save to XML for backward compatibility (optional, non-blocking)
+                    try
+                    {
+                string filterDir;
+                if (_document != null)
+                {
+                    ProjectPathService.EnsureFiltersDirectory(_document);
+                    filterDir = ProjectPathService.GetFiltersDirectory(_document);
+                }
+                else
+                {
+                    filterDir = GetDefaultFilterDirectory();
+                    if (!Directory.Exists(filterDir))
+                    {
+                        Directory.CreateDirectory(filterDir);
+                    }
                 }
                 var filePath = Path.Combine(filterDir, $"{filterName}.xml");
                 SaveFilterToXmlFile(newFilter, filePath);
-                
-                _log($"[FILTER_MGMT] Created and auto-saved new filter: {filterName}");
-                _updateStatus($"Created new filter: {filterName}");
+                        _log($"[FILTER_MGMT] ✅ Saved filter '{filterName}' to XML (backward compatibility)");
+                    }
+                    catch (Exception xmlEx)
+                    {
+                        // ✅ NON-BLOCKING: XML save failure doesn't prevent filter creation (DB is primary)
+                        _log($"[FILTER_MGMT] ⚠️ Warning: Could not save filter to XML (non-critical): {xmlEx.Message}");
+                    }
+                }
+                else
+                {
+                    // ✅ CRITICAL: If DB creation fails, filter is NOT added to UI and NOT usable
+                    _log($"[FILTER_MGMT] ❌ Failed to create filter '{filterName}' in database - filter NOT added to UI");
+                    ShowError($"Failed to create filter '{filterName}' in database. Filter cannot be used until it exists in the database. Check logs for details.");
+                }
             }
             catch (Exception ex)
             {
@@ -114,22 +300,79 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     SelectedMepCategoryName = selectedFilter.SelectedMepCategoryName,
                     SelectedReferenceFiles = selectedFilter.SelectedReferenceFiles != null ? new List<string>(selectedFilter.SelectedReferenceFiles) : null,
                     SelectedHostFiles = selectedFilter.SelectedHostFiles != null ? new List<string>(selectedFilter.SelectedHostFiles) : null,
-                    SelectedHostElementTypes = selectedFilter.SelectedHostElementTypes != null ? new List<string>(selectedFilter.SelectedHostElementTypes) : null
+                    SelectedHostElementTypes = selectedFilter.SelectedHostElementTypes != null ? new List<string>(selectedFilter.SelectedHostElementTypes) : null,
+                    OpeningSettings = selectedFilter.OpeningSettings // ✅ CRITICAL: Copy OpeningSettings as well
                 };
 
-                AddFilterToList(filterListBox, copiedFilter);
+                // ✅ CRITICAL: DATABASE-FIRST - Register filter in database FIRST (before adding to UI)
+                // Filter is only usable if it exists in DB, so we must create it in DB before UI
+                var categoryDisplay = GetDisplayCategory(copiedFilter);
+                var filterId = RegisterFilterInDatabase(copiedFilter.Name, categoryDisplay);
                 
-                // ✅ AUTO-SAVE: Save copied filter automatically to persistent storage
-                var filterDir = GetDefaultFilterDirectory();
-                if (!Directory.Exists(filterDir))
+                if (filterId > 0)
                 {
-                    Directory.CreateDirectory(filterDir);
+                    _log($"[FILTER_MGMT] ✅ Copied filter '{selectedFilter.Name}' to '{newName}' in database (FilterId={filterId})");
+                    
+                    // ⚠️⚠️⚠️ CRITICAL: UI STATE PERSISTENCE - DO NOT REMOVE OR MODIFY ⚠️⚠️⚠️
+                    // ✅ STEP 2: Save UI state to database (copied from source filter)
+                    // This ensures SelectedHostElementTypes and OpeningSettings are preserved when filter is copied
+                    // PROTECTED CODE: Removing this will cause UI state to be lost when filters are copied
+                    try
+                    {
+                        UseFilterRepository(repo =>
+                        {
+                            repo.SaveFilterUIState(
+                                copiedFilter.Name,
+                                categoryDisplay,
+                                copiedFilter.SelectedHostElementTypes ?? new List<string>(),
+                                copiedFilter.OpeningSettings // Use copied filter's OpeningSettings (now copied above)
+                            );
+                        });
+                        _log($"[FILTER_MGMT] ✅ Saved UI state for copied filter '{newName}' to database");
+                    }
+                    catch (Exception uiStateEx)
+                    {
+                        // ⚠️ CRITICAL: Log error but don't fail filter copy - UI state save is important but non-blocking
+                        _log($"[FILTER_MGMT] ⚠️ Warning: Could not save UI state to database (non-critical): {uiStateEx.Message}");
+                    }
+                    
+                    // ✅ STEP 3: Only add to UI AFTER successful DB creation
+                AddFilterToList(filterListBox, copiedFilter);
+                    _updateStatus($"Copied filter to: {newName}");
+                
+                    // ✅ STEP 4: XML SECOND - Save to XML for backward compatibility (optional, non-blocking)
+                    try
+                    {
+                string filterDir;
+                if (_document != null)
+                {
+                    ProjectPathService.EnsureFiltersDirectory(_document);
+                    filterDir = ProjectPathService.GetFiltersDirectory(_document);
+                }
+                else
+                {
+                    filterDir = GetDefaultFilterDirectory();
+                    if (!Directory.Exists(filterDir))
+                    {
+                        Directory.CreateDirectory(filterDir);
+                    }
                 }
                 var filePath = Path.Combine(filterDir, $"{newName}.xml");
                 SaveFilterToXmlFile(copiedFilter, filePath);
-                
-                _log($"[FILTER_MGMT] Copied and auto-saved filter '{selectedFilter.Name}' to '{newName}'");
-                _updateStatus($"Copied filter to: {newName}");
+                        _log($"[FILTER_MGMT] ✅ Saved copied filter '{newName}' to XML (backward compatibility)");
+                    }
+                    catch (Exception xmlEx)
+                    {
+                        // ✅ NON-BLOCKING: XML save failure doesn't prevent filter creation (DB is primary)
+                        _log($"[FILTER_MGMT] ⚠️ Warning: Could not save copied filter to XML (non-critical): {xmlEx.Message}");
+                    }
+                }
+                else
+                {
+                    // ✅ CRITICAL: If DB creation fails, filter is NOT added to UI and NOT usable
+                    _log($"[FILTER_MGMT] ❌ Failed to copy filter '{selectedFilter.Name}' to '{newName}' in database - filter NOT added to UI");
+                    ShowError($"Failed to copy filter to '{newName}' in database. Filter cannot be used until it exists in the database. Check logs for details.");
+                }
             }
             catch (Exception ex)
             {
@@ -154,6 +397,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return;
                 }
 
+                var categoryDisplay = GetDisplayCategory(selectedFilter);
                 var newName = GetFilterNameFromUser("Rename Filter", "Enter new name:", selectedFilter.Name);
                 if (string.IsNullOrEmpty(newName)) return;
 
@@ -191,10 +435,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 
                 // ✅ AUTO-SAVE: Save renamed filter automatically (with new name)
-                var filterDir = GetDefaultFilterDirectory();
-                if (!Directory.Exists(filterDir))
+                // ✅ OOP: Use ProjectPathService when document is available
+                string filterDir;
+                if (_document != null)
                 {
-                    Directory.CreateDirectory(filterDir);
+                    ProjectPathService.EnsureFiltersDirectory(_document);
+                    filterDir = ProjectPathService.GetFiltersDirectory(_document);
+                }
+                else
+                {
+                    filterDir = GetDefaultFilterDirectory();
+                    if (!Directory.Exists(filterDir))
+                    {
+                        Directory.CreateDirectory(filterDir);
+                    }
                 }
                 var newFilePath = Path.Combine(filterDir, $"{newName}.xml");
                 SaveFilterToXmlFile(selectedFilter, newFilePath);
@@ -216,6 +470,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 _log($"[FILTER_MGMT] Renamed and auto-saved filter '{oldName}' to '{newName}'");
                 _updateStatus($"Renamed filter to: {newName}");
+
+                UpdateFilterNameInDatabase(oldName, categoryDisplay, newName);
             }
             catch (Exception ex)
             {
@@ -274,6 +530,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return;
                 }
 
+                var categoryDisplay = GetDisplayCategory(selectedFilter);
                 var result = MessageBox.Show(
                     $"Are you sure you want to delete the filter '{selectedFilter.Name}'?", 
                     "Confirm Delete", 
@@ -302,6 +559,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     _log($"[FILTER_MGMT] Deleted filter: {selectedFilter.Name}");
                     _updateStatus($"Deleted filter: {selectedFilter.Name}");
+
+                    DeleteFilterFromDatabase(selectedFilter.Name, categoryDisplay);
                 }
             }
             catch (Exception ex)
@@ -327,14 +586,116 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return;
                 }
 
-                // ✅ SILENT SAVE: Automatically save to default filter directory without showing dialog
-                var filterDir = GetDefaultFilterDirectory();
-                var filePath = System.IO.Path.Combine(filterDir, $"{selectedFilter.Name}.xml");
+                // ✅ CRITICAL FIX: Collect CURRENT UI state before saving (filter object may have stale data)
+                // ⚠️ CRITICAL: Collect CURRENT UI state, not stale filter data
+                // This ensures the latest UI selections are persisted to the database
+                var currentHostElementTypes = FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? selectedFilter.SelectedHostElementTypes ?? new List<string>();
+                var currentHostCategories = FilterUiStateProvider.GetSelectedHostCategories?.Invoke() ?? new List<string>();
                 
-                SaveFilterToXmlFile(selectedFilter, filePath);
+                // ✅ Get category display name once (used for both clearance settings and database registration)
+                var categoryDisplay = GetDisplayCategory(selectedFilter);
                 
-                _log($"[FILTER_MGMT] Saved filter '{selectedFilter.Name}' to: {filePath}");
+                // ✅ FIX: Get OpeningSettings from UI, not from stale filter object
+                // OpeningSettings must be collected from UI using GetClearanceSettings delegate
+                OpeningSettings currentOpeningSettings = null;
+                if (FilterUiStateProvider.GetClearanceSettings != null)
+                {
+                    try
+                    {
+                        // GetClearanceSettings takes category as parameter, not filter name
+                        var clearanceSettings = FilterUiStateProvider.GetClearanceSettings(categoryDisplay);
+                        if (clearanceSettings != null)
+                        {
+                            currentOpeningSettings = new OpeningSettings
+                            {
+                                ClearanceSettings = clearanceSettings
+                            };
+                            // Also preserve SelectedMepType if available
+                            if (selectedFilter.OpeningSettings != null)
+                            {
+                                currentOpeningSettings.SelectedMepType = selectedFilter.OpeningSettings.SelectedMepType;
+                            }
+                        }
+                        else
+                        {
+                            // Fallback to filter's OpeningSettings if UI doesn't provide
+                            currentOpeningSettings = selectedFilter.OpeningSettings;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _log($"[FILTER_MGMT] ⚠️ Could not get OpeningSettings from UI: {ex.Message}, using filter's OpeningSettings");
+                        currentOpeningSettings = selectedFilter.OpeningSettings;
+                    }
+                }
+                else
+                {
+                    // Fallback: Use filter's OpeningSettings if delegate not registered
+                    currentOpeningSettings = selectedFilter.OpeningSettings;
+                }
+                
+                // ✅ Update filter object with current UI state
+                selectedFilter.SelectedHostElementTypes = currentHostElementTypes;
+                
+                // ✅ DATABASE-FIRST: Register filter in database FIRST (primary storage)
+                // categoryDisplay is already declared above (line 596)
+                var filterId = RegisterFilterInDatabase(selectedFilter.Name, categoryDisplay);
+                
+                if (filterId > 0)
+                {
+                    _log($"[FILTER_MGMT] ✅ Saved filter '{selectedFilter.Name}' in database (FilterId={filterId})");
+                    
+                    // ⚠️⚠️⚠️ CRITICAL: UI STATE PERSISTENCE - DO NOT REMOVE OR MODIFY ⚠️⚠️⚠️
+                    // ✅ PHASE 2: Save UI state to database (using CURRENT UI state, not stale filter data)
+                    // This ensures SelectedHostElementTypes and OpeningSettings are preserved when filter is saved
+                    // PROTECTED CODE: Removing this will cause UI state to be lost when filters are saved
+                    try
+                    {
+                        UseFilterRepository(repo =>
+                        {
+                            repo.SaveFilterUIState(
+                                selectedFilter.Name,
+                                categoryDisplay,
+                                currentHostElementTypes, // ✅ Use current UI state, not stale filter data
+                                currentOpeningSettings
+                            );
+                        });
+                        _log($"[FILTER_MGMT] ✅ Saved UI state for filter '{selectedFilter.Name}' to database (HostElementTypes: {currentHostElementTypes.Count}, HostCategories: {currentHostCategories.Count})");
+                    }
+                    catch (Exception uiStateEx)
+                    {
+                        // ⚠️ CRITICAL: Log error but don't fail filter save - UI state save is important but non-blocking
+                        _log($"[FILTER_MGMT] ⚠️ Warning: Could not save UI state to database (non-critical): {uiStateEx.Message}");
+                    }
+                    
                 _updateStatus($"Saved filter: {selectedFilter.Name}");
+
+                    // ✅ XML SECOND: Save to XML for backward compatibility (optional, non-blocking)
+                    if (!DeploymentConfiguration.DisableXmlCreation)
+                    {
+                        try
+                        {
+                            var filterDir = GetDefaultFilterDirectory();
+                            var filePath = System.IO.Path.Combine(filterDir, $"{selectedFilter.Name}.xml");
+                            SaveFilterToXmlFile(selectedFilter, filePath);
+                            _log($"[FILTER_MGMT] ✅ Saved filter '{selectedFilter.Name}' to XML (backward compatibility): {filePath}");
+                        }
+                        catch (Exception xmlEx)
+                        {
+                            // ✅ NON-BLOCKING: XML save failure doesn't prevent filter save (DB is primary)
+                            _log($"[FILTER_MGMT] ⚠️ Warning: Could not save filter to XML (non-critical): {xmlEx.Message}");
+                        }
+                    }
+                    else
+                    {
+                        _log($"[FILTER_MGMT] ⚠️ XML creation disabled - skipping XML save for filter '{selectedFilter.Name}'");
+                    }
+                }
+                else
+                {
+                    _log($"[FILTER_MGMT] ❌ Failed to save filter '{selectedFilter.Name}' in database");
+                    ShowError($"Failed to save filter '{selectedFilter.Name}' in database. Check logs for details.");
+                }
             }
             catch (Exception ex)
             {
@@ -359,17 +720,128 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return;
                 }
 
-                // Get default filter directory
-                var filterDir = GetDefaultFilterDirectory();
-                if (!Directory.Exists(filterDir))
+                // ✅ OOP: Use ProjectPathService when document is available
+                string filterDir;
+                if (_document != null)
                 {
-                    Directory.CreateDirectory(filterDir);
+                    ProjectPathService.EnsureFiltersDirectory(_document);
+                    filterDir = ProjectPathService.GetFiltersDirectory(_document);
+                }
+                else
+                {
+                    filterDir = GetDefaultFilterDirectory();
+                    if (!Directory.Exists(filterDir))
+                    {
+                        Directory.CreateDirectory(filterDir);
+                    }
                 }
 
-                var filePath = Path.Combine(filterDir, $"{selectedFilter.Name}.xml");
-                SaveFilterToXmlFile(selectedFilter, filePath);
+                // ✅ DATABASE-FIRST: Register filter in database FIRST (primary storage)
+                var categoryDisplay = GetDisplayCategory(selectedFilter);
+                var filterId = RegisterFilterInDatabase(selectedFilter.Name, categoryDisplay);
                 
-                _log($"[FILTER_MGMT] Auto-saved filter '{selectedFilter.Name}' to {filePath}");
+                if (filterId > 0)
+                {
+                    _log($"[FILTER_MGMT] ✅ Auto-saved filter '{selectedFilter.Name}' in database (FilterId={filterId})");
+                    
+                    // ✅ CRITICAL FIX: Collect CURRENT UI state before saving (filter object may have stale data)
+                    // ⚠️ CRITICAL: Collect CURRENT UI state, not stale filter data
+                    // This ensures the latest UI selections are persisted to the database
+                    var currentHostElementTypes = FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? selectedFilter.SelectedHostElementTypes ?? new List<string>();
+                    var currentHostCategories = FilterUiStateProvider.GetSelectedHostCategories?.Invoke() ?? new List<string>();
+                    
+                    // ✅ Get category display name once (used for both clearance settings and database registration)
+                    // categoryDisplay is already declared above (line 740)
+                    
+                    // ✅ FIX: Get OpeningSettings from UI, not from stale filter object
+                    // OpeningSettings must be collected from UI using GetClearanceSettings delegate
+                    OpeningSettings currentOpeningSettings = null;
+                    if (FilterUiStateProvider.GetClearanceSettings != null)
+                    {
+                        try
+                        {
+                            // GetClearanceSettings takes category as parameter, not filter name
+                            var clearanceSettings = FilterUiStateProvider.GetClearanceSettings(categoryDisplay);
+                            if (clearanceSettings != null)
+                            {
+                                currentOpeningSettings = new OpeningSettings
+                                {
+                                    ClearanceSettings = clearanceSettings
+                                };
+                                // Also preserve SelectedMepType if available
+                                if (selectedFilter.OpeningSettings != null)
+                                {
+                                    currentOpeningSettings.SelectedMepType = selectedFilter.OpeningSettings.SelectedMepType;
+                                }
+                            }
+                            else
+                            {
+                                // Fallback to filter's OpeningSettings if UI doesn't provide
+                                currentOpeningSettings = selectedFilter.OpeningSettings;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _log($"[FILTER_MGMT] ⚠️ Could not get OpeningSettings from UI: {ex.Message}, using filter's OpeningSettings");
+                            currentOpeningSettings = selectedFilter.OpeningSettings;
+                        }
+                    }
+                    else
+                    {
+                        // Fallback: Use filter's OpeningSettings if delegate not registered
+                        currentOpeningSettings = selectedFilter.OpeningSettings;
+                    }
+                    
+                    // ✅ Update filter object with current UI state
+                    selectedFilter.SelectedHostElementTypes = currentHostElementTypes;
+                    
+                    // ⚠️⚠️⚠️ CRITICAL: UI STATE PERSISTENCE - DO NOT REMOVE OR MODIFY ⚠️⚠️⚠️
+                    // ✅ PHASE 2: Save UI state to database (using CURRENT UI state, not stale filter data)
+                    // This ensures SelectedHostElementTypes and OpeningSettings are preserved when filter is auto-saved
+                    // PROTECTED CODE: Removing this will cause UI state to be lost when filters are auto-saved
+                    try
+                    {
+                        UseFilterRepository(repo =>
+                        {
+                            repo.SaveFilterUIState(
+                                selectedFilter.Name,
+                                categoryDisplay,
+                                currentHostElementTypes, // ✅ Use current UI state, not stale filter data
+                                currentOpeningSettings
+                            );
+                        });
+                        _log($"[FILTER_MGMT] ✅ Auto-saved UI state for filter '{selectedFilter.Name}' to database (HostElementTypes: {currentHostElementTypes.Count}, HostCategories: {currentHostCategories.Count})");
+                    }
+                    catch (Exception uiStateEx)
+                    {
+                        // ⚠️ CRITICAL: Log error but don't fail filter auto-save - UI state save is important but non-blocking
+                        _log($"[FILTER_MGMT] ⚠️ Warning: Could not auto-save UI state to database (non-critical): {uiStateEx.Message}");
+                    }
+                    
+                    // ✅ XML SECOND: Save to XML for backward compatibility (optional, non-blocking)
+                    if (!DeploymentConfiguration.DisableXmlCreation)
+                    {
+                        try
+                        {
+                            var filePath = Path.Combine(filterDir, $"{selectedFilter.Name}.xml");
+                SaveFilterToXmlFile(selectedFilter, filePath);
+                            _log($"[FILTER_MGMT] ✅ Auto-saved filter '{selectedFilter.Name}' to XML (backward compatibility): {filePath}");
+                        }
+                        catch (Exception xmlEx)
+                        {
+                            // ✅ NON-BLOCKING: XML save failure doesn't prevent filter save (DB is primary)
+                            _log($"[FILTER_MGMT] ⚠️ Warning: Could not auto-save filter to XML (non-critical): {xmlEx.Message}");
+                        }
+                    }
+                    else
+                    {
+                        _log($"[FILTER_MGMT] ⚠️ XML creation disabled - skipping XML auto-save for filter '{selectedFilter.Name}'");
+                    }
+                }
+                else
+                {
+                    _log($"[FILTER_MGMT] ⚠️ Warning: Could not auto-save filter '{selectedFilter.Name}' in database");
+                }
             }
             catch (Exception ex)
             {
@@ -378,24 +850,56 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// Loads all saved filters from the default filter directory and adds them to the list
+        /// ✅ DATABASE-FIRST: Loads all saved filters from database FIRST, then XML as fallback
         /// </summary>
         public void LoadAllSavedFilters(ListBox filterListBox)
         {
             try
             {
-                _log("[FILTER_MGMT] Loading all saved filters from directory");
+                _log("[FILTER_MGMT] Loading all saved filters (DATABASE-FIRST)");
                 
-                var filterDir = GetDefaultFilterDirectory();
-                if (!Directory.Exists(filterDir))
+                var loadedFilters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                int dbLoadedCount = 0;
+                int xmlLoadedCount = 0;
+                
+                // ✅ STEP 1: Load from DATABASE FIRST (primary source)
+                try
                 {
-                    _log($"[FILTER_MGMT] Filter directory does not exist: {filterDir}");
-                    return;
+                    UseFilterRepository(repo =>
+                    {
+                        var dbFilters = repo.GetAllFilters();
+                        foreach (var (filterName, category) in dbFilters)
+                        {
+                            if (string.IsNullOrWhiteSpace(filterName))
+                                continue;
+                            
+                            // Only add if not already in list (avoid duplicates)
+                            if (!filterListBox.Items.Contains(filterName) && !_filters.Any(f => f.Name == filterName))
+                            {
+                                // Create a minimal filter object from DB entry
+                                // Note: Full filter details (UI state, clash zones) will be loaded from XML if available
+                                var filter = CreateFilterFromCurrentUIState(filterName);
+                                if (filter != null)
+                {
+                                    AddFilterToList(filterListBox, filter);
+                                    loadedFilters.Add(filterName);
+                                    dbLoadedCount++;
+                                    _log($"[FILTER_MGMT] ✅ Loaded filter '{filterName}' from database (Category='{category}')");
+                                }
+                            }
+                        }
+                    });
+                }
+                catch (Exception dbEx)
+                {
+                    _log($"[FILTER_MGMT] ⚠️ Warning: Could not load filters from database: {dbEx.Message}");
                 }
 
-                // Get all XML files in the filter directory
+                // ✅ STEP 2: Load from XML as fallback (for filters not in DB, or to get full filter details)
+                var filterDir = GetDefaultFilterDirectory();
+                if (Directory.Exists(filterDir))
+                {
                 var xmlFiles = Directory.GetFiles(filterDir, "*.xml");
-                int loadedCount = 0;
                 
                 foreach (var xmlFile in xmlFiles)
                 {
@@ -404,11 +908,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var filter = LoadFilterFromXmlFile(xmlFile);
                         if (filter != null)
                         {
-                            // Only add if not already in list (avoid duplicates)
-                            if (!filterListBox.Items.Contains(filter.Name) && !_filters.Any(f => f.Name == filter.Name))
+                                // Only add if not already loaded from DB (avoid duplicates)
+                                if (!loadedFilters.Contains(filter.Name) && 
+                                    !filterListBox.Items.Contains(filter.Name) && 
+                                    !_filters.Any(f => f.Name == filter.Name))
                             {
                                 AddFilterToList(filterListBox, filter);
-                                loadedCount++;
+                                    loadedFilters.Add(filter.Name);
+                                    xmlLoadedCount++;
+                                    
+                                    // Register in DB (so it's available for future DB-first loading)
+                                RegisterFilterInDatabase(filter.Name, GetDisplayCategory(filter));
+                                    _log($"[FILTER_MGMT] ✅ Loaded filter '{filter.Name}' from XML (fallback)");
                             }
                         }
                     }
@@ -417,10 +928,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         _log($"[FILTER_MGMT] Error loading filter from {xmlFile}: {ex.Message}");
                         // Continue loading other filters even if one fails
                     }
+                    }
+                }
+                else
+                {
+                    _log($"[FILTER_MGMT] Filter directory does not exist: {filterDir} (using DB-only filters)");
                 }
                 
-                _log($"[FILTER_MGMT] Loaded {loadedCount} saved filters from directory");
-                _updateStatus($"Loaded {loadedCount} saved filters");
+                _log($"[FILTER_MGMT] ✅ Loaded {dbLoadedCount} filters from database, {xmlLoadedCount} from XML (total: {loadedFilters.Count})");
+                _updateStatus($"Loaded {loadedFilters.Count} saved filters ({dbLoadedCount} from DB, {xmlLoadedCount} from XML)");
             }
             catch (Exception ex)
             {
@@ -469,13 +985,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 _log($"[FILTER_MGMT] Auto-loading filter: {filterName}");
                 
-                var filterDir = GetDefaultFilterDirectory();
+                // ✅ OOP: Use ProjectPathService when document is available (same as save operations)
+                string filterDir;
+                if (_document != null)
+                {
+                    ProjectPathService.EnsureFiltersDirectory(_document);
+                    filterDir = ProjectPathService.GetFiltersDirectory(_document);
+                }
+                else
+                {
+                    filterDir = GetDefaultFilterDirectory();
+                }
+                
                 var filePath = Path.Combine(filterDir, $"{filterName}.xml");
+                _log($"[FILTER_MGMT] Looking for filter file at: {filePath}");
                 
                 if (!File.Exists(filePath))
                 {
                     _log($"[FILTER_MGMT] Filter file not found: {filePath}");
-                    return null;
+                    return null; // ✅ CORRECT: Return null if file doesn't exist - caller should create new filter
                 }
 
                 var loadedFilter = LoadFilterFromXmlFile(filePath);
@@ -485,7 +1013,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             catch (Exception ex)
             {
                 _log($"[FILTER_MGMT] Error auto-loading filter '{filterName}': {ex.Message}");
-                return null;
+                return null; // ✅ CORRECT: Return null on error - caller should handle
             }
         }
 
@@ -498,11 +1026,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 _log("[FILTER_MGMT] Loading filter");
                 
-                // Get default filter directory
-                var filterDir = GetDefaultFilterDirectory();
-                if (!Directory.Exists(filterDir))
+                // ✅ OOP: Use ProjectPathService when document is available
+                string filterDir;
+                if (_document != null)
                 {
-                    Directory.CreateDirectory(filterDir);
+                    ProjectPathService.EnsureFiltersDirectory(_document);
+                    filterDir = ProjectPathService.GetFiltersDirectory(_document);
+                }
+                else
+                {
+                    filterDir = GetDefaultFilterDirectory();
+                    if (!Directory.Exists(filterDir))
+                    {
+                        Directory.CreateDirectory(filterDir);
+                    }
                 }
                 
                 var openDialog = new OpenFileDialog
@@ -567,7 +1104,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return null;
         }
 
-        private OpeningFilter CreateFilterFromCurrentUIState(string filterName)
+        /// <summary>
+        /// ✅ PUBLIC: Creates a new filter from current UI state (needed for saving new filters)
+        /// </summary>
+        public OpeningFilter CreateFilterFromCurrentUIState(string filterName)
         {
             var filter = new OpeningFilter
             {
@@ -579,7 +1119,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 ClashZoneStorage = null
             };
 
-            // Pull current UI selections via provider if available
+            // ✅ PHASE 2: Try to load UI state from database first
+            try
+            {
+                var categoryDisplay = GetDisplayCategory(filter);
+                UseFilterRepository(repo =>
+                {
+                    var (hostTypes, settings) = repo.LoadFilterUIState(filterName, categoryDisplay);
+                    if (hostTypes != null && hostTypes.Count > 0)
+                    {
+                        filter.SelectedHostElementTypes = hostTypes;
+                        _log($"[FILTER_MGMT] ✅ Loaded SelectedHostElementTypes from database for filter '{filterName}': {string.Join(", ", hostTypes)}");
+                    }
+                    if (settings != null)
+                    {
+                        filter.OpeningSettings = settings;
+                        _log($"[FILTER_MGMT] ✅ Loaded OpeningSettings from database for filter '{filterName}'");
+                    }
+                });
+            }
+            catch (Exception dbEx)
+            {
+                _log($"[FILTER_MGMT] ⚠️ Could not load UI state from database for filter '{filterName}': {dbEx.Message}");
+            }
+
+            // Pull current UI selections via provider if available (fallback or override)
             try
             {
                 var cats = FilterUiStateProvider.GetSelectedMepCategoryNames?.Invoke();
@@ -595,8 +1159,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var hosts = FilterUiStateProvider.GetSelectedHostFiles?.Invoke();
                 if (hosts != null) filter.SelectedHostFiles = new List<string>(hosts);
 
+                // ✅ Use UI state from provider if database had no data, or if user changed it
                 var hostTypes = FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke();
-                if (hostTypes != null) filter.SelectedHostElementTypes = new List<string>(hostTypes);
+                if (hostTypes != null && hostTypes.Count > 0)
+                {
+                    // Override with current UI state (user may have changed it)
+                    filter.SelectedHostElementTypes = new List<string>(hostTypes);
+                }
+                else if (filter.SelectedHostElementTypes == null || filter.SelectedHostElementTypes.Count == 0)
+                {
+                    // No UI state from provider and no database data - initialize empty
+                    filter.SelectedHostElementTypes = new List<string>();
+                }
             }
             catch { }
 
@@ -623,12 +1197,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         private void AddFilterToList(ListBox filterListBox, OpeningFilter filter)
         {
-            if (filterListBox != null)
+            if (filterListBox == null || filter == null)
+                return;
+
+            if (IsDerivedCategoryFilterName(filterListBox, filter.Name))
             {
-                filterListBox.Items.Add(filter.Name);
-                _filters.Add(filter);
-                _log($"[FILTER_MGMT] Added filter '{filter.Name}' to list");
+                _log($"[FILTER_MGMT] Skipping derived category filter '{filter.Name}' from UI list");
+                return;
             }
+
+            filterListBox.Items.Add(filter.Name);
+            _filters.Add(filter);
+            _log($"[FILTER_MGMT] Added filter '{filter.Name}' to list");
         }
 
         private void RemoveFilterFromList(ListBox filterListBox, OpeningFilter filter)
@@ -638,6 +1218,51 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 filterListBox.Items.Remove(filter.Name);
                 _filters.Remove(filter);
                 _log($"[FILTER_MGMT] Removed filter '{filter.Name}' from list");
+            }
+        }
+        
+        /// <summary>
+        /// ✅ CRITICAL FIX: Updates the in-memory filter object to match the saved state
+        /// This ensures that when a filter is selected again, it uses the updated UI state
+        /// </summary>
+        public void UpdateFilterInMemory(string filterName, OpeningFilter updatedFilter)
+        {
+            if (string.IsNullOrWhiteSpace(filterName) || updatedFilter == null)
+                return;
+            
+            try
+            {
+                var existingFilter = _filters.FirstOrDefault(f => f.Name == filterName);
+                if (existingFilter != null)
+                {
+                    // Update all properties from the updated filter
+                    existingFilter.SelectedMepCategoryNames = updatedFilter.SelectedMepCategoryNames != null 
+                        ? new List<string>(updatedFilter.SelectedMepCategoryNames) 
+                        : null;
+                    existingFilter.SelectedMepCategoryName = updatedFilter.SelectedMepCategoryName;
+                    existingFilter.SelectedReferenceFiles = updatedFilter.SelectedReferenceFiles != null 
+                        ? new List<string>(updatedFilter.SelectedReferenceFiles) 
+                        : null;
+                    existingFilter.SelectedHostFiles = updatedFilter.SelectedHostFiles != null 
+                        ? new List<string>(updatedFilter.SelectedHostFiles) 
+                        : null;
+                    existingFilter.SelectedHostElementTypes = updatedFilter.SelectedHostElementTypes != null 
+                        ? new List<string>(updatedFilter.SelectedHostElementTypes) 
+                        : null;
+                    existingFilter.OpeningSettings = updatedFilter.OpeningSettings;
+                    existingFilter.LastModified = updatedFilter.LastModified;
+                    _log($"[FILTER_MGMT] ✅ Updated in-memory filter '{filterName}' with saved UI state");
+                }
+                else
+                {
+                    // Filter not in memory yet - add it
+                    _filters.Add(updatedFilter);
+                    _log($"[FILTER_MGMT] Added filter '{filterName}' to in-memory list (was not tracked)");
+                }
+            }
+            catch (Exception ex)
+            {
+                _log($"[FILTER_MGMT] Error updating filter in memory: {ex.Message}");
             }
         }
 
@@ -650,17 +1275,93 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
+        private bool IsDerivedCategoryFilterName(ListBox listBox, string filterName)
+        {
+            if (string.IsNullOrWhiteSpace(filterName))
+                return false;
+
+            var normalized = FilterNameHelper.NormalizeBaseName(filterName);
+            if (filterName.Equals(normalized, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            bool BaseExists(string candidate)
+            {
+                if (string.IsNullOrWhiteSpace(candidate))
+                    return false;
+
+                if (_filters.Any(f => string.Equals(f.Name, candidate, StringComparison.OrdinalIgnoreCase)))
+                    return true;
+
+                if (listBox != null)
+                {
+                    foreach (var item in listBox.Items)
+                    {
+                        if (item is string itemName &&
+                            string.Equals(itemName, candidate, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return true;
+                        }
+                    }
+                }
+
+                try
+                {
+                    var filterDir = GetDefaultFilterDirectory();
+                    var baseFile = Path.Combine(filterDir, candidate + ".xml");
+                    if (File.Exists(baseFile))
+                        return true;
+                }
+                catch
+                {
+                    // Ignore path issues; absence of file just means base not found
+                }
+
+                return false;
+            }
+
+            return BaseExists(normalized);
+        }
+
         /// <summary>
         /// Saves a filter to an XML file
         /// </summary>
         public void SaveFilterToXmlFile(OpeningFilter filter, string filePath)
         {
+            // ✅ PHASE 2: Skip XML creation if disabled - database is single source of truth
+            if (DeploymentConfiguration.DisableXmlCreation)
+            {
+                Log($"[FILTER_MGMT] ⚠️ XML creation disabled - skipping SaveFilterToXmlFile (database only mode). Filter='{filter?.Name}', Path='{filePath}'");
+                return;
+            }
+            
             try
             {
+                Log($"[FILTER_MGMT] SaveFilterToXmlFile called: filePath='{filePath}', filter.Name='{filter?.Name}'");
+                
                 if (filter == null)
+                {
+                    Log("[FILTER_MGMT] ❌ ERROR: Filter is null!");
                     throw new ArgumentNullException(nameof(filter));
+                }
+
+                // ✅ DIAGNOSTIC: Check if directory exists
+                var directory = Path.GetDirectoryName(filePath);
+                if (string.IsNullOrWhiteSpace(directory))
+                {
+                    Log($"[FILTER_MGMT] ❌ ERROR: Directory path is null or empty for filePath: '{filePath}'");
+                    throw new InvalidOperationException($"Directory path is null or empty for filePath: '{filePath}'");
+                }
+                
+                if (!Directory.Exists(directory))
+                {
+                    Log($"[FILTER_MGMT] ❌ ERROR: Directory does not exist: '{directory}'");
+                    throw new DirectoryNotFoundException($"Directory does not exist: '{directory}'");
+                }
+                
+                Log($"[FILTER_MGMT] ✅ Directory exists: '{directory}'");
 
                 var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
+                Log($"[FILTER_MGMT] ✅ Serializer created successfully");
 
                 if (filter.ClashZoneStorage == null)
                 {
@@ -782,6 +1483,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
 
+                Log($"[FILTER_MGMT] About to serialize filter to: {filePath}");
+                
                 using (var writer = new System.IO.StreamWriter(filePath))
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
@@ -793,8 +1496,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                         catch { }
                     }
+                    
+                    Log($"[FILTER_MGMT] StreamWriter created, about to serialize...");
                     serializer.Serialize(writer, filter);
+                    Log($"[FILTER_MGMT] ✅ Serialization completed successfully");
                 }
+                
+                // ✅ VERIFY: Check if file was actually created
+                if (File.Exists(filePath))
+                {
+                    var fileInfo = new FileInfo(filePath);
+                    Log($"[FILTER_MGMT] ✅ File verified: {filePath} ({fileInfo.Length} bytes)");
+                }
+                else
+                {
+                    Log($"[FILTER_MGMT] ❌ ERROR: File was NOT created at: {filePath}");
+                    throw new FileNotFoundException($"File was not created after serialization: {filePath}");
+                }
+                
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     try
@@ -805,11 +1524,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     catch { }
                 }
-                Log($"[FILTER_MGMT] Saved filter to XML: {filePath}");
+                Log($"[FILTER_MGMT] ✅ Saved filter to XML: {filePath}");
             }
             catch (Exception ex)
             {
-                Log($"[FILTER_MGMT] Error serializing filter to XML: {ex.Message}");
+                var errorMsg = $"[FILTER_MGMT] ❌ ERROR serializing filter to XML: {ex.Message}";
+                Log(errorMsg);
+                Log($"[FILTER_MGMT] Exception type: {ex.GetType().Name}");
+                Log($"[FILTER_MGMT] Stack trace: {ex.StackTrace}");
+                if (ex.InnerException != null)
+                {
+                    Log($"[FILTER_MGMT] Inner exception: {ex.InnerException.Message}");
+                }
+                // ✅ CRITICAL: Also log to DebugLogger for visibility
+                try
+                {
+                    DebugLogger.Error(errorMsg);
+                    DebugLogger.Error($"Stack: {ex.StackTrace}");
+                }
+                catch { }
                 throw;
             }
         }
@@ -859,6 +1592,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var filter = (OpeningFilter)serializer.Deserialize(reader);
 
                     _log($"[FILTER_MGMT] Loaded filter from XML: {filePath}");
+                    
+                    // ✅ PHASE 2: Load UI state from database (database is primary, XML is fallback)
+                    try
+                    {
+                        var categoryDisplay = GetDisplayCategory(filter);
+                        UseFilterRepository(repo =>
+                        {
+                            var (hostTypes, settings) = repo.LoadFilterUIState(filter.Name, categoryDisplay);
+                            if (hostTypes != null && hostTypes.Count > 0)
+                            {
+                                filter.SelectedHostElementTypes = hostTypes;
+                                _log($"[FILTER_MGMT] ✅ Loaded SelectedHostElementTypes from database for filter '{filter.Name}': {string.Join(", ", hostTypes)}");
+                            }
+                            else if (filter.SelectedHostElementTypes == null || filter.SelectedHostElementTypes.Count == 0)
+                            {
+                                // ✅ FALLBACK: Use XML data if database has no data
+                                _log($"[FILTER_MGMT] ⚠️ No SelectedHostElementTypes in database, using XML data (if available)");
+                            }
+                            
+                            if (settings != null)
+                            {
+                                filter.OpeningSettings = settings;
+                                _log($"[FILTER_MGMT] ✅ Loaded OpeningSettings from database for filter '{filter.Name}'");
+                            }
+                            else if (filter.OpeningSettings == null)
+                            {
+                                // ✅ FALLBACK: Use XML data if database has no data
+                                _log($"[FILTER_MGMT] ⚠️ No OpeningSettings in database, using XML data (if available)");
+                            }
+                        });
+                    }
+                    catch (Exception dbEx)
+                    {
+                        _log($"[FILTER_MGMT] ⚠️ Could not load UI state from database for filter '{filter.Name}', using XML data: {dbEx.Message}");
+                    }
                     
                     // ✅ CRITICAL: Reconstruct SleevePlacementPoint from XML-serializable properties
                     if (filter?.ClashZoneStorage?.AllZones != null)

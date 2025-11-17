@@ -9,6 +9,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
 using JSE_RevitAddin_MEP_OPENINGS.Utils;
+using System.Threading.Tasks;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 {
@@ -31,7 +32,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         private OpeningConditions _conditions;
         private readonly Dictionary<string, double> _clearanceSettings;
 
-        public UniversalSleevePlacementCommand(Document doc, List<ClashZone> clashZones, string category, string filterName, Dictionary<string, double> clearanceSettings = null)
+        public UniversalSleevePlacementCommand(Document doc, List<ClashZone> clashZones, string category, string filterName, Dictionary<string, double>? clearanceSettings = null)
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _clashZones = clashZones ?? throw new ArgumentNullException(nameof(clashZones));
@@ -67,113 +68,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 // Fallback: if no clash zones were passed, load from filter XML saved during refresh
                 if (_clashZones == null || _clashZones.Count == 0)
                 {
-                    try
+                    var dataService = new ClashZoneDataService(
+                        _doc,
+                        message =>
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"{_logPrefix} {message}");
+                        });
+
+                    var normalizedCategory = MepCategoryConstants.Normalize(_category);
+                    var normalizedFilter = FilterNameHelper.NormalizeBaseName(_filterName, _filterName, normalizedCategory);
+                    var loadedZones = dataService.LoadClashZonesForCategory(normalizedFilter, normalizedCategory);
+
+                    if (loadedZones.Count > 0)
                     {
-                        var filtersDir = ProjectPathService.GetFiltersDirectory(_doc);
-                        var path = Path.Combine(filtersDir, _filterName);
-                        if (!File.Exists(path))
-                        {
-                            // try without extension
-                            var withoutExt = Path.Combine(filtersDir, Path.GetFileNameWithoutExtension(_filterName) + ".xml");
-                            path = File.Exists(withoutExt) ? withoutExt : path;
-                        }
-                        if (File.Exists(path))
-                        {
-                            var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
-                            using (var reader = new StreamReader(path))
-                            {
-                                var filter = (OpeningFilter)serializer.Deserialize(reader);
-                                
-                                // ✅ CRITICAL: Declare log paths once for this scope (using different names to avoid outer scope conflict)
-                                var xmlErrorLogPath = SafeFileLogger.GetLogFilePath("sleeve_placement_errors.log");
-                                var xmlDebugLogPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
-                                
-                                if (filter?.ClashZoneStorage?.AllZones != null)
-                                {
-                                    _clashZones.Clear();
-                                    _clashZones.AddRange(filter.ClashZoneStorage.AllZones);
-                                    DebugLogger.Info($"{_logPrefix} Fallback loaded {_clashZones.Count} clash zones from {path}");
-                                    
-                                    // ✅ CRITICAL FIX: Reconstruct IntersectionPoint and SleevePlacementPoint from XML values
-                                    foreach (var cz in _clashZones)
-                                    {
-                                        cz.EnsureSleevePlacementPointReconstructed();
-                                        // Reconstruct IntersectionPoint from XML values
-                                        if (cz.IntersectionPoint == null && (Math.Abs(cz.IntersectionPointX) > 1e-9 || Math.Abs(cz.IntersectionPointY) > 1e-9 || Math.Abs(cz.IntersectionPointZ) > 1e-9))
-                                        {
-                                            cz.IntersectionPoint = new XYZ(cz.IntersectionPointX, cz.IntersectionPointY, cz.IntersectionPointZ);
-                                        }
-                                    }
-                                    
-                                    // ✅ CRITICAL DEBUG: Log XML load results
-                                    try
-                                    {
-                                        File.AppendAllText(xmlDebugLogPath, $"[{DateTime.Now:HH:mm:ss}] ✅ XML LOADED: {_clashZones.Count} zones from {Path.GetFileName(path)}\n");
-                                        File.AppendAllText(xmlDebugLogPath, $"[{DateTime.Now:HH:mm:ss}] Sample zone: ID={_clashZones.FirstOrDefault()?.Id}, MEP={_clashZones.FirstOrDefault()?.MepElementIdValue}, HOST={_clashZones.FirstOrDefault()?.StructuralElementIdValue}, IP=({_clashZones.FirstOrDefault()?.IntersectionPointX:F3},{_clashZones.FirstOrDefault()?.IntersectionPointY:F3},{_clashZones.FirstOrDefault()?.IntersectionPointZ:F3})\n");
-                                        File.AppendAllText(xmlDebugLogPath, $"[{DateTime.Now:HH:mm:ss}] Category='{_clashZones.FirstOrDefault()?.MepElementCategory}', HostType='{_clashZones.FirstOrDefault()?.StructuralElementType}', SourceDoc='{_clashZones.FirstOrDefault()?.SourceDocKey}', HostDoc='{_clashZones.FirstOrDefault()?.StructuralElementDocumentTitle}'\n");
-                                    }
-                                    catch { }
-                                    
-                                    // ✅ CRITICAL DEBUG: Check for zero intersection points immediately after XML load
-                                    var zeroPointCount = 0;
-                                    foreach (var cz in _clashZones.Take(10)) // Check first 10
-                                    {
-                                        bool isZero = Math.Abs(cz.IntersectionPointX) < 1e-9 && Math.Abs(cz.IntersectionPointY) < 1e-9 && Math.Abs(cz.IntersectionPointZ) < 1e-9;
-                                        if (isZero)
-                                        {
-                                            zeroPointCount++;
-                                            try
-                                            {
-                                                // ✅ DEPLOYMENT MODE: Skip file writes
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                {
-                                                    File.AppendAllText(xmlErrorLogPath, $"[{DateTime.Now}] ⚠️⚠️⚠️ ZERO POINT IN XML (After Load): Zone={cz.Id}, MEP={cz.MepElementIdValue}, HOST={cz.StructuralElementIdValue}, IP=({cz.IntersectionPointX},{cz.IntersectionPointY},{cz.IntersectionPointZ}), SPP=({cz.SleevePlacementPointX},{cz.SleevePlacementPointY},{cz.SleevePlacementPointZ})\n");
-                                                    File.AppendAllText(xmlDebugLogPath, $"[{DateTime.Now:HH:mm:ss}] XML-LOAD-ZERO: Zone={cz.Id}, MEP={cz.MepElementIdValue}, HOST={cz.StructuralElementIdValue}\n");
-                                                }
-                                            }
-                                            catch { }
-                                        }
-                                    }
-                                    
-                                    if (zeroPointCount > 0)
-                                    {
-                                        DebugLogger.Error($"{_logPrefix} ⚠️ WARNING: Found {zeroPointCount} clash zones with ZERO intersection points in XML file! Re-run Refresh to fix.");
-                                        try
-                                        {
-                                            // ✅ DEPLOYMENT MODE: Skip file writes
-                                            if (!DeploymentConfiguration.DeploymentMode)
-                                            {
-                                                File.AppendAllText(xmlErrorLogPath, $"[{DateTime.Now}] ⚠️⚠️⚠️ XML FILE HAS {zeroPointCount} ZONES WITH ZERO INTERSECTION POINTS! File: {path}\n");
-                                                File.AppendAllText(xmlErrorLogPath, $"[{DateTime.Now}] ACTION REQUIRED: Delete XML file and re-run Refresh to regenerate correct intersection points\n\n");
-                                            }
-                                        }
-                                        catch { }
-                                    }
-                                }
-                                else
-                                {
-                                    DebugLogger.Warning($"{_logPrefix} Filter XML loaded but ClashZoneStorage or ClashZones is null!");
-                                    try 
-                                    { 
-                                        // ✅ DEPLOYMENT MODE: Skip file writes
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        {
-                                            File.AppendAllText(xmlDebugLogPath, $"[{DateTime.Now:HH:mm:ss}] ❌ XML LOAD FAILED: Filter or ClashZones is null from {Path.GetFileName(path)}\n"); 
-                                        }
-                                    } 
-                                    catch { }
-                                }
-                            }
-                        }
-                        else
-                        {
-                            DebugLogger.Warning($"{_logPrefix} Fallback XML not found: {path}");
-                        }
+                        _clashZones.Clear();
+                        _clashZones.AddRange(loadedZones);
+                        DebugLogger.Info($"{_logPrefix} Loaded {_clashZones.Count} clash zones via ClashZoneDataService (SQLite primary, XML fallback).");
                     }
-                    catch (Exception loadEx)
-                    {
-                        DebugLogger.Error($"{_logPrefix} Fallback load from filter XML failed: {loadEx.Message}");
-                    }
+                }
+
+                if (_clashZones == null || _clashZones.Count == 0)
+                {
+                    DebugLogger.Warning($"{_logPrefix} ⚠️ No clash zones available for placement. Ensure Refresh completed successfully and data was saved.");
+                    TaskDialog.Show("No Clash Zones",
+                        "No clash zones were found for this category. Please run Refresh before placing sleeves.");
+                    return;
                 }
                 
                 // ---- 1. VALIDATION: Check document state (NO transaction) ----
@@ -376,12 +296,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         }
 
         /// <summary>
-        /// Determines which placement path should be executed. For now we default
-        /// to the replay path until sizing/detection triggers are wired in.
+        /// ✅ OOP: Uses RefreshPathDeterminer service to determine placement path based on IsFilterComboNew flag
+        /// ✅ NEW: Also checks if OpeningSettings changed - routes to PATH 2 if changed
         /// </summary>
         private SleevePlacementPath DeterminePlacementPath()
         {
-            return SleevePlacementPath.Replay;
+            // Convert OpeningConditions.ClearanceSettings to Dictionary<string, double> for comparison
+            Dictionary<string, double> currentClearanceSettings = null;
+            if (_conditions?.ClearanceSettings != null)
+            {
+                currentClearanceSettings = new Dictionary<string, double>();
+                var cs = _conditions.ClearanceSettings;
+                
+                // Add all clearance settings to dictionary
+                if (cs.RectangularNormal > 0) currentClearanceSettings["RectangularNormal"] = cs.RectangularNormal;
+                if (cs.RectangularInsulated > 0) currentClearanceSettings["RectangularInsulated"] = cs.RectangularInsulated;
+                if (cs.RoundNormal > 0) currentClearanceSettings["RoundNormal"] = cs.RoundNormal;
+                if (cs.RoundInsulated > 0) currentClearanceSettings["RoundInsulated"] = cs.RoundInsulated;
+                if (cs.PipesNormal > 0) currentClearanceSettings["PipesNormal"] = cs.PipesNormal;
+                if (cs.PipesInsulated > 0) currentClearanceSettings["PipesInsulated"] = cs.PipesInsulated;
+                if (cs.CableTrayTop > 0) currentClearanceSettings["CableTrayTop"] = cs.CableTrayTop;
+                if (cs.CableTrayOther > 0) currentClearanceSettings["CableTrayOther"] = cs.CableTrayOther;
+            }
+            
+            return Services.Refresh.RefreshPathDeterminer.DeterminePlacementPath(
+                _doc, 
+                _filterName, 
+                _category, 
+                _logPrefix,
+                currentClearanceSettings);
         }
         
         private void LoadConditionsFromXml()
@@ -390,7 +333,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             {
                 // Use the actual project filters directory so CONDITIONS.xml sits next to the filter XMLs
                 var projectFiltersDir = ProjectPathService.GetFiltersDirectory(_doc);
-                var conditionsService = new ConditionsService(projectFiltersDir, msg => DebugLogger.Info(msg));
+                var conditionsService = new ConditionsService(_doc, projectFiltersDir, msg => DebugLogger.Info(msg));
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     try 
@@ -439,7 +382,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         // Initialize sane defaults tied to this filter/category key
                         if (_conditions == null)
                             _conditions = new OpeningConditions();
-                        _conditions.FilterName = combinedKey;
+                        _conditions.FilterName = filterName;
                         _conditions.Category = _category;
                         // Save immediately so subsequent runs find it
                         conditionsService.SaveConditions(_conditions, combinedKey);

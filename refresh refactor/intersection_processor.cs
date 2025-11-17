@@ -49,6 +49,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         private readonly ParameterCaptureService _parameterCapture;
         private readonly PerformanceMonitor _performanceMonitor;
         private readonly Action<string> _logger;
+        private readonly Action<string, int>? _progressCallback;
 
         public IntersectionProcessor(
             RefreshContext context,
@@ -56,7 +57,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             ValidationService validationService,
             ParameterCaptureService parameterCapture,
             PerformanceMonitor performanceMonitor,
-            Action<string> logger)
+            Action<string> logger,
+            Action<string, int>? progressCallback = null)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _xmlCache = xmlCache ?? throw new ArgumentNullException(nameof(xmlCache));
@@ -64,6 +66,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             _parameterCapture = parameterCapture ?? throw new ArgumentNullException(nameof(parameterCapture));
             _performanceMonitor = performanceMonitor ?? throw new ArgumentNullException(nameof(performanceMonitor));
             _logger = logger ?? (msg => { });
+            _progressCallback = progressCallback;
         }
 
         /// <summary>
@@ -254,6 +257,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 new FlagManager(_context.Document),
                 new GuidManager(_context.Document));
 
+            // ✅ PROGRESS CALLBACK: Update progress dialog with intersection counts DURING detection
+            // Update progress based on raw intersections (before conversion to clash zones)
+            if (_progressCallback != null && intersections.Count > 0)
+            {
+                // Group intersections by MEP element category
+                var countsByCategory = new Dictionary<string, int>();
+                foreach (var (mepElement, hostElement, bbox, point) in intersections)
+                {
+                    if (mepElement == null) continue;
+                    
+                    // Get category from MEP element
+                    string category = GetCategoryFromElement(mepElement);
+                    if (string.IsNullOrEmpty(category))
+                        category = "Unknown";
+                    
+                    if (!countsByCategory.ContainsKey(category))
+                        countsByCategory[category] = 0;
+                    countsByCategory[category]++;
+                }
+                
+                // Update progress dialog for each category
+                foreach (var kvp in countsByCategory)
+                {
+                    _progressCallback(kvp.Key, kvp.Value);
+                }
+            }
+            
             var newClashZones = clashZoneService.DetectNewClashZones(
                 intersections,
                 _context.Document,
@@ -261,8 +291,68 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 _context.SelectedMepCategories);
 
             _logger($"[INTERSECTION-PROCESSOR] ✅ Converted {intersections.Count} intersections to {newClashZones.Count} clash zones");
+            
+            // ✅ PROGRESS CALLBACK: Also update with final clash zone counts (more accurate)
+            if (_progressCallback != null && newClashZones.Count > 0)
+            {
+                var countsByCategory = newClashZones
+                    .GroupBy(cz => cz.MepElementCategory ?? "Unknown")
+                    .ToDictionary(g => g.Key, g => g.Count());
+                
+                foreach (var kvp in countsByCategory)
+                {
+                    _progressCallback(kvp.Key, kvp.Value);
+                }
+            }
+            // ✅ FIX: Update progress even if no clash zones (show 0)
+            else if (_progressCallback != null && newClashZones.Count == 0 && intersections.Count > 0)
+            {
+                // Show intersection counts even if they didn't convert to clash zones
+                var countsByCategory = new Dictionary<string, int>();
+                foreach (var (mepElement, hostElement, bbox, point) in intersections)
+                {
+                    if (mepElement == null) continue;
+                    string category = GetCategoryFromElement(mepElement);
+                    if (string.IsNullOrEmpty(category))
+                        category = "Unknown";
+                    if (!countsByCategory.ContainsKey(category))
+                        countsByCategory[category] = 0;
+                    countsByCategory[category]++;
+                }
+                foreach (var kvp in countsByCategory)
+                {
+                    _progressCallback(kvp.Key, kvp.Value);
+                }
+            }
 
             return newClashZones;
+        }
+
+        /// <summary>
+        /// Get category name from MEP element (for progress reporting)
+        /// </summary>
+        private string GetCategoryFromElement(Element element)
+        {
+            if (element == null)
+                return "Unknown";
+            
+            var category = element.Category;
+            if (category == null)
+                return "Unknown";
+            
+            var categoryName = category.Name ?? "";
+            
+            // Map Revit category names to our category names
+            if (categoryName.Contains("Pipe") || categoryName.Contains("Piping"))
+                return "Pipes";
+            if (categoryName.Contains("Duct") || categoryName.Contains("Ductwork"))
+                return "Ducts";
+            if (categoryName.Contains("Cable") || categoryName.Contains("Tray"))
+                return "Cable Trays";
+            if (categoryName.Contains("Duct Accessory") || categoryName.Contains("Damper"))
+                return "Duct Accessories";
+            
+            return categoryName;
         }
 
         /// <summary>
@@ -393,6 +483,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             }
 
             // Filter 3: MEP Categories Filter
+            
+            // ✅ CRITICAL FIX: Handle empty categoryFilters list
+            if (categoryFilters == null || categoryFilters.Count == 0)
+            {
+                _logger("[INTERSECTION-PROCESSOR] ⚠️ No MEP category filters provided - returning empty list");
+                return new List<Element>();
+            }
+            
             var mepCategoryFilter = categoryFilters.Count == 1 
                 ? categoryFilters[0] 
                 : new LogicalOrFilter(categoryFilters);
@@ -406,42 +504,91 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             var compoundFilter = filters.Count == 1 ? filters[0] : new LogicalAndFilter(filters);
 
             // Filter 2: Reference File Filter (handled at document level)
-            // Collect from main document and linked documents
+            // ✅ STEP 1: Collect from ACTIVE DOCUMENT (MEP elements can be in active document)
+            _logger("[INTERSECTION-PROCESSOR] Collecting MEP elements from ACTIVE document...");
             var collector = new FilteredElementCollector(doc)
                 .WherePasses(compoundFilter)
                 .WhereElementIsNotElementType();
 
-            allMepElements.AddRange(collector.ToElements());
+            var activeDocElements = collector.ToElements().ToList();
+            allMepElements.AddRange(activeDocElements);
+            _logger($"[INTERSECTION-PROCESSOR] ✅ Collected {activeDocElements.Count} MEP elements from ACTIVE document");
 
-            // Also collect from selected reference files (linked documents)
+            // ✅ STEP 2: Collect from selected reference files (linked documents)
+            // MEP elements can be in BOTH active document AND/OR linked documents
             if (selectedReferenceFiles != null && selectedReferenceFiles.Count > 0)
             {
-                var linkInstances = new FilteredElementCollector(doc)
+                _logger($"[INTERSECTION-PROCESSOR] Collecting MEP elements from {selectedReferenceFiles.Count} linked files: {string.Join(", ", selectedReferenceFiles)}");
+                
+                // Get all link instances first
+                var allLinkInstances = new FilteredElementCollector(doc)
                     .OfClass(typeof(RevitLinkInstance))
                     .Cast<RevitLinkInstance>()
-                    .Where(link =>
-                    {
-                        var linkDoc = link.GetLinkDocument();
-                        if (linkDoc == null) return false;
-                        
-                        // Match by RevitLinkInstance.Name (matches UI display)
-                        var linkName = link.Name ?? linkDoc.Title;
-                        return selectedReferenceFiles.Any(rf => 
-                            string.Equals(rf, linkName, StringComparison.OrdinalIgnoreCase));
-                    })
+                    .Where(link => link.GetLinkDocument() != null)
                     .ToList();
+                
+                _logger($"[INTERSECTION-PROCESSOR] Found {allLinkInstances.Count} total link instances in document");
+                
+                // Log all available link names for debugging
+                foreach (var link in allLinkInstances)
+                {
+                    var linkDoc = link.GetLinkDocument();
+                    if (linkDoc == null) continue;
+                    var linkName = link.Name ?? linkDoc.Title ?? System.IO.Path.GetFileNameWithoutExtension(linkDoc.PathName ?? "");
+                    _logger($"[INTERSECTION-PROCESSOR]   Available link: Name='{link.Name}', Title='{linkDoc.Title}', PathName='{System.IO.Path.GetFileNameWithoutExtension(linkDoc.PathName ?? "")}'");
+                }
+                
+                var matchedLinks = new List<RevitLinkInstance>();
+                foreach (var linkInstance in allLinkInstances)
+                {
+                    var linkDoc = linkInstance.GetLinkDocument();
+                    if (linkDoc == null) continue;
+                    
+                    // ✅ ENHANCED MATCHING: Try multiple matching strategies
+                    var linkName = linkInstance.Name ?? "";
+                    var linkTitle = linkDoc.Title ?? "";
+                    var linkPathName = System.IO.Path.GetFileNameWithoutExtension(linkDoc.PathName ?? "");
+                    
+                    bool isMatch = selectedReferenceFiles.Any(rf =>
+                    {
+                        // Normalize both sides for comparison
+                        var normalizedRf = rf?.Trim() ?? "";
+                        var normalizedLinkName = linkName?.Trim() ?? "";
+                        var normalizedLinkTitle = linkTitle?.Trim() ?? "";
+                        var normalizedPathName = linkPathName?.Trim() ?? "";
+                        
+                        return string.Equals(normalizedRf, normalizedLinkName, StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(normalizedRf, normalizedLinkTitle, StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(normalizedRf, normalizedPathName, StringComparison.OrdinalIgnoreCase);
+                    });
+                    
+                    if (isMatch)
+                    {
+                        matchedLinks.Add(linkInstance);
+                        _logger($"[INTERSECTION-PROCESSOR] ✅ Matched linked file: Name='{linkName}', Title='{linkTitle}'");
+                    }
+                }
+                
+                _logger($"[INTERSECTION-PROCESSOR] Matched {matchedLinks.Count} linked files for MEP element collection");
 
-                foreach (var linkInstance in linkInstances)
+                foreach (var linkInstance in matchedLinks)
                 {
                     var linkDoc = linkInstance.GetLinkDocument();
                     if (linkDoc == null) continue;
 
+                    _logger($"[INTERSECTION-PROCESSOR] Collecting MEP elements from linked document: {linkDoc.Title}");
                     var linkCollector = new FilteredElementCollector(linkDoc)
                         .WherePasses(compoundFilter)
                         .WhereElementIsNotElementType();
 
-                    allMepElements.AddRange(linkCollector.ToElements());
+                    var linkElements = linkCollector.ToElements().ToList();
+                    allMepElements.AddRange(linkElements);
+                    _logger($"[INTERSECTION-PROCESSOR] ✅ Collected {linkElements.Count} MEP elements from linked document: {linkDoc.Title}");
                 }
+            }
+            else
+            {
+                _logger("[INTERSECTION-PROCESSOR] ⚠️ No reference files selected - only collecting from active document");
             }
 
             return allMepElements;
@@ -469,6 +616,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             // Filter 5: Host Categories Filter
             // Note: Property-based filters (wall thickness, structural floors) are applied AFTER collection
             // because ElementFilter.PassesFilter is not virtual in Revit API
+            
+            // ✅ CRITICAL FIX: Handle empty categoryFilters list
+            if (categoryFilters == null || categoryFilters.Count == 0)
+            {
+                _logger("[INTERSECTION-PROCESSOR] ⚠️ No host category filters provided - returning empty list");
+                return new List<Element>();
+            }
+            
             var hostCategoryFilter = categoryFilters.Count == 1 
                 ? categoryFilters[0] 
                 : new LogicalOrFilter(categoryFilters);
@@ -482,41 +637,73 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             var compoundFilter = filters.Count == 1 ? filters[0] : new LogicalAndFilter(filters);
 
             // Filter 4: Host File Filter (handled at document level)
-            // Collect from main document and linked documents
-            var collector = new FilteredElementCollector(doc)
-                .WherePasses(compoundFilter)
-                .WhereElementIsNotElementType();
-
-            var collectedElements = collector.ToElements().ToList();
+            // ✅ CRITICAL: Host elements are ALWAYS in linked documents (never in active document)
+            // Skip active document collection for host elements - they're always in linked files
             
-            // ✅ Apply property-based filters AFTER collection (ElementFilter.PassesFilter is not virtual)
-            // This is still efficient because elements are pre-filtered by category and bounding box
-            collectedElements = ApplyPropertyFilters(collectedElements, selectedHostTypes);
-            allHostElements.AddRange(collectedElements);
-
-            // Also collect from selected host files (linked documents)
+            // ✅ STEP 1: Collect from selected host files (linked documents)
+            // ALL host elements are ALWAYS in linked files
             if (selectedHostFiles != null && selectedHostFiles.Count > 0)
             {
-                var linkInstances = new FilteredElementCollector(doc)
+                _logger($"[INTERSECTION-PROCESSOR] Collecting host elements from {selectedHostFiles.Count} linked files: {string.Join(", ", selectedHostFiles)}");
+                _logger("[INTERSECTION-PROCESSOR] ⚠️ Host elements are ALWAYS in linked documents (skipping active document)");
+                
+                // Get all link instances first
+                var allLinkInstances = new FilteredElementCollector(doc)
                     .OfClass(typeof(RevitLinkInstance))
                     .Cast<RevitLinkInstance>()
-                    .Where(link =>
-                    {
-                        var linkDoc = link.GetLinkDocument();
-                        if (linkDoc == null) return false;
-                        
-                        // Match by RevitLinkInstance.Name (matches UI display)
-                        var linkName = link.Name ?? linkDoc.Title;
-                        return selectedHostFiles.Any(hf => 
-                            string.Equals(hf, linkName, StringComparison.OrdinalIgnoreCase));
-                    })
+                    .Where(link => link.GetLinkDocument() != null)
                     .ToList();
+                
+                _logger($"[INTERSECTION-PROCESSOR] Found {allLinkInstances.Count} total link instances in document");
+                
+                // Log all available link names for debugging
+                foreach (var link in allLinkInstances)
+                {
+                    var linkDoc = link.GetLinkDocument();
+                    if (linkDoc == null) continue;
+                    var linkName = link.Name ?? linkDoc.Title ?? System.IO.Path.GetFileNameWithoutExtension(linkDoc.PathName ?? "");
+                    _logger($"[INTERSECTION-PROCESSOR]   Available link: Name='{link.Name}', Title='{linkDoc.Title}', PathName='{System.IO.Path.GetFileNameWithoutExtension(linkDoc.PathName ?? "")}'");
+                }
+                
+                var matchedLinks = new List<RevitLinkInstance>();
+                foreach (var linkInstance in allLinkInstances)
+                {
+                    var linkDoc = linkInstance.GetLinkDocument();
+                    if (linkDoc == null) continue;
+                    
+                    // ✅ ENHANCED MATCHING: Try multiple matching strategies
+                    var linkName = linkInstance.Name ?? "";
+                    var linkTitle = linkDoc.Title ?? "";
+                    var linkPathName = System.IO.Path.GetFileNameWithoutExtension(linkDoc.PathName ?? "");
+                    
+                    bool isMatch = selectedHostFiles.Any(hf =>
+                    {
+                        // Normalize both sides for comparison
+                        var normalizedHf = hf?.Trim() ?? "";
+                        var normalizedLinkName = linkName?.Trim() ?? "";
+                        var normalizedLinkTitle = linkTitle?.Trim() ?? "";
+                        var normalizedPathName = linkPathName?.Trim() ?? "";
+                        
+                        return string.Equals(normalizedHf, normalizedLinkName, StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(normalizedHf, normalizedLinkTitle, StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(normalizedHf, normalizedPathName, StringComparison.OrdinalIgnoreCase);
+                    });
+                    
+                    if (isMatch)
+                    {
+                        matchedLinks.Add(linkInstance);
+                        _logger($"[INTERSECTION-PROCESSOR] ✅ Matched linked file: Name='{linkName}', Title='{linkTitle}'");
+                    }
+                }
+                
+                _logger($"[INTERSECTION-PROCESSOR] Matched {matchedLinks.Count} linked files for host element collection");
 
-                foreach (var linkInstance in linkInstances)
+                foreach (var linkInstance in matchedLinks)
                 {
                     var linkDoc = linkInstance.GetLinkDocument();
                     if (linkDoc == null) continue;
 
+                    _logger($"[INTERSECTION-PROCESSOR] Collecting host elements from linked document: {linkDoc.Title}");
                     var linkCollector = new FilteredElementCollector(linkDoc)
                         .WherePasses(compoundFilter)
                         .WhereElementIsNotElementType();
@@ -524,7 +711,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     var linkElements = linkCollector.ToElements().ToList();
                     linkElements = ApplyPropertyFilters(linkElements, selectedHostTypes);
                     allHostElements.AddRange(linkElements);
+                    _logger($"[INTERSECTION-PROCESSOR] ✅ Collected {linkElements.Count} host elements from linked document: {linkDoc.Title}");
                 }
+            }
+            else
+            {
+                _logger("[INTERSECTION-PROCESSOR] ⚠️ No host files selected - host elements are ALWAYS in linked files, so 0 elements will be collected");
             }
 
             return allHostElements;
@@ -537,16 +729,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         {
             var filters = new List<ElementFilter>();
 
+            // ✅ ENHANCED LOGGING: Log input and output
             if (selectedMepCategories == null || selectedMepCategories.Count == 0)
+            {
+                _logger("[INTERSECTION-PROCESSOR] ⚠️ No MEP categories selected - returning empty filters");
                 return filters;
+            }
+
+            _logger($"[INTERSECTION-PROCESSOR] Building MEP category filters for {selectedMepCategories.Count} categories: {string.Join(", ", selectedMepCategories)}");
 
             foreach (var category in selectedMepCategories)
             {
+                if (string.IsNullOrWhiteSpace(category))
+                    continue;
+                    
                 BuiltInCategory builtInCategory = GetBuiltInCategoryForMep(category);
                 if (builtInCategory != BuiltInCategory.INVALID)
                 {
                     filters.Add(new ElementCategoryFilter(builtInCategory));
+                    _logger($"[INTERSECTION-PROCESSOR] ✅ Added MEP category filter: {category} -> {builtInCategory}");
                 }
+                else
+                {
+                    _logger($"[INTERSECTION-PROCESSOR] ⚠️ Unknown MEP category '{category}' - skipping");
+                }
+            }
+
+            if (filters.Count == 0)
+            {
+                _logger("[INTERSECTION-PROCESSOR] ⚠️ No valid MEP category filters built - check category names");
+            }
+            else
+            {
+                _logger($"[INTERSECTION-PROCESSOR] ✅ Built {filters.Count} MEP category filters");
             }
 
             return filters;
@@ -559,16 +774,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         {
             var filters = new List<ElementFilter>();
 
+            // ✅ HANDLE ANY FILTER NAME: If no host types selected, use defaults (Walls, Floors)
             if (selectedHostTypes == null || selectedHostTypes.Count == 0)
-                return filters;
+            {
+                _logger("[INTERSECTION-PROCESSOR] ⚠️ No host types selected - using defaults: Walls, Floors");
+                selectedHostTypes = new List<string> { "Walls", "Floors" };
+            }
 
             foreach (var hostType in selectedHostTypes)
             {
+                if (string.IsNullOrWhiteSpace(hostType))
+                    continue;
+                    
                 BuiltInCategory builtInCategory = GetBuiltInCategoryForHost(hostType);
                 if (builtInCategory != BuiltInCategory.INVALID)
                 {
                     filters.Add(new ElementCategoryFilter(builtInCategory));
+                    _logger($"[INTERSECTION-PROCESSOR] ✅ Added host category filter: {hostType} -> {builtInCategory}");
                 }
+                else
+                {
+                    _logger($"[INTERSECTION-PROCESSOR] ⚠️ Unknown host type '{hostType}' - skipping");
+                }
+            }
+
+            if (filters.Count == 0)
+            {
+                _logger("[INTERSECTION-PROCESSOR] ⚠️ No valid host category filters built - using Walls and Floors as fallback");
+                filters.Add(new ElementCategoryFilter(BuiltInCategory.OST_Walls));
+                filters.Add(new ElementCategoryFilter(BuiltInCategory.OST_Floors));
             }
 
             return filters;
@@ -711,11 +945,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         /// </summary>
         private BuiltInCategory GetBuiltInCategoryForMep(string category)
         {
-            return category?.ToLower() switch
+            if (string.IsNullOrWhiteSpace(category))
+                return BuiltInCategory.INVALID;
+            
+            // ✅ HANDLE ANY FILTER NAME: Case-insensitive matching with common variations
+            var normalized = category.Trim().ToLowerInvariant();
+            
+            return normalized switch
             {
-                "pipes" => BuiltInCategory.OST_PipeCurves,
-                "ducts" => BuiltInCategory.OST_DuctCurves,
-                "cable trays" => BuiltInCategory.OST_CableTray,
+                "pipes" or "pipe" => BuiltInCategory.OST_PipeCurves,
+                "ducts" or "duct" => BuiltInCategory.OST_DuctCurves,
+                "duct accessories" or "ductaccessories" or "duct accessory" => BuiltInCategory.OST_DuctAccessory,
+                "cable trays" or "cabletrays" or "cable tray" => BuiltInCategory.OST_CableTray,
                 _ => BuiltInCategory.INVALID
             };
         }
@@ -725,11 +966,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         /// </summary>
         private BuiltInCategory GetBuiltInCategoryForHost(string hostType)
         {
-            return hostType?.ToLower() switch
+            if (string.IsNullOrWhiteSpace(hostType))
+                return BuiltInCategory.INVALID;
+            
+            // ✅ HANDLE ANY FILTER NAME: Case-insensitive matching with common variations
+            var normalized = hostType.Trim().ToLowerInvariant();
+            
+            return normalized switch
             {
-                "wall" => BuiltInCategory.OST_Walls,
-                "floor" => BuiltInCategory.OST_Floors,
-                "structural framing" => BuiltInCategory.OST_StructuralFraming,
+                "wall" or "walls" => BuiltInCategory.OST_Walls,
+                "floor" or "floors" => BuiltInCategory.OST_Floors,
+                "structural framing" or "structuralframing" or "framing" => BuiltInCategory.OST_StructuralFraming,
+                "ceiling" or "ceilings" => BuiltInCategory.OST_Ceilings,
+                "roof" or "roofs" => BuiltInCategory.OST_Roofs,
+                "slab" or "slabs" => BuiltInCategory.OST_Floors, // Slabs are floors
                 _ => BuiltInCategory.INVALID
             };
         }

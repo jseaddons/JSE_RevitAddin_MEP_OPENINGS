@@ -18,22 +18,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// </summary>
     public class ClashZoneService
     {
-        private readonly ClashZoneStorage _clashZoneStorage;
-        private readonly Action<string> _log;
+        private readonly ClashZoneStorage? _clashZoneStorage;
+        private readonly Action<string>? _log;
         
         // ⚠️ CRITICAL: Memory manager for timeout/memory limit protection (can be null if not provided)
-        private MemoryManager _memoryManager;
+        private MemoryManager? _memoryManager;
         
         // ✅ MEMORY PROFILING: Profiler for tracking actual memory usage per clash zone
-        private MemoryProfiler _memoryProfiler;
+        private MemoryProfiler? _memoryProfiler;
         
         // ✅ OOP REFACTORING: Optional FlagManager for centralized flag operations
-        private readonly FlagManager _flagManager;
+        private readonly FlagManager? _flagManager;
         
         // ✅ OOP REFACTORING: Optional GuidManager for centralized GUID operations
-        private readonly GuidManager _guidManager;
+        private readonly GuidManager? _guidManager;
         
-        public ClashZoneService(ClashZoneStorage clashZoneStorage, Action<string> log, FlagManager flagManager = null, GuidManager guidManager = null)
+        public ClashZoneService(ClashZoneStorage? clashZoneStorage, Action<string>? log, FlagManager? flagManager = null, GuidManager? guidManager = null)
         {
             _clashZoneStorage = clashZoneStorage;
             _log = log;
@@ -80,8 +80,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 try
                 {
-                    var mepElement = document.GetElement(clashZone.MepElementId);
-                    var structuralElement = document.GetElement(clashZone.StructuralElementId);
+                    var mepElement = (clashZone.MepElementId != null && clashZone.MepElementId.IntegerValue != -1) ? document.GetElement(clashZone.MepElementId) : null;
+                    var structuralElement = (clashZone.StructuralElementId != null && clashZone.StructuralElementId.IntegerValue != -1) ? document.GetElement(clashZone.StructuralElementId) : null;
                     
                     if (mepElement != null && structuralElement != null)
                     {
@@ -883,14 +883,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                         }
                         
+                        // ✅ FLOOR ROTATION: Calculate rotation angle for floor sleeves
+                        if (existingClashZone.StructuralElementType == "Floor" || existingClashZone.StructuralElementType == "Floors")
+                        {
+                            existingClashZone.MepElementRotationAngle = CalculateMepElementRotationAngle(
+                                existingClashZone.StructuralElementType, 
+                                mepDir,
+                                mepElement); // Pass element for vertical element rotation calculation
+                            _log($"✅ UPDATED MepElementRotationAngle for resolved clash zone {existingClashZone.Id}: {existingClashZone.MepElementRotationAngle * 180 / Math.PI:F1}°");
+                        }
+                        
                         existingClashZone.LastUpdated = DateTime.Now;
                         _log($"✅ UPDATED MepElementOrientation for resolved clash zone {existingClashZone.Id}: ({mepDir.X:F3}, {mepDir.Y:F3}, {mepDir.Z:F3})");
+                    }
+                    else if (existingClashZone.MepElementRotationAngle == 0.0 && 
+                             (existingClashZone.StructuralElementType == "Floor" || existingClashZone.StructuralElementType == "Floors"))
+                    {
+                        // ✅ FLOOR ROTATION: Update rotation angle if it's missing (old XML data)
+                        // Note: For old XML data, we may not have access to mepElement, so use orientation only
+                        // This is a fallback - new clash zones will have the element available
+                        existingClashZone.MepElementRotationAngle = CalculateMepElementRotationAngle(
+                            existingClashZone.StructuralElementType, 
+                            existingClashZone.MepElementOrientation,
+                            mepElement); // Pass element if available for vertical element rotation
+                        _log($"✅ UPDATED MepElementRotationAngle for existing clash zone {existingClashZone.Id}: {existingClashZone.MepElementRotationAngle * 180 / Math.PI:F1}°");
                     }
                     
                     // Preserve resolved clash zones during refresh - keep them in the list
                     _log($"Preserved resolved clash zone: {existingClashZone.Id} (IsResolved={existingClashZone.IsResolved})");
                 }
             }
+            
+            // ✅ CRASH-SAFE: Use SafeFileLogger instead of hardcoded path
+            // SafeFileLogger automatically creates directories and handles missing paths gracefully
+            // ✅ DECLARE ONCE: Declare refreshLogName early so it can be reused throughout the method
+            string refreshLogName = $"Refresh_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.log";
             
             // ✅ OOP REFACTORING: Use FlagManager for flag reset if available
             // Otherwise fall back to legacy method for backward compatibility
@@ -906,7 +933,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         .ToDictionary(g => g.Key, g => g.ToList());
                     
                     // ✅ UNIFIED RESET: Single method call handles everything
-                    int resetCount = _flagManager.ResetFlagsForDeletedSleeves(selectedCategories, clashZonesByCategory);
+                    // ✅ CRITICAL: Pass refreshLogName so detailed debug logs are written
+                    int resetCount = _flagManager.ResetFlagsForDeletedSleeves(selectedCategories, clashZonesByCategory, refreshLogName);
                     
                     if (resetCount > 0)
                     {
@@ -963,9 +991,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _log($"[DEBUG-COUNT] ═══ TOTAL FILTERED OUT: {ductWallBeforePriority - ductWallClashZonesCreated} Duct-Wall intersections ═══");
             _log($"[DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════");
             
-            // ✅ CRASH-SAFE: Use SafeFileLogger instead of hardcoded path
-            // SafeFileLogger automatically creates directories and handles missing paths gracefully
-            string refreshLogName = $"refresh_{DateTime.Now:yyyy-MM-dd}.log";
+            // ✅ REUSE: refreshLogName already declared earlier in the method
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DEBUG-COUNT] DUCT-WALL CLASH ZONES OPTIMIZATION PIPELINE SUMMARY");
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════");
@@ -1606,7 +1632,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <remarks>
         /// TODO: This method can be removed once all callers are migrated to use FlagManager
         /// </remarks>
-        private void ResetResolvedFlagForDeletedSleeves(Document document, List<string> selectedCategories = null)
+        private void ResetResolvedFlagForDeletedSleeves(Document document, List<string>? selectedCategories = null)
         {
             try
             {
@@ -1924,7 +1950,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
         
-        private ClashZone CreateClashZone(Element mepElement, Element structuralElement, XYZ intersectionPoint, BoundingBoxXYZ boundingBox, Document document, Dictionary<string, double> clearanceSettings = null, Dictionary<(double X, double Y, double Z), int> spatialIndex = null, HashSet<int> sleeveIds = null)
+        private ClashZone CreateClashZone(Element mepElement, Element structuralElement, XYZ intersectionPoint, BoundingBoxXYZ boundingBox, Document document, Dictionary<string, double>? clearanceSettings = null, Dictionary<(double X, double Y, double Z), int>? spatialIndex = null, HashSet<int>? sleeveIds = null)
         {
             // IMPORTANT: The intersection point is already at the wall center (mid-plane)
             // The MepIntersectionService finds intersections with wall faces and CreateBoundingBox()
@@ -1940,8 +1966,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _log($"[DEBUG] StructuralElementType for {structuralElement.Id}: '{structuralElementType}' (Element: {structuralElement.GetType().Name})");
             
             // OPTIMIZATION: Calculate MEP element dimensions and orientation during refresh
+            // ✅ CRITICAL: Verify element is from linked file and log document info
+            var mepElementDoc = mepElement?.Document;
+            var structuralElementDoc = structuralElement?.Document;
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Info($"[CLASH-ZONE-CREATE] MEP Element {mepElement?.Id?.IntegerValue ?? -1}: Document='{mepElementDoc?.Title ?? "null"}' (IsLinked={mepElementDoc != document})");
+                DebugLogger.Info($"[CLASH-ZONE-CREATE] Structural Element {structuralElement?.Id?.IntegerValue ?? -1}: Document='{structuralElementDoc?.Title ?? "null"}' (IsLinked={structuralElementDoc != document})");
+            }
+            
             var (mepWidth, mepHeight) = GetMepElementDimensions(mepElement);
             var mepOrientation = GetMepElementOrientation(mepElement);
+            
+            // ✅ CRITICAL: Log orientation values to verify they're being calculated correctly
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Info($"[CLASH-ZONE-CREATE] MEP Orientation: ({mepOrientation.X:F6}, {mepOrientation.Y:F6}, {mepOrientation.Z:F6})");
+            }
             
             // ✅ OOP REFACTORING: Use centralized WallDirectionService (eliminates code duplication)
             var wallDirection = WallDirectionService.GetWallDirection(structuralElement);
@@ -2113,6 +2154,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 FramingThickness = GetFramingThickness(structuralElement),
                 
                 StructuralElementNormal = WallDirectionService.GetStructuralElementNormal(structuralElement), // ✅ OOP: Use centralized service
+                
+                // ✅ CRITICAL: Log thickness values to verify they're being retrieved correctly from linked files
+                // Log in millimeters for readability (moved outside object initializer to fix syntax)
+                
                 WallDirection = wallDirection, // Pre-calculate wall direction for robust X-wall/Y-wall detection
                 WallDirectionType = wallDirectionType, // Pre-calculate wall direction type for efficient rotation logic
                 MepElementOrientation = mepOrientation, // Pre-calculate MEP element orientation vector for rotation logic
@@ -2121,6 +2166,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 MepElementWidth = finalWidth,
                 MepElementHeight = finalHeight,
                 MepElementOrientationDirection = GetMepOrientationDirection(structuralElementType, mepOrientation, wallDirectionType), // ✅ CRITICAL: Use correct method for orientation direction - DO NOT CHANGE TO GetWallOrientationFromType - FIXED 2025-10-27
+                MepElementRotationAngle = CalculateMepElementRotationAngle(structuralElementType, mepOrientation, mepElement), // ✅ FLOOR ROTATION: Calculate rotation angle once during refresh (pass element for vertical elements)
                 PipeOpeningType = pipeOpeningType,
                 MepElementLevelName = levelName,
                 MepElementLevelElevation = levelElevation,
@@ -2134,6 +2180,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DetectedAt = DateTime.Now,
                 LastUpdated = DateTime.Now
             };
+            
+            // ✅ CRITICAL: Log thickness values to verify they're being retrieved correctly from linked files
+            // Log in millimeters for readability
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Info($"[CLASH-ZONE-CREATE] Thickness values for Structural Element {structuralElement?.Id?.IntegerValue ?? -1} (Document='{structuralElement?.Document?.Title ?? "null"}'): Structural={UnitUtils.ConvertFromInternalUnits(clashZone.StructuralElementThickness, UnitTypeId.Millimeters):F1}mm, Wall={UnitUtils.ConvertFromInternalUnits(clashZone.WallThickness, UnitTypeId.Millimeters):F1}mm, Framing={UnitUtils.ConvertFromInternalUnits(clashZone.FramingThickness, UnitTypeId.Millimeters):F1}mm");
+            }
             
             // ✅ CRITICAL: Set deterministic GUID for stable identification across detection runs
             // This ensures the same intersection (MEP+Host+Point) always gets the same GUID
@@ -3876,7 +3929,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var line = cableTrayCurve.Curve as Line;
                     if (line != null)
                     {
-                        return line.Direction;
+                        var direction = line.Direction;
+                        
+                        // ✅ CABLE TRAY FIX: For vertical cable trays, use helper to get width direction (XY plane)
+                        // This ensures we get the correct orientation for rotation calculation
+                        double absX = Math.Abs(direction.X);
+                        double absY = Math.Abs(direction.Y);
+                        double absZ = Math.Abs(direction.Z);
+                        bool isVertical = absZ > Math.Max(absX, absY) * 0.7; // Z component is dominant
+                        
+                        if (isVertical)
+                        {
+                            try
+                            {
+                                var (orientation, widthDirection) = Helpers.MepElementOrientationHelper.GetCableTrayWidthOrientation(cableTray);
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[GetMepElementOrientation] Vertical CableTray {mepElement.Id}: Using width direction ({widthDirection.X:F3}, {widthDirection.Y:F3}, {widthDirection.Z:F3}) instead of centerline direction ({direction.X:F3}, {direction.Y:F3}, {direction.Z:F3})");
+                                return widthDirection; // Return width direction for vertical cable trays
+                            }
+                            catch (Exception ex)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Warning($"[GetMepElementOrientation] Error using helper for vertical cable tray {mepElement.Id}: {ex.Message}, falling back to centerline direction");
+                                return direction; // Fallback to centerline direction
+                            }
+                        }
+                        
+                        return direction; // For horizontal cable trays, use centerline direction
                     }
                 }
                 else if (mepElement.Category?.Id.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
@@ -4384,6 +4463,124 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Warning($"[GetMepOrientationDirection] Error: {ex.Message}");
                 return "X"; // Default fallback
+            }
+        }
+        
+        /// <summary>
+        /// ✅ FLOOR ROTATION: Calculate MEP element rotation angle in radians for floor sleeves
+        /// Calculated once during refresh, used many times during placement (no Revit calls)
+        /// For floors: 
+        ///   - Horizontal elements: Projects MEP orientation onto XY plane and calculates angle using atan2
+        ///   - Vertical elements: Gets rotation from element's transform BasisX/BasisY vectors
+        /// For walls/framing: Returns 0 (rotation handled differently)
+        /// </summary>
+        private double CalculateMepElementRotationAngle(string structuralElementType, XYZ mepOrientation, Element mepElement)
+        {
+            try
+            {
+                // ✅ FLOOR ROTATION: Only calculate for floors (walls use different rotation logic)
+                if (structuralElementType == "Floor" || structuralElementType == "Floors")
+                {
+                    if (mepOrientation != null && mepOrientation != XYZ.Zero)
+                    {
+                        // ✅ CRITICAL FIX: For vertical MEP elements through floors, ALWAYS use CoordinateSystem.BasisX
+                        // mepOrientation from GetMepElementOrientation returns BasisX/BasisY (cardinal only), which loses 45° angles
+                        // CoordinateSystem.BasisX gives the actual element rotation in XY plane (captures arbitrary angles)
+                        try
+                        {
+                            Transform transform = null;
+                            
+                            // Try to get CoordinateSystem from connectors (works for both Duct and CableTray)
+                            if (mepElement is Duct verticalDuct)
+                            {
+                                var connectors = verticalDuct.ConnectorManager?.Connectors;
+                                if (connectors != null)
+                                {
+                                    foreach (Connector connector in connectors)
+                                    {
+                                        if (connector?.CoordinateSystem != null)
+                                        {
+                                            transform = connector.CoordinateSystem;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            else if (mepElement is Autodesk.Revit.DB.Electrical.CableTray verticalCableTray)
+                            {
+                                // ✅ CABLE TRAY FIX: Get CoordinateSystem from cable tray connectors
+                                var connectors = verticalCableTray.ConnectorManager?.Connectors;
+                                if (connectors != null)
+                                {
+                                    foreach (Connector connector in connectors)
+                                    {
+                                        if (connector?.CoordinateSystem != null)
+                                        {
+                                            transform = connector.CoordinateSystem;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (transform != null)
+                            {
+                                XYZ basisX = transform.BasisX;
+                                // Project BasisX onto XY plane (floors are horizontal) to get rotation angle
+                                XYZ basisXProjected = new XYZ(basisX.X, basisX.Y, 0.0);
+                                double basisXLength = Math.Sqrt(basisXProjected.X * basisXProjected.X + basisXProjected.Y * basisXProjected.Y);
+                                
+                                if (basisXLength > 1e-6)
+                                {
+                                    // Normalize and calculate angle - this captures arbitrary angles (45°, etc.)
+                                    basisXProjected = new XYZ(basisXProjected.X / basisXLength, basisXProjected.Y / basisXLength, 0.0);
+                                    double rotationAngle = Math.Atan2(basisXProjected.Y, basisXProjected.X);
+                                    
+                                    string elementType = mepElement is Duct ? "DUCT" : "CABLETRAY";
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[ROTATION-ANGLE] Floor host: VERTICAL {elementType} {mepElement.Id} - Using CoordinateSystem.BasisX ({basisX.X:F3}, {basisX.Y:F3}, {basisX.Z:F3}) projected to ({basisXProjected.X:F3}, {basisXProjected.Y:F3}) → rotation angle {rotationAngle * 180 / Math.PI:F1}°");
+                                    
+                                    return rotationAngle;
+                                }
+                            }
+                        }
+                        catch (Exception transformEx)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Warning($"[ROTATION-ANGLE] Error getting CoordinateSystem for vertical element {mepElement.Id}: {transformEx.Message}, falling back to orientation vector (may only give 0°/90°)");
+                        }
+                        
+                        // ✅ FALLBACK: If CoordinateSystem fails, use orientation vector (may only give 0° or 90°)
+                        // This happens when mepOrientation is BasisX/BasisY from GetMepElementOrientation helper
+                        // Project MEP orientation onto XY plane (floors are horizontal)
+                        // Calculate rotation angle using atan2(Y, X) - gives angle in radians
+                        double fallbackRotationAngle = Math.Atan2(mepOrientation.Y, mepOrientation.X);
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[ROTATION-ANGLE] Floor host: Using fallback orientation vector ({mepOrientation.X:F3}, {mepOrientation.Y:F3}, {mepOrientation.Z:F3}) → rotation angle {fallbackRotationAngle * 180 / Math.PI:F1}° (may be limited to 0°/90° - CoordinateSystem unavailable)");
+                        
+                        return fallbackRotationAngle;
+                    }
+                    else
+                    {
+                        // Default to 0° if orientation is zero/null
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[ROTATION-ANGLE] Floor host: MEP orientation is zero/null → returning 0°");
+                        return 0.0;
+                    }
+                }
+                else
+                {
+                    // ✅ WALLS/FRAMING: Rotation handled differently (not based on angle)
+                    // Return 0 - wall rotation uses MepElementOrientationDirection logic
+                    return 0.0;
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[CalculateMepElementRotationAngle] Error: {ex.Message}");
+                return 0.0; // Default fallback
             }
         }
         

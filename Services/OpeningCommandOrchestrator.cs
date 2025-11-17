@@ -8,6 +8,9 @@ using System.Xml.Serialization;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Commands;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -256,6 +259,92 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // This follows the architecture: Place sleeves → Cluster sleeves → Mark sleeves
             // Use UniversalClusterService directly (faster than old RectangularSleeveClusterCommandV2)
             ExecuteClusteringForCategory(filter, showProgress);
+            
+            // ✅ COMBO FLAG: Reset IsFilterComboNew to false after full sequence completes (individual + cluster)
+            // This marks the filter+category combo as "used" so next time it will use PATH 1 (Replay)
+            ResetFilterComboFlagAfterPlacement(filter);
+        }
+
+        /// <summary>
+        /// ✅ FIX: Resets IsFilterComboNew to false for all file combos used during placement
+        /// Called after individual sleeves + cluster sleeves are placed successfully
+        /// Resets flag PER FILE COMBO (not per filter+category) - each file combo has its own flag
+        /// </summary>
+        private void ResetFilterComboFlagAfterPlacement(OpeningFilter filter)
+        {
+            try
+            {
+                if (filter == null)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning("[COMBO-FLAG] Cannot reset flag - filter is null");
+                    return;
+                }
+
+                // Get category string from filter
+                string categoryName = filter.Category switch
+                {
+                    Models.MepCategory.Ducts => "Ducts",
+                    Models.MepCategory.DuctAccessories => "Duct Accessories",
+                    Models.MepCategory.Pipes => "Pipes",
+                    Models.MepCategory.CableTrays => "Cable Trays",
+                    _ => filter.Category.ToString()
+                };
+
+                // Normalize category name
+                categoryName = MepCategoryConstants.Normalize(categoryName);
+
+                // ✅ FIX: Reset IsFilterComboNew flag for ALL file combos used during placement
+                // Reset all file combos for this filter+category that have IsFilterComboNew=1
+                using (var dbContext = new SleeveDbContext(_document))
+                {
+                    var filterRepository = new FilterRepository(dbContext, _ => { });
+                    int filterId = filterRepository.GetFilterId(filter.Name, categoryName);
+                    
+                    if (filterId > 0)
+                    {
+                        using (var cmd = dbContext.Connection.CreateCommand())
+                        {
+                            // Reset all file combos for this filter that have IsFilterComboNew=1
+                            cmd.CommandText = @"
+                                UPDATE FileCombos
+                                SET IsFilterComboNew = 0
+                                WHERE FilterId = @FilterId AND IsFilterComboNew = 1";
+                            cmd.Parameters.AddWithValue("@FilterId", filterId);
+                            
+                            var affected = cmd.ExecuteNonQuery();
+                            if (affected > 0)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[COMBO-FLAG] ✅ Reset IsFilterComboNew=false for {affected} file combo(s) for filter '{filter.Name}' (Category='{categoryName}') - file combos marked as used");
+                                }
+                            }
+                            else
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[COMBO-FLAG] No file combos to reset for filter '{filter.Name}' (Category='{categoryName}') - all already marked as used");
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Warning($"[COMBO-FLAG] ⚠️ Filter '{filter.Name}' (Category='{categoryName}') not found - cannot reset file combo flags");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Warning($"[COMBO-FLAG] ❌ Error resetting IsFilterComboNew flag: {ex.Message}");
+                }
+            }
         }
 
         /// <summary>
@@ -479,6 +568,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     _ => "Ducts"
                 };
 
+                // ✅ PHASE SQLITE-2: Load from SQLite FIRST (primary source)
+                var dbClashZones = LoadClashZonesFromDatabase(filter, categoryName);
+                if (DeploymentConfiguration.UseSqliteAsPrimary)
+                {
+                    // Phase 2: SQLite is primary
+                    if (dbClashZones != null && dbClashZones.Count > 0)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ PHASE 2: Loaded {dbClashZones.Count} clash zones from SQLite (PRIMARY) for filter '{filter.Name}' ({categoryName})\n");
+                        }
+                        return dbClashZones;
+                    }
+                    else
+                    {
+                        // SQLite has no zones - fallback to XML
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[OpeningCommandOrchestrator] PHASE 2: SQLite has no zones, falling back to XML: {xmlFilePath}");
+                        }
+                    }
+                }
+                else
+                {
+                    // Legacy mode: XML is primary, SQLite is fallback
+                    if (dbClashZones != null && dbClashZones.Count > 0)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Loaded {dbClashZones.Count} clash zones from SQLite (fallback) for filter '{filter.Name}' ({categoryName})\n");
+                        }
+                        return dbClashZones;
+                    }
+                }
+
                                         if (!DeploymentConfiguration.DeploymentMode)
                 {
                         DebugLogger.Info($"[OpeningCommandOrchestrator] Looking for clash zones in: {xmlFilePath}");
@@ -627,6 +751,65 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
+        private List<ClashZone> LoadClashZonesFromDatabase(OpeningFilter filter, string categoryName)
+        {
+            if (filter == null || string.IsNullOrWhiteSpace(categoryName))
+                return new List<ClashZone>();
+
+            try
+            {
+                using (var context = new SleeveDbContext(_document, msg =>
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[OpeningCommandOrchestrator][SQLite] {msg}");
+                }))
+                {
+                    var repository = new ClashZoneRepository(context, msg =>
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[OpeningCommandOrchestrator][SQLite] {msg}");
+                    });
+
+                    // ✅ CRITICAL FIX: Load ALL zones from DB (unresolvedOnly=false), then filter by flags in memory
+                    // This ensures we get zones even after flag reset (IsResolved=false, SleeveInstanceId=-1)
+                    // DB query filters by SleeveState which might not match reset flags correctly
+                    var zones = repository.GetClashZonesByFilter(filter.Name, categoryName, unresolvedOnly: false) ?? new List<ClashZone>();
+
+                    foreach (var zone in zones)
+                    {
+                        zone?.EnsureSleevePlacementPointReconstructed();
+                        zone?.EnsureSleevePlacementPointActiveDocumentReconstructed();
+                    }
+
+                    // ✅ FILTER IN MEMORY: Only return zones that need placement (not resolved, not cluster resolved)
+                    // This ensures placement uses DB zones correctly, filtering by actual flag state
+                    var eligibleZones = zones
+                        .Where(cz => cz != null && !cz.IsResolved && !cz.IsClusterResolved)
+                        .ToList();
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[OpeningCommandOrchestrator][SQLite] Loaded {zones.Count} total zones, {eligibleZones.Count} eligible for placement (filtered by flags in memory) - DATA SOURCE: DATABASE");
+                        // ✅ CRITICAL: Log data source for placement debugging
+                        var placementLogPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                        try
+                        {
+                            File.AppendAllText(placementLogPath, $"[{DateTime.Now:HH:mm:ss}] [DATA-SOURCE] ✅ Using DATABASE for filter '{filter.Name}', category '{categoryName}' ({eligibleZones.Count} eligible zones from {zones.Count} total)\n");
+                        }
+                        catch { }
+                    }
+
+                    return eligibleZones;
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[OpeningCommandOrchestrator] SQLite load failed for filter '{filter?.Name}' ({categoryName}): {ex.Message}");
+                return new List<ClashZone>();
+            }
+        }
+
         /// <summary>
         /// Execute UniversalSleevePlacementCommand
         /// ⚠️ CRITICAL: Wrapped with timeout protection (5-minute limit per category)
@@ -696,33 +879,109 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     if (clashZones.Count > 0)
                     {
+                        // ✅ CRITICAL FIX: Convert enum to proper string format for strategy creation
+                        // Declare these variables FIRST before they are used in PATH 3 Invalidated block
+                        string categoryString = filter.Category switch
+                        {
+                            Models.MepCategory.Ducts => "Ducts",
+                            Models.MepCategory.DuctAccessories => "Duct Accessories", // Note: space, not "DuctAccessories"
+                            Models.MepCategory.Pipes => "Pipes", 
+                            Models.MepCategory.CableTrays => "Cable Trays", // Note: space, not "CableTrays"
+                            _ => "Ducts"
+                        };
+                        
+                        // ✅ CRITICAL FIX: Get the filter name with .xml extension for XML file matching
+                        string categoryName = filter.Category switch
+                        {
+                            Models.MepCategory.Ducts => "ducts",
+                            Models.MepCategory.DuctAccessories => "duct_accessories",
+                            Models.MepCategory.Pipes => "pipes",
+                            Models.MepCategory.CableTrays => "cable_trays",
+                            _ => "ducts"
+                        };
+                        string combinedFilterName = $"{filter.Name}_{categoryName}.xml"; // Added .xml
+                        
+                        // ✅ PATH 3 INVALIDATED: Check for zones that need distinct placement flow
+                        // Invalidated zones are zones that have existing sleeves (SleeveInstanceId > 0)
+                        // These zones need to be deleted and re-placed at new intersection points
+                        // Note: This is a simplified check - in production, invalidated zones should be
+                        // marked during refresh and stored in RefreshContext.InvalidatedZones
+                        var invalidatedZones = clashZones.Where(cz => cz.SleeveInstanceId > 0).ToList();
+                        
+                        var validatedZones = clashZones.Except(invalidatedZones).ToList();
+                        
+                        if (!DeploymentConfiguration.DeploymentMode && invalidatedZones.Count > 0)
+                        {
+                            DebugLogger.Info($"[OpeningCommandOrchestrator] Detected {invalidatedZones.Count} zones with existing sleeves (potential invalidated zones)");
+                        }
+                        
+                        // ✅ PATH 3 INVALIDATED: Route invalidated zones to distinct placement service
+                        if (invalidatedZones.Count > 0)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[OpeningCommandOrchestrator] Found {invalidatedZones.Count} invalidated zones, routing to PATH 3 Invalidated placement");
+                            }
+                            
+                            try
+                            {
+                                // ✅ PATH 3 INVALIDATED: Load conditions and create strategy
+                                var projectFiltersDir = ProjectPathService.GetFiltersDirectory(_document);
+                                var conditionsService = new ConditionsService(_document, projectFiltersDir, msg => 
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info(msg);
+                                });
+                                
+                                var conditionsKey = $"{combinedFilterName}_{categoryString}";
+                                var conditions = conditionsService.LoadConditions(conditionsKey);
+                                if (conditions == null)
+                                {
+                                    conditions = new OpeningConditions { FilterName = combinedFilterName, Category = categoryString };
+                                }
+                                
+                                // Create strategy based on category
+                                ISleevePlacementStrategy strategy = categoryString.ToLower() switch
+                                {
+                                    "pipes" => new PipePlacementStrategy(),
+                                    "cable trays" => new CableTrayPlacementStrategy(),
+                                    "ducts" or "duct accessories" => new DuctPlacementStrategy(),
+                                    _ => new DuctPlacementStrategy()
+                                };
+                                
+                                var invalidatedService = new Path3InvalidatedPlacementService(_document);
+                                var invalidatedResult = invalidatedService.ExecutePlacement(
+                                    invalidatedZones,
+                                    combinedFilterName,
+                                    categoryString,
+                                    conditions,
+                                    strategy,
+                                    _uiClearances ?? new Dictionary<string, double>());
+                                
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[OpeningCommandOrchestrator] PATH 3 Invalidated placement: {invalidatedResult.PlacedCount} placed, {invalidatedResult.DeletedSleeveCount} deleted");
+                                }
+                            }
+                            catch (Exception invalidatedEx)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Error($"[OpeningCommandOrchestrator] Error in PATH 3 Invalidated placement: {invalidatedEx.Message}\n{invalidatedEx.StackTrace}");
+                                }
+                                // Continue with normal placement for remaining zones
+                            }
+                            
+                            // Continue with validated zones for normal placement
+                            clashZones = validatedZones;
+                        }
+                        
                         // 🔥 CRITICAL DEBUG: Log which XML file we're passing clash zones from
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                                                 if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔍 PASSING CLASH ZONES FROM XML FILE: {xmlFilePath}\n");
                     }
-                    
-                    // ✅ CRITICAL FIX: Convert enum to proper string format for strategy creation
-                    string categoryString = filter.Category switch
-                    {
-                        Models.MepCategory.Ducts => "Ducts",
-                        Models.MepCategory.DuctAccessories => "Duct Accessories", // Note: space, not "DuctAccessories"
-                        Models.MepCategory.Pipes => "Pipes", 
-                        Models.MepCategory.CableTrays => "Cable Trays", // Note: space, not "CableTrays"
-                        _ => "Ducts"
-                    };
-                    
-                    // ✅ CRITICAL FIX: Get the filter name with .xml extension for XML file matching
-                    string categoryName = filter.Category switch
-                    {
-                        Models.MepCategory.Ducts => "ducts",
-                        Models.MepCategory.DuctAccessories => "duct_accessories",
-                        Models.MepCategory.Pipes => "pipes",
-                        Models.MepCategory.CableTrays => "cable_trays",
-                        _ => "ducts"
-                    };
-                    string combinedFilterName = $"{filter.Name}_{categoryName}.xml"; // Added .xml
                     
                     if (!DeploymentConfiguration.DeploymentMode)
                     {

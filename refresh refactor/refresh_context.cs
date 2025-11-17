@@ -39,6 +39,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         public List<ClashZone> AllClashZones { get; set; }
         public List<(Element, Element, BoundingBoxXYZ, XYZ)> CurrentIntersections { get; set; }
         
+        // ✅ PATH 3: Track validated and invalidated zones separately for distinct placement flows
+        public List<ClashZone> ValidatedZones { get; set; } = new List<ClashZone>();
+        public List<ClashZone> InvalidatedZones { get; set; } = new List<ClashZone>();
+        
+        // Path strategy (determined after loading existing zones)
+        public IRefreshPathStrategy PathStrategy { get; set; }
+        
         // Performance tracking
         public PerformanceMonitor PerformanceMonitor { get; }
         public string RefreshLogName { get; }
@@ -116,6 +123,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             NewClashZones?.Clear();
             AllClashZones?.Clear();
             CurrentIntersections?.Clear();
+            ValidatedZones?.Clear();
+            InvalidatedZones?.Clear();
             GeometryCache?.Clear();
             StringPool?.Clear();
         }

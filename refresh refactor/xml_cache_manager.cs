@@ -6,6 +6,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
 {
@@ -125,17 +127,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         
         private ClashZoneStorage LoadFilterXml(string filterName, List<string> categories)
         {
+            var mergedStorage = new ClashZoneStorage
+            {
+                ClashZones = new List<ClashZone>(),
+                LastUpdated = DateTime.Now
+            };
+            
+            // ✅ PHASE SQLITE-2: Load from SQLite FIRST (primary source), XML as fallback
+            if (DeploymentConfiguration.UseSqliteAsPrimary)
+            {
+                try
+                {
+                    var sqliteZones = LoadFromSqlite(filterName, categories ?? new List<string>());
+                    if (sqliteZones != null && sqliteZones.Count > 0)
+                    {
+                        mergedStorage.ClashZones.AddRange(sqliteZones);
+                        Log($"[XML-CACHE] ✅ PHASE 2: Loaded {sqliteZones.Count} zones from SQLite (PRIMARY) for filter '{filterName}'");
+                        return mergedStorage;
+                    }
+                    else
+                    {
+                        Log($"[XML-CACHE] PHASE 2: SQLite has no zones for '{filterName}', falling back to XML");
+                    }
+                }
+                catch (Exception sqliteEx)
+                {
+                    Log($"[XML-CACHE] PHASE 2: SQLite load failed for '{filterName}', falling back to XML: {sqliteEx.Message}");
+                }
+            }
+            
+            // Fallback to XML (legacy mode or when SQLite has no data)
             try
             {
                 var filtersDirectory = ProjectPathService.GetFiltersDirectory(_document);
                 if (!Directory.Exists(filtersDirectory))
-                    return null;
-                
-                var mergedStorage = new ClashZoneStorage
-                {
-                    ClashZones = new List<ClashZone>(),
-                    LastUpdated = DateTime.Now
-                };
+                    return mergedStorage.ClashZones.Count > 0 ? mergedStorage : null;
                 
                 // Load category-specific XML files
                 foreach (var category in categories ?? new List<string>())
@@ -164,8 +190,73 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             catch (Exception ex)
             {
                 Log($"[XML-CACHE] ⚠️ Error loading Filter XML '{filterName}': {ex.Message}");
-                return null;
+                return mergedStorage.ClashZones.Count > 0 ? mergedStorage : null;
             }
+        }
+        
+        /// <summary>
+        /// ✅ PHASE SQLITE-2: Load clash zones from SQLite database (primary source)
+        /// </summary>
+        private List<ClashZone> LoadFromSqlite(string filterName, List<string> categories)
+        {
+            var allZones = new List<ClashZone>();
+            
+            if (string.IsNullOrWhiteSpace(filterName) || categories == null || categories.Count == 0)
+                return allZones;
+            
+            try
+            {
+                using (var context = new SleeveDbContext(_document, msg =>
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[XML-CACHE][SQLite] {msg}");
+                }))
+                {
+                    var repository = new ClashZoneRepository(context, msg =>
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[XML-CACHE][SQLite] {msg}");
+                    });
+                    
+                    // Load zones for each category
+                    foreach (var category in categories)
+                    {
+                        if (string.IsNullOrWhiteSpace(category))
+                            continue;
+                        
+                        try
+                        {
+                            // Load all zones (not just unresolved) for refresh operations
+                            var categoryZones = repository.GetClashZonesByFilter(filterName, category, unresolvedOnly: false) ?? new List<ClashZone>();
+                            
+                            foreach (var zone in categoryZones)
+                            {
+                                if (zone != null)
+                                {
+                                    zone.EnsureSleevePlacementPointReconstructed();
+                                    zone.EnsureSleevePlacementPointActiveDocumentReconstructed();
+                                    allZones.Add(zone);
+                                }
+                            }
+                            
+                            if (categoryZones.Count > 0 && !DeploymentConfiguration.DeploymentMode)
+                            {
+                                Log($"[XML-CACHE] ✅ SQLite loaded {categoryZones.Count} zones for filter '{filterName}', category '{category}'");
+                            }
+                        }
+                        catch (Exception categoryEx)
+                        {
+                            Log($"[XML-CACHE] SQLite load failed for category '{category}': {categoryEx.Message}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"[XML-CACHE] SQLite load failed: {ex.Message}");
+            }
+            
+            return allZones;
         }
         
         /// <summary>

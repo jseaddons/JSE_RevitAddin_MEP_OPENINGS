@@ -94,6 +94,7 @@ Before making ANY code change, verify:
 - Don't write flag sync logic inline - use `FlagManager`
 - Don't write file operations inline - use `SafeFileLogger`
 - Don't create new methods without checking if they exist in service classes
+- **❌ NEVER CREATE 2 SERVICES FOR ONE FUNCTION** - This makes troubleshooting very hard. Always extend existing services instead of creating duplicates (e.g., use `RefreshPathDeterminer` for both refresh and placement path determination, don't create separate `SleevePlacementPathDeterminer`)
 
 ### Example - WRONG:
 ```csharp
@@ -225,6 +226,16 @@ var entry = globalIndex.Entries.FirstOrDefault(e => e.Id == clashZone.Id.ToStrin
 - Never add `OpeningDuplicationChecker.IsAnySleeveAtLocation()` without explicit user approval
 - Never add expensive loops without optimization
 - Never bypass existing performance optimizations
+
+### 🚨 MANDATORY: NEVER COMPROMISE EFFICIENCY
+**CRITICAL PRINCIPLE**: Do NOT violate the principle of compromising efficiency under ANY circumstances.
+- ❌ **NEVER** add expensive operations that slow down execution
+- ❌ **NEVER** create duplicate services that add overhead
+- ❌ **NEVER** bypass existing optimizations for "convenience"
+- ❌ **NEVER** add unnecessary checks or loops that impact performance
+- ✅ **ALWAYS** prioritize efficiency over "defensive" coding
+- ✅ **ALWAYS** use existing optimized methods instead of creating new ones
+- ✅ **ALWAYS** check performance impact before adding new code paths
 
 ### Example - WRONG:
 ```csharp
@@ -361,7 +372,15 @@ Before submitting code changes, verify:
 **Problem**: Create new methods without checking existing ones
 **Correct**: Check existing service classes first, use existing methods
 
-### ❌ Anti-Pattern 5: Direct File Writes
+### ❌ Anti-Pattern 5: Creating 2 Services for One Function
+**Problem**: Create duplicate services (e.g., `SleevePlacementPathDeterminer` when `RefreshPathDeterminer` exists)
+**Correct**: Extend existing services - makes troubleshooting much easier, avoids code duplication
+
+### ❌ Anti-Pattern 6: Compromising Efficiency
+**Problem**: Add "defensive" code or duplicate services that slow down execution
+**Correct**: Never compromise efficiency - prioritize performance over convenience
+
+### ❌ Anti-Pattern 7: Direct File Writes
 **Problem**: Use `File.AppendAllText()` instead of `SafeFileLogger`
 **Correct**: Always use `SafeFileLogger.SafeAppendText()`
 
@@ -507,8 +526,10 @@ Memory (runtime state)
 10. ✅ **Fix root causes** - Never create workarounds
 11. ✅ **Respect user requirements** - Never add expensive operations without consent
 12. ✅ **Follow OOP principles** - Single responsibility, use existing infrastructure
-13. ✅ **Check for duplicates** - Don't create duplicate methods
-14. ✅ **Test thoroughly** - Verify changes don't break existing functionality
+13. ✅ **Check for duplicates** - Don't create duplicate methods or services
+14. ✅ **NEVER CREATE 2 SERVICES FOR ONE FUNCTION** - Makes troubleshooting very hard - extend existing services instead
+15. ✅ **NEVER COMPROMISE EFFICIENCY** - Do not violate efficiency principles under any circumstances
+16. ✅ **Test thoroughly** - Verify changes don't break existing functionality
 
 ---
 

@@ -390,7 +390,7 @@ CREATE TABLE Conditions (
 ### 11.3 Migration Phases
 
 #### Phase SQLite-1 – Prototype (1–2 sprints)
-1. Create new data access layer (`SleeveDbContext`) using `Microsoft.Data.Sqlite`.
+1. Create new data access layer (`SleeveDbContext`) using `System.Data.SQLite`.
 2. Implement schema creation & migrations (build simple migration runner).
 3. Mirror existing XML persistence into database (write-through mode): keep writing XML but also insert rows.
 4. Build internal tooling to inspect DB (simple WPF/CLI viewer or SQLite browser instructions).

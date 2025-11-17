@@ -35,6 +35,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Set to false only after reviewing the dry-run output and backing up the XML files.
         /// </summary>
         public static bool GlobalIndexDedupeDryRun { get; set; } = true;
+
+        /// <summary>
+        /// ✅ PHASE SQLITE-2: Use SQLite as primary data source instead of XML
+        /// When true: SQLite is the operational store, XML writes are optional/disabled
+        /// When false: XML is primary, SQLite is dual-write mirror (Phase SQLITE-1)
+        /// </summary>
+        public static bool UseSqliteAsPrimary { get; set; } = true; // ✅ PHASE 2: SQLite is now primary
+
+        /// <summary>
+        /// ✅ PHASE 2: Disable XML file creation - use database only
+        /// When true: XML files are NOT created (database is single source of truth)
+        /// When false: XML files are still created (dual-write mode for safety)
+        /// XML reading is still enabled as fallback during transition
+        /// </summary>
+        public static bool DisableXmlCreation { get; set; } = true; // ✅ PHASE 2: Disable XML creation - database only
     }
 }
 

@@ -29,15 +29,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         // Left Panel: Prefix Configuration
         private WinForms.TextBox _projectPrefixTextBox = null!;
+        private WinForms.Button _projectPrefixLockButton = null!;
         private WinForms.TextBox _ductPrefixTextBox = null!;
         private WinForms.TextBox _pipePrefixTextBox = null!;
         private WinForms.TextBox _cableTrayPrefixTextBox = null!;
         private WinForms.TextBox _damperPrefixTextBox = null!;
         private WinForms.Panel _systemTypeOverridesPanel = null!;
         private List<WinForms.Panel> _systemTypeRows = new List<WinForms.Panel>();
+        private List<string> _systemTypeOptions = new List<string>();
         
         // Number format and remark checkboxes
         private WinForms.ComboBox _numberFormatCombo = null!;
+        private WinForms.Button _numberFormatLockButton = null!;
         private WinForms.CheckBox _remarkProjectCheckBox = null!;
         private WinForms.CheckBox _remarkDuctCheckBox = null!;
         private WinForms.CheckBox _remarkPipeCheckBox = null!;
@@ -219,17 +222,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _projectPrefixTextBox = new WinForms.TextBox
             {
                 Location = new Point(120, yPos - 2),
-                Size = new Size(140, 22),
-                Text = "SLEEVE_"
+                Size = new Size(120, 22),
+                Text = "", // ✅ FIX: Default project prefix is blank (no default needed)
+                Enabled = false,
+                BackColor = Color.LightGray
             };
             _leftPrefixPanel.Controls.Add(_projectPrefixTextBox);
+
+            _projectPrefixLockButton = new WinForms.Button
+            {
+                Location = new Point(245, yPos - 2),
+                Size = new Size(25, 22),
+                Text = "🔒",
+                Font = new Font("Segoe UI Emoji", 8F),
+                BackColor = Color.LightGreen
+            };
+            _projectPrefixLockButton.Click += (s, e) => ToggleLock(_projectPrefixLockButton, _projectPrefixTextBox);
+            _leftPrefixPanel.Controls.Add(_projectPrefixLockButton);
             
             // Remark checkbox for Project Prefix
             _remarkProjectCheckBox = new WinForms.CheckBox
             {
                 Text = "Remark",
-                Location = new Point(270, yPos - 2),
-                Size = new Size(80, 22),
+                Location = new Point(280, yPos - 2),
+                AutoSize = true,
                 Checked = false
             };
             _leftPrefixPanel.Controls.Add(_remarkProjectCheckBox);
@@ -247,12 +263,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _numberFormatCombo = new WinForms.ComboBox
             {
                 Location = new Point(120, yPos - 2),
-                Size = new Size(140, 22),
-                DropDownStyle = ComboBoxStyle.DropDownList
+                Size = new Size(120, 22),
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Enabled = false,
+                BackColor = Color.LightGray
             };
             _numberFormatCombo.Items.AddRange(new[] { "00 (01, 02...)", "000 (001, 002...)", "0000 (0001, 0002...)" });
             _numberFormatCombo.SelectedIndex = 1; // Default to "000"
             _leftPrefixPanel.Controls.Add(_numberFormatCombo);
+
+            _numberFormatLockButton = new WinForms.Button
+            {
+                Location = new Point(245, yPos - 2),
+                Size = new Size(25, 22),
+                Text = "🔒",
+                Font = new Font("Segoe UI Emoji", 8F),
+                BackColor = Color.LightGreen
+            };
+            _numberFormatLockButton.Click += (s, e) => ToggleLock(_numberFormatLockButton, _numberFormatCombo);
+            _leftPrefixPanel.Controls.Add(_numberFormatLockButton);
             yPos += 35;
 
             // Section Title
@@ -323,6 +352,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 AutoScroll = false // No scrollbars - free flow
             };
             _leftPrefixPanel.Controls.Add(_systemTypeOverridesPanel);
+
+            // Load available System/Service types from persisted data
+            LoadSystemTypeOverrideOptions();
 
             // Add header row with "+" button
             CreateSystemTypeHeader();
@@ -961,13 +993,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Location = new Point(3, 3),
                 Size = new Size(130, 22),
-                DropDownStyle = ComboBoxStyle.DropDown
+                DropDownStyle = ComboBoxStyle.DropDown,
+                AutoCompleteMode = AutoCompleteMode.SuggestAppend,
+                AutoCompleteSource = AutoCompleteSource.ListItems
             };
-            systemTypeCombo.Items.AddRange(new[] { "<Select>", "Exhaust Air", "Supply Air", "Return Air", "Sanitary", "Hydronic", "Fire Protection" });
-            if (systemTypeCombo.Items.Contains(systemType))
+
+            systemTypeCombo.Items.Add("<Select>");
+
+            var options = (_systemTypeOptions?.Count ?? 0) > 0
+                ? _systemTypeOptions
+                : new List<string> { "Exhaust Air", "Supply Air", "Return Air", "Sanitary", "Hydronic", "Fire Protection" };
+
+            foreach (var option in options)
+            {
+                if (!string.IsNullOrWhiteSpace(option))
+                {
+                    systemTypeCombo.Items.Add(option);
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(systemType) && systemTypeCombo.Items.Contains(systemType))
+            {
                 systemTypeCombo.SelectedItem = systemType;
+            }
             else
-                systemTypeCombo.Text = systemType;
+            {
+                systemTypeCombo.Text = string.IsNullOrWhiteSpace(systemType) ? "<Select>" : systemType;
+            }
             row.Controls.Add(systemTypeCombo);
 
             // Arrow
@@ -1017,6 +1069,65 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         }
 
         /// <summary>
+        /// Load available System Type / Service Type values from persisted XML (and future data sources).
+        /// Populates <see cref="_systemTypeOptions"/> for use by override rows.
+        /// </summary>
+        private void LoadSystemTypeOverrideOptions()
+        {
+            try
+            {
+                var collected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                if (_document != null)
+                {
+                    var catalogService = new SystemTypeCatalogService(msg =>
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info(msg);
+                        }
+                        SafeFileLogger.SafeAppendText("parameter_service_debug.log", $"[{DateTime.Now}] {msg}\n");
+                    });
+
+                    var catalog = catalogService.Load(_document);
+
+                    foreach (var value in catalog.SystemTypes ?? Enumerable.Empty<string>())
+                    {
+                        if (!string.IsNullOrWhiteSpace(value))
+                            collected.Add(value.Trim());
+                    }
+
+                    foreach (var value in catalog.ServiceTypes ?? Enumerable.Empty<string>())
+                    {
+                        if (!string.IsNullOrWhiteSpace(value))
+                            collected.Add(value.Trim());
+                    }
+                }
+
+                _systemTypeOptions = collected
+                    .Where(v => !string.IsNullOrWhiteSpace(v))
+                    .Select(v => v.Trim())
+                    .OrderBy(v => v, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (_systemTypeOptions.Count == 0)
+                {
+                    _systemTypeOptions = new List<string>();
+                }
+            }
+            catch (Exception ex)
+            {
+                _systemTypeOptions = new List<string>();
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Warning($"[ParameterServiceDialogV2] Failed to load system type catalog: {ex.Message}");
+                }
+                SafeFileLogger.SafeAppendText("parameter_service_debug.log",
+                    $"[{DateTime.Now}] [ParameterServiceDialogV2] Failed to load system type catalog: {ex.Message}\n");
+            }
+        }
+
+        /// <summary>
         /// Reposition System Type rows after deletion
         /// </summary>
         private void RepositionSystemTypeRows()
@@ -1025,6 +1136,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             for (int i = 0; i < _systemTypeRows.Count; i++)
             {
                 _systemTypeRows[i].Location = new Point(2, 30 + (i * rowHeight));
+            }
+        }
+
+        private void ToggleLock(WinForms.Button lockBtn, WinForms.TextBox textBox)
+        {
+            if (lockBtn.Text == "🔒")
+            {
+                lockBtn.Text = "🔓";
+                lockBtn.BackColor = Color.LightCoral;
+                textBox.Enabled = true;
+                textBox.BackColor = Color.White;
+            }
+            else
+            {
+                lockBtn.Text = "🔒";
+                lockBtn.BackColor = Color.LightGreen;
+                textBox.Enabled = false;
+                textBox.BackColor = Color.LightGray;
+            }
+        }
+
+        private void ToggleLock(WinForms.Button lockBtn, WinForms.ComboBox comboBox)
+        {
+            if (lockBtn.Text == "🔒")
+            {
+                lockBtn.Text = "🔓";
+                lockBtn.BackColor = Color.LightCoral;
+                comboBox.Enabled = true;
+                comboBox.BackColor = Color.White;
+            }
+            else
+            {
+                lockBtn.Text = "🔒";
+                lockBtn.BackColor = Color.LightGreen;
+                comboBox.Enabled = false;
+                comboBox.BackColor = Color.LightGray;
             }
         }
         
@@ -1040,29 +1187,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 {
                     WinForms.MessageBox.Show("Document not available.", "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
                     return;
-                }
-                
-                // ✅ NEW: Check if filter XML files exist for all categories before processing
-                // NOTE: Only Transfer Parameters needs XML validation because it reads parameter values FROM XML files
-                // Apply Marks and Remark Selected work directly with Revit elements and don't need XML files
-                var missingCategories = CheckFilterFilesForCategories();
-                if (missingCategories.Count > 0)
-                {
-                    var categoryList = string.Join("\n• ", missingCategories);
-                    var result = WinForms.MessageBox.Show(
-                        $"⚠️ FILTER DATA NOT FOUND\n\n" +
-                        $"The following categories cannot be processed because no filter data is found:\n\n" +
-                        $"• {categoryList}\n\n" +
-                        $"These categories require XML filter files (e.g., '*_ducts.xml', '*_pipes.xml') in the Filters directory.\n\n" +
-                        $"Would you like to continue with available categories only?",
-                        "Missing Filter Data",
-                        WinForms.MessageBoxButtons.YesNo,
-                        WinForms.MessageBoxIcon.Warning);
-                    
-                    if (result != WinForms.DialogResult.Yes)
-                    {
-                        return; // User cancelled
-                    }
                 }
                 
                 // Show progress dialog
@@ -1442,40 +1566,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     return;
                 }
                 
-                // ✅ NEW: Check if filter XML files exist for selected categories before processing
-                // Remark Selected needs XML to determine which sleeves belong to each category
-                var checkedCategories = new List<string>();
-                if (_remarkDuctCheckBox.Checked) checkedCategories.Add("Ducts");
-                if (_remarkPipeCheckBox.Checked) checkedCategories.Add("Pipes");
-                if (_remarkCableTrayCheckBox.Checked) checkedCategories.Add("Cable Trays");
-                if (_remarkDamperCheckBox.Checked) checkedCategories.Add("Duct Accessories");
-                
-                if (checkedCategories.Count > 0)
-                {
-                    var missingCategories = CheckFilterFilesForCategories()
-                        .Where(cat => checkedCategories.Contains(cat))
-                        .ToList();
-                    
-                    if (missingCategories.Count > 0)
-                    {
-                        var categoryList = string.Join("\n• ", missingCategories);
-                        var result = WinForms.MessageBox.Show(
-                            $"⚠️ FILTER DATA NOT FOUND\n\n" +
-                            $"The following selected categories cannot be processed because no filter data is found:\n\n" +
-                            $"• {categoryList}\n\n" +
-                            $"Remark Selected requires XML filter files to determine sleeve categories (e.g., '*_ducts.xml', '*_pipes.xml') in the Filters directory.\n\n" +
-                            $"Would you like to continue with available categories only?",
-                            "Missing Filter Data",
-                            WinForms.MessageBoxButtons.YesNo,
-                            WinForms.MessageBoxIcon.Warning);
-                        
-                        if (result != WinForms.DialogResult.Yes)
-                        {
-                            return; // User cancelled
-                        }
-                    }
-                }
-                
                 // Collect remark checkbox states
                 var remarkProject = _remarkProjectCheckBox.Checked;
                 var remarkDuct = _remarkDuctCheckBox.Checked;
@@ -1500,6 +1590,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 
                 // Collect checked System Type Overrides with remark checkboxes
                 var systemTypeOverrides = new List<(string systemType, string prefix)>();
+                bool hasSystemOverrideRemark = false;
                 foreach (var row in _systemTypeRows)
                 {
                     // Find checkbox in row
@@ -1512,6 +1603,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         if (comboBox != null && textBox != null)
                         {
                             systemTypeOverrides.Add((comboBox.Text, textBox.Text));
+                            hasSystemOverrideRemark = true;
+                        }
+                    }
+                }
+
+                // ✅ NEW: Check if filter XML files exist for any category we plan to remark
+                var categoriesNeedingFilters = new List<string>();
+                if (remarkProject || remarkDuct || hasSystemOverrideRemark) categoriesNeedingFilters.Add("Ducts");
+                if (remarkProject || remarkPipe) categoriesNeedingFilters.Add("Pipes");
+                if (remarkProject || remarkCableTray) categoriesNeedingFilters.Add("Cable Trays");
+                if (remarkProject || remarkDamper) categoriesNeedingFilters.Add("Duct Accessories");
+
+                if (categoriesNeedingFilters.Count > 0)
+                {
+                    var missingCategories = CheckFilterFilesForCategories()
+                        .Where(cat => categoriesNeedingFilters.Contains(cat))
+                        .ToList();
+
+                    if (missingCategories.Count > 0)
+                    {
+                        var categoryList = string.Join("\n• ", missingCategories);
+                        var result = WinForms.MessageBox.Show(
+                            $"⚠️ FILTER DATA NOT FOUND\n\n" +
+                            $"The following selected categories cannot be processed because no filter data is found:\n\n" +
+                            $"• {categoryList}\n\n" +
+                            $"Remark Selected requires XML filter files to determine sleeve categories (e.g., '*_ducts.xml', '*_pipes.xml') in the Filters directory.\n\n" +
+                            $"Would you like to continue with available categories only?",
+                            "Missing Filter Data",
+                            WinForms.MessageBoxButtons.YesNo,
+                            WinForms.MessageBoxIcon.Warning);
+
+                        if (result != WinForms.DialogResult.Yes)
+                        {
+                            return; // User cancelled
                         }
                     }
                 }
@@ -1552,7 +1677,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     // Sync remark checkboxes so MarkParameterCommand honours the user's selection
                     markPrefixes.RemarkAll = remarkProject;
                     markPrefixes.RemarkProjectPrefix = remarkProject;
-                    markPrefixes.RemarkDuctPrefix = remarkDuct;
+                    markPrefixes.RemarkDuctPrefix = remarkDuct || hasSystemOverrideRemark;
                     markPrefixes.RemarkPipePrefix = remarkPipe;
                     markPrefixes.RemarkCableTrayPrefix = remarkCableTray;
                     markPrefixes.RemarkDamperPrefix = remarkDamper;
@@ -1587,31 +1712,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     {
                         // Process individual discipline categories if their checkboxes are checked
                         // Only process if Project Prefix is NOT checked (to avoid double-processing)
-                        if (remarkDuct)
+                        // Project prefix is managed independently; pass the current value and let MarkParameterService decide
+                        // whether to preserve or override based on RemarkProjectPrefix setting.
+                        string effectiveProjectPrefix = projectPrefix;
+                        
+                        if (markPrefixes.RemarkDuctPrefix)
                         {
                             // remarkAll=false because GetRemarkFlag() will return true for Ducts if RemarkDuctPrefix is true
-                            var cmd = new MarkParameterCommand("Ducts", projectPrefix, ductPrefix, false, markPrefixes);
+                            var cmd = new MarkParameterCommand("Ducts", effectiveProjectPrefix, ductPrefix, false, markPrefixes);
                             cmd.Execute(_uiDocument.Application);
                             totalProcessed++;
-                            categoriesProcessed.Add("Ducts");
+                            categoriesProcessed.Add(hasSystemOverrideRemark && !remarkDuct ? "Ducts (System Type Overrides)" : "Ducts");
                         }
                         if (remarkPipe)
                         {
-                            var cmd = new MarkParameterCommand("Pipes", projectPrefix, pipePrefix, false, markPrefixes);
+                            var cmd = new MarkParameterCommand("Pipes", effectiveProjectPrefix, pipePrefix, false, markPrefixes);
                             cmd.Execute(_uiDocument.Application);
                             totalProcessed++;
                             categoriesProcessed.Add("Pipes");
                         }
                         if (remarkCableTray)
                         {
-                            var cmd = new MarkParameterCommand("Cable Trays", projectPrefix, cableTrayPrefix, false, markPrefixes);
+                            var cmd = new MarkParameterCommand("Cable Trays", effectiveProjectPrefix, cableTrayPrefix, false, markPrefixes);
                             cmd.Execute(_uiDocument.Application);
                             totalProcessed++;
                             categoriesProcessed.Add("Cable Trays");
                         }
                         if (remarkDamper)
                         {
-                            var cmd = new MarkParameterCommand("Duct Accessories", projectPrefix, damperPrefix, false, markPrefixes);
+                            var cmd = new MarkParameterCommand("Duct Accessories", effectiveProjectPrefix, damperPrefix, false, markPrefixes);
                             cmd.Execute(_uiDocument.Application);
                             totalProcessed++;
                             categoriesProcessed.Add("Duct Accessories");

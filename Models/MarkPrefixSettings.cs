@@ -115,7 +115,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// <summary>
         /// ✅ NEW: Two-tier prefix resolution - checks System Type override first, then falls back to discipline prefix
         /// </summary>
-        public string GetPrefixForElement(string category, string systemType = null, string serviceType = null)
+        public string GetPrefixForElement(string category, string? systemType = null, string? serviceType = null)
         {
             // Tier 2: Check System Type override first (if applicable)
             if (category == "Ducts" && !string.IsNullOrEmpty(systemType) && DuctSystemTypeOverrides.ContainsKey(systemType))

@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -653,43 +655,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[PARAM_TRANSFER] Found {openingIds.Count} sleeves in model - proceeding with parameter transfer");
-                // Build snapshot index (sleeveId -> (mepBag, hostBag)) from latest category XML
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[PARAM_TRANSFER] Building snapshot index for category: {config.SourceCategoryName}");
-                string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
-                if (!DeploymentConfiguration.DeploymentMode)
+
+                var transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
+
+                SleeveSnapshotIndex snapshotIndex;
+                try
                 {
-                    if (!DeploymentConfiguration.DeploymentMode)
+                    using (var dbContext = new SleeveDbContext(doc, msg =>
                     {
-                        File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [PARAM_TRANSFER] Building snapshot index for category: {config.SourceCategoryName}\n");
-                    }
-                    string projectPath = ProjectPathService.GetProjectRoot(doc);
-                    string filtersPath = ProjectPathService.GetFiltersDirectory(doc);
-                    if (!DeploymentConfiguration.DeploymentMode)
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[SQLite] {msg}");
+                        SafeFileLogger.SafeAppendText("transfer_debug.log", $"[{DateTime.Now}] [SQLite] {msg}\n");
+                    }))
                     {
-                        File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [PARAM_TRANSFER] Project path: {projectPath}\n");
+                        var snapshotRepository = new SleeveSnapshotRepository(dbContext, msg =>
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[SQLite] {msg}");
+                            SafeFileLogger.SafeAppendText("transfer_debug.log", $"[{DateTime.Now}] [SQLite] {msg}\n");
+                        });
+
+                        snapshotIndex = snapshotRepository.LoadSnapshotIndex();
                     }
-                    System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [PARAM_TRANSFER] Filters directory (XML path): {filtersPath}\n");
                 }
-                
-                // ✅ FIX: Pass document to BuildFilterIndex for project-specific path
-                var filterIndex = BuildFilterIndex(doc);
-                
-                // Add diagnostic calls to check XML content and filter index
-                DiagnoseXmlContent(config.SourceCategoryName);
-                DiagnoseFilterIndex(filterIndex);
-                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[PARAM_TRANSFER] Filter index built with {filterIndex.Count} XML files");
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now}] [PARAM_TRANSFER] Filter index built with {filterIndex.Count} XML files\n");
-                
-                if (filterIndex.Count == 0)
+                catch (Exception ex)
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Warning($"[PARAM_TRANSFER] WARNING: No XML files found - all transfers will fail!");
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[{DateTime.Now}] [PARAM_TRANSFER] WARNING: No XML files found - all transfers will fail!\n");
+                    result.Success = false;
+                    result.Message = $"Failed to load sleeve parameter snapshots: {ex.Message}";
+                    result.Errors.Add(ex.Message);
+                    return result;
+                }
+
+                if (snapshotIndex.BySleeve.Count == 0 && snapshotIndex.ByCluster.Count == 0)
+                {
+                    result.Success = false;
+                    result.Message = "No sleeve parameter snapshots found. Run Refresh before transferring parameters.";
+                    result.Errors.Add("SleeveSnapshots table is empty");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning("[PARAM_TRANSFER] No sleeve snapshots found in SQLite.");
+                    File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [PARAM_TRANSFER] No sleeve snapshots found in SQLite.\n");
+                    return result;
                 }
                 
                 // Execute each mapping
@@ -705,10 +710,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     switch (mapping.TransferType)
                     {
                         case TransferType.ReferenceToOpening:
-                            mappingResult = TransferFromReferenceElementsInTransaction(doc, openingIds, mapping, filterIndex, successfullyTransferredSleeveIds);
+                            mappingResult = TransferFromReferenceElementsInTransaction(doc, openingIds, mapping, snapshotIndex, successfullyTransferredSleeveIds);
                             break;
                         case TransferType.HostToOpening:
-                            mappingResult = TransferFromHostElementsInTransaction(doc, openingIds, mapping, filterIndex, successfullyTransferredSleeveIds);
+                            mappingResult = TransferFromHostElementsInTransaction(doc, openingIds, mapping, snapshotIndex, successfullyTransferredSleeveIds);
                             break;
                         case TransferType.LevelToOpening:
                             mappingResult = TransferFromLevelsInTransaction(doc, openingIds, mapping);
@@ -777,29 +782,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             Document doc,
             List<ElementId> openingIds,
             ParameterMapping mapping,
-            Dictionary<string, Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)>> filterIndex,
+            SleeveSnapshotIndex snapshotIndex,
             HashSet<int> successfullyTransferredSleeveIds = null)
         {
             // Delegate to core with a resolver for MEP bags
-            return TransferFromElementsWithSnapshot(doc, openingIds, mapping, filterIndex, useHost:false, successfullyTransferredSleeveIds);
+            return TransferFromElementsWithSnapshot(doc, openingIds, mapping, snapshotIndex, useHost:false, successfullyTransferredSleeveIds);
         }
 
         public ParameterTransferResult TransferFromHostElementsInTransaction(
             Document doc,
             List<ElementId> openingIds,
             ParameterMapping mapping,
-            Dictionary<string, Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)>> filterIndex,
+            SleeveSnapshotIndex snapshotIndex,
             HashSet<int> successfullyTransferredSleeveIds = null)
         {
             // Delegate to core with a resolver for HOST bags
-            return TransferFromElementsWithSnapshot(doc, openingIds, mapping, filterIndex, useHost:true, successfullyTransferredSleeveIds);
+            return TransferFromElementsWithSnapshot(doc, openingIds, mapping, snapshotIndex, useHost:true, successfullyTransferredSleeveIds);
         }
 
         private ParameterTransferResult TransferFromElementsWithSnapshot(
             Document doc,
             List<ElementId> openingIds,
             ParameterMapping mapping,
-            Dictionary<string, Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)>> filterIndex,
+            SleeveSnapshotIndex snapshotIndex,
             bool useHost,
             HashSet<int> successfullyTransferredSleeveIds = null)
         {
@@ -807,11 +812,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var transferredCount = 0;
             var failedCount = 0;
             var errors = new List<string>();
-            
-                        if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Info($"[TRANSFER] Starting transfer for mapping: {mapping.SourceParameter} -> {mapping.TargetParameter}");
-                        if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Info($"[TRANSFER] FilterIndex has {filterIndex.Count} filters");
 
             foreach (var openingId in openingIds)
             {
@@ -820,565 +820,66 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var opening = doc.GetElement(openingId);
                     if (opening == null)
                     {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Warning($"[TRANSFER] Opening {openingId} not found");
+                        failedCount++;
+                        errors.Add($"Opening element {openingId.IntegerValue} not found.");
                         continue;
                     }
 
-                    // Get XML filename directly from sleeve family parameter
-                    var filterNameParam = opening.LookupParameter("Filter Name");
-                    if (filterNameParam == null) 
+                    var sleeveInstanceId = GetIntegerParameter(opening, "Sleeve Instance ID");
+                    var clusterInstanceId = GetIntegerParameter(opening, "Cluster Sleeve Instance ID");
+
+                    SleeveSnapshotView snapshot = null;
+                    if (clusterInstanceId > 0 && snapshotIndex.TryGetByCluster(clusterInstanceId, out var clusterView))
                     {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Warning($"[TRANSFER] Sleeve {openingId} missing 'Filter Name' parameter");
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Sleeve {openingId} missing 'Filter Name' parameter\n");
+                        snapshot = clusterView;
+                    }
+                    else if (sleeveInstanceId > 0 && snapshotIndex.TryGetBySleeve(sleeveInstanceId, out var sleeveView))
+                    {
+                        snapshot = sleeveView;
+                    }
+
+                    if (snapshot == null)
+                    {
+                        result.Warnings.Add($"No persisted snapshot found for sleeve {openingId.IntegerValue} (SleeveId={sleeveInstanceId}, ClusterId={clusterInstanceId}).");
                         continue;
                     }
-                    
-                    string xmlFileName = filterNameParam.AsString();
-                    if (string.IsNullOrEmpty(xmlFileName)) 
+
+                    var sourceParams = useHost ? snapshot.HostParameters : snapshot.MepParameters;
+                    if (sourceParams == null || sourceParams.Count == 0)
                     {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Warning($"[TRANSFER] Sleeve {openingId} has empty Filter Name");
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Sleeve {openingId} has empty Filter Name\n");
+                        result.Warnings.Add($"No {(useHost ? "host" : "MEP")} parameters captured for sleeve {openingId.IntegerValue}.");
                         continue;
                     }
-                    
-                    // Get Instance ID directly from sleeve family parameter
-                    var instanceIdParam = opening.LookupParameter("Sleeve Instance ID");
-                    if (instanceIdParam == null) 
+
+                    if (!sourceParams.TryGetValue(mapping.SourceParameter, out var sourceValue) || string.IsNullOrWhiteSpace(sourceValue))
                     {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Warning($"[TRANSFER] Sleeve {openingId} missing 'Sleeve Instance ID' parameter");
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Sleeve {openingId} missing 'Sleeve Instance ID' parameter\n");
+                        result.Warnings.Add($"Parameter '{mapping.SourceParameter}' not found in snapshot for sleeve {openingId.IntegerValue}.");
                         continue;
                     }
-                    
-                    int sleeveId = instanceIdParam.AsInteger();
-                    
-                    // CRITICAL FIX: Check if this is a cluster sleeve
-                    // For cluster sleeves, Sleeve Instance ID = -1, and we need to look up ClusterSleeveInstanceId in the XML
-                    bool isClusterSleeve = (sleeveId == -1);
-                    string mepCategory = null; // Store MEP category for cluster sleeves to find correct XML file
-                    
-                    // ✅ EARLY READ: Get MEP_Category BEFORE checking cluster sleeve (needed for XML lookup)
-                    if (isClusterSleeve)
+
+                    var targetParam = opening.LookupParameter(mapping.TargetParameter);
+                    if (targetParam == null)
                     {
-                        var mepCategoryParamEarly = opening.LookupParameter("MEP_Category");
-                        if (mepCategoryParamEarly != null && !mepCategoryParamEarly.IsReadOnly)
-                        {
-                            mepCategory = mepCategoryParamEarly.AsString();
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[TRANSFER] Early read: Cluster sleeve {openingId} has MEP_Category = '{mepCategory}'");
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Early read: Cluster sleeve {openingId} has MEP_Category = '{mepCategory}'\n");
-                        }
-                        else
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Warning($"[TRANSFER] Early read: Cluster sleeve {openingId} MEP_Category parameter is null or read-only");
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Early read: Cluster sleeve {openingId} MEP_Category parameter is null or read-only\n");
-                        }
+                        failedCount++;
+                        errors.Add($"Target parameter '{mapping.TargetParameter}' not found on opening {openingId.IntegerValue}.");
+                        continue;
                     }
-                    
-                    // Get Cluster Sleeve Instance ID parameter for XML lookup (for cluster sleeves only)
-                    if (isClusterSleeve)
+
+                    if (SetParameterValueSafely(targetParam, sourceValue))
                     {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[TRANSFER] Sleeve {openingId} is a cluster sleeve (Sleeve Instance ID = -1), will look up Cluster Sleeve Instance ID");
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Sleeve {openingId} is a cluster sleeve (Sleeve Instance ID = -1)\n");
-                        
-                        // MEP_Category was already read early (above), now use it if we have it
-                        if (string.IsNullOrEmpty(mepCategory))
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Warning($"[TRANSFER] Cluster sleeve {openingId} MEP_Category is still NULL/EMPTY - trying multiple methods");
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve {openingId} MEP_Category is still NULL/EMPTY - trying multiple methods\n");
-                            
-                            // ✅ FALLBACK METHOD 1: Try to read MEP_Category using different parameter lookup methods
-                            var paramNames = new[] { "MEP_Category", "MEP Category", "MEPCategory", "MepCategory" };
-                            foreach (var paramName in paramNames)
-                            {
-                                var altParam = opening.LookupParameter(paramName);
-                                if (altParam != null && !altParam.IsReadOnly && altParam.HasValue)
-                                {
-                                    var altValue = altParam.AsString();
-                                    if (!string.IsNullOrEmpty(altValue))
-                                    {
-                                        mepCategory = altValue;
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[TRANSFER] Fallback: Found MEP_Category = '{mepCategory}' using parameter name '{paramName}'");
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Fallback: Found MEP_Category = '{mepCategory}' using parameter name '{paramName}'\n");
-                                        break;
-                                    }
-                                }
-                            }
-                            
-                            // ✅ FALLBACK METHOD 2: Try ALL possible XML files that match the filter name and check which one contains this cluster sleeve ID
-                            // This is more reliable than guessing from Filter Name
-                            if (string.IsNullOrEmpty(mepCategory))
-                            {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[TRANSFER] Fallback: Will try to find cluster sleeve {sleeveId} in all matching XML files");
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Fallback: Will try to find cluster sleeve {sleeveId} in all matching XML files\n");
-                                // We'll handle this in the XML lookup section below
-                            }
-                        }
-                        
-                        // Get Cluster Sleeve Instance ID parameter for XML lookup
-                        var clusterInstanceIdParam = opening.LookupParameter("Cluster Sleeve Instance ID");
-                        if (clusterInstanceIdParam != null)
-                        {
-                            sleeveId = clusterInstanceIdParam.AsInteger();
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[TRANSFER] Cluster sleeve {openingId} has Cluster Sleeve Instance ID = {sleeveId}");
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve {openingId} has Cluster Sleeve Instance ID = {sleeveId}\n");
-                        }
-                        else
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Warning($"[TRANSFER] Cluster sleeve {openingId} missing 'Cluster Sleeve Instance ID' parameter");
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve {openingId} missing 'Cluster Sleeve Instance ID' parameter\n");
-                            continue;
-                        }
-                    }
-                    
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[TRANSFER] Sleeve {openingId}: XML='{xmlFileName}', ID={sleeveId}");
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Sleeve {openingId}: XML='{xmlFileName}', ID={sleeveId}\n");
-                    
-                    // DIRECT LOOKUP - Handle both individual and cluster sleeves
-                    // ✅ FIX: Try exact match first, then try to find matching XML file by prefix
-                    // ✅ CRITICAL FIX: For cluster sleeves, use MEP_Category to find correct XML file (e.g., "Duct Accessories" → "*_duct_accessories.xml")
-                    Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)> filterData = null;
-                    string matchingKey = null; // ✅ FIX: Declare matchingKey early so it can be used in the MEP_Category NULL block
-                    
-                    // ✅ CRITICAL: For cluster sleeves, skip exact match and go straight to category-based lookup
-                    // This prevents matching "Ventilation" to "Ventilation_ducts.xml" when it should be "Ventilation_duct_accessories.xml"
-                    if (!isClusterSleeve && filterIndex.TryGetValue(xmlFileName, out filterData))
-                    {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[TRANSFER] Found exact match for '{xmlFileName}' (individual sleeve)");
-                    }
-                    else if (isClusterSleeve)
-                    {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[TRANSFER] Cluster sleeve - skipping exact match, will use category-based lookup");
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve {openingId} - skipping exact match for '{xmlFileName}', using category-based lookup\n");
-                    }
-                    
-                    if (filterData == null)
-                    {
-                        string categorySuffix = null;
-                        // ✅ CRITICAL FIX: For cluster sleeves, determine XML suffix based on MEP_Category
-                        if (isClusterSleeve)
-                        {
-                            // ✅ EXPECTED: MEP_Category parameter doesn't exist on opening families - XML stores category per clash zone
-                            // Parameter transfer uses MEP Element ID + XML category to find correct XML file
-                            if (string.IsNullOrEmpty(mepCategory))
-                            {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[TRANSFER] Cluster sleeve {openingId}: MEP_Category parameter not available (expected - families don't have this parameter) - using XML category lookup");
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve {openingId}: MEP_Category not available (expected) - checking Ventilation_duct_accessories.xml FIRST for cluster sleeve {sleeveId}\n");
-                                
-                                // ✅ CORE BUG FIX: When MEP_Category is missing, assume "Duct Accessories" and check _duct_accessories.xml FIRST
-                                // This is because damper cluster sleeves are ALWAYS in _duct_accessories.xml, not _ducts.xml
-                                var expectedDuctAccessoriesFile = $"{xmlFileName}_duct_accessories.xml";
-                                
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[TRANSFER] 🔍 CORE FIX: Checking {expectedDuctAccessoriesFile} FIRST (default for damper clusters when MEP_Category is missing)");
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] 🔍 CORE FIX: Checking {expectedDuctAccessoriesFile} FIRST for cluster sleeve {sleeveId}\n");
-                                
-                                if (filterIndex.TryGetValue(expectedDuctAccessoriesFile, out var candidateData))
-                                {
-                                    if (candidateData.ContainsKey(sleeveId))
-                                    {
-                                        filterData = candidateData;
-                                        matchingKey = expectedDuctAccessoriesFile;
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[TRANSFER] ✅ FOUND! Cluster sleeve {sleeveId} in {expectedDuctAccessoriesFile}");
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] ✅ FOUND! Cluster sleeve {sleeveId} in {expectedDuctAccessoriesFile} (contains {candidateData.Count} sleeves)\n");
-                                    }
-                                    else
-                                    {
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Warning($"[TRANSFER] Cluster sleeve {sleeveId} NOT in {expectedDuctAccessoriesFile} (contains {candidateData.Count} sleeves, sample IDs: {string.Join(", ", candidateData.Keys.Take(10))})");
-                                        string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
-            System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [TRANSFER] Cluster sleeve {sleeveId} NOT in {expectedDuctAccessoriesFile} (sample IDs: {string.Join(", ", candidateData.Keys.Take(10))})\n");
-                                    }
-                                }
-                                else
-                                {
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Warning($"[TRANSFER] {expectedDuctAccessoriesFile} not found in filterIndex");
-                                    string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
-            System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [TRANSFER] {expectedDuctAccessoriesFile} not found. Available files: {string.Join(", ", filterIndex.Keys.Where(k => k.Contains("Ventilation", StringComparison.OrdinalIgnoreCase)).Take(5))}\n");
-                                }
-                                
-                                // If still not found, try other matching files as fallback
-                                if (filterData == null)
-                                {
-                                    var matchingFiles = filterIndex.Keys.Where(k => 
-                                        k.StartsWith(xmlFileName + "_", StringComparison.OrdinalIgnoreCase)).ToList();
-                                    
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Info($"[TRANSFER] Fallback: Searching remaining {matchingFiles.Count} matching XML files for cluster sleeve {sleeveId}");
-                                    string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
-            System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [TRANSFER] Fallback: Searching remaining {matchingFiles.Count} matching XML files for cluster sleeve {sleeveId}: {string.Join(", ", matchingFiles)}\n");
-                                    
-                                    foreach (var candidateFile in matchingFiles)
-                                    {
-                                        if (candidateFile.Equals(expectedDuctAccessoriesFile, StringComparison.OrdinalIgnoreCase))
-                                            continue; // Already checked
-                                            
-                                        if (filterIndex.TryGetValue(candidateFile, out var fallbackData))
-                                        {
-                                            if (fallbackData.ContainsKey(sleeveId))
-                                            {
-                                                filterData = fallbackData;
-                                                matchingKey = candidateFile;
-                                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                    DebugLogger.Info($"[TRANSFER] ✅ Found cluster sleeve {sleeveId} in fallback XML file '{matchingKey}'");
-                                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] ✅ Found cluster sleeve {sleeveId} in fallback XML file '{matchingKey}'\n");
-                                                break;
-                                            }
-                                        }
-                                    }
-                                    
-                                    if (filterData == null)
-                                    {
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Warning($"[TRANSFER] Cluster sleeve {sleeveId} not found in ANY matching XML file");
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve {sleeveId} not found in ANY matching XML file\n");
-                                    }
-                                }
-                            }
-                            else
-                            {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[TRANSFER] Cluster sleeve {openingId}: MEP_Category = '{mepCategory}'");
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve {openingId}: MEP_Category = '{mepCategory}'\n");
-                                
-                                // Map MEP category to XML file suffix (MUST CHECK Duct Accessories FIRST before Ducts)
-                                if (mepCategory.Contains("Duct Accessory", StringComparison.OrdinalIgnoreCase) || 
-                                    mepCategory.Contains("DuctAccessory", StringComparison.OrdinalIgnoreCase) ||
-                                    mepCategory.Equals("Duct Accessories", StringComparison.OrdinalIgnoreCase))
-                                {
-                                    categorySuffix = "_duct_accessories";
-                                }
-                                else if (mepCategory.Contains("Duct", StringComparison.OrdinalIgnoreCase))
-                                {
-                                    categorySuffix = "_ducts";
-                                }
-                                else if (mepCategory.Contains("Pipe", StringComparison.OrdinalIgnoreCase))
-                                {
-                                    categorySuffix = "_pipes";
-                                }
-                                else if (mepCategory.Contains("Cable", StringComparison.OrdinalIgnoreCase) || 
-                                         mepCategory.Contains("Tray", StringComparison.OrdinalIgnoreCase))
-                                {
-                                    categorySuffix = "_cable_trays";
-                                }
-                            }
-                            
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[TRANSFER] Cluster sleeve category '{mepCategory}' → suffix '{categorySuffix}'");
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve category '{mepCategory}' → suffix '{categorySuffix}'\n");
-                        }
-                        
-                        // ✅ FIX: Try to find XML file that matches filter name + category suffix (for damper cluster sleeves)
-                        // Note: matchingKey was already declared above
-                        
-                        if (!string.IsNullOrEmpty(categorySuffix))
-                        {
-                            // First try: filter name + category suffix (e.g., "Ventilation" + "_duct_accessories" → "Ventilation_duct_accessories.xml")
-                            var expectedFileName = $"{xmlFileName}{categorySuffix}.xml";
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[TRANSFER] Looking for category-specific XML file: '{expectedFileName}'");
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Looking for category-specific XML file: '{expectedFileName}'\n");
-                            
-                            if (filterIndex.TryGetValue(expectedFileName, out filterData))
-                            {
-                                matchingKey = expectedFileName;
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[TRANSFER] ✅ Found category-specific XML file '{matchingKey}' for cluster sleeve");
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] ✅ Found category-specific XML file '{matchingKey}' for cluster sleeve\n");
-                            }
-                            else
-                            {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Warning($"[TRANSFER] Category-specific XML file '{expectedFileName}' not found in filterIndex");
-                                string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
-            System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [TRANSFER] Category-specific XML file '{expectedFileName}' not found. Available keys: {string.Join(", ", filterIndex.Keys.Take(10))}\n");
-                            }
-                        }
-                        
-                        if (matchingKey == null && !isClusterSleeve)
-                        {
-                            // Fallback: Try to find XML file that starts with the filter name (for individual sleeves)
-                            // Look for keys like "Ventilation_ducts.xml", "Ventilation_pipes.xml", etc.
-                            matchingKey = filterIndex.Keys.FirstOrDefault(k => 
-                                k.StartsWith(xmlFileName + "_", StringComparison.OrdinalIgnoreCase) || 
-                                (xmlFileName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) && k.Equals(xmlFileName, StringComparison.OrdinalIgnoreCase)) ||
-                                (!xmlFileName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) && k.Contains($"_{xmlFileName}_", StringComparison.OrdinalIgnoreCase)));
-                            
-                            if (matchingKey != null)
-                            {
-                                filterData = filterIndex[matchingKey];
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[TRANSFER] Found fallback matching XML file '{matchingKey}' for filter name '{xmlFileName}'");
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Found fallback matching XML file '{matchingKey}' for filter name '{xmlFileName}'\n");
-                            }
-                            else
-                            {
-                                // Try more flexible matching - check if any key contains the filter name
-                                matchingKey = filterIndex.Keys.FirstOrDefault(k => 
-                                    k.Contains(xmlFileName, StringComparison.OrdinalIgnoreCase));
-                                if (matchingKey != null)
-                                {
-                                    filterData = filterIndex[matchingKey];
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Info($"[TRANSFER] Found flexible match XML file '{matchingKey}' for filter name '{xmlFileName}'");
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Found flexible match XML file '{matchingKey}' for filter name '{xmlFileName}'\n");
-                                }
-                                else
-                                {
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Warning($"[TRANSFER] No matching XML file found for filter name '{xmlFileName}'. Available keys (first 5): {string.Join(", ", filterIndex.Keys.Take(5))}");
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
-                                        System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [TRANSFER] No matching XML file found for filter name '{xmlFileName}'. Available keys: {string.Join(", ", filterIndex.Keys)}\n");
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        {
-                                            File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [TRANSFER] Filter index has {filterIndex.Count} entries\n");
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    if (filterData != null)
-                    {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[TRANSFER] Found filter data with {filterData.Count} sleeves");
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Found filter data with {filterData.Count} sleeves\n");
-                        
-                        // CRITICAL FIX: Handle cluster sleeves differently
-                        if (isClusterSleeve)
-                        {
-                            // For cluster sleeves, we need to aggregate parameters from ALL clash zones with the same ClusterSleeveInstanceId
-                            var aggregatedParams = GetAggregatedClusterParameters(filterData, sleeveId, mapping.SourceParameter, useHost);
-                            if (aggregatedParams != null)
-                            {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[TRANSFER] Cluster sleeve {sleeveId}: aggregated parameter '{mapping.SourceParameter}' = '{aggregatedParams}'");
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Cluster sleeve {sleeveId}: aggregated parameter '{mapping.SourceParameter}' = '{aggregatedParams}'\n");
-                                
-                        var targetParam = opening.LookupParameter(mapping.TargetParameter);
-                                if (targetParam != null)
-                                {
-                                    bool ok = SetParameterValueSafely(targetParam, aggregatedParams);
-                                    if (ok)
-                                    {
-                                        transferredCount++;
-                                        successfullyTransferredSleeveIds?.Add(openingId.IntegerValue); // Track unique sleeve
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[TRANSFER] ✓ Successfully transferred aggregated parameter to cluster sleeve {sleeveId}");
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] ✓ Successfully transferred aggregated parameter to cluster sleeve {sleeveId}\n");
+                        transferredCount++;
+                        successfullyTransferredSleeveIds?.Add(openingId.IntegerValue);
                     }
                     else
                     {
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Warning($"[TRANSFER] ✗ Failed to set aggregated parameter value");
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] ✗ Failed to set aggregated parameter value\n");
-                                    }
-                                }
-                                else
-                                {
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Warning($"[TRANSFER] Target parameter '{mapping.TargetParameter}' not found on cluster sleeve");
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Target parameter '{mapping.TargetParameter}' not found on cluster sleeve\n");
-                                }
-                            }
-                            else
-                            {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Warning($"[TRANSFER] No aggregated parameters found for cluster sleeve {sleeveId}");
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] No aggregated parameters found for cluster sleeve {sleeveId}\n");
-                            }
-                        }
-                        else if (filterData.TryGetValue(sleeveId, out var paramBags))
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Found sleeve {sleeveId} in XML '{xmlFileName}'\n");
-                            
-                            var sourceParams = useHost ? paramBags.host : paramBags.mep;
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[TRANSFER] Source params: {string.Join(", ", sourceParams.Keys)}");
-                            string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
-            System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [TRANSFER] Source params: {string.Join(", ", sourceParams.Keys)}\n");
-                            
-                            if (sourceParams.TryGetValue(mapping.SourceParameter, out var paramValue))
-                            {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[TRANSFER] Found parameter '{mapping.SourceParameter}' = '{paramValue}'");
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Found parameter '{mapping.SourceParameter}' = '{paramValue}'\n");
-                                
-                                var targetParam = opening.LookupParameter(mapping.TargetParameter);
-                                if (targetParam != null)
-                                {
-                                    bool ok = SetParameterValueSafely(targetParam, paramValue);
-                                    if (ok)
-                                    {
-                                        transferredCount++;
-                                        successfullyTransferredSleeveIds?.Add(openingId.IntegerValue); // Track unique sleeve
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[TRANSFER] ✓ Successfully transferred to sleeve {sleeveId}");
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] ✓ Successfully transferred to sleeve {sleeveId}\n");
-                                    }
-                                    else
-                                    {
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Warning($"[TRANSFER] ✗ Failed to set parameter value");
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] ✗ Failed to set parameter value\n");
-                                    }
-                                }
-                                else
-                                {
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Warning($"[TRANSFER] Target parameter '{mapping.TargetParameter}' not found");
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Target parameter '{mapping.TargetParameter}' not found\n");
-                                }
-                            }
-                            else
-                            {
-                                // ✅ FALLBACK: If parameter not found in XML snapshot, read directly from Revit element
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Source parameter '{mapping.SourceParameter}' not found in XML snapshot, trying direct Revit read\n");
-                                
-                                string fallbackValue = null;
-                                try
-                                {
-                                    if (useHost)
-                                    {
-                                        // Read from host elements
-                                        var hostElements = GetHostElementsForOpening(doc, opening);
-                                        if (hostElements.Count > 0)
-                                        {
-                                            var hostParam = hostElements[0].LookupParameter(mapping.SourceParameter);
-                                            if (hostParam != null && hostParam.HasValue)
-                                            {
-                                                fallbackValue = ConvertParameterToString(hostElements[0], hostParam);
-                                            }
-                                        }
-                                    }
-                                    else
-                                    {
-                                        // Read from MEP elements
-                                        var mepElements = GetMepElementsInOpening(doc, opening);
-                                        if (mepElements.Count > 0)
-                                        {
-                                            var mepParam = mepElements[0].LookupParameter(mapping.SourceParameter);
-                                            if (mepParam != null && mepParam.HasValue)
-                                            {
-                                                fallbackValue = ConvertParameterToString(mepElements[0], mepParam);
-                                            }
-                                        }
-                                    }
-                                    
-                                    if (!string.IsNullOrEmpty(fallbackValue))
-                                    {
-                                        // ✅ Add to learned keys for next refresh
-                                        ParameterSnapshotService.AddLearnedKey(mapping.SourceParameter);
-                                        
-                                        var targetParam = opening.LookupParameter(mapping.TargetParameter);
-                                        if (targetParam != null)
-                                        {
-                                            bool ok = SetParameterValueSafely(targetParam, fallbackValue);
-                                            if (ok)
-                                            {
-                                                transferredCount++;
-                                                successfullyTransferredSleeveIds?.Add(openingId.IntegerValue);
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                    DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] ✓ Fallback: Successfully transferred '{mapping.SourceParameter}' = '{fallbackValue}' from Revit element\n");
-                                            }
-                                        }
-                                    }
-                                    else
-                                    {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Warning($"[TRANSFER] Source parameter '{mapping.SourceParameter}' not found in XML snapshot or Revit element");
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Source parameter '{mapping.SourceParameter}' not found in XML snapshot or Revit element\n");
-                                    }
-                                }
-                                catch (Exception fallbackEx)
-                                {
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Warning($"[TRANSFER] Fallback read failed for '{mapping.SourceParameter}': {fallbackEx.Message}");
-                                }
-                            }
-                    }
-                    else
-                    {
-                            // ✅ FIX: Log family name for debugging floor sleeves issue
-                            var famName = opening is FamilyInstance fi ? (fi.Symbol?.Family?.Name ?? "Unknown") : "Unknown";
-                            var availableIds = filterData != null ? string.Join(", ", filterData.Keys.Take(10)) : "none";
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Warning($"[TRANSFER] Sleeve ID {sleeveId} ({famName}) not found in XML '{xmlFileName}'. Available IDs in XML: [{availableIds}...]");
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] Sleeve ID {sleeveId} ({famName}) not found in XML '{xmlFileName}'. Filter data contains {filterData?.Count ?? 0} sleeves: [{availableIds}...]\n");
-                        }
-                    }
-                    else
-                    {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Warning($"[TRANSFER] XML '{xmlFileName}' not found in index");
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[{DateTime.Now}] [TRANSFER] XML '{xmlFileName}' not found in index\n");
+                        failedCount++;
+                        errors.Add($"Failed to set parameter '{mapping.TargetParameter}' on opening {openingId.IntegerValue}.");
                     }
                 }
                 catch (Exception ex)
                 {
                     failedCount++;
-                    errors.Add($"Opening {openingId}: {ex.Message}");
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Error($"[TRANSFER] Exception for opening {openingId}: {ex.Message}");
+                    errors.Add($"Error transferring parameters to opening {openingId.IntegerValue}: {ex.Message}");
                 }
             }
 
@@ -1386,10 +887,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             result.TransferredCount = transferredCount;
             result.FailedCount = failedCount;
             result.Errors = errors;
-            result.Message = $"Transfer: {transferredCount} updated, {failedCount} failed.";
-            
-                        if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Info($"[TRANSFER] Final result: {result.Message}");
             return result;
         }
 
@@ -2280,6 +1777,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
             catch { return string.Empty; }
+        }
+        
+        private int GetIntegerParameter(Element element, string parameterName)
+        {
+            try
+            {
+                var param = element.LookupParameter(parameterName);
+                if (param != null && param.StorageType == StorageType.Integer)
+                {
+                    return param.AsInteger();
+                }
+                if (param != null && param.StorageType == StorageType.String)
+                {
+                    if (int.TryParse(param.AsString(), out var parsed))
+                    {
+                        return parsed;
+                    }
+                }
+            }
+            catch
+            {
+                // ignored – return default on failure
+            }
+
+            return -1;
         }
         
         private bool ElementsIntersect(Element element1, Element element2)

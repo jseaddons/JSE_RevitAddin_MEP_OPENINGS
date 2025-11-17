@@ -782,8 +782,54 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 	/// ✅ FIX: If GUID doesn't match, tries matching by MEP+Host+Point to avoid duplicate entries
 	/// ✅ CRITICAL: Accepts FilterName to identify which Filter XML file contains placement data
 		/// </summary>
-	public static void UpsertFlagsWithIdsAndClashZoneData(Document doc, string categoryName, IEnumerable<(Guid Id, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterSleeveInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ)> updates, string filterName = null)
+	public static void UpsertFlagsWithIdsAndClashZoneData(Document doc, string categoryName, IEnumerable<(Guid Id, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterSleeveInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ)> updates, string filterName = null, string refreshLogName = null)
 		{
+			// ✅ CRITICAL: UNMISTAKABLE MARKER - This confirms the NEW code is running
+			// ✅ ALWAYS LOG TO FILE FIRST (bypasses DebugLogger filtering)
+			if (!string.IsNullOrWhiteSpace(refreshLogName))
+			{
+				try
+				{
+					SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] ═══════════════════════════════════════════════════════════════════════════════\n");
+					SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [GLOBAL-INDEX] ⭐⭐⭐ NEW CODE VERSION v2.0 IS RUNNING ⭐⭐⭐\n");
+					SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [GLOBAL-INDEX] ✅ Enhanced logging with entry lookup and update tracking enabled\n");
+					SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] ═══════════════════════════════════════════════════════════════════════════════\n");
+				}
+				catch (Exception fileEx)
+				{
+					// If file logging fails, try DebugLogger as fallback
+					try { DebugLogger.Error($"[GLOBAL-INDEX] Error writing version marker to file: {fileEx.Message}"); } catch { }
+				}
+			}
+			
+			DebugLogger.Info("═══════════════════════════════════════════════════════════════════════════════");
+			DebugLogger.Info("[GLOBAL-INDEX] ⭐⭐⭐ NEW CODE VERSION v2.0 IS RUNNING ⭐⭐⭐");
+			DebugLogger.Info("[GLOBAL-INDEX] ✅ Enhanced logging with entry lookup and update tracking enabled");
+			DebugLogger.Info("═══════════════════════════════════════════════════════════════════════════════");
+			
+			// ✅ BUILD TIMESTAMP: Always log build timestamp (even in deployment mode for troubleshooting)
+			try
+			{
+				var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+				string buildTimestamp = assembly.GetName().Version?.ToString() ?? "Unknown";
+				DateTime buildTime = DateTime.MinValue;
+				string location = assembly.Location;
+				if (!string.IsNullOrEmpty(location) && System.IO.File.Exists(location))
+				{
+					buildTime = System.IO.File.GetLastWriteTime(location);
+				}
+				else
+				{
+					// Fallback: Use current time if location unavailable
+					buildTime = DateTime.Now;
+				}
+				DebugLogger.Info($"[GLOBAL-INDEX] ===== BUILD INFO: Version={buildTimestamp}, BuildTime={buildTime:yyyy-MM-dd HH:mm:ss}, Location={location ?? "N/A"}, Method=UpsertFlagsWithIdsAndClashZoneData =====");
+			}
+			catch (Exception buildEx)
+			{
+				DebugLogger.Info($"[GLOBAL-INDEX] ===== BUILD INFO: Error getting build info: {buildEx.Message}, Method=UpsertFlagsWithIdsAndClashZoneData =====");
+			}
+			
 			var index = LoadOrCreate(doc, categoryName);
 
 		// ✅ HIERARCHICAL + FLAT: Build a lookup that tracks all entries sharing the same GUID
@@ -815,6 +861,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
 			if (!string.IsNullOrWhiteSpace(key))
 				entriesById.TryGetValue(key, out entryList);
+
+			// ✅ ENHANCED DEBUG: Log if entry was found (always log, even in deployment mode for troubleshooting)
+			if (entryList == null || entryList.Count == 0)
+			{
+				DebugLogger.Warning($"[GLOBAL-INDEX] ⚠️ Entry {key} NOT FOUND in Global XML (checked {allEntries.Count} total entries) - Update will create new entry in flat structure");
+				if (!string.IsNullOrWhiteSpace(refreshLogName))
+				{
+					try { SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [GLOBAL-INDEX] ⚠️ Entry {key} NOT FOUND in Global XML (checked {allEntries.Count} total entries)\n"); } catch { }
+				}
+			}
+			else
+			{
+				DebugLogger.Info($"[GLOBAL-INDEX] ✅ Found Entry {key} in Global XML ({entryList.Count} instance(s) - hierarchical + flat)");
+				if (!string.IsNullOrWhiteSpace(refreshLogName))
+				{
+					try { SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [GLOBAL-INDEX] ✅ Found Entry {key} in Global XML ({entryList.Count} instance(s))\n"); } catch { }
+				}
+			}
 
 			// ✅ STEP 2: If no GUID match, try matching by MEP+Host+Point (handles deterministic GUID collisions)
 			if ((entryList == null || entryList.Count == 0) &&
@@ -875,6 +939,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
 				bool entryChanged = false;
 
+				// ✅ ENHANCED DEBUG: Log before and after values
+				bool wasResolved = entry.IsResolved;
+				bool wasClusterResolved = entry.IsClusterResolved;
+				int oldSleeveId = entry.SleeveInstanceId;
+				int oldClusterId = entry.ClusterSleeveInstanceId;
+
+				// ✅ CRITICAL DEBUG: Always log the update attempt (even in deployment mode for troubleshooting)
+				DebugLogger.Info($"[GLOBAL-INDEX] Processing update for Entry {entry.Id}: Current (IsResolved={wasResolved}, IsClusterResolved={wasClusterResolved}, SleeveId={oldSleeveId}, ClusterId={oldClusterId}) → New (IsResolved={up.IsResolved}, IsClusterResolved={up.IsClusterResolved}, SleeveId={up.SleeveInstanceId}, ClusterId={up.ClusterSleeveInstanceId})");
+				if (!string.IsNullOrWhiteSpace(refreshLogName))
+				{
+					try { SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [GLOBAL-INDEX] Processing Entry {entry.Id}: Current (IsResolved={wasResolved}, IsClusterResolved={wasClusterResolved}, SleeveId={oldSleeveId}, ClusterId={oldClusterId}) → New (IsResolved={up.IsResolved}, IsClusterResolved={up.IsClusterResolved}, SleeveId={up.SleeveInstanceId}, ClusterId={up.ClusterSleeveInstanceId})\n"); } catch { }
+				}
+
 				if (entry.IsResolved != up.IsResolved || entry.SleeveInstanceId != up.SleeveInstanceId ||
 				    entry.IsClusterResolved != up.IsClusterResolved || entry.ClusterSleeveInstanceId != up.ClusterSleeveInstanceId)
 				{
@@ -883,6 +960,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 					entry.IsClusterResolved = up.IsClusterResolved;
 					entry.ClusterSleeveInstanceId = up.ClusterSleeveInstanceId;
 					entryChanged = true;
+					
+					// ✅ CRITICAL DEBUG: Log the actual update (always log, even in deployment mode)
+					DebugLogger.Info($"[GLOBAL-INDEX] ✅ UPDATED Entry {entry.Id}: IsResolved {wasResolved}→{up.IsResolved}, IsClusterResolved {wasClusterResolved}→{up.IsClusterResolved}, SleeveId {oldSleeveId}→{up.SleeveInstanceId}, ClusterId {oldClusterId}→{up.ClusterSleeveInstanceId}");
+					if (!string.IsNullOrWhiteSpace(refreshLogName))
+					{
+						try { SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [GLOBAL-INDEX] ✅ UPDATED Entry {entry.Id}: IsResolved {wasResolved}→{up.IsResolved}, IsClusterResolved {wasClusterResolved}→{up.IsClusterResolved}, SleeveId {oldSleeveId}→{up.SleeveInstanceId}, ClusterId {oldClusterId}→{up.ClusterSleeveInstanceId}\n"); } catch { }
+					}
+				}
+				else
+				{
+					DebugLogger.Info($"[GLOBAL-INDEX] ⚠️ Entry {entry.Id}: No change needed - IsResolved={entry.IsResolved}, IsClusterResolved={entry.IsClusterResolved} (matches update values)");
+					if (!string.IsNullOrWhiteSpace(refreshLogName))
+					{
+						try { SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [GLOBAL-INDEX] ⚠️ Entry {entry.Id}: No change needed - values match\n"); } catch { }
+					}
 				}
 				
 				if (entry.MepElementId != up.MepElementId ||
@@ -910,9 +1002,101 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 				}
 			}
 
-			if (changed)
+			// ✅ CRITICAL DEBUG: Always log whether Save() will be called
+			// NOTE: 'changed' means data was modified (entries updated), NOT that flag values are true/false
+			int updateCount = updates.Count();
+			int clusterUpdates = updates.Count(u => u.IsClusterResolved);
+			DebugLogger.Info($"[GLOBAL-INDEX] UpsertFlagsWithIdsAndClashZoneData completed: {updateCount} updates processed ({clusterUpdates} cluster updates), dataModified={changed}, Save() will be called: {changed}");
+			if (!string.IsNullOrWhiteSpace(refreshLogName))
 			{
-				Save(doc, index);
+				try { SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [GLOBAL-INDEX] Completed: {updateCount} updates processed ({clusterUpdates} cluster updates), dataModified={changed} (NOT flag values), Save() will be called: {changed}\n"); } catch { }
+			}
+			
+			// ✅ CRITICAL FIX: Always save if there are cluster updates, even if 'changed' is false
+			// This ensures cluster flags are persisted to XML
+			if (changed || clusterUpdates > 0)
+			{
+				// ✅ CRITICAL: Verify memory state BEFORE Save() to confirm updates are in memory
+				var entriesBeforeSave = GetAllEntries(index).ToList();
+				int resolvedBeforeSave = entriesBeforeSave.Count(e => e.IsResolved);
+				int clusterResolvedBeforeSave = entriesBeforeSave.Count(e => e.IsClusterResolved);
+				
+				DebugLogger.Info($"[GLOBAL-INDEX] ✅ Calling Save() for category '{categoryName}' - changes will be persisted to XML");
+				DebugLogger.Info($"[GLOBAL-INDEX] 📊 MEMORY STATE BEFORE SAVE: IsResolved={resolvedBeforeSave}, IsClusterResolved={clusterResolvedBeforeSave} (out of {entriesBeforeSave.Count} total entries)");
+				if (!string.IsNullOrWhiteSpace(refreshLogName))
+				{
+					try 
+					{ 
+						SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [GLOBAL-INDEX] ✅ Calling Save() for category '{categoryName}'\n");
+						SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [GLOBAL-INDEX] 📊 MEMORY STATE BEFORE SAVE: IsResolved={resolvedBeforeSave}, IsClusterResolved={clusterResolvedBeforeSave} (out of {entriesBeforeSave.Count} total entries)\n");
+					} 
+					catch { }
+				}
+				
+				try
+				{
+					Save(doc, index);
+					
+					// ✅ CRITICAL: Verify file state AFTER Save() to confirm persistence worked
+					var filePath = GetCategoryIndexPath(doc, categoryName);
+					if (File.Exists(filePath))
+					{
+						var fileContent = File.ReadAllText(filePath);
+						int trueResolvedInFile = (fileContent.Split(new[] { "IsResolved=\"true\"" }, StringSplitOptions.None).Length - 1);
+						int falseResolvedInFile = (fileContent.Split(new[] { "IsResolved=\"false\"" }, StringSplitOptions.None).Length - 1);
+						int trueClusterInFile = (fileContent.Split(new[] { "IsClusterResolved=\"true\"" }, StringSplitOptions.None).Length - 1);
+						int falseClusterInFile = (fileContent.Split(new[] { "IsClusterResolved=\"false\"" }, StringSplitOptions.None).Length - 1);
+						
+						DebugLogger.Info($"[GLOBAL-INDEX] ✅ Save() completed for category '{categoryName}'");
+						DebugLogger.Info($"[GLOBAL-INDEX] 📊 FILE STATE AFTER SAVE: IsResolved true={trueResolvedInFile}, false={falseResolvedInFile} | IsClusterResolved true={trueClusterInFile}, false={falseClusterInFile}");
+						DebugLogger.Info($"[GLOBAL-INDEX] 📊 MEMORY STATE AFTER SAVE: IsResolved={resolvedBeforeSave}, IsClusterResolved={clusterResolvedBeforeSave}");
+						
+						if (trueResolvedInFile != resolvedBeforeSave || trueClusterInFile != clusterResolvedBeforeSave)
+						{
+							DebugLogger.Error($"[GLOBAL-INDEX] ❌❌❌ PERSISTENCE FAILURE: File flags don't match memory! Memory has {resolvedBeforeSave} IsResolved, {clusterResolvedBeforeSave} IsClusterResolved, but file has {trueResolvedInFile} IsResolved=true, {trueClusterInFile} IsClusterResolved=true");
+						}
+						
+						if (!string.IsNullOrWhiteSpace(refreshLogName))
+						{
+							try 
+							{ 
+								SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [GLOBAL-INDEX] ✅ Save() completed for category '{categoryName}'\n");
+								SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [GLOBAL-INDEX] 📊 FILE STATE AFTER SAVE: IsResolved true={trueResolvedInFile}, false={falseResolvedInFile} | IsClusterResolved true={trueClusterInFile}, false={falseClusterInFile}\n");
+								SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [GLOBAL-INDEX] 📊 MEMORY STATE AFTER SAVE: IsResolved={resolvedBeforeSave}, IsClusterResolved={clusterResolvedBeforeSave}\n");
+								if (trueResolvedInFile != resolvedBeforeSave || trueClusterInFile != clusterResolvedBeforeSave)
+								{
+									SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [GLOBAL-INDEX] ❌❌❌ PERSISTENCE FAILURE: File flags don't match memory!\n");
+								}
+							} 
+							catch { }
+						}
+					}
+					else
+					{
+						DebugLogger.Error($"[GLOBAL-INDEX] ❌ Save() completed but file does NOT exist at: {filePath}");
+						if (!string.IsNullOrWhiteSpace(refreshLogName))
+						{
+							try { SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [GLOBAL-INDEX] ❌ Save() completed but file does NOT exist at: {filePath}\n"); } catch { }
+						}
+					}
+				}
+				catch (Exception saveEx)
+				{
+					DebugLogger.Error($"[GLOBAL-INDEX] ❌ Save() FAILED for category '{categoryName}': {saveEx.Message}\n{saveEx.StackTrace}");
+					if (!string.IsNullOrWhiteSpace(refreshLogName))
+					{
+						try { SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [GLOBAL-INDEX] ❌ Save() FAILED: {saveEx.Message}\n{saveEx.StackTrace}\n"); } catch { }
+					}
+					throw; // Re-throw to ensure caller knows Save() failed
+				}
+			}
+			else
+			{
+				DebugLogger.Warning($"[GLOBAL-INDEX] ⚠️ Save() NOT called for category '{categoryName}' - no changes detected (this may indicate entries weren't found or values matched)");
+				if (!string.IsNullOrWhiteSpace(refreshLogName))
+				{
+					try { SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [GLOBAL-INDEX] ⚠️ Save() NOT called - no changes detected\n"); } catch { }
+				}
 			}
 		}
 
@@ -1163,10 +1347,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
 		public static void Save(Document doc, CategoryGlobalIndex index)
 		{
+			// ✅ CRITICAL: Log EVERY Save() call to detect if file is being overwritten after flag reset
+			string path = GetCategoryIndexPath(doc, index.Category);
+			var entriesBeforeSave = GetAllEntries(index).ToList();
+			int resolvedBeforeSave = entriesBeforeSave.Count(e => e.IsResolved);
+			int clusterResolvedBeforeSave = entriesBeforeSave.Count(e => e.IsClusterResolved);
+			DebugLogger.Info($"[GLOBAL-INDEX] 🔵 Save() CALLED for category '{index.Category}' at {DateTime.Now:HH:mm:ss.fff} - File: {path} - Memory: IsResolved={resolvedBeforeSave}, IsClusterResolved={clusterResolvedBeforeSave}");
+			try
+			{
+				var refreshLogPath = Path.Combine(Path.GetDirectoryName(path) ?? "", "Refresh_GlobalIndex_Verification.log");
+				SafeFileLogger.SafeAppendText(refreshLogPath, $"[{DateTime.Now}] [GLOBAL-INDEX] 🔵 Save() CALLED for category '{index.Category}' - File: {path} - Memory: IsResolved={resolvedBeforeSave}, IsClusterResolved={clusterResolvedBeforeSave}\n");
+			}
+			catch { }
+			
 			try
 			{
 				ProjectPathService.EnsureFiltersDirectory(doc);
-				string path = GetCategoryIndexPath(doc, index.Category);
 				
 				// ✅ CRITICAL FIX: Clean up placeholder FileComboGroups with empty LinkedFile/HostFile BEFORE saving
 				// Remove FileComboGroups that have empty LinkedFile/HostFile (they shouldn't exist)
@@ -1305,17 +1501,75 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 				if (index.ProcessedFileCombos == null)
 					index.ProcessedFileCombos = new List<ProcessedFileCombo>();
 				
+				// ✅ CRITICAL: Log before saving to verify what we're about to write
+				var allEntriesBeforeSave = GetAllEntries(index).ToList();
+				int resolvedCount = allEntriesBeforeSave.Count(e => e.IsResolved);
+				int clusterResolvedCount = allEntriesBeforeSave.Count(e => e.IsClusterResolved);
+				DebugLogger.Info($"[GLOBAL-INDEX] 📝 About to save Global XML for '{index.Category}': Total entries={allEntriesBeforeSave.Count}, IsResolved={resolvedCount}, IsClusterResolved={clusterResolvedCount}");
+				
+				// ✅ CRITICAL: Ensure file is written and flushed to disk
 				using (var writer = new StreamWriter(path))
 				{
 					_serializer.Serialize(writer, index);
+					writer.Flush(); // ✅ Force flush to ensure data is written to disk
 				}
 				
-				// ✅ VERIFICATION: Verify file was written and contains ProcessedFileCombos
-				if (!DeploymentConfiguration.DeploymentMode && File.Exists(path))
+				// ✅ CRITICAL: Small delay to ensure file system has written the file
+				System.Threading.Thread.Sleep(50);
+				
+				// ✅ VERIFICATION: Verify file was written and check flag values
+				if (File.Exists(path))
 				{
 					var fileContent = File.ReadAllText(path);
 					bool hasProcessedFileCombos = fileContent.Contains("<ProcessedFileCombo");
-					DebugLogger.Info($"[GLOBAL-INDEX] ✅ Saved Global XML for '{index.Category}' - ProcessedFileCombos in file: {hasProcessedFileCombos}, Count: {index.ProcessedFileCombos?.Count ?? 0}");
+					
+					// ✅ CRITICAL: Verify the saved file contains the updated flag values
+					int trueResolvedInFile = (fileContent.Split(new[] { "IsResolved=\"true\"" }, StringSplitOptions.None).Length - 1);
+					int falseResolvedInFile = (fileContent.Split(new[] { "IsResolved=\"false\"" }, StringSplitOptions.None).Length - 1);
+					int trueClusterInFile = (fileContent.Split(new[] { "IsClusterResolved=\"true\"" }, StringSplitOptions.None).Length - 1);
+					int falseClusterInFile = (fileContent.Split(new[] { "IsClusterResolved=\"false\"" }, StringSplitOptions.None).Length - 1);
+					
+					// ✅ CRITICAL: Always log to both DebugLogger AND direct file (bypasses filtering)
+					string verificationMsg = $"[GLOBAL-INDEX] ✅ Saved Global XML for '{index.Category}' to: {path}";
+					string fileVerificationMsg = $"[GLOBAL-INDEX] 📊 File verification: IsResolved true={trueResolvedInFile}, false={falseResolvedInFile} | IsClusterResolved true={trueClusterInFile}, false={falseClusterInFile}";
+					string memoryStateMsg = $"[GLOBAL-INDEX] 📊 Memory state: IsResolved={resolvedCount}, IsClusterResolved={clusterResolvedCount}";
+					
+					DebugLogger.Info(verificationMsg);
+					DebugLogger.Info(fileVerificationMsg);
+					DebugLogger.Info(memoryStateMsg);
+					
+					// ✅ DIRECT FILE LOGGING: Write to refresh log file to bypass DebugLogger filtering
+					try
+					{
+						var refreshLogPath = Path.Combine(Path.GetDirectoryName(path) ?? "", "Refresh_GlobalIndex_Verification.log");
+						SafeFileLogger.SafeAppendText(refreshLogPath, $"[{DateTime.Now}] {verificationMsg}\n");
+						SafeFileLogger.SafeAppendText(refreshLogPath, $"[{DateTime.Now}] {fileVerificationMsg}\n");
+						SafeFileLogger.SafeAppendText(refreshLogPath, $"[{DateTime.Now}] {memoryStateMsg}\n");
+					}
+					catch { /* Ignore file logging errors */ }
+					
+					if (trueResolvedInFile != resolvedCount || trueClusterInFile != clusterResolvedCount)
+					{
+						string mismatchMsg = $"[GLOBAL-INDEX] ⚠️ MISMATCH: File flags don't match memory state! File has {trueResolvedInFile} IsResolved=true, {trueClusterInFile} IsClusterResolved=true, but memory has {resolvedCount} IsResolved, {clusterResolvedCount} IsClusterResolved";
+						DebugLogger.Warning(mismatchMsg);
+						try
+						{
+							var refreshLogPath = Path.Combine(Path.GetDirectoryName(path) ?? "", "Refresh_GlobalIndex_Verification.log");
+							SafeFileLogger.SafeAppendText(refreshLogPath, $"[{DateTime.Now}] {mismatchMsg}\n");
+						}
+						catch { /* Ignore file logging errors */ }
+					}
+				}
+				else
+				{
+					string errorMsg = $"[GLOBAL-INDEX] ❌ File was NOT created at: {path}";
+					DebugLogger.Error(errorMsg);
+					try
+					{
+						var refreshLogPath = Path.Combine(Path.GetDirectoryName(path) ?? "", "Refresh_GlobalIndex_Verification.log");
+						SafeFileLogger.SafeAppendText(refreshLogPath, $"[{DateTime.Now}] {errorMsg}\n");
+					}
+					catch { /* Ignore file logging errors */ }
 				}
 			}
 			catch (Exception ex)

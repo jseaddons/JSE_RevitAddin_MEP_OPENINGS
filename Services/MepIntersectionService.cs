@@ -16,6 +16,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private const int MAX_GEOMETRY_CACHE_SIZE = 5000; // Limit to 5000 entries (~10-20MB typical)
         private static readonly Dictionary<string, Solid?> _geometryCache = new Dictionary<string, Solid?>();
         private static readonly LinkedList<string> _geometryCacheOrder = new LinkedList<string>(); // LRU tracking
+        private static readonly IRevitUnitConversionService UnitConverter;
+
+        static MepIntersectionService()
+        {
+            try
+            {
+                UnitConverter = RevitUnitConversionService.Instance;
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    DebugLogger.Error($"[MepIntersectionService] Failed during static initialization: {ex}");
+                    SafeFileLogger.SafeAppendText("mep_intersection_errors.log",
+                        $"[{DateTime.Now}] [STATIC_INIT_ERROR] {ex}\n{ex.StackTrace}\n");
+                }
+                catch
+                {
+                    // Swallow logging issues – we still need a usable fallback.
+                }
+
+                UnitConverter = new FallbackUnitConverter();
+            }
+        }
+
+        private sealed class FallbackUnitConverter : IRevitUnitConversionService
+        {
+            private const double MillimetersPerFoot = 304.8;
+
+            public double ToInternalMillimeters(double value) => value / MillimetersPerFoot;
+            public double FromInternalMillimeters(double value) => value * MillimetersPerFoot;
+            public double ToInternalFeet(double value) => value;
+            public double FromInternalFeet(double value) => value;
+        }
         
         // ✅ TWO-TIER OPTIMIZATION: Spatial partitioning service for Tier 1 filtering
         // Only initialized when UseSpatialGrid flag is enabled
@@ -1618,7 +1652,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 // Calculate distance in feet
                 var distance = mepCenter.DistanceTo(structCenter);
-                return UnitUtils.ConvertFromInternalUnits(distance, UnitTypeId.Feet);
+                return UnitConverter.FromInternalFeet(distance);
             }
             catch
             {
@@ -1825,7 +1859,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (minThicknessMm <= 0)
                     return walls;
                 
-                double minThicknessInternal = UnitUtils.ConvertToInternalUnits(minThicknessMm, UnitTypeId.Millimeters);
+                double minThicknessInternal = UnitConverter.ToInternalMillimeters(minThicknessMm);
                 var filteredWalls = new List<Element>();
                 int skippedCount = 0;
                 
@@ -1844,7 +1878,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             skippedCount++;
                             if (OptimizationFlags.UseDiagnosticMode)
                             {
-                                double wallThicknessMm = UnitUtils.ConvertFromInternalUnits(wallThickness, UnitTypeId.Millimeters);
+                                double wallThicknessMm = UnitConverter.FromInternalMillimeters(wallThickness);
                                 System.Diagnostics.Debug.WriteLine($"[MepIntersectionService] SKIP: Wall {wall.Id.IntegerValue} thickness {wallThicknessMm:F1}mm < {minThicknessMm:F1}mm minimum");
                             }
                         }
@@ -1887,7 +1921,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (minThicknessMm <= 0)
                     return elements;
                 
-                double minThicknessInternal = UnitUtils.ConvertToInternalUnits(minThicknessMm, UnitTypeId.Millimeters);
+                double minThicknessInternal = UnitConverter.ToInternalMillimeters(minThicknessMm);
                 var filteredElements = new List<(Element, Transform?)>();
                 int skippedCount = 0;
                 
@@ -1906,7 +1940,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             skippedCount++;
                             if (OptimizationFlags.UseDiagnosticMode)
                             {
-                                double wallThicknessMm = UnitUtils.ConvertFromInternalUnits(wallThickness, UnitTypeId.Millimeters);
+                                double wallThicknessMm = UnitConverter.FromInternalMillimeters(wallThickness);
                                                                 if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Log($"[MepIntersectionService] SKIP: Wall {element.Id.IntegerValue} thickness {wallThicknessMm:F1}mm < {minThicknessMm:F1}mm minimum");
                             }

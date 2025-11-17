@@ -15,9 +15,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     public class MarkParameterService
     {
         // ⚠️ PERFORMANCE: Cache clash zones to avoid O(n·m) XML deserialization
-        private Dictionary<long, ClashZone> _clashZoneCache;
+        private Dictionary<long, ClashZone>? _clashZoneCache;
         private bool _cacheInitialized = false;
-        private Document _cachedDocument = null; // Track document for cache invalidation
+        private Document? _cachedDocument = null; // Track document for cache invalidation
         
         /// <summary>
         /// Apply MEPMARK to cluster sleeves for a specific category
@@ -31,7 +31,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <param name="markPrefixes">Optional MarkPrefixSettings to check RemarkProjectPrefix flag</param>
         /// <returns>Tuple of (processedCount, errorCount)</returns>
         public (int processedCount, int errorCount) ApplyMepMarkToClusters(
-            Document doc, string category, string projectPrefix, string disciplinePrefix, bool remarkAll = false, string numberFormat = "000", MarkPrefixSettings markPrefixes = null)
+            Document doc, string category, string projectPrefix, string disciplinePrefix, bool remarkAll = false, string numberFormat = "000", MarkPrefixSettings? markPrefixes = null)
         {
             // Call the internal implementation
             return ApplyMepMarkToClustersInternal(doc, category, projectPrefix, disciplinePrefix, remarkAll, numberFormat, markPrefixes);
@@ -95,7 +95,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         public (int processedCount, int errorCount) ApplyMepMarkToClustersInternal(
-            Document doc, string category, string projectPrefix, string disciplinePrefix, bool remarkAll = false, string numberFormat = "000", MarkPrefixSettings markPrefixes = null)
+            Document doc, string category, string projectPrefix, string disciplinePrefix, bool remarkAll = false, string numberFormat = "000", MarkPrefixSettings? markPrefixes = null)
         {
             int processedCount = 0;
             int errorCount = 0;
@@ -180,8 +180,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return (0, 0);
                 }
                 
-                // ✅ FIX: Get max number per category (not per prefix) - finds max for any prefix in this category
-                int categoryMaxNumber = GetMaxExistingMarkNumberForCategory(doc, category, disciplinePrefix);
+                // ✅ FIX: Get max number per category (consider all active prefixes for this category)
+                var candidatePrefixes = GetCandidateDisciplinePrefixes(category, disciplinePrefix, markPrefixes);
+                int categoryMaxNumber = GetMaxExistingMarkNumberForCategory(doc, category, candidatePrefixes);
                 int startIndex = categoryMaxNumber + 1;
                 
                                 if (!DeploymentConfiguration.DeploymentMode)
@@ -211,7 +212,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         var sleeve = allSleeves[i];
                         
-                        // ✅ ENHANCED: Check if MEP Mark exists
+                        // ✅ ENHANCED: Get clash zone early to resolve element-specific prefix
+                        var mepElementIdParam = sleeve.LookupParameter("MEP_ElementId");
+                        long mepElementId = mepElementIdParam?.AsInteger() ?? -1;
+                        var clashZone = GetClashZoneByMepElementId(mepElementId, doc);
+                        
+                        // ✅ ENHANCED: Resolve element-specific prefix (e.g., System Type override)
+                        var elementPrefix = ResolveDisciplinePrefixForElement(category, disciplinePrefix, markPrefixes, clashZone);
+                        if (!string.IsNullOrWhiteSpace(elementPrefix))
+                        {
+                            candidatePrefixes.Add(elementPrefix);
+                        }
+
                         var existingMark = sleeve.LookupParameter("MEP Mark")?.AsString() ?? 
                                           sleeve.LookupParameter("Mark")?.AsString();
                         
@@ -221,7 +233,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (remarkAll && !string.IsNullOrEmpty(existingMark))
                         {
                             // Try to extract number from existing mark
-                            int? extractedNumber = ExtractNumberFromMark(existingMark, disciplinePrefix);
+                            int? extractedNumber = ExtractNumberFromMark(existingMark, candidatePrefixes);
                             if (extractedNumber.HasValue)
                             {
                                 numberToUse = extractedNumber.Value;
@@ -279,9 +291,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                         
                         // ✅ ENHANCED: Log detailed info about sleeve before marking
-                        var mepElementIdParam = sleeve.LookupParameter("MEP_ElementId");
-                        long mepElementId = mepElementIdParam?.AsInteger() ?? -1;
-                        var clashZone = GetClashZoneByMepElementId(mepElementId, doc);
                         
                         // ✅ DEBUG: Log sleeve host type
                         var famName = sleeve.Symbol?.Family?.Name ?? "";
@@ -317,22 +326,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             $"IsCluster={clashZone?.IsClusterResolved ?? false}, ClusterId={clashZone?.ClusterSleeveInstanceId ?? -1}\n");
                         }
                         
-                        string markValue = GenerateMarkValue(disciplinePrefix, numberToUse, numberFormat);
+                        string markValue = GenerateMarkValue(elementPrefix, numberToUse, numberFormat);
                         
-                        // ✅ CRITICAL FIX: Preserve existing project prefix when only remarking discipline prefix
-                        // If RemarkProjectPrefix is false, extract and preserve the existing project prefix from the mark
+                        // ✅ CRITICAL FIX: Preserve project prefix unless user explicitly opted to remark it
                         string effectiveProjectPrefix = projectPrefix;
-                        if (remarkAll && !string.IsNullOrEmpty(existingMark) && markPrefixes != null && !markPrefixes.RemarkProjectPrefix)
+                        if (markPrefixes != null && !markPrefixes.RemarkProjectPrefix)
                         {
-                            // Extract existing project prefix from mark (everything before the discipline prefix)
-                            string extractedProjectPrefix = ExtractProjectPrefixFromMark(existingMark, disciplinePrefix);
-                            if (!string.IsNullOrEmpty(extractedProjectPrefix))
+                            if (!string.IsNullOrEmpty(existingMark))
                             {
-                                effectiveProjectPrefix = extractedProjectPrefix;
+                                // Extract the prefix from the existing mark
+                                string extractedProjectPrefix = ExtractProjectPrefixFromMark(existingMark, candidatePrefixes);
+                                if (!string.IsNullOrEmpty(extractedProjectPrefix))
+                                {
+                                    effectiveProjectPrefix = extractedProjectPrefix;
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        File.AppendAllText(mepmarkLogPath,
+                                            $"[MARK-ASSIGN] Preserving existing project prefix '{effectiveProjectPrefix}' from mark '{existingMark}' (RemarkProjectPrefix=false)\n");
+                                    }
+                                }
+                                else
+                                {
+                                    // Fall back to the stored project prefix from UI/service
+                                    var storedPrefix = markPrefixes.ProjectPrefix;
+                                    if (!string.IsNullOrEmpty(storedPrefix))
+                                    {
+                                        effectiveProjectPrefix = storedPrefix;
+                                    }
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        File.AppendAllText(mepmarkLogPath,
+                                            $"[MARK-ASSIGN] Existing mark had no project prefix; using stored prefix '{effectiveProjectPrefix}' (RemarkProjectPrefix=false)\n");
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // No existing mark — use the stored project prefix if available
+                                var storedPrefix = markPrefixes.ProjectPrefix;
+                                if (!string.IsNullOrEmpty(storedPrefix))
+                                {
+                                    effectiveProjectPrefix = storedPrefix;
+                                }
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
-                                    File.AppendAllText(mepmarkLogPath, 
-                                    $"[MARK-ASSIGN] Preserving existing project prefix '{effectiveProjectPrefix}' from mark '{existingMark}' (RemarkProjectPrefix=false)\n");
+                                    File.AppendAllText(mepmarkLogPath,
+                                        $"[MARK-ASSIGN] No existing mark found; using stored project prefix '{effectiveProjectPrefix}' (RemarkProjectPrefix=false)\n");
                                 }
                             }
                         }
@@ -343,7 +382,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             File.AppendAllText(mepmarkLogPath, 
-                            $"[MARK-ASSIGN] Generating mark: prefix='{effectiveProjectPrefix}', discipline='{disciplinePrefix}', number={numberToUse} → '{fullMarkValue}'\n");
+                            $"[MARK-ASSIGN] Generating mark: prefix='{effectiveProjectPrefix}', discipline='{elementPrefix}', number={numberToUse} → '{fullMarkValue}'\n");
                         }
                         
                         try
@@ -648,7 +687,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Get clash zone by MEP element ID from XML files
         /// ⚠️ PERFORMANCE: Uses cache to avoid O(n·m) XML deserialization
         /// </summary>
-        private ClashZone GetClashZoneByMepElementId(long mepElementId, Document doc = null)
+        private ClashZone GetClashZoneByMepElementId(long mepElementId, Document? doc = null)
         {
             // Initialize cache once per service instance, or reinitialize if document changed
             if (!_cacheInitialized || (doc != null && _cachedDocument != doc))
@@ -680,7 +719,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Initialize clash zone cache from all XML files (called once)
         /// </summary>
-        private void InitializeClashZoneCache(Document doc = null)
+        private void InitializeClashZoneCache(Document? doc = null)
         {
             _clashZoneCache = new Dictionary<long, ClashZone>();
 
@@ -767,15 +806,74 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         using (var reader = new StreamReader(xmlFile))
                         {
                             var filter = (OpeningFilter)serializer.Deserialize(reader);
+                            
+                            // ✅ CRITICAL FIX: Load from BOTH hierarchical structure (Filters → FileCombos → ClashZones) AND flat structure
+                            // UpdateSleeveCoordinatesInXml updates both structures, so we must read from both
+                            // This ensures floor sleeves stored in hierarchical structure are found!
+                            
+                            var allClashZonesFromFile = new List<ClashZone>();
+                            
+                            // 1. Load from hierarchical structure (PRIMARY) - where floor sleeves might be stored
+                            if (filter?.ClashZoneStorage?.Filters != null)
+                            {
+                                int hierarchicalCount = 0;
+                                foreach (var filterGroup in filter.ClashZoneStorage.Filters)
+                                {
+                                    if (filterGroup?.FileCombos != null)
+                                    {
+                                        foreach (var fileCombo in filterGroup.FileCombos)
+                                        {
+                                            if (fileCombo?.ClashZones != null)
+                                            {
+                                                foreach (var cz in fileCombo.ClashZones)
+                                                {
+                                                    if (cz != null && !allClashZonesFromFile.Any(c => c.Id == cz.Id))
+                                                    {
+                                                        cz.EnsureSleevePlacementPointReconstructed();
+                                                        allClashZonesFromFile.Add(cz);
+                                                        hierarchicalCount++;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                if (hierarchicalCount > 0)
+                                {
+                                    File.AppendAllText(mepmarkLogPath, $"[CACHE-INIT] ✓ Loaded {hierarchicalCount} clash zones from hierarchical structure in {Path.GetFileName(xmlFile)}\n");
+                                }
+                            }
+                            
+                            // 2. Load from flat structure (BACKWARD COMPATIBILITY)
                             if (filter?.ClashZoneStorage?.AllZones != null)
                             {
-                                int clashZoneCount = filter.ClashZoneStorage.AllZones.Count;
-                                File.AppendAllText(mepmarkLogPath, $"[CACHE-INIT] ✓ Loading {Path.GetFileName(xmlFile)}: {clashZoneCount} clash zones found\n");
+                                int flatCount = 0;
+                                foreach (var cz in filter.ClashZoneStorage.AllZones)
+                                {
+                                    if (cz != null && !allClashZonesFromFile.Any(c => c.Id == cz.Id))
+                                    {
+                                        cz.EnsureSleevePlacementPointReconstructed();
+                                        allClashZonesFromFile.Add(cz);
+                                        flatCount++;
+                                    }
+                                }
+                                
+                                if (flatCount > 0)
+                                {
+                                    File.AppendAllText(mepmarkLogPath, $"[CACHE-INIT] ✓ Loaded {flatCount} clash zones from flat structure in {Path.GetFileName(xmlFile)}\n");
+                                }
+                            }
+                            
+                            int clashZoneCount = allClashZonesFromFile.Count;
+                            if (clashZoneCount > 0)
+                            {
+                                File.AppendAllText(mepmarkLogPath, $"[CACHE-INIT] ✓ Loading {Path.GetFileName(xmlFile)}: {clashZoneCount} total clash zones found (hierarchical + flat)\n");
                                 
                                 // ✅ DEBUG: Log first few clash zones to verify they have MEP element IDs
                                 if (clashZoneCount > 0)
                                 {
-                                    var firstZone = filter.ClashZoneStorage.AllZones[0];
+                                    var firstZone = allClashZonesFromFile[0];
                                                                         // ✅ DEPLOYMENT MODE: Skip file writes
                                     if (!DeploymentConfiguration.DeploymentMode)
                                     {
@@ -783,11 +881,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         $"[CACHE-INIT]   Sample Zone 0: MEP_ID={firstZone.MepElementId.IntegerValue}, " +
                                         $"Category={firstZone.MepElementCategory}, " +
                                         $"SleeveId={firstZone.SleeveInstanceId}, " +
-                                        $"ClusterId={firstZone.ClusterSleeveInstanceId}\n");
+                                        $"ClusterId={firstZone.ClusterSleeveInstanceId}, " +
+                                        $"HostType={firstZone.StructuralElementType}\n");
                                     }
                                 }
                                 
-                                foreach (var clashZone in filter.ClashZoneStorage.AllZones)
+                                foreach (var clashZone in allClashZonesFromFile)
                                 {
                                     long key = clashZone.MepElementId.IntegerValue;
                                     if (!_clashZoneCache.ContainsKey(key))
@@ -805,7 +904,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                 File.AppendAllText(mepmarkLogPath, 
                                                 $"[CACHE-INIT]   Zone {zonesInFile}: MEP_ID={key}, Category={clashZone.MepElementCategory}, " +
                                                 $"IsClusterResolved={clashZone.IsClusterResolved}, ClusterSleeveId={clashZone.ClusterSleeveInstanceId}, " +
-                                                $"SleeveId={clashZone.SleeveInstanceId}\n");
+                                                $"SleeveId={clashZone.SleeveInstanceId}, HostType={clashZone.StructuralElementType}\n");
                                             }
                                         }
                                     }
@@ -927,11 +1026,90 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// ✅ NEW: Get maximum existing mark number per category (any prefix)
         /// Finds max number for sleeves in this category regardless of prefix
         /// </summary>
-        private int GetMaxExistingMarkNumberForCategory(Document doc, string category, string disciplinePrefix)
+        private HashSet<string> GetCandidateDisciplinePrefixes(string category, string defaultPrefix, MarkPrefixSettings markPrefixes)
+        {
+            var prefixes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (!string.IsNullOrWhiteSpace(defaultPrefix))
+                prefixes.Add(defaultPrefix.Trim());
+
+            if (markPrefixes != null)
+            {
+                var basePrefix = markPrefixes.GetDisciplinePrefix(category);
+                if (!string.IsNullOrWhiteSpace(basePrefix))
+                    prefixes.Add(basePrefix.Trim());
+
+                if (category.Equals("Ducts", StringComparison.OrdinalIgnoreCase))
+                {
+                    foreach (var kvp in markPrefixes.DuctSystemTypeOverrides)
+                    {
+                        if (!string.IsNullOrWhiteSpace(kvp.Value))
+                            prefixes.Add(kvp.Value.Trim());
+                    }
+                }
+
+                if (category.Equals("Cable Trays", StringComparison.OrdinalIgnoreCase))
+                {
+                    foreach (var kvp in markPrefixes.CableTrayServiceTypeOverrides)
+                    {
+                        if (!string.IsNullOrWhiteSpace(kvp.Value))
+                            prefixes.Add(kvp.Value.Trim());
+                    }
+                }
+            }
+
+            return prefixes;
+        }
+
+        private string ResolveDisciplinePrefixForElement(string category, string defaultPrefix, MarkPrefixSettings markPrefixes, ClashZone clashZone)
+        {
+            string fallbackPrefix = !string.IsNullOrWhiteSpace(defaultPrefix)
+                ? defaultPrefix
+                : markPrefixes?.GetDisciplinePrefix(category) ?? defaultPrefix ?? string.Empty;
+
+            if (markPrefixes == null)
+                return fallbackPrefix;
+
+            string systemType = GetClashParameterValue(clashZone, "System Type", "MEP System Type", "System Classification");
+            string serviceType = GetClashParameterValue(clashZone, "Service Type", "System Abbreviation", "MEP System Type");
+
+            var resolved = markPrefixes.GetPrefixForElement(category, systemType, serviceType);
+            if (!string.IsNullOrWhiteSpace(resolved))
+                return resolved.Trim();
+
+            return fallbackPrefix;
+        }
+
+        private static string GetClashParameterValue(ClashZone clashZone, params string[] keys)
+        {
+            if (clashZone?.MepParameterValues == null || clashZone.MepParameterValues.Count == 0 || keys == null)
+                return null;
+
+            foreach (var key in keys)
+            {
+                if (string.IsNullOrWhiteSpace(key))
+                    continue;
+
+                var param = clashZone.MepParameterValues
+                    .FirstOrDefault(kv => kv != null &&
+                        kv.Key != null &&
+                        kv.Key.Equals(key, StringComparison.OrdinalIgnoreCase));
+
+                if (param != null && !string.IsNullOrWhiteSpace(param.Value))
+                    return param.Value;
+            }
+
+            return null;
+        }
+
+        private int GetMaxExistingMarkNumberForCategory(Document doc, string category, IEnumerable<string> disciplinePrefixes)
         {
             try
             {
                 int maxNumber = 0;
+                var prefixSet = new HashSet<string>((disciplinePrefixes ?? Enumerable.Empty<string>()), StringComparer.OrdinalIgnoreCase);
+                if (prefixSet.Count == 0)
+                    return 0;
                 
                 // ✅ OPTIMIZED: Only get sleeve family instances
                 var sleeveElements = new FilteredElementCollector(doc)
@@ -967,7 +1145,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!string.IsNullOrEmpty(markValue))
                         {
                             // Try to extract number from any mark format (any prefix + discipline prefix + number)
-                            int? extractedNumber = ExtractNumberFromMark(markValue, disciplinePrefix);
+                            int? extractedNumber = ExtractNumberFromMark(markValue, prefixSet);
                             if (extractedNumber.HasValue)
                             {
                                 maxNumber = Math.Max(maxNumber, extractedNumber.Value);
@@ -993,20 +1171,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Returns everything before the discipline prefix
         /// Example: "PROJ_DCT001" → "PROJ_", "OLD_PRE_PLU002" → "OLD_PRE_", "PLU003" → ""
         /// </summary>
-        private string ExtractProjectPrefixFromMark(string markValue, string disciplinePrefix)
+        private string ExtractProjectPrefixFromMark(string markValue, IEnumerable<string> disciplinePrefixes)
         {
             try
             {
-                if (string.IsNullOrEmpty(markValue) || string.IsNullOrEmpty(disciplinePrefix))
+                if (string.IsNullOrEmpty(markValue))
                     return string.Empty;
-                
-                // Look for discipline prefix in the mark
-                int prefixIndex = markValue.LastIndexOf(disciplinePrefix, StringComparison.OrdinalIgnoreCase);
-                if (prefixIndex < 0)
-                    return string.Empty; // No discipline prefix found, return empty
-                
-                // Return everything before the discipline prefix
-                return markValue.Substring(0, prefixIndex);
+
+                var prefixes = (disciplinePrefixes ?? Enumerable.Empty<string>())
+                    .Where(p => !string.IsNullOrWhiteSpace(p))
+                    .OrderByDescending(p => p.Length)
+                    .ToList();
+
+                foreach (var prefix in prefixes)
+                {
+                    int index = markValue.LastIndexOf(prefix, StringComparison.OrdinalIgnoreCase);
+                    if (index >= 0)
+                    {
+                        return markValue.Substring(0, index);
+                    }
+                }
+
+                return string.Empty;
             }
             catch
             {
@@ -1018,34 +1204,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// ✅ NEW: Extract number from existing mark value
         /// Supports formats like: "PREFIX_DCT001", "OLD_PRE_DCT002", "DCT003", etc.
         /// </summary>
-        private int? ExtractNumberFromMark(string markValue, string disciplinePrefix)
+        private int? ExtractNumberFromMark(string markValue, IEnumerable<string> disciplinePrefixes)
         {
             try
             {
-                if (string.IsNullOrEmpty(markValue) || string.IsNullOrEmpty(disciplinePrefix))
+                if (string.IsNullOrEmpty(markValue))
                     return null;
-                
-                // Look for discipline prefix in the mark
-                int prefixIndex = markValue.LastIndexOf(disciplinePrefix, StringComparison.OrdinalIgnoreCase);
-                if (prefixIndex < 0)
-                    return null;
-                
-                // Get the part after the discipline prefix
-                string numberPart = markValue.Substring(prefixIndex + disciplinePrefix.Length);
-                
-                // Try to parse as integer (handles formats like "001", "002", "03", etc.)
-                if (int.TryParse(numberPart, out int number))
+
+                var prefixes = (disciplinePrefixes ?? Enumerable.Empty<string>())
+                    .Where(p => !string.IsNullOrWhiteSpace(p))
+                    .OrderByDescending(p => p.Length)
+                    .ToList();
+
+                foreach (var prefix in prefixes)
                 {
-                    return number;
+                    int prefixIndex = markValue.LastIndexOf(prefix, StringComparison.OrdinalIgnoreCase);
+                    if (prefixIndex < 0)
+                        continue;
+
+                    string numberPart = markValue.Substring(prefixIndex + prefix.Length);
+                    if (int.TryParse(numberPart, out int number))
+                    {
+                        return number;
+                    }
                 }
-                
+
                 // Alternative: Look for any trailing digits (last 1-4 digits)
                 string digitsOnly = new string(markValue.Reverse().TakeWhile(char.IsDigit).Reverse().ToArray());
                 if (!string.IsNullOrEmpty(digitsOnly) && int.TryParse(digitsOnly, out int trailingNumber))
                 {
                     return trailingNumber;
                 }
-                
+
                 return null;
             }
             catch

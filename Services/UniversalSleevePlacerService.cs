@@ -11,6 +11,8 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Utils;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -512,7 +514,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                 // ✅ DEPLOYMENT MODE: Skip file writes
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                        File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 0: Starting processing for Zone={clashZone.Id}\n");
+                            var pathName = _isReplayPath ? "PATH 1 (Replay)" : "PATH 2/3 (Sizing/Detection)";
+                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 0: Starting processing for Zone={clashZone.Id}, Placement Path={pathName}\n");
+                            DebugLogger.Info($"[UniversalSleevePlacer] Zone={clashZone.Id}: Using {pathName}");
                         }
                     } 
                     catch { }
@@ -615,25 +619,56 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             batchLogs.AppendLine($"[{DateTime.Now:HH:mm:ss}] [SLEEVE-PLACER] FLAGS: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}");
                         }
                         
-                        // STEP: Determine existing sleeves via direct Revit lookups (flags are informational only)
-                        if (clashZone.ClusterSleeveInstanceId > 0)
+                        // ✅ BUG FIX: Check IsClusterResolved flag BEFORE individual placement
+                        // If IsClusterResolved=true, there MUST be a ClusterSleeveInstanceId (impossible to be cluster-resolved without a cluster sleeve ID)
+                        if (clashZone.IsClusterResolved && clashZone.ClusterSleeveInstanceId > 0)
                         {
                             var clusterSleeveElement = GetCachedElement(clashZone.ClusterSleeveInstanceId);
                             if (clusterSleeveElement != null)
-                                {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} already has cluster sleeve {clashZone.ClusterSleeveInstanceId}");
-                                SafeFileLogger.SafeAppendText(placementLogName, $"[{DateTime.Now}] SKIP ClusterExists: ClashZone={clashZone.Id}, ClusterSleeveId={clashZone.ClusterSleeveInstanceId}\n");
-                            SkippedCount++;
-                            continue;
-                                    }
-                                    else
-                                    {
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} already cluster-resolved (IsClusterResolved=true) with cluster sleeve {clashZone.ClusterSleeveInstanceId}");
+                                SafeFileLogger.SafeAppendText(placementLogName, $"[{DateTime.Now}] SKIP ClusterResolved: ClashZone={clashZone.Id}, ClusterSleeveId={clashZone.ClusterSleeveInstanceId}, IsClusterResolved=true\n");
+                                SkippedCount++;
+                                continue;
+                            }
+                            else
+                            {
+                                // ✅ CRITICAL: Cluster sleeve was deleted - reset flags in memory
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[UniversalSleevePlacer] RESET: ClashZone {clashZone.Id} has IsClusterResolved=true but cluster sleeve {clashZone.ClusterSleeveInstanceId} was deleted - resetting flags");
                                 clashZone.IsClusterResolved = false;
                                 clashZone.ClusterSleeveInstanceId = -1;
+                                // Continue to individual placement check below
                             }
                         }
                         
+                        // ✅ BUG FIX: Check IsResolved flag BEFORE checking SleeveInstanceId
+                        // PATH 1 should respect flag state from XML - if IsResolved=true, skip placement
+                        // If IsResolved=true, there MUST be a SleeveInstanceId (impossible to be resolved without a sleeve ID)
+                        if (clashZone.IsResolved && clashZone.SleeveInstanceId > 0)
+                        {
+                            var existingIndividualSleeve = GetCachedElement(clashZone.SleeveInstanceId);
+                            if (existingIndividualSleeve != null)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} already resolved (IsResolved=true) with individual sleeve {clashZone.SleeveInstanceId}");
+                                SafeFileLogger.SafeAppendText(placementLogName, $"[{DateTime.Now}] SKIP AlreadyResolved: ClashZone={clashZone.Id}, SleeveId={clashZone.SleeveInstanceId}, IsResolved=true\n");
+                                SkippedCount++;
+                                continue;
+                            }
+                            else
+                            {
+                                // ✅ CRITICAL: Sleeve was deleted - reset flag and continue to placement
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[UniversalSleevePlacer] RESET: ClashZone {clashZone.Id} has IsResolved=true but sleeve {clashZone.SleeveInstanceId} was deleted - resetting flag");
+                                clashZone.IsResolved = false;
+                                clashZone.SleeveInstanceId = -1;
+                                // Continue to placement below
+                            }
+                        }
+                        
+                        // Check if sleeve exists by ID (even if flag is false - handles stale data)
                         if (clashZone.SleeveInstanceId > 0)
                         {
                             var existingIndividualSleeve = GetCachedElement(clashZone.SleeveInstanceId);
@@ -695,12 +730,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 }
                                     else
                                     {
-                                        // ✅ OOP REFACTORING: Use FlagManager to reset cluster flags
+                                        // ✅ CRITICAL FIX: Cluster sleeve was deleted - reset flags in memory
+                                        // DO NOT call UpdateFlagsForPlacement with isCluster=true here - it would set IsClusterResolved=true again!
+                                        // The flags will be persisted correctly when the new individual sleeve is placed below
                                                                                 if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Info($"[FLAG-MANAGER] RESET: ClashZone {clashZone.Id} has cluster sleeve in Global XML but sleeve was deleted - resetting flags and proceeding with placement");
                                         clashZone.IsClusterResolved = false;
                                         clashZone.ClusterSleeveInstanceId = -1;
-                                        _flagManager.UpdateFlagsForPlacement(clashZone, -1, isCluster: true, categoryName, _filterName);
+                                        clashZone.IsResolved = false; // Also reset individual flag since cluster was deleted
+                                        clashZone.SleeveInstanceId = -1;
+                                        // ✅ NOTE: Flags will be persisted when new sleeve is placed via UpdateFlagsForPlacement(isCluster: false)
                                     }
                                 }
                                 else if (entry.IsResolved && entry.SleeveInstanceId > 0)
@@ -809,14 +848,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         XYZ placementOffset = XYZ.Zero;
                         double finalWidth = 0.0, finalHeight = 0.0, finalDiameter = 0.0;
                         
-                        // ⏱️ TIMING: Clearance calculation
-                        var clearanceTimer = System.Diagnostics.Stopwatch.StartNew();
-                        // 🛡️ ARCHITECTURE FIX: Use CONDITIONS service for ALL clearance types
-                        // This ensures consistent architecture: CONDITIONS XML → UniversalSleevePlacerService
-                        // Raw dimensions from ClashZone + Clearance from CONDITIONS = Final dimensions
-                        
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[UniversalSleevePlacer] CLEARANCE CALCULATION START: Category='{clashZone.MepElementCategory}', Strategy={(_strategy?.GetType().Name ?? "NULL")}");
+                        // ✅ CRITICAL FIX: PATH 1 (Replay) should use existing sleeve size and skip clearance calculation
+                        // For PATH 1, sleeve size data is already in ClashZone (SleeveWidth, SleeveHeight, SleeveDiameter)
+                        // No need to calculate clearance - just use existing data
+                        if (_isReplayPath && clashZone.SleeveWidth > 0 && clashZone.SleeveHeight > 0)
+                        {
+                            // ✅ PATH 1: Use existing sleeve size from ClashZone (already includes clearance)
+                            finalWidth = clashZone.SleeveWidth;
+                            finalHeight = clashZone.SleeveHeight;
+                            finalDiameter = clashZone.SleeveDiameter > 0 ? clashZone.SleeveDiameter : Math.Max(finalWidth, finalHeight);
+                            
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[UniversalSleevePlacer] ✅ PATH 1 (Replay): Using existing sleeve size - W={UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters):F1}mm, H={UnitUtils.ConvertFromInternalUnits(finalHeight, UnitTypeId.Millimeters):F1}mm, D={UnitUtils.ConvertFromInternalUnits(finalDiameter, UnitTypeId.Millimeters):F1}mm");
+                                File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9: ✅ PATH 1 (Replay) - Using existing sleeve size (skipping clearance calculation)\n");
+                            }
+                        }
+                        else if (_isReplayPath)
+                        {
+                            // ✅ PATH 1 but missing sleeve size data - log warning
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ PATH 1 (Replay): Missing sleeve size data for Zone={clashZone.Id} - SleeveWidth={clashZone.SleeveWidth}, SleeveHeight={clashZone.SleeveHeight}. Falling back to PATH 2/3 clearance calculation.");
+                                File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9: ⚠️ PATH 1 (Replay) - Missing sleeve size, falling back to clearance calculation\n");
+                            }
+                        }
+                        else
+                        {
+                            // ✅ PATH 2/3: Calculate clearance (normal flow)
+                            // ⏱️ TIMING: Clearance calculation
+                            var clearanceTimer = System.Diagnostics.Stopwatch.StartNew();
+                            // 🛡️ ARCHITECTURE FIX: Use CONDITIONS service for ALL clearance types
+                            // This ensures consistent architecture: CONDITIONS XML → UniversalSleevePlacerService
+                            // Raw dimensions from ClashZone + Clearance from CONDITIONS = Final dimensions
+                            
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[UniversalSleevePlacer] CLEARANCE CALCULATION START: Category='{clashZone.MepElementCategory}', Strategy={(_strategy?.GetType().Name ?? "NULL")}, Path={(_isReplayPath ? "Replay" : "Sizing/Detection")}");
                         
 						bool isPipesCategory = string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
 						
@@ -913,11 +980,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             
                                                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ NO STRATEGY MATCHED for ClashZone {clashZone.Id} - Using fallback dimensions");
+                            }
+                            clearanceTimer.Stop();
+                            totalClearanceTime += clearanceTimer.Elapsed;
+                            sleeveLog.AppendLine($"  Clearance calc: {clearanceTimer.ElapsedMilliseconds}ms");
+                            
+                            try {                         // ✅ DEPLOYMENT MODE: Skip file writes
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9: Clearance calculation completed for PATH 2/3\n");
+                            } } catch { }
                         }
-                        clearanceTimer.Stop();
-                        totalClearanceTime += clearanceTimer.Elapsed;
-                        sleeveLog.AppendLine($"  Clearance calc: {clearanceTimer.ElapsedMilliseconds}ms");
-
+                        
                         // ⚠️ REMOVED: Old width/height swapping logic that was causing double-swapping
                         // The new logic later in the method (lines 660-665) handles this correctly
                         // by ensuring the longer dimension becomes width, not just swapping blindly
@@ -925,30 +999,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         try {                         // ✅ DEPLOYMENT MODE: Skip file writes
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9: Starting clearance calculation\n");
-                        } } catch { }
-                        
-                        // Clearance calculation happens here (existing code)...
-                        try {                         // ✅ DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 10: Clearance calculated, selecting family\n");
+                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 10: Final dimensions determined, selecting family\n");
                         } } catch { }
                         
                         // ⏱️ TIMING: Family selection and loading
                         var familyTimer = System.Diagnostics.Stopwatch.StartNew();
                         // Select universal family
-                        var (familyName, typeName, isCircular) = SelectUniversalFamily(clashZone, mepSize);
+                        var (familyName, isCircular) = SelectUniversalFamily(clashZone, mepSize);
                         try {                         // ✅ DEPLOYMENT MODE: Skip file writes
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 11: Family selected: '{familyName}', Type='{typeName}', IsCircular={isCircular}\n");
+                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 11: Family selected: '{familyName}', IsCircular={isCircular}\n");
                         } } catch { }
                         
                         var familySymbol = LoadFamilySymbol(familyName);
                         familyTimer.Stop();
                         totalFamilyLoadTime += familyTimer.Elapsed;
                         sleeveLog.AppendLine($"  Family load: {familyTimer.ElapsedMilliseconds}ms");
+                        
+                        bool shouldSkipSleeve = false;
                         
                         if (familySymbol == null)
                         {
@@ -968,32 +1037,117 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 12: ✅ Family symbol loaded successfully\n");
                         } } catch { }
                         
-                        // Activate symbol if needed
+                        // ✅ SIMPLIFIED: Activate symbol if needed - don't care about type name, just activate any type
                         if (!familySymbol.IsActive)
                         {
-                            familySymbol.Activate();
+                            try
+                            {
+                                familySymbol.Activate();
+                            }
+                            catch (Exception activationEx)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Warning($"[UniversalSleevePlacer] Failed to activate family '{familyName}': {activationEx.Message}");
+
+                                var family = familySymbol.Family;
+                                var allSymbols = family.GetFamilySymbolIds()
+                                    .Select(id => _doc.GetElement(id) as FamilySymbol)
+                                    .Where(s => s != null)
+                                    .ToList();
+
+                                var activeSymbol = allSymbols.FirstOrDefault(s => s.IsActive);
+                                if (activeSymbol != null)
+                                {
+                                    familySymbol = activeSymbol;
+                                }
+                                else
+                                {
+                                    var firstSymbol = allSymbols.FirstOrDefault();
+                                    if (firstSymbol != null)
+                                    {
+                                        try
+                                        {
+                                            firstSymbol.Activate();
+                                            familySymbol = firstSymbol;
+                                        }
+                                        catch (Exception reactivationEx)
+                                        {
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                DebugLogger.Error($"[UniversalSleevePlacer] Unable to activate any type in family '{familyName}': {reactivationEx.Message}");
+                                            ErrorCount++;
+                                            shouldSkipSleeve = true;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Error($"[UniversalSleevePlacer] Family '{familyName}' does not contain any symbols.");
+                                        ErrorCount++;
+                                        shouldSkipSleeve = true;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (shouldSkipSleeve)
+                        {
+                            continue;
                         }
                         
                         // ✅ SLEEVE PLACEMENT FLOW - Step 2: Determine placement origin
                         bool hasSnapshotData = HasSnapshotPlacementData(clashZone);
                         bool usingXmlSnapshot = false;
+                        bool usingDbPlacementPoint = false;
                         XYZ placementPointChosen;
-                        
-                        if (_isReplayPath && hasSnapshotData)
-                        {
-                            placementPointChosen = GetSnapshotPlacementPoint(clashZone);
 
-                            if (HasValidPlacementCoordinate(placementPointChosen))
+                        if (_isReplayPath)
+                        {
+                            // ✅ PATH 1: Prioritize DB placement point (from database), fallback to XML snapshot, then intersection point
+                            var dbPlacementPoint = clashZone.SleevePlacementPoint;
+                            
+                            if (dbPlacementPoint != null && HasValidPlacementCoordinate(dbPlacementPoint))
                             {
-                                usingXmlSnapshot = true;
+                                // ✅ Use DB placement point (from database)
+                                placementPointChosen = dbPlacementPoint;
+                                usingDbPlacementPoint = true;
                                 clashZone.IntersectionPoint = placementPointChosen;
                                 clashZone.IntersectionPointX = placementPointChosen.X;
                                 clashZone.IntersectionPointY = placementPointChosen.Y;
                                 clashZone.IntersectionPointZ = placementPointChosen.Z;
+                                
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[PLACEMENT-SOURCE] Zone={clashZone.Id}: Using DB placement point (from database)");
+                                }
+                            }
+                            else if (hasSnapshotData)
+                            {
+                                // ✅ Fallback to XML snapshot if DB placement point is not available
+                                placementPointChosen = GetSnapshotPlacementPoint(clashZone);
+                                
+                                if (HasValidPlacementCoordinate(placementPointChosen))
+                                {
+                                    usingXmlSnapshot = true;
+                                    clashZone.IntersectionPoint = placementPointChosen;
+                                    clashZone.IntersectionPointX = placementPointChosen.X;
+                                    clashZone.IntersectionPointY = placementPointChosen.Y;
+                                    clashZone.IntersectionPointZ = placementPointChosen.Z;
+                                    
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        DebugLogger.Warning($"[PLACEMENT-SOURCE] Zone={clashZone.Id}: Using XML snapshot (DB placement point not available)");
+                                    }
+                                }
+                                else
+                                {
+                                    // Fallback: use intersection point
+                                    placementPointChosen = clashZone.IntersectionPoint ??
+                                                           new XYZ(clashZone.IntersectionPointX, clashZone.IntersectionPointY, clashZone.IntersectionPointZ);
+                                }
                             }
                             else
                             {
-                                // Fallback: rely on whatever intersection data we already have
+                                // Fallback: use intersection point
                                 placementPointChosen = clashZone.IntersectionPoint ??
                                                        new XYZ(clashZone.IntersectionPointX, clashZone.IntersectionPointY, clashZone.IntersectionPointZ);
                             }
@@ -1009,11 +1163,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             placementPointChosen = clashZone.IntersectionPoint;
                         }
-                        
-                            if (_isReplayPath && hasSnapshotData && HasValidPlacementCoordinate(placementPointChosen))
-                            {
-                                usingXmlSnapshot = true;
-                            }
                         }
 
                         if (!DeploymentConfiguration.DeploymentMode && PlacedCount < 5)
@@ -1046,10 +1195,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             {
                                 var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
                                 var placementSource = _isReplayPath
-                                    ? (usingXmlSnapshot ? "XML snapshot" : "Replay fallback (no cached coordinates)")
+                                    ? (usingDbPlacementPoint ? "DB placement point (from database)" : (usingXmlSnapshot ? "XML snapshot (placement point from XML)" : "Intersection point (fallback)"))
                                     : "Recomputed intersection";
-                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] [PLACEMENT-ORIGIN] Zone={clashZone.Id}, Source={placementSource}, Point=({placementPointChosen?.X:F3},{placementPointChosen?.Y:F3},{placementPointChosen?.Z:F3})\n");
+                                
+                                // ✅ DIAGNOSTIC: Log data source for placement point
+                                var dbPlacementPoint = clashZone.SleevePlacementPoint;
+                                var dbPlacementPointStr = dbPlacementPoint != null ? $"DB_SPP=({dbPlacementPoint.X:F3},{dbPlacementPoint.Y:F3},{dbPlacementPoint.Z:F3})" : "DB_SPP=null";
+                                
+                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] [PLACEMENT-ORIGIN] Zone={clashZone.Id}, Source={placementSource}, Point=({placementPointChosen?.X:F3},{placementPointChosen?.Y:F3},{placementPointChosen?.Z:F3}), {dbPlacementPointStr}, XML_SPP=({clashZone.SleevePlacementPointX:F3},{clashZone.SleevePlacementPointY:F3},{clashZone.SleevePlacementPointZ:F3})\n");
                                 File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] PLACEMENT: Zone={clashZone.Id}, MEP={clashZone.MepElementIdValue}, HOST={clashZone.StructuralElementIdValue}, Point=({placementPointChosen?.X:F3},{placementPointChosen?.Y:F3},{placementPointChosen?.Z:F3}), SPP_XML=({clashZone.SleevePlacementPointX:F3},{clashZone.SleevePlacementPointY:F3},{clashZone.SleevePlacementPointZ:F3}), IP=({clashZone.IntersectionPointX:F3},{clashZone.IntersectionPointY:F3},{clashZone.IntersectionPointZ:F3})\n");
+                                
+                                // ✅ DIAGNOSTIC: Log if using XML snapshot when DB has placement point
+                                if (usingXmlSnapshot && dbPlacementPoint != null && HasValidPlacementCoordinate(dbPlacementPoint))
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        DebugLogger.Warning($"[PLACEMENT-SOURCE] ⚠️ Zone={clashZone.Id}: Using XML snapshot placement point, but DB has valid placement point! XML=({clashZone.SleevePlacementPointX:F3},{clashZone.SleevePlacementPointY:F3},{clashZone.SleevePlacementPointZ:F3}), DB=({dbPlacementPoint.X:F3},{dbPlacementPoint.Y:F3},{dbPlacementPoint.Z:F3})");
+                                    }
+                                }
                             }
                         } 
                         catch (Exception logEx) 
@@ -1507,6 +1670,82 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         DebugLogger.Info($"[BATCH-BBOX] ✅ Retrieved {bboxCount} bounding boxes in {bboxTimer.ElapsedMilliseconds}ms (avg: {bboxTimer.ElapsedMilliseconds / Math.Max(1, bboxCount):F1}ms per sleeve)");
                     }
+                    
+                    // ✅ CRITICAL FIX: Save sleeve data to database IMMEDIATELY after placement
+                    // This ensures UpdateSleeveCoordinatesInXml can find sleeves by SleeveInstanceId
+                    if (bboxCount > 0)
+                    {
+                        try
+                        {
+                            using (var dbContext = new Data.SleeveDbContext(_doc))
+                            {
+                                var repository = new Data.Repositories.ClashZoneRepository(dbContext);
+                                int dbSavedCount = 0;
+                                
+                                foreach (var (sleeve, zone, fw, fh, fd) in placedSleeveData)
+                                {
+                                    if (zone != null && zone.SleeveInstanceId > 0 && sleeve.IsValidObject)
+                                    {
+                                        // ⚠️ PROTECTED CODE: DO NOT MODIFY THIS SECTION WITHOUT UNDERSTANDING THE IMPACT
+                                        // This code saves sleeve coordinates to the database immediately after placement.
+                                        // It is critical for clustering to work correctly because:
+                                        // 1. SleeveInstanceId - Required for clustering to find sleeves in the database
+                                        // 2. Sleeve dimensions and placement point - Required for placement tracking
+                                        // 3. Bounding box coordinates - Required for clustering to calculate cluster bounding boxes
+                                        // 4. Rotation angle (MepElementRotationAngle) - Already saved during refresh in InsertOrUpdateClashZones,
+                                        //    and is loaded by cluster service from database. No need to update here as it doesn't change after placement.
+                                        // If this code is broken, clustering will fail because it won't find sleeves with valid bounding boxes.
+                                        
+                                        // ✅ ROTATION DATA: MepElementRotationAngle is already in database (saved during refresh).
+                                        // Cluster service reads it from DB via GetClashZonesByCategory -> MepRotationAngleRad column.
+                                        // No update needed here as rotation angle doesn't change after sleeve placement.
+                                        
+                                        // Save SleeveInstanceId
+                                        repository.UpdateSleeveInstanceId(zone.Id, zone.SleeveInstanceId);
+                                        
+                                        // Save sleeve dimensions
+                                        repository.UpdateSleevePlacement(
+                                            zone.Id, // Use ClashZone Guid
+                                            zone.SleeveInstanceId,
+                                            zone.SleeveWidth > 0 ? zone.SleeveWidth : fw,
+                                            zone.SleeveHeight > 0 ? zone.SleeveHeight : fh,
+                                            zone.SleeveDiameter > 0 ? zone.SleeveDiameter : fd,
+                                            zone.SleevePlacementPointX,
+                                            zone.SleevePlacementPointY,
+                                            zone.SleevePlacementPointZ);
+                                        
+                                        // ✅ BOUNDING BOX: Save axis-aligned bounding box coordinates (in model coordinate system).
+                                        // For rotated sleeves, the rotation angle (MepElementRotationAngle) is used by cluster service
+                                        // to calculate rotated bounding boxes during clustering. The axis-aligned bbox is sufficient
+                                        // because cluster service applies rotation transform using the angle from database.
+                                        // Bounding boxes are required for clustering to calculate cluster bounding boxes
+                                        if (!(zone.SleeveBoundingBoxMinX == 0.0 && zone.SleeveBoundingBoxMinY == 0.0 && zone.SleeveBoundingBoxMinZ == 0.0 &&
+                                              zone.SleeveBoundingBoxMaxX == 0.0 && zone.SleeveBoundingBoxMaxY == 0.0 && zone.SleeveBoundingBoxMaxZ == 0.0))
+                                        {
+                                            repository.UpdateSleeveBoundingBoxes(
+                                                zone.Id,
+                                                zone.SleeveBoundingBoxMinX, zone.SleeveBoundingBoxMinY, zone.SleeveBoundingBoxMinZ,
+                                                zone.SleeveBoundingBoxMaxX, zone.SleeveBoundingBoxMaxY, zone.SleeveBoundingBoxMaxZ);
+                                        }
+                                        
+                                        dbSavedCount++;
+                                    }
+                                }
+                                
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[UniversalSleevePlacer] ✅ DATABASE: Saved sleeve data for {dbSavedCount} clash zones immediately after placement");
+                                }
+                            }
+                        }
+                        catch (Exception dbEx)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ Failed to save sleeve data to database after placement: {dbEx.Message}");
+                            }
+                        }
+                    }
                 }
                 
                 // ✅ CRITICAL: Save Global XML IMMEDIATELY after placement (before clustering can delete sleeves)
@@ -1548,14 +1787,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         catch { }
                     }
 
-                    SaveUpdatedXmlFiles(clashZones);
+                    // ✅ PHASE 2: Skip XML file updates if XML creation is disabled (database only mode)
+                    if (!DeploymentConfiguration.DisableXmlCreation)
+                    {
+                        SaveUpdatedXmlFiles(clashZones);
+                    }
+                    else
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[UniversalSleevePlacer] ⚠️ XML creation disabled - skipping SaveUpdatedXmlFiles (database only mode). Zones={clashZones.Count}");
+                            var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                            System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] [XML-SAVE-SKIP] ⚠️ XML creation disabled - skipping SaveUpdatedXmlFiles (database only mode). Zones={clashZones.Count}\n");
+                        }
+                    }
                    
                     
                     // ⚠️ REMOVED: Don't update coordinates here because clustering will delete individual sleeves
                     
-                    // ⚠️ CRITICAL: Log flag states AFTER XML save
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [XML-SAVE-AFTER] XML save completed for {PlacedCount} placed sleeves\n");
+                    // ⚠️ CRITICAL: Log flag states AFTER XML save (or skip)
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        if (DeploymentConfiguration.DisableXmlCreation)
+                        {
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [XML-SAVE-AFTER] XML save skipped (database only mode) for {PlacedCount} placed sleeves\n");
+                        }
+                        else
+                        {
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [XML-SAVE-AFTER] XML save completed for {PlacedCount} placed sleeves\n");
+                        }
+                    }
 
                     // ✅ OOP REFACTORING: Use FlagManager for flag updates after placement
                     // Per methodology document line 242-245: "Update Global XML" after placement
@@ -2008,10 +2269,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
 
         /// <summary>
-        /// Select universal family based on host type and MEP shape
+        /// ✅ SIMPLIFIED: Select universal family based on host type and MEP shape
         /// Uses 4 universal families following CONVOID approach
+        /// Returns only family name and circular flag - no type name needed
         /// </summary>
-        private (string familyName, string typeName, bool isCircular) SelectUniversalFamily(ClashZone clashZone, MepElementSize mepSize)
+        private (string familyName, bool isCircular) SelectUniversalFamily(ClashZone clashZone, MepElementSize mepSize)
         {
             // Determine host type (check both singular and plural forms)
             bool isWallOrFraming = clashZone.StructuralElementType == "Wall" || 
@@ -2091,12 +2353,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 (false, true) => "CircularOpeningOnSlab",      // ✅ Your family
             };
             
-            string typeName = "Default"; // Use default type for your families
-            
+            // ✅ SIMPLIFIED: No type name needed - Revit will use any active type in the family
                         if (!DeploymentConfiguration.DeploymentMode)
-            DebugLogger.Info($"[UniversalSleevePlacer] Selected family: {familyName}, Type: {typeName}");
+            DebugLogger.Info($"[UniversalSleevePlacer] Selected family: {familyName}, IsCircular: {isCircular}");
             
-            return (familyName, typeName, isCircular);
+            return (familyName, isCircular);
         }
         
         // Ensure XML-serializable coordinates are populated before saving
@@ -3009,7 +3270,84 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             thickness = clashZone.StructuralElementThickness;
         }
         
+        // ✅ PATH 1 (Replay): Log if structural thickness is missing (but don't retrieve - use existing data only)
+        if (_isReplayPath && thickness <= 0.0)
+        {
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Warning($"[PATH-1-DIAGNOSTIC] Zone={clashZone.Id}: Missing structural thickness - WallThickness={clashZone.WallThickness:F6}, FramingThickness={clashZone.FramingThickness:F6}, StructuralThickness={clashZone.StructuralElementThickness:F6}, HostType={clashZone.StructuralElementType}. PATH 1 will use 0 (no retrieval from linked files).");
+            }
+        }
+        
+        // ✅ CRITICAL FIX: For PATH 3 (Non-Fresh), if thickness is 0, retrieve from linked file structural element
+        // This is a fallback - thickness should have been saved during refresh, but if missing, retrieve it now
+        if (!_isReplayPath && thickness <= 0.0 && clashZone.StructuralElementIdValue > 0)
+        {
+            try
+            {
+                // Try to get structural element from linked files
+                Element structuralElement = null;
+                var linkInstances = new FilteredElementCollector(_doc)
+                    .OfClass(typeof(RevitLinkInstance))
+                    .Cast<RevitLinkInstance>();
+                
+                foreach (var linkInstance in linkInstances)
+                {
+                    var linkDoc = linkInstance.GetLinkDocument();
+                    if (linkDoc != null)
+                    {
+                        try
+                        {
+                            structuralElement = linkDoc.GetElement(new ElementId(clashZone.StructuralElementIdValue));
+                            if (structuralElement != null)
+                            {
+                                // Retrieve thickness from linked file element
+                                if (structuralElement is Wall wall)
+                                {
+                                    thickness = wall.Width;
+                                }
+                                else if (structuralElement is Floor floor)
+                                {
+                                    thickness = floor.get_Parameter(BuiltInParameter.FLOOR_ATTR_THICKNESS_PARAM)?.AsDouble() ?? 0.0;
+                                }
+                                else if (structuralElement?.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+                                {
+                                    // Get framing thickness from type parameter 'b'
+                                    var typeId = (structuralElement as FamilyInstance)?.GetTypeId() ?? structuralElement.GetTypeId();
+                                    var typeElem = linkDoc.GetElement(typeId);
+                                    if (typeElem != null)
+                                    {
+                                        var param = typeElem.LookupParameter("b") ?? typeElem.LookupParameter("B");
+                                        if (param != null) thickness = param.AsDouble();
+                                    }
+                                }
+                                
+                                if (thickness > 0.0)
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[PATH-3-FALLBACK] Retrieved thickness={UnitUtils.ConvertFromInternalUnits(thickness, UnitTypeId.Millimeters):F1}mm from linked file for structural element {clashZone.StructuralElementIdValue} (Zone={clashZone.Id})");
+                                    break;
+                                }
+                            }
+                        }
+                        catch { continue; }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[PATH-3-FALLBACK] Error retrieving thickness from linked file for Zone={clashZone.Id}: {ex.Message}");
+            }
+        }
+        
         double thicknessMm = UnitUtils.ConvertFromInternalUnits(thickness, UnitTypeId.Millimeters);
+        
+        // ✅ DIAGNOSTIC: Log thickness calculation for debugging depth=0 issue
+        if (!DeploymentConfiguration.DeploymentMode && thickness <= 0.0)
+        {
+            DebugLogger.Warning($"[DEPTH-DIAGNOSTIC] Zone={clashZone.Id}, HostType={clashZone.StructuralElementType}, WallThickness={clashZone.WallThickness:F6}, FramingThickness={clashZone.FramingThickness:F6}, StructuralThickness={clashZone.StructuralElementThickness:F6}, CalculatedThickness={thickness:F6}, Path={(_isReplayPath ? "Replay" : "Sizing/Detection")}");
+        }
         
         // ✅ PERFORMANCE: Removed verbose depth check logging
         
@@ -3019,28 +3357,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             // Wall host: use Wall Width parameter
             wallWidthParam.Set(thickness);
-            // ✅ PERFORMANCE: Removed verbose logging
             depthSetSuccess = true;
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Info($"[DEPTH-SET] Zone={clashZone.Id}, Sleeve={sleeveInstance.Id}: Set Wall Width={UnitUtils.ConvertFromInternalUnits(thickness, UnitTypeId.Millimeters):F1}mm (from DB: Structural={UnitUtils.ConvertFromInternalUnits(clashZone.StructuralElementThickness, UnitTypeId.Millimeters):F1}mm, Wall={UnitUtils.ConvertFromInternalUnits(clashZone.WallThickness, UnitTypeId.Millimeters):F1}mm)");
+            }
         }
         else if (depthParam != null && !depthParam.IsReadOnly)
         {
-            // Floor/Framing host: use Depth parameter
             depthParam.Set(thickness);
-            // ✅ PERFORMANCE OPTIMIZATION: Removed parameter verification read (AsDouble) - unnecessary overhead
-            // Parameter Set() is reliable, no need to verify immediately
             depthSetSuccess = true;
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Info($"[DEPTH-SET] Zone={clashZone.Id}, Sleeve={sleeveInstance.Id}: Set Depth={UnitUtils.ConvertFromInternalUnits(thickness, UnitTypeId.Millimeters):F1}mm (from DB: Structural={UnitUtils.ConvertFromInternalUnits(clashZone.StructuralElementThickness, UnitTypeId.Millimeters):F1}mm, Framing={UnitUtils.ConvertFromInternalUnits(clashZone.FramingThickness, UnitTypeId.Millimeters):F1}mm)");
+            }
         }
         else
         {
-            // Try type parameter as fallback
-            // ✅ PERFORMANCE OPTIMIZATION: Try to cache type parameter (symbol-level, not instance-level)
-            var typeDepthParam = sleeveInstance.Symbol?.LookupParameter("Depth");
-            if (typeDepthParam != null && !typeDepthParam.IsReadOnly)
+            if (!DeploymentConfiguration.DeploymentMode)
             {
-                typeDepthParam.Set(thickness);
-                // ✅ PERFORMANCE OPTIMIZATION: Regeneration deferred to batch operation at end of placement loop
-                // _doc.Regenerate(); // ❌ REMOVED: Will be done in batch after all sleeves placed
-                depthSetSuccess = true;
+                DebugLogger.Warning($"[DEPTH-SET] ❌ Zone={clashZone.Id}, Sleeve={sleeveInstance.Id}: Depth parameter not writable - wallWidthParam={(wallWidthParam != null ? "exists" : "null")}, depthParam={(depthParam != null ? "exists" : "null")}, isReadOnly={(depthParam?.IsReadOnly ?? true)}, family='{sleeveInstance.Symbol?.Family?.Name ?? "Unknown"}'");
             }
         }
         
@@ -3777,8 +4113,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                             diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Step 3 Snapshot (clone): {string.Join(", ", persistenceZones.Select(z => $"{z.Id}:{z.SleeveInstanceId}").Take(10))}");
 
-                            persistenceService.SaveClashZones(persistenceZones, effectiveFilterName, filter, allowStructuralUpdates: false);
-                            diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Step 3 SUCCESS");
+                            // ✅ PRINCIPLE: Only PATH 3 (Detection) for non-validated zones should allow structural updates
+                            // PATH 1 (Replay): false - replaying existing data, no updates
+                            // PATH 2 (Sizing): false - sizing existing sleeves, no structural updates needed
+                            // PATH 3 (Detection): true ONLY for non-validated zones (validated zones treated as PATH 1)
+                            // Note: Stale DB/XML data should be cleared, not worked around with code changes
+                            bool allowStructuralUpdates = false; // Default: no structural updates
+                            
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[PERSISTENCE] Path={(_isReplayPath ? "PATH 1 (Replay)" : "PATH 2/3 (Sizing/Detection)")}, allowStructuralUpdates={allowStructuralUpdates} (following principle: only PATH 3 non-validated should allow updates)");
+                            }
+                            
+                            persistenceService.SaveClashZones(persistenceZones, effectiveFilterName, filter, allowStructuralUpdates);
+                            diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Step 3 SUCCESS: allowStructuralUpdates={allowStructuralUpdates}");
                             }
                         catch (Exception persistEx)
                         {
@@ -3789,9 +4137,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Step 4: Saving filter to XML");
                         try
                         {
-                            filterManagementService.SaveFilterToXmlFile(filter, xmlFile);
-                            diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Step 4 SUCCESS");
-                            processedCategoryFilters.Add((filter, category));
+                            if (!DeploymentConfiguration.DisableXmlCreation)
+                            {
+                                filterManagementService.SaveFilterToXmlFile(filter, xmlFile);
+                                diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Step 4 SUCCESS");
+                                processedCategoryFilters.Add((filter, category));
+                            }
+                            else
+                            {
+                                diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Step 4 SKIPPED: XML creation disabled (database only mode)");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[UniversalSleevePlacer] ⚠️ XML creation disabled - skipping filter XML save for '{category}' (database only mode)");
+                                }
+                            }
                         }
                         catch (Exception saveFileEx)
                         {
@@ -3868,8 +4227,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     {
                                         MergeCategoryIntoMainFilter(mainFilter, categoryFilter);
                                     }
-                                    filterManagementService.SaveFilterToXmlFile(mainFilter, mainFilterPath);
-                                    diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] MAIN FILTER UPDATED: {Path.GetFileName(mainFilterPath)}");
+                                    
+                                    // ✅ PHASE 2: Only save main filter XML if XML creation is enabled
+                                    if (!DeploymentConfiguration.DisableXmlCreation)
+                                    {
+                                        filterManagementService.SaveFilterToXmlFile(mainFilter, mainFilterPath);
+                                        diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] MAIN FILTER UPDATED: {Path.GetFileName(mainFilterPath)}");
+                                    }
+                                    else
+                                    {
+                                        diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] MAIN FILTER UPDATE SKIPPED: XML creation disabled (database only mode)");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            DebugLogger.Info($"[UniversalSleevePlacer] ⚠️ XML creation disabled - skipping main filter XML save (database only mode)");
+                                        }
+                                    }
 
                                     try
                                     {
@@ -3884,7 +4256,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] MAIN FILTER MERGE FAILED: {mergeEx}");
                                 }
 
-                                EnsureConditionsFiles(baseFilterName, processedCategoryFilters, filtersDirectory, diagnosticLog);
+                                EnsureConditionsFiles(_doc, baseFilterName, processedCategoryFilters, filtersDirectory, diagnosticLog);
                             }
                         }
                     }
@@ -3924,6 +4296,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 StructuralElementDocumentTitle = source.StructuralElementDocumentTitle,
                 StructuralElementType = source.StructuralElementType,
                 StructuralElementThickness = source.StructuralElementThickness,
+                WallThickness = source.WallThickness,
+                FramingThickness = source.FramingThickness,
                 StructuralElementNormalX = source.StructuralElementNormalX,
                 StructuralElementNormalY = source.StructuralElementNormalY,
                 StructuralElementNormalZ = source.StructuralElementNormalZ,
@@ -3975,6 +4349,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 WallDirectionX = source.WallDirectionX,
                 WallDirectionY = source.WallDirectionY,
                 WallDirectionZ = source.WallDirectionZ,
+                // ✅ CRITICAL FIX: Copy MEP orientation properties (missing in original clone)
+                MepElementOrientation = source.MepElementOrientation,
+                MepElementOrientationDirection = source.MepElementOrientationDirection,
+                MepElementRotationAngle = source.MepElementRotationAngle,
+                MepElementOrientationX = source.MepElementOrientationX,
+                MepElementOrientationY = source.MepElementOrientationY,
+                MepElementOrientationZ = source.MepElementOrientationZ,
                 DocumentPath = source.DocumentPath,
                 DetectedAt = source.DetectedAt,
                 LastUpdated = source.LastUpdated
@@ -4173,6 +4554,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         private static void EnsureConditionsFiles(
+            Document document,
             string baseFilterName,
             List<(OpeningFilter Filter, string Category)> processedCategoryFilters,
             string filtersDirectory,
@@ -4196,7 +4578,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             try
             {
-                var conditionsService = new ConditionsService(filtersDirectory, msg =>
+                var conditionsService = new ConditionsService(document, filtersDirectory, msg =>
                 {
                                                         if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info(msg);
@@ -4402,78 +4784,70 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (isFloorHost)
                 {
-            // ====== FLOOR HOST: Rotate based on MEP orientation ======
-                    // Get stored MEP orientation from XML ("X" or "Y")
-                    string mepOrientation = clashZone.MepElementOrientationDirection;
-                    
-                    if (!string.IsNullOrEmpty(mepOrientation))
+            // ====== FLOOR HOST: Rotate based on MEP element rotation angle ======
+                    // ✅ FLOOR ROTATION FIX: Use pre-calculated rotation angle (calculated once during refresh)
+                    // This supports arbitrary angles (not just 0° and 90°) and avoids Revit API calls
+                    var loc = sleeveInstance.Location as LocationPoint;
+                    if (loc != null)
                     {
-                        var loc = sleeveInstance.Location as LocationPoint;
-                        if (loc != null)
+                        // ✅ CALCULATE ONCE, USE MANY TIMES: Use pre-calculated rotation angle from ClashZone
+                        double rotationAngle = clashZone.MepElementRotationAngle;
+                        
+                        // ✅ PATH 1 (Replay): Log if MEP orientation is missing (but don't retrieve - use existing data only)
+                        if (_isReplayPath && Math.Abs(rotationAngle) < 1e-6 && string.IsNullOrEmpty(clashZone.MepElementOrientationDirection))
                         {
-                            double rotationAngle = 0.0;
-                            
-                            // ⚠️ CABLETRAY FIX: Cable trays have INVERTED rotation logic compared to ducts
-                            // For cable trays: Y-orientation = 0°, X-orientation = 90°
-                            // For ducts/pipes: Y-orientation = 90°, X-orientation = 0°
-                            bool isCableTray = clashZone.MepElementCategory.Contains("Cable", StringComparison.OrdinalIgnoreCase);
-                            
-                            if (isCableTray)
+                            if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                // ⚠️ INVERTED LOGIC FOR CABLE TRAYS
-                                if (mepOrientation == "X")
-                                {
-                                    rotationAngle = Math.PI / 2; // 90 degrees
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[UniversalSleevePlacer] VERTICAL CABLETRAY ON FLOOR: MEP orientation is X - rotating sleeve 90°");
-                                }
-                                else
-                                {
-                                    rotationAngle = 0.0; // No rotation needed
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[UniversalSleevePlacer] VERTICAL CABLETRAY ON FLOOR: MEP orientation is Y - no rotation needed");
-                                }
+                                DebugLogger.Warning($"[PATH-1-DIAGNOSTIC] Zone={clashZone.Id}: Missing MEP orientation (BasisX) - MepElementRotationAngle={clashZone.MepElementRotationAngle}, MepElementOrientationDirection='{clashZone.MepElementOrientationDirection}', MepElementOrientationX={clashZone.MepElementOrientationX}. PATH 1 will use 0° rotation (no retrieval from linked files).");
                             }
-                            else
-                            {
-                                // ⚠️ STANDARD LOGIC FOR DUCTS/PIPES
-                                if (mepOrientation == "Y")
-                                {
-                                    rotationAngle = Math.PI / 2; // 90 degrees
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[UniversalSleevePlacer] VERTICAL {clashZone.MepElementCategory.ToUpper()} ON FLOOR: MEP orientation is Y - rotating sleeve 90°");
-                                }
-                                else
-                                {
-                                    rotationAngle = 0.0; // No rotation needed
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[UniversalSleevePlacer] VERTICAL {clashZone.MepElementCategory.ToUpper()} ON FLOOR: MEP orientation is X - no rotation needed");
-                                }
-                            }
-                            
+                        }
+                        
+                        // ✅ FALLBACK: If rotation angle not calculated (old XML data), calculate from orientation direction
+                        // This maintains backward compatibility with existing XML files
+                        // ✅ BUG FIX: Only use fallback if BOTH angle is zero AND orientation direction is missing
+                        // If MepElementOrientationDirection exists, the angle was calculated (even if 0°), so use it as-is
+                        if (Math.Abs(rotationAngle) < 1e-6 && string.IsNullOrEmpty(clashZone.MepElementOrientationDirection))
+                        {
+                            // Old XML data - angle not calculated, use fallback
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[UniversalSleevePlacer] FLOOR: MepElementRotationAngle is 0 and MepElementOrientationDirection is missing - this is old XML data, skipping fallback (will use 0°)");
+                        }
+                        else if (Math.Abs(rotationAngle) < 1e-6 && !string.IsNullOrEmpty(clashZone.MepElementOrientationDirection))
+                        {
+                            // ✅ BUG FIX: Angle is 0° and orientation direction exists - this means 0° was calculated, use it as-is
+                            // Do NOT use fallback - 0° is a valid calculated angle
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[UniversalSleevePlacer] FLOOR: Using calculated MepElementRotationAngle=0° (MepElementOrientationDirection='{clashZone.MepElementOrientationDirection}' exists, so angle was calculated)");
+                        }
+                        
+                        // ✅ APPLY ROTATION: Rotate sleeve to match MEP element angle
+                        if (Math.Abs(rotationAngle) > 1e-6) // Only rotate if angle is significant
+                        {
                             double rotationAngleDegrees = rotationAngle * 180 / Math.PI;
-                            
                             Line rotationAxis = Line.CreateBound(loc.Point, loc.Point + XYZ.BasisZ);
                             ElementTransformUtils.RotateElement(_doc, sleeveInstance.Id, rotationAxis, rotationAngle);
                             
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[UniversalSleevePlacer] FLOOR: Rotated sleeve {rotationAngleDegrees:F1}° based on MEP orientation ({mepOrientation})");
-                    try
-                    {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[ORIENT-FLOOR] Sleeve {sleeveInstance.Id.IntegerValue}: Rotated {rotationAngleDegrees:F1}° for MEP dir ({mepOrientation})\n");
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[ORIENTATION-SET] Zone={clashZone.Id}, Sleeve={sleeveInstance.Id}: Rotated {rotationAngleDegrees:F1}° (from DB: MepElementRotationAngle={clashZone.MepElementRotationAngle * 180 / Math.PI:F1}°, MepElementOrientationDirection='{clashZone.MepElementOrientationDirection}')");
+                            }
+                        }
+                        else
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Warning($"[ORIENTATION-SET] ⚠️ Zone={clashZone.Id}, Sleeve={sleeveInstance.Id}: No rotation applied (angle=0°) - from DB: MepElementRotationAngle={clashZone.MepElementRotationAngle * 180 / Math.PI:F1}°, MepElementOrientationDirection='{clashZone.MepElementOrientationDirection}', MepElementOrientationX={clashZone.MepElementOrientation?.X:F6}");
+                            }
+                        }
                     }
-                    catch { }
-                }
-            }
-            
-            // Set HostOrientation parameter
+                    
+                    // Set HostOrientation parameter
                     var hostOrientationParam = sleeveInstance.LookupParameter("HostOrientation");
                     if (hostOrientationParam != null && !hostOrientationParam.IsReadOnly)
                     {
                         hostOrientationParam.Set("FloorHosted");
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[UniversalSleevePlacer] FLOOR: Set HostOrientation = FloorHosted");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[UniversalSleevePlacer] FLOOR: Set HostOrientation = FloorHosted");
                     }
                     
                     // ✅ FIX: Return early to prevent wall rotation logic from running

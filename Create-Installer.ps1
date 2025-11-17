@@ -23,12 +23,14 @@ Write-Host "Ensuring add-in folders exist..."
 New-Item -ItemType Directory -Force -Path $appDataAddins | Out-Null
 New-Item -ItemType Directory -Force -Path $programDataAddins | Out-Null
 
-# Copy DLL and .addin manifest to both locations
+# Copy DLL, .addin manifest, and native SQLite DLL to both locations
 Write-Host "Copying add-in files to user AppData and ProgramData..."
 Copy-Item -Path (Join-Path $binDir $dllName) -Destination $appDataAddins -Force
 Copy-Item -Path (Join-Path $binDir $addinManifest) -Destination $appDataAddins -Force
+Copy-Item -Path (Join-Path $binDir "e_sqlite3.dll") -Destination $appDataAddins -Force -ErrorAction SilentlyContinue
 Copy-Item -Path (Join-Path $binDir $dllName) -Destination $programDataAddins -Force
 Copy-Item -Path (Join-Path $binDir $addinManifest) -Destination $programDataAddins -Force
+Copy-Item -Path (Join-Path $binDir "e_sqlite3.dll") -Destination $programDataAddins -Force -ErrorAction SilentlyContinue
 
 Write-Host "JSE_RevitAddin_MEP_OPENINGS add-in installed to:"
 Write-Host "  $appDataAddins"
