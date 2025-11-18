@@ -463,15 +463,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 }
                 
                 // Get selected host types from UI
-                var selectedHostTypes = FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>();
+                var selectedHostCategories = FilterUiStateProvider.GetSelectedHostCategories?.Invoke() ?? new List<string>();
                 
-                if (selectedHostTypes.Count == 0)
+                if (selectedHostCategories.Count == 0)
                 {
                     DebugLogger.Warning($"{_logPrefix} No host types selected in UI - placing sleeves on all host types");
                 }
                 
-                var allowedHostTypes = new HashSet<string>(selectedHostTypes, StringComparer.OrdinalIgnoreCase);
-                DebugLogger.Info($"{_logPrefix} UI selected host types: [{string.Join(", ", selectedHostTypes)}]");
+                var allowedHostCategories = new HashSet<string>(selectedHostCategories, StringComparer.OrdinalIgnoreCase);
+                DebugLogger.Info($"{_logPrefix} UI selected host types: [{string.Join(", ", selectedHostCategories)}]");
                 
                 // Get selected reference files and host files from UI
                 var selectedReferenceFiles = FilterUiStateProvider.GetSelectedReferenceFiles?.Invoke() ?? new List<string>();
@@ -525,18 +525,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     }
                     
                     // Filter 2: Host type filtering - RE-ENABLED FOR FINAL TESTING
-                    bool hostTypeMatch = selectedHostTypes.Count == 0 || 
-                                       allowedHostTypes.Contains(cz.StructuralElementType) ||
-                                       allowedHostTypes.Contains(cz.StructuralElementType + "s") ||
-                                       allowedHostTypes.Any(t => t.TrimEnd('s').Equals(cz.StructuralElementType, StringComparison.OrdinalIgnoreCase));
+                    bool hostTypeMatch = selectedHostCategories.Count == 0 || 
+                                       allowedHostCategories.Contains(cz.StructuralElementType) ||
+                                       allowedHostCategories.Contains(cz.StructuralElementType + "s") ||
+                                       allowedHostCategories.Any(t => t.TrimEnd('s').Equals(cz.StructuralElementType, StringComparison.OrdinalIgnoreCase));
                     
                     if (!hostTypeMatch)
                     {
-                        DebugLogger.Info($"{_logPrefix} Filtered out ClashZone {cz.Id}: Host type '{cz.StructuralElementType}' not in selected types [{string.Join(", ", selectedHostTypes)}]");
+                        DebugLogger.Info($"{_logPrefix} Filtered out ClashZone {cz.Id}: Host type '{cz.StructuralElementType}' not in selected types [{string.Join(", ", selectedHostCategories)}]");
                         // ✅ DEPLOYMENT MODE: Skip file writes
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            try { File.AppendAllText(SafeFileLogger.GetLogFilePath("placement_debug.log"), $"[{DateTime.Now:HH:mm:ss}] ❌ FILTERED: Host type '{cz.StructuralElementType}' not in [{string.Join(", ", selectedHostTypes)}]\n"); } catch { }
+                            try { File.AppendAllText(SafeFileLogger.GetLogFilePath("placement_debug.log"), $"[{DateTime.Now:HH:mm:ss}] ❌ FILTERED: Host type '{cz.StructuralElementType}' not in [{string.Join(", ", selectedHostCategories)}]\n"); } catch { }
                         }
                         return false;
                     }
@@ -619,7 +619,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     {
                         File.AppendAllText(finalDebugPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 FILTERING COMPLETED: {clashZones.Count} -> {filteredZones.Count} clash zones\n");
                         File.AppendAllText(finalDebugPath, $"[{DateTime.Now:HH:mm:ss}] Filter breakdown: afterCategory={afterCategory}, afterHostType={afterHostType}, afterRefFile={afterRefFile}, afterHostFile={afterHostFile}, afterSection={afterSection}\n");
-                        File.AppendAllText(finalDebugPath, $"[{DateTime.Now:HH:mm:ss}] UI Selections: HostTypes=[{string.Join(", ", selectedHostTypes)}], RefFiles=[{string.Join(", ", selectedReferenceFiles)}], HostFiles=[{string.Join(", ", selectedHostFiles)}]\n");
+                        File.AppendAllText(finalDebugPath, $"[{DateTime.Now:HH:mm:ss}] UI Selections: HostTypes=[{string.Join(", ", selectedHostCategories)}], RefFiles=[{string.Join(", ", selectedReferenceFiles)}], HostFiles=[{string.Join(", ", selectedHostFiles)}]\n");
                     }
                     catch { }
                 }

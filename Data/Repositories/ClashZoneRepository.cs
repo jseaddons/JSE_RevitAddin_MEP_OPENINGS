@@ -90,9 +90,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 continue;
                             }
 
-                            // ✅ STEP 1: Get or create file combo
+                            // ✅ STEP 1: Get or create file combo with category and host categories
                             diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Processing zone {clashZone.Id}: Getting/creating file combo...");
-                        var comboId = GetOrCreateFileCombo(filterId, clashZone, transaction);
+                            
+                            // ✅ CRITICAL: Get category from clash zone (MEP category)
+                            string mepCategory = clashZone.MepElementCategory ?? category;
+                            
+                            // ✅ CRITICAL: Get host categories from FilterUiStateProvider or fallback
+                            List<string> hostCategories = null;
+                            if (FilterUiStateProvider.GetSelectedHostCategories != null)
+                            {
+                                hostCategories = FilterUiStateProvider.GetSelectedHostCategories.Invoke();
+                            }
+                            
+                        var comboId = GetOrCreateFileCombo(filterId, mepCategory, hostCategories, clashZone, transaction);
 
                             if (comboId <= 0)
                             {
@@ -250,7 +261,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             return -1;
         }
 
-        private int GetOrCreateFileCombo(int filterId, ClashZone clashZone, SQLiteTransaction transaction)
+        private int GetOrCreateFileCombo(int filterId, string category, List<string> selectedHostCategories, ClashZone clashZone, SQLiteTransaction transaction)
         {
             // ✅ FIX: Use same fallback logic as ClashZonePersistenceService.GetFileComboKey()
             // Try SourceDocKey first, then fall back to DocumentPath
@@ -265,6 +276,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     ? clashZone.HostDocKey 
                     : (!string.IsNullOrWhiteSpace(clashZone.StructuralElementDocumentTitle) ? clashZone.StructuralElementDocumentTitle : "unknown-host"));
 
+            // ✅ CRITICAL: Normalize category
+            string normalizedCategory = MepCategoryConstants.Normalize(category ?? "Unknown");
+            
+            // ✅ CRITICAL: Store host categories as comma-separated string (not JSON) for readability
+            // User wants "Floors" not ["Floors"] in database
+            string hostCategoriesJson = null;
+            if (selectedHostCategories != null && selectedHostCategories.Count > 0)
+            {
+                // ✅ NORMALIZE: Store as comma-separated string (normalized, no brackets)
+                var normalizedCategories = selectedHostCategories
+                    .Where(c => !string.IsNullOrWhiteSpace(c))
+                    .Select(c => c.Trim())
+                    .ToList();
+                if (normalizedCategories.Count > 0)
+                {
+                    hostCategoriesJson = string.Join(", ", normalizedCategories);
+                }
+            }
+
             // ✅ DIAGNOSTIC: Log file combo lookup/creation
             if (string.IsNullOrWhiteSpace(linkedFileKey) || string.IsNullOrWhiteSpace(hostFileKey))
             {
@@ -276,11 +306,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             {
                 cmd.Transaction = transaction;
                 
-                // ✅ STEP 1: Check if file combo already exists
+                // ✅ STEP 1: Check if file combo already exists (with Category in UNIQUE constraint)
                 cmd.CommandText = @"
                     SELECT ComboId FROM FileCombos 
-                    WHERE FilterId = @FilterId AND LinkedFileKey = @LinkedFileKey AND HostFileKey = @HostFileKey";
+                    WHERE FilterId = @FilterId AND Category = @Category AND LinkedFileKey = @LinkedFileKey AND HostFileKey = @HostFileKey";
                 cmd.Parameters.AddWithValue("@FilterId", filterId);
+                cmd.Parameters.AddWithValue("@Category", normalizedCategory);
                 cmd.Parameters.AddWithValue("@LinkedFileKey", linkedFileKey);
                 cmd.Parameters.AddWithValue("@HostFileKey", hostFileKey);
 
@@ -288,28 +319,51 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 if (existingId != null)
                 {
                     var comboId = Convert.ToInt32(existingId);
+                    // ✅ UPDATE: Update SelectedHostCategories if provided and different
+                    if (!string.IsNullOrEmpty(hostCategoriesJson))
+                    {
+                        using (var updateCmd = _context.Connection.CreateCommand())
+                        {
+                            updateCmd.Transaction = transaction;
+                            updateCmd.CommandText = @"
+                                UPDATE FileCombos 
+                                SET SelectedHostCategories = @SelectedHostCategories,
+                                    UpdatedAt = CURRENT_TIMESTAMP
+                                WHERE ComboId = @ComboId";
+                            updateCmd.Parameters.AddWithValue("@ComboId", comboId);
+                            updateCmd.Parameters.AddWithValue("@SelectedHostCategories", hostCategoriesJson);
+                            updateCmd.ExecuteNonQuery();
+                        }
+                    }
+                    
                     if (!DeploymentConfiguration.DeploymentMode)
-                        _logger($"[SQLite] ✅ Found existing FileCombo: ComboId={comboId}, FilterId={filterId}, Linked='{linkedFileKey}', Host='{hostFileKey}'");
+                        _logger($"[SQLite] ✅ Found existing FileCombo: ComboId={comboId}, FilterId={filterId}, Category='{normalizedCategory}', Linked='{linkedFileKey}', Host='{hostFileKey}'");
                     return comboId;
                 }
 
-                // ✅ STEP 2: Create new file combo with IsFilterComboNew = 1 (true) - new file combo needs full detection
+                // ✅ STEP 2: Create new file combo with Category and SelectedHostCategories
                 cmd.CommandText = @"
-                    INSERT INTO FileCombos (FilterId, LinkedFileKey, HostFileKey, IsFilterComboNew, ProcessedAt, CreatedAt, UpdatedAt)
-                    VALUES (@FilterId, @LinkedFileKey, @HostFileKey, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+                    INSERT INTO FileCombos (FilterId, Category, SelectedHostCategories, LinkedFileKey, HostFileKey, IsFilterComboNew, ProcessedAt, CreatedAt, UpdatedAt)
+                    VALUES (@FilterId, @Category, @SelectedHostCategories, @LinkedFileKey, @HostFileKey, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
                     SELECT last_insert_rowid();";
                 
-                // Parameters already set from previous query
+                cmd.Parameters.Clear();
+                cmd.Parameters.AddWithValue("@FilterId", filterId);
+                cmd.Parameters.AddWithValue("@Category", normalizedCategory);
+                cmd.Parameters.AddWithValue("@SelectedHostCategories", hostCategoriesJson ?? (object)DBNull.Value);
+                cmd.Parameters.AddWithValue("@LinkedFileKey", linkedFileKey);
+                cmd.Parameters.AddWithValue("@HostFileKey", hostFileKey);
+                
                 var newIdObj = cmd.ExecuteScalar();
                 if (newIdObj == null)
                 {
-                    _logger($"[SQLite] ❌ Failed to create FileCombo: INSERT returned NULL for FilterId={filterId}, Linked='{linkedFileKey}', Host='{hostFileKey}'");
+                    _logger($"[SQLite] ❌ Failed to create FileCombo: INSERT returned NULL for FilterId={filterId}, Category='{normalizedCategory}', Linked='{linkedFileKey}', Host='{hostFileKey}'");
                     return -1;
                 }
                 
                 var newId = Convert.ToInt32(newIdObj);
                 if (!DeploymentConfiguration.DeploymentMode)
-                    _logger($"[SQLite] ✅ Created new FileCombo: ComboId={newId}, FilterId={filterId}, Linked='{linkedFileKey}', Host='{hostFileKey}'");
+                    _logger($"[SQLite] ✅ Created new FileCombo: ComboId={newId}, FilterId={filterId}, Category='{normalizedCategory}', HostCategories={selectedHostCategories?.Count ?? 0}, Linked='{linkedFileKey}', Host='{hostFileKey}'");
                 return newId;
             }
         }
@@ -402,6 +456,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         HostOrientation, MepOrientationDirection,
                         MepOrientationX, MepOrientationY, MepOrientationZ,
                         MepRotationAngleRad, MepRotationAngleDeg,
+                        MepRotationCos, MepRotationSin,
                         MepAngleToXRad, MepAngleToXDeg,
                         MepAngleToYRad, MepAngleToYDeg,
                         MepWidth, MepHeight, SleeveFamilyName,
@@ -424,6 +479,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         @HostOrientation, @MepOrientationDirection,
                         @MepOrientationX, @MepOrientationY, @MepOrientationZ,
                         @MepRotationAngleRad, @MepRotationAngleDeg,
+                        @MepRotationCos, @MepRotationSin,
                         @MepAngleToXRad, @MepAngleToXDeg,
                         @MepAngleToYRad, @MepAngleToYDeg,
                         @MepWidth, @MepHeight, @SleeveFamilyName,
@@ -527,6 +583,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         MepOrientationZ = @MepOrientationZ,
                         MepRotationAngleRad = @MepRotationAngleRad,
                         MepRotationAngleDeg = @MepRotationAngleDeg,
+                        MepRotationCos = @MepRotationCos,
+                        MepRotationSin = @MepRotationSin,
                         MepAngleToXRad = @MepAngleToXRad,
                         MepAngleToXDeg = @MepAngleToXDeg,
                         MepAngleToYRad = @MepAngleToYRad,
@@ -638,6 +696,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             cmd.Parameters.AddWithValue("@MepOrientationZ", orientationZ);
             cmd.Parameters.AddWithValue("@MepRotationAngleRad", rotationAngleRad);
             cmd.Parameters.AddWithValue("@MepRotationAngleDeg", rotationAngleDeg);
+            // ✅ ROTATION MATRIX: Pre-calculate and save cos/sin (dump once use many times)
+            cmd.Parameters.AddWithValue("@MepRotationCos", Math.Cos(rotationAngleRad));
+            cmd.Parameters.AddWithValue("@MepRotationSin", Math.Sin(rotationAngleRad));
             cmd.Parameters.AddWithValue("@MepAngleToXRad", angleToXRad);
             cmd.Parameters.AddWithValue("@MepAngleToXDeg", angleToXDeg);
             cmd.Parameters.AddWithValue("@MepAngleToYRad", angleToYRad);
@@ -679,7 +740,97 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             cmd.Parameters.AddWithValue("@FramingThickness", clashZone.FramingThickness);
         }
 
+        /// <summary>
+        /// ✅ PUBLIC: Save sleeve snapshots for placed sleeves (called after placement)
+        /// </summary>
+        public void SaveSleeveSnapshotsForPlacedSleeves(int filterId, List<ClashZone> placedZones)
+        {
+            if (placedZones == null || placedZones.Count == 0)
+                return;
+
+            using (var transaction = _context.Connection.BeginTransaction())
+            {
+                try
+                {
+                    // Group zones by ComboId (get from first zone's combo lookup)
+                    var zonesByCombo = placedZones
+                        .Where(z => z != null && (z.SleeveInstanceId > 0 || z.ClusterSleeveInstanceId > 0))
+                        .GroupBy(z =>
+                        {
+                            // Try to get ComboId from zone's associated data
+                            // For now, use -1 if not available (will be set during snapshot creation)
+                            return -1; // ComboId will be determined from FilterId + Category + FileKeys
+                        })
+                        .ToList();
+
+                    foreach (var comboGroup in zonesByCombo)
+                    {
+                        var zones = comboGroup.ToList();
+                        if (zones.Count == 0)
+                            continue;
+
+                        // Get ComboId from first zone (if available via database lookup)
+                        int comboId = -1;
+                        try
+                        {
+                            var firstZone = zones[0];
+                            if (!string.IsNullOrWhiteSpace(firstZone.SourceDocKey) && !string.IsNullOrWhiteSpace(firstZone.HostDocKey))
+                            {
+                                // Try to find existing combo
+                                using (var cmd = _context.Connection.CreateCommand())
+                                {
+                                    cmd.Transaction = transaction;
+                                    cmd.CommandText = @"
+                                        SELECT ComboId FROM FileCombos 
+                                        WHERE FilterId = @FilterId 
+                                          AND LinkedFileKey = @LinkedFileKey 
+                                          AND HostFileKey = @HostFileKey
+                                        LIMIT 1";
+                                    cmd.Parameters.AddWithValue("@FilterId", filterId);
+                                    cmd.Parameters.AddWithValue("@LinkedFileKey", firstZone.SourceDocKey);
+                                    cmd.Parameters.AddWithValue("@HostFileKey", firstZone.HostDocKey);
+                                    var result = cmd.ExecuteScalar();
+                                    if (result != null)
+                                    {
+                                        comboId = Convert.ToInt32(result);
+                                    }
+                                }
+                            }
+                        }
+                        catch { }
+
+                        // Create processed zones list
+                        var processedZones = zones.Select(z => (comboId, z)).ToList();
+                        
+                        // Call private method with transaction
+                        InsertOrUpdateSleeveSnapshotsInternal(filterId, processedZones, transaction);
+                    }
+
+                    transaction.Commit();
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        _logger($"[SQLite] ✅ Saved sleeve snapshots for {placedZones.Count} placed zones");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    transaction.Rollback();
+                    _logger($"[SQLite] ❌ Error saving sleeve snapshots: {ex.Message}");
+                    throw;
+                }
+            }
+        }
+
         private void InsertOrUpdateSleeveSnapshots(
+            int filterId,
+            List<(int ComboId, ClashZone Zone)> processedZones,
+            SQLiteTransaction transaction)
+        {
+            InsertOrUpdateSleeveSnapshotsInternal(filterId, processedZones, transaction);
+        }
+
+        private void InsertOrUpdateSleeveSnapshotsInternal(
             int filterId,
             List<(int ComboId, ClashZone Zone)> processedZones,
             SQLiteTransaction transaction)
@@ -1222,6 +1373,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             clashZone.SleeveBoundingBoxMaxX = GetNullableDouble(reader, "BoundingBoxMaxX") ?? 0.0;
             clashZone.SleeveBoundingBoxMaxY = GetNullableDouble(reader, "BoundingBoxMaxY") ?? 0.0;
             clashZone.SleeveBoundingBoxMaxZ = GetNullableDouble(reader, "BoundingBoxMaxZ") ?? 0.0;
+            
+            // ✅ ROTATED BBOX: Load rotated bounding box coordinates (NULL for axis-aligned sleeves)
+            clashZone.RotatedBoundingBoxMinX = GetNullableDouble(reader, "RotatedBoundingBoxMinX");
+            clashZone.RotatedBoundingBoxMinY = GetNullableDouble(reader, "RotatedBoundingBoxMinY");
+            clashZone.RotatedBoundingBoxMinZ = GetNullableDouble(reader, "RotatedBoundingBoxMinZ");
+            clashZone.RotatedBoundingBoxMaxX = GetNullableDouble(reader, "RotatedBoundingBoxMaxX");
+            clashZone.RotatedBoundingBoxMaxY = GetNullableDouble(reader, "RotatedBoundingBoxMaxY");
+            clashZone.RotatedBoundingBoxMaxZ = GetNullableDouble(reader, "RotatedBoundingBoxMaxZ");
+            
+            // ✅ SLEEVE CORNERS: Load pre-calculated 4 corner coordinates in world space (NULL if not calculated yet)
+            clashZone.SleeveCorner1X = GetNullableDouble(reader, "SleeveCorner1X");
+            clashZone.SleeveCorner1Y = GetNullableDouble(reader, "SleeveCorner1Y");
+            clashZone.SleeveCorner1Z = GetNullableDouble(reader, "SleeveCorner1Z");
+            clashZone.SleeveCorner2X = GetNullableDouble(reader, "SleeveCorner2X");
+            clashZone.SleeveCorner2Y = GetNullableDouble(reader, "SleeveCorner2Y");
+            clashZone.SleeveCorner2Z = GetNullableDouble(reader, "SleeveCorner2Z");
+            clashZone.SleeveCorner3X = GetNullableDouble(reader, "SleeveCorner3X");
+            clashZone.SleeveCorner3Y = GetNullableDouble(reader, "SleeveCorner3Y");
+            clashZone.SleeveCorner3Z = GetNullableDouble(reader, "SleeveCorner3Z");
+            clashZone.SleeveCorner4X = GetNullableDouble(reader, "SleeveCorner4X");
+            clashZone.SleeveCorner4Y = GetNullableDouble(reader, "SleeveCorner4Y");
+            clashZone.SleeveCorner4Z = GetNullableDouble(reader, "SleeveCorner4Z");
 
             clashZone.MepElementCategory = GetNullableString(reader, "MepCategory") ?? string.Empty;
             clashZone.StructuralElementType = GetNullableString(reader, "StructuralType") ?? string.Empty;
@@ -1233,6 +1406,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 GetNullableDouble(reader, "MepOrientationY") ?? 0.0,
                 GetNullableDouble(reader, "MepOrientationZ") ?? 0.0);
             clashZone.MepElementRotationAngle = GetNullableDouble(reader, "MepRotationAngleRad") ?? 0.0;
+            // ✅ ROTATION MATRIX: Load pre-calculated cos/sin (dump once use many times)
+            clashZone.MepRotationCos = GetNullableDouble(reader, "MepRotationCos");
+            clashZone.MepRotationSin = GetNullableDouble(reader, "MepRotationSin");
             
             // ✅ DIAGNOSTIC: Log MEP orientation values when loading for placement (to diagnose orientation=0 issue)
             if (!DeploymentConfiguration.DeploymentMode)
@@ -1341,7 +1517,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         }
 
         public void UpdateSleevePlacement(System.Guid clashZoneGuid, int sleeveInstanceId, double width, double height, double diameter,
-            double placementX, double placementY, double placementZ)
+            double placementX, double placementY, double placementZ,
+            double placementActiveX, double placementActiveY, double placementActiveZ,
+            double rotationAngleRad)
         {
             using (var cmd = _context.Connection.CreateCommand())
             {
@@ -1355,6 +1533,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         SleevePlacementX = @SleevePlacementX,
                         SleevePlacementY = @SleevePlacementY,
                         SleevePlacementZ = @SleevePlacementZ,
+                        SleevePlacementActiveX = @SleevePlacementActiveX,
+                        SleevePlacementActiveY = @SleevePlacementActiveY,
+                        SleevePlacementActiveZ = @SleevePlacementActiveZ,
+                        MepRotationAngleRad = @MepRotationAngleRad,
+                        MepRotationAngleDeg = @MepRotationAngleDeg,
+                        MepRotationCos = @MepRotationCos,
+                        MepRotationSin = @MepRotationSin,
                         UpdatedAt = CURRENT_TIMESTAMP
                     WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)
                       AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL";
@@ -1367,26 +1552,73 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 cmd.Parameters.AddWithValue("@SleevePlacementX", placementX);
                 cmd.Parameters.AddWithValue("@SleevePlacementY", placementY);
                 cmd.Parameters.AddWithValue("@SleevePlacementZ", placementZ);
+                cmd.Parameters.AddWithValue("@SleevePlacementActiveX", placementActiveX);
+                cmd.Parameters.AddWithValue("@SleevePlacementActiveY", placementActiveY);
+                cmd.Parameters.AddWithValue("@SleevePlacementActiveZ", placementActiveZ);
+                cmd.Parameters.AddWithValue("@MepRotationAngleRad", rotationAngleRad);
+                cmd.Parameters.AddWithValue("@MepRotationAngleDeg", rotationAngleRad * 180.0 / Math.PI);
+                // ✅ ROTATION MATRIX: Pre-calculate and save cos/sin (dump once use many times)
+                cmd.Parameters.AddWithValue("@MepRotationCos", Math.Cos(rotationAngleRad));
+                cmd.Parameters.AddWithValue("@MepRotationSin", Math.Sin(rotationAngleRad));
                 cmd.ExecuteNonQuery();
             }
         }
 
         public void UpdateClusterPlacement(int clashZoneId, int clusterInstanceId, double minX, double minY, double minZ,
-            double maxX, double maxY, double maxZ)
+            double maxX, double maxY, double maxZ, double? placementX = null, double? placementY = null, double? placementZ = null,
+            double? rotatedMinX = null, double? rotatedMinY = null, double? rotatedMinZ = null,
+            double? rotatedMaxX = null, double? rotatedMaxY = null, double? rotatedMaxZ = null,
+            bool? isClustered = null, bool? markedForCluster = null)
         {
             using (var cmd = _context.Connection.CreateCommand())
             {
-                cmd.CommandText = @"
+                var updateFields = new List<string>
+                {
+                    "SleeveState = 2",
+                    "ClusterInstanceId = @ClusterInstanceId",
+                    "BoundingBoxMinX = @BoundingBoxMinX",
+                    "BoundingBoxMinY = @BoundingBoxMinY",
+                    "BoundingBoxMinZ = @BoundingBoxMinZ",
+                    "BoundingBoxMaxX = @BoundingBoxMaxX",
+                    "BoundingBoxMaxY = @BoundingBoxMaxY",
+                    "BoundingBoxMaxZ = @BoundingBoxMaxZ"
+                };
+
+                // ✅ Add placement point if provided
+                if (placementX.HasValue && placementY.HasValue && placementZ.HasValue)
+                {
+                    updateFields.Add("SleevePlacementX = @SleevePlacementX");
+                    updateFields.Add("SleevePlacementY = @SleevePlacementY");
+                    updateFields.Add("SleevePlacementZ = @SleevePlacementZ");
+                }
+
+                // ✅ Add rotated bounding boxes if provided
+                if (rotatedMinX.HasValue && rotatedMinY.HasValue && rotatedMinZ.HasValue &&
+                    rotatedMaxX.HasValue && rotatedMaxY.HasValue && rotatedMaxZ.HasValue)
+                {
+                    updateFields.Add("RotatedBoundingBoxMinX = @RotatedBoundingBoxMinX");
+                    updateFields.Add("RotatedBoundingBoxMinY = @RotatedBoundingBoxMinY");
+                    updateFields.Add("RotatedBoundingBoxMinZ = @RotatedBoundingBoxMinZ");
+                    updateFields.Add("RotatedBoundingBoxMaxX = @RotatedBoundingBoxMaxX");
+                    updateFields.Add("RotatedBoundingBoxMaxY = @RotatedBoundingBoxMaxY");
+                    updateFields.Add("RotatedBoundingBoxMaxZ = @RotatedBoundingBoxMaxZ");
+                }
+
+                // ✅ Add flags if provided
+                if (isClustered.HasValue)
+                {
+                    updateFields.Add("IsClusteredFlag = @IsClusteredFlag");
+                }
+                if (markedForCluster.HasValue)
+                {
+                    updateFields.Add("MarkedForClusterProcess = @MarkedForClusterProcess");
+                }
+
+                updateFields.Add("UpdatedAt = CURRENT_TIMESTAMP");
+
+                cmd.CommandText = $@"
                     UPDATE ClashZones SET
-                        SleeveState = 2,
-                        ClusterInstanceId = @ClusterInstanceId,
-                        BoundingBoxMinX = @BoundingBoxMinX,
-                        BoundingBoxMinY = @BoundingBoxMinY,
-                        BoundingBoxMinZ = @BoundingBoxMinZ,
-                        BoundingBoxMaxX = @BoundingBoxMaxX,
-                        BoundingBoxMaxY = @BoundingBoxMaxY,
-                        BoundingBoxMaxZ = @BoundingBoxMaxZ,
-                        UpdatedAt = CURRENT_TIMESTAMP
+                        {string.Join(",\n                        ", updateFields)}
                     WHERE ClashZoneId = @ClashZoneId";
 
                 cmd.Parameters.AddWithValue("@ClashZoneId", clashZoneId);
@@ -1397,7 +1629,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 cmd.Parameters.AddWithValue("@BoundingBoxMaxX", maxX);
                 cmd.Parameters.AddWithValue("@BoundingBoxMaxY", maxY);
                 cmd.Parameters.AddWithValue("@BoundingBoxMaxZ", maxZ);
-                cmd.ExecuteNonQuery();
+
+                // ✅ Add optional parameters
+                if (placementX.HasValue && placementY.HasValue && placementZ.HasValue)
+                {
+                    cmd.Parameters.AddWithValue("@SleevePlacementX", placementX.Value);
+                    cmd.Parameters.AddWithValue("@SleevePlacementY", placementY.Value);
+                    cmd.Parameters.AddWithValue("@SleevePlacementZ", placementZ.Value);
+                }
+
+                if (rotatedMinX.HasValue && rotatedMinY.HasValue && rotatedMinZ.HasValue &&
+                    rotatedMaxX.HasValue && rotatedMaxY.HasValue && rotatedMaxZ.HasValue)
+                {
+                    cmd.Parameters.AddWithValue("@RotatedBoundingBoxMinX", rotatedMinX.Value);
+                    cmd.Parameters.AddWithValue("@RotatedBoundingBoxMinY", rotatedMinY.Value);
+                    cmd.Parameters.AddWithValue("@RotatedBoundingBoxMinZ", rotatedMinZ.Value);
+                    cmd.Parameters.AddWithValue("@RotatedBoundingBoxMaxX", rotatedMaxX.Value);
+                    cmd.Parameters.AddWithValue("@RotatedBoundingBoxMaxY", rotatedMaxY.Value);
+                    cmd.Parameters.AddWithValue("@RotatedBoundingBoxMaxZ", rotatedMaxZ.Value);
+                }
+
+                if (isClustered.HasValue)
+                {
+                    cmd.Parameters.AddWithValue("@IsClusteredFlag", isClustered.Value ? 1 : 0);
+                }
+                if (markedForCluster.HasValue)
+                {
+                    cmd.Parameters.AddWithValue("@MarkedForClusterProcess", markedForCluster.Value ? 1 : 0);
+                }
+
+                var rowsAffected = cmd.ExecuteNonQuery();
+                if (rowsAffected > 0 && !DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ✅ UpdateClusterPlacement: Updated ClashZoneId={clashZoneId}, ClusterInstanceId={clusterInstanceId}, " +
+                        $"PlacementPoint={placementX?.ToString("F6") ?? "NULL"}, " +
+                        $"RotatedBbox={rotatedMinX?.ToString("F6") ?? "NULL"}");
+                }
             }
         }
 
@@ -1433,6 +1700,105 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 if (rowsAffected == 0 && !DeploymentConfiguration.DeploymentMode)
                 {
                     _logger($"[SQLite] ⚠️ UpdateSleeveBoundingBoxes: No rows updated for GUID {clashZoneGuid}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Update rotated bounding box coordinates for a rotated individual sleeve
+        /// Called when MepElementRotationAngle is non-zero (non-axis-aligned sleeve)
+        /// For axis-aligned sleeves, these columns remain NULL
+        /// </summary>
+        public void UpdateRotatedBoundingBoxes(Guid clashZoneGuid, double rotatedMinX, double rotatedMinY, double rotatedMinZ,
+            double rotatedMaxX, double rotatedMaxY, double rotatedMaxZ)
+        {
+            using (var cmd = _context.Connection.CreateCommand())
+            {
+                cmd.CommandText = @"
+                    UPDATE ClashZones SET
+                        RotatedBoundingBoxMinX = @RotatedBoundingBoxMinX,
+                        RotatedBoundingBoxMinY = @RotatedBoundingBoxMinY,
+                        RotatedBoundingBoxMinZ = @RotatedBoundingBoxMinZ,
+                        RotatedBoundingBoxMaxX = @RotatedBoundingBoxMaxX,
+                        RotatedBoundingBoxMaxY = @RotatedBoundingBoxMaxY,
+                        RotatedBoundingBoxMaxZ = @RotatedBoundingBoxMaxZ,
+                        UpdatedAt = CURRENT_TIMESTAMP
+                    WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)
+                      AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL";
+
+                cmd.Parameters.AddWithValue("@ClashZoneGuid", clashZoneGuid.ToString());
+                cmd.Parameters.AddWithValue("@RotatedBoundingBoxMinX", rotatedMinX);
+                cmd.Parameters.AddWithValue("@RotatedBoundingBoxMinY", rotatedMinY);
+                cmd.Parameters.AddWithValue("@RotatedBoundingBoxMinZ", rotatedMinZ);
+                cmd.Parameters.AddWithValue("@RotatedBoundingBoxMaxX", rotatedMaxX);
+                cmd.Parameters.AddWithValue("@RotatedBoundingBoxMaxY", rotatedMaxY);
+                cmd.Parameters.AddWithValue("@RotatedBoundingBoxMaxZ", rotatedMaxZ);
+                
+                var rowsAffected = cmd.ExecuteNonQuery();
+                if (rowsAffected == 0 && !DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ⚠️ UpdateRotatedBoundingBoxes: No rows updated for GUID {clashZoneGuid}");
+                }
+                else if (rowsAffected > 0 && !DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ✅ Saved rotated bounding box for GUID {clashZoneGuid}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// ✅ SLEEVE CORNERS: Update pre-calculated 4 corner coordinates in world space
+        /// Calculated once during individual sleeve placement, stored for reuse during clustering
+        /// Corner order: 1=Bottom-left, 2=Bottom-right, 3=Top-left, 4=Top-right (in local space, then rotated to world)
+        /// </summary>
+        public void UpdateSleeveCorners(Guid clashZoneGuid, 
+            double corner1X, double corner1Y, double corner1Z,
+            double corner2X, double corner2Y, double corner2Z,
+            double corner3X, double corner3Y, double corner3Z,
+            double corner4X, double corner4Y, double corner4Z)
+        {
+            using (var cmd = _context.Connection.CreateCommand())
+            {
+                cmd.CommandText = @"
+                    UPDATE ClashZones SET
+                        SleeveCorner1X = @SleeveCorner1X,
+                        SleeveCorner1Y = @SleeveCorner1Y,
+                        SleeveCorner1Z = @SleeveCorner1Z,
+                        SleeveCorner2X = @SleeveCorner2X,
+                        SleeveCorner2Y = @SleeveCorner2Y,
+                        SleeveCorner2Z = @SleeveCorner2Z,
+                        SleeveCorner3X = @SleeveCorner3X,
+                        SleeveCorner3Y = @SleeveCorner3Y,
+                        SleeveCorner3Z = @SleeveCorner3Z,
+                        SleeveCorner4X = @SleeveCorner4X,
+                        SleeveCorner4Y = @SleeveCorner4Y,
+                        SleeveCorner4Z = @SleeveCorner4Z,
+                        UpdatedAt = CURRENT_TIMESTAMP
+                    WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)
+                      AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL";
+
+                cmd.Parameters.AddWithValue("@ClashZoneGuid", clashZoneGuid.ToString());
+                cmd.Parameters.AddWithValue("@SleeveCorner1X", corner1X);
+                cmd.Parameters.AddWithValue("@SleeveCorner1Y", corner1Y);
+                cmd.Parameters.AddWithValue("@SleeveCorner1Z", corner1Z);
+                cmd.Parameters.AddWithValue("@SleeveCorner2X", corner2X);
+                cmd.Parameters.AddWithValue("@SleeveCorner2Y", corner2Y);
+                cmd.Parameters.AddWithValue("@SleeveCorner2Z", corner2Z);
+                cmd.Parameters.AddWithValue("@SleeveCorner3X", corner3X);
+                cmd.Parameters.AddWithValue("@SleeveCorner3Y", corner3Y);
+                cmd.Parameters.AddWithValue("@SleeveCorner3Z", corner3Z);
+                cmd.Parameters.AddWithValue("@SleeveCorner4X", corner4X);
+                cmd.Parameters.AddWithValue("@SleeveCorner4Y", corner4Y);
+                cmd.Parameters.AddWithValue("@SleeveCorner4Z", corner4Z);
+                
+                var rowsAffected = cmd.ExecuteNonQuery();
+                if (rowsAffected == 0 && !DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ⚠️ UpdateSleeveCorners: No rows updated for GUID {clashZoneGuid}");
+                }
+                else if (rowsAffected > 0 && !DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ✅ Saved 4 sleeve corners for GUID {clashZoneGuid}");
                 }
             }
         }
@@ -1842,6 +2208,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 _logger($"[SQLite] ⚠️ GUID {guidString} NOT FOUND in database - no rows updated");
                                 _logger($"[SQLite] ⚠️ Searching for GUID: {guidString} (original: {update.ClashZoneId})");
                                 _logger($"[SQLite] ⚠️ Will try fallback matching by MEP={update.MepElementId}, Host={update.StructuralElementId}, Point=({update.IntersectionPointX:F3}, {update.IntersectionPointY:F3}, {update.IntersectionPointZ:F3})");
+                                _logger($"[SQLite] ⚠️ OldSleeveId={update.OldSleeveInstanceId}, OldClusterId={update.OldClusterInstanceId}, IsClusterResolved={update.IsClusterResolved}");
+                                
+                                // ✅ DIAGNOSTIC: Query database to see what exists for this GUID
+                                using (var diagCmd = _context.Connection.CreateCommand())
+                                {
+                                    diagCmd.Transaction = transaction;
+                                    diagCmd.CommandText = @"
+                                        SELECT ClashZoneId, ClashZoneGuid, SleeveInstanceId, ClusterInstanceId, 
+                                               IsResolvedFlag, IsClusterResolvedFlag, MepElementId, HostElementId
+                                        FROM ClashZones
+                                        WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)
+                                           OR (MepElementId = @MepElementId AND HostElementId = @HostElementId 
+                                               AND ABS(IntersectionX - @IntersectionX) < 0.001 
+                                               AND ABS(IntersectionY - @IntersectionY) < 0.001 
+                                               AND ABS(IntersectionZ - @IntersectionZ) < 0.001)
+                                        LIMIT 5";
+                                    diagCmd.Parameters.AddWithValue("@ClashZoneGuid", guidString);
+                                    diagCmd.Parameters.AddWithValue("@MepElementId", update.MepElementId);
+                                    diagCmd.Parameters.AddWithValue("@HostElementId", update.StructuralElementId);
+                                    diagCmd.Parameters.AddWithValue("@IntersectionX", update.IntersectionPointX);
+                                    diagCmd.Parameters.AddWithValue("@IntersectionY", update.IntersectionPointY);
+                                    diagCmd.Parameters.AddWithValue("@IntersectionZ", update.IntersectionPointZ);
+                                    
+                                    using (var diagReader = diagCmd.ExecuteReader())
+                                    {
+                                        int matchCount = 0;
+                                        while (diagReader.Read())
+                                        {
+                                            matchCount++;
+                                            int czId = GetInt(diagReader, "ClashZoneId", -1);
+                                            string dbGuid = GetNullableString(diagReader, "ClashZoneGuid") ?? "NULL";
+                                            int dbSleeveId = GetInt(diagReader, "SleeveInstanceId", -1);
+                                            int dbClusterId = GetInt(diagReader, "ClusterInstanceId", -1);
+                                            int dbIsResolved = GetInt(diagReader, "IsResolvedFlag", 0);
+                                            int dbIsClusterResolved = GetInt(diagReader, "IsClusterResolvedFlag", 0);
+                                            _logger($"[SQLite] 🔍 Match #{matchCount}: ClashZoneId={czId}, GUID={dbGuid}, SleeveId={dbSleeveId}, ClusterId={dbClusterId}, IsResolved={dbIsResolved}, IsClusterResolved={dbIsClusterResolved}");
+                                        }
+                                        if (matchCount == 0)
+                                        {
+                                            _logger($"[SQLite] ❌ NO MATCHES FOUND in database for GUID {guidString} or MEP+Host+Point");
+                                        }
+                                    }
+                                }
                             }
                             else
                             {
@@ -1884,6 +2293,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
             try
             {
+                // ✅ LOG: UPDATE operation
+                var updateParams = new Dictionary<string, object>
+                {
+                    { "ComboId", comboId },
+                    { "IsFilterComboNew", 0 }
+                };
+
+                DatabaseOperationLogger.LogOperation(
+                    "UPDATE",
+                    "FileCombos",
+                    updateParams,
+                    additionalInfo: $"Resetting IsFilterComboNew flag after cluster placement (Flow #7)");
+
                 using (var cmd = _context.Connection.CreateCommand())
                 {
                     cmd.CommandText = @"
@@ -1896,6 +2318,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     int rowsAffected = cmd.ExecuteNonQuery();
                     if (rowsAffected > 0)
                     {
+                        DatabaseOperationLogger.LogOperation(
+                            "UPDATE",
+                            "FileCombos",
+                            updateParams,
+                            rowsAffected,
+                            $"✅ Reset IsFilterComboNew=0 for ComboId={comboId} (Flow #7)");
                         _logger($"[SQLite] ✅ Reset IsFilterComboNew=0 for ComboId={comboId}");
                         if (!DeploymentConfiguration.DeploymentMode)
                         {

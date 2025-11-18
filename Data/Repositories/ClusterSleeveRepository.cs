@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 {
@@ -88,6 +89,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                         HostType = @HostType,
                                         HostOrientation = @HostOrientation,
                                         ClashZoneIdsJson = @ClashZoneIdsJson,
+                                        ClashZoneGuids = @ClashZoneGuids,
+                                        MepSizes = @MepSizes,
+                                        MepSystemNames = @MepSystemNames,
+                                        MepElementIds = @MepElementIds,
                                         UpdatedAt = CURRENT_TIMESTAMP
                                     WHERE ClusterInstanceId = @ClusterInstanceId";
 
@@ -118,6 +123,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                         RotationAngleDeg, IsRotated,
                                         PlacementX, PlacementY, PlacementZ,
                                         HostType, HostOrientation, ClashZoneIdsJson,
+                                        ClashZoneGuids, MepSizes, MepSystemNames, MepElementIds,
                                         CreatedAt, UpdatedAt
                                     ) VALUES (
                                         @ClusterInstanceId, @ComboId, @FilterId, @Category,
@@ -127,6 +133,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                         @RotationAngleDeg, @IsRotated,
                                         @PlacementX, @PlacementY, @PlacementZ,
                                         @HostType, @HostOrientation, @ClashZoneIdsJson,
+                                        @ClashZoneGuids, @MepSizes, @MepSystemNames, @MepElementIds,
                                         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                                     )";
 
@@ -138,16 +145,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     placementX, placementY, placementZ,
                                     hostType, hostOrientation, clashZoneIds);
 
-                                insertCmd.ExecuteNonQuery();
+                                var rowsAffected = insertCmd.ExecuteNonQuery();
+                                
+                                // ✅ LOG: INSERT operation
+                                var insertParams = new Dictionary<string, object>
+                                {
+                                    { "ClusterInstanceId", clusterInstanceId },
+                                    { "ComboId", comboId },
+                                    { "FilterId", filterId },
+                                    { "Category", category ?? "NULL" },
+                                    { "ClusterWidth", clusterWidth },
+                                    { "ClusterHeight", clusterHeight },
+                                    { "ClusterDepth", clusterDepth },
+                                    { "RotationAngleDeg", rotationAngleDeg },
+                                    { "IsRotated", isRotated },
+                                    { "PlacementX", placementX },
+                                    { "PlacementY", placementY },
+                                    { "PlacementZ", placementZ },
+                                    { "ClashZoneIdsCount", clashZoneIds?.Count ?? 0 }
+                                };
+                                
+                                DatabaseOperationLogger.LogOperation(
+                                    "INSERT",
+                                    "ClusterSleeves",
+                                    insertParams,
+                                    rowsAffected,
+                                    $"✅ Saved cluster sleeve {clusterInstanceId} (ComboId={comboId}, FilterId={filterId})");
+                                
                                 _logger($"[SQLite] ✅ Saved cluster sleeve {clusterInstanceId} to database");
                             }
                         }
                     }
 
+                    DatabaseOperationLogger.LogTransaction("COMMIT", "SUCCESS", null);
                     transaction.Commit();
                 }
                 catch (Exception ex)
                 {
+                    DatabaseOperationLogger.LogTransaction("ROLLBACK", "FAILED", ex.Message);
                     transaction.Rollback();
                     _logger($"[SQLite] ❌ Error saving cluster sleeve {clusterInstanceId}: {ex.Message}");
                     throw;
@@ -197,6 +232,130 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 ? JsonSerializer.Serialize(clashZoneIds.Select(g => g.ToString()).ToList())
                 : "[]";
             cmd.Parameters.AddWithValue("@ClashZoneIdsJson", clashZoneIdsJson);
+            
+            // ✅ COMMA-SEPARATED VALUES: Load MEP data from SleeveSnapshots table
+            var (clashZoneGuids, mepSizes, mepSystemNames, mepElementIds) = GetCommaSeparatedMepData(clashZoneIds);
+            cmd.Parameters.AddWithValue("@ClashZoneGuids", clashZoneGuids ?? (object)DBNull.Value);
+            cmd.Parameters.AddWithValue("@MepSizes", mepSizes ?? (object)DBNull.Value);
+            cmd.Parameters.AddWithValue("@MepSystemNames", mepSystemNames ?? (object)DBNull.Value);
+            cmd.Parameters.AddWithValue("@MepElementIds", mepElementIds ?? (object)DBNull.Value);
+        }
+        
+        /// <summary>
+        /// ✅ COMMA-SEPARATED VALUES: Load MEP data from SleeveSnapshots table for cluster sleeves
+        /// Returns comma-separated strings for GUIDs, sizes, system names, and element IDs
+        /// Queries individual sleeve snapshots (SourceType='Individual') that correspond to the clash zones
+        /// </summary>
+        private (string clashZoneGuids, string mepSizes, string mepSystemNames, string mepElementIds) GetCommaSeparatedMepData(List<Guid> clashZoneIds)
+        {
+            if (clashZoneIds == null || clashZoneIds.Count == 0)
+                return (null, null, null, null);
+            
+            try
+            {
+                // Query ClashZones to get MEP element IDs, then find corresponding snapshots
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    // Build WHERE clause for GUIDs
+                    var guidPlaceholders = string.Join(", ", clashZoneIds.Select((_, i) => $"@Guid{i}"));
+                    cmd.CommandText = $@"
+                        SELECT DISTINCT
+                            cz.ClashZoneGuid,
+                            cz.MepElementId,
+                            cz.MepElementSizeData,
+                            cz.MepElementSystemName,
+                            cz.MepElementSystemAbbreviation
+                        FROM ClashZones cz
+                        WHERE UPPER(cz.ClashZoneGuid) IN ({guidPlaceholders})
+                          AND cz.ClashZoneGuid != '' AND cz.ClashZoneGuid IS NOT NULL
+                        ORDER BY cz.ClashZoneGuid";
+                    
+                    // Add GUID parameters
+                    for (int i = 0; i < clashZoneIds.Count; i++)
+                    {
+                        cmd.Parameters.AddWithValue($"@Guid{i}", clashZoneIds[i].ToString().ToUpperInvariant());
+                    }
+                    
+                    var guidList = new List<string>();
+                    var sizeList = new List<string>();
+                    var systemNameList = new List<string>();
+                    var elementIdList = new List<string>();
+                    
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            var guid = reader.IsDBNull(0) ? null : reader.GetString(0);
+                            var mepElementId = reader.IsDBNull(1) ? (long?)null : reader.GetInt64(1);
+                            var mepSizeDataJson = reader.IsDBNull(2) ? null : reader.GetString(2);
+                            var systemName = reader.IsDBNull(3) ? null : reader.GetString(3);
+                            var systemAbbr = reader.IsDBNull(4) ? null : reader.GetString(4);
+                            
+                            if (!string.IsNullOrWhiteSpace(guid))
+                                guidList.Add(guid);
+                            
+                            // Extract MEP size from MepElementSizeData JSON or use default
+                            if (!string.IsNullOrWhiteSpace(mepSizeDataJson))
+                            {
+                                try
+                                {
+                                    var sizeData = JsonSerializer.Deserialize<Dictionary<string, object>>(mepSizeDataJson);
+                                    if (sizeData != null)
+                                    {
+                                        if (sizeData.TryGetValue("FormattedSize", out var formattedSizeObj) && formattedSizeObj != null)
+                                        {
+                                            sizeList.Add(formattedSizeObj.ToString());
+                                        }
+                                        else if (sizeData.TryGetValue("Shape", out var shapeObj) && shapeObj?.ToString() == "Round")
+                                        {
+                                            if (sizeData.TryGetValue("Diameter", out var diamObj))
+                                            {
+                                                var diamMm = Convert.ToDouble(diamObj) * 304.8; // Convert feet to mm
+                                                sizeList.Add($"Ø{diamMm:F0}");
+                                            }
+                                        }
+                                        else if (sizeData.TryGetValue("Width", out var widthObj) && sizeData.TryGetValue("Height", out var heightObj))
+                                        {
+                                            var widthMm = Convert.ToDouble(widthObj) * 304.8;
+                                            var heightMm = Convert.ToDouble(heightObj) * 304.8;
+                                            sizeList.Add($"{widthMm:F0}×{heightMm:F0}");
+                                        }
+                                    }
+                                }
+                                catch { /* Ignore JSON parse errors */ }
+                            }
+                            
+                            // Extract system name
+                            if (!string.IsNullOrWhiteSpace(systemName))
+                            {
+                                systemNameList.Add(systemName);
+                            }
+                            else if (!string.IsNullOrWhiteSpace(systemAbbr))
+                            {
+                                systemNameList.Add(systemAbbr);
+                            }
+                            
+                            // Add MEP element ID
+                            if (mepElementId.HasValue && mepElementId.Value > 0)
+                            {
+                                elementIdList.Add(mepElementId.Value.ToString());
+                            }
+                        }
+                    }
+                    
+                    return (
+                        guidList.Count > 0 ? string.Join(", ", guidList) : null,
+                        sizeList.Count > 0 ? string.Join(", ", sizeList) : null,
+                        systemNameList.Count > 0 ? string.Join(", ", systemNameList) : null,
+                        elementIdList.Count > 0 ? string.Join(", ", elementIdList) : null
+                    );
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ⚠️ Error loading MEP data for cluster: {ex.Message}");
+                return (null, null, null, null);
+            }
         }
 
         /// <summary>
@@ -206,6 +365,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         public List<ClusterSleeveData> LoadClusterSleevesForCombo(int comboId, string category = null)
         {
             var clusters = new List<ClusterSleeveData>();
+
+            // ✅ LOG: SELECT operation
+            var whereClause = string.IsNullOrWhiteSpace(category)
+                ? $"ComboId={comboId}"
+                : $"ComboId={comboId} AND Category='{category}'";
+            
+            DatabaseOperationLogger.LogSelect(
+                "ClusterSleeves",
+                whereClause,
+                additionalInfo: "Loading cluster data for PATH 1 replay");
 
             using (var cmd = _context.Connection.CreateCommand())
             {
@@ -290,6 +459,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     }
                 }
             }
+
+            // ✅ LOG: SELECT results
+            DatabaseOperationLogger.LogSelect(
+                "ClusterSleeves",
+                whereClause,
+                resultCount: clusters.Count,
+                sampleRow: clusters.Count > 0 ? new Dictionary<string, object>
+                {
+                    { "ClusterInstanceId", clusters[0].ClusterInstanceId },
+                    { "ComboId", clusters[0].ComboId },
+                    { "Category", clusters[0].Category },
+                    { "ClashZoneIdsCount", clusters[0].ClashZoneIds?.Count ?? 0 }
+                } : null);
 
             return clusters;
         }

@@ -79,7 +79,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     selectedMepCategories,
                     selectedReferenceFiles,
                     selectedHostFiles,
-                    FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>(),
+                    FilterUiStateProvider.GetSelectedHostCategories?.Invoke() ?? new List<string>(),
                     clearanceSettings,
                     enableThreePointValidation))
                 {
@@ -905,7 +905,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     repo.SaveFilterUIState(
                                         filterName,
                                         categoryDisplay,
-                                        filter.SelectedHostElementTypes ?? new List<string>(),
+                                        filter.SelectedHostCategories ?? new List<string>(),
                                         filter.OpeningSettings
                                     );
                                 });

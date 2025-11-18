@@ -48,6 +48,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         /// <summary>
         /// ✅ PUBLIC: Get display category for a filter (needed for database registration)
+        /// ⚠️ NO FALLBACK: Returns empty string if SelectedMepCategoryName is not set
+        /// This prevents incorrect category assignment (e.g., "Ducts" when "Cable Trays" is selected)
         /// </summary>
         public string GetDisplayCategory(OpeningFilter filter)
         {
@@ -57,7 +59,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (!string.IsNullOrWhiteSpace(filter.SelectedMepCategoryName))
                 return MepCategoryConstants.Normalize(filter.SelectedMepCategoryName);
 
-            return MepCategoryConstants.Normalize(filter.Category.ToString());
+            // ✅ NO FALLBACK: Return empty string instead of using filter.Category enum
+            // This forces callers to get category from UI state, not from stale filter object
+            return string.Empty;
         }
 
         /// <summary>
@@ -190,9 +194,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 var newFilter = CreateFilterFromCurrentUIState(filterName);
                 
+                // ✅ CRITICAL FIX: Get category from UI state, NOT from filter object (which may have stale/wrong category)
+                // ⚠️ NO FALLBACK: Must get from UI state, not from filter object's enum property
+                string categoryDisplay = null;
+                if (FilterUiStateProvider.GetSelectedMepCategoryNames != null)
+                {
+                    try
+                    {
+                        var selectedCategories = FilterUiStateProvider.GetSelectedMepCategoryNames.Invoke();
+                        if (selectedCategories != null && selectedCategories.Count > 0)
+                        {
+                            categoryDisplay = MepCategoryConstants.Normalize(selectedCategories[0]);
+                            _log($"[FILTER_MGMT] ✅ Using category from UI state: '{categoryDisplay}' (from {selectedCategories.Count} selected categories)");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _log($"[FILTER_MGMT] ⚠️ Error getting category from UI state: {ex.Message}");
+                    }
+                }
+                
+                // ⚠️ CRITICAL: If category is empty, prompt user to select a category (don't use stale filter object data)
+                if (string.IsNullOrEmpty(categoryDisplay))
+                {
+                    _log($"[FILTER_MGMT] ❌ Category is empty - cannot create filter without category");
+                    ShowError("Please select a MEP category (Ducts, Pipes, or Cable Trays) before creating the filter.");
+                    return; // Exit early - don't create without category
+                }
+                
                 // ✅ CRITICAL: DATABASE-FIRST - Register filter in database FIRST (before adding to UI)
                 // Filter is only usable if it exists in DB, so we must create it in DB before UI
-                var categoryDisplay = GetDisplayCategory(newFilter);
                 var filterId = RegisterFilterInDatabase(newFilter.Name, categoryDisplay);
                 
                 if (filterId > 0)
@@ -201,16 +232,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     // ⚠️⚠️⚠️ CRITICAL: UI STATE PERSISTENCE - DO NOT REMOVE OR MODIFY ⚠️⚠️⚠️
                     // ✅ STEP 2: Save UI state to database (captured from CreateFilterFromCurrentUIState)
-                    // This ensures SelectedHostElementTypes and OpeningSettings are preserved when filter is loaded
+                    // This ensures SelectedHostCategories and OpeningSettings are preserved when filter is loaded
                     // PROTECTED CODE: Removing this will cause UI state to be lost when filters are saved/loaded
                     try
                     {
                         UseFilterRepository(repo =>
                         {
+                            // ✅ STANDARDIZED: Use SelectedHostCategories
                             repo.SaveFilterUIState(
                                 newFilter.Name,
                                 categoryDisplay,
-                                newFilter.SelectedHostElementTypes ?? new List<string>(),
+                                newFilter.SelectedHostCategories ?? new List<string>(),
                                 newFilter.OpeningSettings
                             );
                         });
@@ -300,13 +332,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     SelectedMepCategoryName = selectedFilter.SelectedMepCategoryName,
                     SelectedReferenceFiles = selectedFilter.SelectedReferenceFiles != null ? new List<string>(selectedFilter.SelectedReferenceFiles) : null,
                     SelectedHostFiles = selectedFilter.SelectedHostFiles != null ? new List<string>(selectedFilter.SelectedHostFiles) : null,
-                    SelectedHostElementTypes = selectedFilter.SelectedHostElementTypes != null ? new List<string>(selectedFilter.SelectedHostElementTypes) : null,
+                    SelectedHostCategories = selectedFilter.SelectedHostCategories != null ? new List<string>(selectedFilter.SelectedHostCategories) : null,
                     OpeningSettings = selectedFilter.OpeningSettings // ✅ CRITICAL: Copy OpeningSettings as well
                 };
 
+                // ✅ CRITICAL FIX: Get category from UI state OR from copied filter's SelectedMepCategoryNames
+                // ⚠️ NO FALLBACK: Must get from UI state or copied filter's SelectedMepCategoryNames, not from enum
+                string categoryDisplay = null;
+                if (FilterUiStateProvider.GetSelectedMepCategoryNames != null)
+                {
+                    try
+                    {
+                        var selectedCategories = FilterUiStateProvider.GetSelectedMepCategoryNames.Invoke();
+                        if (selectedCategories != null && selectedCategories.Count > 0)
+                        {
+                            categoryDisplay = MepCategoryConstants.Normalize(selectedCategories[0]);
+                            _log($"[FILTER_MGMT] ✅ Using category from UI state: '{categoryDisplay}' (from {selectedCategories.Count} selected categories)");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _log($"[FILTER_MGMT] ⚠️ Error getting category from UI state: {ex.Message}");
+                    }
+                }
+                
+                // Fallback to copied filter's SelectedMepCategoryNames if UI state not available
+                if (string.IsNullOrEmpty(categoryDisplay) && copiedFilter.SelectedMepCategoryNames != null && copiedFilter.SelectedMepCategoryNames.Count > 0)
+                {
+                    categoryDisplay = MepCategoryConstants.Normalize(copiedFilter.SelectedMepCategoryNames[0]);
+                    _log($"[FILTER_MGMT] ✅ Using category from copied filter: '{categoryDisplay}'");
+                }
+                
+                // ⚠️ CRITICAL: If category is empty, prompt user to select a category (don't use stale filter object data)
+                if (string.IsNullOrEmpty(categoryDisplay))
+                {
+                    _log($"[FILTER_MGMT] ❌ Category is empty - cannot copy filter without category");
+                    ShowError("Please select a MEP category (Ducts, Pipes, or Cable Trays) before copying the filter.");
+                    return; // Exit early - don't copy without category
+                }
+
                 // ✅ CRITICAL: DATABASE-FIRST - Register filter in database FIRST (before adding to UI)
                 // Filter is only usable if it exists in DB, so we must create it in DB before UI
-                var categoryDisplay = GetDisplayCategory(copiedFilter);
                 var filterId = RegisterFilterInDatabase(copiedFilter.Name, categoryDisplay);
                 
                 if (filterId > 0)
@@ -315,17 +381,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     // ⚠️⚠️⚠️ CRITICAL: UI STATE PERSISTENCE - DO NOT REMOVE OR MODIFY ⚠️⚠️⚠️
                     // ✅ STEP 2: Save UI state to database (copied from source filter)
-                    // This ensures SelectedHostElementTypes and OpeningSettings are preserved when filter is copied
+                    // This ensures SelectedHostCategories and OpeningSettings are preserved when filter is copied
                     // PROTECTED CODE: Removing this will cause UI state to be lost when filters are copied
                     try
                     {
                         UseFilterRepository(repo =>
                         {
+                            // ✅ STANDARDIZED: Use SelectedHostCategories
                             repo.SaveFilterUIState(
                                 copiedFilter.Name,
                                 categoryDisplay,
-                                copiedFilter.SelectedHostElementTypes ?? new List<string>(),
-                                copiedFilter.OpeningSettings // Use copied filter's OpeningSettings (now copied above)
+                                copiedFilter.SelectedHostCategories ?? new List<string>(),
+                                copiedFilter.OpeningSettings
                             );
                         });
                         _log($"[FILTER_MGMT] ✅ Saved UI state for copied filter '{newName}' to database");
@@ -589,11 +656,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ CRITICAL FIX: Collect CURRENT UI state before saving (filter object may have stale data)
                 // ⚠️ CRITICAL: Collect CURRENT UI state, not stale filter data
                 // This ensures the latest UI selections are persisted to the database
-                var currentHostElementTypes = FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? selectedFilter.SelectedHostElementTypes ?? new List<string>();
-                var currentHostCategories = FilterUiStateProvider.GetSelectedHostCategories?.Invoke() ?? new List<string>();
+                var currentHostCategories = FilterUiStateProvider.GetSelectedHostCategories?.Invoke() ?? selectedFilter.SelectedHostCategories ?? new List<string>();
                 
-                // ✅ Get category display name once (used for both clearance settings and database registration)
-                var categoryDisplay = GetDisplayCategory(selectedFilter);
+                // ✅ CRITICAL FIX: Get category from UI state (currently selected MEP category), not from filter object
+                // The filter object may have stale/wrong category (e.g., "Ducts" when user selected "Cable Trays")
+                string categoryDisplay = null;
+                if (FilterUiStateProvider.GetSelectedMepCategoryNames != null)
+                {
+                    try
+                    {
+                        var selectedCategories = FilterUiStateProvider.GetSelectedMepCategoryNames.Invoke();
+                        if (selectedCategories != null && selectedCategories.Count > 0)
+                        {
+                            // ✅ CRITICAL: Use first selected category (most common case: single category selected)
+                            categoryDisplay = MepCategoryConstants.Normalize(selectedCategories[0]);
+                            _log($"[FILTER_MGMT] ✅ Using category from UI state: '{categoryDisplay}' (from {selectedCategories.Count} selected categories: {string.Join(", ", selectedCategories)})");
+                        }
+                        else
+                        {
+                            _log($"[FILTER_MGMT] ⚠️ GetSelectedMepCategoryNames returned null or empty list");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _log($"[FILTER_MGMT] ⚠️ Error getting category from UI state: {ex.Message}");
+                    }
+                }
+                else
+                {
+                    _log($"[FILTER_MGMT] ⚠️ FilterUiStateProvider.GetSelectedMepCategoryNames is null - delegate not registered");
+                }
+                
+                // ⚠️ CRITICAL: If category is empty, prompt user to select a category (don't use stale filter object data)
+                if (string.IsNullOrEmpty(categoryDisplay))
+                {
+                    _log($"[FILTER_MGMT] ❌ Category is empty - cannot save filter without category");
+                    ShowError("Please select a MEP category (Ducts, Pipes, or Cable Trays) before saving the filter.");
+                    return; // Exit early - don't save without category
+                }
                 
                 // ✅ FIX: Get OpeningSettings from UI, not from stale filter object
                 // OpeningSettings must be collected from UI using GetClearanceSettings delegate
@@ -635,7 +735,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 
                 // ✅ Update filter object with current UI state
-                selectedFilter.SelectedHostElementTypes = currentHostElementTypes;
+                selectedFilter.SelectedHostCategories = currentHostCategories;
                 
                 // ✅ DATABASE-FIRST: Register filter in database FIRST (primary storage)
                 // categoryDisplay is already declared above (line 596)
@@ -647,7 +747,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     // ⚠️⚠️⚠️ CRITICAL: UI STATE PERSISTENCE - DO NOT REMOVE OR MODIFY ⚠️⚠️⚠️
                     // ✅ PHASE 2: Save UI state to database (using CURRENT UI state, not stale filter data)
-                    // This ensures SelectedHostElementTypes and OpeningSettings are preserved when filter is saved
+                    // This ensures SelectedHostCategories and OpeningSettings are preserved when filter is saved
                     // PROTECTED CODE: Removing this will cause UI state to be lost when filters are saved
                     try
                     {
@@ -656,17 +756,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             repo.SaveFilterUIState(
                                 selectedFilter.Name,
                                 categoryDisplay,
-                                currentHostElementTypes, // ✅ Use current UI state, not stale filter data
+                                currentHostCategories ?? new List<string>(), // Maps to SelectedHostCategories in DB
                                 currentOpeningSettings
                             );
                         });
-                        _log($"[FILTER_MGMT] ✅ Saved UI state for filter '{selectedFilter.Name}' to database (HostElementTypes: {currentHostElementTypes.Count}, HostCategories: {currentHostCategories.Count})");
+                        _log($"[FILTER_MGMT] ✅ Saved UI state for filter '{selectedFilter.Name}' to database (HostCategories: {currentHostCategories?.Count ?? 0})");
                     }
                     catch (Exception uiStateEx)
                     {
                         // ⚠️ CRITICAL: Log error but don't fail filter save - UI state save is important but non-blocking
                         _log($"[FILTER_MGMT] ⚠️ Warning: Could not save UI state to database (non-critical): {uiStateEx.Message}");
                     }
+                    
+                    // ✅ CRITICAL FIX: Update in-memory filter object with current UI state
+                    // This ensures the filter object has the latest data when selected again
+                    selectedFilter.OpeningSettings = currentOpeningSettings;
+                    selectedFilter.SelectedHostCategories = currentHostCategories;
+                    UpdateFilterInMemory(selectedFilter.Name, selectedFilter);
+                    _log($"[FILTER_MGMT] ✅ Updated in-memory filter '{selectedFilter.Name}' with current UI state");
                     
                 _updateStatus($"Saved filter: {selectedFilter.Name}");
 
@@ -737,7 +844,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 // ✅ DATABASE-FIRST: Register filter in database FIRST (primary storage)
-                var categoryDisplay = GetDisplayCategory(selectedFilter);
+                // ✅ CRITICAL FIX: Get category from UI state (currently selected MEP category), not from filter object
+                string categoryDisplay = null;
+                if (FilterUiStateProvider.GetSelectedMepCategoryNames != null)
+                {
+                    try
+                    {
+                        var selectedCategories = FilterUiStateProvider.GetSelectedMepCategoryNames.Invoke();
+                        if (selectedCategories != null && selectedCategories.Count > 0)
+                        {
+                            categoryDisplay = MepCategoryConstants.Normalize(selectedCategories[0]);
+                            _log($"[FILTER_MGMT] ✅ Auto-save: Using category from UI state: '{categoryDisplay}' (from {selectedCategories.Count} categories: {string.Join(", ", selectedCategories)})");
+                        }
+                        else
+                        {
+                            _log($"[FILTER_MGMT] ⚠️ Auto-save: GetSelectedMepCategoryNames returned null or empty list");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _log($"[FILTER_MGMT] ⚠️ Auto-save: Error getting category from UI state: {ex.Message}");
+                    }
+                }
+                else
+                {
+                    _log($"[FILTER_MGMT] ⚠️ Auto-save: FilterUiStateProvider.GetSelectedMepCategoryNames is null - delegate not registered");
+                }
+                
+                // ⚠️ CRITICAL: If category is empty, skip auto-save (don't use stale filter object data)
+                if (string.IsNullOrEmpty(categoryDisplay))
+                {
+                    _log($"[FILTER_MGMT] ❌ Auto-save skipped: Category is empty - cannot save filter without category");
+                    // Don't show error for auto-save (non-blocking), just skip
+                    return; // Exit early - don't auto-save without category
+                }
+                
                 var filterId = RegisterFilterInDatabase(selectedFilter.Name, categoryDisplay);
                 
                 if (filterId > 0)
@@ -747,8 +888,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // ✅ CRITICAL FIX: Collect CURRENT UI state before saving (filter object may have stale data)
                     // ⚠️ CRITICAL: Collect CURRENT UI state, not stale filter data
                     // This ensures the latest UI selections are persisted to the database
-                    var currentHostElementTypes = FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? selectedFilter.SelectedHostElementTypes ?? new List<string>();
-                    var currentHostCategories = FilterUiStateProvider.GetSelectedHostCategories?.Invoke() ?? new List<string>();
+                                        var currentHostCategories = FilterUiStateProvider.GetSelectedHostCategories?.Invoke() ?? new List<string>();
+
                     
                     // ✅ Get category display name once (used for both clearance settings and database registration)
                     // categoryDisplay is already declared above (line 740)
@@ -793,11 +934,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     
                     // ✅ Update filter object with current UI state
-                    selectedFilter.SelectedHostElementTypes = currentHostElementTypes;
+                    selectedFilter.SelectedHostCategories = currentHostCategories;
                     
                     // ⚠️⚠️⚠️ CRITICAL: UI STATE PERSISTENCE - DO NOT REMOVE OR MODIFY ⚠️⚠️⚠️
                     // ✅ PHASE 2: Save UI state to database (using CURRENT UI state, not stale filter data)
-                    // This ensures SelectedHostElementTypes and OpeningSettings are preserved when filter is auto-saved
+                    // This ensures SelectedHostCategories and OpeningSettings are preserved when filter is auto-saved
                     // PROTECTED CODE: Removing this will cause UI state to be lost when filters are auto-saved
                     try
                     {
@@ -806,17 +947,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             repo.SaveFilterUIState(
                                 selectedFilter.Name,
                                 categoryDisplay,
-                                currentHostElementTypes, // ✅ Use current UI state, not stale filter data
+                                currentHostCategories ?? new List<string>(), // Maps to SelectedHostCategories in DB
                                 currentOpeningSettings
                             );
                         });
-                        _log($"[FILTER_MGMT] ✅ Auto-saved UI state for filter '{selectedFilter.Name}' to database (HostElementTypes: {currentHostElementTypes.Count}, HostCategories: {currentHostCategories.Count})");
+                        _log($"[FILTER_MGMT] ✅ Auto-saved UI state for filter '{selectedFilter.Name}' to database (HostCategories: {currentHostCategories?.Count ?? 0})");
                     }
                     catch (Exception uiStateEx)
                     {
                         // ⚠️ CRITICAL: Log error but don't fail filter auto-save - UI state save is important but non-blocking
                         _log($"[FILTER_MGMT] ⚠️ Warning: Could not auto-save UI state to database (non-critical): {uiStateEx.Message}");
                     }
+                    
+                    // ✅ CRITICAL FIX: Update in-memory filter object with current UI state
+                    // This ensures the filter object has the latest data when selected again
+                    selectedFilter.OpeningSettings = currentOpeningSettings;
+                    selectedFilter.SelectedHostCategories = currentHostCategories;
+                    UpdateFilterInMemory(selectedFilter.Name, selectedFilter);
+                    _log($"[FILTER_MGMT] ✅ Updated in-memory filter '{selectedFilter.Name}' with current UI state (auto-save)");
                     
                     // ✅ XML SECOND: Save to XML for backward compatibility (optional, non-blocking)
                     if (!DeploymentConfiguration.DisableXmlCreation)
@@ -1125,11 +1273,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var categoryDisplay = GetDisplayCategory(filter);
                 UseFilterRepository(repo =>
                 {
-                    var (hostTypes, settings) = repo.LoadFilterUIState(filterName, categoryDisplay);
-                    if (hostTypes != null && hostTypes.Count > 0)
+                    var (hostCategories, settings) = repo.LoadFilterUIState(filterName, categoryDisplay);
+                    if (hostCategories != null && hostCategories.Count > 0)
                     {
-                        filter.SelectedHostElementTypes = hostTypes;
-                        _log($"[FILTER_MGMT] ✅ Loaded SelectedHostElementTypes from database for filter '{filterName}': {string.Join(", ", hostTypes)}");
+                        // ✅ STANDARDIZED: Use SelectedHostCategories (mapped to SelectedHostCategories for backward compatibility)
                     }
                     if (settings != null)
                     {
@@ -1160,16 +1307,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (hosts != null) filter.SelectedHostFiles = new List<string>(hosts);
 
                 // ✅ Use UI state from provider if database had no data, or if user changed it
-                var hostTypes = FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke();
-                if (hostTypes != null && hostTypes.Count > 0)
+                var hostCategories = FilterUiStateProvider.GetSelectedHostCategories?.Invoke();
+                if (hostCategories != null && hostCategories.Count > 0)
                 {
                     // Override with current UI state (user may have changed it)
-                    filter.SelectedHostElementTypes = new List<string>(hostTypes);
+                    filter.SelectedHostCategories = new List<string>(hostCategories);
                 }
-                else if (filter.SelectedHostElementTypes == null || filter.SelectedHostElementTypes.Count == 0)
+                else if (filter.SelectedHostCategories == null || filter.SelectedHostCategories.Count == 0)
                 {
                     // No UI state from provider and no database data - initialize empty
-                    filter.SelectedHostElementTypes = new List<string>();
+                    filter.SelectedHostCategories = new List<string>();
                 }
             }
             catch { }
@@ -1246,8 +1393,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     existingFilter.SelectedHostFiles = updatedFilter.SelectedHostFiles != null 
                         ? new List<string>(updatedFilter.SelectedHostFiles) 
                         : null;
-                    existingFilter.SelectedHostElementTypes = updatedFilter.SelectedHostElementTypes != null 
-                        ? new List<string>(updatedFilter.SelectedHostElementTypes) 
+                    existingFilter.SelectedHostCategories = updatedFilter.SelectedHostCategories != null 
+                        ? new List<string>(updatedFilter.SelectedHostCategories) 
                         : null;
                     existingFilter.OpeningSettings = updatedFilter.OpeningSettings;
                     existingFilter.LastModified = updatedFilter.LastModified;
@@ -1599,16 +1746,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var categoryDisplay = GetDisplayCategory(filter);
                         UseFilterRepository(repo =>
                         {
-                            var (hostTypes, settings) = repo.LoadFilterUIState(filter.Name, categoryDisplay);
-                            if (hostTypes != null && hostTypes.Count > 0)
+                            var (hostCategories, settings) = repo.LoadFilterUIState(filter.Name, categoryDisplay);
+                            if (hostCategories != null && hostCategories.Count > 0)
                             {
-                                filter.SelectedHostElementTypes = hostTypes;
-                                _log($"[FILTER_MGMT] ✅ Loaded SelectedHostElementTypes from database for filter '{filter.Name}': {string.Join(", ", hostTypes)}");
+                                filter.SelectedHostCategories = hostCategories;
+                                _log($"[FILTER_MGMT] ✅ Loaded SelectedHostCategories from database for filter '{filter.Name}': {string.Join(", ", hostCategories)}");
                             }
-                            else if (filter.SelectedHostElementTypes == null || filter.SelectedHostElementTypes.Count == 0)
+                            else if (filter.SelectedHostCategories == null || filter.SelectedHostCategories.Count == 0)
                             {
                                 // ✅ FALLBACK: Use XML data if database has no data
-                                _log($"[FILTER_MGMT] ⚠️ No SelectedHostElementTypes in database, using XML data (if available)");
+                                _log($"[FILTER_MGMT] ⚠️ No SelectedHostCategories in database, using XML data (if available)");
                             }
                             
                             if (settings != null)

@@ -1286,20 +1286,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 // Get currently selected host types from UI
-                var selectedHostTypes = FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>();
+                var selectedHostCategories = FilterUiStateProvider.GetSelectedHostCategories?.Invoke() ?? new List<string>();
                 
-                if (selectedHostTypes.Count == 0)
+                if (selectedHostCategories.Count == 0)
                 {
                     // If no host types selected, allow all (backward compatibility)
                     return true;
                 }
                 
                 // Handle plural/singular mismatch: "Walls" (UI) vs "Wall" (Revit)
-                bool hostTypeMatch = selectedHostTypes.Contains(clashZone.StructuralElementType) ||
-                                   selectedHostTypes.Contains(clashZone.StructuralElementType + "s") ||
-                                   selectedHostTypes.Any(t => t.TrimEnd('s').Equals(clashZone.StructuralElementType, StringComparison.OrdinalIgnoreCase));
+                bool hostTypeMatch = selectedHostCategories.Contains(clashZone.StructuralElementType) ||
+                                   selectedHostCategories.Contains(clashZone.StructuralElementType + "s") ||
+                                   selectedHostCategories.Any(t => t.TrimEnd('s').Equals(clashZone.StructuralElementType, StringComparison.OrdinalIgnoreCase));
                 
-                _log($"[HOST_TYPE_FILTER] ClashZone {clashZone.Id}: StructuralElementType='{clashZone.StructuralElementType}', SelectedHostTypes=[{string.Join(", ", selectedHostTypes)}], Match={hostTypeMatch}");
+                _log($"[HOST_TYPE_FILTER] ClashZone {clashZone.Id}: StructuralElementType='{clashZone.StructuralElementType}', SelectedHostTypes=[{string.Join(", ", selectedHostCategories)}], Match={hostTypeMatch}");
                 
                 return hostTypeMatch;
             }

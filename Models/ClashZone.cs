@@ -120,6 +120,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public double SleeveBoundingBoxMaxZ { get; set; } = 0.0;
         
         /// <summary>
+        /// ✅ ROTATED BBOX: Rotated bounding box coordinates for non-axis-aligned sleeves
+        /// These are calculated and saved when MepElementRotationAngle is non-zero
+        /// For axis-aligned sleeves, these remain NULL
+        /// Used by cluster service to calculate cluster bounding boxes in rotated coordinate system
+        /// </summary>
+        public double? RotatedBoundingBoxMinX { get; set; }
+        public double? RotatedBoundingBoxMinY { get; set; }
+        public double? RotatedBoundingBoxMinZ { get; set; }
+        public double? RotatedBoundingBoxMaxX { get; set; }
+        public double? RotatedBoundingBoxMaxY { get; set; }
+        public double? RotatedBoundingBoxMaxZ { get; set; }
+        
+        /// <summary>
+        /// ✅ SLEEVE CORNERS: Pre-calculated 4 corner coordinates in world space (for clustering optimization)
+        /// Calculated once during individual sleeve placement, stored for reuse during clustering
+        /// Corner order: 1=Bottom-left, 2=Bottom-right, 3=Top-left, 4=Top-right (in local space, then rotated to world)
+        /// </summary>
+        public double? SleeveCorner1X { get; set; }
+        public double? SleeveCorner1Y { get; set; }
+        public double? SleeveCorner1Z { get; set; }
+        public double? SleeveCorner2X { get; set; }
+        public double? SleeveCorner2Y { get; set; }
+        public double? SleeveCorner2Z { get; set; }
+        public double? SleeveCorner3X { get; set; }
+        public double? SleeveCorner3Y { get; set; }
+        public double? SleeveCorner3Z { get; set; }
+        public double? SleeveCorner4X { get; set; }
+        public double? SleeveCorner4Y { get; set; }
+        public double? SleeveCorner4Z { get; set; }
+        
+        /// <summary>
         /// The diameter/size of the MEP element at this clash point
         /// </summary>
         public double MepElementSize { get; set; }
@@ -607,6 +638,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// For floors: angle = atan2(MepElementOrientation.Y, MepElementOrientation.X) projected onto XY plane
         /// </summary>
         public double MepElementRotationAngle { get; set; }
+        
+        /// <summary>
+        /// ✅ ROTATION MATRIX: Pre-calculated cos/sin for "dump once use many times" principle
+        /// Calculated once during placement, stored for reuse during clustering (avoids repeated Math.Cos/Sin calls)
+        /// cos = Math.Cos(MepElementRotationAngle), sin = Math.Sin(MepElementRotationAngle)
+        /// </summary>
+        public double? MepRotationCos { get; set; }
+        public double? MepRotationSin { get; set; }
         
         /// <summary>
         /// XML serializable MEP element orientation X component

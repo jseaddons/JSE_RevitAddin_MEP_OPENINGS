@@ -1704,6 +1704,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         repository.UpdateSleeveInstanceId(zone.Id, zone.SleeveInstanceId);
                                         
                                         // Save sleeve dimensions
+                                        // ✅ CRITICAL: Also save Active document coordinates (where sleeve is actually placed)
+                                        // ✅ CRITICAL: Also save rotation angle (for corner calculations)
                                         repository.UpdateSleevePlacement(
                                             zone.Id, // Use ClashZone Guid
                                             zone.SleeveInstanceId,
@@ -1712,12 +1714,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                             zone.SleeveDiameter > 0 ? zone.SleeveDiameter : fd,
                                             zone.SleevePlacementPointX,
                                             zone.SleevePlacementPointY,
-                                            zone.SleevePlacementPointZ);
+                                            zone.SleevePlacementPointZ,
+                                            zone.SleevePlacementPointActiveDocumentX,  // ✅ Active document coordinates (where sleeve is actually placed)
+                                            zone.SleevePlacementPointActiveDocumentY,
+                                            zone.SleevePlacementPointActiveDocumentZ,
+                                            zone.MepElementRotationAngle);  // ✅ Rotation angle in radians (for corner calculations)
                                         
                                         // ✅ BOUNDING BOX: Save axis-aligned bounding box coordinates (in model coordinate system).
-                                        // For rotated sleeves, the rotation angle (MepElementRotationAngle) is used by cluster service
-                                        // to calculate rotated bounding boxes during clustering. The axis-aligned bbox is sufficient
-                                        // because cluster service applies rotation transform using the angle from database.
                                         // Bounding boxes are required for clustering to calculate cluster bounding boxes
                                         if (!(zone.SleeveBoundingBoxMinX == 0.0 && zone.SleeveBoundingBoxMinY == 0.0 && zone.SleeveBoundingBoxMinZ == 0.0 &&
                                               zone.SleeveBoundingBoxMaxX == 0.0 && zone.SleeveBoundingBoxMaxY == 0.0 && zone.SleeveBoundingBoxMaxZ == 0.0))
@@ -1726,6 +1729,355 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                 zone.Id,
                                                 zone.SleeveBoundingBoxMinX, zone.SleeveBoundingBoxMinY, zone.SleeveBoundingBoxMinZ,
                                                 zone.SleeveBoundingBoxMaxX, zone.SleeveBoundingBoxMaxY, zone.SleeveBoundingBoxMaxZ);
+                                            
+                                            // ✅ ROTATED BBOX: Calculate and save rotated bounding box ONLY for non-axis-aligned angles
+                                            // Skip for axis-aligned angles: 0°, 90°, 180°, 270° (use axis-aligned bbox instead)
+                                            // For other angles, calculate rotated bbox
+                                            // For axis-aligned sleeves, rotated bbox columns remain NULL
+                                            var rotationAngleRad = zone.MepElementRotationAngle;
+                                            var rotationAngleDeg = Math.Abs(rotationAngleRad * 180.0 / Math.PI);
+                                            
+                                            // Check if angle is axis-aligned (0°, 90°, 180°, 270°) with 1° tolerance
+                                            bool isAxisAligned = Math.Abs(rotationAngleDeg) < 1.0 || 
+                                                                Math.Abs(rotationAngleDeg - 90.0) < 1.0 ||
+                                                                Math.Abs(rotationAngleDeg - 180.0) < 1.0 ||
+                                                                Math.Abs(rotationAngleDeg - 270.0) < 1.0 ||
+                                                                Math.Abs(rotationAngleDeg - 360.0) < 1.0;
+                                            
+                                            if (Math.Abs(rotationAngleRad) > 1e-6 && !isAxisAligned)
+                                            {
+                                                try
+                                                {
+                                                    // ✅ FIX: Get actual sleeve dimensions from Revit element (not axis-aligned world bbox)
+                                                    // The rotated bounding box should represent the sleeve in its LOCAL coordinate system
+                                                    double actualWidth = zone.SleeveWidth > 0 ? zone.SleeveWidth : fw;
+                                                    double actualHeight = zone.SleeveHeight > 0 ? zone.SleeveHeight : fh;
+                                                    double actualDepth = zone.SleeveBoundingBoxMaxZ - zone.SleeveBoundingBoxMinZ;
+                                                    
+                                                    // Try to get dimensions from sleeve element if available
+                                                    if (sleeve != null && sleeve.IsValidObject)
+                                                    {
+                                                        try
+                                                        {
+                                                            var widthParam = sleeve.LookupParameter("Width");
+                                                            var heightParam = sleeve.LookupParameter("Height");
+                                                            var depthParam = sleeve.LookupParameter("Depth");
+                                                            
+                                                            if (widthParam != null && widthParam.HasValue)
+                                                                actualWidth = widthParam.AsDouble();
+                                                            if (heightParam != null && heightParam.HasValue)
+                                                                actualHeight = heightParam.AsDouble();
+                                                            if (depthParam != null && depthParam.HasValue)
+                                                                actualDepth = depthParam.AsDouble();
+                                                        }
+                                                        catch { /* Fallback to zone dimensions */ }
+                                                    }
+                                                    
+                                                    // ✅ FIX: Store LOCAL bounding box coordinates (centered at placement point)
+                                                    // The rotated bounding box should represent the sleeve's actual size in its LOCAL coordinate system
+                                                    // This ensures clustering uses correct dimensions (550mm × 200mm) not inflated world bbox
+                                                    
+                                                    // Calculate local bounding box (centered at placement point in sleeve's local coordinate system)
+                                                    double halfWidth = actualWidth / 2.0;
+                                                    double halfHeight = actualHeight / 2.0;
+                                                    double halfDepth = actualDepth / 2.0;
+                                                    
+                                                    // Local bbox min/max (centered at placement point in sleeve's local coordinate system)
+                                                    // These represent the actual sleeve dimensions (550mm × 200mm) in local coordinates
+                                                    var placementPoint = zone.SleevePlacementPoint;
+                                                    var rotatedLocalMinX = placementPoint.X - halfWidth;
+                                                    var rotatedLocalMinY = placementPoint.Y - halfHeight;
+                                                    var rotatedLocalMinZ = placementPoint.Z - halfDepth;
+                                                    var rotatedLocalMaxX = placementPoint.X + halfWidth;
+                                                    var rotatedLocalMaxY = placementPoint.Y + halfHeight;
+                                                    var rotatedLocalMaxZ = placementPoint.Z + halfDepth;
+                                                    
+                                                    // ✅ SAVE: Save rotated bounding box in LOCAL coordinates (centered at placement point)
+                                                    // These coordinates represent the sleeve's actual size (550mm × 200mm) in its local coordinate system
+                                                    // Clustering will use these directly for distance calculations in the rotated coordinate system
+                                                    repository.UpdateRotatedBoundingBoxes(
+                                                        zone.Id,
+                                                        rotatedLocalMinX, rotatedLocalMinY, rotatedLocalMinZ,
+                                                        rotatedLocalMaxX, rotatedLocalMaxY, rotatedLocalMaxZ);
+                                                    
+                                                    // ✅ SLEEVE CORNERS: Calculate and save 4 corner coordinates in WORLD space
+                                                    // Corner order: 1=Bottom-left, 2=Bottom-right, 3=Top-left, 4=Top-right (in local space, then rotated to world)
+                                                    // Pre-calculated once during individual sleeve placement, stored for reuse during clustering
+                                                    // ✅ CRITICAL: Sleeve center = SleevePlacementPointActiveDocument (Active document coordinates where sleeve is actually placed)
+                                                    try
+                                                    {
+                                                        // ✅ SLEEVE CENTER: Use Active document coordinates (where sleeve is actually placed)
+                                                        // This is saved to database via UpdateSleevePlacement (SleevePlacementActiveX/Y/Z)
+                                                        var sleeveCenter = new XYZ(
+                                                            zone.SleevePlacementPointActiveDocumentX,  // Active document X (sleeve center)
+                                                            zone.SleevePlacementPointActiveDocumentY,  // Active document Y (sleeve center)
+                                                            zone.SleevePlacementPointActiveDocumentZ   // Active document Z (sleeve center)
+                                                        );
+                                                        
+                                                        // Step 1: Calculate 4 corners in local coordinate system (before rotation)
+                                                        // Use sleeve width and height (saved to database via UpdateSleevePlacement)
+                                                        double halfW = actualWidth / 2.0;
+                                                        double halfH = actualHeight / 2.0;
+                                                        
+                                                        // Corner offsets in local space: (-1,-1), (1,-1), (-1,1), (1,1) multiplied by halfW/halfH
+                                                        var localCorners = new[]
+                                                        {
+                                                            new XYZ(-halfW, -halfH, 0),  // Corner 1: Bottom-left
+                                                            new XYZ(halfW, -halfH, 0),   // Corner 2: Bottom-right
+                                                            new XYZ(-halfW, halfH, 0),   // Corner 3: Top-left
+                                                            new XYZ(halfW, halfH, 0)     // Corner 4: Top-right
+                                                        };
+                                                        
+                                                        // Step 2: Rotate corners by sleeve rotation angle to get world-space corners
+                                                        // Use rotation matrix (cos, sin) based on MepElementRotationAngle (saved to database)
+                                                        double cosSleeve = Math.Cos(rotationAngleRad);
+                                                        double sinSleeve = Math.Sin(rotationAngleRad);
+                                                        
+                                                        var worldCorners = new XYZ[4];
+                                                        for (int j = 0; j < 4; j++)
+                                                        {
+                                                            double localX = localCorners[j].X;
+                                                            double localY = localCorners[j].Y;
+                                                            
+                                                            // Rotate corner by sleeve rotation matrix
+                                                            double worldX = localX * cosSleeve - localY * sinSleeve;
+                                                            double worldY = localX * sinSleeve + localY * cosSleeve;
+                                                            
+                                                            // ✅ TRANSLATE TO SLEEVE CENTER: Add rotated corner offset to sleeve center (placement point)
+                                                            worldCorners[j] = new XYZ(
+                                                                sleeveCenter.X + worldX,
+                                                                sleeveCenter.Y + worldY,
+                                                                sleeveCenter.Z
+                                                            );
+                                                        }
+                                                        
+                                                        // Step 3: Save world-space corners to database
+                                                        repository.UpdateSleeveCorners(
+                                                            zone.Id,
+                                                            worldCorners[0].X, worldCorners[0].Y, worldCorners[0].Z,  // Corner 1
+                                                            worldCorners[1].X, worldCorners[1].Y, worldCorners[1].Z,  // Corner 2
+                                                            worldCorners[2].X, worldCorners[2].Y, worldCorners[2].Z,  // Corner 3
+                                                            worldCorners[3].X, worldCorners[3].Y, worldCorners[3].Z   // Corner 4
+                                                        );
+                                                        
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                                        {
+                                                            DebugLogger.Info($"[SLEEVE-CORNERS] ✅ Saved 4 world-space corners for zone {zone.Id}: " +
+                                                                $"C1=({worldCorners[0].X:F6}, {worldCorners[0].Y:F6}, {worldCorners[0].Z:F6}), " +
+                                                                $"C2=({worldCorners[1].X:F6}, {worldCorners[1].Y:F6}, {worldCorners[1].Z:F6}), " +
+                                                                $"C3=({worldCorners[2].X:F6}, {worldCorners[2].Y:F6}, {worldCorners[2].Z:F6}), " +
+                                                                $"C4=({worldCorners[3].X:F6}, {worldCorners[3].Y:F6}, {worldCorners[3].Z:F6})");
+                                                        }
+                                                    }
+                                                    catch (Exception cornerEx)
+                                                    {
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                                        {
+                                                            DebugLogger.Warning($"[SLEEVE-CORNERS] Error calculating corners for zone {zone.Id}: {cornerEx.Message}");
+                                                        }
+                                                    }
+                                                    
+                                                    if (!DeploymentConfiguration.DeploymentMode)
+                                                    {
+                                                        // Log local bounding box coordinates (centered at placement point)
+                                                        double localWidthMm = (rotatedLocalMaxX - rotatedLocalMinX) * 304.8;
+                                                        double localHeightMm = (rotatedLocalMaxY - rotatedLocalMinY) * 304.8;
+                                                        double localDepthMm = (rotatedLocalMaxZ - rotatedLocalMinZ) * 304.8;
+                                                        
+                                                        DebugLogger.Info($"[ROTATED-BBOX] ✅ Saved rotated bounding box (LOCAL coordinates) for zone {zone.Id}: " +
+                                                            $"Angle={rotationAngleDeg:F1}° (non-axis-aligned), " +
+                                                            $"ActualSize={actualWidth * 304.8:F1}mm × {actualHeight * 304.8:F1}mm, " +
+                                                            $"LocalBBoxSize={localWidthMm:F1}mm × {localHeightMm:F1}mm × {localDepthMm:F1}mm, " +
+                                                            $"PlacementPoint=({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6}), " +
+                                                            $"RotatedMin=({rotatedLocalMinX:F6}, {rotatedLocalMinY:F6}, {rotatedLocalMinZ:F6}), " +
+                                                            $"RotatedMax=({rotatedLocalMaxX:F6}, {rotatedLocalMaxY:F6}, {rotatedLocalMaxZ:F6})");
+                                                    }
+                                                }
+                                                catch (Exception rotEx)
+                                                {
+                                                    if (!DeploymentConfiguration.DeploymentMode)
+                                                    {
+                                                        DebugLogger.Warning($"[ROTATED-BBOX] Error calculating rotated bounding box for zone {zone.Id}: {rotEx.Message}");
+                                                        DebugLogger.Warning($"[ROTATED-BBOX] Stack trace: {rotEx.StackTrace}");
+                                                    }
+                                                }
+                                            }
+                                            else if (Math.Abs(rotationAngleRad) > 1e-6 && isAxisAligned)
+                                            {
+                                                // Axis-aligned angle (0°, 90°, 180°, 270°) - no need for rotated bbox
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                {
+                                                    DebugLogger.Info($"[ROTATED-BBOX] Skipped rotated bounding box for zone {zone.Id}: Angle={rotationAngleDeg:F1}° (axis-aligned, using axis-aligned bbox)");
+                                                }
+                                                
+                                                // ✅ SLEEVE CORNERS: Still calculate and save 4 corner coordinates in WORLD space for axis-aligned sleeves
+                                                // Pre-calculated once during individual sleeve placement, stored for reuse during clustering
+                                                // ✅ CRITICAL: Sleeve center = SleevePlacementPointActiveDocument (Active document coordinates where sleeve is actually placed)
+                                                try
+                                                {
+                                                    // ✅ SLEEVE CENTER: Use Active document coordinates (where sleeve is actually placed)
+                                                    // This is saved to database via UpdateSleevePlacement (SleevePlacementActiveX/Y/Z)
+                                                    var sleeveCenter = new XYZ(
+                                                        zone.SleevePlacementPointActiveDocumentX,  // Active document X (sleeve center)
+                                                        zone.SleevePlacementPointActiveDocumentY,  // Active document Y (sleeve center)
+                                                        zone.SleevePlacementPointActiveDocumentZ   // Active document Z (sleeve center)
+                                                    );
+                                                    
+                                                    double actualWidth = zone.SleeveWidth > 0 ? zone.SleeveWidth : fw;
+                                                    double actualHeight = zone.SleeveHeight > 0 ? zone.SleeveHeight : fh;
+                                                    
+                                                    // Try to get dimensions from sleeve element if available
+                                                    if (sleeve != null && sleeve.IsValidObject)
+                                                    {
+                                                        try
+                                                        {
+                                                            var widthParam = sleeve.LookupParameter("Width");
+                                                            var heightParam = sleeve.LookupParameter("Height");
+                                                            
+                                                            if (widthParam != null && widthParam.HasValue)
+                                                                actualWidth = widthParam.AsDouble();
+                                                            if (heightParam != null && heightParam.HasValue)
+                                                                actualHeight = heightParam.AsDouble();
+                                                        }
+                                                        catch { /* Fallback to zone dimensions */ }
+                                                    }
+                                                    
+                                                    // Step 1: Calculate 4 corners in local coordinate system (before rotation)
+                                                    // Use sleeve width and height (saved to database via UpdateSleevePlacement)
+                                                    double halfW = actualWidth / 2.0;
+                                                    double halfH = actualHeight / 2.0;
+                                                    
+                                                    // Corner offsets in local space: (-1,-1), (1,-1), (-1,1), (1,1) multiplied by halfW/halfH
+                                                    var localCorners = new[]
+                                                    {
+                                                        new XYZ(-halfW, -halfH, 0),  // Corner 1: Bottom-left
+                                                        new XYZ(halfW, -halfH, 0),   // Corner 2: Bottom-right
+                                                        new XYZ(-halfW, halfH, 0),   // Corner 3: Top-left
+                                                        new XYZ(halfW, halfH, 0)     // Corner 4: Top-right
+                                                    };
+                                                    
+                                                    // Step 2: Rotate corners by sleeve rotation angle to get world-space corners
+                                                    // Use rotation matrix (cos, sin) based on MepElementRotationAngle (saved to database)
+                                                    double cosSleeve = Math.Cos(rotationAngleRad);
+                                                    double sinSleeve = Math.Sin(rotationAngleRad);
+                                                    
+                                                    var worldCorners = new XYZ[4];
+                                                    for (int j = 0; j < 4; j++)
+                                                    {
+                                                        double localX = localCorners[j].X;
+                                                        double localY = localCorners[j].Y;
+                                                        
+                                                        // Rotate corner by sleeve rotation matrix
+                                                        double worldX = localX * cosSleeve - localY * sinSleeve;
+                                                        double worldY = localX * sinSleeve + localY * cosSleeve;
+                                                        
+                                                        // ✅ TRANSLATE TO SLEEVE CENTER: Add rotated corner offset to sleeve center (placement point)
+                                                        worldCorners[j] = new XYZ(
+                                                            sleeveCenter.X + worldX,
+                                                            sleeveCenter.Y + worldY,
+                                                            sleeveCenter.Z
+                                                        );
+                                                    }
+                                                    
+                                                    // Step 3: Save world-space corners to database
+                                                    repository.UpdateSleeveCorners(
+                                                        zone.Id,
+                                                        worldCorners[0].X, worldCorners[0].Y, worldCorners[0].Z,  // Corner 1
+                                                        worldCorners[1].X, worldCorners[1].Y, worldCorners[1].Z,  // Corner 2
+                                                        worldCorners[2].X, worldCorners[2].Y, worldCorners[2].Z,  // Corner 3
+                                                        worldCorners[3].X, worldCorners[3].Y, worldCorners[3].Z   // Corner 4
+                                                    );
+                                                    
+                                                    if (!DeploymentConfiguration.DeploymentMode)
+                                                    {
+                                                        DebugLogger.Info($"[SLEEVE-CORNERS] ✅ Saved 4 world-space corners (axis-aligned) for zone {zone.Id}: " +
+                                                            $"C1=({worldCorners[0].X:F6}, {worldCorners[0].Y:F6}, {worldCorners[0].Z:F6}), " +
+                                                            $"C2=({worldCorners[1].X:F6}, {worldCorners[1].Y:F6}, {worldCorners[1].Z:F6}), " +
+                                                            $"C3=({worldCorners[2].X:F6}, {worldCorners[2].Y:F6}, {worldCorners[2].Z:F6}), " +
+                                                            $"C4=({worldCorners[3].X:F6}, {worldCorners[3].Y:F6}, {worldCorners[3].Z:F6})");
+                                                    }
+                                                }
+                                                catch (Exception cornerEx)
+                                                {
+                                                    if (!DeploymentConfiguration.DeploymentMode)
+                                                    {
+                                                        DebugLogger.Warning($"[SLEEVE-CORNERS] Error calculating corners for zone {zone.Id}: {cornerEx.Message}");
+                                                    }
+                                                }
+                                            }
+                                            else
+                                            {
+                                                // Zero rotation (0°) - still calculate corners for consistency
+                                                // ✅ CRITICAL: Sleeve center = SleevePlacementPointActiveDocument (Active document coordinates where sleeve is actually placed)
+                                                try
+                                                {
+                                                    // ✅ SLEEVE CENTER: Use Active document coordinates (where sleeve is actually placed)
+                                                    // This is saved to database via UpdateSleevePlacement (SleevePlacementActiveX/Y/Z)
+                                                    var sleeveCenter = new XYZ(
+                                                        zone.SleevePlacementPointActiveDocumentX,  // Active document X (sleeve center)
+                                                        zone.SleevePlacementPointActiveDocumentY,  // Active document Y (sleeve center)
+                                                        zone.SleevePlacementPointActiveDocumentZ   // Active document Z (sleeve center)
+                                                    );
+                                                    
+                                                    double actualWidth = zone.SleeveWidth > 0 ? zone.SleeveWidth : fw;
+                                                    double actualHeight = zone.SleeveHeight > 0 ? zone.SleeveHeight : fh;
+                                                    
+                                                    // Try to get dimensions from sleeve element if available
+                                                    if (sleeve != null && sleeve.IsValidObject)
+                                                    {
+                                                        try
+                                                        {
+                                                            var widthParam = sleeve.LookupParameter("Width");
+                                                            var heightParam = sleeve.LookupParameter("Height");
+                                                            
+                                                            if (widthParam != null && widthParam.HasValue)
+                                                                actualWidth = widthParam.AsDouble();
+                                                            if (heightParam != null && heightParam.HasValue)
+                                                                actualHeight = heightParam.AsDouble();
+                                                        }
+                                                        catch { /* Fallback to zone dimensions */ }
+                                                    }
+                                                    
+                                                    // Step 1: Calculate 4 corners in world space (no rotation needed for 0°)
+                                                    // Use sleeve width and height (saved to database via UpdateSleevePlacement)
+                                                    double halfW = actualWidth / 2.0;
+                                                    double halfH = actualHeight / 2.0;
+                                                    
+                                                    // ✅ CORNERS: Calculate directly in world space centered at sleeve center (placement point)
+                                                    var worldCorners = new[]
+                                                    {
+                                                        new XYZ(sleeveCenter.X - halfW, sleeveCenter.Y - halfH, sleeveCenter.Z),  // Corner 1: Bottom-left
+                                                        new XYZ(sleeveCenter.X + halfW, sleeveCenter.Y - halfH, sleeveCenter.Z),  // Corner 2: Bottom-right
+                                                        new XYZ(sleeveCenter.X - halfW, sleeveCenter.Y + halfH, sleeveCenter.Z),  // Corner 3: Top-left
+                                                        new XYZ(sleeveCenter.X + halfW, sleeveCenter.Y + halfH, sleeveCenter.Z)   // Corner 4: Top-right
+                                                    };
+                                                    
+                                                    // Step 2: Save world-space corners to database
+                                                    repository.UpdateSleeveCorners(
+                                                        zone.Id,
+                                                        worldCorners[0].X, worldCorners[0].Y, worldCorners[0].Z,  // Corner 1
+                                                        worldCorners[1].X, worldCorners[1].Y, worldCorners[1].Z,  // Corner 2
+                                                        worldCorners[2].X, worldCorners[2].Y, worldCorners[2].Z,  // Corner 3
+                                                        worldCorners[3].X, worldCorners[3].Y, worldCorners[3].Z   // Corner 4
+                                                    );
+                                                    
+                                                    if (!DeploymentConfiguration.DeploymentMode)
+                                                    {
+                                                        DebugLogger.Info($"[SLEEVE-CORNERS] ✅ Saved 4 world-space corners (zero rotation) for zone {zone.Id}: " +
+                                                            $"C1=({worldCorners[0].X:F6}, {worldCorners[0].Y:F6}, {worldCorners[0].Z:F6}), " +
+                                                            $"C2=({worldCorners[1].X:F6}, {worldCorners[1].Y:F6}, {worldCorners[1].Z:F6}), " +
+                                                            $"C3=({worldCorners[2].X:F6}, {worldCorners[2].Y:F6}, {worldCorners[2].Z:F6}), " +
+                                                            $"C4=({worldCorners[3].X:F6}, {worldCorners[3].Y:F6}, {worldCorners[3].Z:F6})");
+                                                    }
+                                                }
+                                                catch (Exception cornerEx)
+                                                {
+                                                    if (!DeploymentConfiguration.DeploymentMode)
+                                                    {
+                                                        DebugLogger.Warning($"[SLEEVE-CORNERS] Error calculating corners for zone {zone.Id}: {cornerEx.Message}");
+                                                    }
+                                                }
+                                            }
                                         }
                                         
                                         dbSavedCount++;
@@ -1735,6 +2087,88 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
                                     DebugLogger.Info($"[UniversalSleevePlacer] ✅ DATABASE: Saved sleeve data for {dbSavedCount} clash zones immediately after placement");
+                                }
+                                
+                                // ✅ CRITICAL FIX: Save sleeve snapshots after placement
+                                // Snapshots are only saved when sleeves have SleeveInstanceId > 0 (after placement)
+                                // ✅ DOES NOT DEPEND ON XML - only requires filterName and placed sleeves
+                                if (placedSleeveData.Count > 0 && !string.IsNullOrWhiteSpace(_filterName))
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        DebugLogger.Info($"[UniversalSleevePlacer] ✅ Attempting to save sleeve snapshots: FilterName='{_filterName}', PlacedSleeveData={placedSleeveData.Count}");
+                                    }
+                                    try
+                                    {
+                                        // Get FilterId from filter name
+                                        int filterId = -1;
+                                        using (var filterCmd = dbContext.Connection.CreateCommand())
+                                        {
+                                            filterCmd.CommandText = @"
+                                                SELECT FilterId FROM Filters 
+                                                WHERE FilterName = @FilterName 
+                                                LIMIT 1";
+                                            filterCmd.Parameters.AddWithValue("@FilterName", _filterName);
+                                            var filterResult = filterCmd.ExecuteScalar();
+                                            if (filterResult != null)
+                                            {
+                                                filterId = Convert.ToInt32(filterResult);
+                                            }
+                                        }
+                                        
+                                        if (filterId > 0)
+                                        {
+                                            // Get placed zones with SleeveInstanceId > 0
+                                            var placedZones = placedSleeveData
+                                                .Where(p => p.zone != null && p.zone.SleeveInstanceId > 0)
+                                                .Select(p => p.zone)
+                                                .Distinct()
+                                                .ToList();
+                                            
+                                            if (placedZones.Count > 0)
+                                            {
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                {
+                                                    DebugLogger.Info($"[UniversalSleevePlacer] ✅ Saving sleeve snapshots: FilterId={filterId}, PlacedZones={placedZones.Count}");
+                                                }
+                                                repository.SaveSleeveSnapshotsForPlacedSleeves(filterId, placedZones);
+                                                
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                {
+                                                    DebugLogger.Info($"[UniversalSleevePlacer] ✅ DATABASE: Saved sleeve snapshots for {placedZones.Count} placed sleeves");
+                                                }
+                                            }
+                                            else
+                                            {
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                {
+                                                    DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ No placed zones with SleeveInstanceId > 0 (placedSleeveData={placedSleeveData.Count})");
+                                                }
+                                            }
+                                        }
+                                        else
+                                        {
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                            {
+                                                DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ FilterId not found for FilterName='{_filterName}' - cannot save sleeve snapshots");
+                                            }
+                                        }
+                                    }
+                                    catch (Exception snapshotEx)
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ Failed to save sleeve snapshots: {snapshotEx.Message}");
+                                            DebugLogger.Warning($"[UniversalSleevePlacer] Stack trace: {snapshotEx.StackTrace}");
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ SKIPPED saving sleeve snapshots: placedSleeveData={placedSleeveData.Count}, filterName='{_filterName}'");
+                                    }
                                 }
                             }
                         }

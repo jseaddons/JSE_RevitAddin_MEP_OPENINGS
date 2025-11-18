@@ -584,28 +584,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     return GetSelectedFilterItems();
                 };
 
-                Services.FilterUiStateProvider.GetSelectedHostCategories = () => GetSelectedHostCategories(); // ✅ Register host categories delegate
-                Services.FilterUiStateProvider.GetSelectedHostElementTypes = () =>
+                Services.FilterUiStateProvider.GetSelectedMepCategoryNames = () =>
                 {
-                    var selected = new List<string>();
-                    try
-                    {
-                        // Bottom-right host categories: horizontal (Walls, Structural Framing) and vertical (Floors, Ceilings)
-                        var hostCategoryLists = _bottomRightPanel?.Controls?.OfType<System.Windows.Forms.CheckedListBox>()?.ToList();
-                        if (hostCategoryLists != null && hostCategoryLists.Count >= 1)
-                        {
-                            foreach (var lb in hostCategoryLists)
-                            {
-                                foreach (var item in lb.CheckedItems)
-                                {
-                                    var name = item?.ToString() ?? string.Empty;
-                                    if (!string.IsNullOrWhiteSpace(name)) selected.Add(name);
-                                }
-                            }
-                        }
-                    }
-                    catch { }
-                    return selected.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                    return GetSelectedMepCategories();
+                };
+
+                Services.FilterUiStateProvider.GetSelectedHostCategories = () =>
+                {
+                    return GetSelectedHostCategories();
                 };
 
                 Services.FilterUiStateProvider.GetSelectedReferenceFiles = () =>
@@ -627,8 +613,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 {
                     try
                     {
-                        // Apply host element types to bottom-right lists
-                        var hostTypes = filter?.SelectedHostElementTypes ?? new List<string>();
+                        // Apply host categories to bottom-right lists
+                        var hostCategories = filter?.SelectedHostCategories ?? new List<string>();
                         var hostCategoryLists = _bottomRightPanel?.Controls?.OfType<System.Windows.Forms.CheckedListBox>()?.ToList();
                         if (hostCategoryLists != null)
                         {
@@ -637,7 +623,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                                 for (int i = 0; i < lb.Items.Count; i++)
                                 {
                                     var name = lb.Items[i]?.ToString() ?? string.Empty;
-                                    bool shouldCheck = hostTypes.Contains(name, StringComparer.OrdinalIgnoreCase);
+                                    bool shouldCheck = hostCategories.Contains(name, StringComparer.OrdinalIgnoreCase);
                                     lb.SetItemChecked(i, shouldCheck);
                                 }
                             }
@@ -7752,9 +7738,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
                 // Use the proven TestMepIntersection service with current UI selections
                 var selectedCategories = GetSelectedMepCategories();
-                var selectedHostTypes = Services.FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>();
+                var selectedHostCategories = Services.FilterUiStateProvider.GetSelectedHostCategories?.Invoke() ?? new List<string>();
                 var intersectionService = new IntersectionDetectionService(msg => DebugLogger.Info(msg));
-                var intersections = intersectionService.FindIntersections(document, view3D, selectedCategories, null, null, selectedHostTypes);
+                var intersections = intersectionService.FindIntersections(document, view3D, selectedCategories, null, null, selectedHostCategories);
 
                 DebugLogger.Info($"GetCurrentIntersections: Found {intersections.Count} total intersections using TestMepIntersection service");
                 return intersections;
@@ -8200,20 +8186,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     filter.SelectedHostFiles = selectedHostFiles;
                     DebugLogger.Info($"Updated filter with {selectedHostFiles?.Count ?? 0} host files");
                     
-                    // ✅ FIX: Get current selected host element types (host categories) and save to filter
+                    // ✅ FIX: Get current selected host categories (host categories) and save to filter
                     // This includes BOTH horizontal (Walls, Structural Framing) AND vertical (Floors, Ceilings) categories
-                    var selectedHostElementTypes = FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>();
-                    filter.SelectedHostElementTypes = selectedHostElementTypes;
+                    var selectedHostCategories = FilterUiStateProvider.GetSelectedHostCategories?.Invoke() ?? new List<string>();
+                    filter.SelectedHostCategories = selectedHostCategories;
                     
                     // ✅ ENHANCED LOGGING: Show breakdown of horizontal vs vertical categories
-                    var horizontal = selectedHostElementTypes.Where(h => h.Equals("Walls", StringComparison.OrdinalIgnoreCase) || 
+                    var horizontal = selectedHostCategories.Where(h => h.Equals("Walls", StringComparison.OrdinalIgnoreCase) || 
                                                                         h.Equals("Structural Framing", StringComparison.OrdinalIgnoreCase)).ToList();
-                    var vertical = selectedHostElementTypes.Where(v => v.Equals("Floors", StringComparison.OrdinalIgnoreCase) || 
+                    var vertical = selectedHostCategories.Where(v => v.Equals("Floors", StringComparison.OrdinalIgnoreCase) || 
                                                                        v.Equals("Ceilings", StringComparison.OrdinalIgnoreCase)).ToList();
-                    DebugLogger.Info($"Updated filter with {selectedHostElementTypes?.Count ?? 0} host element types:");
+                    DebugLogger.Info($"Updated filter with {selectedHostCategories?.Count ?? 0} host categories:");
                     DebugLogger.Info($"  Horizontal: {horizontal.Count} ({string.Join(", ", horizontal)})");
                     DebugLogger.Info($"  Vertical: {vertical.Count} ({string.Join(", ", vertical)})");
-                    DebugLogger.Info($"  All: {string.Join(", ", selectedHostElementTypes)}");
+                    DebugLogger.Info($"  All: {string.Join(", ", selectedHostCategories)}");
                     
                     // Get current clearance settings and store in OpeningSettings
                     var clearanceSettings = GetClearanceSettings();
@@ -8267,21 +8253,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         DebugLogger.Info($"Restored {filter.SelectedHostFiles.Count} host file selections");
                     }
                     
-                    // ✅ FIX: Restore host element types (host categories) selections
+                    // ✅ FIX: Restore host categories (host categories) selections
                     // This includes BOTH horizontal (Walls, Structural Framing) AND vertical (Floors, Ceilings) categories
-                    if (filter.SelectedHostElementTypes != null && filter.SelectedHostElementTypes.Any())
+                    if (filter.SelectedHostCategories != null && filter.SelectedHostCategories.Any())
                     {
                         // ✅ ENHANCED LOGGING: Show breakdown before restoration
-                        var horizontal = filter.SelectedHostElementTypes.Where(h => h.Equals("Walls", StringComparison.OrdinalIgnoreCase) || 
+                        var horizontal = filter.SelectedHostCategories.Where(h => h.Equals("Walls", StringComparison.OrdinalIgnoreCase) || 
                                                                                    h.Equals("Structural Framing", StringComparison.OrdinalIgnoreCase)).ToList();
-                        var vertical = filter.SelectedHostElementTypes.Where(v => v.Equals("Floors", StringComparison.OrdinalIgnoreCase) || 
+                        var vertical = filter.SelectedHostCategories.Where(v => v.Equals("Floors", StringComparison.OrdinalIgnoreCase) || 
                                                                                   v.Equals("Ceilings", StringComparison.OrdinalIgnoreCase)).ToList();
-                        DebugLogger.Info($"Restoring {filter.SelectedHostElementTypes.Count} host element type selections:");
+                        DebugLogger.Info($"Restoring {filter.SelectedHostCategories.Count} host element type selections:");
                         DebugLogger.Info($"  Horizontal: {horizontal.Count} ({string.Join(", ", horizontal)})");
                         DebugLogger.Info($"  Vertical: {vertical.Count} ({string.Join(", ", vertical)})");
                         
-                        RestoreHostCategorySelections(filter.SelectedHostElementTypes);
-                        DebugLogger.Info($"✅ Restored all host element types: {string.Join(", ", filter.SelectedHostElementTypes)}");
+                        RestoreHostCategorySelections(filter.SelectedHostCategories);
+                        DebugLogger.Info($"✅ Restored all host categories: {string.Join(", ", filter.SelectedHostCategories)}");
                     }
                     
                     // Restore clearance settings

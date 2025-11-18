@@ -1945,6 +1945,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         });
                         
                         // ✅ Use BatchUpdateFlags for single update (database-first approach)
+                        // ✅ CRITICAL FIX: Get OLD values BEFORE updating clashZone properties
+                        // The clashZone properties were already updated above (lines 1915-1926), so we need to track old values
+                        int oldSleeveInstanceId = isCluster ? clashZone.SleeveInstanceId : clashZone.SleeveInstanceId; // For clusters, individual sleeve was deleted (should be -1 or original)
+                        int oldClusterInstanceId = clashZone.ClusterSleeveInstanceId; // Old cluster ID before update
+                        
+                        // ✅ CRITICAL: For cluster placement, the individual sleeve ID was already set to -1 in MarkClashZonesAsClusterResolvedWithSleeveId
+                        // But we need the ORIGINAL sleeve ID for database matching
+                        // Check if clashZone has AfterClusterSleevePlacedSleeveInstanceId (stored before clearing)
+                        if (isCluster && clashZone.AfterClusterSleevePlacedSleeveInstanceId > 0)
+                        {
+                            oldSleeveInstanceId = clashZone.AfterClusterSleevePlacedSleeveInstanceId; // Use original individual sleeve ID for matching
+                        }
+                        
                         var singleUpdate = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId)>
                         {
                             (
@@ -1958,10 +1971,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 clashZone.IntersectionPointX,
                                 clashZone.IntersectionPointY,
                                 clashZone.IntersectionPointZ,
-                                clashZone.SleeveInstanceId, // OldSleeveInstanceId
-                                clashZone.ClusterSleeveInstanceId // OldClusterInstanceId
+                                oldSleeveInstanceId, // ✅ CRITICAL: Use original sleeve ID for matching
+                                oldClusterInstanceId // Old cluster ID before update
                             )
                         };
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[FLAG-MANAGER] 📝 Calling BatchUpdateFlags for ClashZone {clashZone.Id}: " +
+                                $"IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}, " +
+                                $"SleeveId={clashZone.SleeveInstanceId}, ClusterId={clashZone.ClusterSleeveInstanceId}, " +
+                                $"OldSleeveId={oldSleeveInstanceId}, OldClusterId={oldClusterInstanceId}, " +
+                                $"GUID={clashZone.Id}, MEP={clashZone.MepElementIdValue}, Host={clashZone.StructuralElementIdValue}");
+                        }
+                        
                         repository.BatchUpdateFlags(singleUpdate);
                         
                         if (!DeploymentConfiguration.DeploymentMode)

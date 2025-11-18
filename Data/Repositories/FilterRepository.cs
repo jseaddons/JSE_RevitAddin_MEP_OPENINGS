@@ -5,6 +5,8 @@ using System.Linq;
 using System.Text.Json;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.ErrorHandling;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 {
@@ -27,42 +29,84 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             if (string.IsNullOrWhiteSpace(filterName) || string.IsNullOrWhiteSpace(category))
                 return -1;
 
-            using (var cmd = _context.Connection.CreateCommand())
+            try
             {
-                cmd.CommandText = @"
-                    SELECT FilterId FROM Filters
-                    WHERE FilterName = @FilterName AND Category = @Category";
-                cmd.Parameters.AddWithValue("@FilterName", filterName);
-                cmd.Parameters.AddWithValue("@Category", category);
+                // ✅ LOG: SELECT operation
+                DatabaseOperationLogger.LogSelect(
+                    "Filters",
+                    $"FilterName='{filterName}' AND Category='{category}'");
 
-                var existingId = cmd.ExecuteScalar();
-                if (existingId != null && int.TryParse(existingId.ToString(), out int filterId))
+                using (var cmd = _context.Connection.CreateCommand())
                 {
-                    return filterId;
-                }
-            }
+                    cmd.CommandText = @"
+                        SELECT FilterId FROM Filters
+                        WHERE FilterName = @FilterName AND Category = @Category";
+                    cmd.Parameters.AddWithValue("@FilterName", filterName);
+                    cmd.Parameters.AddWithValue("@Category", category);
 
-            using (var insertCmd = _context.Connection.CreateCommand())
+                    var existingId = cmd.ExecuteScalar();
+                    if (existingId != null && int.TryParse(existingId.ToString(), out int filterId))
+                    {
+                        DatabaseOperationLogger.LogSelect(
+                            "Filters",
+                            $"FilterName='{filterName}' AND Category='{category}'",
+                            resultCount: 1,
+                            sampleRow: new Dictionary<string, object> { { "FilterId", filterId } });
+                        return filterId;
+                    }
+                }
+
+                // ✅ LOG: INSERT operation
+                var insertParams = new Dictionary<string, object>
+                {
+                    { "FilterName", filterName },
+                    { "Category", category },
+                    { "IsFilterComboNew", 0 }
+                };
+
+                DatabaseOperationLogger.LogOperation(
+                    "INSERT",
+                    "Filters",
+                    insertParams,
+                    additionalInfo: "Creating new filter");
+
+                using (var insertCmd = _context.Connection.CreateCommand())
+                {
+                    // ✅ FIX: IsFilterComboNew in Filters table is deprecated - flag is now in FileCombos table
+                    // Set to 0 (default) since we don't use it anymore
+                    insertCmd.CommandText = @"
+                        INSERT INTO Filters (FilterName, Category, IsFilterComboNew, CreatedAt, UpdatedAt)
+                        VALUES (@FilterName, @Category, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+                        SELECT last_insert_rowid();";
+                    insertCmd.Parameters.AddWithValue("@FilterName", filterName);
+                    insertCmd.Parameters.AddWithValue("@Category", category);
+
+                    var newId = insertCmd.ExecuteScalar();
+                    if (newId != null && int.TryParse(newId.ToString(), out int insertedId))
+                    {
+                        DatabaseOperationLogger.LogOperation(
+                            "INSERT",
+                            "Filters",
+                            insertParams,
+                            rowsAffected: 1,
+                            additionalInfo: $"✅ Created FilterId={insertedId}");
+                        _logger($"[SQLite] ✅ Registered filter '{filterName}' (Category='{category}') in database (FilterId={insertedId}).");
+                        return insertedId;
+                    }
+                }
+
+                _logger($"[SQLite] ⚠️ Failed to register filter '{filterName}' (Category='{category}').");
+                return -1;
+            }
+            catch (Exception ex)
             {
-                // ✅ FIX: IsFilterComboNew in Filters table is deprecated - flag is now in FileCombos table
-                // Set to 0 (default) since we don't use it anymore
-                insertCmd.CommandText = @"
-                    INSERT INTO Filters (FilterName, Category, IsFilterComboNew, CreatedAt, UpdatedAt)
-                    VALUES (@FilterName, @Category, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
-                    SELECT last_insert_rowid();";
-                insertCmd.Parameters.AddWithValue("@FilterName", filterName);
-                insertCmd.Parameters.AddWithValue("@Category", category);
-
-                var newId = insertCmd.ExecuteScalar();
-                if (newId != null && int.TryParse(newId.ToString(), out int insertedId))
-                {
-                    _logger($"[SQLite] ✅ Registered filter '{filterName}' (Category='{category}') in database.");
-                    return insertedId;
-                }
+                throw new FilterOperationException(
+                    filterName,
+                    category,
+                    "EnsureFilter",
+                    $"Failed to ensure filter exists: {ex.Message}",
+                    ex);
             }
-
-            _logger($"[SQLite] ⚠️ Failed to register filter '{filterName}' (Category='{category}').");
-            return -1;
         }
 
         public int GetFilterId(string filterName, string category)
@@ -212,11 +256,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
         /// <summary>
         /// ⚠️⚠️⚠️ CRITICAL: UI STATE PERSISTENCE METHOD - DO NOT REMOVE OR MODIFY ⚠️⚠️⚠️
-        /// ✅ PHASE 2: Saves filter UI state (SelectedHostElementTypes and OpeningSettings) to database
+        /// ✅ PHASE 2: Saves filter UI state (SelectedHostCategories and OpeningSettings) to database
         /// This method is PROTECTED - removing or modifying it will cause UI state to be lost
         /// Called from: FilterManagementService.SaveFilter, SaveFilterAuto, CreateFilter, CopyFilter
         /// </summary>
-        public void SaveFilterUIState(string filterName, string category, List<string> selectedHostElementTypes, OpeningSettings openingSettings)
+        public void SaveFilterUIState(string filterName, string category, List<string> selectedHostCategories, OpeningSettings openingSettings)
         {
             // ⚠️⚠️⚠️ PROTECTED METHOD: DO NOT REMOVE OR MODIFY THIS VALIDATION ⚠️⚠️⚠️
             if (string.IsNullOrWhiteSpace(filterName) || string.IsNullOrWhiteSpace(category))
@@ -231,56 +275,131 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 if (filterId <= 0)
                 {
                     _logger($"[SQLite] ⚠️ Filter '{filterName}' (Category='{category}') not found - cannot save UI state");
-                    return;
+                    throw new FilterOperationException(
+                        filterName,
+                        category,
+                        "SaveFilterUIState",
+                        $"Filter not found (FilterId={filterId})");
                 }
 
                 // ⚠️⚠️⚠️ PROTECTED CODE: This UPDATE statement saves UI state - DO NOT MODIFY ⚠️⚠️⚠️
-                // Removing or modifying this SQL will cause UI state (SelectedHostElementTypes, OpeningSettings) to be lost
+                // Removing or modifying this SQL will cause UI state (SelectedHostCategories, OpeningSettings) to be lost
+                // ✅ STANDARDIZED: Using SelectedHostCategories only (removed SelectedHostCategories duplicate)
+                // ✅ NORMALIZE: Store as comma-separated string (not JSON) for readability - user wants "Floors" not ["Floors"]
+                var hostCategoriesJson = selectedHostCategories != null && selectedHostCategories.Count > 0
+                    ? string.Join(", ", selectedHostCategories.Where(c => !string.IsNullOrWhiteSpace(c)).Select(c => c.Trim()))
+                    : null;
+                
+                var settingsJson = openingSettings != null
+                    ? JsonSerializer.Serialize(openingSettings)
+                    : null;
+
+                // ✅ LOG: UPDATE operation with all parameters
+                var updateParams = new Dictionary<string, object>
+                {
+                    { "FilterId", filterId },
+                    { "SelectedHostCategories", hostCategoriesJson },
+                    { "OpeningSettings", settingsJson ?? "NULL" }
+                };
+
+                DatabaseOperationLogger.LogOperation(
+                    "UPDATE",
+                    "Filters",
+                    updateParams,
+                    additionalInfo: $"Saving UI state for FilterId={filterId}");
+
                 using (var cmd = _context.Connection.CreateCommand())
                 {
-                    var hostTypesJson = selectedHostElementTypes != null && selectedHostElementTypes.Count > 0
-                        ? JsonSerializer.Serialize(selectedHostElementTypes)
-                        : "[]";
+                    // ✅ CRITICAL FIX: Also save ReferenceDocKey, HostDocKey, and ReferenceCategory
+                    // Get these from FilterUiStateProvider if available
+                    string referenceDocKey = null;
+                    string hostDocKey = null;
+                    string referenceCategory = null;
                     
-                    var settingsJson = openingSettings != null
-                        ? JsonSerializer.Serialize(openingSettings)
-                        : null;
-
+                    if (FilterUiStateProvider.GetSelectedReferenceFiles != null)
+                    {
+                        var refFiles = FilterUiStateProvider.GetSelectedReferenceFiles.Invoke();
+                        if (refFiles != null && refFiles.Count > 0)
+                        {
+                            referenceDocKey = refFiles[0]; // Use first selected reference file
+                        }
+                    }
+                    
+                    if (FilterUiStateProvider.GetSelectedHostFiles != null)
+                    {
+                        var hostFiles = FilterUiStateProvider.GetSelectedHostFiles.Invoke();
+                        if (hostFiles != null && hostFiles.Count > 0)
+                        {
+                            hostDocKey = hostFiles[0]; // Use first selected host file
+                        }
+                    }
+                    
+                    // ReferenceCategory is typically the same as the filter category
+                    referenceCategory = category;
+                    
                     cmd.CommandText = @"
                         UPDATE Filters
-                        SET SelectedHostElementTypes = @SelectedHostElementTypes,
+                        SET SelectedHostCategories = @SelectedHostCategories,
                             OpeningSettings = @OpeningSettings,
+                            ReferenceDocKey = @ReferenceDocKey,
+                            HostDocKey = @HostDocKey,
+                            ReferenceCategory = @ReferenceCategory,
                             UpdatedAt = CURRENT_TIMESTAMP
                         WHERE FilterId = @FilterId";
                     cmd.Parameters.AddWithValue("@FilterId", filterId);
-                    cmd.Parameters.AddWithValue("@SelectedHostElementTypes", hostTypesJson);
+                    cmd.Parameters.AddWithValue("@SelectedHostCategories", hostCategoriesJson);
                     cmd.Parameters.AddWithValue("@OpeningSettings", settingsJson ?? (object)DBNull.Value);
+                    cmd.Parameters.AddWithValue("@ReferenceDocKey", referenceDocKey ?? (object)DBNull.Value);
+                    cmd.Parameters.AddWithValue("@HostDocKey", hostDocKey ?? (object)DBNull.Value);
+                    cmd.Parameters.AddWithValue("@ReferenceCategory", referenceCategory ?? (object)DBNull.Value);
 
                     var affected = cmd.ExecuteNonQuery();
                     if (affected > 0)
                     {
-                        _logger($"[SQLite] ✅ Saved UI state for filter '{filterName}' (Category='{category}')");
+                        DatabaseOperationLogger.LogOperation(
+                            "UPDATE",
+                            "Filters",
+                            updateParams,
+                            rowsAffected: affected,
+                            additionalInfo: $"✅ Saved UI state - HostCategories: {selectedHostCategories?.Count ?? 0}, OpeningSettings: {(openingSettings != null ? "Yes" : "No")}");
+                        _logger($"[SQLite] ✅ Saved UI state for filter '{filterName}' (Category='{category}') - HostCategories: {selectedHostCategories?.Count ?? 0}, OpeningSettings: {(openingSettings != null ? "Yes" : "No")}");
                     }
                     else
                     {
                         _logger($"[SQLite] ⚠️ SaveFilterUIState: No rows updated for filter '{filterName}' (Category='{category}') - FilterId={filterId}");
+                        throw new FilterOperationException(
+                            filterName,
+                            category,
+                            "SaveFilterUIState",
+                            $"No rows updated (FilterId={filterId})");
                     }
                 }
+            }
+            catch (FilterOperationException)
+            {
+                throw; // Re-throw custom exceptions
             }
             catch (Exception ex)
             {
                 // ⚠️ CRITICAL: Log error but don't throw - UI state save failure is non-blocking
                 _logger($"[SQLite] ❌ Error saving filter UI state: {ex.Message}");
+                throw new FilterOperationException(
+                    filterName,
+                    category,
+                    "SaveFilterUIState",
+                    $"Unexpected error: {ex.Message}",
+                    ex);
             }
         }
 
         /// <summary>
         /// ⚠️⚠️⚠️ CRITICAL: UI STATE PERSISTENCE METHOD - DO NOT REMOVE OR MODIFY ⚠️⚠️⚠️
-        /// ✅ PHASE 2: Loads filter UI state (SelectedHostElementTypes and OpeningSettings) from database
+        /// ✅ PHASE 2: Loads filter UI state (SelectedHostCategories and OpeningSettings) from database
         /// This method is PROTECTED - removing or modifying it will cause UI state to not be restored
         /// Called from: FilterManagementService.CreateFilterFromCurrentUIState, LoadFilterFromXmlFile
+        /// ✅ STANDARDIZED: Using SelectedHostCategories only (removed SelectedHostCategories duplicate)
         /// </summary>
-        public (List<string> SelectedHostElementTypes, OpeningSettings OpeningSettings) LoadFilterUIState(string filterName, string category)
+        public (List<string> SelectedHostCategories, OpeningSettings OpeningSettings) LoadFilterUIState(string filterName, string category)
         {
             // ⚠️⚠️⚠️ PROTECTED METHOD: DO NOT REMOVE OR MODIFY THIS VALIDATION ⚠️⚠️⚠️
             if (string.IsNullOrWhiteSpace(filterName) || string.IsNullOrWhiteSpace(category))
@@ -289,11 +408,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             try
             {
                 // ⚠️⚠️⚠️ PROTECTED CODE: This SELECT statement loads UI state - DO NOT MODIFY ⚠️⚠️⚠️
-                // Removing or modifying this SQL will cause UI state (SelectedHostElementTypes, OpeningSettings) to not be restored
+                // Removing or modifying this SQL will cause UI state (SelectedHostCategories, OpeningSettings) to not be restored
                 using (var cmd = _context.Connection.CreateCommand())
                 {
                     cmd.CommandText = @"
-                        SELECT SelectedHostElementTypes, OpeningSettings
+                        SELECT SelectedHostCategories, OpeningSettings
                         FROM Filters
                         WHERE FilterName = @FilterName AND Category = @Category";
                     cmd.Parameters.AddWithValue("@FilterName", filterName);
@@ -303,19 +422,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     {
                         if (reader.Read())
                         {
-                            var hostTypesJson = reader.IsDBNull(0) ? null : reader.GetString(0);
+                            var hostCategoriesJson = reader.IsDBNull(0) ? null : reader.GetString(0);
                             var settingsJson = reader.IsDBNull(1) ? null : reader.GetString(1);
 
-                            List<string> hostTypes = new List<string>();
-                            if (!string.IsNullOrWhiteSpace(hostTypesJson) && hostTypesJson != "[]")
+                            List<string> hostCategories = new List<string>();
+                            if (!string.IsNullOrWhiteSpace(hostCategoriesJson))
                             {
                                 try
                                 {
-                                    hostTypes = JsonSerializer.Deserialize<List<string>>(hostTypesJson) ?? new List<string>();
+                                    // ✅ NORMALIZE: Handle both comma-separated string (new format) and JSON array (old format)
+                                    if (hostCategoriesJson.StartsWith("[") && hostCategoriesJson.EndsWith("]"))
+                                    {
+                                        // Old JSON format - deserialize
+                                        hostCategories = JsonSerializer.Deserialize<List<string>>(hostCategoriesJson) ?? new List<string>();
+                                    }
+                                    else
+                                    {
+                                        // New comma-separated format - split by comma
+                                        hostCategories = hostCategoriesJson.Split(',')
+                                            .Select(c => c.Trim())
+                                            .Where(c => !string.IsNullOrWhiteSpace(c))
+                                            .ToList();
+                                    }
                                 }
                                 catch
                                 {
-                                    _logger($"[SQLite] ⚠️ Failed to deserialize SelectedHostElementTypes for filter '{filterName}'");
+                                    _logger($"[SQLite] ⚠️ Failed to parse SelectedHostCategories for filter '{filterName}'");
                                 }
                             }
 
@@ -332,7 +464,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 }
                             }
 
-                            return (hostTypes, settings);
+                            return (hostCategories, settings);
                         }
                     }
                 }

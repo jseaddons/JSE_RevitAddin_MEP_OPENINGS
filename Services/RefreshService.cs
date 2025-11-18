@@ -2078,7 +2078,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     // Build allowed host types from current UI (UI PRECEDENCE)
                     var allowedHostTypesUI = new HashSet<string>(
-                        FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>(),
+                        FilterUiStateProvider.GetSelectedHostCategories?.Invoke() ?? new List<string>(),
                         StringComparer.OrdinalIgnoreCase);
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[CLASH_DEBUG] UI Selected MEP categories: {string.Join(", ", selectedMepCategories ?? new List<string>())}");
@@ -2972,8 +2972,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         DebugLogger.Info($"[CLASH_DEBUG] Selected MEP categories from UI: [{string.Join(", ", selectedMepCategories ?? new List<string>())}]");
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[CLASH_DEBUG] Allowed MEP categories: [{string.Join(", ", allowedMepCats)}]");
-                    var allowedHostTypes = new HashSet<string>(
-                        FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>(),
+                    var allowedHostCategories = new HashSet<string>(
+                        FilterUiStateProvider.GetSelectedHostCategories?.Invoke() ?? new List<string>(),
                         StringComparer.OrdinalIgnoreCase);
 
                     // Normalize file names for comparison
@@ -3013,10 +3013,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             bool categoryMatch = allowedMepCats.Count == 0 || allowedMepCats.Contains(cz.MepElementCategory);
 
                             // Filter by host type - Handle plural/singular mismatch: "Walls" (UI) vs "Wall" (Revit)
-                            bool hostTypeMatch = allowedHostTypes.Count == 0 ||
-                                               allowedHostTypes.Contains(cz.StructuralElementType) ||
-                                               allowedHostTypes.Contains(cz.StructuralElementType + "s") ||
-                                               allowedHostTypes.Any(t => t.TrimEnd('s').Equals(cz.StructuralElementType, StringComparison.OrdinalIgnoreCase));
+                            bool hostTypeMatch = allowedHostCategories.Count == 0 ||
+                                               allowedHostCategories.Contains(cz.StructuralElementType) ||
+                                               allowedHostCategories.Contains(cz.StructuralElementType + "s") ||
+                                               allowedHostCategories.Any(t => t.TrimEnd('s').Equals(cz.StructuralElementType, StringComparison.OrdinalIgnoreCase));
 
                             // 🔥 CRITICAL DEBUG: Log individual clash zone filtering
                             if (!categoryMatch)
@@ -3033,12 +3033,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             if (!hostTypeMatch)
                             {
                                 if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Host type mismatch: '{cz.StructuralElementType}' not in [{string.Join(", ", allowedHostTypes)}]");
+                                    DebugLogger.Info($"[CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Host type mismatch: '{cz.StructuralElementType}' not in [{string.Join(", ", allowedHostCategories)}]");
                                 // ✅ DEPLOYMENT MODE: Skip hardcoded log writes
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
                                     string refresh_debug_logLogPath = SafeFileLogger.GetLogFilePath("refresh_debug.log");
-                                    File.AppendAllText(refresh_debug_logLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Host type mismatch: '{cz.StructuralElementType}' not in [{string.Join(", ", allowedHostTypes)}]\n");
+                                    File.AppendAllText(refresh_debug_logLogPath, $"[{DateTime.Now}] [CLASH_DEBUG] FILTERED OUT: ClashZone {cz.Id} - Host type mismatch: '{cz.StructuralElementType}' not in [{string.Join(", ", allowedHostCategories)}]\n");
                                 }
                             }
 
@@ -3080,7 +3080,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }).ToList();
 
                         if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[CLASH_DEBUG] Current UI filter: MEP cats={allowedMepCats.Count}, Host types={allowedHostTypes.Count}, Ref files={allowedRefFiles.Count}, Host files={allowedHostFiles.Count}");
+                            DebugLogger.Info($"[CLASH_DEBUG] Current UI filter: MEP cats={allowedMepCats.Count}, Host types={allowedHostCategories.Count}, Ref files={allowedRefFiles.Count}, Host files={allowedHostFiles.Count}");
                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[CLASH_DEBUG] Filtered existing zones by current UI: {before} -> {existingClashZones.ClashZones.Count}");
                         SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] Filtered existing zones by current UI: {before} -> {existingClashZones.ClashZones.Count}\n");
@@ -3646,7 +3646,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 try
                 {
                     var allowedHostTypesUI_NewZones = new HashSet<string>(
-                        FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>(),
+                        FilterUiStateProvider.GetSelectedHostCategories?.Invoke() ?? new List<string>(),
                         StringComparer.OrdinalIgnoreCase);
                     if (allowedHostTypesUI_NewZones.Count > 0 && newClashZones != null)
                     {
@@ -4154,8 +4154,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     targetFilter.LastModified = DateTime.Now;
                     // ✅ CRITICAL FIX: UI state NOT saved to Filter XML (only placement data)
                     // UI state is saved to Global XML ProcessedFileCombos only (see line ~3741)
-                    // Also persist host element types selected in UI (this is placement-related data, not UI state)
-                    try { targetFilter.SelectedHostElementTypes = FilterUiStateProvider.GetSelectedHostElementTypes?.Invoke() ?? new List<string>(); } catch { }
+                    // Also persist host categories selected in UI (this is placement-related data, not UI state)
+                    try { targetFilter.SelectedHostCategories = FilterUiStateProvider.GetSelectedHostCategories?.Invoke() ?? new List<string>(); } catch { }
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[CLASH_DEBUG] ✅ UI state NOT saved to Filter XML (only placement data saved)");
                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [CLASH_DEBUG] ✅ UI state NOT saved to Filter XML (only placement data)\n");
@@ -5388,7 +5388,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         /// <summary>
         /// Loads the most recently saved OpeningFilter XML from any project Filters folder under AppData.
-        /// Used to read saved host element types when filtering existing zones.
+        /// Used to read saved host categories when filtering existing zones.
         /// </summary>
         private Models.OpeningFilter LoadLatestOpeningFilter()
         {
@@ -6019,7 +6019,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return HasNew(selectedReferenceFiles, filter.SelectedReferenceFiles)
                    || HasNew(selectedHostFiles, filter.SelectedHostFiles)
                    || HasNew(selectedMepCategories, filter.SelectedMepCategoryNames)
-                   || HasNew(selectedHostCategories, filter.SelectedHostElementTypes);
+                   || HasNew(selectedHostCategories, filter.SelectedHostCategories);
         }
 
         private static bool HasNewFileCombosInGlobal(

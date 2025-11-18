@@ -42,6 +42,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Entities
         public double? MepOrientationZ { get; set; }
         public double? MepRotationAngleRad { get; set; }
         public double? MepRotationAngleDeg { get; set; }
+        // ✅ ROTATION MATRIX: Pre-calculated cos/sin for "dump once use many times" principle
+        public double? MepRotationCos { get; set; }
+        public double? MepRotationSin { get; set; }
         public double? MepAngleToXRad { get; set; }
         public double? MepAngleToXDeg { get; set; }
         public double? MepAngleToYRad { get; set; }
@@ -62,6 +65,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Entities
         public int AfterClusterSleeveId { get; set; }
         public bool HasDamperNearbyFlag { get; set; }
         public bool IsCurrentClashFlag { get; set; }
+        // ✅ SLEEVE CORNERS: Pre-calculated 4 corner coordinates in world space (for clustering optimization)
+        public double? SleeveCorner1X { get; set; }
+        public double? SleeveCorner1Y { get; set; }
+        public double? SleeveCorner1Z { get; set; }
+        public double? SleeveCorner2X { get; set; }
+        public double? SleeveCorner2Y { get; set; }
+        public double? SleeveCorner2Z { get; set; }
+        public double? SleeveCorner3X { get; set; }
+        public double? SleeveCorner3Y { get; set; }
+        public double? SleeveCorner3Z { get; set; }
+        public double? SleeveCorner4X { get; set; }
+        public double? SleeveCorner4Y { get; set; }
+        public double? SleeveCorner4Z { get; set; }
     }
 }
 

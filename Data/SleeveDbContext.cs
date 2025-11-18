@@ -173,27 +173,59 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     // Create Filters table
                     ExecuteCommand(@"
                         CREATE TABLE IF NOT EXISTS Filters (
-                            FilterId      INTEGER PRIMARY KEY AUTOINCREMENT,
-                            FilterName    TEXT NOT NULL,
-                            Category      TEXT NOT NULL,
-                            IsFilterComboNew INTEGER NOT NULL DEFAULT 1,
-                            CreatedAt     DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
-                            UpdatedAt     DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
+                            FilterId          INTEGER PRIMARY KEY AUTOINCREMENT,
+                            FilterName        TEXT NOT NULL,
+                            Category          TEXT NOT NULL,
+                            ReferenceDocKey   TEXT,
+                            HostDocKey        TEXT,
+                            ReferenceCategory TEXT,
+                            SelectedHostCategories TEXT,
+                            OpeningSettings   TEXT,
+                            IsFilterComboNew  INTEGER NOT NULL DEFAULT 1,
+                            CreatedAt         DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
+                            UpdatedAt         DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
                             UNIQUE(FilterName, Category)
                         )", transaction);
 
                     // Create FileCombos table
                     ExecuteCommand(@"
                         CREATE TABLE IF NOT EXISTS FileCombos (
-                            ComboId          INTEGER PRIMARY KEY AUTOINCREMENT,
-                            FilterId         INTEGER NOT NULL,
-                            LinkedFileKey    TEXT NOT NULL,
-                            HostFileKey      TEXT NOT NULL,
-                            IsFilterComboNew INTEGER NOT NULL DEFAULT 1,
-                            ProcessedAt      DATETIME,
+                            ComboId              INTEGER PRIMARY KEY AUTOINCREMENT,
+                            FilterId             INTEGER NOT NULL,
+                            Category             TEXT NOT NULL,
+                            SelectedHostCategories TEXT,
+                            LinkedFileKey        TEXT NOT NULL,
+                            HostFileKey          TEXT NOT NULL,
+                            IsFilterComboNew     INTEGER NOT NULL DEFAULT 1,
+                            ProcessedAt          DATETIME,
+                            CreatedAt            DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            UpdatedAt            DATETIME DEFAULT CURRENT_TIMESTAMP,
                             FOREIGN KEY(FilterId) REFERENCES Filters(FilterId) ON DELETE CASCADE,
-                            UNIQUE(FilterId, LinkedFileKey, HostFileKey)
+                            UNIQUE(FilterId, Category, LinkedFileKey, HostFileKey)
                         )", transaction);
+                    
+                    // ✅ MIGRATION: Add Category and SelectedHostCategories columns if they don't exist (for existing databases)
+                    try
+                    {
+                        ExecuteCommand(@"
+                            ALTER TABLE FileCombos ADD COLUMN Category TEXT;
+                        ", transaction);
+                    }
+                    catch
+                    {
+                        // Column already exists, ignore
+                    }
+                    
+                    try
+                    {
+                        ExecuteCommand(@"
+                            ALTER TABLE FileCombos ADD COLUMN SelectedHostCategories TEXT;
+                        ", transaction);
+                    }
+                    catch
+                    {
+                        // Column already exists, ignore
+                    }
 
                     // Create ClashZones table
                     ExecuteCommand(@"
@@ -221,6 +253,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                             BoundingBoxMaxX REAL,
                             BoundingBoxMaxY REAL,
                             BoundingBoxMaxZ REAL,
+                            -- Rotated bounding box (for non-axis-aligned sleeves, NULL for axis-aligned)
+                            RotatedBoundingBoxMinX REAL,
+                            RotatedBoundingBoxMinY REAL,
+                            RotatedBoundingBoxMinZ REAL,
+                            RotatedBoundingBoxMaxX REAL,
+                            RotatedBoundingBoxMaxY REAL,
+                            RotatedBoundingBoxMaxZ REAL,
                             PlacementSource TEXT,
                             StructuralThickness REAL DEFAULT 0.0,
                             WallThickness REAL DEFAULT 0.0,
@@ -322,6 +361,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     AddColumnIfMissing("ClashZones", "MepOrientationZ", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "MepRotationAngleRad", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "MepRotationAngleDeg", "REAL", transaction);
+                    // ✅ ROTATION MATRIX: Pre-calculated cos/sin for "dump once use many times" principle
+                    // Calculated once during placement, stored for reuse during clustering (avoids repeated Math.Cos/Sin calls)
+                    AddColumnIfMissing("ClashZones", "MepRotationCos", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "MepRotationSin", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "MepAngleToXRad", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "MepAngleToXDeg", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "MepAngleToYRad", "REAL", transaction);
@@ -332,6 +375,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     AddColumnIfMissing("ClashZones", "SleevePlacementActiveX", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "SleevePlacementActiveY", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "SleevePlacementActiveZ", "REAL", transaction);
+                    // Rotated bounding box columns (NULL for axis-aligned sleeves)
+                    AddColumnIfMissing("ClashZones", "RotatedBoundingBoxMinX", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "RotatedBoundingBoxMinY", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "RotatedBoundingBoxMinZ", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "RotatedBoundingBoxMaxX", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "RotatedBoundingBoxMaxY", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "RotatedBoundingBoxMaxZ", "REAL", transaction);
+                    // ✅ SLEEVE CORNERS: Pre-calculated 4 corner coordinates in world space (for clustering optimization)
+                    // Calculated once during individual sleeve placement, stored for reuse during clustering
+                    AddColumnIfMissing("ClashZones", "SleeveCorner1X", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "SleeveCorner1Y", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "SleeveCorner1Z", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "SleeveCorner2X", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "SleeveCorner2Y", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "SleeveCorner2Z", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "SleeveCorner3X", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "SleeveCorner3Y", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "SleeveCorner3Z", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "SleeveCorner4X", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "SleeveCorner4Y", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "SleeveCorner4Z", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "SourceDocKey", "TEXT", transaction);
                     AddColumnIfMissing("ClashZones", "HostDocKey", "TEXT", transaction);
                     AddColumnIfMissing("ClashZones", "MepElementUniqueId", "TEXT", transaction);
@@ -366,13 +430,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                         _logger("[SQLite] ✅ Added IsFilterComboNew column to Filters (deprecated - use FileCombos.IsFilterComboNew instead)");
                     
                     // ✅ PHASE 2: Add UI state columns to Filters table
-                    if (AddColumnIfMissing("Filters", "SelectedHostElementTypes", "TEXT", transaction))
-                        _logger("[SQLite] ✅ Added SelectedHostElementTypes column to Filters (JSON array)");
-                    // ✅ STANDARDIZED: Use SelectedHostCategories (same as SelectedHostElementTypes)
+                    // ✅ REMOVED: SelectedHostElementTypes - using SelectedHostCategories only
+                    // ✅ STANDARDIZED: Use SelectedHostCategories (removed duplicate SelectedHostElementTypes)
                     if (AddColumnIfMissing("Filters", "SelectedHostCategories", "TEXT", transaction))
                         _logger("[SQLite] ✅ Added SelectedHostCategories column to Filters (JSON array)");
                     if (AddColumnIfMissing("Filters", "OpeningSettings", "TEXT", transaction))
-                        _logger("[SQLite] ✅ Added OpeningSettings column to Filters (JSON)");
+                        _logger("[SQLite] ✅ Added OpeningSettings column to Filters (JSON) - stores clearance settings per filter");
+                    // ✅ COMBO VALIDATION: Add file keys and reference category for combo validation
+                    if (AddColumnIfMissing("Filters", "ReferenceDocKey", "TEXT", transaction))
+                        _logger("[SQLite] ✅ Added ReferenceDocKey column to Filters (for combo validation)");
+                    if (AddColumnIfMissing("Filters", "HostDocKey", "TEXT", transaction))
+                        _logger("[SQLite] ✅ Added HostDocKey column to Filters (for combo validation)");
+                    if (AddColumnIfMissing("Filters", "ReferenceCategory", "TEXT", transaction))
+                        _logger("[SQLite] ✅ Added ReferenceCategory column to Filters (MEP category for combo validation)");
 
                     AddColumnIfMissing("Conditions", "CombinedKey", "TEXT", transaction);
                     AddColumnIfMissing("Conditions", "DuctAccessoryMepNormal", "REAL", transaction);
@@ -504,37 +574,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
         /// </summary>
         private void EnsureClusterSleevesTable(SQLiteTransaction transaction)
         {
-            ExecuteCommand(@"
-                CREATE TABLE IF NOT EXISTS ClusterSleeves (
+            ExecuteCommand(@"CREATE TABLE IF NOT EXISTS ClusterSleeves (
                     ClusterSleeveId      INTEGER PRIMARY KEY AUTOINCREMENT,
                     ClusterInstanceId   INTEGER NOT NULL UNIQUE,
                     ComboId             INTEGER NOT NULL,
                     FilterId            INTEGER NOT NULL,
                     Category            TEXT NOT NULL,
-                    -- Cluster bounding box (calculated during clustering)
                     BoundingBoxMinX     REAL NOT NULL,
                     BoundingBoxMinY     REAL NOT NULL,
                     BoundingBoxMinZ     REAL NOT NULL,
                     BoundingBoxMaxX     REAL NOT NULL,
                     BoundingBoxMaxY     REAL NOT NULL,
                     BoundingBoxMaxZ     REAL NOT NULL,
-                    -- Cluster dimensions (width, height, depth)
                     ClusterWidth        REAL NOT NULL,
                     ClusterHeight       REAL NOT NULL,
                     ClusterDepth        REAL NOT NULL,
-                    -- Cluster rotation (if rotated bounding box was used)
                     RotationAngleDeg    REAL DEFAULT 0.0,
                     IsRotated           INTEGER NOT NULL DEFAULT 0,
-                    -- Cluster placement point (center of cluster)
                     PlacementX          REAL NOT NULL,
                     PlacementY          REAL NOT NULL,
                     PlacementZ          REAL NOT NULL,
-                    -- Host type and orientation (for grouping)
                     HostType            TEXT,
                     HostOrientation     TEXT,
-                    -- List of ClashZoneIds that are part of this cluster (JSON array of GUIDs)
                     ClashZoneIdsJson    TEXT NOT NULL,
-                    -- Metadata
+                    ClashZoneGuids      TEXT,
+                    MepSizes            TEXT,
+                    MepSystemNames      TEXT,
+                    MepElementIds       TEXT,
                     CreatedAt           DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
                     UpdatedAt           DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
                     FOREIGN KEY(ComboId) REFERENCES FileCombos(ComboId) ON DELETE CASCADE,
@@ -547,6 +613,51 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
             ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_clustersleeves_filter ON ClusterSleeves(FilterId)", transaction);
             ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_clustersleeves_category ON ClusterSleeves(Category)", transaction);
             ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_clustersleeves_combo_category ON ClusterSleeves(ComboId, Category)", transaction);
+            
+            // ✅ MIGRATION: Add comma-separated value columns if they don't exist
+            try
+            {
+                ExecuteCommand(@"
+                    ALTER TABLE ClusterSleeves ADD COLUMN ClashZoneGuids TEXT;
+                ", transaction);
+            }
+            catch
+            {
+                // Column already exists, ignore
+            }
+            
+            try
+            {
+                ExecuteCommand(@"
+                    ALTER TABLE ClusterSleeves ADD COLUMN MepSizes TEXT;
+                ", transaction);
+            }
+            catch
+            {
+                // Column already exists, ignore
+            }
+            
+            try
+            {
+                ExecuteCommand(@"
+                    ALTER TABLE ClusterSleeves ADD COLUMN MepSystemNames TEXT;
+                ", transaction);
+            }
+            catch
+            {
+                // Column already exists, ignore
+            }
+            
+            try
+            {
+                ExecuteCommand(@"
+                    ALTER TABLE ClusterSleeves ADD COLUMN MepElementIds TEXT;
+                ", transaction);
+            }
+            catch
+            {
+                // Column already exists, ignore
+            }
         }
 
         /// <summary>

@@ -133,6 +133,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             int placedCount = 0;
             int deletedCount = 0;
             var placedClusters = new List<FamilyInstance>(); // Track placed cluster sleeves for cleanup
+            // ✅ CRITICAL: Track ClashZoneIds for each cluster sleeve (needed for database save)
+            var clusterToClashZoneIds = new Dictionary<int, List<Guid>>(); // Key: ClusterInstanceId, Value: List of ClashZone GUIDs
             
             // ✅ PERFORMANCE: Start timing
             var startTime = DateTime.Now;
@@ -599,7 +601,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             } 
                             catch { }
                             
-                            PlaceClusterSleeve(doc, cluster, groupKey, targetCategory, out int placed1, out int deleted1, xmlFilePath);
+                            // ✅ CRITICAL: Track ClashZoneIds for this cluster before placing
+                            var clusterClashZoneIds = new List<Guid>();
+                            foreach (var sleeveData in cluster)
+                            {
+                                var clashZone = GetClashZoneBySleeveInstanceId(sleeveData.SleeveInstanceId, xmlFilePath);
+                                if (clashZone != null)
+                                {
+                                    clusterClashZoneIds.Add(clashZone.Id);
+                                }
+                            }
+                            
+                            PlaceClusterSleeve(doc, cluster, groupKey, targetCategory, out int placed1, out int deleted1, out FamilyInstance placedClusterSleeve, xmlFilePath);
                             
                             try 
                             { 
@@ -612,13 +625,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             placedCount += placed1;
                             deletedCount += deleted1;
                             
-                            // ✅ PERFORMANCE: Track cluster sleeve for cleanup (if placed successfully)
-                            // Note: PlaceClusterSleeve creates the instance internally, so we need to find it
-                            // We'll track it by finding the newest cluster sleeve with matching properties
-                            if (placed1 > 0)
+                            // ✅ CRITICAL: Track cluster sleeve and its ClashZoneIds for database save
+                            if (placed1 > 0 && placedClusterSleeve != null)
                             {
-                                // ✅ PERFORMANCE: Skip FindNewestClusterSleeve (was slow) - cluster sleeves will be tracked via cleanup pass
-                                // Cleanup will find all cluster sleeves by family name, so we don't need to track individually
+                                placedClusters.Add(placedClusterSleeve);
+                                clusterToClashZoneIds[placedClusterSleeve.Id.IntegerValue] = clusterClashZoneIds;
+                                
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[CLUSTERING] ✅ Tracked cluster sleeve {placedClusterSleeve.Id.IntegerValue} with {clusterClashZoneIds.Count} ClashZoneIds: {string.Join(", ", clusterClashZoneIds.Take(5))}...");
+                                    
+                                    // ✅ DIAGNOSTIC: Log if ClashZoneIds are empty (indicates tracking issue)
+                                    if (clusterClashZoneIds.Count == 0)
+                                    {
+                                        DebugLogger.Warning($"[CLUSTERING] ⚠️⚠️⚠️ WARNING: Cluster sleeve {placedClusterSleeve.Id.IntegerValue} has NO ClashZoneIds tracked! This will cause cluster data to not be saved properly.");
+                                    }
+                                }
                             }
                             
                             // ✅ PERFORMANCE: Removed duplicate flag updates - PlaceClusterSleeve already handles flag updates internally
@@ -685,17 +707,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ PATH 2/3: Save cluster data to database after calculation and placement
             if (!isPath1Replay && comboId.HasValue && filterId.HasValue && placedCount > 0)
             {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[CLUSTERING] ✅ Saving cluster data to database: ComboId={comboId.Value}, FilterId={filterId.Value}, PlacedCount={placedCount}, Clusters={placedClusters?.Count ?? 0}");
+                }
                 try
                 {
-                    SaveClusterDataToDatabase(doc, placedClusters, comboId.Value, filterId.Value, targetCategory, xmlFilePath);
+                    SaveClusterDataToDatabase(doc, placedClusters, comboId.Value, filterId.Value, targetCategory, xmlFilePath, clusterToClashZoneIds);
                 }
                 catch (Exception saveEx)
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        DebugLogger.Warning($"[CLUSTERING] Error saving cluster data to database: {saveEx.Message}");
+                        DebugLogger.Warning($"[CLUSTERING] ❌ Error saving cluster data to database: {saveEx.Message}");
+                        DebugLogger.Warning($"[CLUSTERING] Stack trace: {saveEx.StackTrace}");
                     }
                     // Non-critical error, continue
+                }
+            }
+            else
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Warning($"[CLUSTERING] ⚠️ SKIPPED saving cluster data: isPath1Replay={isPath1Replay}, comboId.HasValue={comboId.HasValue}, filterId.HasValue={filterId.HasValue}, placedCount={placedCount}");
                 }
             }
 
@@ -914,7 +948,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             int comboId,
             int filterId,
             string category,
-            string xmlFilePath)
+            string xmlFilePath,
+            Dictionary<int, List<Guid>> clusterToClashZoneIds = null)
         {
             try
             {
@@ -985,28 +1020,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         string hostType = GetHostTypeFromSleeve(clusterSleeve);
                         string hostOrientation = GetOrientationFromSleeve(clusterSleeve);
 
-                        // Get ClashZoneIds from MEP_ElementIds parameter or from XML
+                        // ✅ CRITICAL FIX: Get ClashZoneIds from tracked dictionary (most reliable)
+                        // Fallback to MEP_ElementIds parameter if tracking dictionary is not available
                         List<Guid> clashZoneIds = new List<Guid>();
-                        var mepElementIdsParam = clusterSleeve.LookupParameter("MEP_ElementIds");
-                        if (mepElementIdsParam != null && mepElementIdsParam.HasValue)
+                        
+                        if (clusterToClashZoneIds != null && clusterToClashZoneIds.TryGetValue(clusterInstanceId, out var trackedIds))
                         {
-                            // Parse MEP Element IDs and find corresponding clash zones
-                            // This is simplified - in production, you might want to store ClashZoneIds directly
-                            // For now, we'll try to get from XML cache
-                            if (_clashZoneCache != null)
+                            // Use tracked ClashZoneIds (most reliable - from cluster formation)
+                            clashZoneIds = trackedIds;
+                            
+                            if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                var mepIdsString = mepElementIdsParam.AsString();
-                                if (!string.IsNullOrEmpty(mepIdsString))
+                                DebugLogger.Info($"[CLUSTERING] ✅ Using tracked ClashZoneIds for cluster {clusterInstanceId}: {clashZoneIds.Count} zones");
+                            }
+                        }
+                        else
+                        {
+                            // Fallback: Get from MEP_ElementIds parameter or from XML cache
+                            var mepElementIdsParam = clusterSleeve.LookupParameter("MEP_ElementIds");
+                            if (mepElementIdsParam != null && mepElementIdsParam.HasValue)
+                            {
+                                // Parse MEP Element IDs and find corresponding clash zones
+                                if (_clashZoneCache != null)
                                 {
-                                    var mepIds = mepIdsString.Split(',').Select(id => long.Parse(id.Trim())).ToList();
-                                    foreach (var mepId in mepIds)
+                                    var mepIdsString = mepElementIdsParam.AsString();
+                                    if (!string.IsNullOrEmpty(mepIdsString))
                                     {
-                                        if (_clashZoneCache.TryGetValue(mepId, out var clashZone))
+                                        var mepIds = mepIdsString.Split(',').Select(id => long.Parse(id.Trim())).ToList();
+                                        foreach (var mepId in mepIds)
                                         {
-                                            clashZoneIds.Add(clashZone.Id);
+                                            if (_clashZoneCache.TryGetValue(mepId, out var clashZone))
+                                            {
+                                                clashZoneIds.Add(clashZone.Id);
+                                            }
                                         }
                                     }
                                 }
+                            }
+                            
+                            if (!DeploymentConfiguration.DeploymentMode && clashZoneIds.Count == 0)
+                            {
+                                DebugLogger.Warning($"[CLUSTERING] ⚠️ No ClashZoneIds found for cluster {clusterInstanceId} (tracking dict not available, fallback also failed)");
                             }
                         }
 
@@ -1060,6 +1114,114 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DebugLogger.Error($"[CLUSTERING] Error in SaveClusterDataToDatabase: {ex.Message}");
                 }
                 throw;
+            }
+            
+            // ✅ CRITICAL FIX: Save sleeve snapshots for cluster sleeves after saving cluster data
+            if (placedClusters != null && placedClusters.Count > 0 && filterId > 0)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[CLUSTERING] ✅ Saving sleeve snapshots for cluster sleeves: FilterId={filterId}, Clusters={placedClusters.Count}, ClashZoneIdsDict={clusterToClashZoneIds?.Count ?? 0}");
+                }
+                try
+                {
+                    using (var dbContext = new SleeveDbContext(doc))
+                    {
+                        var repository = new ClashZoneRepository(dbContext);
+                        
+                        // Get clash zones for cluster sleeves
+                        var clusterZones = new List<ClashZone>();
+                        foreach (var clusterSleeve in placedClusters)
+                        {
+                            int clusterInstanceId = clusterSleeve.Id.IntegerValue;
+                            
+                            // Get ClashZoneIds for this cluster
+                            List<Guid> clashZoneIds = new List<Guid>();
+                            if (clusterToClashZoneIds != null && clusterToClashZoneIds.TryGetValue(clusterInstanceId, out var trackedIds))
+                            {
+                                clashZoneIds = trackedIds;
+                            }
+                            
+                            // ✅ FIX: Load clash zones from database by GUID directly (more reliable)
+                            // Query by GUID instead of loading all and filtering
+                            foreach (var clashZoneId in clashZoneIds)
+                            {
+                                try
+                                {
+                                    // Query database directly by GUID
+                                    using (var cmd = dbContext.Connection.CreateCommand())
+                                    {
+                                        cmd.CommandText = @"
+                                            SELECT ClashZoneId FROM ClashZones
+                                            WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)
+                                              AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL
+                                            LIMIT 1";
+                                        cmd.Parameters.AddWithValue("@ClashZoneGuid", clashZoneId.ToString());
+                                        var clashZoneIdResult = cmd.ExecuteScalar();
+                                        
+                                        if (clashZoneIdResult != null)
+                                        {
+                                            int dbClashZoneId = Convert.ToInt32(clashZoneIdResult);
+                                            
+                                            // Load clash zone by ID
+                                            var zones = repository.GetClashZonesByCategory(category)
+                                                ?.Where(z => z.Id == clashZoneId)
+                                                .ToList();
+                                            
+                                            if (zones != null && zones.Count > 0)
+                                            {
+                                                // ✅ CRITICAL: Set ClusterSleeveInstanceId if not already set
+                                                foreach (var zone in zones)
+                                                {
+                                                    if (zone.ClusterSleeveInstanceId != clusterInstanceId)
+                                                    {
+                                                        zone.ClusterSleeveInstanceId = clusterInstanceId;
+                                                    }
+                                                }
+                                                clusterZones.AddRange(zones);
+                                            }
+                                        }
+                                    }
+                                }
+                                catch (Exception zoneEx)
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        DebugLogger.Warning($"[CLUSTERING] ⚠️ Error loading clash zone {clashZoneId} for cluster {clusterInstanceId}: {zoneEx.Message}");
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (clusterZones.Count > 0)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[CLUSTERING] ✅ Found {clusterZones.Count} cluster zones, saving snapshots...");
+                            }
+                            repository.SaveSleeveSnapshotsForPlacedSleeves(filterId, clusterZones);
+                            
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[CLUSTERING] ✅ Saved sleeve snapshots for {clusterZones.Count} cluster zones");
+                            }
+                        }
+                        else
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Warning($"[CLUSTERING] ⚠️ No cluster zones found to save snapshots (placedClusters={placedClusters.Count}, clusterToClashZoneIds={clusterToClashZoneIds?.Count ?? 0})");
+                            }
+                        }
+                    }
+                }
+                catch (Exception snapshotEx)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Warning($"[CLUSTERING] ⚠️ Failed to save cluster sleeve snapshots: {snapshotEx.Message}");
+                    }
+                }
             }
         }
 
@@ -1399,210 +1561,254 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// This consolidates cluster bounding box saving into UniversalClusterService (removed from SleeveCoordinateService)
         /// Cluster bounding boxes are read from Revit immediately after placement and saved to XML
         /// </summary>
-        private void MarkClashZonesAsClusterResolvedWithSleeveId(List<dynamic> cluster, ElementId clusterSleeveId, string xmlFilePath = null, BoundingBoxXYZ clusterBbox = null)
+        private void MarkClashZonesAsClusterResolvedWithSleeveId(List<dynamic> cluster, ElementId clusterSleeveId, string xmlFilePath = null, BoundingBoxXYZ clusterBbox = null, (double minX, double minY, double minZ, double maxX, double maxY, double maxZ)? rotatedBbox = null)
         {
             try
             {
-                var filtersDirectory = ProjectPathService.GetFiltersDirectory(_doc);
-                
-                if (!Directory.Exists(filtersDirectory))
-                    return;
-
-                // ✅ FIX: Only process specific XML file if provided (ONE SOURCE OF TRUTH)
-                var xmlFiles = string.IsNullOrEmpty(xmlFilePath) 
-                    ? Directory.GetFiles(filtersDirectory, "*.xml")  // Backward compatibility
-                    : new[] { xmlFilePath };  // Only the specific file
-                    
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
-                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[MarkClusterResolved] Updating cluster flags in {xmlFiles.Length} XML file(s): {(string.IsNullOrEmpty(xmlFilePath) ? "ALL" : Path.GetFileName(xmlFilePath))} for cluster sleeve {clusterSleeveId.IntegerValue}\n");
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[MarkClusterResolved] ✅ DATABASE-FIRST: Updating cluster flags in database for cluster sleeve {clusterSleeveId.IntegerValue}\n");
                 }
                 
                 int markedCount = 0;
-
-                foreach (var xmlFile in xmlFiles)
+                var updatedClashZones = new List<ClashZone>();
+                
+                // ✅ CRITICAL: DATABASE-FIRST APPROACH - Update database before any XML operations
+                foreach (var sleeve in cluster)
                 {
-                    try
+                    // ✅ FIXED: Use sleeve instance ID from cluster data
+                    int sleeveInstanceId = sleeve.SleeveInstanceId;
+                    
+                    // ✅ DATABASE-FIRST: Get clash zone from database (not XML)
+                    var clashZone = GetClashZoneBySleeveInstanceId(sleeveInstanceId, xmlFilePath);
+                    if (clashZone != null)
                     {
-                        var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
-                        OpeningFilter filter = null;
+                        // ✅ STORAGE: Save original SleeveInstanceId BEFORE clearing it
+                        var originalSleeveInstanceId = clashZone.SleeveInstanceId; // Save for database matching
+                        clashZone.AfterClusterSleevePlacedSleeveInstanceId = originalSleeveInstanceId;
                         
-                        // Read existing filter
-                        using (var reader = new StreamReader(xmlFile))
+                        // ✅ CRITICAL: Update flags in memory first
+                        clashZone.IsClusterResolved = true;
+                        clashZone.ClusterSleeveId = clusterSleeveId;
+                        clashZone.ClusterSleeveInstanceId = clusterSleeveId.IntegerValue;
+                        clashZone.IsResolved = true; // Individual sleeve was placed (then deleted)
+                        clashZone.MarkedForClusteringSleeveProcess = true; // Mark as part of clustering history
+                        clashZone.LastUpdated = DateTime.Now;
+                        
+                        // ✅ CONSOLIDATION: Set cluster bounding box coordinates from Revit immediately after placement
+                        if (clusterBbox != null)
                         {
-                            filter = (OpeningFilter)serializer.Deserialize(reader);
-                        }
-
-                        if (filter?.ClashZoneStorage?.AllZones != null)
-                        {
-                            bool updated = false;
+                            clashZone.ClusterSleeveBoundingBoxMinX = clusterBbox.Min.X;
+                            clashZone.ClusterSleeveBoundingBoxMinY = clusterBbox.Min.Y;
+                            clashZone.ClusterSleeveBoundingBoxMinZ = clusterBbox.Min.Z;
+                            clashZone.ClusterSleeveBoundingBoxMaxX = clusterBbox.Max.X;
+                            clashZone.ClusterSleeveBoundingBoxMaxY = clusterBbox.Max.Y;
+                            clashZone.ClusterSleeveBoundingBoxMaxZ = clusterBbox.Max.Z;
                             
-                            foreach (var sleeve in cluster)
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[MarkClusterResolved] ✅ Set cluster bounding box for ClashZone {clashZone.Id}: Min=({clusterBbox.Min.X:F6}, {clusterBbox.Min.Y:F6}, {clusterBbox.Min.Z:F6}), Max=({clusterBbox.Max.X:F6}, {clusterBbox.Max.Y:F6}, {clusterBbox.Max.Z:F6})");
+                        }
+                        
+                        // ✅ STORE ROTATED BOUNDING BOX: Store rotated bounding box coordinates in rotated coordinate system
+                        if (rotatedBbox.HasValue)
+                        {
+                            clashZone.RotatedBoundingBoxMinX = rotatedBbox.Value.minX;
+                            clashZone.RotatedBoundingBoxMinY = rotatedBbox.Value.minY;
+                            clashZone.RotatedBoundingBoxMinZ = rotatedBbox.Value.minZ;
+                            clashZone.RotatedBoundingBoxMaxX = rotatedBbox.Value.maxX;
+                            clashZone.RotatedBoundingBoxMaxY = rotatedBbox.Value.maxY;
+                            clashZone.RotatedBoundingBoxMaxZ = rotatedBbox.Value.maxZ;
+                            
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[MarkClusterResolved] ✅ Set rotated bounding box for ClashZone {clashZone.Id}: Min=({rotatedBbox.Value.minX:F6}, {rotatedBbox.Value.minY:F6}, {rotatedBbox.Value.minZ:F6}), Max=({rotatedBbox.Value.maxX:F6}, {rotatedBbox.Value.maxY:F6}, {rotatedBbox.Value.maxZ:F6})");
+                        }
+                        
+                        // ✅ CRITICAL FIX: Temporarily restore original SleeveInstanceId for database matching
+                        // FlagManager.UpdateFlagsForPlacement uses OldSleeveInstanceId to match database records
+                        var tempSleeveId = clashZone.SleeveInstanceId;
+                        clashZone.SleeveInstanceId = originalSleeveInstanceId; // Restore for matching
+                        
+                        // ✅ DATABASE-FIRST: Update database flags immediately (before XML)
+                        try
+                        {
+                            var categoryName = clashZone.MepElementCategory ?? string.Empty;
+                            var baseFilterName = FilterNameHelper.NormalizeBaseName(_filterName, null, categoryName);
+                            
+                            _flagManager?.UpdateFlagsForPlacement(clashZone, clusterSleeveId.IntegerValue, isCluster: true, categoryName, baseFilterName);
+                            
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[MarkClusterResolved] ✅ Updated DATABASE for ClashZone {clashZone.Id} with cluster sleeve {clusterSleeveId.IntegerValue}");
+                        }
+                        catch (Exception flagEx)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Warning($"[MarkClusterResolved] ⚠️ Failed to update database flags for clash zone {clashZone.Id}: {flagEx.Message}");
+                        }
+                        
+                        // Restore cleared state after database update
+                        clashZone.SleeveInstanceId = -1; // Individual sleeve was deleted
+                        clashZone.SleeveFamilyName = string.Empty; // Individual sleeve family cleared
+                        
+                        updatedClashZones.Add(clashZone);
+                        markedCount++;
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-PLACED] ClashZone {clashZone.Id}: Cluster sleeve {clusterSleeveId.IntegerValue} placed\n");
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-PLACED] FLAGS: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}\n");
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-PLACED] PARAMS: SleeveInstanceId={clashZone.SleeveInstanceId}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}\n");
+                            DebugLogger.Info($"[DEBUG] Marked ClashZone {clashZone.Id} as cluster-resolved with cluster sleeve {clusterSleeveId.IntegerValue} (cleared individual flags)\n");
+                        }
+                    }
+                    else
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[DEBUG] ✗ Clash zone not found for SleeveInstanceId={sleeveInstanceId}\n");
+                    }
+                }
+                
+                // ✅ XML UPDATE: Update XML files after database (for backward compatibility only)
+                if (updatedClashZones.Count > 0)
+                {
+                    var filtersDirectory = ProjectPathService.GetFiltersDirectory(_doc);
+                    if (Directory.Exists(filtersDirectory))
+                    {
+                        var xmlFiles = string.IsNullOrEmpty(xmlFilePath) 
+                            ? Directory.GetFiles(filtersDirectory, "*.xml")
+                            : new[] { xmlFilePath };
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                            System.IO.File.AppendAllText(clusterDebugLogPath, $"[MarkClusterResolved] Updating {xmlFiles.Length} XML file(s) after database update: {(string.IsNullOrEmpty(xmlFilePath) ? "ALL" : Path.GetFileName(xmlFilePath))}\n");
+                        }
+                        
+                        foreach (var xmlFile in xmlFiles)
+                        {
+                            try
                             {
-                                // ✅ FIXED: Use sleeve instance ID from XML data
-                                int sleeveInstanceId = sleeve.SleeveInstanceId;
+                                var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
+                                OpeningFilter filter = null;
                                 
-                                // Find and mark clash zone as cluster-resolved using sleeve instance ID
-                                var clashZone = GetStorageZones(filter).FirstOrDefault(cz => cz.SleeveInstanceId == sleeveInstanceId);
-                                if (clashZone != null)
+                                // Read existing filter
+                                using (var reader = new StreamReader(xmlFile))
                                 {
-                                    clashZone.IsClusterResolved = true;
-                                    clashZone.ClusterSleeveId = clusterSleeveId;
-                                    clashZone.ClusterSleeveInstanceId = clusterSleeveId.IntegerValue; // ✅ FIX: Store integer for XML serialization
-                                    clashZone.LastUpdated = DateTime.Now;
+                                    filter = (OpeningFilter)serializer.Deserialize(reader);
+                                }
+
+                                if (filter?.ClashZoneStorage?.AllZones != null)
+                                {
+                                    bool updated = false;
                                     
-                                    // ✅ CONSOLIDATION: Set cluster bounding box coordinates from Revit immediately after placement
-                                    // This eliminates the need for SleeveCoordinateService to update cluster bounding boxes later
-                                    if (clusterBbox != null)
+                                    foreach (var clashZone in updatedClashZones)
                                     {
-                                        clashZone.ClusterSleeveBoundingBoxMinX = clusterBbox.Min.X;
-                                        clashZone.ClusterSleeveBoundingBoxMinY = clusterBbox.Min.Y;
-                                        clashZone.ClusterSleeveBoundingBoxMinZ = clusterBbox.Min.Z;
-                                        clashZone.ClusterSleeveBoundingBoxMaxX = clusterBbox.Max.X;
-                                        clashZone.ClusterSleeveBoundingBoxMaxY = clusterBbox.Max.Y;
-                                        clashZone.ClusterSleeveBoundingBoxMaxZ = clusterBbox.Max.Z;
-                                        
+                                        // Find clash zone in XML by SleeveInstanceId (before it was cleared to -1)
+                                        var originalSleeveId = clashZone.AfterClusterSleevePlacedSleeveInstanceId;
+                                        var xmlClashZone = GetStorageZones(filter).FirstOrDefault(cz => cz.SleeveInstanceId == originalSleeveId);
+                                        if (xmlClashZone != null)
+                                        {
+                                            // Sync database state to XML
+                                            xmlClashZone.IsClusterResolved = clashZone.IsClusterResolved;
+                                            xmlClashZone.ClusterSleeveId = clashZone.ClusterSleeveId;
+                                            xmlClashZone.ClusterSleeveInstanceId = clashZone.ClusterSleeveInstanceId;
+                                            xmlClashZone.IsResolved = clashZone.IsResolved;
+                                            xmlClashZone.SleeveInstanceId = clashZone.SleeveInstanceId; // -1
+                                            xmlClashZone.SleeveFamilyName = clashZone.SleeveFamilyName; // empty
+                                            xmlClashZone.MarkedForClusteringSleeveProcess = clashZone.MarkedForClusteringSleeveProcess;
+                                            xmlClashZone.LastUpdated = clashZone.LastUpdated;
+                                            
+                                            if (clusterBbox != null)
+                                            {
+                                                xmlClashZone.ClusterSleeveBoundingBoxMinX = clashZone.ClusterSleeveBoundingBoxMinX;
+                                                xmlClashZone.ClusterSleeveBoundingBoxMinY = clashZone.ClusterSleeveBoundingBoxMinY;
+                                                xmlClashZone.ClusterSleeveBoundingBoxMinZ = clashZone.ClusterSleeveBoundingBoxMinZ;
+                                                xmlClashZone.ClusterSleeveBoundingBoxMaxX = clashZone.ClusterSleeveBoundingBoxMaxX;
+                                                xmlClashZone.ClusterSleeveBoundingBoxMaxY = clashZone.ClusterSleeveBoundingBoxMaxY;
+                                                xmlClashZone.ClusterSleeveBoundingBoxMaxZ = clashZone.ClusterSleeveBoundingBoxMaxZ;
+                                            }
+                                            
+                                            updated = true;
+                                        }
+                                    }
+                                    
+                                    // Save updated XML if changes were made
+                                    if (updated)
+                                    {
+                                        // ⚠️ CRITICAL: Log flag states BEFORE XML save after clustering
                                         if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[MarkClusterResolved] ✅ Set cluster bounding box for ClashZone {clashZone.Id}: Min=({clusterBbox.Min.X:F6}, {clusterBbox.Min.Y:F6}, {clusterBbox.Min.Z:F6}), Max=({clusterBbox.Max.X:F6}, {clusterBbox.Max.Y:F6}, {clusterBbox.Max.Z:F6})");
+                                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-XML-SAVE-BEFORE] About to save XML after clustering\n");
+                                        
+                                        try
+                                        {
+                                            // Normalize coordinates before saving to avoid 0,0,0 in XML
+                                            if (filter?.ClashZoneStorage?.AllZones != null)
+                                            {
+                                                var zonesForSave = GetStorageZones(filter);
+                                                if (zonesForSave.Count > 0)
+                                                {
+                                                    foreach (var z in zonesForSave)
+                                                    {
+                                                        if (z == null) continue;
+                                                        bool hasIP = z.IntersectionPoint != null;
+                                                        bool isIPZero = hasIP && Math.Abs(z.IntersectionPoint.X) < 1e-9 && Math.Abs(z.IntersectionPoint.Y) < 1e-9 && Math.Abs(z.IntersectionPoint.Z) < 1e-9;
+                                                        bool hasSPP = z.SleevePlacementPoint != null;
+                                                        bool isSPPZero = hasSPP && Math.Abs(z.SleevePlacementPoint.X) < 1e-9 && Math.Abs(z.SleevePlacementPoint.Y) < 1e-9 && Math.Abs(z.SleevePlacementPoint.Z) < 1e-9;
+                                                        
+                                                        if (hasIP && !isIPZero)
+                                                        {
+                                                            z.IntersectionPointX = z.IntersectionPoint.X;
+                                                            z.IntersectionPointY = z.IntersectionPoint.Y;
+                                                            z.IntersectionPointZ = z.IntersectionPoint.Z;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            using (var writer = new StreamWriter(xmlFile))
+                                            {
+                                                serializer.Serialize(writer, filter);
+                                            }
+                                            
+                                            // ⚠️ CRITICAL: Log flag states AFTER XML save after clustering
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-XML-SAVE-AFTER] XML save completed after clustering\n");
+                                            
+                                            // 🔥 CRITICAL DEBUG: Log XML file save
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 💾 XML FILE SAVED: {xmlFile} with {markedCount} cluster-resolved clash zones\n");
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ❌ ERROR SAVING XML FILE: {xmlFile} - {ex.Message}\n");
+                                        }
                                     }
                                     else
                                     {
                                         if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Warning($"[MarkClusterResolved] ⚠️ Cluster bounding box not available for ClashZone {clashZone.Id} (cluster sleeve may not be fully initialized)");
+                                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ⚠️ NO CHANGES MADE - XML FILE NOT SAVED: {xmlFile}\n");
                                     }
-                                    
-                                    // ✅ CORRECT: Individual sleeve was placed then deleted during clustering
-                                    // Set clustering history flag to distinguish from non-proximity sleeves
-                                    clashZone.MarkedForClusteringSleeveProcess = true; // ✅ FIX: Mark as part of clustering history
-                                    clashZone.IsResolved = true; // Individual sleeve was placed (then deleted)
-                                    
-                                    // ✅ STORAGE: Save original SleeveInstanceId BEFORE clearing it
-                                    clashZone.AfterClusterSleevePlacedSleeveInstanceId = clashZone.SleeveInstanceId;
-                                    
-                                    clashZone.SleeveInstanceId = -1; // Individual sleeve was deleted
-                                    clashZone.SleeveFamilyName = string.Empty; // Individual sleeve family cleared
-                                    
-                                    // ✅ FLAG MANAGER: Persist cluster resolution to Global XML so future runs respect the flag
-                                    try
-                                    {
-                                        var categoryName = clashZone.MepElementCategory ?? string.Empty;
-                                        var baseFilterName = FilterNameHelper.NormalizeBaseName(_filterName, filter?.Name, categoryName);
-                                        
-                                        // ✅ CRITICAL: Update flags in memory first
-                                        clashZone.IsClusterResolved = true;
-                                        clashZone.ClusterSleeveInstanceId = clusterSleeveId.IntegerValue;
-                                        clashZone.IsResolved = true;
-                                        clashZone.SleeveInstanceId = -1;
-                                        
-                                        // ✅ CRITICAL: Update Global XML immediately (don't wait for batch)
-                                        _flagManager?.UpdateFlagsForPlacement(clashZone, clusterSleeveId.IntegerValue, isCluster: true, categoryName, baseFilterName);
-                                        
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[GLOBAL-XML] ✅ Updated Global XML for ClashZone {clashZone.Id} with cluster sleeve {clusterSleeveId.IntegerValue}");
-                                    }
-                                    catch (Exception flagEx)
-                                    {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Warning($"[MarkClusterResolved] ⚠️ Failed to update Global XML flags for clash zone {clashZone.Id}: {flagEx.Message}");
-                                    }
-                                    
-                                    // ⚠️ CRITICAL: Log flag state AFTER cluster sleeve placement
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-PLACED] ClashZone {clashZone.Id}: Cluster sleeve {clusterSleeveId.IntegerValue} placed\n");
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-PLACED] FLAGS: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}\n");
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-PLACED] PARAMS: SleeveInstanceId={clashZone.SleeveInstanceId}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}\n");
-                                    
-                                    updated = true;
-                                    markedCount++;
-                                    
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[DEBUG] Marked ClashZone {clashZone.Id} as cluster-resolved with cluster sleeve {clusterSleeveId.IntegerValue} (cleared individual flags)\n");
                                 }
-                                else
-                                {
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[DEBUG] ✗ Clash zone not found for SleeveInstanceId={sleeveInstanceId}\n");
-                                }
-                            }
-                            
-                            // Save updated XML if changes were made
-                            if (updated)
+                    }
+                            catch (Exception ex)
                             {
-                                // ⚠️ CRITICAL: Log flag states BEFORE XML save after clustering
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-XML-SAVE-BEFORE] About to save XML after clustering\n");
-                                
-                                try
-                                {
-                                    // Normalize coordinates before saving to avoid 0,0,0 in XML
-                                    if (filter?.ClashZoneStorage?.AllZones != null)
-                                    {
-                                        var zonesForSave = GetStorageZones(filter);
-                                        if (zonesForSave.Count > 0)
-                                        {
-                                            foreach (var z in zonesForSave)
-                                            {
-                                                if (z == null) continue;
-                                                bool hasIP = z.IntersectionPoint != null;
-                                                bool isIPZero = hasIP && Math.Abs(z.IntersectionPoint.X) < 1e-9 && Math.Abs(z.IntersectionPoint.Y) < 1e-9 && Math.Abs(z.IntersectionPoint.Z) < 1e-9;
-                                                bool hasSPP = z.SleevePlacementPoint != null;
-                                                bool isSPPZero = hasSPP && Math.Abs(z.SleevePlacementPoint.X) < 1e-9 && Math.Abs(z.SleevePlacementPoint.Y) < 1e-9 && Math.Abs(z.SleevePlacementPoint.Z) < 1e-9;
-                                                
-                                                if (hasIP && !isIPZero)
-                                                {
-                                                    z.IntersectionPointX = z.IntersectionPoint.X;
-                                                    z.IntersectionPointY = z.IntersectionPoint.Y;
-                                                    z.IntersectionPointZ = z.IntersectionPoint.Z;
-                                                }
-                                            }
-                                        }
-                                    }
-                                    using (var writer = new StreamWriter(xmlFile))
-                                    {
-                                        serializer.Serialize(writer, filter);
-                                    }
-                                    
-                                    // ⚠️ CRITICAL: Log flag states AFTER XML save after clustering
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [CLUSTER-XML-SAVE-AFTER] XML save completed after clustering\n");
-                                    
-                                    // 🔥 CRITICAL DEBUG: Log XML file save
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 💾 XML FILE SAVED: {xmlFile} with {markedCount} cluster-resolved clash zones\n");
-                                }
-                                catch (Exception ex)
-                                {
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ❌ ERROR SAVING XML FILE: {xmlFile} - {ex.Message}\n");
-                                }
-                            }
-                            else
-                            {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ⚠️ NO CHANGES MADE - XML FILE NOT SAVED: {xmlFile}\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Error($"[UniversalClusterService] Error processing XML file {xmlFile}: {ex.Message}");
                             }
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Error($"[UniversalClusterService] Error processing XML file {xmlFile}: {ex.Message}");
                     }
                 }
 
                 if (markedCount > 0)
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[DEBUG] Marked {markedCount} clash zones as cluster-resolved\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[DEBUG] Marked {markedCount} clash zones as cluster-resolved\n");
                 }
             }
             catch (Exception ex)
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Error($"[UniversalClusterService] Error marking clash zones as cluster-resolved: {ex.Message}");
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[UniversalClusterService] Error marking clash zones as cluster-resolved: {ex.Message}");
             }
         }
 
@@ -2001,8 +2207,172 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             
                             // ✅ PERFORMANCE: Removed file I/O logging from inner loop (was blocking - 244×244 = 59,536 potential writes!)
                             // Only log in diagnostic mode if needed
+                            
+                            // ✅ ROTATED SLEEVE CLUSTERING: Check if both sleeves are rotated
+                            bool shouldUseRotatedClustering = false;
+                            double rotationAngle1 = 0.0;
+                            double rotationAngle2 = 0.0;
+                            
+                            // ✅ COMPREHENSIVE LOGGING: Log clustering path selection (always enabled for debugging)
+                            string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                            bool logClusteringPath = !DeploymentConfiguration.DeploymentMode;
+                            
+                            if (clusterSleeve.ClashZone != null && otherSleeve.ClashZone != null)
+                            {
+                                var cz1 = clusterSleeve.ClashZone as ClashZone;
+                                var cz2 = otherSleeve.ClashZone as ClashZone;
                                 
-                            if (BoundingBoxesOverlapFromXml(clusterSleeve, otherSleeve, toleranceDist))
+                                if (cz1 != null && cz2 != null)
+                                {
+                                    rotationAngle1 = cz1.MepElementRotationAngle;
+                                    rotationAngle2 = cz2.MepElementRotationAngle;
+                                    
+                                    if (logClusteringPath)
+                                    {
+                                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ========== CLUSTERING PATH SELECTION ==========\n");
+                                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Checking: Sleeve {clusterSleeve.SleeveInstanceId} vs Sleeve {otherSleeve.SleeveInstanceId}\n");
+                                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Sleeve {clusterSleeve.SleeveInstanceId} Rotation: {rotationAngle1 * 180.0 / Math.PI:F2}°\n");
+                                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Sleeve {otherSleeve.SleeveInstanceId} Rotation: {rotationAngle2 * 180.0 / Math.PI:F2}°\n");
+                                    }
+                                    
+                                    // Check if both are rotated (non-axis-aligned)
+                                    bool isRotated1 = Math.Abs(rotationAngle1) > 1e-6 && !IsAxisAlignedAngle(rotationAngle1);
+                                    bool isRotated2 = Math.Abs(rotationAngle2) > 1e-6 && !IsAxisAlignedAngle(rotationAngle2);
+                                    
+                                    if (logClusteringPath)
+                                    {
+                                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Sleeve {clusterSleeve.SleeveInstanceId} IsRotated: {isRotated1}, IsAxisAligned: {IsAxisAlignedAngle(rotationAngle1)}\n");
+                                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Sleeve {otherSleeve.SleeveInstanceId} IsRotated: {isRotated2}, IsAxisAligned: {IsAxisAlignedAngle(rotationAngle2)}\n");
+                                    }
+                                    
+                                    // ✅ FIXED: Use rotated clustering ONLY if BOTH sleeves are on the SAME axis (or very similar)
+                                    // If sleeves are on different axes (e.g., 135° vs 45°), use axis-aligned clustering
+                                    // Only cluster rotated sleeves when they share the same axis direction
+                                    if (isRotated1 && isRotated2)
+                                    {
+                                        // Check if axes are similar (same axis line)
+                                        // Same axis means: difference of 0°, 180°, or 360° (modulo 180°)
+                                        // Examples: 0° and 180° are same axis, 45° and 225° are same axis, 90° and 270° are same axis
+                                        // Normalize both angles to 0-360° range first
+                                        double angle1Deg = rotationAngle1 * 180.0 / Math.PI;
+                                        double angle2Deg = rotationAngle2 * 180.0 / Math.PI;
+                                        while (angle1Deg < 0) angle1Deg += 360.0;
+                                        while (angle1Deg >= 360.0) angle1Deg -= 360.0;
+                                        while (angle2Deg < 0) angle2Deg += 360.0;
+                                        while (angle2Deg >= 360.0) angle2Deg -= 360.0;
+                                        
+                                        // Calculate difference and check modulo 180°
+                                        double angleDiffDeg = Math.Abs(angle1Deg - angle2Deg);
+                                        // Normalize difference to 0-180° range
+                                        if (angleDiffDeg > 180.0) angleDiffDeg = 360.0 - angleDiffDeg;
+                                        
+                                        // Check if difference is 0° or 180° (same axis)
+                                        // 0° = same direction, 180° = opposite direction on same axis
+                                        double axisToleranceDeg = 1.0; // 1 degree tolerance
+                                        bool isSameAxis = angleDiffDeg <= axisToleranceDeg || Math.Abs(angleDiffDeg - 180.0) <= axisToleranceDeg;
+                                        
+                                        if (logClusteringPath)
+                                        {
+                                            System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Both sleeves are rotated (non-axis-aligned)\n");
+                                            System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Normalized angles: {angle1Deg:F2}° and {angle2Deg:F2}°\n");
+                                            System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Axis difference: {angleDiffDeg:F2}° (0° or 180° = same axis)\n");
+                                        }
+                                        
+                                        // Only use rotated clustering if axes are on same axis line (difference of 0°, 180°, or 360°)
+                                        if (isSameAxis)
+                                        {
+                                            shouldUseRotatedClustering = true;
+                                            if (logClusteringPath)
+                                            {
+                                                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ✅ SELECTED: ROTATED CLUSTERING PATH (both sleeves on same axis: {rotationAngle1 * 180.0 / Math.PI:F2}°)\n");
+                                            }
+                                        }
+                                        else
+                                        {
+                                            if (logClusteringPath)
+                                            {
+                                                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ⚠️ REJECTED: Rotated clustering (different axes: {angle1Deg:F2}° vs {angle2Deg:F2}°, diff={angleDiffDeg:F2}° - not 0° or 180°)\n");
+                                                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Will use axis-aligned clustering instead\n");
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        if (logClusteringPath)
+                                        {
+                                            if (!isRotated1 && !isRotated2)
+                                            {
+                                                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Both sleeves are axis-aligned (rotation angles: {rotationAngle1 * 180.0 / Math.PI:F2}°, {rotationAngle2 * 180.0 / Math.PI:F2}°)\n");
+                                            }
+                                            else if (!isRotated1)
+                                            {
+                                                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Sleeve {clusterSleeve.SleeveInstanceId} is axis-aligned, Sleeve {otherSleeve.SleeveInstanceId} is rotated\n");
+                                            }
+                                            else
+                                            {
+                                                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Sleeve {clusterSleeve.SleeveInstanceId} is rotated, Sleeve {otherSleeve.SleeveInstanceId} is axis-aligned\n");
+                                            }
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    if (logClusteringPath)
+                                    {
+                                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ⚠️ ClashZone cast failed - cannot determine rotation\n");
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                if (logClusteringPath)
+                                {
+                                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ⚠️ ClashZone is null for one or both sleeves - using axis-aligned clustering\n");
+                                }
+                            }
+                            
+                            bool shouldCluster = false;
+                            if (shouldUseRotatedClustering)
+                            {
+                                // ✅ FIXED: Use the axis direction from the first sleeve, NOT average of angles
+                                // Each sleeve has its own axis direction - we use the first sleeve's axis for proximity check
+                                // The rotation angle represents the axis direction the sleeve is oriented along
+                                double axisRotationAngle = rotationAngle1; // Use first sleeve's axis direction
+                                
+                                if (logClusteringPath)
+                                {
+                                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] 🔄 EXECUTING: ROTATED CLUSTERING PATH\n");
+                                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Sleeve 1 axis: {rotationAngle1 * 180.0 / Math.PI:F2}°, Sleeve 2 axis: {rotationAngle2 * 180.0 / Math.PI:F2}°\n");
+                                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Using Sleeve 1 axis direction: {axisRotationAngle * 180.0 / Math.PI:F2}° (NOT average)\n");
+                                }
+                                shouldCluster = CheckRotatedSleeveProximity(clusterSleeve, otherSleeve, axisRotationAngle, toleranceDist);
+                                if (logClusteringPath)
+                                {
+                                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Rotated proximity check result: {shouldCluster}\n");
+                                }
+                            }
+                            else
+                            {
+                                // ✅ AXIS-ALIGNED CLUSTERING: Use existing bounding box overlap check
+                                if (logClusteringPath)
+                                {
+                                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] 📐 EXECUTING: AXIS-ALIGNED CLUSTERING PATH\n");
+                                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Using BoundingBoxesOverlapFromXml\n");
+                                }
+                                shouldCluster = BoundingBoxesOverlapFromXml(clusterSleeve, otherSleeve, toleranceDist);
+                                if (logClusteringPath)
+                                {
+                                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Axis-aligned proximity check result: {shouldCluster}\n");
+                                }
+                            }
+                            
+                            if (logClusteringPath)
+                            {
+                                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Final decision: {(shouldCluster ? "✅ CLUSTER" : "❌ NO CLUSTER")}\n");
+                                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ========== END CLUSTERING PATH SELECTION ==========\n\n");
+                            }
+                                
+                            if (shouldCluster)
                             {
                                 cluster.Add(otherSleeve);
                                 processed.Add(otherSleeve.SleeveInstanceId);
@@ -2161,6 +2531,572 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning($"[UniversalClusterService] Error determining dominant rotation angle: {ex.Message}");
                 return 0.0;
+            }
+        }
+
+        /// <summary>
+        /// ✅ CRITICAL FIX: Get cluster bounding box using rotated bounding box coordinates from ClashZone data
+        /// This ensures cluster size matches individual sleeve sizes for rotated MEP elements
+        /// </summary>
+        private (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ) GetClusterBoundingBoxWithRotatedCoordinates(
+            List<dynamic> cluster, 
+            List<FamilyInstance> actualSleeves, 
+            double rotationAngle, 
+            string xmlFilePath = null)
+        {
+            try
+            {
+                if (cluster == null || cluster.Count == 0 || actualSleeves == null || actualSleeves.Count == 0)
+                    return (0, 0, 0, XYZ.Zero, null, null, null, null, null, null);
+
+                // ✅ CRITICAL: For rotated sleeves, use rotated bounding box coordinates from ClashZone data
+                var rotatedBboxes = new List<(XYZ min, XYZ max)>();
+                var axisAlignedBboxes = new List<(XYZ min, XYZ max)>();
+                bool hasRotatedBboxes = false;
+
+                // ✅ COMPREHENSIVE LOGGING: Log all individual sleeve data being read
+                string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ========== GET CLUSTER BOUNDING BOX WITH ROTATED COORDINATES ==========\n");
+                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Cluster contains {cluster.Count} sleeves\n");
+                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Rotation angle: {rotationAngle * 180.0 / Math.PI:F2}°\n");
+                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ========== READING INDIVIDUAL SLEEVE DATA ==========\n");
+                
+                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Starting to process {cluster.Count} sleeves in cluster\n");
+                int sleeveIndex = 0;
+                foreach (var sleeveData in cluster)
+                {
+                    sleeveIndex++;
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Processing sleeve {sleeveIndex}/{cluster.Count}: SleeveInstanceId={sleeveData.SleeveInstanceId}\n");
+                    
+                    var clashZone = GetClashZoneBySleeveInstanceId(sleeveData.SleeveInstanceId, xmlFilePath);
+                    if (clashZone != null)
+                    {
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ClashZone found for sleeve {sleeveData.SleeveInstanceId}\n");
+                        // ✅ LOG: Individual sleeve size and placement point
+                        double sleeveWidth = clashZone.SleeveWidth > 0 ? clashZone.SleeveWidth : 0;
+                        double sleeveHeight = clashZone.SleeveHeight > 0 ? clashZone.SleeveHeight : 0;
+                        double sleeveDiameter = clashZone.SleeveDiameter > 0 ? clashZone.SleeveDiameter : 0;
+                        double placementX = clashZone.SleevePlacementPointX;
+                        double placementY = clashZone.SleevePlacementPointY;
+                        double placementZ = clashZone.SleevePlacementPointZ;
+                        
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Sleeve {sleeveData.SleeveInstanceId}:\n");
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}]   Dimensions: W={sleeveWidth * 304.8:F1}mm, H={sleeveHeight * 304.8:F1}mm, D={sleeveDiameter * 304.8:F1}mm\n");
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}]   Placement Point: ({placementX:F6}, {placementY:F6}, {placementZ:F6})\n");
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}]   MEP Rotation Angle: {clashZone.MepElementRotationAngle * 180.0 / Math.PI:F2}°\n");
+                        
+                        bool isRotated = Math.Abs(clashZone.MepElementRotationAngle) > 1e-6;
+                        // ✅ FIX: Cast to ClashZone to avoid RuntimeBinderException with dynamic types
+                        var cz = clashZone as ClashZone;
+                        bool hasRotatedBbox = cz != null && 
+                                            cz.RotatedBoundingBoxMinX.HasValue && 
+                                            cz.RotatedBoundingBoxMinY.HasValue &&
+                                            cz.RotatedBoundingBoxMaxX.HasValue && 
+                                            cz.RotatedBoundingBoxMaxY.HasValue;
+                        
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}]   Has Rotated BBox: {hasRotatedBbox}\n");
+                        
+                        // ✅ LOG: Axis-aligned bounding box
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}]   Axis-Aligned BBox: Min=({clashZone.SleeveBoundingBoxMinX:F6}, {clashZone.SleeveBoundingBoxMinY:F6}, {clashZone.SleeveBoundingBoxMinZ:F6}), Max=({clashZone.SleeveBoundingBoxMaxX:F6}, {clashZone.SleeveBoundingBoxMaxY:F6}, {clashZone.SleeveBoundingBoxMaxZ:F6})\n");
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}]   Axis-Aligned Size: W={(clashZone.SleeveBoundingBoxMaxX - clashZone.SleeveBoundingBoxMinX) * 304.8:F1}mm, H={(clashZone.SleeveBoundingBoxMaxY - clashZone.SleeveBoundingBoxMinY) * 304.8:F1}mm\n");
+
+                        // ✅ CRITICAL FIX: Use rotated bbox if available, even if cluster rotation is 0
+                        // Individual sleeves may be rotated even if cluster is axis-aligned
+                        if (hasRotatedBbox && cz != null)
+                        {
+                            double rotatedWidth = (cz.RotatedBoundingBoxMaxX.Value - cz.RotatedBoundingBoxMinX.Value) * 304.8;
+                            double rotatedHeight = (cz.RotatedBoundingBoxMaxY.Value - cz.RotatedBoundingBoxMinY.Value) * 304.8;
+                            System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}]   Rotated BBox: Min=({cz.RotatedBoundingBoxMinX.Value:F6}, {cz.RotatedBoundingBoxMinY.Value:F6}, {cz.RotatedBoundingBoxMinZ ?? cz.SleeveBoundingBoxMinZ:F6}), Max=({cz.RotatedBoundingBoxMaxX.Value:F6}, {cz.RotatedBoundingBoxMaxY.Value:F6}, {cz.RotatedBoundingBoxMaxZ ?? cz.SleeveBoundingBoxMaxZ:F6})\n");
+                            System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}]   Rotated Size: W={rotatedWidth:F1}mm, H={rotatedHeight:F1}mm\n");
+                            
+                            rotatedBboxes.Add((
+                                new XYZ(cz.RotatedBoundingBoxMinX.Value, 
+                                       cz.RotatedBoundingBoxMinY.Value, 
+                                       cz.RotatedBoundingBoxMinZ ?? cz.SleeveBoundingBoxMinZ),
+                                new XYZ(cz.RotatedBoundingBoxMaxX.Value, 
+                                       cz.RotatedBoundingBoxMaxY.Value, 
+                                       cz.RotatedBoundingBoxMaxZ ?? cz.SleeveBoundingBoxMaxZ)
+                            ));
+                            hasRotatedBboxes = true;
+                        }
+                        else
+                        {
+                            System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}]   ⚠️ No rotated bbox - using axis-aligned\n");
+                            if (cz != null)
+                            {
+                                axisAlignedBboxes.Add((
+                                    new XYZ(cz.SleeveBoundingBoxMinX, 
+                                           cz.SleeveBoundingBoxMinY, 
+                                           cz.SleeveBoundingBoxMinZ),
+                                    new XYZ(cz.SleeveBoundingBoxMaxX, 
+                                           cz.SleeveBoundingBoxMaxY, 
+                                           cz.SleeveBoundingBoxMaxZ)
+                                ));
+                            }
+                        }
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}]   ✅ Sleeve data loaded\n\n");
+                    }
+                    else
+                    {
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ⚠️ ClashZone is NULL for SleeveInstanceId {sleeveData.SleeveInstanceId} - trying Revit API\n");
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}]   ⚠️ ClashZone not found for SleeveInstanceId {sleeveData.SleeveInstanceId} - trying Revit API\n");
+                        var sleeve = actualSleeves.FirstOrDefault(s => s.Id.IntegerValue == sleeveData.SleeveInstanceId);
+                        if (sleeve != null)
+                        {
+                            var bbox = sleeve.get_BoundingBox(null);
+                            if (bbox != null && bbox.Enabled)
+                            {
+                                double revitWidth = (bbox.Max.X - bbox.Min.X) * 304.8;
+                                double revitHeight = (bbox.Max.Y - bbox.Min.Y) * 304.8;
+                                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}]   Revit BBox: Min=({bbox.Min.X:F6}, {bbox.Min.Y:F6}, {bbox.Min.Z:F6}), Max=({bbox.Max.X:F6}, {bbox.Max.Y:F6}, {bbox.Max.Z:F6})\n");
+                                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}]   Revit Size: W={revitWidth:F1}mm, H={revitHeight:F1}mm\n");
+                                axisAlignedBboxes.Add((bbox.Min, bbox.Max));
+                            }
+                        }
+                        else
+                        {
+                            System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}]   ❌ Sleeve not found in Revit either!\n");
+                        }
+                    }
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Completed processing sleeve {sleeveIndex}/{cluster.Count}\n\n");
+                }
+                
+                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ========== FOREACH LOOP COMPLETED ==========\n");
+                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ========== SUMMARY: RotatedBboxes={rotatedBboxes.Count}, AxisAlignedBboxes={axisAlignedBboxes.Count}, HasRotatedBboxes={hasRotatedBboxes} ==========\n\n");
+                
+                // ✅ CRITICAL: Log all rotated bbox coordinates for debugging
+                if (rotatedBboxes.Count > 0)
+                {
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ========== ROTATED BBOX COORDINATES ==========\n");
+                    for (int i = 0; i < rotatedBboxes.Count; i++)
+                    {
+                        var bbox = rotatedBboxes[i];
+                        double w = (bbox.max.X - bbox.min.X) * 304.8;
+                        double h = (bbox.max.Y - bbox.min.Y) * 304.8;
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] RotatedBbox[{i}]: Min=({bbox.min.X:F6}, {bbox.min.Y:F6}, {bbox.min.Z:F6}), Max=({bbox.max.X:F6}, {bbox.max.Y:F6}, {bbox.max.Z:F6}), Size=W={w:F1}mm, H={h:F1}mm\n");
+                    }
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ========== END ROTATED BBOX COORDINATES ==========\n\n");
+                }
+
+                // ✅ DIAGNOSTIC: Log whether rotated bounding boxes are found
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[CLUSTER-BBOX] Checking rotated bounding boxes: hasRotatedBboxes={hasRotatedBboxes}, rotatedBboxes.Count={rotatedBboxes.Count}, axisAlignedBboxes.Count={axisAlignedBboxes.Count}");
+                }
+                
+                if (hasRotatedBboxes && rotatedBboxes.Count > 0)
+                {
+                    // ✅ DETAILED LOGGING: Log individual sleeve rotated bounding boxes
+                    var clusterLogPath = SafeFileLogger.GetLogFilePath("cluster_bbox_detailed.log");
+                    var logBuilder = new System.Text.StringBuilder();
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ========== CLUSTER BOUNDING BOX CALCULATION (ROTATED) ==========");
+                    logBuilder.AppendLine($"Cluster contains {rotatedBboxes.Count} individual sleeves with rotated bounding boxes");
+                    logBuilder.AppendLine($"Rotation angle: {rotationAngle * 180.0 / Math.PI:F2}°");
+                    logBuilder.AppendLine();
+                    
+                    // Log each individual sleeve's rotated bounding box
+                    int detailedLogSleeveIndex = 0;
+                    foreach (var sleeveData in cluster)
+                    {
+                        detailedLogSleeveIndex++;
+                        var clashZone = GetClashZoneBySleeveInstanceId(sleeveData.SleeveInstanceId, xmlFilePath);
+                        // ✅ FIX: Cast to ClashZone to avoid RuntimeBinderException with dynamic types
+                        var czDetailed = clashZone as ClashZone;
+                        if (czDetailed != null && czDetailed.RotatedBoundingBoxMinX.HasValue)
+                        {
+                            double sleeveWidth = (czDetailed.RotatedBoundingBoxMaxX.Value - czDetailed.RotatedBoundingBoxMinX.Value) * 304.8; // Convert to mm
+                            double sleeveHeight = (czDetailed.RotatedBoundingBoxMaxY.Value - czDetailed.RotatedBoundingBoxMinY.Value) * 304.8; // Convert to mm
+                            
+                            logBuilder.AppendLine($"  Sleeve #{detailedLogSleeveIndex} (SleeveInstanceId={sleeveData.SleeveInstanceId}):");
+                            logBuilder.AppendLine($"    RotatedBBox Min: ({czDetailed.RotatedBoundingBoxMinX.Value:F6}, {czDetailed.RotatedBoundingBoxMinY.Value:F6}, {czDetailed.RotatedBoundingBoxMinZ ?? czDetailed.SleeveBoundingBoxMinZ:F6})");
+                            logBuilder.AppendLine($"    RotatedBBox Max: ({czDetailed.RotatedBoundingBoxMaxX.Value:F6}, {czDetailed.RotatedBoundingBoxMaxY.Value:F6}, {czDetailed.RotatedBoundingBoxMaxZ ?? czDetailed.SleeveBoundingBoxMaxZ:F6})");
+                            logBuilder.AppendLine($"    Individual Size: W={sleeveWidth:F1}mm × H={sleeveHeight:F1}mm");
+                            logBuilder.AppendLine($"    MEP Rotation Angle: {czDetailed.MepElementRotationAngle * 180.0 / Math.PI:F2}°");
+                            logBuilder.AppendLine();
+                        }
+                    }
+                    
+                    // ✅ PROPER WATERTIGHT ALGORITHM: Calculate all 4 corners of each sleeve in world space
+                    // Then transform all corners into common rotated coordinate system and find min/max extents
+                    // This works for ALL scenarios: single, stacked, inline, diagonal, grid
+                    // 
+                    // ⚠️ CRITICAL: rotationAngle represents the cluster's INTENDED ROTATED AXIS direction,
+                    // NOT the average of sleeve rotation angles. This axis defines the coordinate system
+                    // that all corners will be transformed into for the min/max extent calculation.
+                    double width, height, minX, minY, maxX, maxY;
+                    XYZ origin = XYZ.Zero;  // Store origin for midpoint transformation
+                    {
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ========== PROPER CORNER-BASED ALGORITHM ==========\n");
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Processing {cluster.Count} sleeves - calculating all 4 corners in world space\n");
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Cluster INTENDED ROTATED AXIS (not average): {rotationAngle * 180.0 / Math.PI:F2}°\n");
+                        
+                        // Step 1: Collect sleeve data (center, width, height, rotation, pre-calculated corners) from ClashZone
+                        // ✅ OPTIMIZATION: Use pre-calculated corners from database (dump once use many times)
+                        var sleeveDataList = new List<(ClashZone cz, XYZ center, double width, double height, double sleeveRotation, double? cosSleeve, double? sinSleeve, XYZ[] preCalculatedCorners)>();
+                        
+                        foreach (var sleeveData in cluster)
+                        {
+                            var clashZone = GetClashZoneBySleeveInstanceId(sleeveData.SleeveInstanceId, xmlFilePath);
+                            if (clashZone == null) continue;
+                            
+                            var cz = clashZone as ClashZone;
+                            if (cz == null) continue;
+                            
+                            // ✅ Get sleeve center from Active document coordinates (where sleeve is actually placed)
+                            XYZ center = new XYZ(
+                                cz.SleevePlacementPointActiveDocumentX,
+                                cz.SleevePlacementPointActiveDocumentY,
+                                cz.SleevePlacementPointActiveDocumentZ
+                            );
+                            
+                            // Get sleeve dimensions
+                            double sleeveWidth = cz.SleeveWidth > 0 ? cz.SleeveWidth : 0;
+                            double sleeveHeight = cz.SleeveHeight > 0 ? cz.SleeveHeight : 0;
+                            
+                            // Get sleeve rotation angle
+                            // ⚠️ NOTE: Database column is MepRotationAngleRad, mapped to MepElementRotationAngle in ClashZone model
+                            double sleeveRotation = cz.MepElementRotationAngle;
+                            
+                            // ✅ ROTATION MATRIX: Use pre-calculated cos/sin from database (dump once use many times)
+                            double? cosSleeve = cz.MepRotationCos;
+                            double? sinSleeve = cz.MepRotationSin;
+                            
+                            // ✅ PRE-CALCULATED CORNERS: Load from database (dump once use many times)
+                            XYZ[] preCalculatedCorners = null;
+                            if (cz.SleeveCorner1X.HasValue && cz.SleeveCorner1Y.HasValue && cz.SleeveCorner1Z.HasValue &&
+                                cz.SleeveCorner2X.HasValue && cz.SleeveCorner2Y.HasValue && cz.SleeveCorner2Z.HasValue &&
+                                cz.SleeveCorner3X.HasValue && cz.SleeveCorner3Y.HasValue && cz.SleeveCorner3Z.HasValue &&
+                                cz.SleeveCorner4X.HasValue && cz.SleeveCorner4Y.HasValue && cz.SleeveCorner4Z.HasValue)
+                            {
+                                preCalculatedCorners = new XYZ[]
+                                {
+                                    new XYZ(cz.SleeveCorner1X.Value, cz.SleeveCorner1Y.Value, cz.SleeveCorner1Z.Value),  // Corner 1: Bottom-left
+                                    new XYZ(cz.SleeveCorner2X.Value, cz.SleeveCorner2Y.Value, cz.SleeveCorner2Z.Value),  // Corner 2: Bottom-right
+                                    new XYZ(cz.SleeveCorner3X.Value, cz.SleeveCorner3Y.Value, cz.SleeveCorner3Z.Value),  // Corner 3: Top-left
+                                    new XYZ(cz.SleeveCorner4X.Value, cz.SleeveCorner4Y.Value, cz.SleeveCorner4Z.Value)   // Corner 4: Top-right
+                                };
+                            }
+                            
+                            // ✅ VERIFY: Log if rotation angle is missing/zero (might indicate data not loaded from DB)
+                            if (Math.Abs(sleeveRotation) < 1e-6)
+                            {
+                                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}]   ⚠️ WARNING: Sleeve {sleeveData.SleeveInstanceId} has zero rotation angle - check if MepElementRotationAngle was loaded from DB (column: MepRotationAngleRad)\n");
+                            }
+                            
+                            // ✅ VERIFY: Log if pre-calculated corners are missing
+                            if (preCalculatedCorners == null)
+                            {
+                                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}]   ⚠️ WARNING: Sleeve {sleeveData.SleeveInstanceId} has no pre-calculated corners - will recalculate (check if UpdateSleeveCorners was called during placement)\n");
+                            }
+                            
+                            sleeveDataList.Add((cz, center, sleeveWidth, sleeveHeight, sleeveRotation, cosSleeve, sinSleeve, preCalculatedCorners));
+                            
+                            System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}]   Sleeve {sleeveData.SleeveInstanceId}: Center=({center.X:F6}, {center.Y:F6}, {center.Z:F6}), W={sleeveWidth*304.8:F1}mm, H={sleeveHeight*304.8:F1}mm, Rotation={sleeveRotation*180.0/Math.PI:F2}°, HasPreCalcCorners={preCalculatedCorners != null}, HasPreCalcCosSin={cosSleeve.HasValue && sinSleeve.HasValue}\n");
+                        }
+                        
+                        if (sleeveDataList.Count == 0)
+                        {
+                            // Fallback to simple union of rotated bboxes
+                            minX = rotatedBboxes.Min(b => b.min.X);
+                            minY = rotatedBboxes.Min(b => b.min.Y);
+                            maxX = rotatedBboxes.Max(b => b.max.X);
+                            maxY = rotatedBboxes.Max(b => b.max.Y);
+                            width = maxX - minX;
+                            height = maxY - minY;
+                            System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ⚠️ No sleeve data found - using fallback union\n");
+                        }
+                        else
+                        {
+                            // Step 2: Choose reference point (first sleeve center as origin)
+                            origin = sleeveDataList[0].center;
+                            
+                            // Step 3: Pre-calculate cluster rotation matrix components
+                            // ⚠️ CRITICAL: rotationAngle is the cluster's INTENDED ROTATED AXIS, not average of sleeve angles
+                            // This defines the coordinate system frame that all corners will be transformed into
+                            double cosCluster = Math.Cos(rotationAngle);
+                            double sinCluster = Math.Sin(rotationAngle);
+                            
+                            System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Origin (first sleeve center): ({origin.X:F6}, {origin.Y:F6}, {origin.Z:F6})\n");
+                            System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Cluster INTENDED AXIS Rotation Matrix: cos={cosCluster:F6}, sin={sinCluster:F6}\n");
+                            
+                            // Step 4: For each sleeve, use pre-calculated corners from database OR recalculate if missing
+                            // ✅ OPTIMIZATION: Use pre-calculated corners from database (dump once use many times)
+                            var allTransformedCorners = new List<XYZ>();
+                            
+                            // ✅ OPTIMIZATION: Pre-calculate corner offset pattern (for fallback recalculation only)
+                            // Corner offsets in local space: (-1,-1), (1,-1), (-1,1), (1,1) multiplied by halfW/halfH
+                            var cornerOffsetPattern = new[]
+                            {
+                                (-1.0, -1.0),  // Bottom-left
+                                (1.0, -1.0),   // Bottom-right
+                                (-1.0, 1.0),   // Top-left
+                                (1.0, 1.0)     // Top-right
+                            };
+                            
+                            for (int i = 0; i < sleeveDataList.Count; i++)
+                            {
+                                var (cz, center, sleeveWidth, sleeveHeight, sleeveRotation, cosSleevePreCalc, sinSleevePreCalc, preCalculatedCorners) = sleeveDataList[i];
+                                
+                                XYZ[] worldCorners;
+                                
+                                // ✅ USE PRE-CALCULATED CORNERS: If available, use them directly (dump once use many times)
+                                if (preCalculatedCorners != null)
+                                {
+                                    worldCorners = preCalculatedCorners;
+                                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}]   Sleeve {i+1} Using PRE-CALCULATED corners from database\n");
+                                }
+                                else
+                                {
+                                    // ✅ FALLBACK: Recalculate corners if pre-calculated ones are missing
+                                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}]   Sleeve {i+1} Recalculating corners (pre-calculated corners not available)\n");
+                                    
+                                    // Step 4a: Calculate 4 corners of sleeve in its LOCAL coordinate system (before sleeve rotation)
+                                    double halfW = sleeveWidth / 2.0;
+                                    double halfH = sleeveHeight / 2.0;
+                                    
+                                    // ✅ OPTIMIZATION: Reuse corner offset pattern, multiply by this sleeve's halfW/halfH
+                                    var localCorners = new XYZ[4];
+                                    for (int cornerIdx = 0; cornerIdx < 4; cornerIdx++)
+                                    {
+                                        localCorners[cornerIdx] = new XYZ(
+                                            cornerOffsetPattern[cornerIdx].Item1 * halfW,
+                                            cornerOffsetPattern[cornerIdx].Item2 * halfH,
+                                            0
+                                        );
+                                    }
+                                    
+                                    // Step 4b: Rotate corners by sleeve's rotation angle to get world-space corners
+                                    // ✅ ROTATION MATRIX: Use pre-calculated cos/sin from database if available, otherwise calculate
+                                    double cosSleeve = cosSleevePreCalc ?? Math.Cos(sleeveRotation);
+                                    double sinSleeve = sinSleevePreCalc ?? Math.Sin(sleeveRotation);
+                                    
+                                    worldCorners = new XYZ[4];
+                                    for (int j = 0; j < 4; j++)
+                                    {
+                                        double localX = localCorners[j].X;
+                                        double localY = localCorners[j].Y;
+                                        
+                                        // Rotate corner by sleeve rotation
+                                        double worldX = localX * cosSleeve - localY * sinSleeve;
+                                        double worldY = localX * sinSleeve + localY * cosSleeve;
+                                        
+                                        // Translate to sleeve center
+                                        worldCorners[j] = new XYZ(
+                                            center.X + worldX,
+                                            center.Y + worldY,
+                                            center.Z
+                                        );
+                                    }
+                                }
+                                
+                                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}]   Sleeve {i+1} World Corners: ({worldCorners[0].X:F6}, {worldCorners[0].Y:F6}), ({worldCorners[1].X:F6}, {worldCorners[1].Y:F6}), ({worldCorners[2].X:F6}, {worldCorners[2].Y:F6}), ({worldCorners[3].X:F6}, {worldCorners[3].Y:F6})\n");
+                                
+                                // Step 4c: Transform world-space corners to cluster's INTENDED ROTATED AXIS coordinate system
+                                // This aligns all corners to the cluster's intended axis direction (not average of sleeve angles)
+                                for (int j = 0; j < 4; j++)
+                                {
+                                    // Translate relative to origin
+                                    double relX = worldCorners[j].X - origin.X;
+                                    double relY = worldCorners[j].Y - origin.Y;
+                                    
+                                    // Rotate to cluster's intended axis coordinate system
+                                    // This transformation aligns with the cluster's intended rotated axis direction
+                                    double clusterX = relX * cosCluster - relY * sinCluster;
+                                    double clusterY = relX * sinCluster + relY * cosCluster;
+                                    
+                                    allTransformedCorners.Add(new XYZ(
+                                        clusterX,
+                                        clusterY,
+                                        worldCorners[j].Z
+                                    ));
+                                }
+                                
+                                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}]   Sleeve {i+1} Cluster-Space Corners: ({allTransformedCorners[allTransformedCorners.Count-4].X:F6}, {allTransformedCorners[allTransformedCorners.Count-4].Y:F6}), ({allTransformedCorners[allTransformedCorners.Count-3].X:F6}, {allTransformedCorners[allTransformedCorners.Count-3].Y:F6}), ({allTransformedCorners[allTransformedCorners.Count-2].X:F6}, {allTransformedCorners[allTransformedCorners.Count-2].Y:F6}), ({allTransformedCorners[allTransformedCorners.Count-1].X:F6}, {allTransformedCorners[allTransformedCorners.Count-1].Y:F6})\n");
+                            }
+                            
+                            // Step 5: Find min/max extents of all transformed corners
+                            minX = allTransformedCorners.Min(p => p.X);
+                            minY = allTransformedCorners.Min(p => p.Y);
+                            maxX = allTransformedCorners.Max(p => p.X);
+                            maxY = allTransformedCorners.Max(p => p.Y);
+                            width = maxX - minX;
+                            height = maxY - minY;
+                            
+                            System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ✅ CORRECT UNION (from all {allTransformedCorners.Count} corner points): MinX={minX:F6}, MinY={minY:F6}, MaxX={maxX:F6}, MaxY={maxY:F6}\n");
+                            System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ✅ CLUSTER SIZE (WATERTIGHT ALGORITHM): W={width * 304.8:F1}mm, H={height * 304.8:F1}mm\n");
+                        }
+                        
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Cluster BBox: Min=({minX:F6}, {minY:F6}), Max=({maxX:F6}, {maxY:F6})\n\n");
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[CLUSTER-BBOX] ✅ Using proper corner-based algorithm (W={width*304.8:F1}mm, H={height*304.8:F1}mm)");
+                    }
+                    
+                    double minZ = rotatedBboxes.Min(b => b.min.Z);
+                    double maxZ = rotatedBboxes.Max(b => b.max.Z);
+                    double depth = maxZ - minZ;
+                    
+                    // Convert to millimeters for logging
+                    double widthMm = width * 304.8;
+                    double heightMm = height * 304.8;
+                    double depthMm = depth * 304.8;
+                    
+                    // ✅ LOG: Final cluster dimensions before transform
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ========== FINAL CLUSTER DIMENSIONS (BEFORE TRANSFORM) ==========\n");
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Width: {width:F6} = {widthMm:F1}mm\n");
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Height: {height:F6} = {heightMm:F1}mm\n");
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Depth: {depth:F6} = {depthMm:F1}mm\n");
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] BBox Min: ({minX:F6}, {minY:F6}, {minZ:F6})\n");
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] BBox Max: ({maxX:F6}, {maxY:F6}, {maxZ:F6})\n\n");
+                    
+                    logBuilder.AppendLine($"  CLUSTER BOUNDING BOX (UNION OF ALL INDIVIDUAL ROTATED BBOXES):");
+                    logBuilder.AppendLine($"    Cluster Min: ({minX:F6}, {minY:F6}, {minZ:F6})");
+                    logBuilder.AppendLine($"    Cluster Max: ({maxX:F6}, {maxY:F6}, {maxZ:F6})");
+                    logBuilder.AppendLine($"    Cluster Size: W={widthMm:F1}mm × H={heightMm:F1}mm × D={depthMm:F1}mm");
+                    logBuilder.AppendLine();
+                    
+                    // Calculate expected size based on individual sleeves
+                    if (rotatedBboxes.Count == 2)
+                    {
+                        var bbox1 = rotatedBboxes[0];
+                        var bbox2 = rotatedBboxes[1];
+                        double sleeve1Width = (bbox1.max.X - bbox1.min.X) * 304.8;
+                        double sleeve1Height = (bbox1.max.Y - bbox1.min.Y) * 304.8;
+                        double sleeve2Width = (bbox2.max.X - bbox2.min.X) * 304.8;
+                        double sleeve2Height = (bbox2.max.Y - bbox2.min.Y) * 304.8;
+                        
+                        // Calculate gap between sleeves
+                        double gapX = Math.Max(0, Math.Min(bbox1.max.X, bbox2.max.X) - Math.Max(bbox1.min.X, bbox2.min.X));
+                        double gapY = Math.Max(0, Math.Min(bbox1.max.Y, bbox2.max.Y) - Math.Max(bbox1.min.Y, bbox2.min.Y));
+                        double overlapX = gapX < 0 ? Math.Abs(gapX) * 304.8 : 0;
+                        double overlapY = gapY < 0 ? Math.Abs(gapY) * 304.8 : 0;
+                        
+                        logBuilder.AppendLine($"  EXPECTED CLUSTER SIZE CALCULATION (2 sleeves):");
+                        logBuilder.AppendLine($"    Sleeve 1: {sleeve1Width:F1}mm × {sleeve1Height:F1}mm");
+                        logBuilder.AppendLine($"    Sleeve 2: {sleeve2Width:F1}mm × {sleeve2Height:F1}mm");
+                        logBuilder.AppendLine($"    Overlap X: {overlapX:F1}mm, Overlap Y: {overlapY:F1}mm");
+                        logBuilder.AppendLine($"    Expected Width: {sleeve1Width + sleeve2Width - overlapX:F1}mm (actual: {widthMm:F1}mm)");
+                        logBuilder.AppendLine($"    Expected Height: {sleeve1Height + sleeve2Height - overlapY:F1}mm (actual: {heightMm:F1}mm)");
+                    }
+                    
+                    logBuilder.AppendLine($"  ========== END CLUSTER BOUNDING BOX CALCULATION ==========");
+                    logBuilder.AppendLine();
+                    
+                    // Write to log file
+                    try
+                    {
+                        System.IO.File.AppendAllText(clusterLogPath, logBuilder.ToString());
+                    }
+                    catch { }
+                    
+                    // Also log to DebugLogger
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[CLUSTER-BBOX-ROTATED] ✅ Using rotated bounding boxes: " +
+                            $"W={widthMm:F1}mm, H={heightMm:F1}mm (from {rotatedBboxes.Count} individual sleeves)");
+                        DebugLogger.Info($"[CLUSTER-BBOX-ROTATED] Individual sleeves: {string.Join(", ", rotatedBboxes.Select((b, i) => $"Sleeve{i+1}: {(b.max.X - b.min.X) * 304.8:F1}×{(b.max.Y - b.min.Y) * 304.8:F1}mm"))}");
+                    }
+                    
+                    // ✅ MIDPOINT: Calculate in rotated coordinate space, then transform back to world coordinates
+                    XYZ midRotated = new XYZ((minX + maxX) / 2.0, (minY + maxY) / 2.0, (minZ + maxZ) / 2.0);
+                    
+                    // ✅ LOG: Midpoint calculation
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ========== MIDPOINT CALCULATION ==========\n");
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Midpoint (in rotated coordinate space): ({midRotated.X:F6}, {midRotated.Y:F6}, {midRotated.Z:F6})\n");
+
+                    var allBboxes = rotatedBboxes.Concat(axisAlignedBboxes).ToList();
+                    XYZ mid;
+                    if (allBboxes.Count > 0 && Math.Abs(rotationAngle) > 1e-6 && origin != XYZ.Zero)
+                    {
+                        // ✅ Transform midpoint from rotated coordinate space back to world coordinates
+                        // The midpoint is calculated as center of bounding box in rotated space: ((minX+maxX)/2, (minY+maxY)/2)
+                        // To transform back to world coordinates, we need the INVERSE rotation matrix
+                        // Forward: clusterX = relX * cos(θ) - relY * sin(θ), clusterY = relX * sin(θ) + relY * cos(θ)
+                        // Inverse: worldX = clusterX * cos(θ) + clusterY * sin(θ), worldY = -clusterX * sin(θ) + clusterY * cos(θ)
+                        // This is the transpose of the rotation matrix (which is the inverse for rotation matrices)
+                        double cosA = Math.Cos(rotationAngle);  // Use same angle (inverse rotation matrix is transpose)
+                        double sinA = Math.Sin(rotationAngle);
+                        // ✅ INVERSE TRANSFORMATION: Transpose of rotation matrix
+                        double midRotatedBackX = midRotated.X * cosA + midRotated.Y * sinA;  // Note: + instead of -
+                        double midRotatedBackY = -midRotated.X * sinA + midRotated.Y * cosA;  // Note: -sinA instead of sinA
+                        
+                        // Step 2: Translate back (add origin)
+                        mid = new XYZ(
+                            origin.X + midRotatedBackX,
+                            origin.Y + midRotatedBackY,
+                            midRotated.Z  // Z stays the same
+                        );
+                        
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ========== TRANSFORM CALCULATION ==========\n");
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Rotation Angle: {rotationAngle * 180.0 / Math.PI:F2}°\n");
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Origin: ({origin.X:F6}, {origin.Y:F6}, {origin.Z:F6})\n");
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Midpoint (after transform to world): ({mid.X:F6}, {mid.Y:F6}, {mid.Z:F6})\n\n");
+                    }
+                    else
+                    {
+                        // No rotation or no rotated bboxes: midpoint is already in world coordinates
+                        if (origin != XYZ.Zero)
+                        {
+                            mid = new XYZ(
+                                origin.X + midRotated.X,
+                                origin.Y + midRotated.Y,
+                                midRotated.Z
+                            );
+                        }
+                        else
+                        {
+                            mid = midRotated;
+                        }
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] No rotation applied (rotationAngle={rotationAngle * 180.0 / Math.PI:F2}°)\n");
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Midpoint (world coordinates): ({mid.X:F6}, {mid.Y:F6}, {mid.Z:F6})\n\n");
+                    }
+                    
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ========== RETURNING CLUSTER BOUNDING BOX ==========\n");
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Final: W={widthMm:F1}mm, H={heightMm:F1}mm, D={depthMm:F1}mm, Mid=({mid.X:F6}, {mid.Y:F6}, {mid.Z:F6})\n");
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Rotated BBox: Min=({minX:F6}, {minY:F6}, {minZ:F6}), Max=({maxX:F6}, {maxY:F6}, {maxZ:F6})\n");
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Internal units: W={width:F6}, H={height:F6}, D={depth:F6}\n");
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ========== END GET CLUSTER BOUNDING BOX ==========\n\n");
+
+                    return (width, height, depth, mid, minX, minY, minZ, maxX, maxY, maxZ);
+                }
+                else
+                {
+                    // ✅ FIX: If rotated bounding boxes are not available, log warning
+                    // For rotated sleeves, we should NOT use axis-aligned bounding boxes as fallback
+                    // because they give wrong dimensions (diagonal extent instead of actual dimensions)
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Warning($"[CLUSTER-BBOX] ⚠️ Rotated bounding boxes not found for cluster with {cluster.Count} sleeves. " +
+                            $"Rotation angle: {rotationAngle * 180.0 / Math.PI:F2}°. " +
+                            $"Falling back to axis-aligned bounding boxes (may give incorrect dimensions for rotated sleeves).");
+                    }
+                    
+                    // ⚠️ FALLBACK: Use axis-aligned bounding boxes (only for axis-aligned sleeves)
+                    // For rotated sleeves, this will give wrong dimensions
+                    var (w, h, d, m) = ClusterBoundingBoxServices.GetClusterBoundingBox(actualSleeves, rotationAngle);
+                    return (w, h, d, m, null, null, null, null, null, null);
+                }
+            }
+            catch (Exception ex)
+            {
+                string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ❌❌❌ EXCEPTION IN GetClusterBoundingBoxWithRotatedCoordinates ❌❌❌\n");
+                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Exception Type: {ex.GetType().Name}\n");
+                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Error Message: {ex.Message}\n");
+                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] StackTrace: {ex.StackTrace}\n");
+                if (ex.InnerException != null)
+                {
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Inner Exception: {ex.InnerException.GetType().Name} - {ex.InnerException.Message}\n");
+                }
+                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ⚠️ Falling back to ClusterBoundingBoxServices.GetClusterBoundingBox\n");
+                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ========== END EXCEPTION ==========\n\n");
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Error($"[UniversalClusterService] Error in GetClusterBoundingBoxWithRotatedCoordinates: {ex.Message}");
+                }
+                var (w, h, d, m) = ClusterBoundingBoxServices.GetClusterBoundingBox(actualSleeves, rotationAngle);
+                return (w, h, d, m, null, null, null, null, null, null);
             }
         }
 
@@ -2642,61 +3578,139 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             double minDistance;
             
+            // ✅ ROTATED BBOX: Use rotated bounding box if available (for non-axis-aligned sleeves)
+            // Check if both sleeves have rotated bounding boxes (MepElementRotationAngle != 0)
+            bool useRotatedBbox = Math.Abs(current.MepElementRotationAngle) > 1e-6 && 
+                                  Math.Abs(other.MepElementRotationAngle) > 1e-6 &&
+                                  current.RotatedBoundingBoxMinX.HasValue && current.RotatedBoundingBoxMinY.HasValue &&
+                                  current.RotatedBoundingBoxMaxX.HasValue && current.RotatedBoundingBoxMaxY.HasValue &&
+                                  other.RotatedBoundingBoxMinX.HasValue && other.RotatedBoundingBoxMinY.HasValue &&
+                                  other.RotatedBoundingBoxMaxX.HasValue && other.RotatedBoundingBoxMaxY.HasValue;
+            
             // ✅ DEBUG: Log coordinates and orientation
                         if (!DeploymentConfiguration.DeploymentMode)
-            DebugLogger.Info($"[DISTANCE-DEBUG] Rect1: Min=({current.SleeveBoundingBoxMinX:F3}, {current.SleeveBoundingBoxMinY:F3}), Max=({current.SleeveBoundingBoxMaxX:F3}, {current.SleeveBoundingBoxMaxY:F3})\n");
-                        if (!DeploymentConfiguration.DeploymentMode)
-            DebugLogger.Info($"[DISTANCE-DEBUG] Rect2: Min=({other.SleeveBoundingBoxMinX:F3}, {other.SleeveBoundingBoxMinY:F3}), Max=({other.SleeveBoundingBoxMaxX:F3}, {other.SleeveBoundingBoxMaxY:F3})\n");
-                        if (!DeploymentConfiguration.DeploymentMode)
-            DebugLogger.Info($"[DISTANCE-DEBUG] HostType={current.StructuralElementType}, Orientation={orientation}\n");
+            {
+                if (useRotatedBbox)
+                {
+                    DebugLogger.Info($"[DISTANCE-DEBUG] Using ROTATED bounding boxes (angles: {current.MepElementRotationAngle * 180 / Math.PI:F1}°, {other.MepElementRotationAngle * 180 / Math.PI:F1}°)\n");
+                    DebugLogger.Info($"[DISTANCE-DEBUG] Rect1 Rotated: Min=({current.RotatedBoundingBoxMinX.Value:F3}, {current.RotatedBoundingBoxMinY.Value:F3}), Max=({current.RotatedBoundingBoxMaxX.Value:F3}, {current.RotatedBoundingBoxMaxY.Value:F3})\n");
+                    DebugLogger.Info($"[DISTANCE-DEBUG] Rect2 Rotated: Min=({other.RotatedBoundingBoxMinX.Value:F3}, {other.RotatedBoundingBoxMinY.Value:F3}), Max=({other.RotatedBoundingBoxMaxX.Value:F3}, {other.RotatedBoundingBoxMaxY.Value:F3})\n");
+                }
+                else
+                {
+                    DebugLogger.Info($"[DISTANCE-DEBUG] Using axis-aligned bounding boxes\n");
+                    DebugLogger.Info($"[DISTANCE-DEBUG] Rect1: Min=({current.SleeveBoundingBoxMinX:F3}, {current.SleeveBoundingBoxMinY:F3}), Max=({current.SleeveBoundingBoxMaxX:F3}, {current.SleeveBoundingBoxMaxY:F3})\n");
+                    DebugLogger.Info($"[DISTANCE-DEBUG] Rect2: Min=({other.SleeveBoundingBoxMinX:F3}, {other.SleeveBoundingBoxMinY:F3}), Max=({other.SleeveBoundingBoxMaxX:F3}, {other.SleeveBoundingBoxMaxY:F3})\n");
+                }
+                DebugLogger.Info($"[DISTANCE-DEBUG] HostType={current.StructuralElementType}, Orientation={orientation}\n");
+            }
             
             // ✅ CRITICAL FIX: Use orientation from grouping logic instead of ClashZone orientation
             // For floor sleeves, orientation="Floor" (unified for all floor sleeves)
             if (current.StructuralElementType == "Floor")
             {
                 // Floor sleeves: Use X,Y distance only (ignore Z coordinate)
-                minDistance = CalculateMinimumDistance2D(
-                    current.SleeveBoundingBoxMinX, current.SleeveBoundingBoxMinY, current.SleeveBoundingBoxMaxX, current.SleeveBoundingBoxMaxY,
-                    other.SleeveBoundingBoxMinX, other.SleeveBoundingBoxMinY, other.SleeveBoundingBoxMaxX, other.SleeveBoundingBoxMaxY);
+                if (useRotatedBbox)
+                {
+                    minDistance = CalculateMinimumDistance2D(
+                        current.RotatedBoundingBoxMinX.Value, current.RotatedBoundingBoxMinY.Value, 
+                        current.RotatedBoundingBoxMaxX.Value, current.RotatedBoundingBoxMaxY.Value,
+                        other.RotatedBoundingBoxMinX.Value, other.RotatedBoundingBoxMinY.Value, 
+                        other.RotatedBoundingBoxMaxX.Value, other.RotatedBoundingBoxMaxY.Value);
+                }
+                else
+                {
+                    minDistance = CalculateMinimumDistance2D(
+                        current.SleeveBoundingBoxMinX, current.SleeveBoundingBoxMinY, current.SleeveBoundingBoxMaxX, current.SleeveBoundingBoxMaxY,
+                        other.SleeveBoundingBoxMinX, other.SleeveBoundingBoxMinY, other.SleeveBoundingBoxMaxX, other.SleeveBoundingBoxMaxY);
+                }
             }
             else if (current.StructuralElementType == "Wall" || current.StructuralElementType == "Structural Framing")
             {
                 if (orientation == "X")
                 {
                     // Wall/Framing sleeves (X orientation): Use X,Z distance only (ignore Y coordinate)
-                    minDistance = CalculateMinimumDistance2D(
-                        current.SleeveBoundingBoxMinX, current.SleeveBoundingBoxMinZ, current.SleeveBoundingBoxMaxX, current.SleeveBoundingBoxMaxZ,
-                        other.SleeveBoundingBoxMinX, other.SleeveBoundingBoxMinZ, other.SleeveBoundingBoxMaxX, other.SleeveBoundingBoxMaxZ);
+                    if (useRotatedBbox && current.RotatedBoundingBoxMinZ.HasValue && other.RotatedBoundingBoxMinZ.HasValue)
+                    {
+                        minDistance = CalculateMinimumDistance2D(
+                            current.RotatedBoundingBoxMinX.Value, current.RotatedBoundingBoxMinZ.Value, 
+                            current.RotatedBoundingBoxMaxX.Value, current.RotatedBoundingBoxMaxZ.Value,
+                            other.RotatedBoundingBoxMinX.Value, other.RotatedBoundingBoxMinZ.Value, 
+                            other.RotatedBoundingBoxMaxX.Value, other.RotatedBoundingBoxMaxZ.Value);
+                    }
+                    else
+                    {
+                        minDistance = CalculateMinimumDistance2D(
+                            current.SleeveBoundingBoxMinX, current.SleeveBoundingBoxMinZ, current.SleeveBoundingBoxMaxX, current.SleeveBoundingBoxMaxZ,
+                            other.SleeveBoundingBoxMinX, other.SleeveBoundingBoxMinZ, other.SleeveBoundingBoxMaxX, other.SleeveBoundingBoxMaxZ);
+                    }
                 }
                 else if (orientation == "Y")
                 {
                     // Wall/Framing sleeves (Y orientation): Use Y,Z distance only (ignore X coordinate)
                                         if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[DISTANCE-DEBUG] Using Y,Z coordinates for Y-oriented walls\n");
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[DISTANCE-DEBUG] Rect1 YZ: Min=({current.SleeveBoundingBoxMinY:F3}, {current.SleeveBoundingBoxMinZ:F3}), Max=({current.SleeveBoundingBoxMaxY:F3}, {current.SleeveBoundingBoxMaxZ:F3})\n");
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[DISTANCE-DEBUG] Rect2 YZ: Min=({other.SleeveBoundingBoxMinY:F3}, {other.SleeveBoundingBoxMinZ:F3}), Max=({other.SleeveBoundingBoxMaxY:F3}, {other.SleeveBoundingBoxMaxZ:F3})\n");
-                    minDistance = CalculateMinimumDistance2D(
-                        current.SleeveBoundingBoxMinY, current.SleeveBoundingBoxMinZ, current.SleeveBoundingBoxMaxY, current.SleeveBoundingBoxMaxZ,
-                        other.SleeveBoundingBoxMinY, other.SleeveBoundingBoxMinZ, other.SleeveBoundingBoxMaxY, other.SleeveBoundingBoxMaxZ);
+                    if (useRotatedBbox && current.RotatedBoundingBoxMinZ.HasValue && other.RotatedBoundingBoxMinZ.HasValue)
+                    {
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[DISTANCE-DEBUG] Rect1 YZ Rotated: Min=({current.RotatedBoundingBoxMinY.Value:F3}, {current.RotatedBoundingBoxMinZ.Value:F3}), Max=({current.RotatedBoundingBoxMaxY.Value:F3}, {current.RotatedBoundingBoxMaxZ.Value:F3})\n");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[DISTANCE-DEBUG] Rect2 YZ Rotated: Min=({other.RotatedBoundingBoxMinY.Value:F3}, {other.RotatedBoundingBoxMinZ.Value:F3}), Max=({other.RotatedBoundingBoxMaxY.Value:F3}, {other.RotatedBoundingBoxMaxZ.Value:F3})\n");
+                        minDistance = CalculateMinimumDistance2D(
+                            current.RotatedBoundingBoxMinY.Value, current.RotatedBoundingBoxMinZ.Value, 
+                            current.RotatedBoundingBoxMaxY.Value, current.RotatedBoundingBoxMaxZ.Value,
+                            other.RotatedBoundingBoxMinY.Value, other.RotatedBoundingBoxMinZ.Value, 
+                            other.RotatedBoundingBoxMaxY.Value, other.RotatedBoundingBoxMaxZ.Value);
+                    }
+                    else
+                    {
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[DISTANCE-DEBUG] Rect1 YZ: Min=({current.SleeveBoundingBoxMinY:F3}, {current.SleeveBoundingBoxMinZ:F3}), Max=({current.SleeveBoundingBoxMaxY:F3}, {current.SleeveBoundingBoxMaxZ:F3})\n");
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[DISTANCE-DEBUG] Rect2 YZ: Min=({other.SleeveBoundingBoxMinY:F3}, {other.SleeveBoundingBoxMinZ:F3}), Max=({other.SleeveBoundingBoxMaxY:F3}, {other.SleeveBoundingBoxMaxZ:F3})\n");
+                        minDistance = CalculateMinimumDistance2D(
+                            current.SleeveBoundingBoxMinY, current.SleeveBoundingBoxMinZ, current.SleeveBoundingBoxMaxY, current.SleeveBoundingBoxMaxZ,
+                            other.SleeveBoundingBoxMinY, other.SleeveBoundingBoxMinZ, other.SleeveBoundingBoxMaxY, other.SleeveBoundingBoxMaxZ);
+                    }
                 }
                 else
                 {
                     // Default for walls: Use Y,Z distance (most walls are Y-oriented)
-                    minDistance = CalculateMinimumDistance2D(
-                        current.SleeveBoundingBoxMinY, current.SleeveBoundingBoxMinZ, current.SleeveBoundingBoxMaxY, current.SleeveBoundingBoxMaxZ,
-                        other.SleeveBoundingBoxMinY, other.SleeveBoundingBoxMinZ, other.SleeveBoundingBoxMaxY, other.SleeveBoundingBoxMaxZ);
+                    if (useRotatedBbox && current.RotatedBoundingBoxMinZ.HasValue && other.RotatedBoundingBoxMinZ.HasValue)
+                    {
+                        minDistance = CalculateMinimumDistance2D(
+                            current.RotatedBoundingBoxMinY.Value, current.RotatedBoundingBoxMinZ.Value, 
+                            current.RotatedBoundingBoxMaxY.Value, current.RotatedBoundingBoxMaxZ.Value,
+                            other.RotatedBoundingBoxMinY.Value, other.RotatedBoundingBoxMinZ.Value, 
+                            other.RotatedBoundingBoxMaxY.Value, other.RotatedBoundingBoxMaxZ.Value);
+                    }
+                    else
+                    {
+                        minDistance = CalculateMinimumDistance2D(
+                            current.SleeveBoundingBoxMinY, current.SleeveBoundingBoxMinZ, current.SleeveBoundingBoxMaxY, current.SleeveBoundingBoxMaxZ,
+                            other.SleeveBoundingBoxMinY, other.SleeveBoundingBoxMinZ, other.SleeveBoundingBoxMaxY, other.SleeveBoundingBoxMaxZ);
+                    }
                 }
             }
             else
             {
                 // Fallback: Use 3D distance for unknown host types
-                minDistance = CalculateMinimumDistance3D(
-                    current.SleeveBoundingBoxMinX, current.SleeveBoundingBoxMinY, current.SleeveBoundingBoxMinZ, 
-                    current.SleeveBoundingBoxMaxX, current.SleeveBoundingBoxMaxY, current.SleeveBoundingBoxMaxZ,
-                    other.SleeveBoundingBoxMinX, other.SleeveBoundingBoxMinY, other.SleeveBoundingBoxMinZ,
-                    other.SleeveBoundingBoxMaxX, other.SleeveBoundingBoxMaxY, other.SleeveBoundingBoxMaxZ);
+                if (useRotatedBbox && current.RotatedBoundingBoxMinZ.HasValue && other.RotatedBoundingBoxMinZ.HasValue)
+                {
+                    minDistance = CalculateMinimumDistance3D(
+                        current.RotatedBoundingBoxMinX.Value, current.RotatedBoundingBoxMinY.Value, current.RotatedBoundingBoxMinZ.Value, 
+                        current.RotatedBoundingBoxMaxX.Value, current.RotatedBoundingBoxMaxY.Value, current.RotatedBoundingBoxMaxZ.Value,
+                        other.RotatedBoundingBoxMinX.Value, other.RotatedBoundingBoxMinY.Value, other.RotatedBoundingBoxMinZ.Value,
+                        other.RotatedBoundingBoxMaxX.Value, other.RotatedBoundingBoxMaxY.Value, other.RotatedBoundingBoxMaxZ.Value);
+                }
+                else
+                {
+                    minDistance = CalculateMinimumDistance3D(
+                        current.SleeveBoundingBoxMinX, current.SleeveBoundingBoxMinY, current.SleeveBoundingBoxMinZ, 
+                        current.SleeveBoundingBoxMaxX, current.SleeveBoundingBoxMaxY, current.SleeveBoundingBoxMaxZ,
+                        other.SleeveBoundingBoxMinX, other.SleeveBoundingBoxMinY, other.SleeveBoundingBoxMinZ,
+                        other.SleeveBoundingBoxMaxX, other.SleeveBoundingBoxMaxY, other.SleeveBoundingBoxMaxZ);
+                }
             }
             
             // Log the calculated distance (only for specific sleeves to reduce noise)
@@ -2710,6 +3724,193 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             
             return minDistance <= toleranceDist;
+        }
+
+        /// <summary>
+        /// ✅ ROTATED SLEEVE CLUSTERING: Check if two rotated sleeves should cluster using database data
+        /// Transforms coordinates to local coordinate system and checks distances along rotated axis
+        /// Uses ClashZone data from database (rotation angles and bounding box coordinates)
+        /// </summary>
+        private bool CheckRotatedSleeveProximity(dynamic sleeve1, dynamic sleeve2, double rotationAngle, double toleranceDist)
+        {
+            try
+            {
+                string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                bool shouldLog = !DeploymentConfiguration.DeploymentMode;
+                
+                if (shouldLog)
+                {
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ========== CHECK ROTATED SLEEVE PROXIMITY ==========\n");
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Sleeve {sleeve1.SleeveInstanceId} vs Sleeve {sleeve2.SleeveInstanceId}\n");
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Rotation Angle: {rotationAngle * 180.0 / Math.PI:F2}°\n");
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Tolerance: {toleranceDist * 304.8:F1}mm\n");
+                }
+                
+                if (sleeve1?.ClashZone == null || sleeve2?.ClashZone == null)
+                {
+                    if (shouldLog)
+                    {
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ❌ ClashZone is null - returning false\n\n");
+                    }
+                    return false;
+                }
+                
+                var cz1 = sleeve1.ClashZone as ClashZone;
+                var cz2 = sleeve2.ClashZone as ClashZone;
+                
+                if (cz1 == null || cz2 == null)
+                {
+                    if (shouldLog)
+                    {
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ❌ ClashZone cast failed - returning false\n\n");
+                    }
+                    return false;
+                }
+                
+                // ✅ DATABASE DATA: Get sleeve centers from database (placement points)
+                XYZ center1 = cz1.SleevePlacementPoint ?? new XYZ(
+                    (cz1.SleeveBoundingBoxMinX + cz1.SleeveBoundingBoxMaxX) / 2.0,
+                    (cz1.SleeveBoundingBoxMinY + cz1.SleeveBoundingBoxMaxY) / 2.0,
+                    (cz1.SleeveBoundingBoxMinZ + cz1.SleeveBoundingBoxMaxZ) / 2.0);
+                
+                XYZ center2 = cz2.SleevePlacementPoint ?? new XYZ(
+                    (cz2.SleeveBoundingBoxMinX + cz2.SleeveBoundingBoxMaxX) / 2.0,
+                    (cz2.SleeveBoundingBoxMinY + cz2.SleeveBoundingBoxMaxY) / 2.0,
+                    (cz2.SleeveBoundingBoxMinZ + cz2.SleeveBoundingBoxMaxZ) / 2.0);
+                
+                if (shouldLog)
+                {
+                    bool hasPlacementPoint1 = cz1.SleevePlacementPoint != null;
+                    bool hasPlacementPoint2 = cz2.SleevePlacementPoint != null;
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Sleeve {sleeve1.SleeveInstanceId} Center: ({center1.X:F6}, {center1.Y:F6}, {center1.Z:F6}) [{(hasPlacementPoint1 ? "from PlacementPoint" : "from BBox center")}]\n");
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Sleeve {sleeve2.SleeveInstanceId} Center: ({center2.X:F6}, {center2.Y:F6}, {center2.Z:F6}) [{(hasPlacementPoint2 ? "from PlacementPoint" : "from BBox center")}]\n");
+                }
+                
+                // ✅ FIX: Work in world-space with shared rotated axis direction
+                // Since both sleeves have the same rotation angle (within 1° tolerance),
+                // we can use world-space positions and check distances along/perpendicular to the shared rotated axis
+                
+                // ✅ STEP 1: Calculate shared rotated axis direction (unit vector along rotated X-axis)
+                XYZ rotatedAxisDirection = new XYZ(Math.Cos(rotationAngle), Math.Sin(rotationAngle), 0).Normalize();
+                
+                // ✅ STEP 2: Calculate vector from center1 to center2 in world-space
+                XYZ worldVector = center2 - center1;
+                
+                // ✅ STEP 3: Project distance along the shared rotated axis using dot product
+                double distanceAlongAxis = worldVector.DotProduct(rotatedAxisDirection);
+                
+                // ✅ STEP 4: Calculate perpendicular distance from axis using cross product magnitude
+                XYZ crossProduct = worldVector.CrossProduct(rotatedAxisDirection);
+                double perpendicularDistance = crossProduct.GetLength();
+                
+                // ✅ DATABASE DATA: Get sleeve dimensions from database (rotated bounding boxes if available, else axis-aligned)
+                double sleeve1Width = 0.0;
+                double sleeve1Height = 0.0;
+                double sleeve2Width = 0.0;
+                double sleeve2Height = 0.0;
+                
+                if (cz1.RotatedBoundingBoxMinX.HasValue && cz1.RotatedBoundingBoxMaxX.HasValue &&
+                    cz1.RotatedBoundingBoxMinY.HasValue && cz1.RotatedBoundingBoxMaxY.HasValue)
+                {
+                    // Use rotated bounding box from database
+                    sleeve1Width = cz1.RotatedBoundingBoxMaxX.Value - cz1.RotatedBoundingBoxMinX.Value;
+                    sleeve1Height = cz1.RotatedBoundingBoxMaxY.Value - cz1.RotatedBoundingBoxMinY.Value;
+                }
+                else
+                {
+                    // Fallback to axis-aligned bounding box from database
+                    sleeve1Width = cz1.SleeveBoundingBoxMaxX - cz1.SleeveBoundingBoxMinX;
+                    sleeve1Height = cz1.SleeveBoundingBoxMaxY - cz1.SleeveBoundingBoxMinY;
+                }
+                
+                if (cz2.RotatedBoundingBoxMinX.HasValue && cz2.RotatedBoundingBoxMaxX.HasValue &&
+                    cz2.RotatedBoundingBoxMinY.HasValue && cz2.RotatedBoundingBoxMaxY.HasValue)
+                {
+                    // Use rotated bounding box from database
+                    sleeve2Width = cz2.RotatedBoundingBoxMaxX.Value - cz2.RotatedBoundingBoxMinX.Value;
+                    sleeve2Height = cz2.RotatedBoundingBoxMaxY.Value - cz2.RotatedBoundingBoxMinY.Value;
+                }
+                else
+                {
+                    // Fallback to axis-aligned bounding box from database
+                    sleeve2Width = cz2.SleeveBoundingBoxMaxX - cz2.SleeveBoundingBoxMinX;
+                    sleeve2Height = cz2.SleeveBoundingBoxMaxY - cz2.SleeveBoundingBoxMinY;
+                }
+                
+                // Calculate half-dimensions for overlap check
+                double halfWidth1 = sleeve1Width / 2.0;
+                double halfWidth2 = sleeve2Width / 2.0;
+                double halfHeight1 = sleeve1Height / 2.0;
+                double halfHeight2 = sleeve2Height / 2.0;
+                
+                if (shouldLog)
+                {
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Rotated Axis Direction: ({rotatedAxisDirection.X:F6}, {rotatedAxisDirection.Y:F6}, {rotatedAxisDirection.Z:F6})\n");
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] World Vector (center1 to center2): ({worldVector.X:F6}, {worldVector.Y:F6}, {worldVector.Z:F6})\n");
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Sleeve 1 Size: W={sleeve1Width * 304.8:F1}mm, H={sleeve1Height * 304.8:F1}mm\n");
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Sleeve 2 Size: W={sleeve2Width * 304.8:F1}mm, H={sleeve2Height * 304.8:F1}mm\n");
+                }
+                
+                // ✅ STEP 5: Check if sleeves are close enough along the rotated axis
+                // Distance along axis should be within (halfWidth1 + halfWidth2 + tolerance)
+                double maxDistanceAlongAxis = halfWidth1 + halfWidth2 + toleranceDist;
+                bool closeAlongAxis = Math.Abs(distanceAlongAxis) <= maxDistanceAlongAxis;
+                
+                // ✅ STEP 6: Check if perpendicular distance is small enough
+                // Perpendicular distance should be within (halfHeight1 + halfHeight2 + tolerance)
+                double maxPerpendicularDistance = halfHeight1 + halfHeight2 + toleranceDist;
+                bool closePerpendicular = perpendicularDistance <= maxPerpendicularDistance;
+                
+                // Cluster if both conditions are met
+                bool shouldCluster = closeAlongAxis && closePerpendicular;
+                
+                if (shouldLog)
+                {
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Distance Along Axis: {distanceAlongAxis * 304.8:F1}mm (max allowed: {maxDistanceAlongAxis * 304.8:F1}mm) - {(closeAlongAxis ? "✅ PASS" : "❌ FAIL")}\n");
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Perpendicular Distance: {perpendicularDistance * 304.8:F1}mm (max allowed: {maxPerpendicularDistance * 304.8:F1}mm) - {(closePerpendicular ? "✅ PASS" : "❌ FAIL")}\n");
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Final Result: {(shouldCluster ? "✅ CLUSTER" : "❌ NO CLUSTER")}\n");
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ========== END CHECK ROTATED SLEEVE PROXIMITY ==========\n\n");
+                }
+                
+                if (!DeploymentConfiguration.DeploymentMode && shouldCluster)
+                {
+                    DebugLogger.Info($"[ROTATED-CLUSTER-DB] Sleeves {sleeve1.SleeveInstanceId} and {sleeve2.SleeveInstanceId}: " +
+                        $"Rotation={rotationAngle * 180.0 / Math.PI:F1}°, " +
+                        $"DistanceAlongAxis={distanceAlongAxis * 304.8:F1}mm (max={maxDistanceAlongAxis * 304.8:F1}mm), " +
+                        $"PerpendicularDistance={perpendicularDistance * 304.8:F1}mm (max={maxPerpendicularDistance * 304.8:F1}mm), " +
+                        $"Sleeve1Size={sleeve1Width * 304.8:F1}×{sleeve1Height * 304.8:F1}mm, " +
+                        $"Sleeve2Size={sleeve2Width * 304.8:F1}×{sleeve2Height * 304.8:F1}mm");
+                }
+                
+                return shouldCluster;
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[ROTATED-CLUSTER-DB] Error checking rotated sleeve proximity: {ex.Message}");
+                // Fallback to regular bounding box check
+                return BoundingBoxesOverlapFromXml(sleeve1, sleeve2, toleranceDist);
+            }
+        }
+        
+        /// <summary>
+        /// Helper method to check if an angle is axis-aligned (0°, 90°, 180°, 270°)
+        /// </summary>
+        private bool IsAxisAlignedAngle(double angleRad)
+        {
+            double angleDeg = angleRad * 180.0 / Math.PI;
+            // Normalize to 0-360 range
+            while (angleDeg < 0) angleDeg += 360;
+            while (angleDeg >= 360) angleDeg -= 360;
+            
+            double thresholdDegrees = 2.0; // 2 degree tolerance
+            double distTo0 = Math.Min(angleDeg, 360 - angleDeg);
+            double distTo90 = Math.Abs(angleDeg - 90);
+            double distTo180 = Math.Abs(angleDeg - 180);
+            double distTo270 = Math.Abs(angleDeg - 270);
+            
+            return distTo0 < thresholdDegrees || distTo90 < thresholdDegrees || 
+                   distTo180 < thresholdDegrees || distTo270 < thresholdDegrees;
         }
 
         /// <summary>
@@ -3887,67 +5088,145 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
+                ClashZone clashZone = null;
+                
                 // ✅ PERFORMANCE: First try cache lookup (fast O(N) search)
-                foreach (var clashZone in _clashZoneCache.Values)
+                foreach (var cz in _clashZoneCache.Values)
                 {
-                    if (clashZone.SleeveInstanceId == sleeveInstanceId)
+                    if (cz.SleeveInstanceId == sleeveInstanceId)
                     {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Log($"[UniversalClusterService] Found clash zone for Sleeve Instance ID {sleeveInstanceId} in cache");
-                        return clashZone;
-                        }
+                        clashZone = cz;
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Log($"[UniversalClusterService] Found clash zone for Sleeve Instance ID {sleeveInstanceId} in cache");
+                        break;
                     }
-                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Warning($"[UniversalClusterService] Sleeve Instance ID {sleeveInstanceId} not found in cache (cache size: {_clashZoneCache?.Count ?? 0}) - trying XML fallback");
-                
-                // ✅ CRITICAL FIX: Fallback to XML if cache lookup fails (similar to GetClashZoneByMepElementId)
-                // This ensures GUID is always set even if cache is incomplete
-                var filtersDirectory = ProjectPathService.GetFiltersDirectory(_doc);
-                
-                if (!Directory.Exists(filtersDirectory))
-                {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Warning($"[UniversalClusterService] Filters directory does not exist for XML fallback");
-                    return null;
                 }
                 
-                // ✅ FIX: Only search specific XML file if provided (ONE SOURCE OF TRUTH)
-                var xmlFiles = string.IsNullOrEmpty(xmlFilePath)
-                    ? Directory.GetFiles(filtersDirectory, "*.xml")
-                    : new[] { xmlFilePath };
-                
-                foreach (var xmlFile in xmlFiles)
+                // ✅ CRITICAL FIX: If found in cache but missing rotated bounding boxes, load from database
+                if (clashZone != null)
                 {
-                    if (File.Exists(xmlFile))
+                    // ✅ FIX: Cast to ClashZone to avoid RuntimeBinderException with dynamic types
+                    var czCache = clashZone as ClashZone;
+                    bool hasRotatedBbox = czCache != null && 
+                                        czCache.RotatedBoundingBoxMinX.HasValue && 
+                                        czCache.RotatedBoundingBoxMinY.HasValue &&
+                                        czCache.RotatedBoundingBoxMaxX.HasValue && 
+                                        czCache.RotatedBoundingBoxMaxY.HasValue;
+                    
+                    if (!hasRotatedBbox && czCache != null)
                     {
-                        var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
-                        using (var reader = new StreamReader(xmlFile))
+                        // Try to load from database to get rotated bounding boxes
+                        try
                         {
-                            var filter = (OpeningFilter)serializer.Deserialize(reader);
-                            
-                            if (filter?.ClashZoneStorage?.AllZones != null)
+                            using (var dbContext = new SleeveDbContext(_doc))
                             {
-                                var zonesFromRegularXml = GetStorageZones(filter);
-                                if (zonesFromRegularXml.Count > 0)
+                                var repository = new ClashZoneRepository(dbContext);
+                                var dbZones = repository.GetClashZonesByCategory(czCache.MepElementCategory ?? "");
+                                var dbZone = dbZones?.FirstOrDefault(z => z.SleeveInstanceId == sleeveInstanceId);
+                                
+                                if (dbZone != null && dbZone.RotatedBoundingBoxMinX.HasValue)
                                 {
-                                    foreach (var cz in zonesFromRegularXml)
+                                    // Update cache entry with rotated bounding boxes from database
+                                    czCache.RotatedBoundingBoxMinX = dbZone.RotatedBoundingBoxMinX;
+                                    czCache.RotatedBoundingBoxMinY = dbZone.RotatedBoundingBoxMinY;
+                                    czCache.RotatedBoundingBoxMinZ = dbZone.RotatedBoundingBoxMinZ;
+                                    czCache.RotatedBoundingBoxMaxX = dbZone.RotatedBoundingBoxMaxX;
+                                    czCache.RotatedBoundingBoxMaxY = dbZone.RotatedBoundingBoxMaxY;
+                                    czCache.RotatedBoundingBoxMaxZ = dbZone.RotatedBoundingBoxMaxZ;
+                                    
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[UniversalClusterService] ✅ Loaded rotated bounding boxes from database for sleeve {sleeveInstanceId}");
+                                }
+                            }
+                        }
+                        catch (Exception dbEx)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Warning($"[UniversalClusterService] ⚠️ Failed to load rotated bounding boxes from database: {dbEx.Message}");
+                        }
+                    }
+                    
+                    return clashZone;
+                }
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[UniversalClusterService] Sleeve Instance ID {sleeveInstanceId} not found in cache (cache size: {_clashZoneCache?.Count ?? 0}) - trying database then XML fallback");
+                
+                // ✅ CRITICAL FIX: Try database first (has rotated bounding boxes), then XML fallback
+                try
+                {
+                    using (var dbContext = new SleeveDbContext(_doc))
+                    {
+                        var repository = new ClashZoneRepository(dbContext);
+                        // Try to find by SleeveInstanceId across all categories
+                        var allCategories = new[] { "Ducts", "Pipes", "Cable Trays", "Duct Accessories" };
+                        foreach (var category in allCategories)
+                        {
+                            var dbZones = repository.GetClashZonesByCategory(category);
+                            var dbZone = dbZones?.FirstOrDefault(z => z.SleeveInstanceId == sleeveInstanceId);
+                            if (dbZone != null)
+                            {
+                                // Add to cache for future lookups
+                                if (dbZone.MepElementIdValue > 0 && !_clashZoneCache.ContainsKey(dbZone.MepElementIdValue))
+                                {
+                                    _clashZoneCache[dbZone.MepElementIdValue] = dbZone;
+                                }
+                                
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[UniversalClusterService] ✅ Found clash zone for Sleeve Instance ID {sleeveInstanceId} in database: {dbZone.Id}");
+                                return dbZone;
+                            }
+                        }
+                    }
+                }
+                catch (Exception dbEx)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[UniversalClusterService] ⚠️ Database lookup failed: {dbEx.Message}");
+                }
+                
+                // ✅ FALLBACK: Try XML if database lookup fails
+                var filtersDirectory = ProjectPathService.GetFiltersDirectory(_doc);
+                
+                if (Directory.Exists(filtersDirectory))
+                {
+                    // ✅ FIX: Only search specific XML file if provided (ONE SOURCE OF TRUTH)
+                    var xmlFiles = string.IsNullOrEmpty(xmlFilePath)
+                        ? Directory.GetFiles(filtersDirectory, "*.xml")
+                        : new[] { xmlFilePath };
+                    
+                    foreach (var xmlFile in xmlFiles)
+                    {
+                        if (File.Exists(xmlFile))
+                        {
+                            var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
+                            using (var reader = new StreamReader(xmlFile))
+                            {
+                                var filter = (OpeningFilter)serializer.Deserialize(reader);
+                                
+                                if (filter?.ClashZoneStorage?.AllZones != null)
+                                {
+                                    var zonesFromRegularXml = GetStorageZones(filter);
+                                    if (zonesFromRegularXml.Count > 0)
                                     {
-                                        if (cz.SleeveInstanceId == sleeveInstanceId)
+                                        foreach (var cz in zonesFromRegularXml)
                                         {
-                                            // ✅ CRITICAL: Reconstruct placement points from XML-serializable properties
-                                            cz.EnsureSleevePlacementPointReconstructed();
-                                            cz.EnsureSleevePlacementPointActiveDocumentReconstructed();
-                                            
-                                            // Add to cache for future lookups
-                                            if (cz.MepElementIdValue > 0 && !_clashZoneCache.ContainsKey(cz.MepElementIdValue))
+                                            if (cz.SleeveInstanceId == sleeveInstanceId)
                                             {
-                                                _clashZoneCache[cz.MepElementIdValue] = cz;
+                                                // ✅ CRITICAL: Reconstruct placement points from XML-serializable properties
+                                                cz.EnsureSleevePlacementPointReconstructed();
+                                                cz.EnsureSleevePlacementPointActiveDocumentReconstructed();
+                                                
+                                                // Add to cache for future lookups
+                                                if (cz.MepElementIdValue > 0 && !_clashZoneCache.ContainsKey(cz.MepElementIdValue))
+                                                {
+                                                    _clashZoneCache[cz.MepElementIdValue] = cz;
+                                                }
+                                                
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                    DebugLogger.Info($"[UniversalClusterService] ✅ Found clash zone for Sleeve Instance ID {sleeveInstanceId} in XML fallback: {cz.Id}");
+                                                return cz;
                                             }
-                                            
-                                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                                DebugLogger.Info($"[UniversalClusterService] ✅ Found clash zone for Sleeve Instance ID {sleeveInstanceId} in XML fallback: {cz.Id}");
-                                            return cz;
                                         }
                                     }
                                 }
@@ -3956,14 +5235,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
                 
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Warning($"[UniversalClusterService] ❌ Sleeve Instance ID {sleeveInstanceId} not found in cache or XML files");
-            return null;
-        }
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[UniversalClusterService] ❌ Sleeve Instance ID {sleeveInstanceId} not found in cache, database, or XML files");
+                return null;
+            }
             catch (Exception ex)
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Error($"[UniversalClusterService] Error getting clash zone by sleeve instance ID: {ex.Message}");
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[UniversalClusterService] Error getting clash zone by sleeve instance ID: {ex.Message}");
                 return null;
             }
         }
@@ -4110,10 +5389,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             string targetCategory,
             out int placed,
             out int deleted,
+            out FamilyInstance placedClusterSleeve,
             string xmlFilePath = null)
         {
             placed = 0;
             deleted = 0;
+            placedClusterSleeve = null;
 
             // ✅ FIXED: Work with XML data directly - determine cluster properties from XML
             // Determine if cluster is circular or rectangular based on XML data
@@ -4327,8 +5608,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             // Step 2: Use ClusterBoundingBoxServices to get accurate bounding box from actual sleeves
-            // ✅ NEW: Pass rotation angle to calculate bounding box in rotated coordinate system
-            var (width, height, depth, mid) = ClusterBoundingBoxServices.GetClusterBoundingBox(actualSleeves, rotationAngle);
+            // ✅ CRITICAL FIX: For rotated sleeves, we need to use rotated bounding box coordinates
+            // from ClashZone data instead of axis-aligned Revit bounding boxes
+            // This ensures cluster size matches individual sleeve sizes in rotated coordinate system
+            var (width, height, depth, mid, rotatedMinX, rotatedMinY, rotatedMinZ, rotatedMaxX, rotatedMaxY, rotatedMaxZ) = GetClusterBoundingBoxWithRotatedCoordinates(cluster, actualSleeves, rotationAngle, xmlFilePath);
             
             // ✅ ROTATED BBOX STORAGE: Calculate rotated bounding box coordinates for database storage
             // If rotated, we need to store the bounding box in rotated coordinate system
@@ -4429,10 +5712,63 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
 
+            // ✅ DETAILED LOGGING: Log calculated dimensions before setting parameters
+            var clusterSizeLogPath = SafeFileLogger.GetLogFilePath("cluster_size_application.log");
+            var sizeLogBuilder = new System.Text.StringBuilder();
+            sizeLogBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ========== CLUSTER SIZE APPLICATION ==========");
+            sizeLogBuilder.AppendLine($"Cluster Sleeve ID: {inst.Id.IntegerValue}");
+            sizeLogBuilder.AppendLine($"Calculated from GetClusterBoundingBoxWithRotatedCoordinates:");
+            sizeLogBuilder.AppendLine($"  Width (internal): {width:F6} = {width * 304.8:F1}mm");
+            sizeLogBuilder.AppendLine($"  Height (internal): {height:F6} = {height * 304.8:F1}mm");
+            sizeLogBuilder.AppendLine($"  Depth (internal): {depth:F6} = {depth * 304.8:F1}mm");
+            sizeLogBuilder.AppendLine($"Rotation Angle: {rotationAngle * 180.0 / Math.PI:F2}°");
+            sizeLogBuilder.AppendLine($"Host Type: {groupKey.hostType}");
+            sizeLogBuilder.AppendLine($"Orientation: {groupKey.orientation}");
+            
             // Set size parameters (swap dimensions if rotated for orientation alignment)
             // ✅ FIX: Apply swap for both walls and framing when X-oriented
+            // ✅ FLOOR: NO dimension swap for Floor - use bounding box values directly
             bool shouldSwapDimensions = ((groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing") && rotationAngle != 0.0);
+            sizeLogBuilder.AppendLine($"Should Swap Dimensions: {shouldSwapDimensions}");
+            sizeLogBuilder.AppendLine();
+            
             SetClusterSizeParameters(doc, inst, cluster, groupKey, width, height, depth, shouldSwapDimensions);
+            
+            // ✅ VERIFY: Read back the actual set values
+            var widthParam = inst.LookupParameter("Width");
+            var heightParam = inst.LookupParameter("Height");
+            var depthParam = inst.LookupParameter("Depth");
+            
+            if (widthParam != null)
+            {
+                double setWidth = widthParam.AsDouble();
+                sizeLogBuilder.AppendLine($"AFTER SETTING PARAMETERS:");
+                sizeLogBuilder.AppendLine($"  Width parameter: {setWidth:F6} = {setWidth * 304.8:F1}mm (expected: {width * 304.8:F1}mm)");
+            }
+            if (heightParam != null)
+            {
+                double setHeight = heightParam.AsDouble();
+                sizeLogBuilder.AppendLine($"  Height parameter: {setHeight:F6} = {setHeight * 304.8:F1}mm (expected: {height * 304.8:F1}mm)");
+            }
+            if (depthParam != null)
+            {
+                double setDepth = depthParam.AsDouble();
+                sizeLogBuilder.AppendLine($"  Depth parameter: {setDepth:F6} = {setDepth * 304.8:F1}mm (expected: {depth * 304.8:F1}mm)");
+            }
+            
+            sizeLogBuilder.AppendLine($"  ========== END CLUSTER SIZE APPLICATION ==========");
+            sizeLogBuilder.AppendLine();
+            
+            try
+            {
+                System.IO.File.AppendAllText(clusterSizeLogPath, sizeLogBuilder.ToString());
+            }
+            catch { }
+            
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Info($"[CLUSTER-SIZE] Cluster {inst.Id.IntegerValue}: Calculated W={width * 304.8:F1}mm × H={height * 304.8:F1}mm, Set W={(widthParam?.AsDouble() ?? 0) * 304.8:F1}mm × H={(heightParam?.AsDouble() ?? 0) * 304.8:F1}mm");
+            }
             
             // ✅ ROTATED BBOX STORAGE: Store rotation data for this cluster sleeve (before returning)
             // This will be used when saving to database to store rotated bounding box coordinates
@@ -4559,6 +5895,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             placed++;
+            placedClusterSleeve = inst; // ✅ CRITICAL: Return placed cluster sleeve for tracking
 
             // ✅ CONSOLIDATION: Get cluster sleeve bounding box from Revit immediately after placement
             BoundingBoxXYZ clusterBbox = null;
@@ -4577,7 +5914,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             // ⚠️ CRITICAL: Mark clash zones as cluster-resolved with the actual cluster sleeve ID and bounding box
-            MarkClashZonesAsClusterResolvedWithSleeveId(cluster, inst.Id, xmlFilePath, clusterBbox);
+            // ✅ Pass rotated bounding box coordinates if available
+            (double minX, double minY, double minZ, double maxX, double maxY, double maxZ)? rotatedBbox = null;
+            if (rotatedMinX.HasValue && rotatedMinY.HasValue && rotatedMinZ.HasValue && 
+                rotatedMaxX.HasValue && rotatedMaxY.HasValue && rotatedMaxZ.HasValue)
+            {
+                rotatedBbox = (rotatedMinX.Value, rotatedMinY.Value, rotatedMinZ.Value, rotatedMaxX.Value, rotatedMaxY.Value, rotatedMaxZ.Value);
+            }
+            MarkClashZonesAsClusterResolvedWithSleeveId(cluster, inst.Id, xmlFilePath, clusterBbox, rotatedBbox);
 
             // ✅ PERFORMANCE: Removed XML file reading from inside PlaceClusterSleeve (was causing 90+ second delays per cluster)
             // Flag updates are handled by MarkClashZonesAsClusterResolvedWithSleeveId which updates XML files
@@ -5045,6 +6389,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var heightParam = inst.LookupParameter("Height");
             var depthParam = inst.LookupParameter("Depth");
 
+            // ✅ DETAILED LOGGING: Log dimension swapping process
+            var dimSwapLogPath = SafeFileLogger.GetLogFilePath("cluster_dimension_swap.log");
+            var swapLogBuilder = new System.Text.StringBuilder();
+            swapLogBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ========== DIMENSION SWAPPING ==========");
+            swapLogBuilder.AppendLine($"Cluster Sleeve ID: {inst.Id.IntegerValue}");
+            swapLogBuilder.AppendLine($"Input dimensions (from GetClusterBoundingBoxWithRotatedCoordinates):");
+            swapLogBuilder.AppendLine($"  Width: {width:F6} = {width * 304.8:F1}mm");
+            swapLogBuilder.AppendLine($"  Height: {height:F6} = {height * 304.8:F1}mm");
+            swapLogBuilder.AppendLine($"  Depth: {depth:F6} = {depth * 304.8:F1}mm");
+            swapLogBuilder.AppendLine($"Host Type: {groupKey.hostType}");
+            swapLogBuilder.AppendLine($"Orientation: {groupKey.orientation}");
+            swapLogBuilder.AppendLine($"Should Swap Dimensions: {shouldSwapDimensions}");
+
             if (groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing")
             {
                 // Step 1: Assign all from bbox
@@ -5052,26 +6409,45 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 double openingHeight = height;
                 double openingDepth = depth;
                 
+                swapLogBuilder.AppendLine($"BEFORE SWAP:");
+                swapLogBuilder.AppendLine($"  openingWidth: {openingWidth * 304.8:F1}mm");
+                swapLogBuilder.AppendLine($"  openingHeight: {openingHeight * 304.8:F1}mm");
+                swapLogBuilder.AppendLine($"  openingDepth: {openingDepth * 304.8:F1}mm");
+                
                 // Step 2: Map world coordinates to sleeve parameters
                 if (groupKey.orientation == "Y")
                 {
                     // Y-wall: Width=H, Height=D, Depth=W
+                    swapLogBuilder.AppendLine($"Y-WALL SWAP: Width=H, Height=D, Depth=W");
                     double tempWidth = openingWidth;
                     double tempHeight = openingHeight;
                     double tempDepth = openingDepth;
                     openingWidth = tempHeight;  // H (608.6mm)
                     openingHeight = tempDepth;  // D (270mm)
                     openingDepth = tempWidth;   // W (200mm)
+                    swapLogBuilder.AppendLine($"AFTER Y-WALL SWAP:");
+                    swapLogBuilder.AppendLine($"  openingWidth (was Height): {openingWidth * 304.8:F1}mm");
+                    swapLogBuilder.AppendLine($"  openingHeight (was Depth): {openingHeight * 304.8:F1}mm");
+                    swapLogBuilder.AppendLine($"  openingDepth (was Width): {openingDepth * 304.8:F1}mm");
                 }
                 else if (shouldSwapDimensions) // X-walls
                 {
                     // X-wall: Width=W, Height=D, Depth=H
+                    swapLogBuilder.AppendLine($"X-WALL SWAP: Width=W, Height=D, Depth=H");
                     double tempWidth = openingWidth;
                     double tempHeight = openingHeight;
                     double tempDepth = openingDepth;
                     openingWidth = tempWidth;   // W (478.8mm)
                     openingHeight = tempDepth;  // D (238.9mm)
                     openingDepth = tempHeight;  // H (200mm)
+                    swapLogBuilder.AppendLine($"AFTER X-WALL SWAP:");
+                    swapLogBuilder.AppendLine($"  openingWidth (stays Width): {openingWidth * 304.8:F1}mm");
+                    swapLogBuilder.AppendLine($"  openingHeight (was Depth): {openingHeight * 304.8:F1}mm");
+                    swapLogBuilder.AppendLine($"  openingDepth (was Height): {openingDepth * 304.8:F1}mm");
+                }
+                else
+                {
+                    swapLogBuilder.AppendLine($"NO SWAP: Using original dimensions");
                 }
                 
                 if (!DeploymentConfiguration.DeploymentMode)
@@ -5086,9 +6462,77 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         $"D={UnitUtils.ConvertFromInternalUnits(openingDepth, UnitTypeId.Millimeters):F1}mm)\n");
                 }
                 
-                // Set Width and Height from bbox dimensions (after swap if needed)
-                if (widthParam != null && !widthParam.IsReadOnly) widthParam.Set(openingWidth);
-                if (heightParam != null && !heightParam.IsReadOnly) heightParam.Set(openingHeight);
+                swapLogBuilder.AppendLine($"SETTING PARAMETERS:");
+                swapLogBuilder.AppendLine($"  Width parameter ← {openingWidth * 304.8:F1}mm");
+                swapLogBuilder.AppendLine($"  Height parameter ← {openingHeight * 304.8:F1}mm");
+                
+                // ✅ CRITICAL FIX: Check if parameters are instance or type parameters
+                // If they're type parameters, we need to set them on the type, not the instance
+                if (widthParam != null)
+                {
+                    swapLogBuilder.AppendLine($"  Width parameter: StorageType={widthParam.StorageType}, IsReadOnly={widthParam.IsReadOnly}, Definition.Name={widthParam.Definition?.Name}");
+                    if (!widthParam.IsReadOnly)
+                    {
+                        try
+                        {
+                            widthParam.Set(openingWidth);
+                            swapLogBuilder.AppendLine($"  ✅ Width parameter SET to {openingWidth * 304.8:F1}mm");
+                            
+                            // ✅ VERIFY IMMEDIATELY: Read back to confirm
+                            double verifyWidth = widthParam.AsDouble();
+                            swapLogBuilder.AppendLine($"  ✅ Width parameter VERIFIED: {verifyWidth * 304.8:F1}mm (expected: {openingWidth * 304.8:F1}mm)");
+                            if (Math.Abs(verifyWidth - openingWidth) > 0.001)
+                            {
+                                swapLogBuilder.AppendLine($"  ⚠️ WARNING: Width parameter mismatch! Set={openingWidth * 304.8:F1}mm, Read={verifyWidth * 304.8:F1}mm");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            swapLogBuilder.AppendLine($"  ❌ ERROR setting Width parameter: {ex.Message}");
+                        }
+                    }
+                    else
+                    {
+                        swapLogBuilder.AppendLine($"  ⚠️ Width parameter is READ-ONLY - cannot set value");
+                    }
+                }
+                else
+                {
+                    swapLogBuilder.AppendLine($"  ❌ Width parameter NOT FOUND");
+                }
+                
+                if (heightParam != null)
+                {
+                    swapLogBuilder.AppendLine($"  Height parameter: StorageType={heightParam.StorageType}, IsReadOnly={heightParam.IsReadOnly}, Definition.Name={heightParam.Definition?.Name}");
+                    if (!heightParam.IsReadOnly)
+                    {
+                        try
+                        {
+                            heightParam.Set(openingHeight);
+                            swapLogBuilder.AppendLine($"  ✅ Height parameter SET to {openingHeight * 304.8:F1}mm");
+                            
+                            // ✅ VERIFY IMMEDIATELY: Read back to confirm
+                            double verifyHeight = heightParam.AsDouble();
+                            swapLogBuilder.AppendLine($"  ✅ Height parameter VERIFIED: {verifyHeight * 304.8:F1}mm (expected: {openingHeight * 304.8:F1}mm)");
+                            if (Math.Abs(verifyHeight - openingHeight) > 0.001)
+                            {
+                                swapLogBuilder.AppendLine($"  ⚠️ WARNING: Height parameter mismatch! Set={openingHeight * 304.8:F1}mm, Read={verifyHeight * 304.8:F1}mm");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            swapLogBuilder.AppendLine($"  ❌ ERROR setting Height parameter: {ex.Message}");
+                        }
+                    }
+                    else
+                    {
+                        swapLogBuilder.AppendLine($"  ⚠️ Height parameter is READ-ONLY - cannot set value");
+                    }
+                }
+                else
+                {
+                    swapLogBuilder.AppendLine($"  ❌ Height parameter NOT FOUND");
+                }
 
                 // Get actual host thickness for Depth parameter (through-wall dimension)
                 // ✅ FIXED: Use XML data instead of Revit API calls
@@ -5112,6 +6556,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLUSTER-DIM] Sleeve {inst.Id}: Calculated Depth = {UnitUtils.ConvertFromInternalUnits(openingDepth, UnitTypeId.Millimeters):F1}mm, Final HostThickness = {UnitUtils.ConvertFromInternalUnits(hostThickness, UnitTypeId.Millimeters):F1}mm\n");
                     
+                swapLogBuilder.AppendLine($"  Depth parameter ← {hostThickness * 304.8:F1}mm (host thickness)");
+                
                 // Set the mapped dimensions (use hostThickness for depth instead of openingDepth)
                 if (widthParam != null && !widthParam.IsReadOnly) widthParam.Set(openingWidth);
                 if (heightParam != null && !heightParam.IsReadOnly) heightParam.Set(openingHeight);
@@ -5119,11 +6565,142 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             else
             {
-                // For other hosts (Floor), use bounding box values
-                if (widthParam != null && !widthParam.IsReadOnly) widthParam.Set(width);
-                if (heightParam != null && !heightParam.IsReadOnly) heightParam.Set(height);
-                if (depthParam != null && !depthParam.IsReadOnly) depthParam.Set(depth);
+                // ✅ FLOOR: No dimension swap for Floor - use bounding box values directly
+                // Floor sleeves use Width, Height, Depth from bounding box without any swapping
+                swapLogBuilder.AppendLine($"FLOOR HOST: No dimension swap, using bounding box values directly");
+                swapLogBuilder.AppendLine($"SETTING PARAMETERS:");
+                swapLogBuilder.AppendLine($"  Width parameter ← {width * 304.8:F1}mm");
+                swapLogBuilder.AppendLine($"  Height parameter ← {height * 304.8:F1}mm");
+                swapLogBuilder.AppendLine($"  Depth parameter ← {depth * 304.8:F1}mm");
+                
+                // ✅ CRITICAL FIX: Check if parameters are instance or type parameters
+                if (widthParam != null)
+                {
+                    swapLogBuilder.AppendLine($"  Width parameter: StorageType={widthParam.StorageType}, IsReadOnly={widthParam.IsReadOnly}, Definition.Name={widthParam.Definition?.Name}");
+                    if (!widthParam.IsReadOnly)
+                    {
+                        try
+                        {
+                            widthParam.Set(width);
+                            swapLogBuilder.AppendLine($"  ✅ Width parameter SET to {width * 304.8:F1}mm");
+                            
+                            // ✅ VERIFY IMMEDIATELY: Read back to confirm
+                            double verifyWidth = widthParam.AsDouble();
+                            swapLogBuilder.AppendLine($"  ✅ Width parameter VERIFIED: {verifyWidth * 304.8:F1}mm (expected: {width * 304.8:F1}mm)");
+                            if (Math.Abs(verifyWidth - width) > 0.001)
+                            {
+                                swapLogBuilder.AppendLine($"  ⚠️ WARNING: Width parameter mismatch! Set={width * 304.8:F1}mm, Read={verifyWidth * 304.8:F1}mm");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            swapLogBuilder.AppendLine($"  ❌ ERROR setting Width parameter: {ex.Message}");
+                        }
+                    }
+                    else
+                    {
+                        swapLogBuilder.AppendLine($"  ⚠️ Width parameter is READ-ONLY - cannot set value");
+                    }
+                }
+                else
+                {
+                    swapLogBuilder.AppendLine($"  ❌ Width parameter NOT FOUND");
+                }
+                
+                if (heightParam != null)
+                {
+                    swapLogBuilder.AppendLine($"  Height parameter: StorageType={heightParam.StorageType}, IsReadOnly={heightParam.IsReadOnly}, Definition.Name={heightParam.Definition?.Name}");
+                    if (!heightParam.IsReadOnly)
+                    {
+                        try
+                        {
+                            heightParam.Set(height);
+                            swapLogBuilder.AppendLine($"  ✅ Height parameter SET to {height * 304.8:F1}mm");
+                            
+                            // ✅ VERIFY IMMEDIATELY: Read back to confirm
+                            double verifyHeight = heightParam.AsDouble();
+                            swapLogBuilder.AppendLine($"  ✅ Height parameter VERIFIED: {verifyHeight * 304.8:F1}mm (expected: {height * 304.8:F1}mm)");
+                            if (Math.Abs(verifyHeight - height) > 0.001)
+                            {
+                                swapLogBuilder.AppendLine($"  ⚠️ WARNING: Height parameter mismatch! Set={height * 304.8:F1}mm, Read={verifyHeight * 304.8:F1}mm");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            swapLogBuilder.AppendLine($"  ❌ ERROR setting Height parameter: {ex.Message}");
+                        }
+                    }
+                    else
+                    {
+                        swapLogBuilder.AppendLine($"  ⚠️ Height parameter is READ-ONLY - cannot set value");
+                    }
+                }
+                else
+                {
+                    swapLogBuilder.AppendLine($"  ❌ Height parameter NOT FOUND");
+                }
+                
+                if (depthParam != null)
+                {
+                    swapLogBuilder.AppendLine($"  Depth parameter: StorageType={depthParam.StorageType}, IsReadOnly={depthParam.IsReadOnly}, Definition.Name={depthParam.Definition?.Name}");
+                    if (!depthParam.IsReadOnly)
+                    {
+                        try
+                        {
+                            depthParam.Set(depth);
+                            swapLogBuilder.AppendLine($"  ✅ Depth parameter SET to {depth * 304.8:F1}mm");
+                            
+                            // ✅ VERIFY IMMEDIATELY: Read back to confirm
+                            double verifyDepth = depthParam.AsDouble();
+                            swapLogBuilder.AppendLine($"  ✅ Depth parameter VERIFIED: {verifyDepth * 304.8:F1}mm (expected: {depth * 304.8:F1}mm)");
+                            if (Math.Abs(verifyDepth - depth) > 0.001)
+                            {
+                                swapLogBuilder.AppendLine($"  ⚠️ WARNING: Depth parameter mismatch! Set={depth * 304.8:F1}mm, Read={verifyDepth * 304.8:F1}mm");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            swapLogBuilder.AppendLine($"  ❌ ERROR setting Depth parameter: {ex.Message}");
+                        }
+                    }
+                    else
+                    {
+                        swapLogBuilder.AppendLine($"  ⚠️ Depth parameter is READ-ONLY - cannot set value");
+                    }
+                }
+                else
+                {
+                    swapLogBuilder.AppendLine($"  ❌ Depth parameter NOT FOUND");
+                }
             }
+            
+            // ✅ VERIFY: Read back actual set values
+            swapLogBuilder.AppendLine();
+            swapLogBuilder.AppendLine($"VERIFICATION (after setting):");
+            if (widthParam != null)
+            {
+                double actualWidth = widthParam.AsDouble();
+                swapLogBuilder.AppendLine($"  Width parameter: {actualWidth * 304.8:F1}mm");
+            }
+            if (heightParam != null)
+            {
+                double actualHeight = heightParam.AsDouble();
+                swapLogBuilder.AppendLine($"  Height parameter: {actualHeight * 304.8:F1}mm");
+            }
+            if (depthParam != null)
+            {
+                double actualDepth = depthParam.AsDouble();
+                swapLogBuilder.AppendLine($"  Depth parameter: {actualDepth * 304.8:F1}mm");
+            }
+            
+            swapLogBuilder.AppendLine($"  ========== END DIMENSION SWAPPING ==========");
+            swapLogBuilder.AppendLine();
+            
+            try
+            {
+                System.IO.File.AppendAllText(dimSwapLogPath, swapLogBuilder.ToString());
+            }
+            catch { }
         }
 
         /// <summary>

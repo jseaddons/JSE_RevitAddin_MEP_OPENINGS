@@ -158,14 +158,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     try
                     {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] 🔍 Attempting to load clash zones from database for category '{category}' (extracted from filename: {Path.GetFileName(xmlFilePath ?? "NULL")})\n");
+                        }
+                        
                         using (var dbContext = new Data.SleeveDbContext(_doc))
                         {
                             var repository = new Data.Repositories.ClashZoneRepository(dbContext);
                             var dbZones = repository.GetClashZonesByCategory(category);
                             
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] 🔍 Database query returned {dbZones?.Count ?? 0} zones for category '{category}'\n");
+                            }
+                            
                             if (dbZones != null && dbZones.Count > 0)
                             {
                                 // ✅ CRITICAL FIX: Load ALL zones (not just those with SleeveInstanceId > 0)
+                                // This includes zones with ClusterSleeveInstanceId > 0 (after clustering)
                                 // SleeveInstanceId may not be saved to DB yet after placement, so we need to match by position
                                 clashZones = dbZones.Where(z => z != null).ToList();
                                 
@@ -178,19 +189,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 // ✅ DEBUG: Log sample zone data to diagnose matching issues
                                 var zonesWithPlacementPoint = clashZones.Count(z => z != null && (z.SleevePlacementPointX != 0 || z.SleevePlacementPointY != 0 || z.SleevePlacementPointZ != 0));
                                 var zonesWithSleeveId = clashZones.Count(z => z != null && z.SleeveInstanceId > 0);
+                                var zonesWithClusterId = clashZones.Count(z => z != null && z.ClusterSleeveInstanceId > 0);
                                 
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
                                     DebugLogger.Info($"[SleeveCoordinateService] ✅ DATABASE-FIRST: Loaded {clashZones.Count} clash zones from database for category '{category}' (all zones, will match by position)");
                                     File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ✅ DATABASE-FIRST: Loaded {clashZones.Count} clash zones from database for category '{category}' (all zones)\n");
-                                    File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] DEBUG: Zones with placement point: {zonesWithPlacementPoint}/{clashZones.Count}, Zones with SleeveInstanceId>0: {zonesWithSleeveId}/{clashZones.Count}\n");
+                                    File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] DEBUG: Zones with placement point: {zonesWithPlacementPoint}/{clashZones.Count}, Zones with SleeveInstanceId>0: {zonesWithSleeveId}/{clashZones.Count}, Zones with ClusterSleeveInstanceId>0: {zonesWithClusterId}/{clashZones.Count}\n");
                                     
                                     // Log sample placement points
                                     var sampleZones = clashZones.Where(z => z != null && (z.SleevePlacementPointX != 0 || z.SleevePlacementPointY != 0)).Take(3).ToList();
                                     foreach (var sample in sampleZones)
                                     {
-                                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] SAMPLE: Zone {sample.Id}, SPP=({sample.SleevePlacementPointX:F3}, {sample.SleevePlacementPointY:F3}, {sample.SleevePlacementPointZ:F3}), SleeveId={sample.SleeveInstanceId}\n");
+                                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] SAMPLE: Zone {sample.Id}, SPP=({sample.SleevePlacementPointX:F3}, {sample.SleevePlacementPointY:F3}, {sample.SleevePlacementPointZ:F3}), SleeveId={sample.SleeveInstanceId}, ClusterId={sample.ClusterSleeveInstanceId}\n");
                                     }
+                                }
+                            }
+                            else
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ⚠️ Database returned 0 zones for category '{category}' - will fall back to XML\n");
                                 }
                             }
                         }
@@ -201,7 +220,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             DebugLogger.Warning($"[SleeveCoordinateService] ⚠️ Database load failed, falling back to XML: {dbEx.Message}");
                             File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ⚠️ Database load failed: {dbEx.Message} (falling back to XML)\n");
+                            File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ⚠️ Stack trace: {dbEx.StackTrace}\n");
                         }
+                    }
+                }
+                else
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ⚠️ Could not extract category from filename '{xmlFilePath ?? "NULL"}' - will fall back to XML\n");
                     }
                 }
                 
@@ -259,6 +286,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // This code is critical for clustering to work correctly. It saves:
                 // 1. SleeveInstanceId - Required for clustering to find sleeves in the database
                 // 2. Bounding box coordinates - Required for clustering to calculate cluster bounding boxes
+                // 3. ClusterSleeveInstanceId and cluster bounding boxes - Required after clustering
                 // If this code is broken, clustering will fail because it won't find sleeves with valid bounding boxes.
                 try
                 {
@@ -268,9 +296,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         int dbUpdatedCount = 0;
                         int dbSleeveIdUpdatedCount = 0;
+                        int dbClusterUpdatedCount = 0;
                         foreach (var cz in clashZones)
                         {
-                            if (cz != null && cz.SleeveInstanceId > 0)
+                            if (cz == null) continue;
+                            
+                            // ✅ INDIVIDUAL SLEEVE: Save individual sleeve data
+                            if (cz.SleeveInstanceId > 0)
                             {
                                 // ✅ CRITICAL: Save SleeveInstanceId first (needed for clustering to find sleeves)
                                 // This must be saved immediately after placement so clustering can find the sleeves
@@ -290,12 +322,72 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     dbUpdatedCount++;
                                 }
                             }
+                            
+                            // ✅ CLUSTER SLEEVE: Save cluster sleeve data (after clustering)
+                            if (cz.ClusterSleeveInstanceId > 0 && 
+                                !(cz.ClusterSleeveBoundingBoxMinX == 0.0 && cz.ClusterSleeveBoundingBoxMinY == 0.0 && cz.ClusterSleeveBoundingBoxMinZ == 0.0 &&
+                                  cz.ClusterSleeveBoundingBoxMaxX == 0.0 && cz.ClusterSleeveBoundingBoxMaxY == 0.0 && cz.ClusterSleeveBoundingBoxMaxZ == 0.0))
+                            {
+                                // Get ClashZoneId (int) from GUID
+                                using (var cmd = dbContext.Connection.CreateCommand())
+                                {
+                                    cmd.CommandText = @"
+                                        SELECT ClashZoneId FROM ClashZones
+                                        WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)
+                                          AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL
+                                        LIMIT 1";
+                                    cmd.Parameters.AddWithValue("@ClashZoneGuid", cz.Id.ToString().ToUpperInvariant());
+                                    var clashZoneIdResult = cmd.ExecuteScalar();
+                                    
+                                    if (clashZoneIdResult != null)
+                                    {
+                                        int clashZoneId = Convert.ToInt32(clashZoneIdResult);
+                                        
+                                        // ✅ Calculate cluster sleeve placement point (midpoint of cluster bbox)
+                                        double placementX = (cz.ClusterSleeveBoundingBoxMinX + cz.ClusterSleeveBoundingBoxMaxX) / 2.0;
+                                        double placementY = (cz.ClusterSleeveBoundingBoxMinY + cz.ClusterSleeveBoundingBoxMaxY) / 2.0;
+                                        double placementZ = (cz.ClusterSleeveBoundingBoxMinZ + cz.ClusterSleeveBoundingBoxMaxZ) / 2.0;
+                                        
+                                        // ✅ Get rotated bounding box if available (from GetClusterBoundingBoxWithRotatedCoordinates)
+                                        double? rotatedMinX = cz.RotatedBoundingBoxMinX;
+                                        double? rotatedMinY = cz.RotatedBoundingBoxMinY;
+                                        double? rotatedMinZ = cz.RotatedBoundingBoxMinZ;
+                                        double? rotatedMaxX = cz.RotatedBoundingBoxMaxX;
+                                        double? rotatedMaxY = cz.RotatedBoundingBoxMaxY;
+                                        double? rotatedMaxZ = cz.RotatedBoundingBoxMaxZ;
+                                        
+                                        // ✅ Get flags
+                                        bool? isClustered = cz.MarkedForClusteringSleeveProcess;
+                                        bool? markedForCluster = cz.MarkedForClusteringSleeveProcess;
+                                        
+                                        repository.UpdateClusterPlacement(
+                                            clashZoneId,
+                                            cz.ClusterSleeveInstanceId,
+                                            cz.ClusterSleeveBoundingBoxMinX, cz.ClusterSleeveBoundingBoxMinY, cz.ClusterSleeveBoundingBoxMinZ,
+                                            cz.ClusterSleeveBoundingBoxMaxX, cz.ClusterSleeveBoundingBoxMaxY, cz.ClusterSleeveBoundingBoxMaxZ,
+                                            placementX, placementY, placementZ,
+                                            rotatedMinX, rotatedMinY, rotatedMinZ,
+                                            rotatedMaxX, rotatedMaxY, rotatedMaxZ,
+                                            isClustered, markedForCluster);
+                                        dbClusterUpdatedCount++;
+                                        
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ✅ Saved cluster data for ClashZone {cz.Id}: ClusterId={cz.ClusterSleeveInstanceId}, Placement=({placementX:F6}, {placementY:F6}, {placementZ:F6}), RotatedBbox={rotatedMinX?.ToString("F6") ?? "NULL"}\n");
+                                        }
+                                    }
+                                    else if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ⚠️ Could not find ClashZoneId for GUID {cz.Id} to update cluster bounding box\n");
+                                    }
+                                }
+                            }
                         }
                         
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Info($"[SleeveCoordinateService] ✅ DATABASE: Updated SleeveInstanceId for {dbSleeveIdUpdatedCount} clash zones, bounding boxes for {dbUpdatedCount} clash zones in database");
-                            File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ✅ DATABASE: Updated SleeveInstanceId for {dbSleeveIdUpdatedCount} zones, bounding boxes for {dbUpdatedCount} zones\n");
+                            DebugLogger.Info($"[SleeveCoordinateService] ✅ DATABASE: Updated SleeveInstanceId for {dbSleeveIdUpdatedCount} clash zones, bounding boxes for {dbUpdatedCount} clash zones, cluster bounding boxes for {dbClusterUpdatedCount} clash zones in database");
+                            File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ✅ DATABASE: Updated SleeveInstanceId for {dbSleeveIdUpdatedCount} zones, bounding boxes for {dbUpdatedCount} zones, cluster bounding boxes for {dbClusterUpdatedCount} zones\n");
                         }
                     }
                 }
@@ -1242,20 +1334,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             DebugLogger.Info($"[CLUSTER-CHECK] ClashZone has ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}, SleeveInstanceId={clashZone.SleeveInstanceId}\n");
                     }
                     
-                    // ✅ CRITICAL FIX: Try direct ID match first (for individual sleeves)
-                    // This MUST succeed if SleeveInstanceId > 0, as the sleeve was just placed
-                    if (clashZone.SleeveInstanceId > 0)
+                    // ✅ CRITICAL FIX: Try direct ID match first (for individual sleeves OR cluster sleeves)
+                    // This MUST succeed if SleeveInstanceId > 0 (individual) or ClusterSleeveInstanceId > 0 (cluster)
+                    bool isClusterSleeve = clashZone.ClusterSleeveInstanceId > 0 && clashZone.SleeveInstanceId <= 0;
+                    int targetSleeveId = isClusterSleeve ? clashZone.ClusterSleeveInstanceId : clashZone.SleeveInstanceId;
+                    
+                    if (targetSleeveId > 0)
                     {
                         try
                         {
-                            var sleeveElement = _doc.GetElement(new ElementId(clashZone.SleeveInstanceId));
+                            var sleeveElement = _doc.GetElement(new ElementId(targetSleeveId));
                             if (sleeveElement is FamilyInstance sleeve && sleeve.Symbol.FamilyName.Contains("Opening"))
                             {
                                 matchedSleeve = sleeve;
                                 try {
                                     if (!DeploymentConfiguration.DeploymentMode)
                                     {
-                                        System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [DIRECT-ID-MATCH] Found individual sleeve {clashZone.SleeveInstanceId} by ID\n");
+                                        string sleeveType = isClusterSleeve ? "cluster" : "individual";
+                                        System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [DIRECT-ID-MATCH] Found {sleeveType} sleeve {targetSleeveId} by ID\n");
                                     }
                 } catch { }
                             }
@@ -1264,13 +1360,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 try {
                                     if (!DeploymentConfiguration.DeploymentMode)
                                     {
-                                        System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [DIRECT-ID-MATCH] Sleeve {clashZone.SleeveInstanceId} not found in document - may have been deleted\n");
+                                        string sleeveType = isClusterSleeve ? "cluster" : "individual";
+                                        System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [DIRECT-ID-MATCH] {sleeveType} sleeve {targetSleeveId} not found in document - may have been deleted\n");
                                     }
                 } catch { }
                             }
                             else
                             {
-                                try { System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [DIRECT-ID-MATCH] Element {clashZone.SleeveInstanceId} is not a FamilyInstance with Opening name (Type={sleeveElement?.GetType()?.Name})\n"); } catch { }
+                                try { System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [DIRECT-ID-MATCH] Element {targetSleeveId} is not a FamilyInstance with Opening name (Type={sleeveElement?.GetType()?.Name})\n"); } catch { }
                             }
                         }
                         catch (Exception ex)
@@ -1278,17 +1375,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             try {
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
-                                    System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [DIRECT-ID-MATCH] Error getting sleeve {clashZone.SleeveInstanceId}: {ex.Message}\n");
+                                    System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [DIRECT-ID-MATCH] Error getting sleeve {targetSleeveId}: {ex.Message}\n");
                                 }
                 } catch { }
                         }
                     }
                     
-                    // ✅ CONSOLIDATION: Cluster bounding boxes are now handled by UniversalClusterService immediately after placement
-                    // SleeveCoordinateService only handles individual sleeve bounding boxes
-                    // No need to update cluster bounding boxes here - they're already set correctly by UniversalClusterService
-                    
-                    // ✅ CRITICAL FIX: If no direct match, try position matching
+                    // ✅ CRITICAL FIX: If no direct match for cluster sleeve, try position matching
+                    // For cluster sleeves, we need to update cluster bounding boxes, not individual sleeve bounding boxes
                     // Use SleevePlacementPoint if available, otherwise fall back to IntersectionPoint
                     double matchX = clashZone.SleevePlacementPointX;
                     double matchY = clashZone.SleevePlacementPointY;
@@ -1357,37 +1451,61 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var bbox = matchedSleeve.get_BoundingBox(null);
                         if (bbox != null)
                         {
-                            // ✅ CRITICAL LOGGING: Log BEFORE SetSleeveBoundingBox - Direct file write to placement_debug.log
-                            try 
-                            { 
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_BEFORE_SET] ClashZone {clashZone.Id}, Sleeve {clashZone.SleeveInstanceId}: " +
-                                    $"BEFORE - ClashZone has: MinX={clashZone.SleeveBoundingBoxMinX:F6}, MinY={clashZone.SleeveBoundingBoxMinY:F6}, MinZ={clashZone.SleeveBoundingBoxMinZ:F6}, " +
-                                    $"MaxX={clashZone.SleeveBoundingBoxMaxX:F6}, MaxY={clashZone.SleeveBoundingBoxMaxY:F6}, MaxZ={clashZone.SleeveBoundingBoxMaxZ:F6}\n");
-                                }
+                            if (isClusterSleeve)
+                            {
+                                // ✅ CLUSTER SLEEVE: Update cluster bounding box coordinates
+                                clashZone.ClusterSleeveBoundingBoxMinX = bbox.Min.X;
+                                clashZone.ClusterSleeveBoundingBoxMinY = bbox.Min.Y;
+                                clashZone.ClusterSleeveBoundingBoxMinZ = bbox.Min.Z;
+                                clashZone.ClusterSleeveBoundingBoxMaxX = bbox.Max.X;
+                                clashZone.ClusterSleeveBoundingBoxMaxY = bbox.Max.Y;
+                                clashZone.ClusterSleeveBoundingBoxMaxZ = bbox.Max.Z;
                                 
-                                System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_BEFORE_SET] Revit bbox from sleeve {matchedSleeve.Id.IntegerValue}: " +
-                                    $"Min=({bbox.Min.X:F6}, {bbox.Min.Y:F6}, {bbox.Min.Z:F6}), Max=({bbox.Max.X:F6}, {bbox.Max.Y:F6}, {bbox.Max.Z:F6})\n");
-                            } 
-                            catch { }
-                            
-                            // ✅ CORRECT: Update bounding box and instance ID
-                            clashZone.SetSleeveBoundingBox(bbox);
-                            
-                            // ✅ CRITICAL LOGGING: Log AFTER SetSleeveBoundingBox - Direct file write to placement_debug.log
-                            try 
-                            { 
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_AFTER_SET] ClashZone {clashZone.Id}, Sleeve {clashZone.SleeveInstanceId}: " +
-                                    $"AFTER - ClashZone now has: MinX={clashZone.SleeveBoundingBoxMinX:F6}, MinY={clashZone.SleeveBoundingBoxMinY:F6}, MinZ={clashZone.SleeveBoundingBoxMinZ:F6}, " +
-                                    $"MaxX={clashZone.SleeveBoundingBoxMaxX:F6}, MaxY={clashZone.SleeveBoundingBoxMaxY:F6}, MaxZ={clashZone.SleeveBoundingBoxMaxZ:F6}\n");
-                                }
+                                try 
+                                { 
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-BBOX-UPDATED] ClashZone {clashZone.Id}, Cluster Sleeve {targetSleeveId}: " +
+                                        $"Min=({bbox.Min.X:F6}, {bbox.Min.Y:F6}, {bbox.Min.Z:F6}), Max=({bbox.Max.X:F6}, {bbox.Max.Y:F6}, {bbox.Max.Z:F6})\n");
+                                    }
+                                } 
+                                catch { }
+                            }
+                            else
+                            {
+                                // ✅ INDIVIDUAL SLEEVE: Update individual sleeve bounding box
+                                // ✅ CRITICAL LOGGING: Log BEFORE SetSleeveBoundingBox - Direct file write to placement_debug.log
+                                try 
+                                { 
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_BEFORE_SET] ClashZone {clashZone.Id}, Sleeve {clashZone.SleeveInstanceId}: " +
+                                        $"BEFORE - ClashZone has: MinX={clashZone.SleeveBoundingBoxMinX:F6}, MinY={clashZone.SleeveBoundingBoxMinY:F6}, MinZ={clashZone.SleeveBoundingBoxMinZ:F6}, " +
+                                        $"MaxX={clashZone.SleeveBoundingBoxMaxX:F6}, MaxY={clashZone.SleeveBoundingBoxMaxY:F6}, MaxZ={clashZone.SleeveBoundingBoxMaxZ:F6}\n");
+                                    }
+                                    
+                                    System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_BEFORE_SET] Revit bbox from sleeve {matchedSleeve.Id.IntegerValue}: " +
+                                        $"Min=({bbox.Min.X:F6}, {bbox.Min.Y:F6}, {bbox.Min.Z:F6}), Max=({bbox.Max.X:F6}, {bbox.Max.Y:F6}, {bbox.Max.Z:F6})\n");
+                                } 
+                                catch { }
                                 
-                                System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UPDATED] Sleeve {clashZone.SleeveInstanceId}: Min=({bbox.Min.X:F6}, {bbox.Min.Y:F6}, {bbox.Min.Z:F6}), Max=({bbox.Max.X:F6}, {bbox.Max.Y:F6}, {bbox.Max.Z:F6})\n");
-                            } 
-                            catch { }
+                                // ✅ CORRECT: Update bounding box and instance ID
+                                clashZone.SetSleeveBoundingBox(bbox);
+                                
+                                // ✅ CRITICAL LOGGING: Log AFTER SetSleeveBoundingBox - Direct file write to placement_debug.log
+                                try 
+                                { 
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_AFTER_SET] ClashZone {clashZone.Id}, Sleeve {clashZone.SleeveInstanceId}: " +
+                                        $"AFTER - ClashZone now has: MinX={clashZone.SleeveBoundingBoxMinX:F6}, MinY={clashZone.SleeveBoundingBoxMinY:F6}, MinZ={clashZone.SleeveBoundingBoxMinZ:F6}, " +
+                                        $"MaxX={clashZone.SleeveBoundingBoxMaxX:F6}, MaxY={clashZone.SleeveBoundingBoxMaxY:F6}, MaxZ={clashZone.SleeveBoundingBoxMaxZ:F6}\n");
+                                    }
+                                    
+                                    System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UPDATED] Sleeve {clashZone.SleeveInstanceId}: Min=({bbox.Min.X:F6}, {bbox.Min.Y:F6}, {bbox.Min.Z:F6}), Max=({bbox.Max.X:F6}, {bbox.Max.Y:F6}, {bbox.Max.Z:F6})\n");
+                                } 
+                                catch { }
+                            }
                         }
                         else
                         {
@@ -1395,7 +1513,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
                                                                 if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[NO-BBOX] Sleeve {clashZone.SleeveInstanceId} has no bounding box\n");
+                                    DebugLogger.Info($"[NO-BBOX] Sleeve {targetSleeveId} ({(isClusterSleeve ? "cluster" : "individual")}) has no bounding box\n");
                             }
                         }
                     }
