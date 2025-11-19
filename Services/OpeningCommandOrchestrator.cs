@@ -546,16 +546,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 DebugLogger.Info($"[OpeningCommandOrchestrator] ✅ About to run cleanup with {placedClusterSleeves.Count} cluster sleeves in protection set: {string.Join(", ", placedClusterSleeves.Select(c => c.Id.IntegerValue))}");
                             }
                             
-                            using (var cleanupTx = new Transaction(_document, $"Cleanup sleeves within clusters"))
+                        using (var cleanupTx = new Transaction(_document, $"Cleanup sleeves within clusters"))
+                        {
+                            cleanupTx.Start();
+                            var additionalDeleted = clusterServiceReload.CleanupSleevesWithinClustersAfterXmlSave(_document, placedClusterSleeves, xmlFilePath);
+                            cleanupTx.Commit();
+                            
+                            if (additionalDeleted > 0 && !DeploymentConfiguration.DeploymentMode)
                             {
-                                cleanupTx.Start();
-                                var additionalDeleted = clusterServiceReload.CleanupSleevesWithinClustersAfterXmlSave(_document, placedClusterSleeves, xmlFilePath);
-                                cleanupTx.Commit();
-                                
-                                if (additionalDeleted > 0 && !DeploymentConfiguration.DeploymentMode)
-                                {
-                                                                    if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Info($"[OpeningCommandOrchestrator] ✓ Cleaned up {additionalDeleted} additional sleeves within cluster bounding boxes");
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[OpeningCommandOrchestrator] ✓ Cleaned up {additionalDeleted} additional sleeves within cluster bounding boxes");
                                 }
                             }
                         }

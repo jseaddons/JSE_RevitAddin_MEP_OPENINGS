@@ -615,6 +615,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             FamilyInstance placedClusterSleeve = null;
                             int placed1 = 0;
                             int deleted1 = 0;
+                            int? capturedClusterSleeveId = null; // ✅ CRITICAL FIX FOR DUCTS: Declare in outer scope so it's accessible everywhere
                             
                             try
                             {
@@ -624,11 +625,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     System.IO.File.AppendAllText(clusterDebugLogPath, $"[CLUSTER-PLACEMENT-CALL] About to call PlaceClusterSleeve for cluster with {cluster.Count} sleeves\n");
                                 }
                                 
-                                PlaceClusterSleeve(doc, cluster, groupKey, targetCategory, out placed1, out deleted1, out placedClusterSleeve, xmlFilePath);
+                                int? capturedIdFromPlace = null;
+                                PlaceClusterSleeve(doc, cluster, groupKey, targetCategory, out placed1, out deleted1, out placedClusterSleeve, out capturedIdFromPlace, xmlFilePath);
+                                
+                                // ✅ CRITICAL FIX FOR DUCTS: Use captured ID from PlaceClusterSleeve output parameter
+                                // The ID was captured INSIDE PlaceClusterSleeve while element was valid
+                                capturedClusterSleeveId = capturedIdFromPlace;
                                 
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
                                     string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                                    if (capturedClusterSleeveId.HasValue)
+                                    {
+                                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[CLUSTER-ID-CAPTURE] ✅ Using captured ID from PlaceClusterSleeve output parameter: {capturedClusterSleeveId.Value} (category={targetCategory})\n");
+                                    }
+                                    else
+                                    {
+                                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[CLUSTER-ID-CAPTURE] ⚠️ WARNING: No captured ID from PlaceClusterSleeve (category={targetCategory}, placed1={placed1}, deleted1={deleted1})\n");
+                                    }
                                     System.IO.File.AppendAllText(clusterDebugLogPath, $"[CLUSTER-PLACEMENT-CALL] ✅ PlaceClusterSleeve call completed (no exception)\n");
                                 }
                             }
@@ -643,39 +657,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     System.IO.File.AppendAllText(clusterDebugLogPath, errorLog);
                                 }
                                 throw; // Re-throw to prevent continuing
-                            }
-                            
-                            // ✅ CRITICAL FIX FOR DUCTS: Capture ID IMMEDIATELY after PlaceClusterSleeve returns
-                            // This MUST happen BEFORE any logging or other operations that access the element
-                            // The element reference might become invalid if accessed later, so capture the ID NOW
-                            int? capturedClusterSleeveId = null;
-                            if (placedClusterSleeve != null)
-                            {
-                                try
-                                {
-                                    // ✅ CRITICAL: Capture ID IMMEDIATELY - don't wait for logging
-                                    capturedClusterSleeveId = placedClusterSleeve.Id.IntegerValue;
-                                    
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
-                                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[CLUSTER-ID-CAPTURE] ✅ IMMEDIATELY captured cluster sleeve ID: {capturedClusterSleeveId.Value} (category={targetCategory})\n");
-                                    }
-                                }
-                                catch (Exception idEx)
-                                {
-                                    // Element has become invalid IMMEDIATELY after PlaceClusterSleeve returns
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
-                                        string errorMsg = $"[CLUSTER-ID-CAPTURE] ❌❌❌ CRITICAL: Cannot access placedClusterSleeve.Id IMMEDIATELY after PlaceClusterSleeve returns: {idEx.Message}\n";
-                                        errorMsg += $"[CLUSTER-ID-CAPTURE] Category: {targetCategory}\n";
-                                        errorMsg += $"[CLUSTER-ID-CAPTURE] This suggests the element was invalidated INSIDE PlaceClusterSleeve or transaction was rolled back.\n";
-                                        errorMsg += $"[CLUSTER-ID-CAPTURE] placed1={placed1}, deleted1={deleted1}\n";
-                                        DebugLogger.Error(errorMsg);
-                                        System.IO.File.AppendAllText(clusterDebugLogPath, errorMsg);
-                                    }
-                                }
                             }
                             
                             // ✅ CRITICAL LOGGING: Log PlaceClusterSleeve return values AFTER capturing ID
@@ -2618,6 +2599,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] 📐 EXECUTING: AXIS-ALIGNED CLUSTERING PATH\n");
                                     System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Using BoundingBoxesOverlapFromXml\n");
                                 }
+                                // ✅ ENHANCED LOGGING: Get detailed distance info before calling BoundingBoxesOverlapFromXml
+                                if (logClusteringPath)
+                                {
+                                    try
+                                    {
+                                        var bbox1 = clusterSleeve.BoundingBox;
+                                        var bbox2 = otherSleeve.BoundingBox;
+                                        if (bbox1 != null && bbox2 != null)
+                                        {
+                                            string hostType = clusterSleeve.HostType ?? "Unknown";
+                                            string sleeveOrientation = clusterSleeve.Orientation ?? "Unknown";
+                                            
+                                            double minDistance;
+                                            if (hostType == "Floor")
+                                            {
+                                                minDistance = CalculateMinimumDistance2D(
+                                                    bbox1.Min.X, bbox1.Min.Y, bbox1.Max.X, bbox1.Max.Y,
+                                                    bbox2.Min.X, bbox2.Min.Y, bbox2.Max.X, bbox2.Max.Y);
+                                            }
+                                            else
+                                            {
+                                                minDistance = CalculateMinimumDistance3D(
+                                                    bbox1.Min.X, bbox1.Min.Y, bbox1.Min.Z, bbox1.Max.X, bbox1.Max.Y, bbox1.Max.Z,
+                                                    bbox2.Min.X, bbox2.Min.Y, bbox2.Min.Z, bbox2.Max.X, bbox2.Max.Y, bbox2.Max.Z);
+                                            }
+                                            
+                                            System.IO.File.AppendAllText(clusterDebugLogPath, 
+                                                $"[{DateTime.Now:HH:mm:ss.fff}] [AXIS-ALIGNED-DISTANCE] Sleeve {clusterSleeve.SleeveInstanceId} vs {otherSleeve.SleeveInstanceId}: " +
+                                                $"Host={hostType}, Ori={sleeveOrientation}, " +
+                                                $"Distance={UnitUtils.ConvertFromInternalUnits(minDistance, UnitTypeId.Millimeters):F1}mm, " +
+                                                $"Tolerance={UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm\n");
+                                        }
+                                    }
+                                    catch (Exception logEx)
+                                    {
+                                        // Ignore logging errors
+                                    }
+                                }
                                 shouldCluster = BoundingBoxesOverlapFromXml(clusterSleeve, otherSleeve, toleranceDist);
                                 if (logClusteringPath)
                                 {
@@ -3628,7 +3647,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // ONLY for round pipes/ducts - rectangular sleeves use bounding box logic below
                     var placement1 = GetPlacementPointFromSleeve(sleeve1);
                     var placement2 = GetPlacementPointFromSleeve(sleeve2);
-                    var (radius1, radius2) = GetSleeveRadiiFromSleeves(sleeve1, sleeve2);
+                    // ✅ FIX: Cannot deconstruct tuple from dynamic - store result first, then access values
+                    var radiiResult = GetSleeveRadiiFromSleeves(sleeve1, sleeve2);
+                    double radius1 = radiiResult.radius1;
+                    double radius2 = radiiResult.radius2;
                     
                     // ✅ Only proceed if we have valid placement points AND both sleeves have diameter data (round)
                     if (placement1 != null && placement2 != null && radius1 > 0 && radius2 > 0)
@@ -3680,10 +3702,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // ✅ DEBUG: Log the calculation details
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            var placementDebugPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                            var roundPipeProximityLogPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
                             try 
                             { 
-                                System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [ROUND-PIPE-PROXIMITY] Sleeve {sleeve1.SleeveInstanceId} vs {sleeve2.SleeveInstanceId}: " +
+                                System.IO.File.AppendAllText(roundPipeProximityLogPath, $"[{DateTime.Now:HH:mm:ss}] [ROUND-PIPE-PROXIMITY] Sleeve {sleeve1.SleeveInstanceId} vs {sleeve2.SleeveInstanceId}: " +
                                     $"Center-to-Center={UnitUtils.ConvertFromInternalUnits(centerToCenterDistance, UnitTypeId.Millimeters):F1}mm, " +
                                     $"Radius1={UnitUtils.ConvertFromInternalUnits(radius1, UnitTypeId.Millimeters):F1}mm, " +
                                     $"Radius2={UnitUtils.ConvertFromInternalUnits(radius2, UnitTypeId.Millimeters):F1}mm, " +
@@ -5871,11 +5893,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             out int placed,
             out int deleted,
             out FamilyInstance placedClusterSleeve,
+            out int? capturedClusterSleeveId, // ✅ CRITICAL FIX FOR DUCTS: Return captured ID directly
             string xmlFilePath = null)
         {
             placed = 0;
             deleted = 0;
             placedClusterSleeve = null;
+            capturedClusterSleeveId = null; // ✅ CRITICAL FIX FOR DUCTS: Initialize captured ID
             
             // ✅ CRITICAL DEBUGGING: Log groupKey values to identify category-specific issues
             if (!DeploymentConfiguration.DeploymentMode)
@@ -5933,6 +5957,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DebugLogger.Error(earlyReturnMsg);
                     System.IO.File.AppendAllText(clusterDebugLogPath, earlyReturnMsg);
                 }
+                capturedClusterSleeveId = null; // ✅ Assign before return
                 return;
             }
             
@@ -5988,6 +6013,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         System.IO.File.AppendAllText(clusterDebugLogPath, earlyReturnMsg);
                         DebugLogger.Error($"[ClusterService] Failed to load universal family '{familyName}'");
                     }
+                    capturedClusterSleeveId = null; // ✅ Assign before return
                     return;
                 }
 
@@ -6008,6 +6034,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         System.IO.File.AppendAllText(clusterDebugLogPath, earlyReturnMsg);
                         DebugLogger.Error($"[ClusterService] Still no family found for '{familyName}' after loading attempt");
                     }
+                    capturedClusterSleeveId = null; // ✅ Assign before return
                     return;
                 }
             }
@@ -6052,6 +6079,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     System.IO.File.AppendAllText(clusterDebugLogPath, earlyReturnMsg);
                     DebugLogger.Error($"[ClusterService] No actual sleeves found for cluster group, skipping placement.");
                 }
+                capturedClusterSleeveId = null; // ✅ Assign before return
                 return;
             }
             
@@ -6426,6 +6454,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     System.IO.File.AppendAllText(clusterDebugLogPath, earlyReturnMsg);
                     DebugLogger.Log($"Reference level not found for cluster sleeve. Skipping cluster.");
                 }
+                capturedClusterSleeveId = null; // ✅ Assign before return
                 return;
             }
 
@@ -6473,6 +6502,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DebugLogger.Error(errorMsg);
                     System.IO.File.AppendAllText(clusterDebugLogPath, errorMsg);
                 }
+                capturedClusterSleeveId = null; // ✅ Assign before return
                 return; // Exit early if creation failed
             }
 
@@ -6768,6 +6798,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             // Delete originals - collect ElementIds first, then delete in batch
             var sleevesToDelete = new List<ElementId>();
+            var clusterFormationSleeveIds = new List<int>(); // ✅ Track which sleeves are part of cluster formation
+            
             foreach (var s in cluster)
             {
                 try
@@ -6776,34 +6808,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var sleeveElementId = new ElementId(s.SleeveInstanceId);
                     var sleeveElement = doc.GetElement(sleeveElementId);
                     
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[DELETE] Checking sleeve {sleeveElementId.IntegerValue}: found={sleeveElement != null}, isFamilyInstance={sleeveElement is FamilyInstance}\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[DELETE] Checking sleeve {sleeveElementId.IntegerValue}: found={sleeveElement != null}, isFamilyInstance={sleeveElement is FamilyInstance}\n");
+                    }
                     
                     if (sleeveElement != null && sleeveElement is FamilyInstance sleeveInstance)
                     {
                         sleevesToDelete.Add(sleeveElementId);
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Log($"[ClusterService] Queued for deletion: individual sleeve {sleeveElementId.IntegerValue}");
+                        clusterFormationSleeveIds.Add(sleeveElementId.IntegerValue); // ✅ Track cluster formation sleeves
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Log($"[ClusterService] Queued for deletion: individual sleeve {sleeveElementId.IntegerValue} (part of cluster formation)");
+                            string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                            System.IO.File.AppendAllText(clusterDebugLogPath, $"[DELETE-CLUSTER-FORMATION] ✅ Queued cluster formation sleeve {sleeveElementId.IntegerValue} for deletion\n");
+                        }
                     }
                     else
                     {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Warning($"[ClusterService] Could not find sleeve {s.SleeveInstanceId} for deletion");
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[DELETE] ✗ Sleeve {sleeveElementId.IntegerValue} not found or not a FamilyInstance\n");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Warning($"[ClusterService] Could not find sleeve {s.SleeveInstanceId} for deletion");
+                            DebugLogger.Info($"[DELETE] ✗ Sleeve {sleeveElementId.IntegerValue} not found or not a FamilyInstance\n");
+                        }
                     }
                 }
                 catch (Exception ex)
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Error($"[ClusterService] Error preparing sleeve {s.SleeveInstanceId} for deletion: {ex.Message}");
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[DELETE] ✗ Exception preparing sleeve: {ex.Message}\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Error($"[ClusterService] Error preparing sleeve {s.SleeveInstanceId} for deletion: {ex.Message}");
+                        DebugLogger.Info($"[DELETE] ✗ Exception preparing sleeve: {ex.Message}\n");
+                    }
                 }
             }
             
-                        if (!DeploymentConfiguration.DeploymentMode)
-            DebugLogger.Info($"[DELETE] Total sleeves queued for deletion: {sleevesToDelete.Count}\n");
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Info($"[DELETE] Total cluster formation sleeves queued for deletion: {sleevesToDelete.Count} (IDs: {string.Join(", ", clusterFormationSleeveIds)})\n");
+                string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                System.IO.File.AppendAllText(clusterDebugLogPath, $"[DELETE-CLUSTER-FORMATION] Total cluster formation sleeves: {sleevesToDelete.Count} (IDs: {string.Join(", ", clusterFormationSleeveIds)})\n");
+            }
             
             // Delete all sleeves in batch (within the same transaction)
             if (sleevesToDelete.Count > 0)
@@ -6861,18 +6906,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 try
                 {
+                    int clusterFormationCount = clusterFormationSleeveIds.Count;
                     int edgeCaseDeleted = DeleteEdgeCaseSleevesInClusterZone(doc, clusterBbox, targetCategory, cluster, inst.Id, xmlFilePath);
                     deleted += edgeCaseDeleted;
                     
-                    if (edgeCaseDeleted > 0 && !DeploymentConfiguration.DeploymentMode)
+                    if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        DebugLogger.Info($"[DELETE] ✅ EDGE CASE: Deleted {edgeCaseDeleted} individual sleeves that fell in cluster zone (cluster sleeve {inst.Id.IntegerValue})");
+                        string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                        string deleteSummary = $"[DELETE-SUMMARY] Cluster sleeve {inst.Id.IntegerValue}: Deleted {clusterFormationCount} cluster formation sleeves + {edgeCaseDeleted} edge case sleeves = {deleted} total\n";
+                        DebugLogger.Info(deleteSummary);
+                        System.IO.File.AppendAllText(clusterDebugLogPath, deleteSummary);
+                        
+                        if (edgeCaseDeleted > 0)
+                        {
+                            DebugLogger.Info($"[DELETE] ✅ EDGE CASE: Deleted {edgeCaseDeleted} individual sleeves that fell in cluster zone (cluster sleeve {inst.Id.IntegerValue})");
+                        }
                     }
                 }
                 catch (Exception edgeEx)
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
+                    {
                         DebugLogger.Error($"[ClusterService] Error deleting edge case sleeves: {edgeEx.Message}");
+                        string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[DELETE-EDGE-CASE-ERROR] ❌ Error deleting edge case sleeves: {edgeEx.Message}\n");
+                    }
                 }
             }
         }
@@ -6924,15 +6982,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // 3. Are NOT part of cluster formation
                 // 4. Are individual sleeves (not cluster sleeves)
                 var edgeCaseSleeves = new List<FamilyInstance>();
+                int clusterSleeveIdValue = clusterSleeveId.IntegerValue; // ✅ CRITICAL: Capture cluster sleeve ID to protect it
+                
                 foreach (var sleeve in allSleeves)
                 {
+                    int sleeveId = sleeve.Id.IntegerValue;
+                    
+                    // ✅ CRITICAL PROTECTION #1: Skip if this IS the cluster sleeve itself
+                    if (sleeveId == clusterSleeveIdValue)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Warning($"[EDGE-CASE] ⚠️ PROTECTED: Skipping cluster sleeve {sleeveId} (should never be deleted)");
+                        }
+                        continue;
+                    }
+                    
                     // Skip if part of cluster formation
-                    if (clusterFormationSleeveIds.Contains(sleeve.Id.IntegerValue))
+                    if (clusterFormationSleeveIds.Contains(sleeveId))
                         continue;
                     
-                    // Skip if it's a cluster sleeve (check by family name or parameters)
+                    // ✅ CRITICAL PROTECTION #2: Skip if it's a cluster sleeve (check by family name or parameters)
                     if (sleeve.Symbol?.FamilyName?.Contains("Cluster", StringComparison.OrdinalIgnoreCase) == true)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Warning($"[EDGE-CASE] ⚠️ PROTECTED: Skipping cluster sleeve {sleeveId} (family name contains 'Cluster')");
+                        }
                         continue;
+                    }
+                    
+                    // ✅ CRITICAL PROTECTION #3: Check if sleeve has "Cluster Sleeve Instance ID" parameter set to its own ID
+                    var clusterInstanceIdParam = sleeve.LookupParameter("Cluster Sleeve Instance ID");
+                    if (clusterInstanceIdParam != null)
+                    {
+                        int clusterInstanceId = clusterInstanceIdParam.AsInteger();
+                        if (clusterInstanceId > 0 && clusterInstanceId == sleeveId)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Warning($"[EDGE-CASE] ⚠️ PROTECTED: Skipping cluster sleeve {sleeveId} (Cluster Sleeve Instance ID parameter = {clusterInstanceId})");
+                            }
+                            continue;
+                        }
+                    }
                     
                     // Check category match
                     string sleeveCategory = GetCategoryFromMepElementId(sleeve);
@@ -7322,7 +7415,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             swapLogBuilder.AppendLine($"  ✅ Width parameter SET to {openingWidth * 304.8:F1}mm");
                             
                             // ✅ VERIFY IMMEDIATELY: Read back to confirm
-                            double verifyWidth = widthParam.AsDouble();
+                            double verifyWidth = widthParam?.AsDouble() ?? 0.0;
                             swapLogBuilder.AppendLine($"  ✅ Width parameter VERIFIED: {verifyWidth * 304.8:F1}mm (expected: {openingWidth * 304.8:F1}mm)");
                             if (Math.Abs(verifyWidth - openingWidth) > 0.001)
                             {
@@ -7355,7 +7448,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             swapLogBuilder.AppendLine($"  ✅ Height parameter SET to {openingHeight * 304.8:F1}mm");
                             
                             // ✅ VERIFY IMMEDIATELY: Read back to confirm
-                            double verifyHeight = heightParam.AsDouble();
+                            double verifyHeight = heightParam?.AsDouble() ?? 0.0;
                             swapLogBuilder.AppendLine($"  ✅ Height parameter VERIFIED: {verifyHeight * 304.8:F1}mm (expected: {openingHeight * 304.8:F1}mm)");
                             if (Math.Abs(verifyHeight - openingHeight) > 0.001)
                             {
@@ -7428,7 +7521,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             swapLogBuilder.AppendLine($"  ✅ Width parameter SET to {width * 304.8:F1}mm");
                             
                             // ✅ VERIFY IMMEDIATELY: Read back to confirm
-                            double verifyWidth = widthParam.AsDouble();
+                            double verifyWidth = widthParam?.AsDouble() ?? 0.0;
                             swapLogBuilder.AppendLine($"  ✅ Width parameter VERIFIED: {verifyWidth * 304.8:F1}mm (expected: {width * 304.8:F1}mm)");
                             if (Math.Abs(verifyWidth - width) > 0.001)
                             {
@@ -7461,7 +7554,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             swapLogBuilder.AppendLine($"  ✅ Height parameter SET to {height * 304.8:F1}mm");
                             
                             // ✅ VERIFY IMMEDIATELY: Read back to confirm
-                            double verifyHeight = heightParam.AsDouble();
+                            double verifyHeight = heightParam?.AsDouble() ?? 0.0;
                             swapLogBuilder.AppendLine($"  ✅ Height parameter VERIFIED: {verifyHeight * 304.8:F1}mm (expected: {height * 304.8:F1}mm)");
                             if (Math.Abs(verifyHeight - height) > 0.001)
                             {
@@ -7494,7 +7587,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             swapLogBuilder.AppendLine($"  ✅ Depth parameter SET to {depth * 304.8:F1}mm");
                             
                             // ✅ VERIFY IMMEDIATELY: Read back to confirm
-                            double verifyDepth = depthParam.AsDouble();
+                            double verifyDepth = depthParam?.AsDouble() ?? 0.0;
                             swapLogBuilder.AppendLine($"  ✅ Depth parameter VERIFIED: {verifyDepth * 304.8:F1}mm (expected: {depth * 304.8:F1}mm)");
                             if (Math.Abs(verifyDepth - depth) > 0.001)
                             {

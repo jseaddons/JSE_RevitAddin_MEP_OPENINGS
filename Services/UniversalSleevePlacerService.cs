@@ -2062,7 +2062,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                     );
                                                     
                                                     if (!DeploymentConfiguration.DeploymentMode)
-                                                    {
+                                                {
                                                         DebugLogger.Info($"[SLEEVE-CORNERS] ✅ Saved 4 world-space corners (zero rotation) for zone {zone.Id}: " +
                                                             $"C1=({worldCorners[0].X:F6}, {worldCorners[0].Y:F6}, {worldCorners[0].Z:F6}), " +
                                                             $"C2=({worldCorners[1].X:F6}, {worldCorners[1].Y:F6}, {worldCorners[1].Z:F6}), " +

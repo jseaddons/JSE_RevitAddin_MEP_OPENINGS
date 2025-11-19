@@ -7,6 +7,7 @@ Strategy: Only fix HIGH-CONFIDENCE patterns
 
 import re
 import sys
+import argparse
 from pathlib import Path
 
 
@@ -51,7 +52,8 @@ class Phase2Fixer:
                 match = re.match(r'^(\s*)(double|int|float|long)\s+(\w+)\s*=\s*(\w+)\s*;', line)
                 if match:
                     indent, typ, var, src = match.groups()
-                    if src.isupper() or 'nullable' in src.lower():
+                    # Recognize common param naming patterns too (widthParam, heightParam)
+                    if src.isupper() or 'nullable' in src.lower() or src.lower().endswith('param') or src.lower().endswith('paramvalue'):
                         default = "0.0" if typ in ("double", "float") else "0"
                         new_line = f"{indent}{typ} {var} = {src}?.Value ?? {default};"
                         self.log(f"  Line {i+1}: {line.strip()[:50]}...")
@@ -76,7 +78,8 @@ class Phase2Fixer:
                 if match:
                     indent, var, method = match.groups()
                     # Only fix if method name suggests nullable (Get prefix)
-                    if method.strip().endswith('.Get'):
+                    # If method returns a parameter-like object, or endswith GetString, etc.
+                    if method.strip().endswith('.Get') or method.strip().endswith('.Get') or 'Get' in method:
                         new_line = f"{indent}string {var} = {method}() ?? string.Empty;"
                         self.log(f"  Line {i+1}: {line.strip()[:50]}...")
                         lines[i] = new_line
@@ -84,6 +87,71 @@ class Phase2Fixer:
                         self.stats["fixed"] += 1
                         modified = True
         
+        return lines, modified
+
+    def fix_AsDouble_and_AsInteger(self, lines):
+        """Fix common Revit API patterns where AsDouble/AsInteger/AsString are called on nullable parameter objects.
+        Examples:
+        double setWidth = widthParam.AsDouble();
+        => double setWidth = widthParam?.AsDouble() ?? 0.0;
+        string s = idParam.AsString();
+        => string s = idParam?.AsString() ?? string.Empty;
+        """
+        modified = False
+        for i, line in enumerate(lines):
+            # Skip lines that already use ?. or ??
+            if '?.' in line or '??' in line:
+                continue
+
+            # Double patterns
+            m = re.search(r'^(\s*)(double|float|decimal)\s+(\w+)\s*=\s*(\w+)\.AsDouble\(\)\s*;', line)
+            if m:
+                indent, typ, var, src = m.groups()
+                # Check previous 3 lines for null-checks
+                context_prev = ''.join(lines[max(0, i-3):i])
+                if re.search(fr'\b{src}\s*!=\s*null|\b{src}\s*==\s*null', context_prev):
+                    # Skip if the code already guards
+                    continue
+                default = '0.0' if typ == 'double' or typ == 'float' else '0'
+                new_line = f"{indent}{typ} {var} = {src}?.AsDouble() ?? {default};"
+                self.log(f"  Line {i+1}: {line.strip()[:50]}...")
+                lines[i] = new_line
+                self.changes.append((i+1, "CS8629_AsDouble", line.strip(), new_line.strip()))
+                self.stats['fixed'] += 1
+                modified = True
+                continue
+
+            # Integer patterns
+            m = re.search(r'^(\s*)(int|long)\s+(\w+)\s*=\s*(\w+)\.AsInteger\(\)\s*;', line)
+            if m:
+                indent, typ, var, src = m.groups()
+                context_prev = ''.join(lines[max(0, i-3):i])
+                if re.search(fr'\b{src}\s*!=\s*null|\b{src}\s*==\s*null', context_prev):
+                    continue
+                default = '0' if typ == 'int' else '0L'
+                new_line = f"{indent}{typ} {var} = {src}?.AsInteger() ?? {default};"
+                self.log(f"  Line {i+1}: {line.strip()[:50]}...")
+                lines[i] = new_line
+                self.changes.append((i+1, "CS8629_AsInteger", line.strip(), new_line.strip()))
+                self.stats['fixed'] += 1
+                modified = True
+                continue
+
+            # String patterns - AsString
+            m = re.search(r'^(\s*)string\s+(\w+)\s*=\s*(\w+)\.AsString\(\)\s*;', line)
+            if m:
+                indent, var, src = m.groups()
+                context_prev = ''.join(lines[max(0, i-3):i])
+                if re.search(fr'\b{src}\s*!=\s*null|\b{src}\s*==\s*null', context_prev):
+                    continue
+                new_line = f"{indent}string {var} = {src}?.AsString() ?? string.Empty;"
+                self.log(f"  Line {i+1}: {line.strip()[:50]}...")
+                lines[i] = new_line
+                self.changes.append((i+1, "CS8600_AsString", line.strip(), new_line.strip()))
+                self.stats['fixed'] += 1
+                modified = True
+                continue
+
         return lines, modified
     
     def process_file(self, filepath):
@@ -99,11 +167,16 @@ class Phase2Fixer:
         # Apply safe fixes
         lines, m1 = self.fix_cs8629_safe(lines)
         lines, m2 = self.fix_cs8600_safe(lines)
+        lines, m3 = self.fix_AsDouble_and_AsInteger(lines)
         
-        modified = m1 or m2
+        modified = m1 or m2 or m3
         
         if modified:
             new_content = '\n'.join(lines)
+            # If not in apply mode then do not write - dry run
+            if not self.apply_changes:
+                self.log(f"  [DRY RUN] {len(self.changes)} changes ready for {filepath.name}")
+                return True
             if self.write_file(filepath, new_content):
                 self.log(f"  Saved {filepath.name}")
                 return True
@@ -112,7 +185,7 @@ class Phase2Fixer:
         
         return False
     
-    def run(self):
+    def run(self, apply_changes: bool = False):
         print("=" * 80)
         print("Phase 2: Smarter Warnings Fixer - Safe Pattern Detection")
         print("=" * 80)
@@ -123,6 +196,7 @@ class Phase2Fixer:
             "Services/ClashZoneService.cs",
         ]
         
+        self.apply_changes = apply_changes
         for rel_path in target_files:
             filepath = self.project_root / rel_path
             if filepath.exists():
@@ -153,8 +227,12 @@ class Phase2Fixer:
 
 
 def main():
+    parser = argparse.ArgumentParser(description='Phase 2 warnings fixer')
+    parser.add_argument('--apply', action='store_true', help='Apply changes (writes files). Default is dry-run')
+    args = parser.parse_args()
+
     fixer = Phase2Fixer(Path(__file__).parent)
-    success = fixer.run()
+    success = fixer.run(apply_changes=args.apply)
     sys.exit(0 if success else 1)
 
 

@@ -46,9 +46,17 @@ class WarningsAnalyzer:
         """Parse build output file for warnings."""
         try:
             with open(output_file, 'r', encoding='utf-8', errors='ignore') as f:
-                for line in f:
+                lines = f.readlines()
+                i = 0
+                while i < len(lines):
+                    line = lines[i]
                     # Pattern: filepath(line,col): error CSxxxx: message
-                    match = re.search(r'([^:]+)\((\d+),\d+\):\s*warning\s+(CS\d+):\s*(.+)', line)
+                    # Some build outputs wrap the numbers and warning type to next line, so combine two lines
+                    combined = line.strip()
+                    if i + 1 < len(lines) and ('warning' not in line.lower() and 'error' not in line.lower()):
+                        combined = (line.strip() + ' ' + lines[i + 1].strip())
+                    # Accept both "warning" and "error" tokens and ignore case
+                    match = re.search(r'([^:]+)\((\d+),\d+\):\s*(?:warning|error)\s+(CS\d+):\s*(.+)', combined, flags=re.IGNORECASE)
                     if match:
                         file_path, line_num, code, message = match.groups()
                         file_name = Path(file_path).name
@@ -57,6 +65,9 @@ class WarningsAnalyzer:
                             'code': code,
                             'message': message.strip()
                         })
+                        i += 2
+                        continue
+                    i += 1
         except Exception as e:
             print(f"❌ Error parsing build output: {e}")
 

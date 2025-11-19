@@ -2850,7 +2850,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     string val = string.Empty;
                                     if (tp.StorageType == StorageType.Double)
                                     {
-                                        double d = tp.AsDouble();
+                                        double d = tp?.AsDouble() ?? 0.0;
                                         double mm = UnitUtils.ConvertFromInternalUnits(d, UnitTypeId.Millimeters);
                                         val = mm.ToString("F1") + "mm";
                                     }
@@ -2991,7 +2991,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     string val = string.Empty;
                                     if (tp.StorageType == StorageType.Double)
                                     {
-                                        double d = tp.AsDouble();
+                                        double d = tp?.AsDouble() ?? 0.0;
                                         double mm = UnitUtils.ConvertFromInternalUnits(d, UnitTypeId.Millimeters);
                                         val = mm.ToString("F1") + "mm";
                                     }
