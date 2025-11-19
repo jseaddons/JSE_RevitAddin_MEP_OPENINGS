@@ -1438,7 +1438,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 // ✅ PHASE 2: Only update Global XML if XML creation is enabled
                                 if (!DeploymentConfiguration.DisableXmlCreation)
                                 {
-                                    GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, globalXmlUpdates, filterName: null!, refreshLogName: refreshLogName);
+                                    GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, globalXmlUpdates, filterName: string.Empty, refreshLogName: refreshLogName);
                                     LogToRefresh($"✅ GLOBAL XML UPDATE: UpsertFlagsWithIdsAndClashZoneData completed successfully");
                                     DebugLogger.Info($"[FLAG-MANAGER] ✅ GLOBAL XML UPDATE: UpsertFlagsWithIdsAndClashZoneData completed successfully");
                                     
@@ -1735,7 +1735,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         // ✅ CRITICAL FIX: Try to preserve FilterName from Global XML entries when resetting flags
                         // If FilterName exists in Global XML, use it; otherwise leave empty
-                        GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, updatesWithData, filterName: null!);
+                        GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, updatesWithData, filterName: string.Empty);
                     
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[FLAG-MANAGER] Updated Global XML for {updates.Count} clash zones with reset flags in category '{category}'");
@@ -1873,7 +1873,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // ✅ PHASE 2: Only update Global XML if XML creation is enabled
                             if (!DeploymentConfiguration.DisableXmlCreation)
                             {
-                                GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, globalXmlUpdates, filterName: null!);
+                                GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, globalXmlUpdates, filterName: string.Empty);
                             totalResetCount += resetCount;
                             
                             if (!DeploymentConfiguration.DeploymentMode)
@@ -2118,7 +2118,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[FLAG-MANAGER] [OPTIMIZED-RECOVERY] Global XML for category '{category}' doesn't exist - performing FULL recovery");
                     
-                    return RecoverSleeveFlagsFromRevit(category, fileComboFilter: null!);
+                    return RecoverSleeveFlagsFromRevit(category, fileComboFilter: null);
                 }
                 
                 // ✅ STEP 2: Global XML exists → Check which file combos are missing

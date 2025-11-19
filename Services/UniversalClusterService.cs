@@ -699,7 +699,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             { 
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
-                                    File.AppendAllText(placementDebugPath3, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] PlaceClusterSleeve returned: placed={placed1}, deleted={deleted1}, clusterSleeve={(placedClusterSleeve != null ? placedClusterSleeve.Id.IntegerValue.ToString() : "NULL")}\n");
+                                    // ✅ CRITICAL FIX: Safely access ID to avoid invalid element exception
+                                    string clusterSleeveIdStr = "NULL";
+                                    if (placedClusterSleeve != null)
+                                    {
+                                        try
+                                        {
+                                            clusterSleeveIdStr = placedClusterSleeve.Id.IntegerValue.ToString();
+                                        }
+                                        catch
+                                        {
+                                            clusterSleeveIdStr = "INVALID_ELEMENT";
+                                        }
+                                    }
+                                    File.AppendAllText(placementDebugPath3, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] PlaceClusterSleeve returned: placed={placed1}, deleted={deleted1}, clusterSleeve={clusterSleeveIdStr}\n");
                                 }
                             } 
                             catch { }
@@ -708,15 +721,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             
                             // ✅ CRITICAL: Track cluster sleeve and its ClashZoneIds for database save
                             // ✅ FIX: Check placedClusterSleeve != null FIRST, even if placed1 == 0 (in case of bugs)
+                            // ✅ CRITICAL FIX: Capture ID safely to avoid "invalid element" exceptions
+                            int? capturedClusterSleeveId = null;
+                            if (placedClusterSleeve != null)
+                            {
+                                try
+                                {
+                                    capturedClusterSleeveId = placedClusterSleeve.Id.IntegerValue;
+                                }
+                                catch (Exception idEx)
+                                {
+                                    // Element has become invalid - log but continue
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                                        string errorMsg = $"[CLUSTER-TRACKING] ⚠️⚠️⚠️ WARNING: Cannot access placedClusterSleeve.Id - element may be invalid: {idEx.Message}\n";
+                                        errorMsg += $"[CLUSTER-TRACKING] This may happen if transaction was rolled back or element was deleted.\n";
+                                        DebugLogger.Warning(errorMsg);
+                                        System.IO.File.AppendAllText(clusterDebugLogPath, errorMsg);
+                                    }
+                                }
+                            }
+                            
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
                                 string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
-                                string beforeCheckMsg = $"[CLUSTER-TRACKING-CHECK] About to check placedClusterSleeve != null: placedClusterSleeve={(placedClusterSleeve != null ? $"ID={placedClusterSleeve.Id.IntegerValue}" : "NULL")}\n";
+                                string beforeCheckMsg = $"[CLUSTER-TRACKING-CHECK] About to check placedClusterSleeve != null: placedClusterSleeve={(placedClusterSleeve != null ? (capturedClusterSleeveId.HasValue ? $"ID={capturedClusterSleeveId.Value}" : "INVALID_ELEMENT") : "NULL")}\n";
                                 DebugLogger.Info(beforeCheckMsg);
                                 System.IO.File.AppendAllText(clusterDebugLogPath, beforeCheckMsg);
                             }
                             
-                            if (placedClusterSleeve != null)
+                            // ✅ CRITICAL: Only add to placedClusters if element is valid and we have the ID
+                            if (placedClusterSleeve != null && capturedClusterSleeveId.HasValue)
                             {
                                 placedClusters.Add(placedClusterSleeve);
                                 
@@ -724,10 +760,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
                                     string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
-                                    string trackingMsg = $"[CLUSTER-TRACKING] ✅ Added cluster sleeve {placedClusterSleeve.Id.IntegerValue} to placedClusters list (Total in list: {placedClusters.Count})\n";
-                                    trackingMsg += $"[CLUSTER-TRACKING] Cluster sleeve {placedClusterSleeve.Id.IntegerValue} contains {clusterClashZoneIds.Count} ClashZoneIds\n";
+                                    string trackingMsg = $"[CLUSTER-TRACKING] ✅ Added cluster sleeve {capturedClusterSleeveId.Value} to placedClusters list (Total in list: {placedClusters.Count})\n";
+                                    trackingMsg += $"[CLUSTER-TRACKING] Cluster sleeve {capturedClusterSleeveId.Value} contains {clusterClashZoneIds.Count} ClashZoneIds\n";
                                     DebugLogger.Info(trackingMsg);
                                     System.IO.File.AppendAllText(clusterDebugLogPath, trackingMsg);
+                                }
+                                
+                                // ✅ CRITICAL: Track cluster sleeve ID for database save
+                                clusterToClashZoneIds[capturedClusterSleeveId.Value] = clusterClashZoneIds;
+                                
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[CLUSTERING] ✅ Tracked cluster sleeve {capturedClusterSleeveId.Value} with {clusterClashZoneIds.Count} ClashZoneIds: {string.Join(", ", clusterClashZoneIds.Take(5))}...");
+                                    
+                                    // ✅ DIAGNOSTIC: Log if ClashZoneIds are empty (indicates tracking issue)
+                                    if (clusterClashZoneIds.Count == 0)
+                                    {
+                                        DebugLogger.Warning($"[CLUSTERING] ⚠️⚠️⚠️ WARNING: Cluster sleeve {capturedClusterSleeveId.Value} has NO ClashZoneIds tracked! This will cause cluster data to not be saved properly.");
+                                    }
                                 }
                             }
                             else
@@ -735,27 +785,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
                                     string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
-                                    string errorMsg = $"[CLUSTER-TRACKING] ❌❌❌ placedClusterSleeve is NULL - NOT adding to placedClusters list!\n";
+                                    string errorMsg = $"[CLUSTER-TRACKING] ❌❌❌ placedClusterSleeve is {(placedClusterSleeve == null ? "NULL" : "INVALID (cannot access ID)")} - NOT adding to placedClusters list!\n";
                                     errorMsg += $"[CLUSTER-TRACKING] placed1={placed1}, deleted1={deleted1}\n";
                                     DebugLogger.Error(errorMsg);
                                     System.IO.File.AppendAllText(clusterDebugLogPath, errorMsg);
-                                }
-                            }
-                            
-                            if (placedClusterSleeve != null)
-                            {
-                                
-                                clusterToClashZoneIds[placedClusterSleeve.Id.IntegerValue] = clusterClashZoneIds;
-                                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    DebugLogger.Info($"[CLUSTERING] ✅ Tracked cluster sleeve {placedClusterSleeve.Id.IntegerValue} with {clusterClashZoneIds.Count} ClashZoneIds: {string.Join(", ", clusterClashZoneIds.Take(5))}...");
-                                    
-                                    // ✅ DIAGNOSTIC: Log if ClashZoneIds are empty (indicates tracking issue)
-                                    if (clusterClashZoneIds.Count == 0)
-                                    {
-                                        DebugLogger.Warning($"[CLUSTERING] ⚠️⚠️⚠️ WARNING: Cluster sleeve {placedClusterSleeve.Id.IntegerValue} has NO ClashZoneIds tracked! This will cause cluster data to not be saved properly.");
-                                    }
                                 }
                             }
                             
@@ -3579,10 +3612,108 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // We need to calculate actual minimum distance and check if it's within tolerance
                 string hostType = sleeve1.HostType;
                 string orientation = sleeve1.Orientation;
+                string systemType = sleeve1.SystemType ?? "";
                 
                 double minDistance;
                 
-                if (hostType == "Floor")
+                // ✅ CRITICAL FIX FOR ROUND PIPES/DUCTS ONLY: Use edge-to-edge distance (accounting for sleeve diameter)
+                // Round pipes/ducts have inflated axis-aligned bounding boxes when rotated, causing incorrect clustering
+                // RECTANGULAR SLEEVES: Continue using existing bounding box logic (CalculateMinimumDistance2D) which properly handles rectangular shapes
+                // LOGIC FOR ROUND: edgeToEdgeDistance = centerToCenterDistance - (sleeve1Radius + sleeve2Radius)
+                // Then check: edgeToEdgeDistance <= toleranceDist
+                bool isRoundPipeOrDuct = (systemType.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0 || 
+                                         systemType.IndexOf("Duct", StringComparison.OrdinalIgnoreCase) >= 0) &&
+                                        (sleeve1.IsCircular == true || sleeve2.IsCircular == true);
+                
+                if (isRoundPipeOrDuct)
+                {
+                    // ✅ DATABASE-ONLY: Get placement points and sleeve DIAMETERS from ClashZone (database data)
+                    // ONLY for round pipes/ducts - rectangular sleeves use bounding box logic below
+                    var placement1 = GetPlacementPointFromSleeve(sleeve1);
+                    var placement2 = GetPlacementPointFromSleeve(sleeve2);
+                    var (radius1, radius2) = GetSleeveRadiiFromSleeves(sleeve1, sleeve2);
+                    
+                    // ✅ Only proceed if we have valid placement points AND both sleeves have diameter data (round)
+                    if (placement1 != null && placement2 != null && radius1 > 0 && radius2 > 0)
+                    {
+                        double centerToCenterDistance;
+                        
+                        if (hostType == "Floor")
+                        {
+                            // Floor: 2D distance in X,Y plane (ignore Z)
+                            double dx = placement2.X - placement1.X;
+                            double dy = placement2.Y - placement1.Y;
+                            centerToCenterDistance = Math.Sqrt(dx * dx + dy * dy);
+                        }
+                        else if (hostType == "Wall" || hostType == "Structural Framing")
+                        {
+                            if (orientation == "X")
+                            {
+                                // X-oriented walls: 2D distance in X,Z plane (ignore Y)
+                                double dx = placement2.X - placement1.X;
+                                double dz = placement2.Z - placement1.Z;
+                                centerToCenterDistance = Math.Sqrt(dx * dx + dz * dz);
+                            }
+                            else
+                            {
+                                // Y-oriented walls: 2D distance in Y,Z plane (ignore X)
+                                double dy = placement2.Y - placement1.Y;
+                                double dz = placement2.Z - placement1.Z;
+                                centerToCenterDistance = Math.Sqrt(dy * dy + dz * dz);
+                            }
+                        }
+                        else
+                        {
+                            // Fallback: 3D distance
+                            double dx = placement2.X - placement1.X;
+                            double dy = placement2.Y - placement1.Y;
+                            double dz = placement2.Z - placement1.Z;
+                            centerToCenterDistance = Math.Sqrt(dx * dx + dy * dy + dz * dz);
+                        }
+                        
+                        // ✅ CRITICAL: Calculate EDGE-TO-EDGE distance (accounts for sleeve diameter)
+                        // Formula: edgeToEdge = centerToCenter - (radius1 + radius2)
+                        // This is the actual gap between the two sleeves
+                        double edgeToEdgeDistance = centerToCenterDistance - (radius1 + radius2);
+                        
+                        // ✅ Use edge-to-edge distance for proximity check
+                        // If edgeToEdge <= tolerance, sleeves are close enough to cluster
+                        minDistance = Math.Max(0, edgeToEdgeDistance); // Ensure non-negative
+                        
+                        // ✅ DEBUG: Log the calculation details
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            var placementDebugPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                            try 
+                            { 
+                                System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [ROUND-PIPE-PROXIMITY] Sleeve {sleeve1.SleeveInstanceId} vs {sleeve2.SleeveInstanceId}: " +
+                                    $"Center-to-Center={UnitUtils.ConvertFromInternalUnits(centerToCenterDistance, UnitTypeId.Millimeters):F1}mm, " +
+                                    $"Radius1={UnitUtils.ConvertFromInternalUnits(radius1, UnitTypeId.Millimeters):F1}mm, " +
+                                    $"Radius2={UnitUtils.ConvertFromInternalUnits(radius2, UnitTypeId.Millimeters):F1}mm, " +
+                                    $"Edge-to-Edge={UnitUtils.ConvertFromInternalUnits(edgeToEdgeDistance, UnitTypeId.Millimeters):F1}mm, " +
+                                    $"Tolerance={UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm\n");
+                            } 
+                            catch { }
+                        }
+                    }
+                    else
+                    {
+                        // Fallback to bounding box if placement points or radii not available
+                        if (hostType == "Floor")
+                        {
+                            minDistance = CalculateMinimumDistance2D(
+                                bbox1.Min.X, bbox1.Min.Y, bbox1.Max.X, bbox1.Max.Y,
+                                bbox2.Min.X, bbox2.Min.Y, bbox2.Max.X, bbox2.Max.Y);
+                        }
+                        else
+                        {
+                            minDistance = CalculateMinimumDistance3D(
+                                bbox1.Min.X, bbox1.Min.Y, bbox1.Min.Z, bbox1.Max.X, bbox1.Max.Y, bbox1.Max.Z,
+                                bbox2.Min.X, bbox2.Min.Y, bbox2.Min.Z, bbox2.Max.X, bbox2.Max.Y, bbox2.Max.Z);
+                        }
+                    }
+                }
+                else if (hostType == "Floor")
                 {
                     // Floor sleeves: Calculate 2D distance in X,Y plane (ignore Z)
                     minDistance = CalculateMinimumDistance2D(
@@ -3630,8 +3761,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var placementDebugPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
                 try 
                 { 
+                    string method = isRoundPipeOrDuct ? "Edge-to-Edge (Round Pipe/Duct)" : "BoundingBox";
                     System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING-DISTANCE] Sleeve {sleeve1.SleeveInstanceId} vs {sleeve2.SleeveInstanceId}: " +
-                        $"Host={hostType}, Ori={orientation}, Distance={UnitUtils.ConvertFromInternalUnits(minDistance, UnitTypeId.Millimeters):F1}mm, " +
+                        $"Host={hostType}, Ori={orientation}, Method={method}, Distance={UnitUtils.ConvertFromInternalUnits(minDistance, UnitTypeId.Millimeters):F1}mm, " +
                         $"Tolerance={UnitUtils.ConvertFromInternalUnits(toleranceDist, UnitTypeId.Millimeters):F1}mm, " +
                         $"Result={(withinTolerance ? "CLUSTER ✓" : "NO CLUSTER ✗")}\n");
                 } 
@@ -3652,6 +3784,110 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 return false;
             }
         }
+        
+        /// <summary>
+        /// ✅ DATABASE-ONLY: Helper method to get placement point from dynamic sleeve object
+        /// Uses ClashZone data from database (SleevePlacementPointActiveDocumentX/Y/Z)
+        /// </summary>
+        private XYZ GetPlacementPointFromSleeve(dynamic sleeve)
+        {
+            try
+            {
+                // ✅ DATABASE-ONLY: Get from ClashZone (loaded from database)
+                if (sleeve.ClashZone != null)
+                {
+                    var cz = sleeve.ClashZone as ClashZone;
+                    if (cz != null)
+                    {
+                        // ✅ Use active document placement point (where sleeve is actually placed in active document)
+                        // This is stored in database as SleevePlacementPointActiveDocumentX/Y/Z
+                        if (cz.SleevePlacementPointActiveDocumentX != 0 || 
+                            cz.SleevePlacementPointActiveDocumentY != 0 || 
+                            cz.SleevePlacementPointActiveDocumentZ != 0)
+                        {
+                            return new XYZ(
+                                cz.SleevePlacementPointActiveDocumentX,
+                                cz.SleevePlacementPointActiveDocumentY,
+                                cz.SleevePlacementPointActiveDocumentZ
+                            );
+                        }
+                        
+                        // Fallback to regular placement point (from database)
+                        if (cz.SleevePlacementPointX != 0 || 
+                            cz.SleevePlacementPointY != 0 || 
+                            cz.SleevePlacementPointZ != 0)
+                        {
+                            return new XYZ(
+                                cz.SleevePlacementPointX,
+                                cz.SleevePlacementPointY,
+                                cz.SleevePlacementPointZ
+                            );
+                        }
+                    }
+                }
+                
+                // Fallback: Calculate center from bounding box (from database)
+                var bbox = sleeve.BoundingBox;
+                if (bbox != null)
+                {
+                    return new XYZ(
+                        (bbox.Min.X + bbox.Max.X) / 2.0,
+                        (bbox.Min.Y + bbox.Max.Y) / 2.0,
+                        (bbox.Min.Z + bbox.Max.Z) / 2.0
+                    );
+                }
+                
+                return null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+        
+        /// <summary>
+        /// ✅ DATABASE-ONLY: Helper method to get sleeve radii from dynamic sleeve objects
+        /// ONLY for ROUND pipes/ducts - uses SleeveDiameter from database
+        /// Returns (radius1, radius2) in Revit internal units
+        /// NOTE: Rectangular sleeves should use bounding box logic (CalculateMinimumDistance2D), not this method
+        /// </summary>
+        private (double radius1, double radius2) GetSleeveRadiiFromSleeves(dynamic sleeve1, dynamic sleeve2)
+        {
+            double radius1 = 0;
+            double radius2 = 0;
+            
+            try
+            {
+                // ✅ DATABASE-ONLY: Get sleeve DIAMETER from ClashZone (loaded from database)
+                // ONLY for round pipes/ducts - rectangular sleeves use bounding box logic
+                if (sleeve1.ClashZone != null)
+                {
+                    var cz1 = sleeve1.ClashZone as ClashZone;
+                    if (cz1 != null && cz1.SleeveDiameter > 0)
+                    {
+                        // For round pipes/ducts, use diameter / 2
+                        radius1 = cz1.SleeveDiameter / 2.0;
+                    }
+                }
+                
+                if (sleeve2.ClashZone != null)
+                {
+                    var cz2 = sleeve2.ClashZone as ClashZone;
+                    if (cz2 != null && cz2.SleeveDiameter > 0)
+                    {
+                        // For round pipes/ducts, use diameter / 2
+                        radius2 = cz2.SleeveDiameter / 2.0;
+                    }
+                }
+            }
+            catch
+            {
+                // Return zeros if error occurs
+            }
+            
+            return (radius1, radius2);
+        }
+        
         private List<List<FamilyInstance>> CalculateClustersUsingBoundingBoxOverlap(List<FamilyInstance> sleeves, double toleranceDist, string orientation)
         {
             var clusters = new List<List<FamilyInstance>>();
@@ -6475,22 +6711,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             placed++;
             
+            // ✅ CRITICAL: Capture ID immediately while element is valid (before any potential transaction issues)
+            int clusterSleeveIdValue = inst.Id.IntegerValue;
+            
             // ✅ CRITICAL LOGGING: Log before setting placedClusterSleeve
             if (!DeploymentConfiguration.DeploymentMode)
             {
                 string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
-                string setMsg = $"[CLUSTER-PLACEMENT-SET] About to set placedClusterSleeve = inst (ID={inst.Id.IntegerValue})\n";
+                string setMsg = $"[CLUSTER-PLACEMENT-SET] About to set placedClusterSleeve = inst (ID={clusterSleeveIdValue})\n";
                 DebugLogger.Info(setMsg);
                 System.IO.File.AppendAllText(clusterDebugLogPath, setMsg);
             }
             
             placedClusterSleeve = inst; // ✅ CRITICAL: Return placed cluster sleeve for tracking
             
-            // ✅ CRITICAL LOGGING: Log after setting placedClusterSleeve
+            // ✅ CRITICAL LOGGING: Log after setting placedClusterSleeve (using captured ID to avoid invalid element access)
             if (!DeploymentConfiguration.DeploymentMode)
             {
                 string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
-                string verifyMsg = $"[CLUSTER-PLACEMENT-SET] ✅ VERIFIED: placedClusterSleeve is now {(placedClusterSleeve != null ? $"ID={placedClusterSleeve.Id.IntegerValue}" : "NULL")}\n";
+                string verifyMsg = $"[CLUSTER-PLACEMENT-SET] ✅ VERIFIED: placedClusterSleeve is now ID={clusterSleeveIdValue} (ID captured while element was valid)\n";
                 DebugLogger.Info(verifyMsg);
                 System.IO.File.AppendAllText(clusterDebugLogPath, verifyMsg);
             }
