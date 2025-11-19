@@ -211,4 +211,9 @@
     <Resource Include="Resources\Icons\RibbonIcon32.png" />
   </ItemGroup>
 
+  <!-- Exclude backup folder from compilation -->
+  <ItemGroup>
+    <Compile Remove="_BACKUPS/**/*.cs" />
+  </ItemGroup>
+
 </Project>
