@@ -507,5 +507,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 
             TaskDialog.Show("Intersection Detection Complete", summary);
         }
+
+        private class IntersectionResult
+        {
+            public Element MepElement { get; set; }
+            public Element StructuralElement { get; set; }
+            public string MepCategory { get; set; }
+            public string StructuralCategory { get; set; }
+            public ElementId MepId { get; set; }
+            public ElementId WallId { get; set; }
+            public XYZ IntersectionCenter { get; set; }
+        }
     }
 }
