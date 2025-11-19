@@ -272,7 +272,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 // ✅ PHASE 2: Only update Global XML if XML creation is enabled
                                 if (!DeploymentConfiguration.DisableXmlCreation)
                                 {
-                                    GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, globalXmlUpdates, filterName: null, refreshLogName: refreshLogName);
+                                    GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, globalXmlUpdates, filterName: null!, refreshLogName: refreshLogName);
                                     
                                     if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Info($"[FLAG-MANAGER] ✅ [INSTANCE-ID-RESET] Updated XML for {globalXmlUpdates.Count} entries in category '{category}' (XML SECOND)");
@@ -1438,7 +1438,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 // ✅ PHASE 2: Only update Global XML if XML creation is enabled
                                 if (!DeploymentConfiguration.DisableXmlCreation)
                                 {
-                                    GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, globalXmlUpdates, filterName: null, refreshLogName: refreshLogName);
+                                    GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, globalXmlUpdates, filterName: null!, refreshLogName: refreshLogName);
                                     LogToRefresh($"✅ GLOBAL XML UPDATE: UpsertFlagsWithIdsAndClashZoneData completed successfully");
                                     DebugLogger.Info($"[FLAG-MANAGER] ✅ GLOBAL XML UPDATE: UpsertFlagsWithIdsAndClashZoneData completed successfully");
                                     
@@ -1735,7 +1735,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         // ✅ CRITICAL FIX: Try to preserve FilterName from Global XML entries when resetting flags
                         // If FilterName exists in Global XML, use it; otherwise leave empty
-                        GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, updatesWithData, filterName: null);
+                        GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, updatesWithData, filterName: null!);
                     
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[FLAG-MANAGER] Updated Global XML for {updates.Count} clash zones with reset flags in category '{category}'");
@@ -1873,7 +1873,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // ✅ PHASE 2: Only update Global XML if XML creation is enabled
                             if (!DeploymentConfiguration.DisableXmlCreation)
                             {
-                                GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, globalXmlUpdates, filterName: null);
+                                GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, globalXmlUpdates, filterName: null!);
                             totalResetCount += resetCount;
                             
                             if (!DeploymentConfiguration.DeploymentMode)

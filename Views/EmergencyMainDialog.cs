@@ -4654,19 +4654,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 }
                 
                 // Validate that reference and host elements are selected
-                if (false) // _referenceElementsListBox.SelectedItems.Count == 0) // Field not implemented yet
-                {
-                    MessageBox.Show("Please select reference elements before proceeding.", "No Reference Elements", 
-                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return false;
-                }
-                
-                if (false) // _hostElementsListBox.SelectedItems.Count == 0) // Field not implemented yet
-                {
-                    MessageBox.Show("Please select host elements before proceeding.", "No Host Elements", 
-                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return false;
-                }
+                // TODO: Implement when _referenceElementsListBox and _hostElementsListBox are available
+                // if (_referenceElementsListBox.SelectedItems.Count == 0)
+                // {
+                //     MessageBox.Show("Please select reference elements before proceeding.", "No Reference Elements", 
+                //         MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                //     return false;
+                // }
+                // 
+                // if (_hostElementsListBox.SelectedItems.Count == 0)
+                // {
+                //     MessageBox.Show("Please select host elements before proceeding.", "No Host Elements", 
+                //         MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                //     return false;
+                // }
                 
                 return true;
             }
