@@ -3740,9 +3740,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 if (valueCombo == null || string.IsNullOrEmpty(selectedParameter) || selectedParameter == "<Select>")
                 {
-                    valueCombo.Items.Clear();
-                    valueCombo.Items.Add("<Auto Selection>");
-                    valueCombo.SelectedIndex = 0;
+                    if (valueCombo != null)
+                    {
+                        valueCombo.Items.Clear();
+                        valueCombo.Items.Add("<Auto Selection>");
+                        valueCombo.SelectedIndex = 0;
+                    }
                     return;
                 }
 

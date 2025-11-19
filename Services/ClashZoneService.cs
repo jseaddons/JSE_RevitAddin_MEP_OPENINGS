@@ -2518,11 +2518,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                      element.LookupParameter("Insulation Thickness") ??
                                      element.LookupParameter("Insulation");
                 
-                if (insulationParam != null && insulationParam.AsDouble() > 0.0)
+                if (insulationParam != null)
                 {
-                    double insulationMm = UnitUtils.ConvertFromInternalUnits(insulationParam.AsDouble(), UnitTypeId.Millimeters);
-                    _log($"[DEBUG] Element {element.Id} has insulation: {insulationMm:F1}mm");
-                    return "Insulated";
+                    double insulationValue = insulationParam.AsDouble();
+                    if (insulationValue > 0.0)
+                    {
+                        double insulationMm = UnitUtils.ConvertFromInternalUnits(insulationValue, UnitTypeId.Millimeters);
+                        _log($"[DEBUG] Element {element.Id} has insulation: {insulationMm:F1}mm");
+                        return "Insulated";
+                    }
                 }
                 
                 return "Normal";
@@ -2840,7 +2844,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 var parts = new System.Collections.Generic.List<string>();
                                 foreach (Parameter tp in typeElem.Parameters)
                                 {
-                                    var name = tp?.Definition?.Name ?? "<null>";
+                                    if (tp == null) continue;
+                                    
+                                    var name = tp.Definition?.Name ?? "<null>";
                                     string val = string.Empty;
                                     if (tp.StorageType == StorageType.Double)
                                     {
@@ -2979,7 +2985,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 var parts = new System.Collections.Generic.List<string>();
                                 foreach (Parameter tp in typeElem.Parameters)
                                 {
-                                    var name = tp?.Definition?.Name ?? "<null>";
+                                    if (tp == null) continue;
+                                    
+                                    var name = tp.Definition?.Name ?? "<null>";
                                     string val = string.Empty;
                                     if (tp.StorageType == StorageType.Double)
                                     {
