@@ -4137,23 +4137,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var widthParam = opening.GetParameter("Width");
                             var heightParam = opening.GetParameter("Height");
                             var diameterParam = opening.GetParameter("Diameter");
-                            bool isLargeSleeve = false;
-                            
-                            if (widthParam != null && widthParam.HasValue)
-                            {
-                                var value = UnitUtils.ConvertFromInternalUnits(widthParam.AsDouble(), UnitTypeId.Millimeters);
-                                if (value > 300) isLargeSleeve = true;
-                            }
-                            else if (heightParam != null && heightParam.HasValue)
-                            {
-                                var value = UnitUtils.ConvertFromInternalUnits(heightParam.AsDouble(), UnitTypeId.Millimeters);
-                                if (value > 300) isLargeSleeve = true;
-                            }
-                            else if (diameterParam != null && diameterParam.HasValue)
-                            {
-                                var value = UnitUtils.ConvertFromInternalUnits(diameterParam.AsDouble(), UnitTypeId.Millimeters);
-                                if (value > 300) isLargeSleeve = true;
-                            }
+                            bool isLargeSleeve = IsParameterLargeValue(widthParam, 300) ||
+                                                 IsParameterLargeValue(heightParam, 300) ||
+                                                 IsParameterLargeValue(diameterParam, 300);
                             
                             if (isRectangular || isLargeSleeve)
                             {
@@ -4581,6 +4567,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning($"[CalculateMepElementRotationAngle] Error: {ex.Message}");
                 return 0.0; // Default fallback
+            }
+        }
+
+        /// <summary>
+        /// Helper method to safely check if a parameter has a large value (> threshold mm)
+        /// </summary>
+        private bool IsParameterLargeValue(Parameter? param, double thresholdMm = 300)
+        {
+            if (param == null || !param.HasValue) 
+                return false;
+            
+            try
+            {
+                var value = UnitUtils.ConvertFromInternalUnits(param.AsDouble(), UnitTypeId.Millimeters);
+                return value > thresholdMm;
+            }
+            catch
+            {
+                return false;
             }
         }
         
