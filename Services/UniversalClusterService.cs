@@ -645,24 +645,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 throw; // Re-throw to prevent continuing
                             }
                             
-                            // ✅ CRITICAL LOGGING: Log PlaceClusterSleeve return values IMMEDIATELY after call
+                            // ✅ CRITICAL FIX FOR DUCTS: Capture ID IMMEDIATELY after PlaceClusterSleeve returns
+                            // This MUST happen BEFORE any logging or other operations that access the element
+                            // The element reference might become invalid if accessed later, so capture the ID NOW
+                            int? capturedClusterSleeveId = null;
+                            if (placedClusterSleeve != null)
+                            {
+                                try
+                                {
+                                    // ✅ CRITICAL: Capture ID IMMEDIATELY - don't wait for logging
+                                    capturedClusterSleeveId = placedClusterSleeve.Id.IntegerValue;
+                                    
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[CLUSTER-ID-CAPTURE] ✅ IMMEDIATELY captured cluster sleeve ID: {capturedClusterSleeveId.Value} (category={targetCategory})\n");
+                                    }
+                                }
+                                catch (Exception idEx)
+                                {
+                                    // Element has become invalid IMMEDIATELY after PlaceClusterSleeve returns
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                                        string errorMsg = $"[CLUSTER-ID-CAPTURE] ❌❌❌ CRITICAL: Cannot access placedClusterSleeve.Id IMMEDIATELY after PlaceClusterSleeve returns: {idEx.Message}\n";
+                                        errorMsg += $"[CLUSTER-ID-CAPTURE] Category: {targetCategory}\n";
+                                        errorMsg += $"[CLUSTER-ID-CAPTURE] This suggests the element was invalidated INSIDE PlaceClusterSleeve or transaction was rolled back.\n";
+                                        errorMsg += $"[CLUSTER-ID-CAPTURE] placed1={placed1}, deleted1={deleted1}\n";
+                                        DebugLogger.Error(errorMsg);
+                                        System.IO.File.AppendAllText(clusterDebugLogPath, errorMsg);
+                                    }
+                                }
+                            }
+                            
+                            // ✅ CRITICAL LOGGING: Log PlaceClusterSleeve return values AFTER capturing ID
+                            // Use captured ID for logging to avoid invalid element exceptions
                             try
                             {
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
                                     string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
-                                    string placedClusterSleeveId = "NULL";
-                                    try
-                                    {
-                                        if (placedClusterSleeve != null)
-                                        {
-                                            placedClusterSleeveId = $"ID={placedClusterSleeve.Id.IntegerValue}";
-                                        }
-                                    }
-                                    catch (Exception idEx)
-                                    {
-                                        placedClusterSleeveId = $"ERROR_ACCESSING_ID: {idEx.Message}";
-                                    }
+                                    string placedClusterSleeveId = capturedClusterSleeveId.HasValue 
+                                        ? $"ID={capturedClusterSleeveId.Value}" 
+                                        : (placedClusterSleeve != null ? "INVALID_ELEMENT" : "NULL");
                                     
                                     string returnLog = $"[CLUSTER-PLACEMENT-RETURN] PlaceClusterSleeve returned: placed1={placed1}, deleted1={deleted1}, placedClusterSleeve={placedClusterSleeveId}\n";
                                     DebugLogger.Info(returnLog);
@@ -699,19 +724,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             { 
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
-                                    // ✅ CRITICAL FIX: Safely access ID to avoid invalid element exception
-                                    string clusterSleeveIdStr = "NULL";
-                                    if (placedClusterSleeve != null)
-                                    {
-                                        try
-                                        {
-                                            clusterSleeveIdStr = placedClusterSleeve.Id.IntegerValue.ToString();
-                                        }
-                                        catch
-                                        {
-                                            clusterSleeveIdStr = "INVALID_ELEMENT";
-                                        }
-                                    }
+                                    // ✅ Use captured ID instead of accessing element directly
+                                    string clusterSleeveIdStr = capturedClusterSleeveId.HasValue 
+                                        ? capturedClusterSleeveId.Value.ToString() 
+                                        : (placedClusterSleeve != null ? "INVALID_ELEMENT" : "NULL");
                                     File.AppendAllText(placementDebugPath3, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] PlaceClusterSleeve returned: placed={placed1}, deleted={deleted1}, clusterSleeve={clusterSleeveIdStr}\n");
                                 }
                             } 
@@ -721,27 +737,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             
                             // ✅ CRITICAL: Track cluster sleeve and its ClashZoneIds for database save
                             // ✅ FIX: Check placedClusterSleeve != null FIRST, even if placed1 == 0 (in case of bugs)
-                            // ✅ CRITICAL FIX: Capture ID safely to avoid "invalid element" exceptions
-                            int? capturedClusterSleeveId = null;
-                            if (placedClusterSleeve != null)
-                            {
-                                try
-                                {
-                                    capturedClusterSleeveId = placedClusterSleeve.Id.IntegerValue;
-                                }
-                                catch (Exception idEx)
-                                {
-                                    // Element has become invalid - log but continue
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
-                                        string errorMsg = $"[CLUSTER-TRACKING] ⚠️⚠️⚠️ WARNING: Cannot access placedClusterSleeve.Id - element may be invalid: {idEx.Message}\n";
-                                        errorMsg += $"[CLUSTER-TRACKING] This may happen if transaction was rolled back or element was deleted.\n";
-                                        DebugLogger.Warning(errorMsg);
-                                        System.IO.File.AppendAllText(clusterDebugLogPath, errorMsg);
-                                    }
-                                }
-                            }
+                            // ✅ CRITICAL FIX: Use captured ID instead of accessing element directly
+                            // The captured ID was already obtained above, so we don't need to access the element again
                             
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
