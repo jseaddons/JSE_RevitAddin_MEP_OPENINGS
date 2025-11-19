@@ -646,22 +646,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                             
                             // ✅ CRITICAL LOGGING: Log PlaceClusterSleeve return values IMMEDIATELY after call
-                            if (!DeploymentConfiguration.DeploymentMode)
+                            try
                             {
-                                string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
-                                string returnLog = $"[CLUSTER-PLACEMENT-RETURN] PlaceClusterSleeve returned: placed1={placed1}, deleted1={deleted1}, placedClusterSleeve={(placedClusterSleeve != null ? $"ID={placedClusterSleeve.Id.IntegerValue}" : "NULL")}\n";
-                                DebugLogger.Info(returnLog);
-                                System.IO.File.AppendAllText(clusterDebugLogPath, returnLog);
-                                
-                                if (placed1 == 0)
+                                if (!DeploymentConfiguration.DeploymentMode)
                                 {
-                                    string warningLog = $"[CLUSTER-PLACEMENT-RETURN] ⚠️ WARNING: placed1=0 but cluster sleeve was created! This means PlaceClusterSleeve returned 0 for placed count.\n";
-                                    DebugLogger.Warning(warningLog);
-                                    System.IO.File.AppendAllText(clusterDebugLogPath, warningLog);
+                                    string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                                    string placedClusterSleeveId = "NULL";
+                                    try
+                                    {
+                                        if (placedClusterSleeve != null)
+                                        {
+                                            placedClusterSleeveId = $"ID={placedClusterSleeve.Id.IntegerValue}";
+                                        }
+                                    }
+                                    catch (Exception idEx)
+                                    {
+                                        placedClusterSleeveId = $"ERROR_ACCESSING_ID: {idEx.Message}";
+                                    }
+                                    
+                                    string returnLog = $"[CLUSTER-PLACEMENT-RETURN] PlaceClusterSleeve returned: placed1={placed1}, deleted1={deleted1}, placedClusterSleeve={placedClusterSleeveId}\n";
+                                    DebugLogger.Info(returnLog);
+                                    System.IO.File.AppendAllText(clusterDebugLogPath, returnLog);
+                                    
+                                    if (placed1 == 0)
+                                    {
+                                        string warningLog = $"[CLUSTER-PLACEMENT-RETURN] ⚠️ WARNING: placed1=0 but cluster sleeve was created! This means PlaceClusterSleeve returned 0 for placed count.\n";
+                                        DebugLogger.Warning(warningLog);
+                                        System.IO.File.AppendAllText(clusterDebugLogPath, warningLog);
+                                    }
+                                    if (placedClusterSleeve == null)
+                                    {
+                                        string errorLog = $"[CLUSTER-PLACEMENT-RETURN] ⚠️⚠️⚠️ ERROR: placedClusterSleeve is NULL! Cluster sleeve was created but not returned!\n";
+                                        DebugLogger.Error(errorLog);
+                                        System.IO.File.AppendAllText(clusterDebugLogPath, errorLog);
+                                    }
                                 }
-                                if (placedClusterSleeve == null)
+                            }
+                            catch (Exception logEx)
+                            {
+                                // Log the exception but don't stop execution
+                                if (!DeploymentConfiguration.DeploymentMode)
                                 {
-                                    string errorLog = $"[CLUSTER-PLACEMENT-RETURN] ⚠️⚠️⚠️ ERROR: placedClusterSleeve is NULL! Cluster sleeve was created but not returned!\n";
+                                    string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                                    string errorLog = $"[CLUSTER-PLACEMENT-RETURN] ❌❌❌ EXCEPTION during return value logging: {logEx.Message}\n";
+                                    errorLog += $"[CLUSTER-PLACEMENT-RETURN] StackTrace: {logEx.StackTrace}\n";
                                     DebugLogger.Error(errorLog);
                                     System.IO.File.AppendAllText(clusterDebugLogPath, errorLog);
                                 }
@@ -739,8 +767,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                         catch (Exception ex)
                         {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Error($"[UniversalClusterService] Error placing cluster: {ex.Message}");
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                                string errorLog = $"[CLUSTER-PLACEMENT-OUTER-CATCH] ❌❌❌ EXCEPTION in cluster placement try block: {ex.Message}\n";
+                                errorLog += $"[CLUSTER-PLACEMENT-OUTER-CATCH] StackTrace: {ex.StackTrace}\n";
+                                errorLog += $"[CLUSTER-PLACEMENT-OUTER-CATCH] This exception prevented cluster sleeve from being added to placedClusters list!\n";
+                                DebugLogger.Error(errorLog);
+                                System.IO.File.AppendAllText(clusterDebugLogPath, errorLog);
+                                DebugLogger.Error($"[UniversalClusterService] Error placing cluster: {ex.Message}");
+                            }
                         }
                     }
                 }
@@ -2372,11 +2408,45 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             double rotationAngle1 = 0.0;
                             double rotationAngle2 = 0.0;
                             
+                            // ✅ CRITICAL: Skip rotated clustering for round pipes and round ducts
+                            // Round pipes/ducts should always use axis-aligned clustering regardless of MEP orientation
+                            bool isRoundPipeOrDuct = false;
+                            if (clusterSleeve.ClashZone != null)
+                            {
+                                var cz1 = clusterSleeve.ClashZone as ClashZone;
+                                if (cz1 != null)
+                                {
+                                    // Check if it's a pipe (pipes are always round)
+                                    bool isPipe = cz1.MepElementCategory != null && 
+                                                 cz1.MepElementCategory.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0;
+                                    
+                                    // Check if it's a round duct
+                                    bool isRoundDuct = cz1.MepElementCategory != null && 
+                                                      cz1.MepElementCategory.IndexOf("Duct", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                                                      (string.Equals(cz1.DuctShape, "Round", StringComparison.OrdinalIgnoreCase) ||
+                                                       (cz1.MepElementSizeData != null && 
+                                                        (string.Equals(cz1.MepElementSizeData.Shape, "Round", StringComparison.OrdinalIgnoreCase) ||
+                                                         string.Equals(cz1.MepElementSizeData.Shape, "Circular", StringComparison.OrdinalIgnoreCase))));
+                                    
+                                    if (isPipe || isRoundDuct)
+                                    {
+                                        isRoundPipeOrDuct = true;
+                                    }
+                                }
+                            }
+                            
                             // ✅ COMPREHENSIVE LOGGING: Log clustering path selection (always enabled for debugging)
                             string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
                             bool logClusteringPath = !DeploymentConfiguration.DeploymentMode;
                             
-                            if (clusterSleeve.ClashZone != null && otherSleeve.ClashZone != null)
+                            if (isRoundPipeOrDuct && logClusteringPath)
+                            {
+                                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ========== CLUSTERING PATH SELECTION ==========\n");
+                                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Checking: Sleeve {clusterSleeve.SleeveInstanceId} vs Sleeve {otherSleeve.SleeveInstanceId}\n");
+                                System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ✅ SKIPPING ROTATED CLUSTERING: Round pipe/duct detected - using axis-aligned clustering\n");
+                            }
+                            
+                            if (!isRoundPipeOrDuct && clusterSleeve.ClashZone != null && otherSleeve.ClashZone != null)
                             {
                                 var cz1 = clusterSleeve.ClashZone as ClashZone;
                                 var cz2 = otherSleeve.ClashZone as ClashZone;
@@ -5573,6 +5643,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             placed = 0;
             deleted = 0;
             placedClusterSleeve = null;
+            
+            // ✅ CRITICAL DEBUGGING: Log groupKey values to identify category-specific issues
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                string groupKeyMsg = $"[CLUSTER-PLACEMENT-START] PlaceClusterSleeve called with:\n";
+                groupKeyMsg += $"[CLUSTER-PLACEMENT-START]   groupKey.hostType='{groupKey.hostType}'\n";
+                groupKeyMsg += $"[CLUSTER-PLACEMENT-START]   groupKey.systemType='{groupKey.systemType}'\n";
+                groupKeyMsg += $"[CLUSTER-PLACEMENT-START]   groupKey.orientation='{groupKey.orientation}'\n";
+                groupKeyMsg += $"[CLUSTER-PLACEMENT-START]   targetCategory='{targetCategory}'\n";
+                groupKeyMsg += $"[CLUSTER-PLACEMENT-START]   cluster.Count={cluster.Count}\n";
+                DebugLogger.Info(groupKeyMsg);
+                System.IO.File.AppendAllText(clusterDebugLogPath, groupKeyMsg);
+            }
 
             // ✅ FIXED: Work with XML data directly - determine cluster properties from XML
             // Determine if cluster is circular or rectangular based on XML data
@@ -5605,9 +5689,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             else
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Log($"Unknown host type for cluster group, skipping. HostType={groupKey.hostType}");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                    string earlyReturnMsg = $"[CLUSTER-PLACEMENT-EARLY-RETURN] ❌ EARLY RETURN: Unknown host type '{groupKey.hostType}' - placedClusterSleeve will remain NULL\n";
+                    earlyReturnMsg += $"[CLUSTER-PLACEMENT-EARLY-RETURN]   Category: {groupKey.systemType}\n";
+                    earlyReturnMsg += $"[CLUSTER-PLACEMENT-EARLY-RETURN]   Orientation: {groupKey.orientation}\n";
+                    earlyReturnMsg += $"[CLUSTER-PLACEMENT-EARLY-RETURN]   This is likely why {(groupKey.systemType?.Contains("Duct") == true ? "DUCTS" : groupKey.systemType?.Contains("Cable") == true ? "CABLE TRAYS" : "this category")} are failing!\n";
+                    earlyReturnMsg += $"[CLUSTER-PLACEMENT-EARLY-RETURN]   Check XML data: sleeve.HostType should be 'Wall', 'Floor', or 'Structural Framing', not '{groupKey.hostType}'\n";
+                    DebugLogger.Error(earlyReturnMsg);
+                    System.IO.File.AppendAllText(clusterDebugLogPath, earlyReturnMsg);
+                }
                 return;
+            }
+            
+            // ✅ DEBUGGING: Log selected family name
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                string familyMsg = $"[CLUSTER-PLACEMENT-FAMILY] Selected familyName='{familyName}' for hostType='{groupKey.hostType}', isCircular={isCircular}, systemType='{groupKey.systemType}'\n";
+                DebugLogger.Info(familyMsg);
+                System.IO.File.AppendAllText(clusterDebugLogPath, familyMsg);
             }
 
                                 if (!DeploymentConfiguration.DeploymentMode)
@@ -5645,8 +5747,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Try to load the missing universal family
                 if (!LoadUniversalFamily(doc, familyName))
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Error($"[ClusterService] Failed to load universal family '{familyName}'");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                        string earlyReturnMsg = $"[CLUSTER-PLACEMENT-EARLY-RETURN] ❌ EARLY RETURN: Failed to load universal family '{familyName}' - placedClusterSleeve will remain NULL\n";
+                        DebugLogger.Error(earlyReturnMsg);
+                        System.IO.File.AppendAllText(clusterDebugLogPath, earlyReturnMsg);
+                        DebugLogger.Error($"[ClusterService] Failed to load universal family '{familyName}'");
+                    }
                     return;
                 }
 
@@ -5659,8 +5767,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (universalSymbols.Count == 0)
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Error($"[ClusterService] Still no family found for '{familyName}' after loading attempt");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                        string earlyReturnMsg = $"[CLUSTER-PLACEMENT-EARLY-RETURN] ❌ EARLY RETURN: Still no family found for '{familyName}' after loading attempt - placedClusterSleeve will remain NULL\n";
+                        DebugLogger.Error(earlyReturnMsg);
+                        System.IO.File.AppendAllText(clusterDebugLogPath, earlyReturnMsg);
+                        DebugLogger.Error($"[ClusterService] Still no family found for '{familyName}' after loading attempt");
+                    }
                     return;
                 }
             }
@@ -5697,8 +5811,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             if (actualSleeves.Count == 0)
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Error($"[ClusterService] No actual sleeves found for cluster group, skipping placement.");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                    string earlyReturnMsg = $"[CLUSTER-PLACEMENT-EARLY-RETURN] ❌ EARLY RETURN: No actual sleeves found for cluster group (cluster.Count={cluster.Count}) - placedClusterSleeve will remain NULL\n";
+                    DebugLogger.Error(earlyReturnMsg);
+                    System.IO.File.AppendAllText(clusterDebugLogPath, earlyReturnMsg);
+                    DebugLogger.Error($"[ClusterService] No actual sleeves found for cluster group, skipping placement.");
+                }
                 return;
             }
             
@@ -5725,6 +5845,57 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Info($"[CLUSTER-ANGLE-DEBUG] Cluster with {cluster.Count} sleeves - Individual angles: {string.Join(", ", angleList)}");
             }
             
+            // ✅ CRITICAL: Check if this is a round pipe or round duct - if so, skip rotation logic
+            // Round pipes/ducts should be treated as axis-aligned (no rotation) regardless of MEP orientation
+            bool isRoundPipeOrDuct = false;
+            if (groupKey.systemType != null)
+            {
+                bool isPipeForRotation = groupKey.systemType.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0;
+                bool isDuctCategory = groupKey.systemType.IndexOf("Duct", StringComparison.OrdinalIgnoreCase) >= 0;
+                
+                if (isPipeForRotation)
+                {
+                    // Pipes are always round - skip rotation
+                    isRoundPipeOrDuct = true;
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                        string skipMsg = $"[CLUSTER-ROTATION-SKIP] ✅ Skipping rotation for ROUND PIPE cluster (systemType='{groupKey.systemType}') - treating as axis-aligned\n";
+                        DebugLogger.Info(skipMsg);
+                        System.IO.File.AppendAllText(clusterDebugLogPath, skipMsg);
+                    }
+                }
+                else if (isDuctCategory)
+                {
+                    // Check if ducts are round by examining first sleeve's ClashZone
+                    var firstSleeveClashZone = GetClashZoneBySleeveInstanceId(cluster[0].SleeveInstanceId, xmlFilePath);
+                    if (firstSleeveClashZone != null)
+                    {
+                        var cz = firstSleeveClashZone as ClashZone;
+                        if (cz != null)
+                        {
+                            // Check DuctShape property or MepElementSizeData.Shape
+                            bool isRoundDuct = string.Equals(cz.DuctShape, "Round", StringComparison.OrdinalIgnoreCase) ||
+                                             (cz.MepElementSizeData != null && 
+                                              (string.Equals(cz.MepElementSizeData.Shape, "Round", StringComparison.OrdinalIgnoreCase) ||
+                                               string.Equals(cz.MepElementSizeData.Shape, "Circular", StringComparison.OrdinalIgnoreCase)));
+                            
+                            if (isRoundDuct)
+                            {
+                                isRoundPipeOrDuct = true;
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                                    string skipMsg = $"[CLUSTER-ROTATION-SKIP] ✅ Skipping rotation for ROUND DUCT cluster (DuctShape='{cz.DuctShape}', Shape='{cz.MepElementSizeData?.Shape ?? "N/A"}') - treating as axis-aligned\n";
+                                    DebugLogger.Info(skipMsg);
+                                    System.IO.File.AppendAllText(clusterDebugLogPath, skipMsg);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
             // ✅ CRITICAL: Determine correct rotation angle for cluster sleeve
             // WHY ROTATE? The cluster sleeve must align with the MEP element direction.
             // If individual sleeves are rotated (e.g., -45° or 135°), the cluster sleeve must also be rotated to match.
@@ -5732,8 +5903,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // causing misalignment between the cluster sleeve and the actual MEP element direction.
             // HOW TO CHOOSE? When sleeves are on the same axis (differ by 180°), use MEP element orientation vector
             // to determine which angle matches the actual MEP direction.
+            // ⚠️ EXCEPTION: Round pipes and round ducts should NOT be rotated - they are always axis-aligned
             double rotationAngle = 0.0;
-            if (cluster != null && cluster.Count > 0 && actualSleeves != null && actualSleeves.Count > 0)
+            if (!isRoundPipeOrDuct && cluster != null && cluster.Count > 0 && actualSleeves != null && actualSleeves.Count > 0)
             {
                 // Step 1: Collect all sleeve rotation angles and check if they're on the same axis
                 var sleeveAngles = new List<(int sleeveId, double angle, ClashZone clashZone)>();
@@ -6014,7 +6186,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (refLevel == null)
             {
                 if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                    string earlyReturnMsg = $"[CLUSTER-PLACEMENT-EARLY-RETURN] ❌ EARLY RETURN: Reference level not found for cluster sleeve (first sleeve ID={cluster[0]?.SleeveInstanceId ?? -1}) - placedClusterSleeve will remain NULL\n";
+                    DebugLogger.Error(earlyReturnMsg);
+                    System.IO.File.AppendAllText(clusterDebugLogPath, earlyReturnMsg);
                     DebugLogger.Log($"Reference level not found for cluster sleeve. Skipping cluster.");
+                }
                 return;
             }
 
@@ -6057,7 +6235,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
-                    string errorMsg = $"[CLUSTER-PLACEMENT] ❌❌❌ CRITICAL: inst is NULL after creation attempt!\n";
+                    string errorMsg = $"[CLUSTER-PLACEMENT-EARLY-RETURN] ❌❌❌ EARLY RETURN: inst is NULL after creation attempt! - placedClusterSleeve will remain NULL\n";
+                    errorMsg += $"[CLUSTER-PLACEMENT-EARLY-RETURN] Placement point: ({mid.X:F3}, {mid.Y:F3}, {mid.Z:F3}), Level: {refLevel?.Name ?? "NULL"}, Family: {familySymbol?.Family?.Name ?? "NULL"}\n";
                     DebugLogger.Error(errorMsg);
                     System.IO.File.AppendAllText(clusterDebugLogPath, errorMsg);
                 }
@@ -6126,7 +6305,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // The rotationAngle represents the cluster's "intended rotated axis" direction
             // The cluster sleeve must be rotated to align with this axis so it matches the orientation of the individual sleeves
             // This rotation is applied AFTER placement and sizing
-            if (Math.Abs(rotationAngle) > 1e-6)
+            // ⚠️ EXCEPTION: Round pipes and round ducts should NOT be rotated - skip rotation entirely
+            if (!isRoundPipeOrDuct && Math.Abs(rotationAngle) > 1e-6)
             {
                 // Check if angle is close to axis-aligned (0°, 90°, 180°, 270°) - if so, don't rotate
                 double angleDegrees = rotationAngle * 180 / Math.PI;
