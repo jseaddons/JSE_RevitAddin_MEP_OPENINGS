@@ -612,13 +612,66 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 }
                             }
                             
-                            PlaceClusterSleeve(doc, cluster, groupKey, targetCategory, out int placed1, out int deleted1, out FamilyInstance placedClusterSleeve, xmlFilePath);
+                            FamilyInstance placedClusterSleeve = null;
+                            int placed1 = 0;
+                            int deleted1 = 0;
+                            
+                            try
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[CLUSTER-PLACEMENT-CALL] About to call PlaceClusterSleeve for cluster with {cluster.Count} sleeves\n");
+                                }
+                                
+                                PlaceClusterSleeve(doc, cluster, groupKey, targetCategory, out placed1, out deleted1, out placedClusterSleeve, xmlFilePath);
+                                
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[CLUSTER-PLACEMENT-CALL] ✅ PlaceClusterSleeve call completed (no exception)\n");
+                                }
+                            }
+                            catch (Exception placeEx)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                                    string errorLog = $"[CLUSTER-PLACEMENT-CALL] ❌❌❌ EXCEPTION calling PlaceClusterSleeve: {placeEx.Message}\n";
+                                    errorLog += $"[CLUSTER-PLACEMENT-CALL] StackTrace: {placeEx.StackTrace}\n";
+                                    DebugLogger.Error(errorLog);
+                                    System.IO.File.AppendAllText(clusterDebugLogPath, errorLog);
+                                }
+                                throw; // Re-throw to prevent continuing
+                            }
+                            
+                            // ✅ CRITICAL LOGGING: Log PlaceClusterSleeve return values IMMEDIATELY after call
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                                string returnLog = $"[CLUSTER-PLACEMENT-RETURN] PlaceClusterSleeve returned: placed1={placed1}, deleted1={deleted1}, placedClusterSleeve={(placedClusterSleeve != null ? $"ID={placedClusterSleeve.Id.IntegerValue}" : "NULL")}\n";
+                                DebugLogger.Info(returnLog);
+                                System.IO.File.AppendAllText(clusterDebugLogPath, returnLog);
+                                
+                                if (placed1 == 0)
+                                {
+                                    string warningLog = $"[CLUSTER-PLACEMENT-RETURN] ⚠️ WARNING: placed1=0 but cluster sleeve was created! This means PlaceClusterSleeve returned 0 for placed count.\n";
+                                    DebugLogger.Warning(warningLog);
+                                    System.IO.File.AppendAllText(clusterDebugLogPath, warningLog);
+                                }
+                                if (placedClusterSleeve == null)
+                                {
+                                    string errorLog = $"[CLUSTER-PLACEMENT-RETURN] ⚠️⚠️⚠️ ERROR: placedClusterSleeve is NULL! Cluster sleeve was created but not returned!\n";
+                                    DebugLogger.Error(errorLog);
+                                    System.IO.File.AppendAllText(clusterDebugLogPath, errorLog);
+                                }
+                            }
                             
                             try 
                             { 
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
-                                    File.AppendAllText(placementDebugPath3, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] PlaceClusterSleeve returned: placed={placed1}, deleted={deleted1}\n");
+                                    File.AppendAllText(placementDebugPath3, $"[{DateTime.Now:HH:mm:ss}] [CLUSTERING] PlaceClusterSleeve returned: placed={placed1}, deleted={deleted1}, clusterSleeve={(placedClusterSleeve != null ? placedClusterSleeve.Id.IntegerValue.ToString() : "NULL")}\n");
                                 }
                             } 
                             catch { }
@@ -626,9 +679,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             deletedCount += deleted1;
                             
                             // ✅ CRITICAL: Track cluster sleeve and its ClashZoneIds for database save
-                            if (placed1 > 0 && placedClusterSleeve != null)
+                            // ✅ FIX: Check placedClusterSleeve != null FIRST, even if placed1 == 0 (in case of bugs)
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                                string beforeCheckMsg = $"[CLUSTER-TRACKING-CHECK] About to check placedClusterSleeve != null: placedClusterSleeve={(placedClusterSleeve != null ? $"ID={placedClusterSleeve.Id.IntegerValue}" : "NULL")}\n";
+                                DebugLogger.Info(beforeCheckMsg);
+                                System.IO.File.AppendAllText(clusterDebugLogPath, beforeCheckMsg);
+                            }
+                            
+                            if (placedClusterSleeve != null)
                             {
                                 placedClusters.Add(placedClusterSleeve);
+                                
+                                // ✅ CRITICAL LOGGING: Log when cluster sleeve is added to placedClusters list
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                                    string trackingMsg = $"[CLUSTER-TRACKING] ✅ Added cluster sleeve {placedClusterSleeve.Id.IntegerValue} to placedClusters list (Total in list: {placedClusters.Count})\n";
+                                    trackingMsg += $"[CLUSTER-TRACKING] Cluster sleeve {placedClusterSleeve.Id.IntegerValue} contains {clusterClashZoneIds.Count} ClashZoneIds\n";
+                                    DebugLogger.Info(trackingMsg);
+                                    System.IO.File.AppendAllText(clusterDebugLogPath, trackingMsg);
+                                }
+                            }
+                            else
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                                    string errorMsg = $"[CLUSTER-TRACKING] ❌❌❌ placedClusterSleeve is NULL - NOT adding to placedClusters list!\n";
+                                    errorMsg += $"[CLUSTER-TRACKING] placed1={placed1}, deleted1={deleted1}\n";
+                                    DebugLogger.Error(errorMsg);
+                                    System.IO.File.AppendAllText(clusterDebugLogPath, errorMsg);
+                                }
+                            }
+                            
+                            if (placedClusterSleeve != null)
+                            {
+                                
                                 clusterToClashZoneIds[placedClusterSleeve.Id.IntegerValue] = clusterClashZoneIds;
                                 
                                 if (!DeploymentConfiguration.DeploymentMode)
@@ -677,7 +765,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     placedClusterSleevesOut.Clear();
                     placedClusterSleevesOut.AddRange(placedClusters);
                                         if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Log($"[UniversalClusterService] Returning {placedClusters.Count} placed cluster sleeves for coordinate update");
+                    {
+                        DebugLogger.Log($"[UniversalClusterService] Returning {placedClusters.Count} placed cluster sleeves for coordinate update");
+                        string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                        string returnMsg = $"[CLUSTER-RETURN] ✅ Returning {placedClusters.Count} cluster sleeves to orchestrator\n";
+                        if (placedClusters.Count > 0)
+                        {
+                            returnMsg += $"[CLUSTER-RETURN] Cluster sleeve IDs: {string.Join(", ", placedClusters.Select(c => c.Id.IntegerValue))}\n";
+                        }
+                        else
+                        {
+                            returnMsg += $"[CLUSTER-RETURN] ⚠️ WARNING: placedClusters list is EMPTY - no cluster sleeves to return!\n";
+                        }
+                        DebugLogger.Info(returnMsg);
+                        System.IO.File.AppendAllText(clusterDebugLogPath, returnMsg);
+                    }
                 }
                 
                 // ✅ PERFORMANCE: Log clustering performance
@@ -705,15 +807,96 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             // ✅ PATH 2/3: Save cluster data to database after calculation and placement
-            if (!isPath1Replay && comboId.HasValue && filterId.HasValue && placedCount > 0)
+            // ✅ CRITICAL FIX: Try to get comboId and filterId from database if not provided
+            int? finalComboId = comboId;
+            int? finalFilterId = filterId;
+            
+            if (!finalComboId.HasValue || !finalFilterId.HasValue)
+            {
+                try
+                {
+                    var dbContext = new SleeveDbContext(doc);
+                    
+                    // Try to get filterId from Filters table using filterName and category
+                    if (!finalFilterId.HasValue && !string.IsNullOrWhiteSpace(filterName))
+                    {
+                        var filterRepository = new Data.Repositories.FilterRepository(dbContext, _ => { });
+                        var lookedUpFilterId = filterRepository.GetFilterId(filterName, targetCategory);
+                        if (lookedUpFilterId > 0)
+                        {
+                            finalFilterId = lookedUpFilterId;
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[CLUSTERING] ✅ Looked up FilterId={lookedUpFilterId} from database for filter '{filterName}', category '{targetCategory}'");
+                            }
+                        }
+                    }
+                    
+                    // Try to get comboId from the first placed cluster's clash zones
+                    if (!finalComboId.HasValue && placedClusters != null && placedClusters.Count > 0 && clusterToClashZoneIds != null && clusterToClashZoneIds.Count > 0)
+                    {
+                        var firstClusterId = placedClusters[0].Id.IntegerValue;
+                        if (clusterToClashZoneIds.TryGetValue(firstClusterId, out var clashZoneGuids) && clashZoneGuids != null && clashZoneGuids.Count > 0)
+                        {
+                            // Load clash zones from database to get file combo info
+                            var clashZoneRepository = new Data.Repositories.ClashZoneRepository(dbContext);
+                            var clashZones = clashZoneRepository.GetClashZonesByCategory(targetCategory);
+                            
+                            // Find the first clash zone that matches one of our GUIDs
+                            var firstClashZone = clashZones?.FirstOrDefault(cz => clashZoneGuids.Contains(cz.Id));
+                            if (firstClashZone != null && finalFilterId.HasValue)
+                            {
+                                // Get comboId from FileCombos table using the clash zone's file combo info
+                                using (var cmd = dbContext.Connection.CreateCommand())
+                                {
+                                    cmd.CommandText = @"
+                                        SELECT ComboId FROM FileCombos 
+                                        WHERE FilterId = @FilterId 
+                                          AND Category = @Category 
+                                          AND LinkedFileKey = @LinkedFileKey 
+                                          AND HostFileKey = @HostFileKey
+                                        LIMIT 1";
+                                    cmd.Parameters.AddWithValue("@FilterId", finalFilterId.Value);
+                                    cmd.Parameters.AddWithValue("@Category", targetCategory);
+                                    // ✅ FIX: Use SourceDocKey (not ReferenceDocKey which doesn't exist)
+                                    var linkedFileKey = firstClashZone.SourceDocKey ?? firstClashZone.DocumentPath ?? string.Empty;
+                                    var hostFileKey = firstClashZone.HostDocKey ?? firstClashZone.StructuralElementDocumentTitle ?? string.Empty;
+                                    cmd.Parameters.AddWithValue("@LinkedFileKey", linkedFileKey);
+                                    cmd.Parameters.AddWithValue("@HostFileKey", hostFileKey);
+                                    
+                                    var result = cmd.ExecuteScalar();
+                                    if (result != null && int.TryParse(result.ToString(), out int lookedUpComboId) && lookedUpComboId > 0)
+                                    {
+                                        finalComboId = lookedUpComboId;
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            DebugLogger.Info($"[CLUSTERING] ✅ Looked up ComboId={lookedUpComboId} from database using FilterId={finalFilterId.Value}, Category='{targetCategory}', LinkedFileKey='{linkedFileKey}', HostFileKey='{hostFileKey}'");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception lookupEx)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Warning($"[CLUSTERING] ⚠️ Could not lookup comboId/filterId from database: {lookupEx.Message}");
+                        DebugLogger.Warning($"[CLUSTERING] Stack trace: {lookupEx.StackTrace}");
+                    }
+                }
+            }
+            
+            if (!isPath1Replay && finalComboId.HasValue && finalFilterId.HasValue && placedCount > 0)
             {
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    DebugLogger.Info($"[CLUSTERING] ✅ Saving cluster data to database: ComboId={comboId.Value}, FilterId={filterId.Value}, PlacedCount={placedCount}, Clusters={placedClusters?.Count ?? 0}");
+                    DebugLogger.Info($"[CLUSTERING] ✅ Saving cluster data to database: ComboId={finalComboId.Value}, FilterId={finalFilterId.Value}, PlacedCount={placedCount}, Clusters={placedClusters?.Count ?? 0}");
                 }
                 try
                 {
-                    SaveClusterDataToDatabase(doc, placedClusters, comboId.Value, filterId.Value, targetCategory, xmlFilePath, clusterToClashZoneIds);
+                    SaveClusterDataToDatabase(doc, placedClusters, finalComboId.Value, finalFilterId.Value, targetCategory, xmlFilePath, clusterToClashZoneIds);
                 }
                 catch (Exception saveEx)
                 {
@@ -729,7 +912,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    DebugLogger.Warning($"[CLUSTERING] ⚠️ SKIPPED saving cluster data: isPath1Replay={isPath1Replay}, comboId.HasValue={comboId.HasValue}, filterId.HasValue={filterId.HasValue}, placedCount={placedCount}");
+                    DebugLogger.Warning($"[CLUSTERING] ⚠️ SKIPPED saving cluster data: isPath1Replay={isPath1Replay}, finalComboId.HasValue={finalComboId.HasValue}, finalFilterId.HasValue={finalFilterId.HasValue}, placedCount={placedCount}");
+                    if (!finalComboId.HasValue)
+                        DebugLogger.Warning($"[CLUSTERING] ⚠️ comboId is NULL - cluster data will not be saved");
+                    if (!finalFilterId.HasValue)
+                        DebugLogger.Warning($"[CLUSTERING] ⚠️ filterId is NULL - cluster data will not be saved");
                 }
             }
 
@@ -870,14 +1057,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (depthParam != null && !depthParam.IsReadOnly)
                             depthParam.Set(clusterData.ClusterDepth);
 
-                        // Apply rotation if needed
-                        if (clusterData.IsRotated && Math.Abs(clusterData.RotationAngleDeg) > 1e-6)
+                        // ✅ CRITICAL: DO NOT rotate the cluster sleeve
+                        // The cluster sleeve should always be axis-aligned (0° rotation)
+                        // The IsRotated flag and RotationAngleDeg are stored for reference (bounding box calculation method used),
+                        // but the cluster sleeve element itself should NOT be rotated
+                        // Dimensions already account for the rotation of individual sleeves
+                        if (!DeploymentConfiguration.DeploymentMode && clusterData.IsRotated && Math.Abs(clusterData.RotationAngleDeg) > 1e-6)
                         {
-                            var rotationAngle = clusterData.RotationAngleDeg * Math.PI / 180.0;
-                            var rotationAxis = XYZ.BasisZ;
-                            var rotation = Transform.CreateRotationAtPoint(rotationAxis, rotationAngle, placementPoint);
-                            ElementTransformUtils.MoveElement(doc, clusterSleeve.Id, rotation.OfPoint(placementPoint) - placementPoint);
-                            ElementTransformUtils.RotateElement(doc, clusterSleeve.Id, Line.CreateBound(placementPoint, placementPoint + XYZ.BasisZ), rotationAngle);
+                            DebugLogger.Info($"[CLUSTER-ROTATION] ⚠️ Cluster bounding box was calculated with rotation angle {clusterData.RotationAngleDeg:F1}° (for coordinate system only), but cluster sleeve is placed axis-aligned (0°) - dimensions already account for rotation");
                         }
 
                         placedClusters.Add(clusterSleeve);
@@ -1813,185 +2000,157 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// Reset cluster flags for deleted cluster sleeves
+        /// ✅ DATABASE-FIRST: Reset cluster flags for deleted cluster sleeves
+        /// Queries database directly (no XML operations)
         /// </summary>
         private void ResetClusterFlagsForDeletedSleeves(Document doc, string xmlFilePath = null)
         {
             try
             {
-                var filtersDirectory = ProjectPathService.GetFiltersDirectory(_doc);
-                
-                if (!Directory.Exists(filtersDirectory))
-                    return;
-
-                // ✅ FIX: Only process specific XML file if provided (ONE SOURCE OF TRUTH)
-                var xmlFiles = string.IsNullOrEmpty(xmlFilePath) 
-                    ? Directory.GetFiles(filtersDirectory, "*.xml")  // Backward compatibility
-                    : new[] { xmlFilePath };  // Only the specific file
-                    
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
-                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[ResetFlags] Processing {xmlFiles.Length} XML file(s): {(string.IsNullOrEmpty(xmlFilePath) ? "ALL" : Path.GetFileName(xmlFilePath))}\n");
+                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[ResetFlags] Processing database for deleted cluster sleeves\n");
                 }
                 
                 int resetCount = 0;
+                var resetClashZones = new List<ClashZone>(); // ✅ Track ClashZones that were reset for database update
+                var oldClusterInstanceIds = new Dictionary<Guid, int>(); // ✅ Track old cluster instance IDs for database matching
 
-                foreach (var xmlFile in xmlFiles)
+                // ✅ DATABASE-FIRST: Get all categories and check cluster sleeves from database
+                var categories = new[] { "Ducts", "Pipes", "Cable Trays", "Duct Accessories", "Cable Tray Fittings" };
+                
+                using (var context = new SleeveDbContext(doc, msg =>
                 {
-                    try
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[ResetClusterFlags][SQLite] {msg}");
+                }))
+                {
+                    var repository = new ClashZoneRepository(context, msg =>
                     {
-                        var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
-                        OpeningFilter filter = null;
-                        
-                        // ⚠️ CRITICAL: Read XML first, then close reader before writing
-                        using (var reader = new StreamReader(xmlFile))
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[ResetClusterFlags][SQLite] {msg}");
+                    });
+                    
+                    foreach (var category in categories)
+                    {
+                        try
                         {
-                            filter = (OpeningFilter)serializer.Deserialize(reader);
-                        } // Reader is now closed
-                        
-                        if (filter?.ClashZoneStorage?.AllZones != null)
-                        {
-                            bool modified = false;
+                            // ✅ Get all ClashZones with cluster sleeves from database
+                            var dbZones = repository.GetClashZonesByCategory(category)
+                                ?.Where(z => z != null && z.IsClusterResolved && z.ClusterSleeveInstanceId > 0)
+                                .ToList();
                             
-                            var storageZonesForResetFlags = GetStorageZones(filter);
-                            if (storageZonesForResetFlags.Count > 0)
+                            if (dbZones == null || dbZones.Count == 0)
+                                continue;
+                            
+                            foreach (var clashZone in dbZones)
                             {
-                                foreach (var clashZone in storageZonesForResetFlags)
+                                // Check if cluster sleeve still exists in Revit
+                                var clusterSleeveId = new ElementId(clashZone.ClusterSleeveInstanceId);
+                                var clusterSleeve = doc.GetElement(clusterSleeveId);
+                                
+                                if (clusterSleeve == null)
                                 {
-                                    // Check cluster sleeves
-                                    if (clashZone.IsClusterResolved)
-                                    {
-                                        // ✅ FIX: Check integer version (ClusterSleeveInstanceId) which IS serialized to XML
-                                        if (clashZone.ClusterSleeveInstanceId <= 0)
-                                        {
-                                            clashZone.IsClusterResolved = false;
-                                            clashZone.ClusterSleeveId = null;
-                                            clashZone.ClusterSleeveInstanceId = -1;
-                                            clashZone.LastUpdated = DateTime.Now;
-                                            resetCount++;
-                                            modified = true;
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[DEBUG] Reset cluster flag for ClashZone {clashZone.Id} - ClusterSleeveInstanceId was {clashZone.ClusterSleeveInstanceId} (invalid)\n");
-                                        }
-                                        else
-                                        {
-                                            // Check if cluster sleeve still exists in Revit
-                                            var clusterSleeveId = new ElementId(clashZone.ClusterSleeveInstanceId);
-                                            var clusterSleeve = doc.GetElement(clusterSleeveId);
-                                            if (clusterSleeve == null)
-                                            {
-                                                // Cluster sleeve was deleted - reset flag
-                                                clashZone.IsClusterResolved = false;
-                                                clashZone.ClusterSleeveId = null;
-                                                clashZone.ClusterSleeveInstanceId = -1;
-                                                clashZone.LastUpdated = DateTime.Now;
-                                                resetCount++;
-                                                modified = true;
-                                                                                            if (!DeploymentConfiguration.DeploymentMode)
-                                                DebugLogger.Info($"[DEBUG] Reset cluster flag for ClashZone {clashZone.Id} - cluster sleeve {clashZone.ClusterSleeveInstanceId} was deleted\n");
-                                            }
-                                        }
-                                    }
+                                    // Cluster sleeve was deleted - reset flag
+                                    // ✅ Store old cluster ID before resetting (needed for database matching)
+                                    int oldClusterInstanceId = clashZone.ClusterSleeveInstanceId;
+                                    oldClusterInstanceIds[clashZone.Id] = oldClusterInstanceId;
                                     
-                                    // ⚠️ CRITICAL: Also check individual sleeves (IsResolved) - BUT ONLY if NOT cluster-resolved
-                                    // If cluster-resolved, keep individual flag as true even if individual sleeve is missing
-                                    if (clashZone.IsResolved && !clashZone.IsClusterResolved)
+                                    clashZone.IsClusterResolved = false;
+                                    clashZone.ClusterSleeveInstanceId = -1;
+                                    resetCount++;
+                                    resetClashZones.Add(clashZone); // ✅ Track for database update
+                                    
+                                    if (!DeploymentConfiguration.DeploymentMode)
                                     {
-                                        if (clashZone.SleeveInstanceId <= 0)
-                                        {
-                                            clashZone.IsResolved = false;
-                                            clashZone.ResolvedSleeveId = null;
-                                            clashZone.SleeveInstanceId = -1;
-                                            clashZone.SleeveFamilyName = string.Empty;
-                                            clashZone.LastUpdated = DateTime.Now;
-                                            resetCount++;
-                                            modified = true;
-                                                                                            if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[DEBUG] Reset individual sleeve flag for ClashZone {clashZone.Id} - SleeveInstanceId was {clashZone.SleeveInstanceId} (invalid)\n");
-                                        }
-                                        else
-                                        {
-                                            // Check if individual sleeve still exists in Revit
-                                            var sleeveId = new ElementId(clashZone.SleeveInstanceId);
-                                            var sleeve = doc.GetElement(sleeveId);
-                                            if (sleeve == null)
-                                            {
-                                                // Individual sleeve was deleted - reset flag
-                                                clashZone.IsResolved = false;
-                                                clashZone.ResolvedSleeveId = null;
-                                                clashZone.SleeveInstanceId = -1;
-                                                clashZone.SleeveFamilyName = string.Empty;
-                                                clashZone.LastUpdated = DateTime.Now;
-                                                resetCount++;
-                                                modified = true;
-                                                                                            if (!DeploymentConfiguration.DeploymentMode)
-                                                DebugLogger.Info($"[DEBUG] Reset individual sleeve flag for ClashZone {clashZone.Id} - sleeve {clashZone.SleeveInstanceId} was deleted\n");
-                                            }
-                                        }
+                                        DebugLogger.Info($"[ResetClusterFlags] Reset cluster flag for ClashZone {clashZone.Id} - cluster sleeve {oldClusterInstanceId} was deleted");
                                     }
                                 }
-                                
-                                // ✅ FIX: Only save if modifications were made, and reader is already closed
-                                if (modified)
+                            }
+                            
+                            // ✅ Also check individual sleeves (IsResolved) - BUT ONLY if NOT cluster-resolved
+                            var individualZones = repository.GetClashZonesByCategory(category)
+                                ?.Where(z => z != null && z.IsResolved && !z.IsClusterResolved && z.SleeveInstanceId > 0)
+                                .ToList();
+                            
+                            if (individualZones != null && individualZones.Count > 0)
+                            {
+                                foreach (var clashZone in individualZones)
                                 {
-                                    // Normalize coordinates before saving to avoid 0,0,0 in XML
-                                    if (filter?.ClashZoneStorage?.AllZones != null)
+                                    // Check if individual sleeve still exists in Revit
+                                    var sleeveId = new ElementId(clashZone.SleeveInstanceId);
+                                    var sleeve = doc.GetElement(sleeveId);
+                                    
+                                    if (sleeve == null)
                                     {
-                                        var zonesForSave = GetStorageZones(filter);
-                                        if (zonesForSave.Count > 0)
+                                        // Individual sleeve was deleted - reset flag
+                                        clashZone.IsResolved = false;
+                                        clashZone.SleeveInstanceId = -1;
+                                        resetCount++;
+                                        resetClashZones.Add(clashZone); // ✅ Track for database update
+                                        
+                                        if (!DeploymentConfiguration.DeploymentMode)
                                         {
-                                            foreach (var z in zonesForSave)
-                                            {
-                                                if (z == null) continue;
-                                                bool hasIP = z.IntersectionPoint != null;
-                                                bool isIPZero = hasIP && Math.Abs(z.IntersectionPoint.X) < 1e-9 && Math.Abs(z.IntersectionPoint.Y) < 1e-9 && Math.Abs(z.IntersectionPoint.Z) < 1e-9;
-                                                bool hasSPP = z.SleevePlacementPoint != null;
-                                                bool isSPPZero = hasSPP && Math.Abs(z.SleevePlacementPoint.X) < 1e-9 && Math.Abs(z.SleevePlacementPoint.Y) < 1e-9 && Math.Abs(z.SleevePlacementPoint.Z) < 1e-9;
-                                                
-                                                if (hasIP && !isIPZero)
-                                                {
-                                                    z.IntersectionPointX = z.IntersectionPoint.X;
-                                                    z.IntersectionPointY = z.IntersectionPoint.Y;
-                                                    z.IntersectionPointZ = z.IntersectionPoint.Z;
-                                                }
-                                            }
+                                            DebugLogger.Info($"[ResetClusterFlags] Reset individual sleeve flag for ClashZone {clashZone.Id} - sleeve {clashZone.SleeveInstanceId} was deleted");
                                         }
                                     }
-                                    using (var writer = new StreamWriter(xmlFile))
-                                    {
-                                        serializer.Serialize(writer, filter);
-                                    }
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[DEBUG] ✓ Saved reset flags to {Path.GetFileName(xmlFile)}\n");
                                 }
                             }
                         }
+                        catch (Exception catEx)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Warning($"[ResetClusterFlags] Error processing category '{category}': {catEx.Message}");
+                        }
                     }
-                    catch (Exception ex)
+                    
+                    // ✅ Update database for all reset ClashZones
+                    if (resetClashZones.Count > 0)
                     {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Error($"[UniversalClusterService] Error processing XML file {xmlFile}: {ex.Message}");
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[DEBUG] ✗ Error resetting flags in {Path.GetFileName(xmlFile)}: {ex.Message}\n");
+                        // Convert to database format
+                        var dbUpdates = resetClashZones.Select(cz => (
+                            ClashZoneId: cz.Id,
+                            IsResolved: cz.IsResolved,
+                            IsClusterResolved: cz.IsClusterResolved, // ✅ This is now false for cluster deletions
+                            SleeveInstanceId: cz.SleeveInstanceId,
+                            ClusterInstanceId: cz.ClusterSleeveInstanceId, // ✅ This is now -1 for cluster deletions
+                            MepElementId: cz.MepElementId?.IntegerValue ?? cz.MepElementIdValue,
+                            StructuralElementId: cz.StructuralElementId?.IntegerValue ?? cz.StructuralElementIdValue,
+                            IntersectionPointX: cz.IntersectionPointX,
+                            IntersectionPointY: cz.IntersectionPointY,
+                            IntersectionPointZ: cz.IntersectionPointZ,
+                            OldSleeveInstanceId: cz.SleeveInstanceId, // For cluster deletion, individual sleeve was already -1
+                            OldClusterInstanceId: oldClusterInstanceIds.ContainsKey(cz.Id) ? oldClusterInstanceIds[cz.Id] : cz.ClusterSleeveInstanceId, // ✅ Use stored old cluster ID for database matching
+                            MarkedForClusterProcess: (bool?)null,
+                            AfterClusterSleeveId: -1,
+                            IsClusteredFlag: (bool?)null
+                        )).ToList();
+                        
+                        repository.BatchUpdateFlags(dbUpdates);
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[ResetClusterFlags] ✅ Updated database flags for {dbUpdates.Count} clash zones (IsClusterResolved/IsResolved reset to false)");
+                        }
                     }
                 }
 
                 if (resetCount > 0)
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[DEBUG] ✓ Reset flags for {resetCount} deleted sleeves (cluster + individual)\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[ResetClusterFlags] ✓ Reset flags for {resetCount} deleted sleeves (cluster + individual) - database updated");
                 }
                 else
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[DEBUG] ✓ No deleted sleeves found - all flags preserved\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[ResetClusterFlags] ✓ No deleted sleeves found - all flags preserved");
                 }
             }
             catch (Exception ex)
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Error($"[UniversalClusterService] Error resetting cluster flags: {ex.Message}");
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[UniversalClusterService] Error resetting cluster flags: {ex.Message}");
             }
         }
 
@@ -3791,7 +3950,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // we can use world-space positions and check distances along/perpendicular to the shared rotated axis
                 
                 // ✅ STEP 1: Calculate shared rotated axis direction (unit vector along rotated X-axis)
-                XYZ rotatedAxisDirection = new XYZ(Math.Cos(rotationAngle), Math.Sin(rotationAngle), 0).Normalize();
+                // Prefer the full 3D orientation stored on the clash zone (handles tilted axes).
+                XYZ rotatedAxisDirection;
+                // Use the full 3D MEP orientation only when present and non-zero (avoid normalizing a zero vector)
+                if (cz1.MepElementOrientation != null && cz1.MepElementOrientation.GetLength() > 1e-6)
+                {
+                    rotatedAxisDirection = cz1.MepElementOrientation.Normalize();
+                    if (shouldLog)
+                    {
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Rotated Axis Direction (from MepElementOrientation): ({rotatedAxisDirection.X:F6}, {rotatedAxisDirection.Y:F6}, {rotatedAxisDirection.Z:F6})\n");
+                    }
+                }
+                else
+                {
+                    // Fallback to XY-projected rotation angle (historical behaviour)
+                    rotatedAxisDirection = new XYZ(Math.Cos(rotationAngle), Math.Sin(rotationAngle), 0).Normalize();
+                    if (shouldLog)
+                    {
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Rotated Axis Direction (fallback from angle): ({rotatedAxisDirection.X:F6}, {rotatedAxisDirection.Y:F6}, {rotatedAxisDirection.Z:F6})\n");
+                    }
+                }
                 
                 // ✅ STEP 2: Calculate vector from center1 to center2 in world-space
                 XYZ worldVector = center2 - center1;
@@ -5547,12 +5725,186 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Info($"[CLUSTER-ANGLE-DEBUG] Cluster with {cluster.Count} sleeves - Individual angles: {string.Join(", ", angleList)}");
             }
             
-            double rotationAngle = DetermineDominantRotationAngle(cluster, xmlFilePath);
+            // ✅ CRITICAL: Determine correct rotation angle for cluster sleeve
+            // WHY ROTATE? The cluster sleeve must align with the MEP element direction.
+            // If individual sleeves are rotated (e.g., -45° or 135°), the cluster sleeve must also be rotated to match.
+            // WHAT IF WE DON'T ROTATE? The cluster sleeve would be axis-aligned (0°) while MEP elements are rotated,
+            // causing misalignment between the cluster sleeve and the actual MEP element direction.
+            // HOW TO CHOOSE? When sleeves are on the same axis (differ by 180°), use MEP element orientation vector
+            // to determine which angle matches the actual MEP direction.
+            double rotationAngle = 0.0;
+            if (cluster != null && cluster.Count > 0 && actualSleeves != null && actualSleeves.Count > 0)
+            {
+                // Step 1: Collect all sleeve rotation angles and check if they're on the same axis
+                var sleeveAngles = new List<(int sleeveId, double angle, ClashZone clashZone)>();
+                foreach (var sleeveData in cluster)
+                {
+                    var clashZone = GetClashZoneBySleeveInstanceId(sleeveData.SleeveInstanceId, xmlFilePath);
+                    if (clashZone == null) continue;
+                    
+                    var cz = clashZone as ClashZone;
+                    if (cz == null) continue;
+                    
+                    // Try to get actual rotation from Revit element first
+                    double angle = 0.0;
+                    var sleeveId = new ElementId(sleeveData.SleeveInstanceId);
+                    var sleeve = doc.GetElement(sleeveId) as FamilyInstance;
+                    if (sleeve != null)
+                    {
+                        var loc = sleeve.Location as LocationPoint;
+                        if (loc != null)
+                        {
+                            angle = loc.Rotation;
+                        }
+                        else
+                        {
+                            angle = cz.MepElementRotationAngle;
+                        }
+                    }
+                    else
+                    {
+                        angle = cz.MepElementRotationAngle;
+                    }
+                    
+                    sleeveAngles.Add((sleeveData.SleeveInstanceId, angle, cz));
+                }
+                
+                if (sleeveAngles.Count > 0)
+                {
+                    // Step 2: Check if all sleeves are on the same axis (differ by 0° or 180°)
+                    bool allOnSameAxis = true;
+                    double firstAngle = sleeveAngles[0].angle;
+                    double firstAngleDeg = firstAngle * 180.0 / Math.PI;
+                    while (firstAngleDeg < 0) firstAngleDeg += 360.0;
+                    while (firstAngleDeg >= 360.0) firstAngleDeg -= 360.0;
+                    
+                    foreach (var (sleeveId, angle, cz) in sleeveAngles)
+                    {
+                        double angleDeg = angle * 180.0 / Math.PI;
+                        while (angleDeg < 0) angleDeg += 360.0;
+                        while (angleDeg >= 360.0) angleDeg -= 360.0;
+                        
+                        double diff = Math.Abs(angleDeg - firstAngleDeg);
+                        if (diff > 180.0) diff = 360.0 - diff;
+                        
+                        // Check if difference is 0° or 180° (same axis)
+                        double axisToleranceDeg = 1.0;
+                        bool isSameAxis = diff <= axisToleranceDeg || Math.Abs(diff - 180.0) <= axisToleranceDeg;
+                        
+                        if (!isSameAxis)
+                        {
+                            allOnSameAxis = false;
+                            break;
+                        }
+                    }
+                    
+                    // Step 3: If all sleeves are on the same axis, use MEP element orientation to choose correct angle
+                    if (allOnSameAxis && sleeveAngles.Count > 1)
+                    {
+                        // Get the first sleeve's MEP element orientation vector
+                        var firstCz = sleeveAngles[0].clashZone;
+                        if (firstCz.MepElementOrientation != null && firstCz.MepElementOrientation.GetLength() > 1e-6)
+                        {
+                            // Calculate angle from MEP orientation vector
+                            XYZ mepOrientation = firstCz.MepElementOrientation.Normalize();
+                            double mepAngle = Math.Atan2(mepOrientation.Y, mepOrientation.X);
+                            double mepAngleDeg = mepAngle * 180.0 / Math.PI;
+                            
+                            // Find which sleeve angle is closest to the MEP orientation angle
+                            double bestAngle = sleeveAngles[0].angle;
+                            double minDiff = double.MaxValue;
+                            
+                            foreach (var (sleeveId, angle, cz) in sleeveAngles)
+                            {
+                                double angleDeg = angle * 180.0 / Math.PI;
+                                while (angleDeg < 0) angleDeg += 360.0;
+                                while (angleDeg >= 360.0) angleDeg -= 360.0;
+                                
+                                double diff1 = Math.Abs(angleDeg - mepAngleDeg);
+                                if (diff1 > 180.0) diff1 = 360.0 - diff1;
+                                
+                                // Also check the opposite direction (angle + 180°)
+                                double angleOpposite = angleDeg + 180.0;
+                                if (angleOpposite >= 360.0) angleOpposite -= 360.0;
+                                double diff2 = Math.Abs(angleOpposite - mepAngleDeg);
+                                if (diff2 > 180.0) diff2 = 360.0 - diff2;
+                                
+                                double minDiffForThisAngle = Math.Min(diff1, diff2);
+                                
+                                if (minDiffForThisAngle < minDiff)
+                                {
+                                    minDiff = minDiffForThisAngle;
+                                    // Use the angle that's closer to MEP orientation
+                                    bestAngle = (diff1 < diff2) ? angle : (angle + Math.PI);
+                                    // Normalize bestAngle to -π to π range
+                                    while (bestAngle > Math.PI) bestAngle -= 2 * Math.PI;
+                                    while (bestAngle < -Math.PI) bestAngle += 2 * Math.PI;
+                                }
+                            }
+                            
+                            rotationAngle = bestAngle;
+                            
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[CLUSTER-ANGLE-DEBUG] ✅ Sleeves on same axis: Using MEP orientation vector to choose angle. MEP angle: {mepAngleDeg:F1}°, Selected: {rotationAngle * 180 / Math.PI:F1}°");
+                            }
+                        }
+                        else
+                        {
+                            // Fallback: Use first sleeve's angle if MEP orientation not available
+                            rotationAngle = sleeveAngles[0].angle;
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[CLUSTER-ANGLE-DEBUG] ⚠️ Sleeves on same axis but MEP orientation not available, using first sleeve angle: {rotationAngle * 180 / Math.PI:F1}°");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Not all on same axis, or only one sleeve: Use first sleeve's angle
+                        var firstActualSleeve = actualSleeves[0];
+                        var firstSleeve = cluster[0];
+                        int firstSleeveId = firstSleeve.SleeveInstanceId;
+                        
+                        var loc = firstActualSleeve.Location as LocationPoint;
+                        if (loc != null)
+                        {
+                            rotationAngle = loc.Rotation;
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[CLUSTER-ANGLE-DEBUG] ✅ Using FIRST sleeve's ACTUAL Revit rotation: {rotationAngle * 180 / Math.PI:F1}° (SleeveId={firstSleeveId})");
+                            }
+                        }
+                        else
+                        {
+                            var firstSleeveClashZone = GetClashZoneBySleeveInstanceId(firstSleeveId, xmlFilePath);
+                            if (firstSleeveClashZone != null)
+                            {
+                                rotationAngle = firstSleeveClashZone.MepElementRotationAngle;
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[CLUSTER-ANGLE-DEBUG] ⚠️ Using FIRST sleeve's ClashZone rotation (LocationPoint not available): {rotationAngle * 180 / Math.PI:F1}° (SleeveId={firstSleeveId})");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             
-            // ✅ DEBUG: Log the determined rotation angle
+            // Fallback to DetermineDominantRotationAngle if rotation angle is still not determined
+            if (Math.Abs(rotationAngle) < 1e-6)
+            {
+                rotationAngle = DetermineDominantRotationAngle(cluster, xmlFilePath);
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[CLUSTER-ANGLE-DEBUG] ⚠️ Rotation angle was 0, falling back to DetermineDominantRotationAngle: {rotationAngle * 180 / Math.PI:F1}°");
+                }
+            }
+            
+            // ✅ DEBUG: Log the final rotation angle used
             if (!DeploymentConfiguration.DeploymentMode)
             {
-                DebugLogger.Info($"[CLUSTER-ANGLE-DEBUG] DetermineDominantRotationAngle returned: {rotationAngle * 180 / Math.PI:F1}° (radians: {rotationAngle:F6})");
+                DebugLogger.Info($"[CLUSTER-ANGLE-DEBUG] Final rotation angle for cluster: {rotationAngle * 180 / Math.PI:F1}° (radians: {rotationAngle:F6})");
             }
 
             // ✅ FALLBACK: If dominant angle is 0, try orientation-based approach for walls/framing
@@ -5668,48 +6020,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             // Place cluster sleeve
             // ✅ SIMPLIFIED: Use same universal family symbol as placer service
-            FamilyInstance inst = doc.Create.NewFamilyInstance(mid, familySymbol, refLevel!, StructuralType.NonStructural);
-
-            // ✅ FIXED: Apply rotation if needed (for cases where rotation wasn't fully accounted for in bounding box)
-            // ⚠️ CRITICAL: Only apply rotation if angle is NOT axis-aligned (0°, 90°, 180°, 270°)
-            // The DetermineDominantRotationAngle method should return 0.0 for axis-aligned angles,
-            // but we add an extra safety check here to prevent accidental rotation
-            if (Math.Abs(rotationAngle) > 1e-6)
+            FamilyInstance inst = null;
+            try
             {
-                // Double-check: if angle is close to 0°, 90°, 180°, or 270°, don't rotate
-                double angleDegrees = rotationAngle * 180 / Math.PI;
-                // Normalize to 0-360 range
-                while (angleDegrees < 0) angleDegrees += 360;
-                while (angleDegrees >= 360) angleDegrees -= 360;
+                inst = doc.Create.NewFamilyInstance(mid, familySymbol, refLevel!, StructuralType.NonStructural);
                 
-                double distTo0 = Math.Min(angleDegrees, 360 - angleDegrees);
-                double distTo90 = Math.Abs(angleDegrees - 90);
-                double distTo180 = Math.Abs(angleDegrees - 180);
-                double distTo270 = Math.Abs(angleDegrees - 270);
-                
-                double thresholdDegrees = 2.0; // 2 degree tolerance
-                bool isAxisAligned = distTo0 < thresholdDegrees || distTo90 < thresholdDegrees || 
-                                    distTo180 < thresholdDegrees || distTo270 < thresholdDegrees;
-                
-                if (isAxisAligned)
+                // ✅ CRITICAL LOGGING: Log cluster sleeve creation
+                if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"[CLUSTER-ROTATION] ⚠️ Skipping rotation for cluster sleeve {inst.Id}: Angle {angleDegrees:F1}° is axis-aligned (distTo0={distTo0:F1}°, distTo90={distTo90:F1}°, distTo180={distTo180:F1}°, distTo270={distTo270:F1}°)");
-                    }
+                    string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                    string placementMsg = $"[CLUSTER-PLACEMENT] ✅✅✅ CLUSTER SLEEVE CREATED: ID={inst.Id.IntegerValue}, Placement=({mid.X:F3}, {mid.Y:F3}, {mid.Z:F3}), Level={refLevel?.Name ?? "NULL"}\n";
+                    placementMsg += $"[CLUSTER-PLACEMENT] Cluster contains {cluster.Count} individual sleeves: {string.Join(", ", cluster.Select(s => s.SleeveInstanceId))}\n";
+                    placementMsg += $"[CLUSTER-PLACEMENT] Dimensions: W={width:F3}, H={height:F3}, D={depth:F3}\n";
+                    placementMsg += $"[CLUSTER-PLACEMENT] Rotation Angle: {rotationAngle * 180 / Math.PI:F1}°\n";
+                    placementMsg += $"[CLUSTER-PLACEMENT] Document.IsModifiable: {doc.IsModifiable}\n";
+                    DebugLogger.Info(placementMsg);
+                    System.IO.File.AppendAllText(clusterDebugLogPath, placementMsg);
                 }
-                else
+            }
+            catch (Exception createEx)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    XYZ axisOrigin = mid;
-                    XYZ axisDirection = XYZ.BasisZ;
-                    Line rotationAxis = Line.CreateBound(axisOrigin, axisOrigin + axisDirection);
-                    ElementTransformUtils.RotateElement(doc, inst.Id, rotationAxis, rotationAngle);
-                    
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"[CLUSTER-ROTATION] ✅ Applied rotation {angleDegrees:F1}° to cluster sleeve {inst.Id}");
-                    }
+                    string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                    string errorMsg = $"[CLUSTER-PLACEMENT] ❌❌❌ EXCEPTION CREATING CLUSTER SLEEVE: {createEx.Message}\n";
+                    errorMsg += $"[CLUSTER-PLACEMENT] StackTrace: {createEx.StackTrace}\n";
+                    errorMsg += $"[CLUSTER-PLACEMENT] Document.IsModifiable: {doc.IsModifiable}\n";
+                    DebugLogger.Error(errorMsg);
+                    System.IO.File.AppendAllText(clusterDebugLogPath, errorMsg);
                 }
+                throw; // Re-throw to prevent continuing with null inst
+            }
+            
+            if (inst == null)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                    string errorMsg = $"[CLUSTER-PLACEMENT] ❌❌❌ CRITICAL: inst is NULL after creation attempt!\n";
+                    DebugLogger.Error(errorMsg);
+                    System.IO.File.AppendAllText(clusterDebugLogPath, errorMsg);
+                }
+                return; // Exit early if creation failed
             }
 
             // ✅ DETAILED LOGGING: Log calculated dimensions before setting parameters
@@ -5768,6 +6120,53 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (!DeploymentConfiguration.DeploymentMode)
             {
                 DebugLogger.Info($"[CLUSTER-SIZE] Cluster {inst.Id.IntegerValue}: Calculated W={width * 304.8:F1}mm × H={height * 304.8:F1}mm, Set W={(widthParam?.AsDouble() ?? 0) * 304.8:F1}mm × H={(heightParam?.AsDouble() ?? 0) * 304.8:F1}mm");
+            }
+            
+            // ✅ CRITICAL: Rotate the cluster sleeve to match the cluster's rotated axis
+            // The rotationAngle represents the cluster's "intended rotated axis" direction
+            // The cluster sleeve must be rotated to align with this axis so it matches the orientation of the individual sleeves
+            // This rotation is applied AFTER placement and sizing
+            if (Math.Abs(rotationAngle) > 1e-6)
+            {
+                // Check if angle is close to axis-aligned (0°, 90°, 180°, 270°) - if so, don't rotate
+                double angleDegrees = rotationAngle * 180 / Math.PI;
+                // Normalize to 0-360 range
+                double normalizedAngle = angleDegrees;
+                while (normalizedAngle < 0) normalizedAngle += 360;
+                while (normalizedAngle >= 360) normalizedAngle -= 360;
+                
+                double distTo0 = Math.Min(normalizedAngle, 360 - normalizedAngle);
+                double distTo90 = Math.Abs(normalizedAngle - 90);
+                double distTo180 = Math.Abs(normalizedAngle - 180);
+                double distTo270 = Math.Abs(normalizedAngle - 270);
+                
+                double thresholdDegrees = 2.0; // 2 degree tolerance
+                bool isAxisAligned = distTo0 < thresholdDegrees || distTo90 < thresholdDegrees ||
+                                    distTo180 < thresholdDegrees || distTo270 < thresholdDegrees;
+                
+                if (!isAxisAligned)
+                {
+                    // ✅ TEST: Add 90 degrees to MEP orientation angle to fix alignment issue
+                    // The cluster sleeve is currently 90 degrees off from MEP elements
+                    // Adding π/2 (90 degrees) should align it correctly
+                    double adjustedRotationAngle = rotationAngle + Math.PI / 2.0;
+                    double adjustedAngleDegrees = adjustedRotationAngle * 180 / Math.PI;
+                    
+                    // Rotate around Z-axis (vertical) at the placement point
+                    XYZ axisOrigin = mid;
+                    XYZ axisDirection = XYZ.BasisZ;
+                    Line rotationAxis = Line.CreateBound(axisOrigin, axisOrigin + axisDirection);
+                    ElementTransformUtils.RotateElement(doc, inst.Id, rotationAxis, adjustedRotationAngle);
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[CLUSTER-ROTATION] ✅ Applied rotation {adjustedAngleDegrees:F1}° (original: {angleDegrees:F1}° + 90°) to cluster sleeve {inst.Id.IntegerValue} to align with rotated axis");
+                    }
+                }
+                else if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[CLUSTER-ROTATION] ⚠️ Skipping rotation for cluster sleeve {inst.Id.IntegerValue}: Angle {angleDegrees:F1}° is axis-aligned");
+                }
             }
             
             // ✅ ROTATED BBOX STORAGE: Store rotation data for this cluster sleeve (before returning)
@@ -5895,7 +6294,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             placed++;
+            
+            // ✅ CRITICAL LOGGING: Log before setting placedClusterSleeve
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                string setMsg = $"[CLUSTER-PLACEMENT-SET] About to set placedClusterSleeve = inst (ID={inst.Id.IntegerValue})\n";
+                DebugLogger.Info(setMsg);
+                System.IO.File.AppendAllText(clusterDebugLogPath, setMsg);
+            }
+            
             placedClusterSleeve = inst; // ✅ CRITICAL: Return placed cluster sleeve for tracking
+            
+            // ✅ CRITICAL LOGGING: Log after setting placedClusterSleeve
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                string verifyMsg = $"[CLUSTER-PLACEMENT-SET] ✅ VERIFIED: placedClusterSleeve is now {(placedClusterSleeve != null ? $"ID={placedClusterSleeve.Id.IntegerValue}" : "NULL")}\n";
+                DebugLogger.Info(verifyMsg);
+                System.IO.File.AppendAllText(clusterDebugLogPath, verifyMsg);
+            }
 
             // ✅ CONSOLIDATION: Get cluster sleeve bounding box from Revit immediately after placement
             BoundingBoxXYZ clusterBbox = null;
@@ -6133,7 +6551,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 // Delete edge case sleeves and update flags
                 var edgeCaseSleeveIds = edgeCaseSleeves.Select(s => s.Id).ToList();
-                var edgeCaseUpdates = new List<(Guid Id, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterSleeveInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId)>();
+                var edgeCaseUpdates = new List<(Guid Id, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterSleeveInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId, bool? MarkedForClusterProcess, int AfterClusterSleeveId, bool? IsClusteredFlag)>();
                 
                 // Find ClashZone entries for edge case sleeves (from database)
                 // ✅ DATABASE-FIRST: Look up clash zones by SleeveInstanceId in database
@@ -6172,7 +6590,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         clashZone.IntersectionPointY,
                                         clashZone.IntersectionPointZ,
                                         clashZone.SleeveInstanceId, // OLD value for matching
-                                        clashZone.ClusterSleeveInstanceId // OLD value for matching
+                                        clashZone.ClusterSleeveInstanceId, // OLD value for matching
+                                        clashZone.MarkedForClusteringSleeveProcess, // ✅ EDGE CASE: Pass through if available
+                                        clashZone.AfterClusterSleevePlacedSleeveInstanceId, // ✅ EDGE CASE: Pass through if available
+                                        null // ✅ EDGE CASE: IsClusteredFlag (deprecated, set to null)
                                     ));
                                 }
                                 else
@@ -6204,7 +6625,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                 guidZone.IntersectionPointY,
                                                 guidZone.IntersectionPointZ,
                                                 guidZone.SleeveInstanceId, // OLD value for matching
-                                                guidZone.ClusterSleeveInstanceId // OLD value for matching
+                                                guidZone.ClusterSleeveInstanceId, // OLD value for matching
+                                                guidZone.MarkedForClusteringSleeveProcess, // ✅ EDGE CASE: Pass through if available
+                                                guidZone.AfterClusterSleevePlacedSleeveInstanceId, // ✅ EDGE CASE: Pass through if available
+                                                null // ✅ EDGE CASE: IsClusteredFlag (deprecated, set to null)
                                             ));
                                         }
                                     }
@@ -6250,7 +6674,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 IntersectionPointY: u.IntersectionPointY,
                                 IntersectionPointZ: u.IntersectionPointZ,
                                 OldSleeveInstanceId: u.OldSleeveInstanceId,
-                                OldClusterInstanceId: u.OldClusterInstanceId
+                                OldClusterInstanceId: u.OldClusterInstanceId,
+                                MarkedForClusterProcess: u.MarkedForClusterProcess, // ✅ EDGE CASE: Use tuple field name
+                                AfterClusterSleeveId: u.AfterClusterSleeveId, // ✅ EDGE CASE: Use tuple field name
+                                IsClusteredFlag: (bool?)null // ✅ EDGE CASE: Deprecated, set to null
                             )).ToList();
                             
                             repository.BatchUpdateFlags(dbUpdates);
@@ -7159,6 +7586,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[SetClusterSleeveMetadata] Setting metadata for cluster sleeve {clusterSleeve.Id}, category='{category}'\n");
             
+            // ✅ CRITICAL LOGGING: Log _filterName state before calling GetFilterNameForCategory
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                string filterNameLog = $"[SetClusterSleeveMetadata] _filterName='{_filterName ?? "NULL"}', category='{category}'\n";
+                DebugLogger.Info(filterNameLog);
+                System.IO.File.AppendAllText(clusterDebugLogPath, filterNameLog);
+            }
+            
             // ✅ OPTIONAL: Try to set MEP_Category parameter if it exists (not critical - XML has category info per sleeve)
             // Note: Opening families don't have MEP_Category parameter - XML stores category per clash zone
             // Parameter transfer uses MEP Element ID and XML category to find correct XML file
@@ -7175,9 +7611,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ NOTE: If parameter doesn't exist, that's OK - XML lookup will use MEP Element ID and category from XML
             
             // Set Filter Name based on category
-            string filterName = GetFilterNameForCategory(category);
+            string filterName = null;
+            try
+            {
+                filterName = GetFilterNameForCategory(category);
+            }
+            catch (Exception filterNameEx)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                    string errorLog = $"[SetClusterSleeveMetadata] ❌❌❌ EXCEPTION in GetFilterNameForCategory for category '{category}': {filterNameEx.Message}\n";
+                    errorLog += $"[SetClusterSleeveMetadata] _filterName='{_filterName ?? "NULL"}'\n";
+                    errorLog += $"[SetClusterSleeveMetadata] StackTrace: {filterNameEx.StackTrace}\n";
+                    DebugLogger.Error(errorLog);
+                    System.IO.File.AppendAllText(clusterDebugLogPath, errorLog);
+                }
+                // Don't re-throw - continue without filter name (non-critical)
+                filterName = null;
+            }
+            
+            if (!DeploymentConfiguration.DeploymentMode && filterName != null)
+            {
+                string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                System.IO.File.AppendAllText(clusterDebugLogPath, $"[SetClusterSleeveMetadata] ✅ GetFilterNameForCategory returned: '{filterName}' for category '{category}'\n");
+            }
+            
             var filterNameParam = clusterSleeve.LookupParameter("Filter Name");
-            if (filterNameParam != null && !filterNameParam.IsReadOnly)
+            if (filterNameParam != null && !filterNameParam.IsReadOnly && filterName != null)
             {
                 filterNameParam.Set(filterName);
                                 if (!DeploymentConfiguration.DeploymentMode)
@@ -7186,7 +7647,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             else
             {
                                 if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Warning($"[SetClusterSleeveMetadata] Filter Name parameter not found or read-only on cluster sleeve {clusterSleeve.Id}");
+                {
+                    if (filterName == null)
+                        DebugLogger.Warning($"[SetClusterSleeveMetadata] Filter Name is NULL (GetFilterNameForCategory failed) for cluster sleeve {clusterSleeve.Id}, category='{category}'");
+                    else
+                        DebugLogger.Warning($"[SetClusterSleeveMetadata] Filter Name parameter not found or read-only on cluster sleeve {clusterSleeve.Id}");
+                }
             }
             
             // Set Sleeve Instance ID to -1 (indicating this is a cluster sleeve)
@@ -7282,6 +7748,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// ✅ NEW: Clean up individual sleeves that fall within cluster sleeve bounding boxes
     /// This is a cheap method that checks if any remaining individual sleeves are positioned
     /// within the bounding box of any cluster sleeve and deletes them
+    /// ⚠️ CRITICAL: This method MUST NOT delete cluster sleeves - only individual sleeves
     /// </summary>
     private int CleanupSleevesWithinClusters(Document doc, List<FamilyInstance> placedClusters)
     {
@@ -7303,11 +7770,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 return 0;
             }
             
+            // ✅ CRITICAL: Build a HashSet of cluster sleeve IDs for fast O(1) lookup
+            // This is the PRIMARY protection mechanism - if a sleeve ID is in this set, it will NEVER be deleted
+            var clusterSleeveIds = new HashSet<int>();
+            foreach (var cluster in placedClusters)
+            {
+                if (cluster != null && cluster.Id != null)
+                {
+                    int clusterId = cluster.Id.IntegerValue;
+                    clusterSleeveIds.Add(clusterId);
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[CLEANUP-PROTECTION] Added cluster sleeve {clusterId} to protection set\n");
+                }
+            }
+            
             // Log cluster sleeve IDs for debugging
             if (!DeploymentConfiguration.DeploymentMode)
             {
                 string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
                 System.IO.File.AppendAllText(clusterDebugLogPath, $"[CLEANUP-START] Cluster sleeve IDs: {string.Join(", ", placedClusters.Select(c => c.Id.IntegerValue))}\n");
+                System.IO.File.AppendAllText(clusterDebugLogPath, $"[CLEANUP-PROTECTION-SET] Protection set contains {clusterSleeveIds.Count} cluster sleeve IDs: {string.Join(", ", clusterSleeveIds)}\n");
+                DebugLogger.Info($"[CLEANUP-PROTECTION] Protection set contains {clusterSleeveIds.Count} cluster sleeve IDs: {string.Join(", ", clusterSleeveIds)}\n");
             }
             
             // Get all remaining individual sleeves (not cluster sleeves)
@@ -7340,6 +7823,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             var individualSleeves = allSleeves.Where(s => 
             {
+                int sleeveId = s.Id.IntegerValue;
+                
+                // ✅ CRITICAL FIX #1: PRIMARY PROTECTION - Check protection set FIRST (fastest and safest)
+                // If sleeve ID is in protection set, it's DEFINITELY a cluster sleeve - NEVER delete it
+                if (clusterSleeveIds.Contains(sleeveId))
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[CLEANUP-FILTER] ⚠️ PRIMARY PROTECTION: Sleeve {sleeveId} is in protection set - SKIPPING (cluster sleeve)\n");
+                    return false; // This is a cluster sleeve, not an individual sleeve
+                }
+                
                 var clusterParam = s.LookupParameter("Cluster Sleeve Instance ID");
                 // ✅ FIX: -1 means it's an individual sleeve, 0 or positive means it's a cluster sleeve
                 // Only check sleeves with exactly -1 for cleanup
@@ -7347,18 +7841,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 // ✅ ADDITIONAL LOGIC: Also check if sleeve is a cluster by examining its Sleeve Instance ID parameter
                 var sleeveInstanceIdParam = s.LookupParameter("Sleeve Instance ID");
-                int sleeveInstanceId = sleeveInstanceIdParam?.AsInteger() ?? -1;
+                int sleeveInstanceId = sleeveInstanceIdParam?.AsInteger() ?? -999; // Use -999 to distinguish from unset
                 
                 // ✅ LOGIC: 
                 // - If Sleeve Instance ID = -1, it's a CLUSTER sleeve (should NOT be deleted)
                 // - If Cluster Sleeve Instance ID = -1 or 0, it's an INDIVIDUAL sleeve (can be deleted)
+                // - If Cluster Sleeve Instance ID > 0 and equals the sleeve's own ID, it's a CLUSTER sleeve
                 // - We skip cluster sleeves by checking both parameters
-                bool isClusterSleeve = (sleeveInstanceId == -1);
+                bool isClusterSleeve = (sleeveInstanceId == -1) || (clusterValue > 0 && clusterValue == sleeveId);
+                
+                // ✅ CRITICAL: Additional check - if sleeve ID is in protection set, it's DEFINITELY a cluster sleeve
+                // This is a redundant check but provides extra safety (protection set check already happened above, but this ensures parameter logic also respects it)
+                if (clusterSleeveIds.Contains(sleeveId))
+                {
+                    isClusterSleeve = true;
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[CLEANUP-PARAM-CHECK] ⚠️ Sleeve {sleeveId} is in protection set - FORCING isClusterSleeve=true (SleeveInstanceId={sleeveInstanceId}, ClusterValue={clusterValue})\n");
+                    }
+                }
+                
                 bool isIndividual = !isClusterSleeve && (clusterValue <= 0);
+                
+                // ✅ CRITICAL FIX #2: SECONDARY PROTECTION - Even if parameters say individual, check protection set again
+                if (isIndividual && clusterSleeveIds.Contains(sleeveId))
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[CLEANUP-FILTER] ⚠️ SECONDARY PROTECTION: Sleeve {sleeveId} parameters say individual BUT it's in protection set - treating as cluster sleeve\n");
+                    return false; // Safety check: if in protection set, never delete (even if parameters are wrong)
+                }
                 
                 // ✅ DEBUG: Log ALL sleeves to find missing ones
                                 if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Info($"[CLEANUP-DEBUG-ALL] Sleeve {s.Id}: Family={s.Symbol?.FamilyName}, ClusterParam={clusterValue}, SleeveInstanceId={sleeveInstanceId}, IsCluster={isClusterSleeve}, IsIndividual={isIndividual}\n");
+                DebugLogger.Info($"[CLEANUP-DEBUG-ALL] Sleeve {sleeveId}: Family={s.Symbol?.FamilyName}, ClusterParam={clusterValue}, SleeveInstanceId={sleeveInstanceId}, IsCluster={isClusterSleeve}, IsIndividual={isIndividual}, InProtectionSet={clusterSleeveIds.Contains(sleeveId)}\n");
                 
                 return isIndividual;
             }).ToList();
@@ -7376,14 +7892,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             foreach (var individualSleeve in individualSleeves)
             {
+                int sleeveId = individualSleeve.Id.IntegerValue;
                                 if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Info($"[CLEANUP-LOOP] Processing individual sleeve {individualSleeve.Id}\n");
+                DebugLogger.Info($"[CLEANUP-LOOP] Processing individual sleeve {sleeveId}\n");
                 
-                // ✅ FIX: Skip if this sleeve is actually a cluster sleeve in our placedClusters list
-                if (placedClusters.Any(c => c.Id.IntegerValue == individualSleeve.Id.IntegerValue))
+                // ✅ CRITICAL FIX #3: TERTIARY PROTECTION - Final check in loop using HashSet (fastest)
+                // This is the ultimate safety check - if sleeve ID is in protection set, NEVER delete it
+                if (clusterSleeveIds.Contains(sleeveId))
                 {
                                         if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[CLEANUP] Skipping sleeve {individualSleeve.Id} - it's a cluster sleeve\n");
+                    {
+                        DebugLogger.Info($"[CLEANUP] ⚠️ TERTIARY PROTECTION: Sleeve {sleeveId} is in protection set - SKIPPING (cluster sleeve)\n");
+                        string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[CLEANUP-TERTIARY] ⚠️ PROTECTED: Sleeve {sleeveId} is in protection set - SKIPPING deletion\n");
+                    }
+                    continue; // Ultimate safety: if in protection set, never delete
+                }
+                
+                // ✅ ADDITIONAL SAFETY CHECK: Double-check parameters even if not in protection set
+                // Sometimes cluster sleeves might not be in placedClusters if they were placed in a different transaction
+                var sleeveInstanceIdParam = individualSleeve.LookupParameter("Sleeve Instance ID");
+                int sleeveInstanceId = sleeveInstanceIdParam?.AsInteger() ?? -999; // Use -999 as default (not -1) to distinguish from unset
+                var clusterInstanceIdParam = individualSleeve.LookupParameter("Cluster Sleeve Instance ID");
+                int clusterInstanceId = clusterInstanceIdParam?.AsInteger() ?? -1;
+                
+                // If Sleeve Instance ID = -1, it's definitely a cluster sleeve (even if not in placedClusters)
+                // OR if Cluster Sleeve Instance ID > 0 and equals the sleeve's own ID, it's a cluster sleeve
+                if (sleeveInstanceId == -1 || (clusterInstanceId > 0 && clusterInstanceId == sleeveId))
+                {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[CLEANUP] ⚠️ PARAMETER CHECK: Skipping sleeve {sleeveId} - parameters indicate it's a cluster sleeve (SleeveInstanceId={sleeveInstanceId}, ClusterInstanceId={clusterInstanceId})\n");
                     continue;
                 }
                 
@@ -7532,10 +8070,71 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ BATCH DELETE: Delete all marked sleeves in one transaction
             if (sleevesToDelete.Count > 0)
             {
+                // ✅ CRITICAL: BEFORE DELETION - Check if any cluster sleeves are in the deletion list
+                var clusterSleevesInDeletionList = new List<int>();
+                foreach (var (sleeveId, clusterId, clashZone) in sleevesToDelete)
+                {
+                    int id = sleeveId.IntegerValue;
+                    
+                    // Check if this sleeve ID is in the protection set (it's a cluster sleeve!)
+                    if (clusterSleeveIds.Contains(id))
+                    {
+                        clusterSleevesInDeletionList.Add(id);
+                        
+                        // ✅ CRITICAL LOGGING: This should NEVER happen - log detailed info
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                            var sleeve = doc.GetElement(sleeveId) as FamilyInstance;
+                            var sleeveInstanceIdParam = sleeve?.LookupParameter("Sleeve Instance ID");
+                            int sleeveInstanceId = sleeveInstanceIdParam?.AsInteger() ?? -999;
+                            var clusterInstanceIdParam = sleeve?.LookupParameter("Cluster Sleeve Instance ID");
+                            int clusterInstanceId = clusterInstanceIdParam?.AsInteger() ?? -1;
+                            
+                            string errorMsg = $"[CLEANUP-ERROR] ⚠️⚠️⚠️ CRITICAL: Cluster sleeve {id} is in deletion list! This should NEVER happen!\n";
+                            errorMsg += $"[CLEANUP-ERROR] Sleeve {id} details:\n";
+                            errorMsg += $"[CLEANUP-ERROR]   - In Protection Set: {clusterSleeveIds.Contains(id)}\n";
+                            errorMsg += $"[CLEANUP-ERROR]   - Sleeve Instance ID param: {sleeveInstanceId}\n";
+                            errorMsg += $"[CLEANUP-ERROR]   - Cluster Sleeve Instance ID param: {clusterInstanceId}\n";
+                            errorMsg += $"[CLEANUP-ERROR]   - Family: {sleeve?.Symbol?.FamilyName ?? "NULL"}\n";
+                            errorMsg += $"[CLEANUP-ERROR]   - Deleting Cluster ID: {clusterId}\n";
+                            errorMsg += $"[CLEANUP-ERROR]   - Protection Set Contents: {string.Join(", ", clusterSleeveIds)}\n";
+                            errorMsg += $"[CLEANUP-ERROR]   - placedClusters Count: {placedClusters?.Count ?? 0}\n";
+                            if (placedClusters != null && placedClusters.Count > 0)
+                            {
+                                errorMsg += $"[CLEANUP-ERROR]   - placedClusters IDs: {string.Join(", ", placedClusters.Select(c => c.Id.IntegerValue))}\n";
+                            }
+                            
+                            DebugLogger.Error(errorMsg);
+                            System.IO.File.AppendAllText(clusterDebugLogPath, errorMsg);
+                        }
+                    }
+                }
+                
+                // ✅ CRITICAL: If cluster sleeves are in deletion list, REMOVE THEM and log error
+                if (clusterSleevesInDeletionList.Count > 0)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                        string errorMsg = $"[CLEANUP-ERROR] ⚠️⚠️⚠️ REMOVING {clusterSleevesInDeletionList.Count} cluster sleeves from deletion list to prevent deletion!\n";
+                        errorMsg += $"[CLEANUP-ERROR] Cluster sleeve IDs being removed: {string.Join(", ", clusterSleevesInDeletionList)}\n";
+                        DebugLogger.Error(errorMsg);
+                        System.IO.File.AppendAllText(clusterDebugLogPath, errorMsg);
+                    }
+                    
+                    // Remove cluster sleeves from deletion list
+                    sleevesToDelete = sleevesToDelete.Where(s => !clusterSleevesInDeletionList.Contains(s.sleeveId.IntegerValue)).ToList();
+                }
+                
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
                     System.IO.File.AppendAllText(clusterDebugLogPath, $"[CLEANUP-BATCH-DELETE] Marked {sleevesToDelete.Count} sleeves for batch deletion: {string.Join(", ", sleevesToDelete.Select(s => s.sleeveId.IntegerValue))}\n");
+                    if (clusterSleevesInDeletionList.Count > 0)
+                    {
+                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[CLEANUP-BATCH-DELETE] ⚠️ Removed {clusterSleevesInDeletionList.Count} cluster sleeves from deletion list\n");
+                    }
                 }
                 
                 var elementIdsToDelete = sleevesToDelete.Select(s => s.sleeveId).ToList();

@@ -609,7 +609,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 using (var dbContext = new Data.SleeveDbContext(document))
                 {
                     var filterRepository = new Data.Repositories.FilterRepository(dbContext, _ => { });
-                    var (_, savedOpeningSettings) = filterRepository.LoadFilterUIState(filterName, category);
+                    var (_, savedOpeningSettings, _, _, _) = filterRepository.LoadFilterUIState(filterName, category);
                     
                     if (savedOpeningSettings == null)
                     {

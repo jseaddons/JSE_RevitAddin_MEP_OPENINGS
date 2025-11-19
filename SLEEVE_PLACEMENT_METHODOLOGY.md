@@ -32,6 +32,7 @@
     - 10.1 [Cluster Formation](#101-cluster-formation)
     - 10.2 [Cluster Placement Process](#102-cluster-placement-process)
     - 10.3 [Bounding Box Calculations](#103-bounding-box-calculations)
+    - 10.4 [Rotated Non-Axis-Aligned Clustering](#104-rotated-non-axis-aligned-clustering)
 11. [Sleeve Placement Implementation](#11-sleeve-placement-implementation)
     - 11.1 [Pre-calculation Strategy](#111-pre-calculation-strategy)
     - 11.2 [Placement Point Calculation](#112-placement-point-calculation)
@@ -819,6 +820,260 @@ Guid guid2 = GenerateDeterministicGuid(700223, 432131, 27.819, 51.634, -0.770);
 - ✅ **Deterministic**: Same sleeve always gets same GUID in recovery
 - ✅ **Consistent**: Recovery and detection create matching entries
 - ✅ **Robust**: Works even when Global XML is missing
+
+---
+
+## 10. Clustering Implementation
+
+### 10.4 Rotated Non-Axis-Aligned Clustering
+
+**Date Implemented:** November 2025  
+**Status:** ✅ Complete - Fixed for rotated floor sleeves
+
+#### Overview
+
+This section documents the methodology for clustering sleeves that are rotated at non-axis-aligned angles (e.g., -45°, 135°, 225°). The algorithm uses a **corner-based watertight approach** that works for all scenarios: single sleeves, stacked sleeves, inline sleeves, diagonal arrangements, and grid patterns.
+
+#### Problem Statement
+
+**Original Issue:**
+- Cluster sleeves with rotated individual sleeves (e.g., -45° and 135°) were incorrectly sized
+- Averaging rotation angles (e.g., -45° and 135° averaging to 225°) produced incorrect results
+- Bounding box calculations based on sleeve centers or simple unions failed for complex arrangements
+- Cluster dimensions were incorrect (e.g., expected 550mm × 400mm but got 530mm × 730mm)
+
+**Root Cause:**
+- Previous approach used sleeve centers and offsets, which fails for diagonal/grid arrangements
+- Rotation angle averaging was incorrect for sleeves on the same axis but 180° apart
+- Bounding box calculation did not account for all corner points after transformation
+
+#### Solution: Corner-Based Watertight Algorithm
+
+**Key Principle:**
+> **"Dump Once, Use Many Times"** - Pre-calculate and store sleeve corner coordinates and rotation matrix components in the database during individual sleeve placement, then reuse them during clustering.
+
+#### Algorithm Steps
+
+**Phase 1: Individual Sleeve Placement (Pre-calculation)**
+
+During individual sleeve placement (`UniversalSleevePlacerService`), the following data is calculated and stored in the database:
+
+1. **Sleeve Center (Active Document Coordinates)**
+   - Uses `SleevePlacementPointActiveDocumentX/Y/Z` (where sleeve is actually placed)
+   - Saved to database via `UpdateSleevePlacement()` method
+
+2. **Rotation Matrix Components**
+   - Pre-calculates `cos(rotationAngle)` and `sin(rotationAngle)`
+   - Stored in database columns: `MepRotationCos` and `MepRotationSin`
+   - Avoids redundant trigonometric calculations during clustering
+
+3. **Four Corner Coordinates (World Space)**
+   - Calculates all 4 corners of each sleeve in world coordinates
+   - Corner order: 1=Bottom-left, 2=Bottom-right, 3=Top-left, 4=Top-right
+   - Stored in database columns: `SleeveCorner1X/Y/Z` through `SleeveCorner4X/Y/Z`
+
+**Corner Calculation Process:**
+```csharp
+// Step 1: Calculate corners in local coordinate system (before rotation)
+double halfW = sleeveWidth / 2.0;
+double halfH = sleeveHeight / 2.0;
+var localCorners = new[]
+{
+    new XYZ(-halfW, -halfH, 0),  // Corner 1: Bottom-left
+    new XYZ(halfW, -halfH, 0),   // Corner 2: Bottom-right
+    new XYZ(-halfW, halfH, 0),   // Corner 3: Top-left
+    new XYZ(halfW, halfH, 0)     // Corner 4: Top-right
+};
+
+// Step 2: Rotate corners by sleeve rotation angle to get world-space corners
+double cosSleeve = Math.Cos(rotationAngleRad);
+double sinSleeve = Math.Sin(rotationAngleRad);
+for (int j = 0; j < 4; j++)
+{
+    double localX = localCorners[j].X;
+    double localY = localCorners[j].Y;
+    
+    // Rotate corner by sleeve rotation matrix
+    double worldX = localX * cosSleeve - localY * sinSleeve;
+    double worldY = localX * sinSleeve + localY * cosSleeve;
+    
+    // Translate to sleeve center (placement point)
+    worldCorners[j] = new XYZ(
+        sleeveCenter.X + worldX,
+        sleeveCenter.Y + worldY,
+        sleeveCenter.Z
+    );
+}
+
+// Step 3: Save world-space corners to database
+repository.UpdateSleeveCorners(
+    zone.Id,
+    worldCorners[0].X, worldCorners[0].Y, worldCorners[0].Z,  // Corner 1
+    worldCorners[1].X, worldCorners[1].Y, worldCorners[1].Z,  // Corner 2
+    worldCorners[2].X, worldCorners[2].Y, worldCorners[2].Z,  // Corner 3
+    worldCorners[3].X, worldCorners[3].Y, worldCorners[3].Z   // Corner 4
+);
+```
+
+**Phase 2: Cluster Bounding Box Calculation**
+
+During clustering (`UniversalClusterService.GetClusterBoundingBoxWithRotatedCoordinates`), the algorithm:
+
+1. **Determines Cluster's Intended Rotated Axis**
+   - Uses the **first sleeve's actual rotation angle** (from Revit `LocationPoint.Rotation`)
+   - Falls back to `ClashZone.MepElementRotationAngle` if `LocationPoint` is unavailable
+   - ⚠️ **Critical:** This is NOT an average of sleeve angles - it's the intended axis direction for the cluster
+
+2. **Loads Pre-calculated Data**
+   - Retrieves sleeve centers from `SleevePlacementPointActiveDocumentX/Y/Z`
+   - Retrieves pre-calculated corners from `SleeveCorner1X/Y/Z` through `SleeveCorner4X/Y/Z`
+   - Retrieves rotation matrix components from `MepRotationCos` and `MepRotationSin`
+   - Falls back to recalculation if pre-calculated data is missing
+
+3. **Transforms All Corners to Cluster's Rotated Coordinate System**
+   - For each sleeve, uses pre-calculated world-space corners (or recalculates if missing)
+   - Transforms each corner into the cluster's intended rotated axis coordinate system
+   - This aligns all corners to a common rotated frame for min/max calculation
+
+4. **Finds Min/Max Extents**
+   - Finds `minX`, `maxX`, `minY`, `maxY` across all transformed corners
+   - Calculates cluster width = `maxX - minX`
+   - Calculates cluster height = `maxY - minY`
+
+5. **Calculates Cluster Center**
+   - Cluster center in rotated coordinate system: `((minX + maxX) / 2, (minY + maxY) / 2)`
+   - Transforms center back to world coordinates using inverse rotation matrix (transpose)
+
+**Transformation Process:**
+```csharp
+// Step 1: Choose reference point (first sleeve center as origin)
+XYZ origin = firstSleeveCenter;
+
+// Step 2: Pre-calculate cluster rotation matrix components
+// rotationAngle is the cluster's INTENDED ROTATED AXIS, not average of sleeve angles
+double cosCluster = Math.Cos(rotationAngle);
+double sinCluster = Math.Sin(rotationAngle);
+
+// Step 3: For each sleeve, transform all 4 corners
+foreach (var sleeve in cluster)
+{
+    // Use pre-calculated corners from database (or recalculate if missing)
+    XYZ[] worldCorners = GetPreCalculatedCorners(sleeve) ?? RecalculateCorners(sleeve);
+    
+    // Transform each corner to cluster's rotated coordinate system
+    for (int j = 0; j < 4; j++)
+    {
+        // Translate relative to origin
+        double relX = worldCorners[j].X - origin.X;
+        double relY = worldCorners[j].Y - origin.Y;
+        
+        // Rotate to cluster's intended axis coordinate system
+        double clusterX = relX * cosCluster - relY * sinCluster;
+        double clusterY = relX * sinCluster + relY * cosCluster;
+        
+        allTransformedCorners.Add(new XYZ(clusterX, clusterY, worldCorners[j].Z));
+    }
+}
+
+// Step 4: Find min/max extents across all transformed corners
+double minX = allTransformedCorners.Min(c => c.X);
+double minY = allTransformedCorners.Min(c => c.Y);
+double maxX = allTransformedCorners.Max(c => c.X);
+double maxY = allTransformedCorners.Max(c => c.Y);
+
+// Step 5: Calculate cluster dimensions
+double width = maxX - minX;
+double height = maxY - minY;
+
+// Step 6: Calculate cluster center in rotated coordinate system
+double centerX_rotated = (minX + maxX) / 2.0;
+double centerY_rotated = (minY + maxY) / 2.0;
+
+// Step 7: Transform center back to world coordinates (inverse rotation = transpose)
+double centerX_world = origin.X + centerX_rotated * cosCluster + centerY_rotated * sinCluster;
+double centerY_world = origin.Y - centerX_rotated * sinCluster + centerY_rotated * cosCluster;
+XYZ clusterCenter = new XYZ(centerX_world, centerY_world, origin.Z);
+```
+
+#### Database Schema
+
+**New Columns Added to `ClashZones` Table:**
+
+| Column Name | Type | Description |
+|------------|------|-------------|
+| `SleevePlacementActiveX` | REAL | Active document X coordinate of sleeve center |
+| `SleevePlacementActiveY` | REAL | Active document Y coordinate of sleeve center |
+| `SleevePlacementActiveZ` | REAL | Active document Z coordinate of sleeve center |
+| `SleeveCorner1X` | REAL | World X coordinate of corner 1 (Bottom-left) |
+| `SleeveCorner1Y` | REAL | World Y coordinate of corner 1 (Bottom-left) |
+| `SleeveCorner1Z` | REAL | World Z coordinate of corner 1 (Bottom-left) |
+| `SleeveCorner2X` | REAL | World X coordinate of corner 2 (Bottom-right) |
+| `SleeveCorner2Y` | REAL | World Y coordinate of corner 2 (Bottom-right) |
+| `SleeveCorner2Z` | REAL | World Z coordinate of corner 2 (Bottom-right) |
+| `SleeveCorner3X` | REAL | World X coordinate of corner 3 (Top-left) |
+| `SleeveCorner3Y` | REAL | World Y coordinate of corner 3 (Top-left) |
+| `SleeveCorner3Z` | REAL | World Z coordinate of corner 3 (Top-left) |
+| `SleeveCorner4X` | REAL | World X coordinate of corner 4 (Top-right) |
+| `SleeveCorner4Y` | REAL | World Y coordinate of corner 4 (Top-right) |
+| `SleeveCorner4Z` | REAL | World Z coordinate of corner 4 (Top-right) |
+| `MepRotationCos` | REAL | Pre-calculated cos(rotationAngle) |
+| `MepRotationSin` | REAL | Pre-calculated sin(rotationAngle) |
+
+#### Key Implementation Details
+
+**1. Cluster Rotation Angle Determination**
+
+The cluster's intended rotated axis is determined by:
+1. **First Priority:** First sleeve's actual Revit `LocationPoint.Rotation` (if available)
+2. **Second Priority:** `ClashZone.MepElementRotationAngle` from database
+3. **Third Priority:** `DetermineDominantRotationAngle()` (only if angle is still 0 or unavailable)
+
+⚠️ **Important:** The cluster rotation angle is NOT an average of sleeve angles. It represents the intended axis direction for the cluster coordinate system.
+
+**2. Cluster Sleeve Placement**
+
+- Cluster sleeve is placed **axis-aligned** (0° rotation in Revit)
+- Cluster dimensions already account for rotation (calculated in rotated coordinate system)
+- Cluster sleeve does NOT need to be rotated - its width/height reflect the rotated bounding box
+
+**3. Performance Optimization**
+
+- **Pre-calculation:** Corner coordinates and rotation matrix components are calculated once during individual sleeve placement
+- **Database Storage:** Pre-calculated values stored in database for fast retrieval during clustering
+- **Fallback:** If pre-calculated data is missing, corners are recalculated on-the-fly
+
+#### Supported Scenarios
+
+This algorithm correctly handles:
+
+✅ **Single Sleeve:** One rotated sleeve  
+✅ **Stacked Sleeves:** Multiple sleeves stacked vertically  
+✅ **Inline Sleeves:** Multiple sleeves arranged horizontally  
+✅ **Diagonal Arrangements:** Sleeves at various angles  
+✅ **Grid Patterns:** Complex 2D grid arrangements  
+✅ **Mixed Rotations:** Sleeves with different rotation angles in same cluster
+
+#### Code Locations
+
+**Individual Sleeve Placement (Pre-calculation):**
+- `Services/UniversalSleevePlacerService.cs` - Lines 1797-1979
+- `Data/Repositories/ClashZoneRepository.cs` - `UpdateSleevePlacement()` and `UpdateSleeveCorners()` methods
+
+**Cluster Bounding Box Calculation:**
+- `Services/UniversalClusterService.cs` - `GetClusterBoundingBoxWithRotatedCoordinates()` method (Lines 2719-3100)
+
+**Database Schema:**
+- `Data/SleeveDbContext.cs` - `ClashZones` table schema (Lines 366-394)
+- `Data/Entities/SleeveClashZone.cs` - Entity model properties
+- `Models/ClashZone.cs` - Model properties
+
+#### Benefits
+
+✅ **Watertight Algorithm:** Works for all scenarios (single, stacked, inline, diagonal, grid)  
+✅ **Performance:** Pre-calculated data avoids redundant computations  
+✅ **Accuracy:** Corner-based approach ensures correct bounding box for any arrangement  
+✅ **Maintainability:** Clear separation between pre-calculation and clustering phases  
+✅ **Robustness:** Fallback logic handles missing pre-calculated data gracefully
 
 ---
 

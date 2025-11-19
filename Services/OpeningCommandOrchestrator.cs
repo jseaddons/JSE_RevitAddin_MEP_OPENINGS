@@ -403,11 +403,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         tx.Start();
                         
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[ORCHESTRATOR] ✅ Transaction STARTED: '{tx.GetName()}', Document.IsModifiable: {_document.IsModifiable}");
+                        }
+                        
                         var clusterService = new UniversalClusterService();
                         // ✅ FIX: Pass filter name to clustering service so it can set it on cluster sleeves
                         var (placedCount, deletedCount) = clusterService.ClusterSleeves(_document, categoryString, _uiDocument, xmlFilePath, filter.Name, placedClusterSleeves);
                         
+                        // ✅ CRITICAL LOGGING: Log cluster sleeves returned from ClusterSleeves
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[ORCHESTRATOR] ClusterSleeves returned: placedCount={placedCount}, deletedCount={deletedCount}, placedClusterSleeves.Count={placedClusterSleeves?.Count ?? 0}");
+                            if (placedClusterSleeves != null && placedClusterSleeves.Count > 0)
+                            {
+                                DebugLogger.Info($"[ORCHESTRATOR] ✅ Cluster sleeve IDs in placedClusterSleeves: {string.Join(", ", placedClusterSleeves.Select(c => c.Id.IntegerValue))}");
+                            }
+                            else
+                            {
+                                DebugLogger.Warning($"[ORCHESTRATOR] ⚠️ placedClusterSleeves is EMPTY after ClusterSleeves call!");
+                            }
+                        }
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[ORCHESTRATOR] About to COMMIT transaction '{tx.GetName()}'");
+                        }
+                        
                         tx.Commit();
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[ORCHESTRATOR] ✅ Transaction COMMITTED successfully: '{tx.GetName()}'");
+                        }
                         
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
@@ -502,16 +531,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                         
                         // Step 5: NOW run cleanup with updated cache (uses XML, not expensive Revit API)
-                        using (var cleanupTx = new Transaction(_document, $"Cleanup sleeves within clusters"))
+                        // ✅ CRITICAL: Verify placedClusterSleeves list is not empty before cleanup
+                        if (placedClusterSleeves == null || placedClusterSleeves.Count == 0)
                         {
-                            cleanupTx.Start();
-                            var additionalDeleted = clusterServiceReload.CleanupSleevesWithinClustersAfterXmlSave(_document, placedClusterSleeves, xmlFilePath);
-                            cleanupTx.Commit();
-                            
-                            if (additionalDeleted > 0 && !DeploymentConfiguration.DeploymentMode)
+                            if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[OpeningCommandOrchestrator] ✓ Cleaned up {additionalDeleted} additional sleeves within cluster bounding boxes");
+                                DebugLogger.Warning($"[OpeningCommandOrchestrator] ⚠️ placedClusterSleeves is empty or null - skipping cleanup to prevent cluster sleeve deletion");
+                            }
+                        }
+                        else
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[OpeningCommandOrchestrator] ✅ About to run cleanup with {placedClusterSleeves.Count} cluster sleeves in protection set: {string.Join(", ", placedClusterSleeves.Select(c => c.Id.IntegerValue))}");
+                            }
+                            
+                            using (var cleanupTx = new Transaction(_document, $"Cleanup sleeves within clusters"))
+                            {
+                                cleanupTx.Start();
+                                var additionalDeleted = clusterServiceReload.CleanupSleevesWithinClustersAfterXmlSave(_document, placedClusterSleeves, xmlFilePath);
+                                cleanupTx.Commit();
+                                
+                                if (additionalDeleted > 0 && !DeploymentConfiguration.DeploymentMode)
+                                {
+                                                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[OpeningCommandOrchestrator] ✓ Cleaned up {additionalDeleted} additional sleeves within cluster bounding boxes");
+                                }
                             }
                         }
                     }

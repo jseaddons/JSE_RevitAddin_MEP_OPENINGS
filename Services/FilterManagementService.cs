@@ -1125,7 +1125,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// Loads a filter automatically from default location
+        /// Loads a filter automatically from default location (DATABASE-FIRST)
         /// </summary>
         public OpeningFilter LoadFilterAuto(string filterName)
         {
@@ -1133,7 +1133,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 _log($"[FILTER_MGMT] Auto-loading filter: {filterName}");
                 
-                // ✅ OOP: Use ProjectPathService when document is available (same as save operations)
+                // ✅ DATABASE-FIRST: Try to load UI state from DB first
+                OpeningFilter loadedFilter = null;
+                List<string> hostCategories = null;
+                OpeningSettings openingSettings = null;
+                List<string> mepCategories = null;
+                List<string> refFiles = null;
+                List<string> hostFiles = null;
+                
+                try
+                {
+                    UseFilterRepository(repo =>
+                    {
+                        // Try to load from DB using first available category
+                        var allFilters = repo.GetAllFilters();
+                        var filterRecord = allFilters.FirstOrDefault(f => f.FilterName.Equals(filterName, StringComparison.OrdinalIgnoreCase));
+                        
+                        if (filterRecord.FilterName != null)
+                        {
+                            var (hostCats, settings, mepCats, refF, hostF) = repo.LoadFilterUIState(filterName, filterRecord.Category);
+                            hostCategories = hostCats;
+                            openingSettings = settings;
+                            mepCategories = mepCats;
+                            refFiles = refF;
+                            hostFiles = hostF;
+                            _log($"[FILTER_MGMT] ✅ Loaded UI state from DB for filter '{filterName}': HostCategories={hostCategories?.Count ?? 0}, OpeningSettings={(settings != null ? "Yes" : "No")}, MepCategories={mepCats?.Count ?? 0}, RefFiles={refF?.Count ?? 0}, HostFiles={hostF?.Count ?? 0}");
+                        }
+                    });
+                }
+                catch (Exception dbEx)
+                {
+                    _log($"[FILTER_MGMT] ⚠️ Could not load from DB: {dbEx.Message} - falling back to XML");
+                }
+                
+                // ✅ FALLBACK: If DB has no data or failed, load from XML
                 string filterDir;
                 if (_document != null)
                 {
@@ -1148,14 +1181,101 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var filePath = Path.Combine(filterDir, $"{filterName}.xml");
                 _log($"[FILTER_MGMT] Looking for filter file at: {filePath}");
                 
-                if (!File.Exists(filePath))
+                if (File.Exists(filePath))
+                {
+                    loadedFilter = LoadFilterFromXmlFile(filePath);
+                    _log($"[FILTER_MGMT] Loaded filter from XML: {filePath}");
+                    
+                    // ✅ DEBUG: Log what was loaded from DB
+                    _log($"[FILTER_MGMT-DEBUG] DB Load Results - hostCategories: {(hostCategories == null ? "NULL" : hostCategories.Count + " items: [" + string.Join(", ", hostCategories) + "]")}");
+                    _log($"[FILTER_MGMT-DEBUG] DB Load Results - mepCategories: {(mepCategories == null ? "NULL" : mepCategories.Count + " items: [" + string.Join(", ", mepCategories) + "]")}");
+                    _log($"[FILTER_MGMT-DEBUG] DB Load Results - refFiles: {(refFiles == null ? "NULL" : refFiles.Count + " items: [" + string.Join(", ", refFiles) + "]")}");
+                    _log($"[FILTER_MGMT-DEBUG] DB Load Results - hostFiles: {(hostFiles == null ? "NULL" : hostFiles.Count + " items: [" + string.Join(", ", hostFiles) + "]")}");
+                    
+                    // ✅ MERGE: Apply DB UI state on top of XML filter
+                    // ✅ CRITICAL: Always assign hostCategories if loaded from DB (even if empty, to clear previous values)
+                    if (hostCategories != null)
+                    {
+                        loadedFilter.SelectedHostCategories = hostCategories;
+                        _log($"[FILTER_MGMT] ✅ Applied DB UI state: SelectedHostCategories = {hostCategories.Count} items: [{string.Join(", ", hostCategories)}]");
+                    }
+                    if (openingSettings != null)
+                    {
+                        loadedFilter.OpeningSettings = openingSettings;
+                        _log($"[FILTER_MGMT] ✅ Applied DB UI state: OpeningSettings updated");
+                    }
+                    // ✅ CRITICAL FIX: Also assign MEP categories, reference files, and host files
+                    // Always assign if loaded from DB (even if empty, to clear previous values)
+                    if (mepCategories != null)
+                    {
+                        loadedFilter.SelectedMepCategoryNames = mepCategories;
+                        _log($"[FILTER_MGMT] ✅ Applied DB UI state: SelectedMepCategoryNames = {mepCategories.Count} items: [{string.Join(", ", mepCategories)}]");
+                    }
+                    if (refFiles != null)
+                    {
+                        loadedFilter.SelectedReferenceFiles = refFiles;
+                        _log($"[FILTER_MGMT] ✅ Applied DB UI state: SelectedReferenceFiles = {refFiles.Count} items: [{string.Join(", ", refFiles)}]");
+                    }
+                    if (hostFiles != null)
+                    {
+                        loadedFilter.SelectedHostFiles = hostFiles;
+                        _log($"[FILTER_MGMT] ✅ Applied DB UI state: SelectedHostFiles = {hostFiles.Count} items: [{string.Join(", ", hostFiles)}]");
+                    }
+                }
+                else
                 {
                     _log($"[FILTER_MGMT] Filter file not found: {filePath}");
-                    return null; // ✅ CORRECT: Return null if file doesn't exist - caller should create new filter
+                    
+                    // ✅ CRITICAL FIX: If XML doesn't exist but we have DB data, create a filter from DB data
+                    if (hostCategories != null || openingSettings != null || (mepCategories != null && mepCategories.Count > 0) || 
+                        (refFiles != null && refFiles.Count > 0) || (hostFiles != null && hostFiles.Count > 0))
+                    {
+                        _log($"[FILTER_MGMT] ⚠️ XML file not found but DB has UI state - creating filter from DB data");
+                        
+                        // Create a basic filter object from DB data
+                        loadedFilter = new OpeningFilter
+                        {
+                            Name = filterName,
+                            Category = Models.MepCategory.Ducts, // Default, will be updated if we can determine from category
+                            IsEnabled = true,
+                            LastModified = DateTime.Now
+                        };
+                        
+                        // Apply all DB UI state
+                        if (hostCategories != null)
+                        {
+                            loadedFilter.SelectedHostCategories = hostCategories;
+                            _log($"[FILTER_MGMT] ✅ Applied DB UI state: SelectedHostCategories = {hostCategories.Count} items: [{string.Join(", ", hostCategories)}]");
+                        }
+                        if (openingSettings != null)
+                        {
+                            loadedFilter.OpeningSettings = openingSettings;
+                            _log($"[FILTER_MGMT] ✅ Applied DB UI state: OpeningSettings updated");
+                        }
+                        if (mepCategories != null)
+                        {
+                            loadedFilter.SelectedMepCategoryNames = mepCategories;
+                            _log($"[FILTER_MGMT] ✅ Applied DB UI state: SelectedMepCategoryNames = {mepCategories.Count} items: [{string.Join(", ", mepCategories)}]");
+                        }
+                        if (refFiles != null)
+                        {
+                            loadedFilter.SelectedReferenceFiles = refFiles;
+                            _log($"[FILTER_MGMT] ✅ Applied DB UI state: SelectedReferenceFiles = {refFiles.Count} items: [{string.Join(", ", refFiles)}]");
+                        }
+                        if (hostFiles != null)
+                        {
+                            loadedFilter.SelectedHostFiles = hostFiles;
+                            _log($"[FILTER_MGMT] ✅ Applied DB UI state: SelectedHostFiles = {hostFiles.Count} items: [{string.Join(", ", hostFiles)}]");
+                        }
+                    }
+                    else
+                    {
+                        _log($"[FILTER_MGMT] No XML file and no DB data - returning null");
+                        return null; // No XML and no DB data - return null
+                    }
                 }
 
-                var loadedFilter = LoadFilterFromXmlFile(filePath);
-                _log($"[FILTER_MGMT] Auto-loaded filter '{filterName}' from {filePath}");
+                _log($"[FILTER_MGMT] Auto-loaded filter '{filterName}' (Host categories: {loadedFilter?.SelectedHostCategories?.Count ?? 0})");
                 return loadedFilter;
             }
             catch (Exception ex)
@@ -1190,28 +1310,168 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
                 
-                var openDialog = new OpenFileDialog
+                // ✅ OPTION 1: Try to load from database first (if filter exists in DB)
+                // Show a dialog to let user choose: Load from DB or Load from XML file
+                var choiceDialog = new System.Windows.Forms.Form
                 {
-                    Title = "Load Filter",
-                    Filter = "XML Files (*.xml)|*.xml|All Files (*.*)|*.*",
-                    DefaultExt = "xml",
-                    InitialDirectory = filterDir  // Set default directory
+                    Text = "Load Filter",
+                    Size = new System.Drawing.Size(400, 150),
+                    StartPosition = System.Windows.Forms.FormStartPosition.CenterParent,
+                    FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog,
+                    MaximizeBox = false,
+                    MinimizeBox = false
                 };
-
-                if (openDialog.ShowDialog() == DialogResult.OK)
+                
+                var label = new System.Windows.Forms.Label
                 {
-                var loadedFilter = LoadFilterFromXmlFile(openDialog.FileName);
-                    
-                    if (loadedFilter != null)
+                    Text = "Choose how to load the filter:",
+                    Location = new System.Drawing.Point(20, 20),
+                    Size = new System.Drawing.Size(350, 20)
+                };
+                
+                var dbButton = new System.Windows.Forms.Button
+                {
+                    Text = "Load from Database",
+                    Location = new System.Drawing.Point(20, 50),
+                    Size = new System.Drawing.Size(160, 30),
+                    DialogResult = System.Windows.Forms.DialogResult.Yes
+                };
+                
+                var xmlButton = new System.Windows.Forms.Button
+                {
+                    Text = "Load from XML File",
+                    Location = new System.Drawing.Point(200, 50),
+                    Size = new System.Drawing.Size(160, 30),
+                    DialogResult = System.Windows.Forms.DialogResult.No
+                };
+                
+                choiceDialog.Controls.Add(label);
+                choiceDialog.Controls.Add(dbButton);
+                choiceDialog.Controls.Add(xmlButton);
+                choiceDialog.AcceptButton = dbButton;
+                choiceDialog.CancelButton = xmlButton;
+                
+                var choice = choiceDialog.ShowDialog();
+                
+                if (choice == System.Windows.Forms.DialogResult.Yes)
+                {
+                    // ✅ LOAD FROM DATABASE
+                    try
                     {
-                        AddFilterToList(filterListBox, loadedFilter);
-                        try { FilterUiStateProvider.ApplyFilterToUi?.Invoke(loadedFilter); } catch { }
+                        UseFilterRepository(repo =>
+                        {
+                            var allFilters = repo.GetAllFilters();
+                            if (allFilters.Count == 0)
+                            {
+                                MessageBox.Show("No filters found in database.", "No Filters", 
+                                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                                return;
+                            }
+                            
+                            // Show a dialog to select which filter to load
+                            var filterSelectDialog = new System.Windows.Forms.Form
+                            {
+                                Text = "Select Filter from Database",
+                                Size = new System.Drawing.Size(400, 300),
+                                StartPosition = System.Windows.Forms.FormStartPosition.CenterParent,
+                                FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog,
+                                MaximizeBox = false,
+                                MinimizeBox = false
+                            };
+                            
+                            var filterList = new System.Windows.Forms.ListBox
+                            {
+                                Location = new System.Drawing.Point(20, 20),
+                                Size = new System.Drawing.Size(340, 200)
+                            };
+                            
+                            foreach (var filterRecord in allFilters)
+                            {
+                                filterList.Items.Add($"{filterRecord.FilterName} ({filterRecord.Category})");
+                            }
+                            
+                            var loadButton = new System.Windows.Forms.Button
+                            {
+                                Text = "Load",
+                                Location = new System.Drawing.Point(200, 230),
+                                Size = new System.Drawing.Size(80, 30),
+                                DialogResult = System.Windows.Forms.DialogResult.OK
+                            };
+                            
+                            var cancelButton = new System.Windows.Forms.Button
+                            {
+                                Text = "Cancel",
+                                Location = new System.Drawing.Point(290, 230),
+                                Size = new System.Drawing.Size(80, 30),
+                                DialogResult = System.Windows.Forms.DialogResult.Cancel
+                            };
+                            
+                            filterSelectDialog.Controls.Add(filterList);
+                            filterSelectDialog.Controls.Add(loadButton);
+                            filterSelectDialog.Controls.Add(cancelButton);
+                            filterSelectDialog.AcceptButton = loadButton;
+                            filterSelectDialog.CancelButton = cancelButton;
+                            
+                            if (filterSelectDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK && filterList.SelectedItem != null)
+                            {
+                                var selectedText = filterList.SelectedItem.ToString();
+                                var filterName = selectedText.Split('(')[0].Trim();
+                                var category = selectedText.Split('(')[1].TrimEnd(')').Trim();
+                                
+                                // Load filter from database
+                                var loadedFilter = LoadFilterAuto(filterName);
+                                if (loadedFilter != null)
+                                {
+                                    AddFilterToList(filterListBox, loadedFilter);
+                                    try { FilterUiStateProvider.ApplyFilterToUi?.Invoke(loadedFilter); } catch { }
+                                    
+                                    _log($"[FILTER_MGMT] Loaded filter '{loadedFilter.Name}' from database");
+                                    _updateStatus($"Loaded filter: {loadedFilter.Name}");
+                                    
+                                    MessageBox.Show($"Filter '{loadedFilter.Name}' loaded successfully from database!", "Success", 
+                                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                                }
+                                else
+                                {
+                                    MessageBox.Show($"Could not load filter '{filterName}' from database.", "Error", 
+                                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                }
+                            }
+                        });
+                    }
+                    catch (Exception dbEx)
+                    {
+                        _log($"[FILTER_MGMT] Error loading filter from database: {dbEx.Message}");
+                        MessageBox.Show($"Error loading filter from database: {dbEx.Message}", "Error", 
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+                else if (choice == System.Windows.Forms.DialogResult.No)
+                {
+                    // ✅ LOAD FROM XML FILE (original behavior)
+                    var openDialog = new OpenFileDialog
+                    {
+                        Title = "Load Filter from XML File",
+                        Filter = "XML Files (*.xml)|*.xml|All Files (*.*)|*.*",
+                        DefaultExt = "xml",
+                        InitialDirectory = filterDir  // Set default directory
+                    };
+
+                    if (openDialog.ShowDialog() == DialogResult.OK)
+                    {
+                        var loadedFilter = LoadFilterFromXmlFile(openDialog.FileName);
                         
-                        _log($"[FILTER_MGMT] Loaded filter '{loadedFilter.Name}' from: {openDialog.FileName}");
-                        _updateStatus($"Loaded filter: {loadedFilter.Name}");
-                        
-                        MessageBox.Show($"Filter '{loadedFilter.Name}' loaded successfully!", "Success", 
-                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        if (loadedFilter != null)
+                        {
+                            AddFilterToList(filterListBox, loadedFilter);
+                            try { FilterUiStateProvider.ApplyFilterToUi?.Invoke(loadedFilter); } catch { }
+                            
+                            _log($"[FILTER_MGMT] Loaded filter '{loadedFilter.Name}' from: {openDialog.FileName}");
+                            _updateStatus($"Loaded filter: {loadedFilter.Name}");
+                            
+                            MessageBox.Show($"Filter '{loadedFilter.Name}' loaded successfully!", "Success", 
+                                MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        }
                     }
                 }
             }
@@ -1273,15 +1533,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var categoryDisplay = GetDisplayCategory(filter);
                 UseFilterRepository(repo =>
                 {
-                    var (hostCategories, settings) = repo.LoadFilterUIState(filterName, categoryDisplay);
+                    var (hostCategories, settings, mepCategories, refFiles, hostFiles) = repo.LoadFilterUIState(filterName, categoryDisplay);
                     if (hostCategories != null && hostCategories.Count > 0)
                     {
-                        // ✅ STANDARDIZED: Use SelectedHostCategories (mapped to SelectedHostCategories for backward compatibility)
+                        // ✅ CRITICAL FIX: Assign hostCategories to filter object (was missing!)
+                        filter.SelectedHostCategories = hostCategories;
+                        _log($"[FILTER_MGMT] ✅ Loaded SelectedHostCategories from database: {string.Join(", ", hostCategories)}");
                     }
                     if (settings != null)
                     {
                         filter.OpeningSettings = settings;
                         _log($"[FILTER_MGMT] ✅ Loaded OpeningSettings from database for filter '{filterName}'");
+                    }
+                    if (mepCategories != null && mepCategories.Count > 0)
+                    {
+                        filter.SelectedMepCategoryNames = mepCategories;
+                        _log($"[FILTER_MGMT] ✅ Loaded SelectedMepCategoryNames from database: {string.Join(", ", mepCategories)}");
+                    }
+                    if (refFiles != null && refFiles.Count > 0)
+                    {
+                        filter.SelectedReferenceFiles = refFiles;
+                        _log($"[FILTER_MGMT] ✅ Loaded SelectedReferenceFiles from database: {string.Join(", ", refFiles)}");
+                    }
+                    if (hostFiles != null && hostFiles.Count > 0)
+                    {
+                        filter.SelectedHostFiles = hostFiles;
+                        _log($"[FILTER_MGMT] ✅ Loaded SelectedHostFiles from database: {string.Join(", ", hostFiles)}");
                     }
                 });
             }
@@ -1474,10 +1751,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public void SaveFilterToXmlFile(OpeningFilter filter, string filePath)
         {
-            // ✅ PHASE 2: Skip XML creation if disabled - database is single source of truth
+            // ✅ PHASE 2: If XML creation is disabled, persist UI state to DB instead
             if (DeploymentConfiguration.DisableXmlCreation)
             {
-                Log($"[FILTER_MGMT] ⚠️ XML creation disabled - skipping SaveFilterToXmlFile (database only mode). Filter='{filter?.Name}', Path='{filePath}'");
+                Log($"[FILTER_MGMT] ⚠️ XML creation disabled - persisting UI state to DB instead. Filter='{filter?.Name}', Path='{filePath}'");
+
+                try
+                {
+                    // Determine category for DB registration: prefer display category from filter, else fallback to enum name
+                    var categoryDisplay = GetDisplayCategory(filter);
+                    if (string.IsNullOrWhiteSpace(categoryDisplay) && filter != null)
+                    {
+                        try { categoryDisplay = MepCategoryConstants.Normalize(filter.SelectedMepCategoryName ?? filter.Category.ToString()); } catch { categoryDisplay = string.Empty; }
+                    }
+
+                    UseFilterRepository(repo =>
+                    {
+                        repo.SaveFilterUIState(
+                            filter?.Name ?? string.Empty,
+                            categoryDisplay ?? string.Empty,
+                            filter?.SelectedHostCategories ?? new List<string>(),
+                            filter?.OpeningSettings
+                        );
+                    });
+
+                    Log($"[FILTER_MGMT] ✅ Persisted UI state to DB for filter '{filter?.Name}' (via SaveFilterToXmlFile fallback)");
+                }
+                catch (Exception ex)
+                {
+                    Log($"[FILTER_MGMT] ⚠️ Failed to persist UI state to DB in SaveFilterToXmlFile: {ex.Message}");
+                }
+
                 return;
             }
             
@@ -1746,7 +2050,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var categoryDisplay = GetDisplayCategory(filter);
                         UseFilterRepository(repo =>
                         {
-                            var (hostCategories, settings) = repo.LoadFilterUIState(filter.Name, categoryDisplay);
+                            var (hostCategories, settings, mepCategories, refFiles, hostFiles) = repo.LoadFilterUIState(filter.Name, categoryDisplay);
                             if (hostCategories != null && hostCategories.Count > 0)
                             {
                                 filter.SelectedHostCategories = hostCategories;
@@ -1756,6 +2060,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             {
                                 // ✅ FALLBACK: Use XML data if database has no data
                                 _log($"[FILTER_MGMT] ⚠️ No SelectedHostCategories in database, using XML data (if available)");
+                            }
+                            if (mepCategories != null && mepCategories.Count > 0)
+                            {
+                                filter.SelectedMepCategoryNames = mepCategories;
+                                _log($"[FILTER_MGMT] ✅ Loaded SelectedMepCategoryNames from database for filter '{filter.Name}': {string.Join(", ", mepCategories)}");
+                            }
+                            if (refFiles != null && refFiles.Count > 0)
+                            {
+                                filter.SelectedReferenceFiles = refFiles;
+                                _log($"[FILTER_MGMT] ✅ Loaded SelectedReferenceFiles from database for filter '{filter.Name}': {string.Join(", ", refFiles)}");
+                            }
+                            if (hostFiles != null && hostFiles.Count > 0)
+                            {
+                                filter.SelectedHostFiles = hostFiles;
+                                _log($"[FILTER_MGMT] ✅ Loaded SelectedHostFiles from database for filter '{filter.Name}': {string.Join(", ", hostFiles)}");
                             }
                             
                             if (settings != null)

@@ -1312,22 +1312,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             
             // Add event handler for filter selection to restore UI state
             filterListBox.SelectedIndexChanged += (s, e) => {
+                DebugLogger.Info($"[FILTER_SELECTION] SelectedIndexChanged event fired - SelectedIndex={filterListBox.SelectedIndex}");
                 if (filterListBox.SelectedItem != null)
                 {
+                    var selectedFilterName = filterListBox.SelectedItem.ToString();
+                    DebugLogger.Info($"[FILTER_SELECTION] Filter selected: '{selectedFilterName}'");
+                    
                     // Reset manual changes flag when user explicitly selects a filter
                     _userHasMadeManualChanges = false;
                     DebugLogger.Info("[FILTER_UI] User explicitly selected filter - resetting manual changes flag");
                     
                     // Auto-load the selected filter instead of showing file dialog
-                    var selectedFilterName = filterListBox.SelectedItem.ToString();
+                    DebugLogger.Info($"[FILTER_SELECTION] Calling LoadFilterAuto for '{selectedFilterName}'");
                     var loadedFilter = _filterManagementService.LoadFilterAuto(selectedFilterName);
+                    DebugLogger.Info($"[FILTER_SELECTION] LoadFilterAuto returned - filter is null: {loadedFilter == null}");
+                    
                     if (loadedFilter != null)
                     {
                         DebugLogger.Info($"[FILTER_UI] Loaded filter '{selectedFilterName}' with {loadedFilter.SelectedMepCategoryNames?.Count ?? 0} MEP categories: {string.Join(", ", loadedFilter.SelectedMepCategoryNames ?? new List<string>())}");
                         // Pass the loaded filter directly to avoid loading it again
+                        DebugLogger.Info($"[FILTER_SELECTION] Calling RestoreUIStateFromFilter");
                         RestoreUIStateFromFilter(loadedFilter);
                         DebugLogger.Info($"[FILTER_UI] Auto-loaded filter: {selectedFilterName}");
                     }
+                    else
+                    {
+                        DebugLogger.Warning($"[FILTER_SELECTION] ⚠️ LoadFilterAuto returned NULL for '{selectedFilterName}'");
+                    }
+                }
+                else
+                {
+                    DebugLogger.Info($"[FILTER_SELECTION] SelectedItem is NULL");
                 }
             };
             
@@ -7935,14 +7950,70 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         private void SaveFilterWithUIState(ListBox filterListBox)
         {
+            // ✅ DEBUG LOG: Create dedicated log file for filter UI state persistence
+            string filterDebugLogPath = SafeFileLogger.GetLogFilePath("filter_ui_state_debug.log");
+            var logBuilder = new System.Text.StringBuilder();
+            
+            // ✅ CRITICAL: Log the file path so user knows where to find it
+            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ========== FILTER UI STATE DEBUG LOG ==========");
+            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Log file location: {filterDebugLogPath}");
+            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Log directory exists: {System.IO.Directory.Exists(System.IO.Path.GetDirectoryName(filterDebugLogPath))}");
+            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ==============================================");
+            
+            // ✅ ALWAYS VISIBLE: Show in multiple places (even in deployment mode for debugging)
+            // 1. DebugLogger (if enabled)
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Info($"[FILTER_UI_DEBUG] Log file location: {filterDebugLogPath}");
+            }
+            
+            // 2. System.Diagnostics (always works, shows in Visual Studio Output window)
+            System.Diagnostics.Debug.WriteLine($"[FILTER_UI_DEBUG] ========================================");
+            System.Diagnostics.Debug.WriteLine($"[FILTER_UI_DEBUG] FILTER UI STATE DEBUG LOG FILE");
+            System.Diagnostics.Debug.WriteLine($"[FILTER_UI_DEBUG] Location: {filterDebugLogPath}");
+            System.Diagnostics.Debug.WriteLine($"[FILTER_UI_DEBUG] ========================================");
+            
+            // 3. Console (if console is available)
             try
             {
+                Console.WriteLine($"[FILTER_UI_DEBUG] Log file location: {filterDebugLogPath}");
+            }
+            catch { }
+            
+            // 4. Write to log file immediately (so it's always there)
+            try
+            {
+                System.IO.File.WriteAllText(filterDebugLogPath, logBuilder.ToString());
+            }
+            catch (Exception immediateWriteEx)
+            {
+                System.Diagnostics.Debug.WriteLine($"[FILTER_UI_DEBUG] ⚠️ Could not write log file immediately: {immediateWriteEx.Message}");
+            }
+            
+            // 5. Show in UI status label (if available)
+            try
+            {
+                if (_statusLabel != null)
+                {
+                    _statusLabel.Text = $"Debug log: {System.IO.Path.GetFileName(filterDebugLogPath)}";
+                    _statusLabel.ForeColor = System.Drawing.Color.Blue;
+                }
+            }
+            catch { }
+            
+            try
+            {
+                logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ========== SAVE FILTER WITH UI STATE STARTED ==========");
+                logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] SaveFilterWithUIState called");
                 DebugLogger.Info("SaveFilterWithUIState called");
                 
                 // ✅ CRITICAL FIX: Update UI state BEFORE saving (not after!)
                 if (filterListBox.SelectedItem != null)
                 {
                     var selectedFilterName = filterListBox.SelectedItem.ToString();
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Selected Filter Name: '{selectedFilterName}'");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] FilterListBox SelectedIndex: {filterListBox.SelectedIndex}");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] FilterListBox Items Count: {filterListBox.Items.Count}");
                     
                     if (_document == null)
                     {
@@ -7954,62 +8025,151 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     ProjectPathService.EnsureFiltersDirectory(_document);
                     var filterDir = ProjectPathService.GetFiltersDirectory(_document);
                     var filePath = System.IO.Path.Combine(filterDir, $"{selectedFilterName}.xml");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Filter Directory: '{filterDir}'");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Filter File Path: '{filePath}'");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Filter File Exists: {System.IO.File.Exists(filePath)}");
+                    
+                    // ✅ DEBUG: Log current UI state BEFORE any operations
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ========== CURRENT UI STATE (BEFORE SAVE) ==========");
+                    try
+                    {
+                        var currentHostCats = FilterUiStateProvider.GetSelectedHostCategories?.Invoke() ?? new List<string>();
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] SelectedHostCategories Count: {currentHostCats.Count}");
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] SelectedHostCategories: [{string.Join(", ", currentHostCats)}]");
+                        
+                        var currentMepCats = GetSelectedMepCategories();
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] SelectedMepCategories Count: {currentMepCats?.Count ?? 0}");
+                        if (currentMepCats != null && currentMepCats.Count > 0)
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] SelectedMepCategories: [{string.Join(", ", currentMepCats)}]");
+                        
+                        var currentRefFiles = GetSelectedReferenceFiles();
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] SelectedReferenceFiles Count: {currentRefFiles?.Count ?? 0}");
+                        
+                        var currentHostFiles = GetSelectedHostFiles();
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] SelectedHostFiles Count: {currentHostFiles?.Count ?? 0}");
+                    }
+                    catch (Exception uiStateEx)
+                    {
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ⚠️ Error reading UI state: {uiStateEx.Message}");
+                    }
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ========== END CURRENT UI STATE ==========");
                     
                     OpeningFilter currentFilter;
                     
                     // ✅ LOGIC FIX: Only load filter if file exists, otherwise create new from UI state
                     if (System.IO.File.Exists(filePath))
                     {
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Filter file EXISTS - Loading existing filter");
                         DebugLogger.Info($"[FILTER-SAVE] Filter file exists, loading: {filePath}");
                         currentFilter = _filterManagementService.LoadFilterAuto(selectedFilterName);
                         if (currentFilter == null)
                         {
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ⚠️ LoadFilterAuto returned NULL - Creating new filter from UI state");
                             DebugLogger.Warning($"[FILTER-SAVE] LoadFilterAuto returned null, creating new filter from UI state");
                             currentFilter = _filterManagementService.CreateFilterFromCurrentUIState(selectedFilterName);
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ✅ Created new filter from UI state");
+                            
+                            // ✅ CRITICAL FIX: Update new filter with current UI state (including OpeningSettings)
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Calling UpdateFilterWithCurrentUIState for NEW filter...");
+                            UpdateFilterWithCurrentUIState(currentFilter);
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ✅ UpdateFilterWithCurrentUIState completed for NEW filter");
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] New filter HostCats after update: {currentFilter?.SelectedHostCategories?.Count ?? 0}");
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] New filter OpeningSettings after update: {(currentFilter?.OpeningSettings != null ? "EXISTS" : "NULL")}");
                         }
                         else
                         {
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ✅ Loaded existing filter - HostCats before update: {currentFilter.SelectedHostCategories?.Count ?? 0}");
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ✅ Loaded existing filter - OpeningSettings before update: {(currentFilter.OpeningSettings != null ? "EXISTS" : "NULL")}");
+                            
                             // ✅ FIX: Update the existing filter with current UI state BEFORE saving
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Calling UpdateFilterWithCurrentUIState...");
                             UpdateFilterWithCurrentUIState(currentFilter);
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ✅ UpdateFilterWithCurrentUIState completed");
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] HostCats after update: {currentFilter.SelectedHostCategories?.Count ?? 0}");
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] HostCats after update: [{string.Join(", ", currentFilter.SelectedHostCategories ?? new List<string>())}]");
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] OpeningSettings after update: {(currentFilter.OpeningSettings != null ? "EXISTS" : "NULL")}");
                             DebugLogger.Info($"Updated existing filter '{selectedFilterName}' with current UI state BEFORE save");
                         }
                     }
                     else
                     {
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Filter file does NOT exist - Creating new filter from UI state");
                         DebugLogger.Info($"[FILTER-SAVE] Filter file does NOT exist, creating new filter from UI state: {filePath}");
                         // ✅ CREATE NEW: Create filter from current UI state (new filter)
                         currentFilter = _filterManagementService.CreateFilterFromCurrentUIState(selectedFilterName);
-                        DebugLogger.Info($"Created new filter '{selectedFilterName}' from current UI state");
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ✅ Created new filter from UI state");
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] New filter HostCats BEFORE update: {currentFilter?.SelectedHostCategories?.Count ?? 0}");
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] New filter OpeningSettings BEFORE update: {(currentFilter?.OpeningSettings != null ? "EXISTS" : "NULL")}");
+                        
+                        // ✅ CRITICAL FIX: Update new filter with current UI state (including OpeningSettings and AdoptToDocument)
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Calling UpdateFilterWithCurrentUIState for NEW filter (file doesn't exist)...");
+                        UpdateFilterWithCurrentUIState(currentFilter);
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ✅ UpdateFilterWithCurrentUIState completed for NEW filter");
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] New filter HostCats AFTER update: {currentFilter?.SelectedHostCategories?.Count ?? 0}");
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] New filter HostCats AFTER update: [{string.Join(", ", currentFilter?.SelectedHostCategories ?? new List<string>())}]");
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] New filter OpeningSettings AFTER update: {(currentFilter?.OpeningSettings != null ? "EXISTS" : "NULL")}");
+                        if (currentFilter?.OpeningSettings != null)
+                        {
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] New filter OpeningSettings.AdoptToDocument: {currentFilter.OpeningSettings.AdoptToDocument}");
+                        }
+                        DebugLogger.Info($"Created new filter '{selectedFilterName}' from current UI state and updated with UI state");
                     }
                     
-                    DebugLogger.Info($"[FILTER-SAVE] Attempting to save filter '{selectedFilterName}' to: {filePath}");
-                    DebugLogger.Info($"[FILTER-SAVE] Directory exists: {System.IO.Directory.Exists(filterDir)}");
-                    DebugLogger.Info($"[FILTER-SAVE] Filter is null: {currentFilter == null}");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ========== FILTER OBJECT STATE (BEFORE XML SAVE) ==========");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Filter Name: '{currentFilter?.Name}'");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Filter is null: {currentFilter == null}");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Directory exists: {System.IO.Directory.Exists(filterDir)}");
                     
                     if (currentFilter == null)
                     {
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ❌ ERROR: Filter is null after creation/load - cannot save");
                         DebugLogger.Error($"[FILTER-SAVE] ❌ Filter is null after creation/load - cannot save");
                         throw new InvalidOperationException($"Filter '{selectedFilterName}' is null - cannot save");
                     }
                     
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Filter SelectedHostCategories Count: {currentFilter.SelectedHostCategories?.Count ?? 0}");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Filter SelectedHostCategories: [{string.Join(", ", currentFilter.SelectedHostCategories ?? new List<string>())}]");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Filter OpeningSettings: {(currentFilter.OpeningSettings != null ? "EXISTS" : "NULL")}");
+                    if (currentFilter.OpeningSettings != null)
+                    {
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] OpeningSettings SelectedMepType: '{currentFilter.OpeningSettings.SelectedMepType}'");
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] OpeningSettings OpeningType: '{currentFilter.OpeningSettings.OpeningType}'");
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] OpeningSettings SleeveParameterPrefix: '{currentFilter.OpeningSettings.SleeveParameterPrefix}'");
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] OpeningSettings ClearanceSettings: {(currentFilter.OpeningSettings.ClearanceSettings != null ? "EXISTS" : "NULL")}");
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] OpeningSettings AdoptToDocument: {currentFilter.OpeningSettings.AdoptToDocument}");
+                    }
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ========== END FILTER OBJECT STATE ==========");
+                    
+                    // ✅ STEP 1: Save to XML
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ========== STEP 1: SAVING TO XML ==========");
                     try
                     {
+                        DebugLogger.Info($"[SAVE-DEBUG] SaveFilterToXmlFile: Name='{currentFilter?.Name}', HostCats={currentFilter?.SelectedHostCategories?.Count ?? 0}, OpenSettings={(currentFilter?.OpeningSettings != null ? "Yes" : "NULL")}");
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Calling SaveFilterToXmlFile...");
                         _filterManagementService.SaveFilterToXmlFile(currentFilter, filePath);
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ✅ SaveFilterToXmlFile completed");
                         DebugLogger.Info($"✅ Saved filter '{selectedFilterName}' with UI state to: {filePath}");
                         
                         // ✅ VERIFY: Check if file was actually created
                         if (System.IO.File.Exists(filePath))
                         {
                             var fileInfo = new System.IO.FileInfo(filePath);
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ✅ XML file verified: {fileInfo.Length} bytes");
                             DebugLogger.Info($"✅ Verified: Filter XML file exists ({fileInfo.Length} bytes) at: {filePath}");
                         }
                         else
                         {
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ⚠️ WARNING: XML file was NOT created!");
                             DebugLogger.Warning($"⚠️ WARNING: Filter XML file was NOT created at: {filePath}");
                         }
                     }
                     catch (Exception saveEx)
                     {
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ❌ XML SAVE FAILED: {saveEx.Message}");
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ❌ Exception Type: {saveEx.GetType().Name}");
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ❌ Stack Trace: {saveEx.StackTrace}");
+                        if (saveEx.InnerException != null)
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ❌ Inner Exception: {saveEx.InnerException.Message}");
                         DebugLogger.Error($"❌ Failed to save filter '{selectedFilterName}' to '{filePath}': {saveEx.Message}");
                         DebugLogger.Error($"❌ Exception type: {saveEx.GetType().Name}");
                         DebugLogger.Error($"❌ Stack trace: {saveEx.StackTrace}");
@@ -8019,24 +8179,107 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         }
                         throw;
                     }
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ========== END STEP 1: XML SAVE ==========");
                     
-                    // ✅ FUTURE-PROOF: Register in database now (will be sole storage in future)
+                    // ✅ STEP 2: Save UI state to database (SelectedHostCategories + OpeningSettings)
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ========== STEP 2: SAVING TO DATABASE ==========");
                     var category = _filterManagementService.GetDisplayCategory(currentFilter);
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Category: '{category}'");
+                    DebugLogger.Info($"[SAVE-DEBUG] Category: '{category}'");
+                    
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Calling RegisterFilterInDatabase...");
                     _filterManagementService.RegisterFilterInDatabase(selectedFilterName, category);
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ✅ RegisterFilterInDatabase completed");
                     DebugLogger.Info($"Registered filter '{selectedFilterName}' in database for category '{category}'");
                     
-                    // ✅ CRITICAL FIX: Update the in-memory filter object so it matches what was saved
-                    // This ensures that when the filter is selected again, it uses the updated state
+                    // ✅ CRITICAL: Persist UI state to DB (linked files, host categories, opening settings)
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ========== STEP 2A: SAVING UI STATE TO DATABASE ==========");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Filter: '{selectedFilterName}'");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Category: '{category}'");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] HostCategories to save: [{string.Join(", ", currentFilter.SelectedHostCategories ?? new List<string>())}]");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] HostCategories Count: {currentFilter.SelectedHostCategories?.Count ?? 0}");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] OpeningSettings: {(currentFilter.OpeningSettings != null ? "EXISTS" : "NULL")}");
+                    
+                    try
+                    {
+                        DebugLogger.Info($"[SAVE-DEBUG] SaveFilterUIState: Filter='{selectedFilterName}', Category='{category}', HostCats={currentFilter.SelectedHostCategories?.Count ?? 0}, OpenSettings={(currentFilter.OpeningSettings != null ? "Yes" : "NULL")}");
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Calling UseFilterRepository -> SaveFilterUIState...");
+                        _filterManagementService.UseFilterRepository(repo =>
+                        {
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Inside UseFilterRepository callback - calling SaveFilterUIState");
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] SelectedMepCategoryNames to save: [{string.Join(", ", currentFilter.SelectedMepCategoryNames ?? new List<string>())}]");
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] SelectedReferenceFiles to save: [{string.Join(", ", currentFilter.SelectedReferenceFiles ?? new List<string>())}]");
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] SelectedHostFiles to save: [{string.Join(", ", currentFilter.SelectedHostFiles ?? new List<string>())}]");
+                            repo.SaveFilterUIState(
+                                selectedFilterName,
+                                category,
+                                currentFilter.SelectedHostCategories ?? new List<string>(),
+                                currentFilter.OpeningSettings,
+                                currentFilter.SelectedMepCategoryNames,
+                                currentFilter.SelectedReferenceFiles,
+                                currentFilter.SelectedHostFiles
+                            );
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ✅ SaveFilterUIState call completed");
+                        });
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ✅ UseFilterRepository completed");
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ✅ UI STATE SAVED TO DATABASE SUCCESSFULLY");
+                        DebugLogger.Info($"✅ Saved UI state to DB for filter '{selectedFilterName}' (HostCategories: {currentFilter.SelectedHostCategories?.Count ?? 0})");
+                    }
+                    catch (Exception uiStateEx)
+                    {
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ❌ DATABASE SAVE FAILED: {uiStateEx.Message}");
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ❌ Exception Type: {uiStateEx.GetType().Name}");
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ❌ Stack Trace: {uiStateEx.StackTrace}");
+                        if (uiStateEx.InnerException != null)
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ❌ Inner Exception: {uiStateEx.InnerException.Message}");
+                        DebugLogger.Error($"⚠️ Failed to save UI state to DB: {uiStateEx.Message}");
+                    }
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ========== END STEP 2A: UI STATE DATABASE SAVE ==========");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ========== END STEP 2: DATABASE SAVE ==========");
+                    
+                    // ✅ STEP 3: Update in-memory filter object
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ========== STEP 3: UPDATE IN-MEMORY FILTER ==========");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Calling UpdateFilterInMemory...");
                     _filterManagementService.UpdateFilterInMemory(selectedFilterName, currentFilter);
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ✅ UpdateFilterInMemory completed");
                     DebugLogger.Info($"Updated in-memory filter object for '{selectedFilterName}' with saved UI state");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ========== END STEP 3: IN-MEMORY UPDATE ==========");
                 }
+                else
+                {
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ⚠️ WARNING: filterListBox.SelectedItem is NULL - cannot save");
+                }
+                
+                logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ========== SAVE FILTER WITH UI STATE COMPLETED ==========");
                 
                 // ✅ AUTO-HIDING PROMPT: Show "Filter is saved" message and hide after 0.7 seconds
                 ShowFilterSavedPrompt();
             }
             catch (Exception ex)
             {
+                logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ❌ EXCEPTION IN SaveFilterWithUIState: {ex.Message}");
+                logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ❌ Exception Type: {ex.GetType().Name}");
+                logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ❌ Stack Trace: {ex.StackTrace}");
+                if (ex.InnerException != null)
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ❌ Inner Exception: {ex.InnerException.Message}");
                 DebugLogger.Error($"SaveFilterWithUIState failed: {ex.Message}");
+            }
+            finally
+            {
+                // ✅ Write all logs to file
+                try
+                {
+                    System.IO.File.AppendAllText(filterDebugLogPath, logBuilder.ToString());
+                    DebugLogger.Info($"[FILTER_UI_DEBUG] ✅ Successfully wrote log to: {filterDebugLogPath}");
+                    System.Diagnostics.Debug.WriteLine($"[FILTER_UI_DEBUG] ✅ Successfully wrote log to: {filterDebugLogPath}");
+                }
+                catch (Exception logEx)
+                {
+                    DebugLogger.Warning($"Failed to write to filter debug log: {logEx.Message}");
+                    DebugLogger.Warning($"Log file path was: {filterDebugLogPath}");
+                    System.Diagnostics.Debug.WriteLine($"[FILTER_UI_DEBUG] ❌ FAILED to write log: {logEx.Message}");
+                    System.Diagnostics.Debug.WriteLine($"[FILTER_UI_DEBUG] Log file path was: {filterDebugLogPath}");
+                }
             }
         }
         /// <summary>
@@ -8164,56 +8407,133 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         private void UpdateFilterWithCurrentUIState(OpeningFilter filter)
         {
+            // ✅ DEBUG LOG: Add to filter UI state debug log
+            string filterDebugLogPath = SafeFileLogger.GetLogFilePath("filter_ui_state_debug.log");
+            var logBuilder = new System.Text.StringBuilder();
+            
             try
             {
+                logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ========== UpdateFilterWithCurrentUIState STARTED ==========");
                 DebugLogger.Info("UpdateFilterWithCurrentUIState called");
                 
                 // Update filter with current UI selections
                 if (filter != null)
                 {
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Filter Name: '{filter.Name}'");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Filter is null: {filter == null}");
+                    
                     // Get current selected MEP categories
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Getting SelectedMepCategories...");
                     var selectedMepCategories = GetSelectedMepCategories();
                     filter.SelectedMepCategoryNames = selectedMepCategories;
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] SelectedMepCategories Count: {selectedMepCategories?.Count ?? 0}");
+                    if (selectedMepCategories != null && selectedMepCategories.Count > 0)
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] SelectedMepCategories: [{string.Join(", ", selectedMepCategories)}]");
                     DebugLogger.Info($"Updated filter with {selectedMepCategories?.Count ?? 0} MEP categories");
                     
                     // Get current selected reference files
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Getting SelectedReferenceFiles...");
                     var selectedReferenceFiles = GetSelectedReferenceFiles();
                     filter.SelectedReferenceFiles = selectedReferenceFiles;
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] SelectedReferenceFiles Count: {selectedReferenceFiles?.Count ?? 0}");
                     DebugLogger.Info($"Updated filter with {selectedReferenceFiles?.Count ?? 0} reference files");
                     
                     // Get current selected host files
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Getting SelectedHostFiles...");
                     var selectedHostFiles = GetSelectedHostFiles();
                     filter.SelectedHostFiles = selectedHostFiles;
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] SelectedHostFiles Count: {selectedHostFiles?.Count ?? 0}");
                     DebugLogger.Info($"Updated filter with {selectedHostFiles?.Count ?? 0} host files");
                     
                     // ✅ FIX: Get current selected host categories (host categories) and save to filter
                     // This includes BOTH horizontal (Walls, Structural Framing) AND vertical (Floors, Ceilings) categories
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Getting SelectedHostCategories from FilterUiStateProvider...");
                     var selectedHostCategories = FilterUiStateProvider.GetSelectedHostCategories?.Invoke() ?? new List<string>();
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] FilterUiStateProvider.GetSelectedHostCategories returned: {selectedHostCategories.Count} categories");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] SelectedHostCategories BEFORE assignment: [{string.Join(", ", selectedHostCategories)}]");
+                    
                     filter.SelectedHostCategories = selectedHostCategories;
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ✅ Assigned SelectedHostCategories to filter");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Filter.SelectedHostCategories AFTER assignment: [{string.Join(", ", filter.SelectedHostCategories ?? new List<string>())}]");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Filter.SelectedHostCategories Count AFTER assignment: {filter.SelectedHostCategories?.Count ?? 0}");
                     
                     // ✅ ENHANCED LOGGING: Show breakdown of horizontal vs vertical categories
                     var horizontal = selectedHostCategories.Where(h => h.Equals("Walls", StringComparison.OrdinalIgnoreCase) || 
                                                                         h.Equals("Structural Framing", StringComparison.OrdinalIgnoreCase)).ToList();
                     var vertical = selectedHostCategories.Where(v => v.Equals("Floors", StringComparison.OrdinalIgnoreCase) || 
                                                                        v.Equals("Ceilings", StringComparison.OrdinalIgnoreCase)).ToList();
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Horizontal categories: {horizontal.Count} - [{string.Join(", ", horizontal)}]");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Vertical categories: {vertical.Count} - [{string.Join(", ", vertical)}]");
                     DebugLogger.Info($"Updated filter with {selectedHostCategories?.Count ?? 0} host categories:");
                     DebugLogger.Info($"  Horizontal: {horizontal.Count} ({string.Join(", ", horizontal)})");
                     DebugLogger.Info($"  Vertical: {vertical.Count} ({string.Join(", ", vertical)})");
                     DebugLogger.Info($"  All: {string.Join(", ", selectedHostCategories)}");
                     
                     // Get current clearance settings and store in OpeningSettings
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Getting OpeningSettings from UI...");
                     var clearanceSettings = GetClearanceSettings();
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ClearanceSettings retrieved: {(clearanceSettings != null ? "EXISTS" : "NULL")}");
+                    
                     if (filter.OpeningSettings == null)
                     {
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] OpeningSettings is NULL - Creating new OpeningSettings object");
                         filter.OpeningSettings = new OpeningSettings();
                     }
+                    else
+                    {
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] OpeningSettings EXISTS - Updating existing object");
+                    }
+                    
                     filter.OpeningSettings.ClearanceSettings = clearanceSettings;
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ✅ Assigned ClearanceSettings to filter.OpeningSettings");
+                    
+                    // ✅ SAVE: "Adopt to modified document" checkbox value to OpeningSettings
+                    if (_enableThreePointValidationCheckBox != null)
+                    {
+                        filter.OpeningSettings.AdoptToDocument = _enableThreePointValidationCheckBox.Checked;
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ✅ Assigned AdoptToDocument = {_enableThreePointValidationCheckBox.Checked} to filter.OpeningSettings");
+                        DebugLogger.Info($"Updated filter with AdoptToDocument = {_enableThreePointValidationCheckBox.Checked}");
+                    }
+                    else
+                    {
+                        logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ⚠️ WARNING: _enableThreePointValidationCheckBox is NULL - cannot save AdoptToDocument");
+                    }
+                    
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Filter.OpeningSettings after update: {(filter.OpeningSettings != null ? "EXISTS" : "NULL")}");
                     DebugLogger.Info($"Updated filter with clearance settings");
+                    
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ========== UpdateFilterWithCurrentUIState COMPLETED ==========");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Final Filter.SelectedHostCategories Count: {filter.SelectedHostCategories?.Count ?? 0}");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Final Filter.SelectedHostCategories: [{string.Join(", ", filter.SelectedHostCategories ?? new List<string>())}]");
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Final Filter.OpeningSettings: {(filter.OpeningSettings != null ? "EXISTS" : "NULL")}");
+                }
+                else
+                {
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ⚠️ WARNING: Filter is NULL - cannot update UI state");
                 }
             }
             catch (Exception ex)
             {
+                logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ❌ EXCEPTION IN UpdateFilterWithCurrentUIState: {ex.Message}");
+                logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ❌ Exception Type: {ex.GetType().Name}");
+                logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ❌ Stack Trace: {ex.StackTrace}");
+                if (ex.InnerException != null)
+                    logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ❌ Inner Exception: {ex.InnerException.Message}");
                 DebugLogger.Error($"UpdateFilterWithCurrentUIState failed: {ex.Message}");
+            }
+            finally
+            {
+                // ✅ Write all logs to file
+                try
+                {
+                    System.IO.File.AppendAllText(filterDebugLogPath, logBuilder.ToString());
+                    DebugLogger.Info($"[FILTER_UI_DEBUG] ✅ Successfully wrote UpdateFilterWithCurrentUIState log to: {filterDebugLogPath}");
+                }
+                catch (Exception logEx)
+                {
+                    DebugLogger.Warning($"Failed to write to filter debug log: {logEx.Message}");
+                    DebugLogger.Warning($"Log file path was: {filterDebugLogPath}");
+                }
             }
         }
 
@@ -8222,35 +8542,57 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             try
             {
                 DebugLogger.Info("RestoreUIStateFromFilter called");
-                
-                // Check if user has made manual changes - if so, don't restore filter state
-                if (_userHasMadeManualChanges)
+                DebugLogger.Info($"[RESTORE-DEBUG] Filter is null: {filter == null}");
+                if (filter != null)
                 {
-                    DebugLogger.Info("[FILTER_UI] User has made manual changes - skipping filter state restoration to preserve user selections");
-                return;
-            }
+                    DebugLogger.Info($"[RESTORE-DEBUG] Filter.SelectedMepCategoryNames: {(filter.SelectedMepCategoryNames == null ? "NULL" : filter.SelectedMepCategoryNames.Count + " items: [" + string.Join(", ", filter.SelectedMepCategoryNames) + "]")}");
+                    DebugLogger.Info($"[RESTORE-DEBUG] Filter.SelectedReferenceFiles: {(filter.SelectedReferenceFiles == null ? "NULL" : filter.SelectedReferenceFiles.Count + " items: [" + string.Join(", ", filter.SelectedReferenceFiles) + "]")}");
+                    DebugLogger.Info($"[RESTORE-DEBUG] Filter.SelectedHostFiles: {(filter.SelectedHostFiles == null ? "NULL" : filter.SelectedHostFiles.Count + " items: [" + string.Join(", ", filter.SelectedHostFiles) + "]")}");
+                    DebugLogger.Info($"[RESTORE-DEBUG] Filter.SelectedHostCategories: {(filter.SelectedHostCategories == null ? "NULL" : filter.SelectedHostCategories.Count + " items: [" + string.Join(", ", filter.SelectedHostCategories) + "]")}");
+                }
+                
+                // ✅ CRITICAL FIX: DO NOT check _userHasMadeManualChanges here!
+                // That flag is for preventing restoration DURING UI editing, but we should ALWAYS restore from filter.
+                // When user selects a filter explicitly, we WANT to restore the saved UI state.
+                // The flag prevents restoration only if user is actively making changes within the restoration process,
+                // not between operations.
 
                 if (filter != null)
                 {
                     // Restore MEP category selections
                     if (filter.SelectedMepCategoryNames != null && filter.SelectedMepCategoryNames.Any())
                     {
+                        DebugLogger.Info($"[RESTORE-DEBUG] Restoring MEP categories: {string.Join(", ", filter.SelectedMepCategoryNames)}");
                         RestoreMepCategorySelections(filter.SelectedMepCategoryNames);
                         DebugLogger.Info($"Restored {filter.SelectedMepCategoryNames.Count} MEP category selections");
+                    }
+                    else
+                    {
+                        DebugLogger.Info($"[RESTORE-DEBUG] ⚠️ NO MEP categories to restore");
                     }
                     
                     // Restore reference file selections
                     if (filter.SelectedReferenceFiles != null && filter.SelectedReferenceFiles.Any())
                     {
+                        DebugLogger.Info($"[RESTORE-DEBUG] Restoring reference files: {string.Join(", ", filter.SelectedReferenceFiles)}");
                         RestoreReferenceFileSelections(filter.SelectedReferenceFiles);
                         DebugLogger.Info($"Restored {filter.SelectedReferenceFiles.Count} reference file selections");
+                    }
+                    else
+                    {
+                        DebugLogger.Info($"[RESTORE-DEBUG] ⚠️ NO reference files to restore");
                     }
                     
                     // Restore host file selections
                     if (filter.SelectedHostFiles != null && filter.SelectedHostFiles.Any())
                     {
+                        DebugLogger.Info($"[RESTORE-DEBUG] Restoring host files: {string.Join(", ", filter.SelectedHostFiles)}");
                         RestoreHostFileSelections(filter.SelectedHostFiles);
                         DebugLogger.Info($"Restored {filter.SelectedHostFiles.Count} host file selections");
+                    }
+                    else
+                    {
+                        DebugLogger.Info($"[RESTORE-DEBUG] ⚠️ NO host files to restore");
                     }
                     
                     // ✅ FIX: Restore host categories (host categories) selections
@@ -8269,12 +8611,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         RestoreHostCategorySelections(filter.SelectedHostCategories);
                         DebugLogger.Info($"✅ Restored all host categories: {string.Join(", ", filter.SelectedHostCategories)}");
                     }
+                    else
+                    {
+                        DebugLogger.Info($"[RESTORE-DEBUG] ⚠️ NO host categories to restore");
+                    }
                     
                     // Restore clearance settings
                     if (filter.OpeningSettings?.ClearanceSettings != null && filter.OpeningSettings.ClearanceSettings.Any())
                     {
                         RestoreClearanceSettings(filter.OpeningSettings.ClearanceSettings);
                         DebugLogger.Info("Restored clearance settings");
+                    }
+                    
+                    // ✅ RESTORE: "Adopt to modified document" checkbox value from OpeningSettings
+                    if (filter.OpeningSettings != null && _enableThreePointValidationCheckBox != null)
+                    {
+                        _enableThreePointValidationCheckBox.Checked = filter.OpeningSettings.AdoptToDocument;
+                        DebugLogger.Info($"Restored AdoptToDocument = {filter.OpeningSettings.AdoptToDocument}");
                     }
                 }
             }

@@ -2017,7 +2017,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Updates IsResolvedFlag, IsClusterResolvedFlag, SleeveInstanceId, and ClusterInstanceId
         /// Uses GUID, OLD SleeveInstanceId/ClusterInstanceId, or MEP+Host+Point for matching
         /// </summary>
-        public void BatchUpdateFlags(IEnumerable<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId)> updates)
+        public void BatchUpdateFlags(IEnumerable<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId, bool? MarkedForClusterProcess, int AfterClusterSleeveId, bool? IsClusteredFlag)> updates)
         {
             if (updates == null)
                 return;
@@ -2045,6 +2045,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 IsClusterResolvedFlag = @IsClusterResolvedFlag,
                                 SleeveInstanceId = @SleeveInstanceId,
                                 ClusterInstanceId = @ClusterInstanceId,
+                                MarkedForClusterProcess = @MarkedForClusterProcess,
+                                AfterClusterSleeveId = @AfterClusterSleeveId,
+                                IsClusteredFlag = @IsClusteredFlag,
                                 UpdatedAt = datetime('now', '+5 hours', '+30 minutes')
                             WHERE ClashZoneId = COALESCE(
                                 -- ✅ PRIORITY 1: Try GUID first (most reliable, should match exactly 1 row)
@@ -2090,6 +2093,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         var isClusterResolvedParam = cmd.Parameters.Add("@IsClusterResolvedFlag", System.Data.DbType.Int32);
                         var sleeveIdParam = cmd.Parameters.Add("@SleeveInstanceId", System.Data.DbType.Int32);
                         var clusterIdParam = cmd.Parameters.Add("@ClusterInstanceId", System.Data.DbType.Int32);
+                        // ✅ EDGE CASE FIELDS: Add parameters for MarkedForClusterProcess, AfterClusterSleeveId, IsClusteredFlag
+                        var markedForClusterParam = cmd.Parameters.Add("@MarkedForClusterProcess", System.Data.DbType.Int32);
+                        var afterClusterSleeveIdParam = cmd.Parameters.Add("@AfterClusterSleeveId", System.Data.DbType.Int32);
+                        var isClusteredFlagParam = cmd.Parameters.Add("@IsClusteredFlag", System.Data.DbType.Int32);
                         // ✅ SIMPLER MATCHING: Use OLD SleeveInstanceId/ClusterInstanceId for direct matching
                         var oldSleeveIdParam = cmd.Parameters.Add("@OldSleeveInstanceId", System.Data.DbType.Int32);
                         var oldClusterIdParam = cmd.Parameters.Add("@OldClusterInstanceId", System.Data.DbType.Int32);
@@ -2114,6 +2121,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             isClusterResolvedParam.Value = update.IsClusterResolved ? 1 : 0;
                             sleeveIdParam.Value = update.SleeveInstanceId > 0 ? (object)update.SleeveInstanceId : DBNull.Value;
                             clusterIdParam.Value = update.ClusterInstanceId > 0 ? (object)update.ClusterInstanceId : DBNull.Value;
+                            // ✅ EDGE CASE FIELDS: Set MarkedForClusterProcess, AfterClusterSleeveId, IsClusteredFlag
+                            markedForClusterParam.Value = update.MarkedForClusterProcess.HasValue ? (object)(update.MarkedForClusterProcess.Value ? 1 : 0) : DBNull.Value;
+                            afterClusterSleeveIdParam.Value = update.AfterClusterSleeveId > 0 ? (object)update.AfterClusterSleeveId : DBNull.Value;
+                            isClusteredFlagParam.Value = update.IsClusteredFlag.HasValue ? (object)(update.IsClusteredFlag.Value ? 1 : 0) : DBNull.Value;
                             // ✅ SIMPLER MATCHING: Use OLD sleeve/cluster IDs for direct matching (much more reliable!)
                             oldSleeveIdParam.Value = update.OldSleeveInstanceId > 0 ? (object)update.OldSleeveInstanceId : DBNull.Value;
                             oldClusterIdParam.Value = update.OldClusterInstanceId > 0 ? (object)update.OldClusterInstanceId : DBNull.Value;

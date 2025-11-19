@@ -94,6 +94,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// When these settings were last modified
         /// </summary>
         public DateTime LastModified { get; set; } = DateTime.Now;
+        
+        /// <summary>
+        /// "Adopt to modified document" setting - true if checkbox is checked, false if unchecked
+        /// This determines whether to run full intersection detection (detect movements/modifications)
+        /// </summary>
+        public bool AdoptToDocument { get; set; } = true; // Default enabled
     }
 
     /// <summary>

@@ -180,7 +180,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                             HostDocKey        TEXT,
                             ReferenceCategory TEXT,
                             SelectedHostCategories TEXT,
-                            OpeningSettings   TEXT,
+                            AdoptToDocumentFlag INTEGER DEFAULT 1,
                             IsFilterComboNew  INTEGER NOT NULL DEFAULT 1,
                             CreatedAt         DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
                             UpdatedAt         DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
@@ -443,6 +443,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                         _logger("[SQLite] ✅ Added HostDocKey column to Filters (for combo validation)");
                     if (AddColumnIfMissing("Filters", "ReferenceCategory", "TEXT", transaction))
                         _logger("[SQLite] ✅ Added ReferenceCategory column to Filters (MEP category for combo validation)");
+                    
+                    // ✅ CONSOLIDATED: Add JSON array columns (primary storage for multiple files)
+                    // These will be populated from DocKey columns as migration
+                    if (AddColumnIfMissing("Filters", "SelectedMepCategoryNames", "TEXT", transaction))
+                        _logger("[SQLite] ✅ Added SelectedMepCategoryNames column to Filters (JSON array of MEP categories)");
+                    if (AddColumnIfMissing("Filters", "SelectedReferenceFiles", "TEXT", transaction))
+                        _logger("[SQLite] ✅ Added SelectedReferenceFiles column to Filters (JSON array - migrated from ReferenceDocKey)");
+                    if (AddColumnIfMissing("Filters", "SelectedHostFiles", "TEXT", transaction))
+                        _logger("[SQLite] ✅ Added SelectedHostFiles column to Filters (JSON array - migrated from HostDocKey)");
+
+                    // ✅ SCHEMA REDESIGN: Replace bloated OpeningSettings JSON with simple AdoptToDocumentFlag
+                    // OpeningSettings was storing 14+ properties; we only need the AdoptToDocument flag
+                    if (AddColumnIfMissing("Filters", "AdoptToDocumentFlag", "INTEGER DEFAULT 1", transaction))
+                        _logger("[SQLite] ✅ Added AdoptToDocumentFlag column to Filters (boolean: 0=false, 1=true)");
+
+                    // ✅ MIGRATION: Populate JSON array columns from existing DocKey columns
+                    ExecuteCommand(@"
+                        UPDATE Filters
+                        SET SelectedReferenceFiles = json_array(ReferenceDocKey)
+                        WHERE SelectedReferenceFiles IS NULL AND ReferenceDocKey IS NOT NULL", transaction);
+                    _logger("[SQLite] ✅ Migrated ReferenceDocKey values to SelectedReferenceFiles JSON array");
+                    
+                    ExecuteCommand(@"
+                        UPDATE Filters
+                        SET SelectedHostFiles = json_array(HostDocKey)
+                        WHERE SelectedHostFiles IS NULL AND HostDocKey IS NOT NULL", transaction);
+                    _logger("[SQLite] ✅ Migrated HostDocKey values to SelectedHostFiles JSON array");
+                    
+                    ExecuteCommand(@"
+                        UPDATE Filters
+                        SET SelectedMepCategoryNames = json_array(ReferenceCategory)
+                        WHERE SelectedMepCategoryNames IS NULL AND ReferenceCategory IS NOT NULL", transaction);
+                    _logger("[SQLite] ✅ Migrated ReferenceCategory values to SelectedMepCategoryNames JSON array");
+
+                    // ✅ DEPRECATION: OpeningSettings column is no longer used - AdoptToDocumentFlag is the replacement
+                    // No migration needed - OpeningSettings was never reliably populated
 
                     AddColumnIfMissing("Conditions", "CombinedKey", "TEXT", transaction);
                     AddColumnIfMissing("Conditions", "DuctAccessoryMepNormal", "REAL", transaction);

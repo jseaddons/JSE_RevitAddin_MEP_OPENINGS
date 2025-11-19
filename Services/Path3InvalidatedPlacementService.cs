@@ -200,7 +200,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                      zone.IntersectionPointY, 
                                      zone.IntersectionPointZ,
                                      OldSleeveInstanceId: zone.SleeveInstanceId,
-                                     OldClusterInstanceId: zone.ClusterSleeveInstanceId)
+                                     OldClusterInstanceId: zone.ClusterSleeveInstanceId,
+                                     MarkedForClusterProcess: zone.MarkedForClusteringSleeveProcess, // ✅ EDGE CASE: Pass through if available
+                                     AfterClusterSleeveId: zone.AfterClusterSleevePlacedSleeveInstanceId, // ✅ EDGE CASE: Pass through if available
+                                     IsClusteredFlag: (bool?)null) // ✅ EDGE CASE: Deprecated, set to null
                                 });
                                 
                                 if (!DeploymentConfiguration.DeploymentMode)
@@ -339,7 +342,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     var clashZoneRepository = new ClashZoneRepository(dbContext);
                     
-                    var updates = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId)>();
+                    var updates = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId, bool? MarkedForClusterProcess, int AfterClusterSleeveId, bool? IsClusteredFlag)>();
                     
                     foreach (var zone in invalidatedZones)
                     {
@@ -357,7 +360,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 zone.IntersectionPointY,
                                 zone.IntersectionPointZ,
                                 OldSleeveInstanceId: 0, // Was deleted, so old ID is 0
-                                OldClusterInstanceId: zone.ClusterSleeveInstanceId));
+                                OldClusterInstanceId: zone.ClusterSleeveInstanceId,
+                                MarkedForClusterProcess: zone.MarkedForClusteringSleeveProcess, // ✅ EDGE CASE: Pass through if available
+                                AfterClusterSleeveId: zone.AfterClusterSleevePlacedSleeveInstanceId, // ✅ EDGE CASE: Pass through if available
+                                IsClusteredFlag: (bool?)null)); // ✅ EDGE CASE: Deprecated, set to null
                         }
                     }
                     

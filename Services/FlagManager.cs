@@ -150,7 +150,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     
                     // Build updates for deleted sleeves
-                    var updates = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterSleeveInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId)>();
+                    var updates = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterSleeveInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId, bool? MarkedForClusterProcess, int AfterClusterSleeveId, bool? IsClusteredFlag)>();
                     
                     foreach (var entry in allEntries)
                     {
@@ -186,7 +186,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 entry.IntersectionPointY,
                                 entry.IntersectionPointZ,
                                 entry.SleeveInstanceId,
-                                entry.ClusterSleeveInstanceId
+                                entry.ClusterSleeveInstanceId,
+                                null, // ✅ EDGE CASE: MarkedForClusterProcess (not available on database entry)
+                                -1, // ✅ EDGE CASE: AfterClusterSleeveId (not available on database entry)
+                                null // ✅ EDGE CASE: IsClusteredFlag (deprecated, set to null)
                             ));
                             totalResetCount++;
                         }
@@ -225,7 +228,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     IntersectionPointY: u.IntersectionPointY,
                                     IntersectionPointZ: u.IntersectionPointZ,
                                     OldSleeveInstanceId: u.OldSleeveInstanceId,
-                                    OldClusterInstanceId: u.OldClusterInstanceId
+                                    OldClusterInstanceId: u.OldClusterInstanceId,
+                                    MarkedForClusterProcess: u.MarkedForClusterProcess, // ✅ EDGE CASE: Use tuple field name
+                                    AfterClusterSleeveId: u.AfterClusterSleeveId, // ✅ EDGE CASE: Use tuple field name
+                                    IsClusteredFlag: (bool?)null // ✅ EDGE CASE: Deprecated, set to null
                                 )).ToList();
                                 
                                 repository.BatchUpdateFlags(dbUpdates);
@@ -825,7 +831,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                         }
                         
-                        var updates = new List<(Guid Id, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterSleeveInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId)>();
+                        var updates = new List<(Guid Id, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterSleeveInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId, bool? MarkedForClusterProcess, int AfterClusterSleeveId, bool? IsClusteredFlag)>();
                         int resetCount = 0;
                         
                         // ✅ DEBUG: Log which entries will be checked
@@ -954,7 +960,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                  individualSleeveExists ? globalEntry.SleeveInstanceId : -1, -1,
                                                  globalEntry.MepElementId, globalEntry.StructuralElementId,
                                                  globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ,
-                                                 globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId)); // ✅ OLD values for matching
+                                                 globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId,
+                                                 null, -1, null)); // ✅ OLD values for matching + edge case fields (CategoryGlobalIndexEntry doesn't have these properties)
                                     resetCount++;
                                     LogToRefresh($"RESET cluster flag for entry {globalEntry.Id}: Sleeve {clusterSleeveIdToCheck} is not a cluster sleeve → IsClusterResolved=false");
                                     continue; // Skip individual check (already processed)
@@ -978,7 +985,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                          globalEntry.SleeveInstanceId, discoveredClusterId,
                                                          globalEntry.MepElementId, globalEntry.StructuralElementId,
                                                          globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ,
-                                                         globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId)); // ✅ OLD values for matching
+                                                         globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId,
+                                                         null, -1, null)); // ✅ OLD values for matching + edge case fields (CategoryGlobalIndexEntry doesn't have these properties)
                                             LogToRefresh($"Entry {globalEntry.Id}: Cluster sleeve healed via GUID → {discoveredClusterId} (category='{discoveredClusterCategory ?? "UNKNOWN"}').");
                                             if (!DeploymentConfiguration.DeploymentMode)
                                                 DebugLogger.Info($"[FLAG-MANAGER] Entry {globalEntry.Id}: Cluster sleeve ID healed via GUID → {discoveredClusterId} (was {clusterSleeveIdToCheck})");
@@ -1002,7 +1010,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     updates.Add((Guid.Parse(globalEntry.Id), false, false, -1, -1,
                                                 globalEntry.MepElementId, globalEntry.StructuralElementId,
                                                 globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ,
-                                                globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId)); // ✅ OLD values for matching
+                                                globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId,
+                                                null, -1, null)); // ✅ OLD values for matching + edge case fields (CategoryGlobalIndexEntry doesn't have these properties)
                                     resetCount++;
                                     
                                     if (!DeploymentConfiguration.DeploymentMode)
@@ -1025,7 +1034,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                  globalEntry.SleeveInstanceId, discoveredClusterId,
                                                  globalEntry.MepElementId, globalEntry.StructuralElementId,
                                                  globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ,
-                                                 globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId)); // ✅ OLD values for matching
+                                                 globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId,
+                                                 null, -1, null)); // ✅ OLD values for matching + edge case fields (CategoryGlobalIndexEntry doesn't have these properties)
                                     LogToRefresh($"Entry {globalEntry.Id}: Cluster sleeve ID populated via GUID → {discoveredClusterId} (category='{discoveredClusterCategory ?? "UNKNOWN"}').");
                                     if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Info($"[FLAG-MANAGER] Entry {globalEntry.Id}: Cluster sleeve ID populated via GUID → {discoveredClusterId} (was missing)");
@@ -1037,7 +1047,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     updates.Add((Guid.Parse(globalEntry.Id), globalEntry.IsResolved, false, globalEntry.SleeveInstanceId, -1,
                                                  globalEntry.MepElementId, globalEntry.StructuralElementId,
                                                  globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ,
-                                                 globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId)); // ✅ OLD values for matching
+                                                 globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId,
+                                                 null, -1, null)); // ✅ OLD values for matching + edge case fields (CategoryGlobalIndexEntry doesn't have these properties)
                                     resetCount++;
                                     LogToRefresh($"RESET cluster flag for entry {globalEntry.Id}: ClusterSleeveInstanceId missing and not discoverable → IsClusterResolved=false");
                                 }
@@ -1105,7 +1116,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                             updates.Add((Guid.Parse(globalEntry.Id), true, globalEntry.IsClusterResolved, discoveredSleeveId, globalEntry.ClusterSleeveInstanceId,
                                                         globalEntry.MepElementId, globalEntry.StructuralElementId,
                                                         globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ,
-                                                        globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId)); // ✅ OLD values for matching
+                                                        globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId,
+                                                        null, -1, null)); // ✅ OLD values for matching + edge case fields (CategoryGlobalIndexEntry doesn't have these properties)
                                             LogToRefresh($"Entry {globalEntry.Id}: Individual sleeve healed via GUID → {discoveredSleeveId} (category='{discoveredCategory ?? "UNKNOWN"}').");
                                             if (!DeploymentConfiguration.DeploymentMode)
                                                 DebugLogger.Info($"[FLAG-MANAGER] Entry {globalEntry.Id}: Sleeve ID healed via GUID → {discoveredSleeveId} (was {sleeveIdToCheck})");
@@ -1157,7 +1169,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                             updates.Add((Guid.Parse(globalEntry.Id), false, true, -1, foundClusterSleeveId,
                                                         globalEntry.MepElementId, globalEntry.StructuralElementId,
                                                         globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ,
-                                                        globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId)); // ✅ OLD values for matching
+                                                        globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId,
+                                                        null, -1, null)); // ✅ OLD values for matching + edge case fields (CategoryGlobalIndexEntry doesn't have these properties)
                                             resetCount++;
                                             LogToRefresh($"EDGE CASE: Entry {globalEntry.Id}: Individual sleeve deleted (fell in cluster zone) → IsClusterResolved: {globalEntry.IsClusterResolved}→true, ClusterSleeveInstanceId={foundClusterSleeveId}");
                                             continue; // Skip to next entry
@@ -1171,7 +1184,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     updates.Add((Guid.Parse(globalEntry.Id), false, globalEntry.IsClusterResolved, -1, globalEntry.ClusterSleeveInstanceId,
                                                 globalEntry.MepElementId, globalEntry.StructuralElementId,
                                                 globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ,
-                                                globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId)); // ✅ OLD values for matching
+                                                globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId,
+                                                null, -1, null)); // ✅ OLD values for matching + edge case fields (CategoryGlobalIndexEntry doesn't have these properties)
                                     resetCount++;
                                     
                                     if (!DeploymentConfiguration.DeploymentMode)
@@ -1192,7 +1206,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     updates.Add((Guid.Parse(globalEntry.Id), true, globalEntry.IsClusterResolved, discoveredSleeveId, globalEntry.ClusterSleeveInstanceId,
                                                 globalEntry.MepElementId, globalEntry.StructuralElementId,
                                                 globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ,
-                                                globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId)); // ✅ OLD values for matching
+                                                globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId,
+                                                null, -1, null)); // ✅ OLD values for matching + edge case fields (CategoryGlobalIndexEntry doesn't have these properties)
                                     LogToRefresh($"Entry {globalEntry.Id}: Sleeve ID populated via GUID → {discoveredSleeveId} (category='{discoveredCategory ?? "UNKNOWN"}').");
                                     if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Info($"[FLAG-MANAGER] Entry {globalEntry.Id}: Sleeve ID populated via GUID → {discoveredSleeveId} (was missing)");
@@ -1204,7 +1219,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     updates.Add((Guid.Parse(globalEntry.Id), false, globalEntry.IsClusterResolved, -1, globalEntry.ClusterSleeveInstanceId,
                                                 globalEntry.MepElementId, globalEntry.StructuralElementId,
                                                 globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ,
-                                                globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId)); // ✅ OLD values for matching
+                                                globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId,
+                                                null, -1, null)); // ✅ OLD values for matching + edge case fields (CategoryGlobalIndexEntry doesn't have these properties)
                                     resetCount++;
                                     LogToRefresh($"RESET individual flag for entry {globalEntry.Id}: SleeveInstanceId missing and not discoverable → IsResolved=false");
                                 }
@@ -1358,7 +1374,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         IntersectionPointY: u.IntersectionPointY,
                                         IntersectionPointZ: u.IntersectionPointZ,
                                         OldSleeveInstanceId: u.OldSleeveInstanceId,
-                                        OldClusterInstanceId: u.OldClusterInstanceId
+                                        OldClusterInstanceId: u.OldClusterInstanceId,
+                                        MarkedForClusterProcess: u.MarkedForClusterProcess, // ✅ EDGE CASE: Use tuple field name
+                                        AfterClusterSleeveId: u.AfterClusterSleeveId, // ✅ EDGE CASE: Use tuple field name
+                                        IsClusteredFlag: (bool?)null // ✅ EDGE CASE: Deprecated, set to null
                                     )).ToList();
                                     
                                     LogToRefresh($"✅ DATABASE UPDATE: Calling BatchUpdateFlags with {dbUpdates.Count} updates");
@@ -1778,7 +1797,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (allEntries == null || allEntries.Count == 0)
                             continue;
                         
-                        var updates = new List<(Guid Id, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterSleeveInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId)>();
+                        var updates = new List<(Guid Id, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterSleeveInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId, bool? MarkedForClusterProcess, int AfterClusterSleeveId, bool? IsClusteredFlag)>();
                         int resetCount = 0;
                         
                         // Check ALL Global XML entries (even if not in Filter XML)
@@ -1803,7 +1822,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     updates.Add((Guid.Parse(globalEntry.Id), false, false, -1, -1,
                                                 globalEntry.MepElementId, globalEntry.StructuralElementId,
                                                 globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ,
-                                                globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId)); // ✅ OLD values for matching
+                                                globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId,
+                                                null, -1, null)); // ✅ OLD values for matching + edge case fields (CategoryGlobalIndexEntry doesn't have these properties)
                                     resetCount++;
                                     
                                     if (!DeploymentConfiguration.DeploymentMode)
@@ -1822,7 +1842,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     updates.Add((Guid.Parse(globalEntry.Id), false, globalEntry.IsClusterResolved, -1, globalEntry.ClusterSleeveInstanceId,
                                                 globalEntry.MepElementId, globalEntry.StructuralElementId,
                                                 globalEntry.IntersectionPointX, globalEntry.IntersectionPointY, globalEntry.IntersectionPointZ,
-                                                globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId)); // ✅ OLD values for matching
+                                                globalEntry.SleeveInstanceId, globalEntry.ClusterSleeveInstanceId,
+                                                null, -1, null)); // ✅ OLD values for matching + edge case fields (CategoryGlobalIndexEntry doesn't have these properties)
                                     resetCount++;
                                     
                                     if (!DeploymentConfiguration.DeploymentMode)
@@ -1958,7 +1979,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             oldSleeveInstanceId = clashZone.AfterClusterSleevePlacedSleeveInstanceId; // Use original individual sleeve ID for matching
                         }
                         
-                        var singleUpdate = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId)>
+                        var singleUpdate = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId, bool? MarkedForClusterProcess, int AfterClusterSleeveId, bool? IsClusteredFlag)>
                         {
                             (
                                 clashZone.Id,
@@ -1972,7 +1993,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 clashZone.IntersectionPointY,
                                 clashZone.IntersectionPointZ,
                                 oldSleeveInstanceId, // ✅ CRITICAL: Use original sleeve ID for matching
-                                oldClusterInstanceId // Old cluster ID before update
+                                oldClusterInstanceId, // Old cluster ID before update
+                                clashZone.MarkedForClusteringSleeveProcess, // ✅ EDGE CASE: MarkedForClusterProcess flag
+                                clashZone.AfterClusterSleevePlacedSleeveInstanceId, // ✅ EDGE CASE: Original sleeve ID before cluster placement
+                                null // ✅ EDGE CASE: IsClusteredFlag (deprecated, but kept for edge cases - set to null)
                             )
                         };
                         

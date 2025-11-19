@@ -234,7 +234,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             cmd.Parameters.AddWithValue("@DuctAccessoryOtherNormal", clearance.DuctAccessoryOtherNormal);
 
             var openingPrefs = conditions.OpeningTypePreferences ?? new OpeningTypePreferences();
-            string openingPrefsJson = JsonSerializer.Serialize(openingPrefs);
+            
+            // ✅ NORMALIZE: Trim and normalize property values before serialization
+            if (openingPrefs != null)
+            {
+                openingPrefs.RoundDucts = NormalizeOpeningType(openingPrefs.RoundDucts);
+                openingPrefs.Pipes = NormalizeOpeningType(openingPrefs.Pipes);
+            }
+            
+            // ✅ NORMALIZE: Serialize with compact formatting (no indentation) and trim whitespace
+            var options = new JsonSerializerOptions { WriteIndented = false };
+            string openingPrefsJson = JsonSerializer.Serialize(openingPrefs, options)?.Trim() ?? string.Empty;
             cmd.Parameters.AddWithValue("@OpeningPrefs", openingPrefsJson);
 
             var levelConstraints = conditions.LevelConstraints ?? new LevelConstraints();
@@ -306,13 +316,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         }
                     };
 
-                    var openingPrefsJson = reader["OpeningPrefs"]?.ToString();
+                    var openingPrefsJson = reader["OpeningPrefs"]?.ToString()?.Trim();
                     if (!string.IsNullOrWhiteSpace(openingPrefsJson))
                     {
                         try
                         {
                             conditions.OpeningTypePreferences = JsonSerializer.Deserialize<OpeningTypePreferences>(openingPrefsJson)
                                 ?? new OpeningTypePreferences();
+                            
+                            // ✅ NORMALIZE: Normalize property values after deserialization
+                            if (conditions.OpeningTypePreferences != null)
+                            {
+                                conditions.OpeningTypePreferences.RoundDucts = NormalizeOpeningType(conditions.OpeningTypePreferences.RoundDucts);
+                                conditions.OpeningTypePreferences.Pipes = NormalizeOpeningType(conditions.OpeningTypePreferences.Pipes);
+                            }
                         }
                         catch
                         {
@@ -351,6 +368,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             return null;
         }
 
+        /// <summary>
+        /// ✅ NORMALIZE: Normalizes opening type text (trim, capitalize first letter)
+        /// Ensures consistent formatting: "Circular", "Rectangular", etc.
+        /// </summary>
+        private static string NormalizeOpeningType(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return "Circular"; // Default
+            
+            // Trim whitespace and normalize casing (first letter uppercase, rest lowercase)
+            var trimmed = value.Trim();
+            if (trimmed.Length == 0)
+                return "Circular";
+            
+            // Capitalize first letter, lowercase the rest
+            return char.ToUpperInvariant(trimmed[0]) + trimmed.Substring(1).ToLowerInvariant();
+        }
+        
         private static double GetDouble(SQLiteDataReader reader, string columnName)
         {
             var ordinal = reader.GetOrdinal(columnName);

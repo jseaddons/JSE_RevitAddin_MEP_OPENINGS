@@ -136,8 +136,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Step 5: Place cluster sleeve
                 FamilyInstance inst = doc.Create.NewFamilyInstance(mid, familySymbol, refLevel!, StructuralType.NonStructural);
 
-                // Step 6: Apply rotation if needed (non-axis-aligned only)
-                ApplyRotationToClusterSleeve(doc, inst, mid, rotationAngle);
+                // ✅ CRITICAL: DO NOT rotate the cluster sleeve by rotationAngle
+                // The rotationAngle is the cluster's "intended rotated axis" used ONLY for bounding box calculation
+                // The cluster sleeve itself should be axis-aligned (0° rotation) because:
+                // 1. The bounding box calculation already accounts for the rotation of individual sleeves
+                // 2. The cluster sleeve dimensions (width x height) already represent the rotated bounding box size
+                // 3. The cluster sleeve is a new element that should be placed axis-aligned
+                // 
+                // The rotationAngle is used to:
+                // - Calculate bounding box in rotated coordinate system (GetClusterBoundingBoxWithRotatedCoordinates)
+                // - Transform corners to rotated space for min/max calculation
+                // - Transform the midpoint back to world coordinates for placement
+                // 
+                // But the cluster sleeve element itself should NOT be rotated - it's axis-aligned
+                // Step 6: Skip rotation (cluster sleeve is axis-aligned, dimensions already account for rotation)
+                if (!DeploymentConfiguration.DeploymentMode && Math.Abs(rotationAngle) > 1e-6)
+                {
+                    double angleDegrees = rotationAngle * 180 / Math.PI;
+                    DebugLogger.Info($"[RotatedClusterSleevePlacementService] ⚠️ Cluster bounding box calculated with rotation angle {angleDegrees:F1}° (for coordinate system only), but cluster sleeve is placed axis-aligned (0°) - dimensions already account for rotation");
+                }
 
                 // Step 7: Calculate rotated bounding box for storage
                 bool isRotated = Math.Abs(rotationAngle) > 1e-6;
