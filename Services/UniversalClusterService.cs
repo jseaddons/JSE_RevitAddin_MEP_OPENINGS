@@ -7441,7 +7441,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Category mapping: '{systemType}' → '{category}'\n");
 
                 // Load clash zones from XML
-                var clashZones = LoadClashZonesFromRegularXml(null, category, doc);
+                var clashZones = LoadClashZonesFromRegularXml(null!, category, doc);
                                 if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[UniversalClusterService] Loaded {clashZones.Count} clash zones from XML");
 
@@ -7740,7 +7740,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 persistenceService.SaveClashZones(allClashZones, baseFilterName, filter, allowStructuralUpdates: false);
                 
                 // ✅ STEP 4: Save Filter XML file using FilterManagementService
-                var filterManagementService = new FilterManagementService(_doc, null, null);
+                var filterManagementService = new FilterManagementService(_doc, null!, null!);
                 filterManagementService.SaveFilterToXmlFile(filter, xmlFile);
                 
                 if (!DeploymentConfiguration.DeploymentMode)

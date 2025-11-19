@@ -1161,9 +1161,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var res = face.Intersect(line, out ira);
                     if (res == SetComparisonResult.Overlap && ira != null)
                     {
-                        foreach (IntersectionResult ir in ira)
+                        foreach (Autodesk.Revit.DB.IntersectionResult ir in ira)
                         {
-                            intersectionPoints.Add(ir.XYZPoint);
+                            intersectionPoints.Add(GetIntersectionPointFromRevitResult(ir));
                         }
                         if (intersectionPoints.Count > 0)
                         {
@@ -2027,6 +2027,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DebugLogger.Error($"[MepIntersectionService] Error filtering architectural floors: {ex.Message}");
                 return elements; // Return original list on error
             }
+        }
+
+        /// <summary>
+        /// Helper method to get intersection point from Revit's IntersectionResult (handles both Point and XYZPoint properties)
+        /// </summary>
+        private static XYZ GetIntersectionPointFromRevitResult(Autodesk.Revit.DB.IntersectionResult ir)
+        {
+            try
+            {
+                // Try Point property first (Revit 2024+)
+                var pointProperty = ir.GetType().GetProperty("Point");
+                if (pointProperty != null)
+                    return (XYZ)pointProperty.GetValue(ir);
+            }
+            catch { }
+            
+            try
+            {
+                // Try XYZPoint property (Revit 2020-2023)
+                var xyzPointProperty = ir.GetType().GetProperty("XYZPoint");
+                if (xyzPointProperty != null)
+                    return (XYZ)xyzPointProperty.GetValue(ir);
+            }
+            catch { }
+            
+            throw new InvalidOperationException("Unable to get intersection point from IntersectionResult");
         }
     }
 }

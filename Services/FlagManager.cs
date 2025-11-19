@@ -2118,7 +2118,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[FLAG-MANAGER] [OPTIMIZED-RECOVERY] Global XML for category '{category}' doesn't exist - performing FULL recovery");
                     
-                    return RecoverSleeveFlagsFromRevit(category, fileComboFilter: null);
+                    return RecoverSleeveFlagsFromRevit(category, fileComboFilter: null!);
                 }
                 
                 // ✅ STEP 2: Global XML exists → Check which file combos are missing
