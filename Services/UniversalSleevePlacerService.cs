@@ -5244,16 +5244,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // ✅ FLOOR ROTATION FIX: Use pre-calculated rotation angle (calculated once during refresh)
                     // This supports arbitrary angles (not just 0° and 90°) and avoids Revit API calls
                     
-                    // ✅ CRITICAL: Pipes should NOT be rotated - place straight to WCS (axis-aligned)
-                    // Only ducts and cable trays should rotate based on MEP element orientation
+                    // ✅ CRITICAL: Pipes and round ducts (circular elements) should NOT be rotated - place straight to WCS (axis-aligned)
+                    // Only rectangular ducts and cable trays should rotate based on MEP element orientation
                     bool isPipe = string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
+                    bool isDuct = string.Equals(clashZone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase) ||
+                                  string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase);
+                    bool isRoundDuct = isDuct && (
+                        string.Equals(clashZone.DuctShape, "Round", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(clashZone.DuctShape, "Circular", StringComparison.OrdinalIgnoreCase) ||
+                        (clashZone.MepElementSizeData != null && 
+                         (string.Equals(clashZone.MepElementSizeData.Shape, "Round", StringComparison.OrdinalIgnoreCase) ||
+                          string.Equals(clashZone.MepElementSizeData.Shape, "Circular", StringComparison.OrdinalIgnoreCase)))
+                    );
+                    bool isCircularElement = isPipe || isRoundDuct;
                     
-                    if (isPipe)
+                    if (isCircularElement)
                     {
-                        // ✅ PIPE FIX: Pipes should always be placed axis-aligned (straight to WCS), no rotation
+                        // ✅ CIRCULAR ELEMENT FIX: Pipes and round ducts should always be placed axis-aligned (straight to WCS), no rotation
+                        string elementType = isPipe ? "PIPE" : "ROUND DUCT";
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Info($"[ORIENTATION-SET] Zone={clashZone.Id}, Sleeve={sleeveInstance.Id}: PIPE on floor - NO ROTATION (placed straight to WCS, axis-aligned)");
+                            DebugLogger.Info($"[ORIENTATION-SET] Zone={clashZone.Id}, Sleeve={sleeveInstance.Id}: {elementType} on floor - NO ROTATION (placed straight to WCS, axis-aligned)");
                         }
                     }
                     else
