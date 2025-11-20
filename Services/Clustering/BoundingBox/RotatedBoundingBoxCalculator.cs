@@ -1,0 +1,282 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Autodesk.Revit.DB;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Geometry;
+
+namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
+{
+    /// <summary>
+    /// Calculates rotated cluster bounding boxes using corner-based watertight algorithm.
+    /// Phase 3: Extracted from UniversalClusterService.GetClusterBoundingBoxWithRotatedCoordinates with crash-safe guards.
+    /// </summary>
+    public class RotatedBoundingBoxCalculator : IBoundingBoxCalculator
+    {
+        private readonly Func<int, string, dynamic> _getClashZoneBySleeveInstanceId;
+        private readonly Func<List<FamilyInstance>, double, (double width, double height, double depth, XYZ mid)> _getClusterBoundingBoxFallback;
+
+        /// <summary>
+        /// Constructor with dependencies for ClashZone lookup and fallback bounding box calculation.
+        /// </summary>
+        public RotatedBoundingBoxCalculator(
+            Func<int, string, dynamic> getClashZoneBySleeveInstanceId,
+            Func<List<FamilyInstance>, double, (double width, double height, double depth, XYZ mid)> getClusterBoundingBoxFallback)
+        {
+            _getClashZoneBySleeveInstanceId = getClashZoneBySleeveInstanceId ?? throw new ArgumentNullException(nameof(getClashZoneBySleeveInstanceId));
+            _getClusterBoundingBoxFallback = getClusterBoundingBoxFallback ?? throw new ArgumentNullException(nameof(getClusterBoundingBoxFallback));
+        }
+
+        /// <summary>
+        /// Calculate rotated cluster bounding box using corner-based watertight algorithm.
+        /// Uses pre-calculated corners and rotation matrices from database (dump once use many times).
+        /// </summary>
+        public BoundingBoxResult Calculate(
+            List<dynamic> cluster,
+            List<FamilyInstance> actualSleeves,
+            double rotationAngle,
+            string xmlFilePath = null)
+        {
+            try
+            {
+                // ✅ CRASH-SAFE: Validate inputs
+                if (cluster == null || cluster.Count == 0 || actualSleeves == null || actualSleeves.Count == 0)
+                {
+                    SafeFileLogger.SafeAppendText("geometry_errors.log",
+                        $"[RotatedBoundingBoxCalculator] Invalid inputs - returning empty result");
+                    return new BoundingBoxResult();
+                }
+
+                // ✅ Collect rotated and axis-aligned bounding boxes from ClashZone data
+                var rotatedBboxes = new List<(XYZ min, XYZ max)>();
+                var axisAlignedBboxes = new List<(XYZ min, XYZ max)>();
+                bool hasRotatedBboxes = false;
+
+                foreach (var sleeveData in cluster)
+                {
+                    var clashZone = _getClashZoneBySleeveInstanceId(sleeveData.SleeveInstanceId, xmlFilePath);
+                    if (clashZone == null)
+                    {
+                        // Try Revit API as fallback
+                        var sleeve = actualSleeves.FirstOrDefault(s => s.Id.IntegerValue == sleeveData.SleeveInstanceId);
+                        if (sleeve != null)
+                        {
+                            var bbox = sleeve.get_BoundingBox(null);
+                            if (bbox != null && bbox.Enabled)
+                            {
+                                axisAlignedBboxes.Add((bbox.Min, bbox.Max));
+                            }
+                        }
+                        continue;
+                    }
+
+                    var cz = clashZone as Models.ClashZone;
+                    if (cz == null) continue;
+
+                    bool hasRotatedBbox = cz.RotatedBoundingBoxMinX.HasValue &&
+                                         cz.RotatedBoundingBoxMinY.HasValue &&
+                                         cz.RotatedBoundingBoxMaxX.HasValue &&
+                                         cz.RotatedBoundingBoxMaxY.HasValue;
+
+                    if (hasRotatedBbox)
+                    {
+                        rotatedBboxes.Add((
+                            new XYZ(cz.RotatedBoundingBoxMinX.Value,
+                                   cz.RotatedBoundingBoxMinY.Value,
+                                   cz.RotatedBoundingBoxMinZ ?? cz.SleeveBoundingBoxMinZ),
+                            new XYZ(cz.RotatedBoundingBoxMaxX.Value,
+                                   cz.RotatedBoundingBoxMaxY.Value,
+                                   cz.RotatedBoundingBoxMaxZ ?? cz.SleeveBoundingBoxMaxZ)
+                        ));
+                        hasRotatedBboxes = true;
+                    }
+                    else
+                    {
+                        axisAlignedBboxes.Add((
+                            new XYZ(cz.SleeveBoundingBoxMinX,
+                                   cz.SleeveBoundingBoxMinY,
+                                   cz.SleeveBoundingBoxMinZ),
+                            new XYZ(cz.SleeveBoundingBoxMaxX,
+                                   cz.SleeveBoundingBoxMaxY,
+                                   cz.SleeveBoundingBoxMaxZ)
+                        ));
+                    }
+                }
+
+                // ✅ Use corner-based watertight algorithm if we have rotated bounding boxes
+                if (hasRotatedBboxes && rotatedBboxes.Count > 0 && Math.Abs(rotationAngle) > 1e-6)
+                {
+                    // ✅ PROPER WATERTIGHT ALGORITHM: Use corner-based calculation
+                    var cornerResult = CornerBasedBoundingBoxCalculator.CalculateFromCorners(
+                        cluster,
+                        rotationAngle,
+                        out XYZ origin,
+                        _getClashZoneBySleeveInstanceId,
+                        xmlFilePath);
+
+                    if (cornerResult.HasValue)
+                    {
+                        var (width, height, minX, minY, maxX, maxY, calculatedOrigin) = cornerResult.Value;
+                        origin = calculatedOrigin;
+
+                        double minZ = rotatedBboxes.Min(b => b.min.Z);
+                        double maxZ = rotatedBboxes.Max(b => b.max.Z);
+                        double depth = maxZ - minZ;
+
+                        // ✅ MIDPOINT: Calculate in rotated coordinate space, then transform back to world coordinates
+                        XYZ midRotated = new XYZ((minX + maxX) / 2.0, (minY + maxY) / 2.0, (minZ + maxZ) / 2.0);
+
+                        XYZ mid;
+                        if (Math.Abs(rotationAngle) > 1e-6 && origin != XYZ.Zero)
+                        {
+                            // ✅ Transform midpoint from rotated coordinate space back to world coordinates
+                            var inverseRotationMatrix = RotationMatrixCalculator.CreateRotationMatrix(rotationAngle);
+                            if (inverseRotationMatrix != null)
+                            {
+                                double cosA = inverseRotationMatrix.Value.cos;
+                                double sinA = inverseRotationMatrix.Value.sin;
+                                var inversePoint = RotationMatrixCalculator.InverseRotation((midRotated.X, midRotated.Y), cosA, sinA);
+                                if (inversePoint != null)
+                                {
+                                    mid = new XYZ(
+                                        origin.X + inversePoint.Value.x,
+                                        origin.Y + inversePoint.Value.y,
+                                        midRotated.Z
+                                    );
+                                }
+                                else
+                                {
+                                    mid = new XYZ(origin.X + midRotated.X, origin.Y + midRotated.Y, midRotated.Z);
+                                }
+                            }
+                            else
+                            {
+                                mid = new XYZ(origin.X + midRotated.X, origin.Y + midRotated.Y, midRotated.Z);
+                            }
+                        }
+                        else
+                        {
+                            mid = origin != XYZ.Zero
+                                ? new XYZ(origin.X + midRotated.X, origin.Y + midRotated.Y, midRotated.Z)
+                                : midRotated;
+                        }
+
+                        return new BoundingBoxResult
+                        {
+                            Width = width,
+                            Height = height,
+                            Depth = depth,
+                            Midpoint = mid,
+                            RotatedMinX = minX,
+                            RotatedMinY = minY,
+                            RotatedMinZ = minZ,
+                            RotatedMaxX = maxX,
+                            RotatedMaxY = maxY,
+                            RotatedMaxZ = maxZ
+                        };
+                    }
+                }
+
+                // ✅ Fallback: Use simple union of rotated bounding boxes
+                if (rotatedBboxes.Count > 0)
+                {
+                    double minX = rotatedBboxes.Min(b => b.min.X);
+                    double minY = rotatedBboxes.Min(b => b.min.Y);
+                    double minZ = rotatedBboxes.Min(b => b.min.Z);
+                    double maxX = rotatedBboxes.Max(b => b.max.X);
+                    double maxY = rotatedBboxes.Max(b => b.max.Y);
+                    double maxZ = rotatedBboxes.Max(b => b.max.Z);
+
+                    double width = maxX - minX;
+                    double height = maxY - minY;
+                    double depth = maxZ - minZ;
+                    XYZ mid = new XYZ((minX + maxX) / 2.0, (minY + maxY) / 2.0, (minZ + maxZ) / 2.0);
+
+                    return new BoundingBoxResult
+                    {
+                        Width = width,
+                        Height = height,
+                        Depth = depth,
+                        Midpoint = mid,
+                        RotatedMinX = minX,
+                        RotatedMinY = minY,
+                        RotatedMinZ = minZ,
+                        RotatedMaxX = maxX,
+                        RotatedMaxY = maxY,
+                        RotatedMaxZ = maxZ
+                    };
+                }
+
+                // ✅ Final fallback: Use ClusterBoundingBoxServices
+                var fallbackResult = _getClusterBoundingBoxFallback(actualSleeves, rotationAngle);
+                return new BoundingBoxResult
+                {
+                    Width = fallbackResult.width,
+                    Height = fallbackResult.height,
+                    Depth = fallbackResult.depth,
+                    Midpoint = fallbackResult.mid
+                };
+            }
+            catch (Exception ex)
+            {
+                SafeFileLogger.SafeAppendText("geometry_errors.log",
+                    $"[RotatedBoundingBoxCalculator] Exception in Calculate: {ex.Message}, StackTrace: {ex.StackTrace}");
+                
+                // ✅ CRASH-SAFE: Return fallback result
+                var fallbackResult = _getClusterBoundingBoxFallback(actualSleeves, rotationAngle);
+                return new BoundingBoxResult
+                {
+                    Width = fallbackResult.width,
+                    Height = fallbackResult.height,
+                    Depth = fallbackResult.depth,
+                    Midpoint = fallbackResult.mid
+                };
+            }
+        }
+
+        /// <summary>
+        /// Calculate bounding box from pre-transformed corner points.
+        /// </summary>
+        public BoundingBoxResult CalculateFromCorners(List<XYZ> corners)
+        {
+            try
+            {
+                // ✅ CRASH-SAFE: Validate inputs
+                if (corners == null || corners.Count == 0)
+                {
+                    SafeFileLogger.SafeAppendText("geometry_errors.log",
+                        $"[RotatedBoundingBoxCalculator] Invalid corners input - returning empty result");
+                    return new BoundingBoxResult();
+                }
+
+                double minX = corners.Min(p => p.X);
+                double minY = corners.Min(p => p.Y);
+                double minZ = corners.Min(p => p.Z);
+                double maxX = corners.Max(p => p.X);
+                double maxY = corners.Max(p => p.Y);
+                double maxZ = corners.Max(p => p.Z);
+
+                return new BoundingBoxResult
+                {
+                    Width = maxX - minX,
+                    Height = maxY - minY,
+                    Depth = maxZ - minZ,
+                    Midpoint = new XYZ((minX + maxX) / 2.0, (minY + maxY) / 2.0, (minZ + maxZ) / 2.0),
+                    RotatedMinX = minX,
+                    RotatedMinY = minY,
+                    RotatedMinZ = minZ,
+                    RotatedMaxX = maxX,
+                    RotatedMaxY = maxY,
+                    RotatedMaxZ = maxZ
+                };
+            }
+            catch (Exception ex)
+            {
+                SafeFileLogger.SafeAppendText("geometry_errors.log",
+                    $"[RotatedBoundingBoxCalculator] Exception in CalculateFromCorners: {ex.Message}, StackTrace: {ex.StackTrace}");
+                return new BoundingBoxResult();
+            }
+        }
+    }
+}
+

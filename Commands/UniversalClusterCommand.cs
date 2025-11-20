@@ -2,6 +2,7 @@ using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 {
@@ -34,7 +35,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 {
                     tx.Start();
                     
-                    var clusterService = new UniversalClusterService();
+                    // ✅ PHASE 6-11: Use factory to wire all extracted services
+                    var clusterService = ClusterServiceFactory.CreateWithAllServices(doc);
                     var (placedCount, deletedCount) = clusterService.ClusterSleeves(doc, _targetCategory, uiDoc, _xmlFilePath);
                     
                     tx.Commit();

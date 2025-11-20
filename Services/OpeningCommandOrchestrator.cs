@@ -549,7 +549,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         using (var cleanupTx = new Transaction(_document, $"Cleanup sleeves within clusters"))
                         {
                             cleanupTx.Start();
-                            var additionalDeleted = clusterServiceReload.CleanupSleevesWithinClustersAfterXmlSave(_document, placedClusterSleeves, xmlFilePath);
+                            // Renamed method: XmlSave -> DbSave (XML fallback still supported via xmlFilePath parameter)
+                            var additionalDeleted = clusterServiceReload.CleanupSleevesWithinClustersAfterDbSave(_document, placedClusterSleeves, xmlFilePath);
                             cleanupTx.Commit();
                             
                             if (additionalDeleted > 0 && !DeploymentConfiguration.DeploymentMode)

@@ -39,7 +39,9 @@ This document describes the **current refactored architecture** for sleeve place
 | **ClashZoneRepository** | `Data/Repositories/ClashZoneRepository.cs` | Database operations for clash zones |
 | **FilterRepository** | `Data/Repositories/FilterRepository.cs` | Database operations for filters |
 | **UniversalSleevePlacerService** | `Services/UniversalSleevePlacerService.cs` | Individual sleeve placement |
-| **UniversalClusterService** | `Services/UniversalClusterService.cs` | Cluster sleeve formation and placement |
+| **UniversalClusterService** | `Services/UniversalClusterService.cs` | Cluster sleeve formation and placement (Legacy - 8,765 lines) |
+| **RefactoredClusterService** | `Services/Clustering/RefactoredClusterService.cs` | ✅ Modern cluster orchestrator (598 lines) - Phase 1-10 services |
+| **ClusterServiceFactory** | `Services/Clustering/ClusterServiceFactory.cs` | Factory for creating fully-wired clustering services |
 
 ---
 
@@ -366,6 +368,82 @@ All database operations are wrapped in SQLite transactions:
 
 ## 6. Service Components
 
+### 6.0 Clustering Services (Phase 1-10)
+
+**✅ NEW: Refactored Clustering Architecture**
+
+The clustering system is now organized into 10 distinct service phases, each with clear responsibilities:
+
+**Phase 1: Geometry Services** (Static utility classes)
+- `DistanceCalculator` - 2D/3D minimum distance calculations
+- `RotationMatrixCalculator` - Rotation matrix creation and application
+- `CoordinateTransformer` - Coordinate space transformations
+- **Location:** `Services/Clustering/Geometry/`
+
+**Phase 2: Proximity Services**
+- `IProximityChecker` - Interface for proximity checking strategies
+- `BoundingBoxProximityChecker` - Bounding box overlap distance
+- `EdgeToEdgeProximityChecker` - Edge-to-edge distance for round pipes/ducts
+- `RotatedProximityChecker` - Rotated coordinate system proximity
+- `ProximityCheckerFactory` - Factory for selecting appropriate checker
+- **Location:** `Services/Clustering/Proximity/`
+
+**Phase 3: BoundingBox Services**
+- `IBoundingBoxCalculator` - Interface for bounding box calculations
+- `AxisAlignedBoundingBoxCalculator` - Simple union of axis-aligned boxes
+- `RotatedBoundingBoxCalculator` - Corner-based rotated bounding boxes
+- `CornerBasedBoundingBoxCalculator` - Corner transformation helpers
+- **Location:** `Services/Clustering/BoundingBox/`
+
+**Phase 4: Strategy Services**
+- `IClusteringStrategy` - Interface for clustering strategies
+- `ClusteringStrategyBase` - Base class with common functionality
+- `FloorCircularClusteringStrategy` - Floor circular sleeves (2D X-Y, edge-to-edge)
+- `FloorRectangularClusteringStrategy` - Floor rectangular sleeves (2D X-Y, bbox overlap)
+- `WallAxisAlignedStrategy` - Wall axis-aligned sleeves (2D orientation-Z plane)
+- `WallRotatedClusteringStrategy` - Wall rotated sleeves (rotation angle validation)
+- `ClusteringStrategyFactory` - Factory for selecting appropriate strategy
+- **Location:** `Services/Clustering/Strategy/`
+
+**Phase 5: Placement Services**
+- `IClusterPlacementService` - Interface for cluster sleeve placement
+- `ClusterPlacementService` - Implementation (creation, sizing, metadata, family loading)
+- **Location:** `Services/Clustering/Placement/`
+
+**Phase 6: Rotation Services**
+- `IClusterRotationService` - Interface for rotation calculations
+- `ClusterRotationService` - Rotation angle determination, rotated bounding boxes
+- **Location:** `Services/Clustering/Rotation/`
+
+**Phase 7: Cleanup Services**
+- `IClusterCleanupService` - Interface for cleanup operations
+- `ClusterCleanupService` - Delete individual sleeves within clusters, reset flags
+- **Location:** `Services/Clustering/Cleanup/`
+
+**Phase 8: Algorithm Services**
+- `IClusterAlgorithmService` - Interface for clustering algorithms
+- `ClusterAlgorithmService` - Spatial grid, flood-fill expansion, proximity checking
+- **Location:** `Services/Clustering/Algorithm/`
+
+**Phase 9: Data Services**
+- `IClusterDataService` - Interface for data loading and caching
+- `ClusterDataService` - Load clash zones from database (PRIMARY) or XML (fallback)
+- **Location:** `Services/Clustering/Data/`
+
+**Phase 10: Timeout Services**
+- `IClusterTimeoutService` - Interface for timeout protection
+- `ClusterTimeoutService` - Timeout monitoring, progress tracking
+- **Location:** `Services/Clustering/Timeout/`
+
+**Factory:**
+- `ClusterServiceFactory` - Factory for creating fully-wired clustering services
+- `CreateRefactored()` - Creates RefactoredClusterService with all Phase 1-10 services
+- **Location:** `Services/Clustering/ClusterServiceFactory.cs`
+
+**Orchestrator:**
+- `RefactoredClusterService` - Clean orchestrator for all Phase 1-10 services (598 lines)
+- **Location:** `Services/Clustering/RefactoredClusterService.cs`
+
 ### 6.1 IntersectionProcessor
 
 **Location:** `refresh refactor/intersection_processor.cs`
@@ -525,9 +603,126 @@ All database operations are wrapped in SQLite transactions:
 
 ## 8. Clustering Flow
 
+### 8.0 Refactored Cluster Service Architecture
+
+**✅ NEW: RefactoredClusterService** - Modern, clean orchestrator replacing the 8,765-line legacy service
+
+**Location:** `Services/Clustering/RefactoredClusterService.cs` (598 lines - 93% reduction)
+
+**Purpose:** Clean orchestration of all Phase 1-10 extracted services using dependency injection and service delegation.
+
+#### Architecture Overview
+
+The `RefactoredClusterService` orchestrates all clustering operations through 10 extracted service layers:
+
+**Phase 1-5 Services (Geometry, Proximity, BoundingBox, Strategy, Placement):**
+- **Phase 1: Geometry** - Static classes (`DistanceCalculator`, `RotationMatrixCalculator`, `CoordinateTransformer`)
+- **Phase 2: Proximity** - `ProximityCheckerFactory`, `IProximityChecker` implementations
+- **Phase 3: BoundingBox** - `IBoundingBoxCalculator` implementations (`AxisAlignedBoundingBoxCalculator`, `RotatedBoundingBoxCalculator`)
+- **Phase 4: Strategy** - `ClusteringStrategyFactory`, `IClusteringStrategy` implementations (Floor/Wall specific)
+- **Phase 5: Placement** - `IClusterPlacementService` (cluster sleeve creation, sizing, metadata)
+
+**Phase 6-10 Services (Rotation, Cleanup, Algorithm, Data, Timeout):**
+- **Phase 6: Rotation** - `IClusterRotationService` (rotation angle determination, rotated bounding boxes)
+- **Phase 7: Cleanup** - `IClusterCleanupService` (delete individual sleeves within clusters, reset flags)
+- **Phase 8: Algorithm** - `IClusterAlgorithmService` (spatial grid, flood-fill clustering, proximity checking)
+- **Phase 9: Data** - `IClusterDataService` (load clash zones from database/XML, cache management)
+- **Phase 10: Timeout** - `IClusterTimeoutService` (timeout protection, progress monitoring)
+
+#### Factory Pattern
+
+**Service Creation:** `ClusterServiceFactory.CreateRefactored()`
+
+```csharp
+// Create fully-wired RefactoredClusterService with all Phase 1-10 services
+var clusterService = ClusterServiceFactory.CreateRefactored(
+    doc: document,
+    flagManager: flagManager,
+    filterService: filterService,
+    timeoutLimitMs: 300000 // 5 minutes default
+);
+```
+
+**Factory Responsibilities:**
+- Wires all Phase 1-10 services with proper dependencies
+- Creates function delegates for PlacementService (GetClashZone, DetermineRotationAngle, etc.)
+- Initializes caches and state management
+- Provides clean dependency injection
+
+#### Execution Workflow
+
+```
+1. Load clash zones (Phase 9: Data Service)
+   ↓
+2. Filter and prepare sleeves for clustering
+   ↓
+3. Group sleeves by host/system/orientation
+   ↓
+4. Start timeout protection (Phase 10: Timeout Service)
+   ↓
+5. Form clusters (Phase 8: Algorithm Service)
+   - Uses spatial grid for efficiency
+   - Parallel processing per group
+   ↓
+6. For each cluster group:
+   - Select clustering strategy (Phase 4: Strategy Factory)
+   - For each cluster:
+     a. Determine rotation angle (Phase 6: Rotation Service)
+     b. Calculate bounding box (Phase 3: BoundingBox + Phase 6: Rotation)
+     c. Place cluster sleeve (Phase 5: Placement Service)
+     d. Track ClashZoneIds for database save
+   ↓
+7. Cleanup individual sleeves (Phase 7: Cleanup Service)
+   ↓
+8. Save cluster data to database (if comboId/filterId available)
+```
+
+#### Benefits of Refactored Architecture
+
+✅ **93% Code Reduction** - 598 lines vs 8,765 lines (legacy service)  
+✅ **Service Separation** - Each phase is a distinct, testable service  
+✅ **Dependency Injection** - Clean, mockable interfaces  
+✅ **Performance Preserved** - All optimizations (spatial grid, multi-threading, caching) maintained  
+✅ **Crash-Safe Guards** - Input validation, null checks, error handling at every layer  
+✅ **Timeout Protection** - Phase 10 service prevents infinite loops  
+✅ **Database-First** - Phase 9 service loads from database with XML fallback  
+
+#### Legacy vs Refactored
+
+| Aspect | Legacy (`UniversalClusterService`) | Refactored (`RefactoredClusterService`) |
+|--------|-----------------------------------|------------------------------------------|
+| **Lines of Code** | 8,765 lines | 598 lines (93% reduction) |
+| **Service Structure** | Monolithic class | 10 extracted services |
+| **Dependency Injection** | Partial (Phase 6-10 only) | Full (Phase 1-10) |
+| **Testability** | Difficult (tight coupling) | Easy (isolated services) |
+| **Maintainability** | Low (mixed concerns) | High (clear separation) |
+| **Performance** | Optimized (hardcoded) | Optimized (preserved + enhanced) |
+| **Error Handling** | Scattered | Centralized in each service |
+
+#### Migration Path
+
+**Current State:**
+- ✅ `RefactoredClusterService` created and fully wired
+- ✅ `ClusterServiceFactory` updated to create refactored service
+- ⚠️ `UniversalClusterService` still used by existing callers (backward compatibility)
+
+**Future Migration:**
+1. Test `RefactoredClusterService` in development environment
+2. Gradually migrate callers from `UniversalClusterService` to `RefactoredClusterService`
+3. Phase out `UniversalClusterService` once migration complete
+
+**Factory Usage:**
+```csharp
+// Modern code should use:
+var clusterService = ClusterServiceFactory.CreateRefactored(doc, flagManager, filterService);
+
+// Legacy code still uses:
+var clusterService = ClusterServiceFactory.CreateWithAllServices(doc, flagManager, filterService);
+```
+
 ### 8.1 Clustering Decision Logic
 
-**Service:** `UniversalClusterService`
+**Service:** `RefactoredClusterService` (modern) or `UniversalClusterService` (legacy)
 
 **Clustering is path-dependent** - Different paths have different clustering requirements:
 
@@ -611,62 +806,147 @@ New Zones (not in existing):
 
 **Service:** `UniversalClusterService` + `ClusterSleeveRepository`
 
-**Flow (when clustering calculation is required - PATH 2/3 or PATH 1 when no cluster data exists):**
+**✅ Refactored Flow (RefactoredClusterService):**
 ```
-1. Load clash zones from database (PRIMARY) or XML (fallback)
+1. Path 1 Replay Check (if isPath1Replay && comboId && filterId):
+   - Load pre-calculated clusters from ClusterSleeves table
+   - If exists: Place clusters from database (skip calculation)
+   - If not exists: Continue to calculation flow
+
+2. Load clash zones (Phase 9: Data Service):
+   - LoadClashZonesFromRegularXml() → database (PRIMARY) or XML (fallback)
    - Filter: SleeveInstanceId > 0 (placed sleeves)
    - Filter: IsClusterResolved = false (not yet clustered)
-2. Group sleeves by:
+   - Populate cache via LoadClashZoneCacheFromLoadedClashZones()
+
+3. Prepare sleeve data:
+   - Create dynamic objects with ClashZone references
+   - Extract host type, orientation, bounding boxes from ClashZone data
+
+4. Group sleeves by:
    - Host type (wall, floor, framing)
-   - System type
-   - Orientation
-3. Calculate proximity using bounding boxes
-4. Form clusters based on join distance
-5. Calculate cluster bounding boxes (rotated if needed)
-6. Calculate cluster data:
-   - Bounding box coordinates (minX, minY, minZ, maxX, maxY, maxZ)
-   - Dimensions (width, height, depth)
-   - Rotation angle (if rotated)
-   - Placement point (center of cluster)
-   - List of ClashZoneIds in cluster
-7. Save cluster data to ClusterSleeves table (via ClusterSleeveRepository)
-8. Place cluster sleeves using calculated data
-9. Delete individual sleeves within clusters
-10. Update flags in database (PRIMARY) and Global XML (fallback)
+   - System type (ducts, pipes, cable trays)
+   - Orientation (X, Y, Floor, Vertical)
+
+5. Start timeout protection (Phase 10: Timeout Service)
+
+6. Form clusters (Phase 8: Algorithm Service):
+   - FormClusters() using spatial grid + flood-fill algorithm
+   - Parallel processing per group (multi-threading)
+   - Check timeout every 5 clusters
+
+7. For each cluster group:
+   - Select clustering strategy (Phase 4: Strategy Factory):
+     * Floor → FloorCircularClusteringStrategy or FloorRectangularClusteringStrategy
+     * Wall/Framing → WallAxisAlignedStrategy or WallRotatedClusteringStrategy
+   
+   - For each cluster (count > 1):
+     a. Determine rotation angle (Phase 6: Rotation Service)
+     b. Calculate bounding box (Phase 3: BoundingBox + Phase 6: Rotation):
+        * Axis-aligned → AxisAlignedBoundingBoxCalculator
+        * Rotated → RotatedBoundingBoxCalculator (corner-based algorithm)
+     c. Place cluster sleeve (Phase 5: Placement Service):
+        * Create family instance
+        * Set size parameters (width, height, depth)
+        * Set metadata (filter name, MEP category)
+        * Capture sleeve ID for tracking
+     d. Store rotation data (Phase 6: Rotation Service)
+     e. Track ClashZoneIds for database save
+
+8. Save cluster data to database (if comboId && filterId):
+   - Save to ClusterSleeves table via ClusterSleeveRepository
+   - Store bounding box, dimensions, rotation, placement point, ClashZoneIds
+
+9. Cleanup individual sleeves (Phase 7: Cleanup Service):
+   - CleanupSleevesWithinClusters() deletes individual sleeves within placed clusters
+   - Returns count of deleted sleeves
+
+10. Update flags in database (FlagManager):
     - Set IsClusterResolved = true
     - Set ClusterSleeveInstanceId
-    - Clear SleeveInstanceId
+    - Clear SleeveInstanceId (optional - may be kept for tracking)
+
 11. Reset IsFilterComboNew = 0 (after cluster placement complete)
 ```
 
-**Flow (when cluster data exists - PATH 1 replay):**
+**Legacy Flow (UniversalClusterService):**
 ```
-1. Check ClusterSleeves table: HasClusterDataForCombo(comboId, category)
-2. If cluster data exists:
-   - Load cluster data from ClusterSleeves table (via ClusterSleeveRepository)
-   - Load: bounding box, dimensions, rotation, placement point, ClashZoneIds
-   - Place cluster sleeves using stored data (SKIP calculation)
-   - Update flags in database
+1-11. Same as above, but implemented as inline methods rather than service delegation
+```
+
+**✅ Refactored Flow (PATH 1 Replay - RefactoredClusterService):**
+```
+1. HandlePath1Replay() method:
+   - Check ClusterSleeves table: LoadClusterSleevesForCombo(comboId, category)
+   - If cluster data exists:
+     * Load cluster data from ClusterSleeves table (via ClusterSleeveRepository)
+     * Load: bounding box, dimensions, rotation, placement point, ClashZoneIds
+     * Place cluster sleeves using stored data (Phase 5: Placement Service)
+     * Update flags in database (FlagManager)
+     * Return early (skip calculation)
+   - If no cluster data:
+     * Return (hasData=false) to continue with calculation flow
+
+2. If calculation required (no cluster data or PATH 2/3):
+   - Continue to calculation flow (see above)
+   - After calculation: Save cluster data to ClusterSleeves table
    - Reset IsFilterComboNew = 0 (after cluster placement complete)
-3. If no cluster data:
-   - Run full clustering calculation (see flow above)
-   - Reset IsFilterComboNew = 0 (after cluster placement complete)
+```
+
+**Legacy Flow (UniversalClusterService):**
+```
+1-2. Same as above, but implemented inline rather than separate method
 ```
 
 ### 8.4 Rotated Bounding Boxes
 
-**Service:** `ClusterBoundingBoxServices`
+**✅ Refactored Architecture: Phase 3 (BoundingBox) + Phase 6 (Rotation) Services**
 
-**Purpose:** Calculate bounding boxes in rotated coordinate system
+**Service:** `RotatedBoundingBoxCalculator` (Phase 3) + `ClusterRotationService` (Phase 6)
+
+**Purpose:** Calculate bounding boxes in rotated coordinate system using corner-based watertight algorithm
+
+**Phase 3: BoundingBox Services:**
+- `IBoundingBoxCalculator` - Interface for bounding box calculations
+- `AxisAlignedBoundingBoxCalculator` - Simple union of axis-aligned bounding boxes
+- `RotatedBoundingBoxCalculator` - Corner-based algorithm for rotated clusters
+- `CornerBasedBoundingBoxCalculator` - Helper for corner transformations
+
+**Phase 6: Rotation Service:**
+- `IClusterRotationService` - Rotation angle determination and rotated bounding box calculations
+- `ClusterRotationService` - Implementation with database-first data access
+
+**Algorithm (Corner-Based Watertight):**
+1. **Pre-calculation (Individual Sleeve Placement):**
+   - Calculate 4 world-space corners for each sleeve
+   - Calculate rotation matrix components (cos, sin)
+   - Store in database (`SleeveCorner1X/Y/Z` through `SleeveCorner4X/Y/Z`, `MepRotationCos/Sin`)
+
+2. **Cluster Bounding Box Calculation:**
+   - Load pre-calculated corners from database (Phase 9: Data Service)
+   - Transform corners to cluster's intended rotated axis coordinate system
+   - Find min/max extents across all transformed corners
+   - Calculate cluster width/height from extents
+   - Transform midpoint back to world coordinates
 
 **Logic:**
-- Determine dominant rotation angle from individual sleeves
-- If angle is near axis-aligned (0°, 90°, 180°, 270°) → Use axis-aligned bounding box
-- Otherwise → Calculate bounding box in rotated coordinate system
+- Determine dominant rotation angle (Phase 6: Rotation Service)
+- If angle is near axis-aligned (0°, 90°, 180°, 270°) → Use `AxisAlignedBoundingBoxCalculator`
+- Otherwise → Use `RotatedBoundingBoxCalculator` with corner-based algorithm
 
 **Benefits:**
-- Cluster sleeves accurately follow outlines of individual sleeves
-- Handles non-orthogonal angles correctly
+- ✅ **Watertight Algorithm:** Works for all scenarios (single, stacked, inline, diagonal, grid)
+- ✅ **Performance:** Pre-calculated corners avoid redundant computations ("dump once, use many times")
+- ✅ **Database-First:** Loads pre-calculated data from database (Phase 9: Data Service)
+- ✅ **Crash-Safe:** Input validation and error handling at every transformation step
+- ✅ **Cluster sleeves accurately follow outlines** of individual sleeves
+- ✅ **Handles non-orthogonal angles correctly**
+
+**Code Locations:**
+- `Services/Clustering/BoundingBox/RotatedBoundingBoxCalculator.cs` - Phase 3 implementation
+- `Services/Clustering/Rotation/ClusterRotationService.cs` - Phase 6 implementation
+- `Services/Clustering/Geometry/RotationMatrixCalculator.cs` - Phase 1 geometry helper
+- `Services/Clustering/Geometry/CoordinateTransformer.cs` - Phase 1 coordinate transformations
 
 ---
 
@@ -957,6 +1237,70 @@ using (var transaction = connection.BeginTransaction())
 8. **Error Resilience** - Comprehensive error handling with graceful degradation
 9. **Data Integrity** - Transaction rollback prevents partial data corruption
 10. **User Experience** - Clear error messages and progress reporting
+11. **Service Separation** - Phase 1-10 extracted services with clear responsibilities
+12. **Factory Pattern** - Clean dependency injection via ClusterServiceFactory
+13. **Refactored Architecture** - Modern RefactoredClusterService (598 lines) replaces legacy (8,765 lines)
+
+---
+
+## 15. Clustering Service Architecture Summary
+
+### 15.1 RefactoredClusterService vs UniversalClusterService
+
+**Legacy Service (`UniversalClusterService`):**
+- **Size:** 8,765 lines (monolithic)
+- **Structure:** Single class with mixed concerns
+- **Services:** Phase 6-10 partially extracted (optional dependencies)
+- **Status:** ⚠️ Legacy - Maintained for backward compatibility
+- **Location:** `Services/UniversalClusterService.cs`
+
+**Refactored Service (`RefactoredClusterService`):**
+- **Size:** 598 lines (93% reduction)
+- **Structure:** Clean orchestrator with 10 extracted service phases
+- **Services:** Phase 1-10 fully extracted (required dependencies via DI)
+- **Status:** ✅ Modern - Recommended for new code
+- **Location:** `Services/Clustering/RefactoredClusterService.cs`
+
+### 15.2 Service Factory Usage
+
+**Creating Services:**
+
+```csharp
+// ✅ Modern: Create RefactoredClusterService (all Phase 1-10 services)
+var refactoredService = ClusterServiceFactory.CreateRefactored(
+    doc: document,
+    flagManager: flagManager,
+    filterService: filterService,
+    timeoutLimitMs: 300000
+);
+
+// ⚠️ Legacy: Create UniversalClusterService (Phase 6-10 services only)
+var legacyService = ClusterServiceFactory.CreateWithAllServices(
+    doc: document,
+    flagManager: flagManager,
+    filterService: filterService,
+    timeoutLimitMs: 300000
+);
+```
+
+### 15.3 Migration Recommendation
+
+**For New Code:**
+- Use `ClusterServiceFactory.CreateRefactored()` to get `RefactoredClusterService`
+- All Phase 1-10 services are automatically wired
+- Clean dependency injection, easy to test and maintain
+
+**For Existing Code:**
+- Continue using `UniversalClusterService` for backward compatibility
+- Plan gradual migration to `RefactoredClusterService`
+- Test thoroughly before switching
+
+**Migration Checklist:**
+- ✅ RefactoredClusterService created
+- ✅ ClusterServiceFactory updated
+- ✅ All Phase 1-10 services extracted
+- ⏳ Migration of callers (in progress)
+- ⏳ Phase out UniversalClusterService (planned)
 
 ---
 
