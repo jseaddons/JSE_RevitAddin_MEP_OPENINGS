@@ -1024,16 +1024,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // Only add if not already in list (avoid duplicates)
                             if (!filterListBox.Items.Contains(filterName) && !_filters.Any(f => f.Name == filterName))
                             {
-                                // Create a minimal filter object from DB entry
-                                // Note: Full filter details (UI state, clash zones) will be loaded from XML if available
-                                var filter = CreateFilterFromCurrentUIState(filterName);
-                                if (filter != null)
-                {
-                                    AddFilterToList(filterListBox, filter);
-                                    loadedFilters.Add(filterName);
-                                    dbLoadedCount++;
-                                    _log($"[FILTER_MGMT] ✅ Loaded filter '{filterName}' from database (Category='{category}')");
-                                }
+                                // ✅ FIX: Load saved UI state from database instead of using current UI state
+                                var (hostCategories, openingSettings, mepCategories, refFiles, hostFiles) = repo.LoadFilterUIState(filterName, category);
+                                
+                                // Create filter with saved UI state
+                                var filter = new OpeningFilter
+                                {
+                                    Name = filterName,
+                                    SelectedMepCategoryName = category,
+                                    SelectedHostCategories = hostCategories ?? new List<string>(),
+                                    OpeningSettings = openingSettings,
+                                    SelectedMepCategoryNames = mepCategories,
+                                    SelectedReferenceFiles = refFiles,
+                                    SelectedHostFiles = hostFiles,
+                                    ClashZoneStorage = new ClashZoneStorage
+                                    {
+                                        Filters = new List<FilterGroupForStorage>(),
+                                        ClashZones = new List<ClashZone>()
+                                    }
+                                };
+                                
+                                AddFilterToList(filterListBox, filter);
+                                loadedFilters.Add(filterName);
+                                dbLoadedCount++;
+                                _log($"[FILTER_MGMT] ✅ Loaded filter '{filterName}' from database with saved UI state (HostCats={hostCategories?.Count ?? 0}, OpeningSettings={openingSettings != null})");
                             }
                         }
                     });

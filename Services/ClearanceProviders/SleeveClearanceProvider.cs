@@ -5,6 +5,7 @@ using Autodesk.Revit.DB.Mechanical;
 using Autodesk.Revit.DB.Plumbing;
 using Autodesk.Revit.DB.Electrical;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders
 {
@@ -24,7 +25,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders
                 if (uiClearances.TryGetValue(clearanceKey, out double uiClearance))
                 {
                     // Convert UI clearance to internal units and use it
-                    return UnitUtils.ConvertToInternalUnits(uiClearance, UnitTypeId.Millimeters);
+                    return RevitUnitConversionService.Instance.ToInternalMillimeters(uiClearance);
                 }
             }
             
@@ -32,10 +33,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders
             string category = GetMepCategory(mepElement);
             return category switch
             {
-                "Ducts" => UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters), // Default duct clearance
-                "Pipes" => UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters), // Default pipe clearance
-                "Cable Trays" => UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters), // Default cable tray clearance
-                _ => UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters) // Default clearance
+                "Ducts" => RevitUnitConversionService.Instance.ToInternalMillimeters(50.0), // Default duct clearance
+                "Pipes" => RevitUnitConversionService.Instance.ToInternalMillimeters(50.0), // Default pipe clearance
+                "Cable Trays" => RevitUnitConversionService.Instance.ToInternalMillimeters(50.0), // Default cable tray clearance
+                _ => RevitUnitConversionService.Instance.ToInternalMillimeters(50.0) // Default clearance
             };
         }
         

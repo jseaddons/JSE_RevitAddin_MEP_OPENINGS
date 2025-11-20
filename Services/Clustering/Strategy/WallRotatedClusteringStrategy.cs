@@ -67,8 +67,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
                 double rotationAngle1 = cz1.MepElementRotationAngle;
                 double rotationAngle2 = cz2.MepElementRotationAngle;
 
-                bool isRotated1 = Math.Abs(rotationAngle1) > 1e-6 && !IsAxisAlignedAngle(rotationAngle1);
-                bool isRotated2 = Math.Abs(rotationAngle2) > 1e-6 && !IsAxisAlignedAngle(rotationAngle2);
+                bool isRotated1 = Math.Abs(rotationAngle1) > 1e-6 && !IsStraightAxisAlignedAngle(rotationAngle1);
+                bool isRotated2 = Math.Abs(rotationAngle2) > 1e-6 && !IsStraightAxisAlignedAngle(rotationAngle2);
 
                 if (!isRotated1 || !isRotated2)
                 {
@@ -132,6 +132,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
             {
                 return double.MaxValue;
             }
+        }
+
+        /// <summary>
+        /// Helper method to check if an angle is axis-aligned (0°, 90°, 180°, 270°)
+        /// </summary>
+        private bool IsAxisAlignedAngle(double angleRad)
+        {
+            double angleDeg = angleRad * 180.0 / Math.PI;
+            // Normalize to 0-360 range
+            while (angleDeg < 0) angleDeg += 360;
+            while (angleDeg >= 360) angleDeg -= 360;
+            
+            double thresholdDegrees = 2.0; // 2 degree tolerance
+            double distTo0 = Math.Min(angleDeg, 360 - angleDeg);
+            double distTo90 = Math.Abs(angleDeg - 90);
+            double distTo180 = Math.Abs(angleDeg - 180);
+            double distTo270 = Math.Abs(angleDeg - 270);
+            
+            return distTo0 < thresholdDegrees || distTo90 < thresholdDegrees || 
+                   distTo180 < thresholdDegrees || distTo270 < thresholdDegrees;
         }
     }
 }

@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -188,9 +189,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 DebugLogger.Info($"[CLUSTER-BBOX-ROTATED] Rotation angle: {rotationAngle * 180 / Math.PI:F1}°, " +
                     $"Rotated coords - Min=({minX:F3}, {minY:F3}, {minZ:F3}), Max=({maxX:F3}, {maxY:F3}, {maxZ:F3}), " +
-                    $"Dimensions: W={UnitUtils.ConvertFromInternalUnits(widthVal, UnitTypeId.Millimeters):F1}mm, " +
-                    $"H={UnitUtils.ConvertFromInternalUnits(heightVal, UnitTypeId.Millimeters):F1}mm, " +
-                    $"D={UnitUtils.ConvertFromInternalUnits(depthVal, UnitTypeId.Millimeters):F1}mm");
+                    $"Dimensions: W={RevitUnitConversionService.Instance.FromInternalMillimeters(widthVal):F1}mm, " +
+                    $"H={RevitUnitConversionService.Instance.FromInternalMillimeters(heightVal):F1}mm, " +
+                    $"D={RevitUnitConversionService.Instance.FromInternalMillimeters(depthVal):F1}mm");
             }
 
             return (widthVal, heightVal, depthVal, mid);

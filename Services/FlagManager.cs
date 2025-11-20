@@ -1932,6 +1932,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 if (isCluster)
                 {
+                    // ✅ CRITICAL: Save original SleeveInstanceId to AfterClusterSleevePlacedSleeveInstanceId BEFORE clearing it
+                    // RefactoredClusterService should have already set this, but add safety check here too
+                    if (clashZone.AfterClusterSleevePlacedSleeveInstanceId <= 0 && clashZone.SleeveInstanceId > 0)
+                    {
+                        clashZone.AfterClusterSleevePlacedSleeveInstanceId = clashZone.SleeveInstanceId;
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[FLAG-MANAGER] ✅ Safety check: Set AfterClusterSleevePlacedSleeveInstanceId={clashZone.SleeveInstanceId} for ClashZone {clashZone.Id}");
+                        }
+                    }
+                    
                     // Cluster sleeve placed
                     clashZone.IsClusterResolved = true;
                     clashZone.ClusterSleeveInstanceId = sleeveId;
@@ -1943,7 +1954,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Individual sleeve placed
                     clashZone.IsResolved = true;
                     clashZone.SleeveInstanceId = sleeveId;
-                    // Note: IsClusterResolved remains false for individual sleeves
+                    // ✅ CRITICAL FIX: Explicitly reset IsClusterResolved to false for individual sleeves
+                    // This ensures that if a cluster sleeve was previously deleted and an individual sleeve is placed,
+                    // the IsClusterResolvedFlag is properly reset to 0 in the database
+                    clashZone.IsClusterResolved = false;
+                    clashZone.ClusterSleeveInstanceId = -1; // Also clear cluster instance ID
                 }
                 
                 // ✅ OPTION 4: DATABASE-FIRST APPROACH - Update database first (authoritative source), then sync to Global XML
@@ -2007,12 +2022,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 $"SleeveId={clashZone.SleeveInstanceId}, ClusterId={clashZone.ClusterSleeveInstanceId}, " +
                                 $"OldSleeveId={oldSleeveInstanceId}, OldClusterId={oldClusterInstanceId}, " +
                                 $"GUID={clashZone.Id}, MEP={clashZone.MepElementIdValue}, Host={clashZone.StructuralElementIdValue}");
+                            
+                            // ✅ DIAGNOSTIC: Log to file as well
+                            SafeFileLogger.SafeAppendText("flag_state_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] 📝 [FLAG-MANAGER] Calling BatchUpdateFlags for ClashZone {clashZone.Id}:\n" +
+                                $"  IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}\n" +
+                                $"  SleeveId={clashZone.SleeveInstanceId}, ClusterId={clashZone.ClusterSleeveInstanceId}\n" +
+                                $"  OldSleeveId={oldSleeveInstanceId}, OldClusterId={oldClusterInstanceId}\n" +
+                                $"  AfterClusterSleeveId={clashZone.AfterClusterSleevePlacedSleeveInstanceId} (from ClashZone property)\n" +
+                                $"  AfterClusterSleeveId (in tuple)={singleUpdate[0].AfterClusterSleeveId}, IsCluster={isCluster}\n" +
+                                $"  📝 CRITICAL: For cluster placement, AfterClusterSleeveId should be > 0 to save deleted individual sleeve ID\n" +
+                                $"  GUID={clashZone.Id}, MEP={clashZone.MepElementIdValue}, Host={clashZone.StructuralElementIdValue}\n");
                         }
                         
                         repository.BatchUpdateFlags(singleUpdate);
                         
                         if (!DeploymentConfiguration.DeploymentMode)
+                        {
                             DebugLogger.Info($"[FLAG-MANAGER] ✅ Updated database flags for ClashZone {clashZone.Id} (database-first)");
+                            
+                            // ✅ DIAGNOSTIC: Log to file as well
+                            SafeFileLogger.SafeAppendText("flag_state_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ [FLAG-MANAGER] BatchUpdateFlags completed for ClashZone {clashZone.Id}\n");
+                        }
                     }
                 }
                 catch (Exception dbEx)

@@ -147,22 +147,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                                 var rowsAffected = insertCmd.ExecuteNonQuery();
                                 
-                                // ✅ LOG: INSERT operation
+                                // ✅ LOG: INSERT operation - ALL COLUMNS (one sample row)
+                                var clashZoneIdsJson = clashZoneIds != null && clashZoneIds.Count > 0
+                                    ? JsonSerializer.Serialize(clashZoneIds.Select(g => g.ToString()).ToList())
+                                    : "[]";
+                                var (clashZoneGuids, mepSizes, mepSystemNames, mepElementIds) = GetCommaSeparatedMepData(clashZoneIds);
+                                
                                 var insertParams = new Dictionary<string, object>
                                 {
                                     { "ClusterInstanceId", clusterInstanceId },
                                     { "ComboId", comboId },
                                     { "FilterId", filterId },
                                     { "Category", category ?? "NULL" },
+                                    { "BoundingBoxMinX", boundingBoxMinX },
+                                    { "BoundingBoxMinY", boundingBoxMinY },
+                                    { "BoundingBoxMinZ", boundingBoxMinZ },
+                                    { "BoundingBoxMaxX", boundingBoxMaxX },
+                                    { "BoundingBoxMaxY", boundingBoxMaxY },
+                                    { "BoundingBoxMaxZ", boundingBoxMaxZ },
                                     { "ClusterWidth", clusterWidth },
                                     { "ClusterHeight", clusterHeight },
                                     { "ClusterDepth", clusterDepth },
                                     { "RotationAngleDeg", rotationAngleDeg },
-                                    { "IsRotated", isRotated },
+                                    { "IsRotated", isRotated ? 1 : 0 },
                                     { "PlacementX", placementX },
                                     { "PlacementY", placementY },
                                     { "PlacementZ", placementZ },
-                                    { "ClashZoneIdsCount", clashZoneIds?.Count ?? 0 }
+                                    { "HostType", hostType ?? "NULL" },
+                                    { "HostOrientation", hostOrientation ?? "NULL" },
+                                    { "ClashZoneIdsJson", clashZoneIdsJson },
+                                    { "ClashZoneGuids", clashZoneGuids ?? "NULL" },
+                                    { "MepSizes", mepSizes ?? "NULL" },
+                                    { "MepSystemNames", mepSystemNames ?? "NULL" },
+                                    { "MepElementIds", mepElementIds ?? "NULL" }
                                 };
                                 
                                 DatabaseOperationLogger.LogOperation(
@@ -170,7 +187,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     "ClusterSleeves",
                                     insertParams,
                                     rowsAffected,
-                                    $"✅ Saved cluster sleeve {clusterInstanceId} (ComboId={comboId}, FilterId={filterId})");
+                                    $"✅ Sample row: All columns logged (ClusterInstanceId={clusterInstanceId})");
                                 
                                 _logger($"[SQLite] ✅ Saved cluster sleeve {clusterInstanceId} to database");
                             }
@@ -472,6 +489,98 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     { "Category", clusters[0].Category },
                     { "ClashZoneIdsCount", clusters[0].ClashZoneIds?.Count ?? 0 }
                 } : null);
+
+            return clusters;
+        }
+
+        /// <summary>
+        /// Load cluster sleeve data by FilterId and Category (for PATH 1 check when comboId is unknown).
+        /// This checks if any clusters exist for a given filter+category combination.
+        /// </summary>
+        public List<ClusterSleeveData> LoadClusterSleevesByFilter(int filterId, string category)
+        {
+            var clusters = new List<ClusterSleeveData>();
+
+            if (filterId <= 0 || string.IsNullOrWhiteSpace(category))
+                return clusters;
+
+            var whereClause = $"FilterId={filterId} AND Category='{category}'";
+            
+            DatabaseOperationLogger.LogSelect(
+                "ClusterSleeves",
+                whereClause,
+                additionalInfo: "Checking for existing cluster data by FilterId+Category");
+
+            using (var cmd = _context.Connection.CreateCommand())
+            {
+                cmd.CommandText = @"
+                    SELECT ClusterInstanceId, ComboId, FilterId, Category,
+                           BoundingBoxMinX, BoundingBoxMinY, BoundingBoxMinZ,
+                           BoundingBoxMaxX, BoundingBoxMaxY, BoundingBoxMaxZ,
+                           ClusterWidth, ClusterHeight, ClusterDepth,
+                           RotationAngleDeg, IsRotated,
+                           PlacementX, PlacementY, PlacementZ,
+                           HostType, HostOrientation, ClashZoneIdsJson
+                    FROM ClusterSleeves
+                    WHERE FilterId = @FilterId AND Category = @Category";
+                cmd.Parameters.AddWithValue("@FilterId", filterId);
+                cmd.Parameters.AddWithValue("@Category", category);
+
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        var cluster = new ClusterSleeveData
+                        {
+                            ClusterInstanceId = GetInt(reader, "ClusterInstanceId", -1),
+                            ComboId = GetInt(reader, "ComboId", -1),
+                            FilterId = GetInt(reader, "FilterId", -1),
+                            Category = GetString(reader, "Category"),
+                            BoundingBoxMinX = GetDouble(reader, "BoundingBoxMinX", 0.0),
+                            BoundingBoxMinY = GetDouble(reader, "BoundingBoxMinY", 0.0),
+                            BoundingBoxMinZ = GetDouble(reader, "BoundingBoxMinZ", 0.0),
+                            BoundingBoxMaxX = GetDouble(reader, "BoundingBoxMaxX", 0.0),
+                            BoundingBoxMaxY = GetDouble(reader, "BoundingBoxMaxY", 0.0),
+                            BoundingBoxMaxZ = GetDouble(reader, "BoundingBoxMaxZ", 0.0),
+                            ClusterWidth = GetDouble(reader, "ClusterWidth", 0.0),
+                            ClusterHeight = GetDouble(reader, "ClusterHeight", 0.0),
+                            ClusterDepth = GetDouble(reader, "ClusterDepth", 0.0),
+                            RotationAngleDeg = GetDouble(reader, "RotationAngleDeg", 0.0),
+                            IsRotated = GetBool(reader, "IsRotated"),
+                            PlacementX = GetDouble(reader, "PlacementX", 0.0),
+                            PlacementY = GetDouble(reader, "PlacementY", 0.0),
+                            PlacementZ = GetDouble(reader, "PlacementZ", 0.0),
+                            HostType = GetString(reader, "HostType"),
+                            HostOrientation = GetString(reader, "HostOrientation")
+                        };
+
+                        // Deserialize ClashZoneIds from JSON
+                        var clashZoneIdsJson = GetString(reader, "ClashZoneIdsJson");
+                        if (!string.IsNullOrWhiteSpace(clashZoneIdsJson))
+                        {
+                            try
+                            {
+                                cluster.ClashZoneIds = JsonSerializer.Deserialize<List<Guid>>(clashZoneIdsJson) ?? new List<Guid>();
+                            }
+                            catch
+                            {
+                                cluster.ClashZoneIds = new List<Guid>();
+                            }
+                        }
+                        else
+                        {
+                            cluster.ClashZoneIds = new List<Guid>();
+                        }
+
+                        clusters.Add(cluster);
+                    }
+                }
+            }
+
+            DatabaseOperationLogger.LogSelect(
+                "ClusterSleeves",
+                whereClause,
+                resultCount: clusters.Count);
 
             return clusters;
         }

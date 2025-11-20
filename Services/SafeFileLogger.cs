@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Reflection;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -69,7 +70,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // This ensures all deployed instances write logs to the same location
             try
             {
-                // ✅ CRITICAL FIX: Create base folder first, then Logs subfolder
+                // ✅ CRITICAL FIX: Create base folder first, then Logs subfolder with version tag
                 var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                 var baseFolder = Path.Combine(appData, "JSE_MEP_Openings");
                 
@@ -87,7 +88,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
                 
-                string appDataPath = Path.Combine(baseFolder, "Logs");
+                // ✅ VERSION-SEPARATED LOGS: Append version tag (R2023 or R2024) to separate logs by Revit version
+                // This allows testing both versions simultaneously without log conflicts
+                string versionTag = VersionInfo.VersionTag; // "R2023" or "R2024"
+                string appDataPath = Path.Combine(baseFolder, "Logs", versionTag);
 
                 if (TryCreateDirectory(appDataPath))
                 {
@@ -117,27 +121,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     string projectRoot = assemblyDir;
                     for (int i = 0; i < 5 && projectRoot != null; i++)
                     {
-                        // ✅ FIX: Check for "Logs" (plural) not "Log" (singular)
+                        // ✅ VERSION-SEPARATED LOGS: Check for versioned Logs subdirectory
+                        string versionTag = VersionInfo.VersionTag; // "R2023" or "R2024"
+                        string versionedLogsPath = Path.Combine(projectRoot, "Logs", versionTag);
+                        if (Directory.Exists(versionedLogsPath))
+                        {
+                            WriteDiagnosticLogInternal("INIT", $"Using project Logs directory (development): {versionedLogsPath}", versionedLogsPath, true);
+                            return versionedLogsPath;
+                        }
+                        // ✅ FIX: Check for "Logs" (plural) not "Log" (singular) - backward compatibility
                         if (Directory.Exists(Path.Combine(projectRoot, "Logs")))
                         {
-                            string logDir = Path.Combine(projectRoot, "Logs");
-                            WriteDiagnosticLogInternal("INIT", $"Using project Logs directory (development): {logDir}", logDir, true);
-                            return logDir;
+                            string logDir = Path.Combine(projectRoot, "Logs", versionTag);
+                            if (TryCreateDirectory(logDir))
+                            {
+                                WriteDiagnosticLogInternal("INIT", $"Using project Logs directory (development): {logDir}", logDir, true);
+                                return logDir;
+                            }
                         }
                         // Also check for "Log" (singular) for backward compatibility
                         if (Directory.Exists(Path.Combine(projectRoot, "Log")))
                         {
-                            string logDir = Path.Combine(projectRoot, "Log");
-                            WriteDiagnosticLogInternal("INIT", $"Using project Log directory (development - fallback): {logDir}", logDir, true);
-                            return logDir;
+                            string logDir = Path.Combine(projectRoot, "Log", versionTag);
+                            if (TryCreateDirectory(logDir))
+                            {
+                                WriteDiagnosticLogInternal("INIT", $"Using project Log directory (development - fallback): {logDir}", logDir, true);
+                                return logDir;
+                            }
                         }
                         projectRoot = Directory.GetParent(projectRoot)?.FullName;
                     }
                     
-                    // If project structure found, create Logs directory
+                    // If project structure found, create Logs directory with version tag
                     if (assemblyDir != null)
                     {
-                        string logDir = Path.Combine(assemblyDir, "..", "..", "..", "Logs");
+                        // ✅ VERSION-SEPARATED LOGS: Include version tag in development path too
+                        string versionTag = VersionInfo.VersionTag; // "R2023" or "R2024"
+                        string logDir = Path.Combine(assemblyDir, "..", "..", "..", "Logs", versionTag);
                         logDir = Path.GetFullPath(logDir); // Resolve .. paths
                         
                         if (TryCreateDirectory(logDir))
@@ -154,10 +174,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 WriteDiagnosticLogInternal("INIT", $"Could not use project directory: {ex.Message}", "unknown", false);
             }
 
-            // Priority 3: Use Temp directory (last resort - always writable)
+            // Priority 3: Use Temp directory (last resort - always writable) with version tag
             try
             {
-                string tempPath = Path.Combine(Path.GetTempPath(), "JSE_MEP_Openings_Logs");
+                // ✅ VERSION-SEPARATED LOGS: Include version tag in temp path too
+                string versionTag = VersionInfo.VersionTag; // "R2023" or "R2024"
+                string tempPath = Path.Combine(Path.GetTempPath(), "JSE_MEP_Openings_Logs", versionTag);
                 
                 if (TryCreateDirectory(tempPath))
                     return tempPath;
@@ -167,12 +189,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // If even temp fails, we're in deep trouble
             }
 
-            // Final fallback: Desktop (should always be writable)
+            // Final fallback: Desktop (should always be writable) with version tag
             try
             {
+                // ✅ VERSION-SEPARATED LOGS: Include version tag in desktop path too
+                string versionTag = VersionInfo.VersionTag; // "R2023" or "R2024"
                 string desktopPath = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
-                    "JSE_MEP_Openings_Logs"
+                    "JSE_MEP_Openings_Logs",
+                    versionTag
                 );
                 
                 if (TryCreateDirectory(desktopPath))

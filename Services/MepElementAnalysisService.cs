@@ -308,7 +308,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                var geom = element.get_Geometry(new Options());
+                var geom = element.get_Geometry(Helpers.GeometryOptionsFactory.CreateIntersectionOptions());
                 if (geom != null)
                 {
                     var bbox = geom.GetBoundingBox();

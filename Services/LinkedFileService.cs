@@ -247,7 +247,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 foreach (var provision in provisions)
                 {
                     // Get the geometry of the provision
-                    var geometry = provision.get_Geometry(new Options());
+                    var geometry = provision.get_Geometry(Helpers.GeometryOptionsFactory.CreateIntersectionOptions());
                     if (geometry == null)
                         continue;
 

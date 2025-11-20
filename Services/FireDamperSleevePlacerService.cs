@@ -5,6 +5,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Mechanical;
 using Autodesk.Revit.DB.Structure;
 using JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 
 
@@ -232,7 +233,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 Log($"Retrieved damper dimensions: Width={damperWidth}, Height={damperHeight}");
                                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[PlaceFireDamperSleeve] Damper dims internal: damperId={accessory.Id.IntegerValue}, Width={damperWidth}, Height={damperHeight}");
-                Log($"Damper dimensions (mm): Width={UnitUtils.ConvertFromInternalUnits(damperWidth, UnitTypeId.Millimeters)}, Height={UnitUtils.ConvertFromInternalUnits(damperHeight, UnitTypeId.Millimeters)}");
+                Log($"Damper dimensions (mm): Width={RevitUnitConversionService.Instance.FromInternalMillimeters(damperWidth)}, Height={RevitUnitConversionService.Instance.FromInternalMillimeters(damperHeight)}");
 
                 // Get symbol type name and determine damper type (null-safe)
                 string familyTypeName = accessory.Symbol?.Name ?? "<unknown type>";
@@ -296,18 +297,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         case "Bottom": bottom = connectorClearance; break;
                     }
                     
-                    Log($"[MEP SIDE CLEARANCE] Applied {UnitUtils.ConvertFromInternalUnits(connectorClearance, UnitTypeId.Millimeters):F1}mm clearance to {effectiveSide} (MEP side) for {familyTypeName}, {UnitUtils.ConvertFromInternalUnits(baseClearance, UnitTypeId.Millimeters):F1}mm elsewhere. left={UnitUtils.ConvertFromInternalUnits(left, UnitTypeId.Millimeters):F1}, right={UnitUtils.ConvertFromInternalUnits(right, UnitTypeId.Millimeters):F1}, top={UnitUtils.ConvertFromInternalUnits(top, UnitTypeId.Millimeters):F1}, bottom={UnitUtils.ConvertFromInternalUnits(bottom, UnitTypeId.Millimeters):F1}");
+                    Log($"[MEP SIDE CLEARANCE] Applied {RevitUnitConversionService.Instance.FromInternalMillimeters(connectorClearance):F1}mm clearance to {effectiveSide} (MEP side) for {familyTypeName}, {RevitUnitConversionService.Instance.FromInternalMillimeters(baseClearance):F1}mm elsewhere. left={RevitUnitConversionService.Instance.FromInternalMillimeters(left):F1}, right={RevitUnitConversionService.Instance.FromInternalMillimeters(right):F1}, top={RevitUnitConversionService.Instance.FromInternalMillimeters(top):F1}, bottom={RevitUnitConversionService.Instance.FromInternalMillimeters(bottom):F1}");
                 }
                 else
                 {
-                    Log($"[STANDARD CLEARANCE] {UnitUtils.ConvertFromInternalUnits(baseClearance, UnitTypeId.Millimeters):F1}mm all sides. left={UnitUtils.ConvertFromInternalUnits(left, UnitTypeId.Millimeters):F1}, right={UnitUtils.ConvertFromInternalUnits(right, UnitTypeId.Millimeters):F1}, top={UnitUtils.ConvertFromInternalUnits(top, UnitTypeId.Millimeters):F1}, bottom={UnitUtils.ConvertFromInternalUnits(bottom, UnitTypeId.Millimeters):F1}");
+                    Log($"[STANDARD CLEARANCE] {RevitUnitConversionService.Instance.FromInternalMillimeters(baseClearance):F1}mm all sides. left={RevitUnitConversionService.Instance.FromInternalMillimeters(left):F1}, right={RevitUnitConversionService.Instance.FromInternalMillimeters(right):F1}, top={RevitUnitConversionService.Instance.FromInternalMillimeters(top):F1}, bottom={RevitUnitConversionService.Instance.FromInternalMillimeters(bottom):F1}");
                 }
 
                 // Compute sleeve dimensions
                 double sleeveWidth = damperWidth + left + right;
                 double sleeveHeight = damperHeight + top + bottom;
                 Log($"Sleeve dims (internal): Width={sleeveWidth}, Height={sleeveHeight}");
-                Log($"Sleeve dims (mm): Width={UnitUtils.ConvertFromInternalUnits(sleeveWidth, UnitTypeId.Millimeters)}, Height={UnitUtils.ConvertFromInternalUnits(sleeveHeight, UnitTypeId.Millimeters)}");
+                Log($"Sleeve dims (mm): Width={RevitUnitConversionService.Instance.FromInternalMillimeters(sleeveWidth)}, Height={RevitUnitConversionService.Instance.FromInternalMillimeters(sleeveHeight)}");
 
                 // Activate sleeve symbol if not already active
                 if (!sleeveSymbol.IsActive)
@@ -371,7 +372,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 // Calculate offset for families needing MEP side clearance (MSFD, MSD, MOTORIZED, MD) - 25mm toward connector direction
                 XYZ offset = XYZ.Zero;
-                double offset25 = UnitUtils.ConvertToInternalUnits(25.0, UnitTypeId.Millimeters);
+                double offset25 = RevitUnitConversionService.Instance.ToInternalMillimeters(25.0);
                 if (needsMepSideClearance && conn != null)
                 {
                     // Determine wall orientation and get correct offset direction
@@ -387,7 +388,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 Log($"[CONNECTOR OFFSET] Sleeve placement center after offset: {sleeveCenter}");
 
                 // DUPLICATION SUPPRESSION: Check if a sleeve already exists at this location
-                double sleeveCheckRadius = UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters); // 100mm tolerance
+                double sleeveCheckRadius = RevitUnitConversionService.Instance.ToInternalMillimeters(100.0); // 100mm tolerance
                 bool duplicateExists = false;
                 try
                 {
@@ -578,8 +579,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch { }
 
-            double offset25 = UnitUtils.ConvertToInternalUnits(25.0, UnitTypeId.Millimeters);
-            double sleeveCheckRadius = UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters);
+            double offset25 = RevitUnitConversionService.Instance.ToInternalMillimeters(25.0);
+            double sleeveCheckRadius = RevitUnitConversionService.Instance.ToInternalMillimeters(100.0);
 
             var damperListSafeMain = damperTuples ?? new System.Collections.Generic.List<(FamilyInstance, Transform?)>();
             var wallListSafeMain = wallTuples ?? new System.Collections.Generic.List<(Wall, Transform?)>();
@@ -633,7 +634,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var p2 = sleevePos + new Autodesk.Revit.DB.XYZ(0, 0, 5.0);
                             var testLine = Line.CreateBound(p1, p2);
                             // Use the structural elements collected from section box helper if possible
-                            var structural = structuralElements ?? MepIntersectionService.CollectStructuralElementsForDirectIntersectionVisibleOnly(_doc, log ?? (_ => { }));
+                            // Convert named tuple to unnamed tuple for compatibility
+                            List<(Element, Transform?)> structural;
+                            if (structuralElements != null)
+                            {
+                                structural = structuralElements.Select(t => ((Element)t.element, t.transform)).ToList();
+                            }
+                            else
+                            {
+                                structural = MepIntersectionService.CollectStructuralElementsForDirectIntersectionVisibleOnly(_doc, log ?? (_ => { }));
+                            }
                             var intersects = MepIntersectionService.FindIntersections(testLine, null, structural, log ?? (_ => { }));
                             if (intersects != null && intersects.Count > 0)
                             {

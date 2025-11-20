@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Timeout
 {
@@ -43,7 +44,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Timeout
         }
 
         /// <summary>
-        /// Show timeout warning dialog to user.
+        /// Log timeout warning (no UI blocking - per user request to remove Phase 10 progress UI).
         /// </summary>
         /// <param name="context">Context message (e.g., "during FormClusters", "after processing N clusters")</param>
         /// <param name="processedCount">Number of items processed (optional)</param>
@@ -53,7 +54,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Timeout
             var timeInSeconds = _timer.ElapsedMilliseconds / 1000;
             var limitInSeconds = _timeoutLimitMs / 1000;
 
-            var message = $"Clustering operation is taking too long and has been cancelled.\n\n";
+            var message = $"Clustering operation is taking too long and has been cancelled.\n";
             
             if (processedCount.HasValue && totalCount.HasValue)
             {
@@ -62,18 +63,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Timeout
             
             message += $"Time: {timeInSeconds} seconds\n";
             message += $"Limit: {limitInSeconds} seconds\n";
-            message += $"Context: {context}\n\n";
-            message += "This usually indicates:\n";
-            message += "• Very large model with many sleeves\n";
-            message += "• Infinite loop in clustering algorithm\n";
-            message += "• Corrupted XML data\n\n";
-            message += "Please check the log file and try processing in smaller batches.";
+            message += $"Context: {context}";
 
-            System.Windows.Forms.MessageBox.Show(
-                message,
-                "Operation Timeout",
-                System.Windows.Forms.MessageBoxButtons.OK,
-                System.Windows.Forms.MessageBoxIcon.Warning);
+            // ✅ REMOVED: MessageBox.Show() - was blocking clustering process
+            // ✅ CHANGED: Log to file instead (non-blocking)
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Warning($"[ClusterTimeoutService] {message}");
+            }
+            
+            SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                $"[{DateTime.Now:HH:mm:ss}] ⏱ TIMEOUT: {message}\n");
         }
 
         /// <summary>

@@ -9,8 +9,11 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Timeout;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 {
@@ -38,97 +41,147 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         /// <param name="flagManager">Optional FlagManager (will be created if null)</param>
         /// <param name="filterService">Optional FilterManagementService (will be created if null)</param>
         /// <param name="timeoutLimitMs">Timeout limit in milliseconds (default: 300000 = 5 minutes)</param>
-        /// <returns>Fully-configured UniversalClusterService with all Phase 6-11 services</returns>
-        public static UniversalClusterService CreateWithAllServices(
+        /// <returns>Fully-configured RefactoredClusterService with all Phase 6-11 services</returns>
+        public static RefactoredClusterService CreateWithAllServices(
             Document doc,
             FlagManager flagManager = null,
             FilterManagementService filterService = null,
             int timeoutLimitMs = 300000)
         {
-            // Phase 6: Rotation Service (requires getClashZoneFunc - will use UniversalClusterService's cache)
-            // For factory, create with null func - UniversalClusterService will provide it via internal cache
-            var rotationService = new ClusterRotationService(null);
+            // Phase 9: Data Service (needed for getClashZoneFunc)
+            var dataService = new ClusterDataService(doc);
+            
+            // Phase 6: Rotation Service - wire function to load from cache first, then database
+            // ✅ CRITICAL FIX: Use cache first (populated by ClusterDataService), then fallback to database
+            // This ensures we use the already-loaded data with all rotated bounding box and corner data
+            Func<int, string, Models.ClashZone> getClashZoneFunc = (sleeveId, xmlPath) =>
+            {
+                // ✅ STEP 1: Try cache first (fast, already loaded with all data including corners and rotated bbox)
+                try
+                {
+                    var cached = dataService.GetClashZoneBySleeveInstanceId(sleeveId);
+                    if (cached != null)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            bool hasCorners = cached.SleeveCorner1X.HasValue && cached.SleeveCorner1Y.HasValue;
+                            bool hasRotatedBbox = cached.RotatedBoundingBoxMinX.HasValue && cached.RotatedBoundingBoxMaxX.HasValue;
+                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ CACHE HIT: Sleeve {sleeveId}: HasCorners={hasCorners}, HasRotatedBbox={hasRotatedBbox}, Rotation={cached.MepElementRotationAngle * 180 / Math.PI:F1}°\n");
+                        }
+                        return cached;
+                    }
+                }
+                catch (Exception cacheEx)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ Cache lookup error for sleeve {sleeveId}: {cacheEx.Message}\n");
+                    }
+                }
+                
+                // ✅ STEP 2: Fallback to database if not in cache (shouldn't happen if cache is properly populated)
+                try
+                {
+                    using (var dbContext = new SleeveDbContext(doc))
+                    {
+                        var repository = new ClashZoneRepository(dbContext);
+                        
+                        // Query all categories and find matching SleeveInstanceId
+                        var categories = new[] { "Ducts", "Pipes", "Cable Trays", "Duct Accessories" };
+                        
+                        foreach (var category in categories)
+                        {
+                            try
+                            {
+                                var zones = repository.GetClashZonesByCategory(category);
+                                if (zones == null) continue;
+                                
+                                var match = zones.FirstOrDefault(cz => cz.SleeveInstanceId == sleeveId);
+                                if (match != null)
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        bool hasCorners = match.SleeveCorner1X.HasValue && match.SleeveCorner1Y.HasValue;
+                                        bool hasRotatedBbox = match.RotatedBoundingBoxMinX.HasValue && match.RotatedBoundingBoxMaxX.HasValue;
+                                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ CACHE MISS: Loaded from DB for sleeve {sleeveId}: HasCorners={hasCorners}, HasRotatedBbox={hasRotatedBbox}, Rotation={match.MepElementRotationAngle * 180 / Math.PI:F1}°\n");
+                                    }
+                                    return match;
+                                }
+                            }
+                            catch { /* Try next category */ }
+                        }
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ⚠️ Could not find ClashZone for sleeve {sleeveId} in cache or database\n");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ❌ Error loading ClashZone for sleeve {sleeveId}: {ex.Message}\n");
+                    }
+                }
+                
+                return null;
+            };
+            
+            // ✅ VALIDATION: Ensure function is not null before passing to constructor
+            if (getClashZoneFunc == null)
+                throw new InvalidOperationException("getClashZoneFunc cannot be null");
+            
+            var rotationService = new ClusterRotationService(getClashZoneFunc);
 
-            // Phase 7: Cleanup Service (stateless - no constructor parameters)
+            // Phase 7: Cleanup Service
             var cleanupService = new ClusterCleanupService();
 
-            // Phase 8: Algorithm Service (stateless - no constructor parameters)
+            // Phase 8: Algorithm Service
             var algorithmService = new ClusterAlgorithmService();
 
-            // Phase 9: Data Service (requires Document)
-            var dataService = new ClusterDataService(doc);
+            // ✅ NOTE: dataService already created above for getClashZoneFunc
+            // var dataService = new ClusterDataService(doc); // Already created above
 
-            // Phase 10: Timeout Service (configurable timeout)
+            // Phase 10: Timeout Service
             var timeoutService = new ClusterTimeoutService(timeoutLimitMs);
+            
+            // Phase 5: Placement Service - null delegates (RefactoredClusterService wires them internally)
+            var placementService = new ClusterPlacementService(
+                getClashZoneBySleeveInstanceId: null,
+                determineRotationAngle: null,
+                getClusterBoundingBox: null,
+                markClusterResolved: null,
+                getFilterNameForCategory: null,
+                boundingBoxCalculator: null
+            );
+            
+            // Phase 4: Strategy Factory
+            var strategyFactory = new ClusteringStrategyFactory();
 
-            // Wire all services into UniversalClusterService
-            return new UniversalClusterService(
-                flagManager: flagManager,
-                filterService: filterService,
-                rotationService: rotationService,
-                cleanupService: cleanupService,
-                algorithmService: algorithmService,
+            // Wire all services into RefactoredClusterService
+            return new RefactoredClusterService(
+                doc: doc,
                 dataService: dataService,
-                timeoutService: timeoutService
+                algorithmService: algorithmService,
+                rotationService: rotationService,
+                placementService: placementService,
+                cleanupService: cleanupService,
+                timeoutService: timeoutService,
+                strategyFactory: strategyFactory,
+                flagManager: flagManager,
+                filterService: filterService
             );
         }
 
-        /// <summary>
-        /// Create a legacy-compatible UniversalClusterService without extracted services.
-        /// Uses fallback to legacy inline methods. Only for backward compatibility testing.
-        /// </summary>
-        /// <param name="flagManager">Optional FlagManager</param>
-        /// <param name="filterService">Optional FilterManagementService</param>
-        /// <returns>UniversalClusterService with no service dependencies (legacy mode)</returns>
-        public static UniversalClusterService CreateLegacyMode(
-            FlagManager flagManager = null,
-            FilterManagementService filterService = null)
-        {
-            // All services = null, will fallback to legacy methods
-            return new UniversalClusterService(
-                flagManager: flagManager,
-                filterService: filterService,
-                rotationService: null,
-                cleanupService: null,
-                algorithmService: null,
-                dataService: null,
-                timeoutService: null
-            );
-        }
 
-        /// <summary>
-        /// Create a partially-configured service with selected services enabled.
-        /// Useful for incremental migration or specific feature testing.
-        /// </summary>
-        /// <param name="doc">Revit document</param>
-        /// <param name="enableRotation">Enable Phase 6 rotation service</param>
-        /// <param name="enableCleanup">Enable Phase 7 cleanup service</param>
-        /// <param name="enableAlgorithm">Enable Phase 8 algorithm service</param>
-        /// <param name="enableData">Enable Phase 9 data service</param>
-        /// <param name="enableTimeout">Enable Phase 10 timeout service</param>
-        /// <param name="flagManager">Optional FlagManager</param>
-        /// <param name="filterService">Optional FilterManagementService</param>
-        /// <returns>Partially-configured UniversalClusterService</returns>
-        public static UniversalClusterService CreateCustom(
-            Document doc,
-            bool enableRotation = true,
-            bool enableCleanup = true,
-            bool enableAlgorithm = true,
-            bool enableData = true,
-            bool enableTimeout = true,
-            FlagManager flagManager = null,
-            FilterManagementService filterService = null)
-        {
-            return new UniversalClusterService(
-                flagManager: flagManager,
-                filterService: filterService,
-                rotationService: enableRotation ? new ClusterRotationService(null) : null,
-                cleanupService: enableCleanup ? new ClusterCleanupService() : null,
-                algorithmService: enableAlgorithm ? new ClusterAlgorithmService() : null,
-                dataService: enableData ? new ClusterDataService(doc) : null,
-                timeoutService: enableTimeout ? new ClusterTimeoutService() : null
-            );
-        }
+
+
 
         /// <summary>
         /// ✅ NEW: Create a fully-wired RefactoredClusterService with ALL Phase 1-10 services.

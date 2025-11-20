@@ -2,6 +2,7 @@ using Autodesk.Revit.DB;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -20,7 +21,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (minThicknessMm <= 0)
                 return elements;
 
-            double minThicknessInternal = UnitUtils.ConvertToInternalUnits(minThicknessMm, UnitTypeId.Millimeters);
+            double minThicknessInternal = RevitUnitConversionService.Instance.ToInternalMillimeters(minThicknessMm);
             
             return elements.Where(e =>
             {
@@ -1259,7 +1260,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (minThicknessMm <= 0)
                     return walls;
                 
-                double minThicknessInternal = UnitUtils.ConvertToInternalUnits(minThicknessMm, UnitTypeId.Millimeters);
+                double minThicknessInternal = RevitUnitConversionService.Instance.ToInternalMillimeters(minThicknessMm);
                 var filteredWalls = new List<Element>();
                 int skippedCount = 0;
                 
@@ -1276,7 +1277,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         else
                         {
                             skippedCount++;
-                            double wallThicknessMm = UnitUtils.ConvertFromInternalUnits(wallThickness, UnitTypeId.Millimeters);
+                            double wallThicknessMm = RevitUnitConversionService.Instance.FromInternalMillimeters(wallThickness);
                             System.Diagnostics.Debug.WriteLine($"[IntersectionDetectionService] SKIP: Wall {wall.Id.IntegerValue} thickness {wallThicknessMm:F1}mm < {minThicknessMm:F1}mm minimum");
                         }
                     }

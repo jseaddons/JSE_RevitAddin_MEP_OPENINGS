@@ -1002,6 +1002,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                 AddSnapshotParameters(cmd, snapshot);
                 cmd.ExecuteNonQuery();
+                
+                // ✅ LOG: Log all columns of inserted row (one sample row)
+                var snapshotParams = new Dictionary<string, object>
+                {
+                    { "SleeveInstanceId", snapshot.SleeveInstanceId?.ToString() ?? "NULL" },
+                    { "ClusterInstanceId", snapshot.ClusterInstanceId?.ToString() ?? "NULL" },
+                    { "SourceType", snapshot.SourceType ?? "NULL" },
+                    { "FilterId", snapshot.FilterId?.ToString() ?? "NULL" },
+                    { "ComboId", snapshot.ComboId?.ToString() ?? "NULL" },
+                    { "MepElementIdsJson", snapshot.MepElementIdsJson ?? "NULL" },
+                    { "HostElementIdsJson", snapshot.HostElementIdsJson ?? "NULL" },
+                    { "MepParametersJson", snapshot.MepParametersJson ?? "NULL" },
+                    { "HostParametersJson", snapshot.HostParametersJson ?? "NULL" },
+                    { "SourceDocKeysJson", snapshot.SourceDocKeysJson ?? "NULL" },
+                    { "HostDocKeysJson", snapshot.HostDocKeysJson ?? "NULL" }
+                };
+                
+                DatabaseOperationLogger.LogOperation(
+                    "INSERT",
+                    "SleeveSnapshots",
+                    snapshotParams,
+                    rowsAffected: 1,
+                    additionalInfo: "✅ Sample row: All columns logged");
             }
         }
 
@@ -1271,40 +1294,248 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             return result;
         }
 
+        /// <summary>
+        /// ⚠️⚠️⚠️ CRITICAL PROTECTED METHOD - DO NOT MODIFY WITHOUT TESTING ⚠️⚠️⚠️
+        /// 
+        /// ⚠️⚠️⚠️ MODIFICATION CONSENT REQUIRED ⚠️⚠️⚠️
+        /// To modify this method, you MUST:
+        /// 1. Get explicit consent from the project owner
+        /// 2. Test thoroughly with parameter transfer
+        /// 3. Verify LoadParameterValuesFromSnapshots is still called
+        /// 
+        /// Loads clash zones from database for a specific category.
+        /// 
+        /// ✅ CRITICAL: This method MUST call LoadParameterValuesFromSnapshots to populate
+        /// MepParameterValues and HostParameterValues. Without this, ParameterTransferService
+        /// will fail for both individual and cluster sleeves.
+        /// 
+        /// ⚠️ DO NOT:
+        /// - Remove LoadParameterValuesFromSnapshots call (breaks parameter transfer)
+        /// - Change the SQL query structure (breaks data loading)
+        /// - Modify MapClashZone or SetMetadataFromReader calls (breaks data mapping)
+        /// - Skip validation checks (prevents invalid data)
+        /// 
+        /// USED BY:
+        /// - ClusterDataService (for clustering)
+        /// - ParameterTransferService (for parameter transfer)
+        /// - RefreshService (for data reload)
+        /// </summary>
         public List<ClashZone> GetClashZonesByCategory(string category)
         {
             var result = new List<ClashZone>();
 
+            // ✅ VALIDATION: Ensure category is valid
             if (string.IsNullOrWhiteSpace(category))
-                return result;
-
-            using (var cmd = _context.Connection.CreateCommand())
             {
-                cmd.CommandText = @"
-                    SELECT 
-                        cz.*,
-                        fc.LinkedFileKey,
-                        fc.HostFileKey,
-                        f.FilterName
-                    FROM Filters f
-                    INNER JOIN FileCombos fc ON f.FilterId = fc.FilterId
-                    INNER JOIN ClashZones cz ON fc.ComboId = cz.ComboId
-                    WHERE f.Category = @Category";
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[ClashZoneRepository] GetClashZonesByCategory called with null/empty category");
+                return result; // Return empty list - validation failed
+            }
 
-                cmd.Parameters.AddWithValue("@Category", category);
-
-                using (var reader = cmd.ExecuteReader())
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
                 {
-                    while (reader.Read())
+                    // ⚠️⚠️⚠️ PROTECTED SQL QUERY - MODIFICATION CONSENT REQUIRED ⚠️⚠️⚠️
+                    // This query structure is required for proper data loading
+                    // To modify: Get explicit consent from project owner
+                    cmd.CommandText = @"
+                        SELECT 
+                            cz.*,
+                            fc.LinkedFileKey,
+                            fc.HostFileKey,
+                            f.FilterName
+                        FROM Filters f
+                        INNER JOIN FileCombos fc ON f.FilterId = fc.FilterId
+                        INNER JOIN ClashZones cz ON fc.ComboId = cz.ComboId
+                        WHERE f.Category = @Category";
+
+                    cmd.Parameters.AddWithValue("@Category", category);
+
+                    using (var reader = cmd.ExecuteReader())
                     {
-                        var clashZone = MapClashZone(reader);
-                        SetMetadataFromReader(clashZone, reader);
-                        result.Add(clashZone);
+                        while (reader.Read())
+                        {
+                            var clashZone = MapClashZone(reader);
+                            SetMetadataFromReader(clashZone, reader);
+                            result.Add(clashZone);
+                        }
                     }
                 }
+
+                // ⚠️⚠️⚠️ CRITICAL: DO NOT REMOVE THIS CALL - MODIFICATION CONSENT REQUIRED ⚠️⚠️⚠️
+                // ✅ CRITICAL: Load parameter values from SleeveSnapshots for parameter transfer service
+                // This populates MepParameterValues and HostParameterValues which are required
+                // for ParameterTransferService to work with both individual and cluster sleeves.
+                // Without this call, parameter transfer will fail silently!
+                // 
+                // ⚠️ TO REMOVE OR MODIFY THIS CALL:
+                // 1. Get explicit consent from project owner
+                // 2. Test thoroughly with ParameterTransferService
+                // 3. Verify cluster sleeves can still transfer parameters
+                LoadParameterValuesFromSnapshots(result);
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Error($"[ClashZoneRepository] Error loading clash zones for category '{category}': {ex.Message}");
+                }
+                // Return empty list on error - don't throw (allows graceful degradation)
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Load MepParameterValues and HostParameterValues from SleeveSnapshots table and populate into ClashZone objects.
+        /// This is required for the parameter transfer service to work with cluster sleeves.
+        /// </summary>
+        private void LoadParameterValuesFromSnapshots(List<ClashZone> clashZones)
+        {
+            if (clashZones == null || clashZones.Count == 0)
+                return;
+
+            try
+            {
+                // Build lookup dictionaries for efficient matching
+                var sleeveIdToClashZone = new Dictionary<int, List<ClashZone>>();
+                var clusterIdToClashZone = new Dictionary<int, List<ClashZone>>();
+
+                foreach (var cz in clashZones)
+                {
+                    // Match by SleeveInstanceId (for individual sleeves)
+                    if (cz.SleeveInstanceId > 0)
+                    {
+                        if (!sleeveIdToClashZone.ContainsKey(cz.SleeveInstanceId))
+                            sleeveIdToClashZone[cz.SleeveInstanceId] = new List<ClashZone>();
+                        sleeveIdToClashZone[cz.SleeveInstanceId].Add(cz);
+                    }
+
+                    // Match by ClusterSleeveInstanceId (for cluster sleeves)
+                    if (cz.ClusterSleeveInstanceId > 0)
+                    {
+                        if (!clusterIdToClashZone.ContainsKey(cz.ClusterSleeveInstanceId))
+                            clusterIdToClashZone[cz.ClusterSleeveInstanceId] = new List<ClashZone>();
+                        clusterIdToClashZone[cz.ClusterSleeveInstanceId].Add(cz);
+                    }
+                }
+
+                if (sleeveIdToClashZone.Count == 0 && clusterIdToClashZone.Count == 0)
+                    return;
+
+                // Load snapshots from database
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    var sleeveIds = sleeveIdToClashZone.Keys.ToList();
+                    var clusterIds = clusterIdToClashZone.Keys.ToList();
+
+                if (sleeveIds.Count > 0 || clusterIds.Count > 0)
+                {
+                    var conditions = new List<string>();
+
+                    if (sleeveIds.Count > 0)
+                    {
+                        var placeholders = string.Join(",", sleeveIds.Select((_, i) => $"@SleeveId{i}"));
+                        conditions.Add($"SleeveInstanceId IN ({placeholders})");
+                        for (int i = 0; i < sleeveIds.Count; i++)
+                        {
+                            cmd.Parameters.AddWithValue($"@SleeveId{i}", sleeveIds[i]);
+                        }
+                    }
+
+                    if (clusterIds.Count > 0)
+                    {
+                        var placeholders = string.Join(",", clusterIds.Select((_, i) => $"@ClusterId{i}"));
+                        conditions.Add($"ClusterInstanceId IN ({placeholders})");
+                        for (int i = 0; i < clusterIds.Count; i++)
+                        {
+                            cmd.Parameters.AddWithValue($"@ClusterId{i}", clusterIds[i]);
+                        }
+                    }
+
+                    cmd.CommandText = $@"
+                        SELECT 
+                            SleeveInstanceId,
+                            ClusterInstanceId,
+                            MepParametersJson,
+                            HostParametersJson
+                        FROM SleeveSnapshots
+                        WHERE ({string.Join(" OR ", conditions)})";
+
+                        using (var reader = cmd.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                var sleeveId = GetInt(reader, "SleeveInstanceId", -1);
+                                var clusterId = GetInt(reader, "ClusterInstanceId", -1);
+                                var mepParamsJson = GetNullableString(reader, "MepParametersJson");
+                                var hostParamsJson = GetNullableString(reader, "HostParametersJson");
+
+                                List<ClashZone> matchingZones = null;
+
+                                // Match by SleeveInstanceId first (individual sleeves)
+                                if (sleeveId > 0 && sleeveIdToClashZone.TryGetValue(sleeveId, out var sleeveZones))
+                                {
+                                    matchingZones = sleeveZones;
+                                }
+                                // Match by ClusterInstanceId (cluster sleeves)
+                                else if (clusterId > 0 && clusterIdToClashZone.TryGetValue(clusterId, out var clusterZones))
+                                {
+                                    matchingZones = clusterZones;
+                                }
+
+                                if (matchingZones != null && matchingZones.Count > 0)
+                                {
+                                    // Deserialize JSON and populate parameter values
+                                    var mepParams = DeserializeDictionary(mepParamsJson);
+                                    var hostParams = DeserializeDictionary(hostParamsJson);
+
+                                    foreach (var cz in matchingZones)
+                                    {
+                                        // Only populate if not already set (preserve existing values)
+                                        if (cz.MepParameterValues == null || cz.MepParameterValues.Count == 0)
+                                        {
+                                            cz.MepParameterValues = mepParams?.Select(kv => new Models.SerializableKeyValue { Key = kv.Key, Value = kv.Value }).ToList() 
+                                                ?? new List<Models.SerializableKeyValue>();
+                                        }
+
+                                        if (cz.HostParameterValues == null || cz.HostParameterValues.Count == 0)
+                                        {
+                                            cz.HostParameterValues = hostParams?.Select(kv => new Models.SerializableKeyValue { Key = kv.Key, Value = kv.Value }).ToList() 
+                                                ?? new List<Models.SerializableKeyValue>();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log error but don't fail - parameter values are optional
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Warning($"[ClashZoneRepository] Error loading parameter values from snapshots: {ex.Message}");
+                }
+            }
+        }
+
+        private Dictionary<string, string> DeserializeDictionary(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json) || json == "{}" || json == "NULL")
+                return new Dictionary<string, string>();
+
+            try
+            {
+                return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json) 
+                    ?? new Dictionary<string, string>();
+            }
+            catch
+            {
+                return new Dictionary<string, string>();
+            }
         }
 
         private void SetMetadataFromReader(ClashZone clashZone, SQLiteDataReader reader)
@@ -2026,6 +2257,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             if (updatesList.Count == 0)
                 return;
             
+            // ✅ LOG: Batch flag update operation
+            DatabaseOperationLogger.LogOperation(
+                "UPDATE",
+                "ClashZones",
+                new Dictionary<string, object>
+                {
+                    { "BatchSize", updatesList.Count },
+                    { "Operation", "BatchUpdateFlags" }
+                },
+                rowsAffected: -1,
+                additionalInfo: $"Batch updating flags for {updatesList.Count} clash zones");
+            
             using (var transaction = _context.Connection.BeginTransaction())
             {
                 try
@@ -2123,7 +2366,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             clusterIdParam.Value = update.ClusterInstanceId > 0 ? (object)update.ClusterInstanceId : DBNull.Value;
                             // ✅ EDGE CASE FIELDS: Set MarkedForClusterProcess, AfterClusterSleeveId, IsClusteredFlag
                             markedForClusterParam.Value = update.MarkedForClusterProcess.HasValue ? (object)(update.MarkedForClusterProcess.Value ? 1 : 0) : DBNull.Value;
-                            afterClusterSleeveIdParam.Value = update.AfterClusterSleeveId > 0 ? (object)update.AfterClusterSleeveId : DBNull.Value;
+                            
+                            // ✅ CRITICAL: Save AfterClusterSleeveId (original individual sleeve ID before deletion)
+                            // This is set by RefactoredClusterService BEFORE calling UpdateFlagsForPlacement
+                            if (update.AfterClusterSleeveId > 0)
+                            {
+                                afterClusterSleeveIdParam.Value = update.AfterClusterSleeveId;
+                                // ✅ DIAGNOSTIC: Log to database operations log
+                                DatabaseOperationLogger.LogOperation(
+                                    "UPDATE",
+                                    "ClashZones",
+                                    new Dictionary<string, object>
+                                    {
+                                        { "ClashZoneGuid", guidString },
+                                        { "AfterClusterSleeveId", update.AfterClusterSleeveId },
+                                        { "IsClusterResolvedFlag", update.IsClusterResolved ? 1 : 0 },
+                                        { "ClusterInstanceId", update.ClusterInstanceId }
+                                    },
+                                    rowsAffected: -1,
+                                    additionalInfo: $"Setting AfterClusterSleeveId={update.AfterClusterSleeveId} for cluster {update.ClusterInstanceId}");
+                            }
+                            else
+                            {
+                                afterClusterSleeveIdParam.Value = DBNull.Value;
+                            }
+                            
                             isClusteredFlagParam.Value = update.IsClusteredFlag.HasValue ? (object)(update.IsClusteredFlag.Value ? 1 : 0) : DBNull.Value;
                             // ✅ SIMPLER MATCHING: Use OLD sleeve/cluster IDs for direct matching (much more reliable!)
                             oldSleeveIdParam.Value = update.OldSleeveInstanceId > 0 ? (object)update.OldSleeveInstanceId : DBNull.Value;
@@ -2137,6 +2404,54 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             
                             int rowsAffected = cmd.ExecuteNonQuery();
                             rowsAffectedTotal += rowsAffected;
+                            
+                            // ✅ CRITICAL: Track if no rows were affected (indicates ClashZone not found in database)
+                            if (rowsAffected == 0)
+                            {
+                                notFoundCount++;
+                                _logger($"[SQLite] ⚠️⚠️⚠️ WARNING: GUID {update.ClashZoneId} matched 0 rows! ClashZone not found in database.");
+                                _logger($"[SQLite] ⚠️ Update details: GUID={guidString}, OldSleeveId={update.OldSleeveInstanceId}, OldClusterId={update.OldClusterInstanceId}, MEP={update.MepElementId}, Host={update.StructuralElementId}");
+                                _logger($"[SQLite] ⚠️ IsClusterResolved={update.IsClusterResolved}, ClusterId={update.ClusterInstanceId}");
+                                
+                                // ✅ DIAGNOSTIC: Try to find why it didn't match
+                                using (var diagCmd = _context.Connection.CreateCommand())
+                                {
+                                    diagCmd.Transaction = transaction;
+                                    diagCmd.CommandText = @"
+                                        SELECT ClashZoneId, ClashZoneGuid, SleeveInstanceId, ClusterInstanceId, 
+                                               MepElementId, HostElementId, IsClusterResolvedFlag
+                                        FROM ClashZones
+                                        WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid) 
+                                           OR (SleeveInstanceId = @OldSleeveInstanceId AND MepElementId = @MepElementId AND HostElementId = @HostElementId)
+                                           OR (ClusterInstanceId = @OldClusterInstanceId AND MepElementId = @MepElementId AND HostElementId = @HostElementId)
+                                        LIMIT 5";
+                                    diagCmd.Parameters.AddWithValue("@ClashZoneGuid", guidString);
+                                    diagCmd.Parameters.AddWithValue("@OldSleeveInstanceId", update.OldSleeveInstanceId);
+                                    diagCmd.Parameters.AddWithValue("@OldClusterInstanceId", update.OldClusterInstanceId);
+                                    diagCmd.Parameters.AddWithValue("@MepElementId", update.MepElementId);
+                                    diagCmd.Parameters.AddWithValue("@HostElementId", update.StructuralElementId);
+                                    
+                                    using (var reader = diagCmd.ExecuteReader())
+                                    {
+                                        int foundCount = 0;
+                                        while (reader.Read())
+                                        {
+                                            foundCount++;
+                                            var foundGuid = GetNullableString(reader, "ClashZoneGuid");
+                                            var foundSleeveId = GetInt(reader, "SleeveInstanceId", -1);
+                                            var foundClusterId = GetInt(reader, "ClusterInstanceId", -1);
+                                            var foundMepId = GetInt(reader, "MepElementId");
+                                            var foundHostId = GetInt(reader, "HostElementId");
+                                            var foundIsClusterResolved = GetBool(reader, "IsClusterResolvedFlag");
+                                            _logger($"[SQLite] ⚠️   Found ClashZone {foundCount}: GUID={foundGuid}, SleeveId={foundSleeveId}, ClusterId={foundClusterId}, MEP={foundMepId}, Host={foundHostId}, IsClusterResolved={foundIsClusterResolved}");
+                                        }
+                                        if (foundCount == 0)
+                                        {
+                                            _logger($"[SQLite] ⚠️   No matching ClashZones found with any criteria - GUID, SleeveId, or ClusterId");
+                                        }
+                                    }
+                                }
+                            }
                             
                             // ✅ CRITICAL: Track if multiple rows were affected (indicates duplicate entries or WHERE clause issue)
                             if (rowsAffected > 1)
@@ -2263,9 +2578,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     }
                                 }
                             }
-                            else
+                            else if (rowsAffected == 1)
                             {
-                                _logger($"[SQLite] ✅ Updated GUID {update.ClashZoneId}: IsResolved={update.IsResolved}, IsClusterResolved={update.IsClusterResolved}, SleeveId={update.SleeveInstanceId}, ClusterId={update.ClusterInstanceId} (1 row affected)");
+                                // ✅ SUCCESS: Log with AfterClusterSleeveId
+                                _logger($"[SQLite] ✅ Updated GUID {update.ClashZoneId}: IsResolved={update.IsResolved}, IsClusterResolved={update.IsClusterResolved}, " +
+                                    $"SleeveId={update.SleeveInstanceId}, ClusterId={update.ClusterInstanceId}, AfterClusterSleeveId={update.AfterClusterSleeveId} (1 row affected)");
+                                
+                                // ✅ DIAGNOSTIC: Log to database operations log for AfterClusterSleeveId updates
+                                if (update.AfterClusterSleeveId > 0)
+                                {
+                                    DatabaseOperationLogger.LogOperation(
+                                        "UPDATE",
+                                        "ClashZones",
+                                        new Dictionary<string, object>
+                                        {
+                                            { "ClashZoneGuid", guidString },
+                                            { "AfterClusterSleeveId", update.AfterClusterSleeveId },
+                                            { "IsClusterResolvedFlag", update.IsClusterResolved ? 1 : 0 },
+                                            { "ClusterInstanceId", update.ClusterInstanceId },
+                                            { "SleeveInstanceId", update.SleeveInstanceId }
+                                        },
+                                        rowsAffected: 1,
+                                        additionalInfo: $"✅ Saved AfterClusterSleeveId={update.AfterClusterSleeveId} (original individual sleeve ID before deletion)");
+                                }
                             }
                             
                             updateCount++;

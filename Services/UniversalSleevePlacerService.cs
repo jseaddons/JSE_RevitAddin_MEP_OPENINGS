@@ -128,7 +128,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (size.StartsWith("Ø"))
                 {
                     var mm = double.Parse(size.TrimStart('Ø'));
-                    return UnitUtils.ConvertToInternalUnits(mm, UnitTypeId.Millimeters);
+                    return RevitUnitConversionService.Instance.ToInternalMillimeters(mm);
                 }
             }
             catch { }
@@ -161,7 +161,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     var norm = filtered.ToString().Replace(',', '.');
                     if (double.TryParse(norm, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var val))
-                        return norm.Length > 0 ? UnitUtils.ConvertToInternalUnits(val, UnitTypeId.Millimeters) : 0.0;
+                        return norm.Length > 0 ? RevitUnitConversionService.Instance.ToInternalMillimeters(val) : 0.0;
                     // Try plain parse (feet) if invariant mm parse failed
                     if (double.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var feetVal))
                         return feetVal;
@@ -860,7 +860,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                DebugLogger.Info($"[UniversalSleevePlacer] ✅ PATH 1 (Replay): Using existing sleeve size - W={UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters):F1}mm, H={UnitUtils.ConvertFromInternalUnits(finalHeight, UnitTypeId.Millimeters):F1}mm, D={UnitUtils.ConvertFromInternalUnits(finalDiameter, UnitTypeId.Millimeters):F1}mm");
+                                DebugLogger.Info($"[UniversalSleevePlacer] ✅ PATH 1 (Replay): Using existing sleeve size - W={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}mm, H={RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm, D={RevitUnitConversionService.Instance.FromInternalMillimeters(finalDiameter):F1}mm");
                                 File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9: ✅ PATH 1 (Replay) - Using existing sleeve size (skipping clearance calculation)\n");
                             }
                         }
@@ -898,7 +898,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 							finalWidth = finalDiameter;
 							finalHeight = finalDiameter;
 							       if (!DeploymentConfiguration.DeploymentMode)
-							DebugLogger.Info($"[UniversalSleevePlacer] PIPE: Raw={UnitUtils.ConvertFromInternalUnits(rawDiameter, UnitTypeId.Millimeters):F1}mm + Clearance={UnitUtils.ConvertFromInternalUnits(clearance, UnitTypeId.Millimeters):F1}mm = Final={UnitUtils.ConvertFromInternalUnits(finalDiameter, UnitTypeId.Millimeters):F1}mm");
+							DebugLogger.Info($"[UniversalSleevePlacer] PIPE: Raw={RevitUnitConversionService.Instance.FromInternalMillimeters(rawDiameter):F1}mm + Clearance={RevitUnitConversionService.Instance.FromInternalMillimeters(clearance):F1}mm = Final={RevitUnitConversionService.Instance.FromInternalMillimeters(finalDiameter):F1}mm");
 						}
 						else if (_strategy is DamperPlacementStrategy damperStrategy)
                         {
@@ -914,7 +914,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             finalDiameter = finalWidth; // Not used for dampers (rectangular only)
                             
                                                         if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[UniversalSleevePlacer] DAMPER: Raw={UnitUtils.ConvertFromInternalUnits(rawWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(rawHeight, UnitTypeId.Millimeters):F1}mm → Final={UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(finalHeight, UnitTypeId.Millimeters):F1}mm");
+                            DebugLogger.Info($"[UniversalSleevePlacer] DAMPER: Raw={RevitUnitConversionService.Instance.FromInternalMillimeters(rawWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(rawHeight):F1}mm → Final={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm");
                         }
                         
                         // ✅ DEBUG: Log strategy information
@@ -930,7 +930,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var rawHeight = clashZone.MepElementHeight;
                             
                                                         if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[UniversalSleevePlacer] DUCT CALCULATION START: Raw dimensions {UnitUtils.ConvertFromInternalUnits(rawWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(rawHeight, UnitTypeId.Millimeters):F1}mm");
+                            DebugLogger.Info($"[UniversalSleevePlacer] DUCT CALCULATION START: Raw dimensions {RevitUnitConversionService.Instance.FromInternalMillimeters(rawWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(rawHeight):F1}mm");
                             
                             var clearance = GetClearanceFromConditions("Ducts", mepSize);
                             finalWidth = rawWidth + (2 * clearance);
@@ -938,7 +938,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             finalDiameter = finalWidth; // For round elements
                             
                                                         if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[UniversalSleevePlacer] DUCT: Raw={UnitUtils.ConvertFromInternalUnits(rawWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(rawHeight, UnitTypeId.Millimeters):F1}mm + Clearance={UnitUtils.ConvertFromInternalUnits(clearance, UnitTypeId.Millimeters):F1}mm = Final={UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(finalHeight, UnitTypeId.Millimeters):F1}mm");
+                            DebugLogger.Info($"[UniversalSleevePlacer] DUCT: Raw={RevitUnitConversionService.Instance.FromInternalMillimeters(rawWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(rawHeight):F1}mm + Clearance={RevitUnitConversionService.Instance.FromInternalMillimeters(clearance):F1}mm = Final={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm");
                         }
                         else if (_strategy is CableTrayPlacementStrategy cableTrayStrategy)
                         {
@@ -949,7 +949,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var rawHeight = clashZone.MepElementHeight;
 
                                                         if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY STRATEGY: Raw={UnitUtils.ConvertFromInternalUnits(rawWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(rawHeight, UnitTypeId.Millimeters):F1}mm");
+                            DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY STRATEGY: Raw={RevitUnitConversionService.Instance.FromInternalMillimeters(rawWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(rawHeight):F1}mm");
                                                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY STRATEGY: UI Clearance Settings Count={_clearanceSettings.Count}");
 
@@ -960,11 +960,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             finalHeight = adj2.finalHeight;
 
                                                         if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY STRATEGY: Final={UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(finalHeight, UnitTypeId.Millimeters):F1}mm");
+                            DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY STRATEGY: Final={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm");
                             finalDiameter = finalWidth; // Not used for cable trays (rectangular only)
 
                                                         if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY: Raw={UnitUtils.ConvertFromInternalUnits(rawWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(rawHeight, UnitTypeId.Millimeters):F1}mm → Final={UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters):F1}x{UnitUtils.ConvertFromInternalUnits(finalHeight, UnitTypeId.Millimeters):F1}mm");
+                            DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY: Raw={RevitUnitConversionService.Instance.FromInternalMillimeters(rawWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(rawHeight):F1}mm → Final={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm");
                         }
                         else
                         {
@@ -972,7 +972,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // 🔥 FALLBACK: Use raw dimensions + default clearance if no strategy matches
                             var rawWidth = clashZone.MepElementWidth;
                             var rawHeight = clashZone.MepElementHeight;
-                            var defaultClearance = UnitUtils.ConvertToInternalUnits(50, UnitTypeId.Millimeters); // 50mm default
+                            var defaultClearance = RevitUnitConversionService.Instance.ToInternalMillimeters(50); // 50mm default
                             
                             finalWidth = rawWidth + (2 * defaultClearance);
                             finalHeight = rawHeight + (2 * defaultClearance);
@@ -1466,7 +1466,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 
                                                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
-                                DebugLogger.Info($"[UniversalSleevePlacer] Placed sleeve {sleeveInstance.Id} for ClashZone {clashZone.Id}, W={UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters):F1}mm, H={UnitUtils.ConvertFromInternalUnits(finalHeight, UnitTypeId.Millimeters):F1}mm (bbox deferred)");
+                                DebugLogger.Info($"[UniversalSleevePlacer] Placed sleeve {sleeveInstance.Id} for ClashZone {clashZone.Id}, W={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}mm, H={RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm (bbox deferred)");
                                     try
                                     {
                                         var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
@@ -1730,21 +1730,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                 zone.SleeveBoundingBoxMinX, zone.SleeveBoundingBoxMinY, zone.SleeveBoundingBoxMinZ,
                                                 zone.SleeveBoundingBoxMaxX, zone.SleeveBoundingBoxMaxY, zone.SleeveBoundingBoxMaxZ);
                                             
-                                            // ✅ ROTATED BBOX: Calculate and save rotated bounding box ONLY for non-axis-aligned angles
-                                            // Skip for axis-aligned angles: 0°, 90°, 180°, 270° (use axis-aligned bbox instead)
-                                            // For other angles, calculate rotated bbox
-                                            // For axis-aligned sleeves, rotated bbox columns remain NULL
+                                            // ✅ ROTATED BBOX: Calculate and save rotated bounding box ONLY for rotated axis-aligned sleeves (non-straight axis-aligned)
+                                            // Skip for straight axis-aligned angles to WCS: 0°, 90°, 180°, 270° (use straight axis-aligned bbox instead)
+                                            // For rotated axis-aligned angles (45°, 135°, 225°, 315°), calculate rotated bbox
+                                            // For straight axis-aligned sleeves, rotated bbox columns remain NULL
                                             var rotationAngleRad = zone.MepElementRotationAngle;
                                             var rotationAngleDeg = Math.Abs(rotationAngleRad * 180.0 / Math.PI);
                                             
-                                            // Check if angle is axis-aligned (0°, 90°, 180°, 270°) with 1° tolerance
-                                            bool isAxisAligned = Math.Abs(rotationAngleDeg) < 1.0 || 
+                                            // Check if angle is straight axis-aligned to WCS (0°, 90°, 180°, 270°) with 1° tolerance
+                                            bool isStraightAxisAligned = Math.Abs(rotationAngleDeg) < 1.0 || 
                                                                 Math.Abs(rotationAngleDeg - 90.0) < 1.0 ||
                                                                 Math.Abs(rotationAngleDeg - 180.0) < 1.0 ||
                                                                 Math.Abs(rotationAngleDeg - 270.0) < 1.0 ||
                                                                 Math.Abs(rotationAngleDeg - 360.0) < 1.0;
                                             
-                                            if (Math.Abs(rotationAngleRad) > 1e-6 && !isAxisAligned)
+                                            if (Math.Abs(rotationAngleRad) > 1e-6 && !isStraightAxisAligned)
                                             {
                                                 try
                                                 {
@@ -1813,6 +1813,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                             zone.SleevePlacementPointActiveDocumentY,  // Active document Y (sleeve center)
                                                             zone.SleevePlacementPointActiveDocumentZ   // Active document Z (sleeve center)
                                                         );
+                                                        
+                                                        // ✅ DIAGNOSTIC: Log corner saving attempt
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                                        {
+                                                            DebugLogger.Info($"[SLEEVE-CORNERS] ATTEMPTING to save corners for zone {zone.Id}: " +
+                                                                $"Rotation={rotationAngleDeg:F1}°, " +
+                                                                $"ActiveCoords=({zone.SleevePlacementPointActiveDocumentX:F6}, {zone.SleevePlacementPointActiveDocumentY:F6}, {zone.SleevePlacementPointActiveDocumentZ:F6}), " +
+                                                                $"Width={actualWidth * 304.8:F1}mm, Height={actualHeight * 304.8:F1}mm");
+                                                        }
+                                                        
+                                                        // ✅ CRITICAL: Check if Active coordinates are valid (not all zero)
+                                                        if (Math.Abs(zone.SleevePlacementPointActiveDocumentX) < 1e-6 && 
+                                                            Math.Abs(zone.SleevePlacementPointActiveDocumentY) < 1e-6 && 
+                                                            Math.Abs(zone.SleevePlacementPointActiveDocumentZ) < 1e-6)
+                                                        {
+                                                            // ✅ FALLBACK: Use regular placement point if Active coordinates are not set
+                                                            sleeveCenter = zone.SleevePlacementPoint;
+                                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                            {
+                                                                DebugLogger.Warning($"[SLEEVE-CORNERS] Active coordinates are zero for zone {zone.Id}, using SleevePlacementPoint instead: ({sleeveCenter.X:F6}, {sleeveCenter.Y:F6}, {sleeveCenter.Z:F6})");
+                                                            }
+                                                        }
                                                         
                                                         // Step 1: Calculate 4 corners in local coordinate system (before rotation)
                                                         // Use sleeve width and height (saved to database via UpdateSleevePlacement)
@@ -1902,7 +1924,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                     }
                                                 }
                                             }
-                                            else if (Math.Abs(rotationAngleRad) > 1e-6 && isAxisAligned)
+                                            else if (Math.Abs(rotationAngleRad) > 1e-6 && isStraightAxisAligned)
                                             {
                                                 // Axis-aligned angle (0°, 90°, 180°, 270°) - no need for rotated bbox
                                                 if (!DeploymentConfiguration.DeploymentMode)
@@ -3078,7 +3100,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Using UI clearance: {clearanceInMm}mm for {category}\n");
                                                 if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[GetClearanceFromConditions] Using UI clearance: {clearanceInMm}mm for {category}");
-                        return UnitUtils.ConvertToInternalUnits(clearanceInMm, UnitTypeId.Millimeters);
+                        return RevitUnitConversionService.Instance.ToInternalMillimeters(clearanceInMm);
                     }
                 }
                 
@@ -3097,7 +3119,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ⚠️ No clearance settings available, using default 50mm\n");
                                 if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Warning($"[GetClearanceFromConditions] No clearance settings available, using default 50mm");
-                return UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters);
+                return RevitUnitConversionService.Instance.ToInternalMillimeters(50.0);
             }
             catch (Exception ex)
             {
@@ -3105,7 +3127,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ❌ ERROR in clearance calculation: {ex.Message}\n");
                                 if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[GetClearanceFromConditions] Error: {ex.Message}");
-                return UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters);
+                return RevitUnitConversionService.Instance.ToInternalMillimeters(50.0);
             }
         }
         
@@ -3293,7 +3315,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 // Convert from mm to feet (Revit internal units)
-                double clearanceInFeet = UnitUtils.ConvertToInternalUnits(clearanceInMm, UnitTypeId.Millimeters);
+                double clearanceInFeet = RevitUnitConversionService.Instance.ToInternalMillimeters(clearanceInMm);
                 
                                 if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[GetClearanceFromXmlConditions] {category}: {clearanceInMm}mm → {clearanceInFeet:F6}ft");
@@ -3303,7 +3325,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                                 if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Error($"[GetClearanceFromXmlConditions] Error: {ex.Message}");
-                return UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters);
+                return RevitUnitConversionService.Instance.ToInternalMillimeters(50.0);
             }
         }
 
@@ -3399,9 +3421,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 // Convert to millimeters for easier validation
-                double widthMm = UnitUtils.ConvertFromInternalUnits(width, UnitTypeId.Millimeters);
-                double heightMm = UnitUtils.ConvertFromInternalUnits(height, UnitTypeId.Millimeters);
-                double diameterMm = UnitUtils.ConvertFromInternalUnits(diameter, UnitTypeId.Millimeters);
+                double widthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(width);
+                double heightMm = RevitUnitConversionService.Instance.FromInternalMillimeters(height);
+                double diameterMm = RevitUnitConversionService.Instance.FromInternalMillimeters(diameter);
                 
                 // 🚨 CRITICAL LIMITS: Prevent oversized sleeves that crash Revit
                 const double MAX_SIZE_MM = 10000.0; // 10 meters - reasonable maximum
@@ -3540,9 +3562,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                double diamMm = UnitUtils.ConvertFromInternalUnits(roundedDiameter, UnitTypeId.Millimeters);
-                double widthMm = UnitUtils.ConvertFromInternalUnits(roundedWidth, UnitTypeId.Millimeters);
-                double heightMm = UnitUtils.ConvertFromInternalUnits(roundedHeight, UnitTypeId.Millimeters);
+                double diamMm = RevitUnitConversionService.Instance.FromInternalMillimeters(roundedDiameter);
+                double widthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(roundedWidth);
+                double heightMm = RevitUnitConversionService.Instance.FromInternalMillimeters(roundedHeight);
                 DebugLogger.Info($"[PARAM-SET] Sleeve {sleeveInstance.Id.IntegerValue}: isPipe={isPipe}, Shape={mepSize.Shape}, roundedDia={diamMm:F1}mm, W={widthMm:F1}mm, H={heightMm:F1}mm\n");
             }
             catch { }
@@ -3579,7 +3601,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // ✅ PERFORMANCE: Removed verbose logging - only log in diagnostic mode
                     if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
                     {
-                        double diamMm = UnitUtils.ConvertFromInternalUnits(roundedDiameter, UnitTypeId.Millimeters);
+                        double diamMm = RevitUnitConversionService.Instance.FromInternalMillimeters(roundedDiameter);
                         DebugLogger.Info($"[UniversalSleevePlacer] Set '{name}' = {diamMm:F1}mm on sleeve {sleeveInstance.Id}");
                     }
                     setOk = true;
@@ -3632,13 +3654,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 roundedHeight = tempWidth;     // Use original width as height (shorter dimension)
                 
                                 if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Info($"[UniversalSleevePlacer] FLOOR DUCT SWAP: Height({UnitUtils.ConvertFromInternalUnits(roundedHeight, UnitTypeId.Millimeters):F1}mm) > Width({UnitUtils.ConvertFromInternalUnits(tempWidth, UnitTypeId.Millimeters):F1}mm) - Swapped to make longer dimension the width");
+                DebugLogger.Info($"[UniversalSleevePlacer] FLOOR DUCT SWAP: Height({RevitUnitConversionService.Instance.FromInternalMillimeters(roundedHeight):F1}mm) > Width({RevitUnitConversionService.Instance.FromInternalMillimeters(tempWidth):F1}mm) - Swapped to make longer dimension the width");
             }
             else
             {
                 // Width is already longer - no swap needed
                                 if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Info($"[UniversalSleevePlacer] FLOOR DUCT NO SWAP: Width({UnitUtils.ConvertFromInternalUnits(roundedWidth, UnitTypeId.Millimeters):F1}mm) >= Height({UnitUtils.ConvertFromInternalUnits(roundedHeight, UnitTypeId.Millimeters):F1}mm) - Longer dimension already width");
+                DebugLogger.Info($"[UniversalSleevePlacer] FLOOR DUCT NO SWAP: Width({RevitUnitConversionService.Instance.FromInternalMillimeters(roundedWidth):F1}mm) >= Height({RevitUnitConversionService.Instance.FromInternalMillimeters(roundedHeight):F1}mm) - Longer dimension already width");
             }
             
             // Update the sleeve parameters with correct values
@@ -3646,13 +3668,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             GetParam("Height")?.Set(roundedHeight);
             
                         if (!DeploymentConfiguration.DeploymentMode)
-            DebugLogger.Info($"[UniversalSleevePlacer] FLOOR DUCT FINAL: Width={UnitUtils.ConvertFromInternalUnits(roundedWidth, UnitTypeId.Millimeters):F1}mm, Height={UnitUtils.ConvertFromInternalUnits(roundedHeight, UnitTypeId.Millimeters):F1}mm (NO ROTATION)");
+            DebugLogger.Info($"[UniversalSleevePlacer] FLOOR DUCT FINAL: Width={RevitUnitConversionService.Instance.FromInternalMillimeters(roundedWidth):F1}mm, Height={RevitUnitConversionService.Instance.FromInternalMillimeters(roundedHeight):F1}mm (NO ROTATION)");
         }
         else if (isFloorHost && isCableTray && !treatAsCircular)
         {
             // Cable trays on floors: NO width/height swap - maintain original orientation
                         if (!DeploymentConfiguration.DeploymentMode)
-            DebugLogger.Info($"[UniversalSleevePlacer] FLOOR CABLE TRAY: NO SWAP - Width={UnitUtils.ConvertFromInternalUnits(roundedWidth, UnitTypeId.Millimeters):F1}mm, Height={UnitUtils.ConvertFromInternalUnits(roundedHeight, UnitTypeId.Millimeters):F1}mm");
+            DebugLogger.Info($"[UniversalSleevePlacer] FLOOR CABLE TRAY: NO SWAP - Width={RevitUnitConversionService.Instance.FromInternalMillimeters(roundedWidth):F1}mm, Height={RevitUnitConversionService.Instance.FromInternalMillimeters(roundedHeight):F1}mm");
         }
         
         // CRITICAL: Set Depth parameter based on host type
@@ -3673,7 +3695,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 roundedWidth = roundedHeight;  // Use height as width
                 roundedHeight = tempWidth;     // Use original width as height
                                 if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Info($"[UniversalSleevePlacer] X-FRAMING SWAP: Width={UnitUtils.ConvertFromInternalUnits(roundedWidth, UnitTypeId.Millimeters):F1}mm, Height={UnitUtils.ConvertFromInternalUnits(roundedHeight, UnitTypeId.Millimeters):F1}mm");
+                DebugLogger.Info($"[UniversalSleevePlacer] X-FRAMING SWAP: Width={RevitUnitConversionService.Instance.FromInternalMillimeters(roundedWidth):F1}mm, Height={RevitUnitConversionService.Instance.FromInternalMillimeters(roundedHeight):F1}mm");
             }
             else if (hostOrientation == "Y")
             {
@@ -3682,7 +3704,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 roundedWidth = roundedHeight;  // Use height as width
                 roundedHeight = tempWidth;     // Use original width as height
                                 if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Info($"[UniversalSleevePlacer] Y-FRAMING SWAP: Width={UnitUtils.ConvertFromInternalUnits(roundedWidth, UnitTypeId.Millimeters):F1}mm, Height={UnitUtils.ConvertFromInternalUnits(roundedHeight, UnitTypeId.Millimeters):F1}mm");
+                DebugLogger.Info($"[UniversalSleevePlacer] Y-FRAMING SWAP: Width={RevitUnitConversionService.Instance.FromInternalMillimeters(roundedWidth):F1}mm, Height={RevitUnitConversionService.Instance.FromInternalMillimeters(roundedHeight):F1}mm");
             }
         }
         
@@ -3759,7 +3781,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 if (thickness > 0.0)
                                 {
                                     if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Info($"[PATH-3-FALLBACK] Retrieved thickness={UnitUtils.ConvertFromInternalUnits(thickness, UnitTypeId.Millimeters):F1}mm from linked file for structural element {clashZone.StructuralElementIdValue} (Zone={clashZone.Id})");
+                                        DebugLogger.Info($"[PATH-3-FALLBACK] Retrieved thickness={RevitUnitConversionService.Instance.FromInternalMillimeters(thickness):F1}mm from linked file for structural element {clashZone.StructuralElementIdValue} (Zone={clashZone.Id})");
                                     break;
                                 }
                             }
@@ -3775,7 +3797,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
         
-        double thicknessMm = UnitUtils.ConvertFromInternalUnits(thickness, UnitTypeId.Millimeters);
+        double thicknessMm = RevitUnitConversionService.Instance.FromInternalMillimeters(thickness);
         
         // ✅ DIAGNOSTIC: Log thickness calculation for debugging depth=0 issue
         if (!DeploymentConfiguration.DeploymentMode && thickness <= 0.0)
@@ -3794,7 +3816,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             depthSetSuccess = true;
             if (!DeploymentConfiguration.DeploymentMode)
             {
-                DebugLogger.Info($"[DEPTH-SET] Zone={clashZone.Id}, Sleeve={sleeveInstance.Id}: Set Wall Width={UnitUtils.ConvertFromInternalUnits(thickness, UnitTypeId.Millimeters):F1}mm (from DB: Structural={UnitUtils.ConvertFromInternalUnits(clashZone.StructuralElementThickness, UnitTypeId.Millimeters):F1}mm, Wall={UnitUtils.ConvertFromInternalUnits(clashZone.WallThickness, UnitTypeId.Millimeters):F1}mm)");
+                DebugLogger.Info($"[DEPTH-SET] Zone={clashZone.Id}, Sleeve={sleeveInstance.Id}: Set Wall Width={RevitUnitConversionService.Instance.FromInternalMillimeters(thickness):F1}mm (from DB: Structural={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.StructuralElementThickness):F1}mm, Wall={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.WallThickness):F1}mm)");
             }
         }
         else if (depthParam != null && !depthParam.IsReadOnly)
@@ -3803,7 +3825,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             depthSetSuccess = true;
             if (!DeploymentConfiguration.DeploymentMode)
             {
-                DebugLogger.Info($"[DEPTH-SET] Zone={clashZone.Id}, Sleeve={sleeveInstance.Id}: Set Depth={UnitUtils.ConvertFromInternalUnits(thickness, UnitTypeId.Millimeters):F1}mm (from DB: Structural={UnitUtils.ConvertFromInternalUnits(clashZone.StructuralElementThickness, UnitTypeId.Millimeters):F1}mm, Framing={UnitUtils.ConvertFromInternalUnits(clashZone.FramingThickness, UnitTypeId.Millimeters):F1}mm)");
+                DebugLogger.Info($"[DEPTH-SET] Zone={clashZone.Id}, Sleeve={sleeveInstance.Id}: Set Depth={RevitUnitConversionService.Instance.FromInternalMillimeters(thickness):F1}mm (from DB: Structural={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.StructuralElementThickness):F1}mm, Framing={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.FramingThickness):F1}mm)");
             }
         }
         else
@@ -4304,7 +4326,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     // Log BEFORE values
                                         if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[XML-IMMEDIATE-UPDATE] BEFORE: W={UnitUtils.ConvertFromInternalUnits(zone.SleeveWidth, UnitTypeId.Millimeters):F1}mm, H={UnitUtils.ConvertFromInternalUnits(zone.SleeveHeight, UnitTypeId.Millimeters):F1}mm, ActiveDocX={zone.SleevePlacementPointActiveDocumentX:F3}\n");
+                    DebugLogger.Info($"[XML-IMMEDIATE-UPDATE] BEFORE: W={RevitUnitConversionService.Instance.FromInternalMillimeters(zone.SleeveWidth):F1}mm, H={RevitUnitConversionService.Instance.FromInternalMillimeters(zone.SleeveHeight):F1}mm, ActiveDocX={zone.SleevePlacementPointActiveDocumentX:F3}\n");
                     
                     // Update the values
                     zone.SleeveWidth = clashZone.SleeveWidth;
@@ -4319,7 +4341,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     // Log AFTER values
                                         if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[XML-IMMEDIATE-UPDATE] AFTER: W={UnitUtils.ConvertFromInternalUnits(zone.SleeveWidth, UnitTypeId.Millimeters):F1}mm, H={UnitUtils.ConvertFromInternalUnits(zone.SleeveHeight, UnitTypeId.Millimeters):F1}mm, ActiveDocX={zone.SleevePlacementPointActiveDocumentX:F3}\n");
+                    DebugLogger.Info($"[XML-IMMEDIATE-UPDATE] AFTER: W={RevitUnitConversionService.Instance.FromInternalMillimeters(zone.SleeveWidth):F1}mm, H={RevitUnitConversionService.Instance.FromInternalMillimeters(zone.SleeveHeight):F1}mm, ActiveDocX={zone.SleevePlacementPointActiveDocumentX:F3}\n");
                     
                     // Normalize coordinates to avoid 0,0,0 in XML
                     foreach (var z in storageZones)
@@ -4359,7 +4381,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DebugLogger.Info($"[XML-SAVE-SUCCESS] {DateTime.Now:HH:mm:ss.fff} - Successfully saved to {Path.GetFileName(targetFile)}\n");
                     DebugLogger.Info($"[XML-SAVE-SUCCESS] Zone: {clashZone.Id}, SleeveInstanceId: {zone.SleeveInstanceId}\n");
                     DebugLogger.Info($"[XML-SAVE-SUCCESS] Coordinates: X={zone.SleevePlacementPointActiveDocumentX:F3}, Y={zone.SleevePlacementPointActiveDocumentY:F3}, Z={zone.SleevePlacementPointActiveDocumentZ:F3}\n");
-                    DebugLogger.Info($"[XML-SAVE-SUCCESS] Dimensions: W={UnitUtils.ConvertFromInternalUnits(zone.SleeveWidth, UnitTypeId.Millimeters):F1}mm, H={UnitUtils.ConvertFromInternalUnits(zone.SleeveHeight, UnitTypeId.Millimeters):F1}mm\n");
+                    DebugLogger.Info($"[XML-SAVE-SUCCESS] Dimensions: W={RevitUnitConversionService.Instance.FromInternalMillimeters(zone.SleeveWidth):F1}mm, H={RevitUnitConversionService.Instance.FromInternalMillimeters(zone.SleeveHeight):F1}mm\n");
                     DebugLogger.Info($"[XML-IMMEDIATE-UPDATE] ✅ SUCCESS: Updated {Path.GetFileName(targetFile)} with values for zone {clashZone.Id}\n");
                     }
                 }
@@ -5221,56 +5243,73 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ====== FLOOR HOST: Rotate based on MEP element rotation angle ======
                     // ✅ FLOOR ROTATION FIX: Use pre-calculated rotation angle (calculated once during refresh)
                     // This supports arbitrary angles (not just 0° and 90°) and avoids Revit API calls
-                    var loc = sleeveInstance.Location as LocationPoint;
-                    if (loc != null)
+                    
+                    // ✅ CRITICAL: Pipes should NOT be rotated - place straight to WCS (axis-aligned)
+                    // Only ducts and cable trays should rotate based on MEP element orientation
+                    bool isPipe = string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
+                    
+                    if (isPipe)
                     {
-                        // ✅ CALCULATE ONCE, USE MANY TIMES: Use pre-calculated rotation angle from ClashZone
-                        double rotationAngle = clashZone.MepElementRotationAngle;
-                        
-                        // ✅ PATH 1 (Replay): Log if MEP orientation is missing (but don't retrieve - use existing data only)
-                        if (_isReplayPath && Math.Abs(rotationAngle) < 1e-6 && string.IsNullOrEmpty(clashZone.MepElementOrientationDirection))
+                        // ✅ PIPE FIX: Pipes should always be placed axis-aligned (straight to WCS), no rotation
+                        if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                DebugLogger.Warning($"[PATH-1-DIAGNOSTIC] Zone={clashZone.Id}: Missing MEP orientation (BasisX) - MepElementRotationAngle={clashZone.MepElementRotationAngle}, MepElementOrientationDirection='{clashZone.MepElementOrientationDirection}', MepElementOrientationX={clashZone.MepElementOrientationX}. PATH 1 will use 0° rotation (no retrieval from linked files).");
-                            }
+                            DebugLogger.Info($"[ORIENTATION-SET] Zone={clashZone.Id}, Sleeve={sleeveInstance.Id}: PIPE on floor - NO ROTATION (placed straight to WCS, axis-aligned)");
                         }
-                        
-                        // ✅ FALLBACK: If rotation angle not calculated (old XML data), calculate from orientation direction
-                        // This maintains backward compatibility with existing XML files
-                        // ✅ BUG FIX: Only use fallback if BOTH angle is zero AND orientation direction is missing
-                        // If MepElementOrientationDirection exists, the angle was calculated (even if 0°), so use it as-is
-                        if (Math.Abs(rotationAngle) < 1e-6 && string.IsNullOrEmpty(clashZone.MepElementOrientationDirection))
+                    }
+                    else
+                    {
+                        // ✅ DUCTS and CABLE TRAYS: Rotate based on MEP element orientation
+                        var loc = sleeveInstance.Location as LocationPoint;
+                        if (loc != null)
                         {
-                            // Old XML data - angle not calculated, use fallback
-                            if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[UniversalSleevePlacer] FLOOR: MepElementRotationAngle is 0 and MepElementOrientationDirection is missing - this is old XML data, skipping fallback (will use 0°)");
-                        }
-                        else if (Math.Abs(rotationAngle) < 1e-6 && !string.IsNullOrEmpty(clashZone.MepElementOrientationDirection))
-                        {
-                            // ✅ BUG FIX: Angle is 0° and orientation direction exists - this means 0° was calculated, use it as-is
-                            // Do NOT use fallback - 0° is a valid calculated angle
-                            if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[UniversalSleevePlacer] FLOOR: Using calculated MepElementRotationAngle=0° (MepElementOrientationDirection='{clashZone.MepElementOrientationDirection}' exists, so angle was calculated)");
-                        }
-                        
-                        // ✅ APPLY ROTATION: Rotate sleeve to match MEP element angle
-                        if (Math.Abs(rotationAngle) > 1e-6) // Only rotate if angle is significant
-                        {
-                            double rotationAngleDegrees = rotationAngle * 180 / Math.PI;
-                            Line rotationAxis = Line.CreateBound(loc.Point, loc.Point + XYZ.BasisZ);
-                            ElementTransformUtils.RotateElement(_doc, sleeveInstance.Id, rotationAxis, rotationAngle);
+                            // ✅ CALCULATE ONCE, USE MANY TIMES: Use pre-calculated rotation angle from ClashZone
+                            double rotationAngle = clashZone.MepElementRotationAngle;
                             
-                            if (!DeploymentConfiguration.DeploymentMode)
+                            // ✅ PATH 1 (Replay): Log if MEP orientation is missing (but don't retrieve - use existing data only)
+                            if (_isReplayPath && Math.Abs(rotationAngle) < 1e-6 && string.IsNullOrEmpty(clashZone.MepElementOrientationDirection))
                             {
-                                DebugLogger.Info($"[ORIENTATION-SET] Zone={clashZone.Id}, Sleeve={sleeveInstance.Id}: Rotated {rotationAngleDegrees:F1}° (from DB: MepElementRotationAngle={clashZone.MepElementRotationAngle * 180 / Math.PI:F1}°, MepElementOrientationDirection='{clashZone.MepElementOrientationDirection}')");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Warning($"[PATH-1-DIAGNOSTIC] Zone={clashZone.Id}: Missing MEP orientation (BasisX) - MepElementRotationAngle={clashZone.MepElementRotationAngle}, MepElementOrientationDirection='{clashZone.MepElementOrientationDirection}', MepElementOrientationX={clashZone.MepElementOrientationX}. PATH 1 will use 0° rotation (no retrieval from linked files).");
+                                }
                             }
-                        }
-                        else
-                        {
-                            if (!DeploymentConfiguration.DeploymentMode)
+                            
+                            // ✅ FALLBACK: If rotation angle not calculated (old XML data), calculate from orientation direction
+                            // This maintains backward compatibility with existing XML files
+                            // ✅ BUG FIX: Only use fallback if BOTH angle is zero AND orientation direction is missing
+                            // If MepElementOrientationDirection exists, the angle was calculated (even if 0°), so use it as-is
+                            if (Math.Abs(rotationAngle) < 1e-6 && string.IsNullOrEmpty(clashZone.MepElementOrientationDirection))
                             {
-                                DebugLogger.Warning($"[ORIENTATION-SET] ⚠️ Zone={clashZone.Id}, Sleeve={sleeveInstance.Id}: No rotation applied (angle=0°) - from DB: MepElementRotationAngle={clashZone.MepElementRotationAngle * 180 / Math.PI:F1}°, MepElementOrientationDirection='{clashZone.MepElementOrientationDirection}', MepElementOrientationX={clashZone.MepElementOrientation?.X:F6}");
+                                // Old XML data - angle not calculated, use fallback
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[UniversalSleevePlacer] FLOOR: MepElementRotationAngle is 0 and MepElementOrientationDirection is missing - this is old XML data, skipping fallback (will use 0°)");
+                            }
+                            else if (Math.Abs(rotationAngle) < 1e-6 && !string.IsNullOrEmpty(clashZone.MepElementOrientationDirection))
+                            {
+                                // ✅ BUG FIX: Angle is 0° and orientation direction exists - this means 0° was calculated, use it as-is
+                                // Do NOT use fallback - 0° is a valid calculated angle
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[UniversalSleevePlacer] FLOOR: Using calculated MepElementRotationAngle=0° (MepElementOrientationDirection='{clashZone.MepElementOrientationDirection}' exists, so angle was calculated)");
+                            }
+                            
+                            // ✅ APPLY ROTATION: Rotate sleeve to match MEP element angle (for ducts and cable trays only)
+                            if (Math.Abs(rotationAngle) > 1e-6) // Only rotate if angle is significant
+                            {
+                                double rotationAngleDegrees = rotationAngle * 180 / Math.PI;
+                                Line rotationAxis = Line.CreateBound(loc.Point, loc.Point + XYZ.BasisZ);
+                                ElementTransformUtils.RotateElement(_doc, sleeveInstance.Id, rotationAxis, rotationAngle);
+                                
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[ORIENTATION-SET] Zone={clashZone.Id}, Sleeve={sleeveInstance.Id}: Rotated {rotationAngleDegrees:F1}° (from DB: MepElementRotationAngle={clashZone.MepElementRotationAngle * 180 / Math.PI:F1}°, MepElementOrientationDirection='{clashZone.MepElementOrientationDirection}')");
+                                }
+                            }
+                            else
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Warning($"[ORIENTATION-SET] ⚠️ Zone={clashZone.Id}, Sleeve={sleeveInstance.Id}: No rotation applied (angle=0°) - from DB: MepElementRotationAngle={clashZone.MepElementRotationAngle * 180 / Math.PI:F1}°, MepElementOrientationDirection='{clashZone.MepElementOrientationDirection}', MepElementOrientationX={clashZone.MepElementOrientation?.X:F6}");
+                                }
                             }
                         }
                     }

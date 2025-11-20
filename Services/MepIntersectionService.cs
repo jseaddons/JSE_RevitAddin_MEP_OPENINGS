@@ -1,4 +1,5 @@
 #nullable enable
+#if !REVIT2024_OR_GREATER
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Electrical;
 using Autodesk.Revit.DB.Mechanical;
@@ -14,30 +15,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         // ✅ MEMORY OPTIMIZATION: LRU cache with max size to prevent unbounded growth
         // Large linked files can have thousands of structural elements - cache can grow to 100MB+ without limits
         private const int MAX_GEOMETRY_CACHE_SIZE = 5000; // Limit to 5000 entries (~10-20MB typical)
-        private static readonly Dictionary<string, Solid?> _geometryCache = new Dictionary<string, Solid?>();
-        private static readonly LinkedList<string> _geometryCacheOrder = new LinkedList<string>(); // LRU tracking
-        private static readonly IRevitUnitConversionService UnitConverter;
+        private static readonly Lazy<Dictionary<string, Solid?>> _geometryCache = new Lazy<Dictionary<string, Solid?>>(() => new Dictionary<string, Solid?>());
+        private static readonly Lazy<LinkedList<string>> _geometryCacheOrder = new Lazy<LinkedList<string>>(() => new LinkedList<string>()); // LRU tracking
+
+        // DIAGNOSTIC: Build stamp + static constructor instrumentation to trace type initialization issues in R2024.
+        // If a TypeInitializationException persists, this logging will confirm whether our static constructor executes.
+        private static readonly string _buildStamp = "MepIntersectionService BuildStamp 2025-11-20_17-10";
+        // Intersection debug flag and log path (lightweight instrumentation for 2024 failure investigation)
+        private static string IntersectionDebugFlagFile;
+        private static string IntersectionDebugLogPath;
+        private static bool IntersectionDebugEnabled;
 
         static MepIntersectionService()
         {
-            try
+            // MINIMAL static constructor - avoid ANY external dependencies
+            IntersectionDebugFlagFile = "enable_intersection_debug.flag";
+            IntersectionDebugLogPath = "intersection_debug_2024.log";
+            IntersectionDebugEnabled = false; // Will be set lazily on first use
+        }
+        
+        // LAZY INITIALIZATION - avoid static constructor that can throw
+        private static IRevitUnitConversionService? _unitConverter;
+        private static IRevitUnitConversionService UnitConverter
+        {
+            get
             {
-                UnitConverter = RevitUnitConversionService.Instance;
-            }
-            catch (Exception ex)
-            {
-                try
+                if (_unitConverter == null)
                 {
-                    DebugLogger.Error($"[MepIntersectionService] Failed during static initialization: {ex}");
-                    SafeFileLogger.SafeAppendText("mep_intersection_errors.log",
-                        $"[{DateTime.Now}] [STATIC_INIT_ERROR] {ex}\n{ex.StackTrace}\n");
+#if REVIT2024_OR_GREATER
+                    // In Revit 2024+, the UnitTypeId API exists but causes issues
+                    // Use manual conversion until we can safely detect API availability at runtime
+                    _unitConverter = new FallbackUnitConverter();
+#else
+                    // Revit 2023 and earlier - always use manual conversion
+                    _unitConverter = new FallbackUnitConverter();
+#endif
                 }
-                catch
-                {
-                    // Swallow logging issues – we still need a usable fallback.
-                }
-
-                UnitConverter = new FallbackUnitConverter();
+                return _unitConverter;
             }
         }
 
@@ -56,7 +70,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private static SpatialPartitioningService? _spatialService = null;
         
         // PHASE 2 OPTIMIZATION 3: Transform cache (1.5x speedup)
-        private static readonly Dictionary<Document, Transform> _transformCache = new Dictionary<Document, Transform>();
+        private static readonly Lazy<Dictionary<Document, Transform>> _transformCache = new Lazy<Dictionary<Document, Transform>>(() => new Dictionary<Document, Transform>());
         
         // PHASE 1 OPTIMIZATION 2: Category Whitelist (2x speedup)
         private static readonly BuiltInCategory[] MEP_CATEGORY_WHITELIST = {
@@ -85,33 +99,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private static void AddToGeometryCache(string key, Solid? solid)
         {
             // Remove if exists (move to end = most recently used)
-            if (_geometryCache.ContainsKey(key))
+            if (_geometryCache.Value.ContainsKey(key))
             {
-                _geometryCacheOrder.Remove(key);
-                _geometryCache.Remove(key);
+                _geometryCacheOrder.Value.Remove(key);
+                _geometryCache.Value.Remove(key);
             }
             
             // Add to cache
-            _geometryCache[key] = solid;
-            _geometryCacheOrder.AddLast(key);
+            _geometryCache.Value[key] = solid;
+            _geometryCacheOrder.Value.AddLast(key);
             
             // ✅ MEMORY OPTIMIZATION: Evict oldest entries if over limit
-            while (_geometryCache.Count > MAX_GEOMETRY_CACHE_SIZE && _geometryCacheOrder.First != null)
+            while (_geometryCache.Value.Count > MAX_GEOMETRY_CACHE_SIZE && _geometryCacheOrder.Value.First != null)
             {
-                var oldestKey = _geometryCacheOrder.First.Value;
-                _geometryCache.Remove(oldestKey);
-                _geometryCacheOrder.RemoveFirst();
+                var oldestKey = _geometryCacheOrder.Value.First.Value;
+                _geometryCache.Value.Remove(oldestKey);
+                _geometryCacheOrder.Value.RemoveFirst();
             }
         }
         
         // ✅ MEMORY OPTIMIZATION: Get from cache and update LRU order
         private static bool TryGetFromGeometryCache(string key, out Solid? solid)
         {
-            if (_geometryCache.TryGetValue(key, out solid))
+            if (_geometryCache.Value.TryGetValue(key, out solid))
             {
                 // Move to end (most recently used)
-                _geometryCacheOrder.Remove(key);
-                _geometryCacheOrder.AddLast(key);
+                _geometryCacheOrder.Value.Remove(key);
+                _geometryCacheOrder.Value.AddLast(key);
                 return true;
             }
             return false;
@@ -120,16 +134,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         // Clear cache method for memory management
         public static void ClearGeometryCache()
         {
-            _geometryCache.Clear();
-            _geometryCacheOrder.Clear();
+            if (_geometryCache.IsValueCreated) _geometryCache.Value.Clear();
+            if (_geometryCacheOrder.IsValueCreated) _geometryCacheOrder.Value.Clear();
         }
         
         // ✅ MEMORY OPTIMIZATION: Get cache statistics for monitoring
         public static (int count, int maxSize, double memoryEstimateMB) GetGeometryCacheStats()
         {
             // Rough estimate: 2-5 MB per 1000 entries (depends on solid complexity)
-            double memoryEstimateMB = _geometryCache.Count * 0.003; // 3KB per entry average
-            return (_geometryCache.Count, MAX_GEOMETRY_CACHE_SIZE, memoryEstimateMB);
+            double memoryEstimateMB = _geometryCache.Value.Count * 0.003; // 3KB per entry average
+            return (_geometryCache.Value.Count, MAX_GEOMETRY_CACHE_SIZE, memoryEstimateMB);
         }
         
         /// <summary>
@@ -137,22 +151,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static Transform GetCachedTransform(Document doc, List<RevitLinkInstance> links, Action<string>? log = null)
         {
-            if (!_transformCache.ContainsKey(doc))
+            if (!_transformCache.Value.ContainsKey(doc))
             {
                 var link = links.FirstOrDefault(l => l.GetLinkDocument()?.Title == doc.Title);
                 if (link != null)
                 {
                     var transform = link.GetTotalTransform();
-                    _transformCache[doc] = transform;
+                    _transformCache.Value[doc] = transform;
                     log?.Invoke($"[TransformCache] Cached transform for document: {doc.Title}");
                 }
                 else
                 {
-                    _transformCache[doc] = Transform.Identity;
+                    _transformCache.Value[doc] = Transform.Identity;
                     log?.Invoke($"[TransformCache] No link found for document: {doc.Title}, using Identity transform");
                 }
             }
-            return _transformCache[doc];
+            return _transformCache.Value[doc];
         }
         
         /// <summary>
@@ -160,7 +174,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void ClearTransformCache()
         {
-            _transformCache.Clear();
+            if (_transformCache.IsValueCreated) _transformCache.Value.Clear();
         }
         
         // PHASE 1 OPTIMIZATION 2: Category whitelist filtering methods
@@ -239,11 +253,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         log($"[Memory] Clearing half of geometry cache ({cacheCount} entries, ~{cacheMB:F1} MB) to free memory");
                         // Clear oldest 50% of cache
                         int entriesToRemove = cacheCount / 2;
-                        for (int i = 0; i < entriesToRemove && _geometryCacheOrder.First != null; i++)
+                        for (int i = 0; i < entriesToRemove && _geometryCacheOrder.Value.First != null; i++)
                         {
-                            var oldestKey = _geometryCacheOrder.First.Value;
-                            _geometryCache.Remove(oldestKey);
-                            _geometryCacheOrder.RemoveFirst();
+                            var oldestKey = _geometryCacheOrder.Value.First.Value;
+                            _geometryCache.Value.Remove(oldestKey);
+                            _geometryCacheOrder.Value.RemoveFirst();
                         }
                         GC.Collect(2, GCCollectionMode.Optimized); // Force GC after cache cleanup
                     }
@@ -263,6 +277,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
 
             var results = new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
+            
+            // Lazy debug flag check on first use
+            if (!IntersectionDebugEnabled)
+            {
+                try { IntersectionDebugEnabled = System.IO.File.Exists(IntersectionDebugFlagFile); } catch { }
+            }
+            if (IntersectionDebugEnabled)
+            {
+                SafeFileLogger.SafeAppendText(IntersectionDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ENTER FindIntersectionsBatchInternal MEP={mepElements.Count} STRUCT={structuralElements.Count} KnownPairs={knownValidPairs?.Count ?? 0} SkipKnownGeom={skipKnownPairsGeometryCheck}\n");
+            }
             
             // ✅ MEMORY OPTIMIZATION: Only pre-compute bounding boxes, NOT solids (lazy loading)
             // Solids are expensive (2-5KB each) and many won't be needed after spatial filtering
@@ -288,7 +312,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 // ✅ MEMORY OPTIMIZATION: Store cache key only, compute solid lazily when needed
                 string cacheKey = $"{structElement.Id.IntegerValue}_{structTransform?.GetHashCode() ?? 0}";
+                if (IntersectionDebugEnabled && structuralData.Count < 50)
+                {
+                    double w = structBBox.Max.X - structBBox.Min.X;
+                    double h = structBBox.Max.Y - structBBox.Min.Y;
+                    double d = structBBox.Max.Z - structBBox.Min.Z;
+                    SafeFileLogger.SafeAppendText(IntersectionDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] STRUCT[{structElement.Id.IntegerValue}] BBOX_ft W={w:F3} H={h:F3} D={d:F3} Cat={(BuiltInCategory)structElement.Category.Id.IntegerValue}\n");
+                }
                 structuralData.Add((structElement, structTransform, structBBox, cacheKey));
+            }
+            if (IntersectionDebugEnabled)
+            {
+                SafeFileLogger.SafeAppendText(IntersectionDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Structural preprocessed count={structuralData.Count}\n");
             }
             
             // ✅ MEMORY OPTIMIZATION: Log cache stats before processing
@@ -348,6 +383,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     if (OptimizationFlags.UseDiagnosticMode)
                         log($"[MEP-DOC] MEP bbox in active document coordinates: ({mepBBox.Min.X:F2},{mepBBox.Min.Y:F2},{mepBBox.Min.Z:F2})-({mepBBox.Max.X:F2},{mepBBox.Max.Y:F2},{mepBBox.Max.Z:F2})");
+                }
+                if (IntersectionDebugEnabled && results.Count < 1) // log first loop's first 50 mep bboxes using separate counter if needed
+                {
+                    int loggedCount = 0; // local ephemeral
+                }
+                if (IntersectionDebugEnabled && results.Count < 1 && mepElements.IndexOf((mepElement, mepTransform)) < 50)
+                {
+                    double mw = mepBBox.Max.X - mepBBox.Min.X;
+                    double mh = mepBBox.Max.Y - mepBBox.Min.Y;
+                    double md = mepBBox.Max.Z - mepBBox.Min.Z;
+                    SafeFileLogger.SafeAppendText(IntersectionDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] MEP[{mepElement.Id.IntegerValue}] BBOX_ft W={mw:F3} H={mh:F3} D={md:F3} Cat={(BuiltInCategory)mepElement.Category.Id.IntegerValue}\n");
                 }
 
                 var line = GetElementLine(mepElement, mepBBox, log);
@@ -516,6 +562,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 int geometrySkippedForKnownPairs = 0;
                 foreach (var (structElement, structTransform, structBBox, cacheKey) in candidatesToProcess)
                 {
+                    if (IntersectionDebugEnabled && results.Count < 25)
+                    {
+                        bool coarseOverlap = !(mepBBox.Max.X < structBBox.Min.X || mepBBox.Min.X > structBBox.Max.X ||
+                                               mepBBox.Max.Y < structBBox.Min.Y || mepBBox.Min.Y > structBBox.Max.Y ||
+                                               mepBBox.Max.Z < structBBox.Min.Z || mepBBox.Min.Z > structBBox.Max.Z);
+                        if (coarseOverlap)
+                        {
+                            SafeFileLogger.SafeAppendText(IntersectionDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] COARSE_OVERLAP MEP={mepElement.Id.IntegerValue} STRUCT={structElement.Id.IntegerValue}\n");
+                        }
+                    }
                     // ✅ OOP OPTIMIZATION: Skip expensive geometry intersection for known valid pairs
                     // When 3-point validation is disabled, user trusts model unchanged
                     // Just verify bounding boxes intersect (fast check) instead of full geometry intersection
@@ -595,7 +651,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (!TryGetFromGeometryCache(cacheKey, out solid))
                     {
                         // Cache miss - compute solid now (only for elements that passed all filters)
-                        var options = new Options();
+                        var options = Helpers.GeometryOptionsFactory.CreateIntersectionOptions();
                         var geometry = structElement.get_Geometry(options);
                         if (geometry != null)
                         {
@@ -770,7 +826,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     if (!TryGetFromGeometryCache(cacheKey, out solid))
                     {
-                        var options = new Options();
+                        var options = Helpers.GeometryOptionsFactory.CreateIntersectionOptions();
                         var geometry = structuralElement.get_Geometry(options);
                         if (geometry == null) continue;
 
@@ -913,7 +969,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     Solid? solid;
                     if (!TryGetFromGeometryCache(cacheKey, out solid))
                     {
-                        var options = new Options();
+                        var options = Helpers.GeometryOptionsFactory.CreateIntersectionOptions();
                         var geometry = structuralElement.get_Geometry(options);
                         if (geometry == null) continue;
                         solid = GetSolidFromGeometry(geometry);
@@ -2056,3 +2112,271 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
     }
 }
+#endif // !REVIT2024_OR_GREATER
+
+#if REVIT2024_OR_GREATER
+// ========================================================================================================
+// REVIT 2024+ MINIMAL IMPLEMENTATION
+// This version eliminates ALL static caches to avoid TypeInitializationException in R2024 environment
+// ========================================================================================================
+using Autodesk.Revit.DB;
+using Autodesk.Revit.DB.Electrical;
+using Autodesk.Revit.DB.Mechanical;
+using Autodesk.Revit.DB.Plumbing;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace JSE_RevitAddin_MEP_OPENINGS.Services
+{
+    public static class MepIntersectionService
+    {
+        // NO STATIC CACHES - avoid TypeInitializationException
+        private const double MillimetersPerFoot = 304.8;
+        
+        // Simple instance-based conversion (no static initialization)
+        private static double ToInternalMillimeters(double value) => value / MillimetersPerFoot;
+        private static double FromInternalMillimeters(double value) => value * MillimetersPerFoot;
+        
+        // Category whitelists (primitives only - safe in static context)
+        private static readonly BuiltInCategory[] MEP_CATEGORY_WHITELIST = {
+            BuiltInCategory.OST_DuctCurves,
+            BuiltInCategory.OST_DuctFitting,
+            BuiltInCategory.OST_DuctAccessory,
+            BuiltInCategory.OST_DuctTerminal,
+            BuiltInCategory.OST_PipeCurves,
+            BuiltInCategory.OST_PipeFitting,
+            BuiltInCategory.OST_PipeAccessory,
+            BuiltInCategory.OST_CableTray,
+            BuiltInCategory.OST_CableTrayFitting,
+            BuiltInCategory.OST_Conduit,
+            BuiltInCategory.OST_ConduitFitting
+        };
+        
+        private static readonly BuiltInCategory[] STRUCTURAL_CATEGORY_WHITELIST = {
+            BuiltInCategory.OST_Walls,
+            BuiltInCategory.OST_Floors,
+            BuiltInCategory.OST_StructuralFraming,
+            BuiltInCategory.OST_StructuralColumns,
+            BuiltInCategory.OST_StructuralFoundation
+        };
+        
+        public static List<(Element mepElement, Element structuralElement, BoundingBoxXYZ boundingBox, XYZ intersectionPoint)> FindIntersectionsBatch(
+            List<(Element element, Transform? transform)> mepElements,
+            List<(Element element, Transform? transform)> structuralElements,
+            Action<string> log,
+            HashSet<(int mepId, int structuralId)>? knownValidPairs = null,
+            bool skipKnownPairsGeometryCheck = false)
+        {
+            var results = new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
+            
+            try
+            {
+                log?.Invoke($"[R24-MINIMAL] FindIntersectionsBatch called: {mepElements.Count} MEP + {structuralElements.Count} structural");
+                
+                // Simple nested loop - no caching, no optimization (prioritize stability over performance)
+                foreach (var (mepElem, mepTransform) in mepElements)
+                {
+                    try
+                    {
+                        var mepBBox = mepElem.get_BoundingBox(null);
+                        if (mepBBox == null) continue;
+                        
+                        foreach (var (structElem, structTransform) in structuralElements)
+                        {
+                            try
+                            {
+                                var structBBox = structElem.get_BoundingBox(null);
+                                if (structBBox == null) continue;
+                                
+                                // Simple bbox overlap check
+                                if (!BoundingBoxesOverlap(mepBBox, structBBox, mepTransform, structTransform))
+                                    continue;
+                                
+                                // Try geometry intersection
+                                var mepGeom = GetElementSolid(mepElem);
+                                var structGeom = GetElementSolid(structElem);
+                                
+                                if (mepGeom == null || structGeom == null)
+                                    continue;
+                                
+                                // Apply transforms if needed
+                                if (mepTransform != null && !mepTransform.IsIdentity)
+                                    mepGeom = SolidUtils.CreateTransformed(mepGeom, mepTransform);
+                                if (structTransform != null && !structTransform.IsIdentity)
+                                    structGeom = SolidUtils.CreateTransformed(structGeom, structTransform);
+                                
+                                var intersection = BooleanOperationsUtils.ExecuteBooleanOperation(
+                                    mepGeom, structGeom, BooleanOperationsType.Intersect);
+                                
+                                if (intersection != null && intersection.Volume > 1e-6)
+                                {
+                                    var centroid = intersection.ComputeCentroid();
+                                    results.Add((mepElem, structElem, mepBBox, centroid));
+                                    log?.Invoke($"[R24-MINIMAL] Intersection found: MEP {mepElem.Id} + STRUCT {structElem.Id}");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                log?.Invoke($"[R24-MINIMAL] Struct element {structElem.Id} failed: {ex.Message}");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        log?.Invoke($"[R24-MINIMAL] MEP element {mepElem.Id} failed: {ex.Message}");
+                    }
+                }
+                
+                log?.Invoke($"[R24-MINIMAL] Found {results.Count} intersections");
+                return results;
+            }
+            catch (Exception ex)
+            {
+                log?.Invoke($"[R24-MINIMAL] FATAL ERROR: {ex.Message}");
+                log?.Invoke($"[R24-MINIMAL] Stack: {ex.StackTrace}");
+                return results;
+            }
+        }
+        
+        private static bool BoundingBoxesOverlap(BoundingBoxXYZ bbox1, BoundingBoxXYZ bbox2, 
+            Transform? transform1, Transform? transform2)
+        {
+            var min1 = bbox1.Min;
+            var max1 = bbox1.Max;
+            var min2 = bbox2.Min;
+            var max2 = bbox2.Max;
+            
+            if (transform1 != null && !transform1.IsIdentity)
+            {
+                min1 = transform1.OfPoint(min1);
+                max1 = transform1.OfPoint(max1);
+            }
+            if (transform2 != null && !transform2.IsIdentity)
+            {
+                min2 = transform2.OfPoint(min2);
+                max2 = transform2.OfPoint(max2);
+            }
+            
+            return !(max1.X < min2.X || min1.X > max2.X ||
+                    max1.Y < min2.Y || min1.Y > max2.Y ||
+                    max1.Z < min2.Z || min1.Z > max2.Z);
+        }
+        
+        private static Solid? GetElementSolid(Element element)
+        {
+            try
+            {
+                var options = new Options
+                {
+                    DetailLevel = ViewDetailLevel.Fine,
+                    IncludeNonVisibleObjects = true,
+                    ComputeReferences = false
+                };
+                
+                var geomElement = element.get_Geometry(options);
+                if (geomElement == null) return null;
+                
+                foreach (var geomObject in geomElement)
+                {
+                    if (geomObject is Solid solid && solid.Volume > 1e-6)
+                        return solid;
+                    
+                    if (geomObject is GeometryInstance instance)
+                    {
+                        var instGeom = instance.GetInstanceGeometry();
+                        foreach (var instObj in instGeom)
+                        {
+                            if (instObj is Solid instSolid && instSolid.Volume > 1e-6)
+                                return instSolid;
+                        }
+                    }
+                }
+                
+                return null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+        
+        // Stub methods to maintain API compatibility
+        public static bool IsMepCategoryWhitelisted(Element element) => 
+            MEP_CATEGORY_WHITELIST.Contains((BuiltInCategory)element.Category.Id.IntegerValue);
+        
+        public static bool IsStructuralCategoryWhitelisted(Element element) => 
+            STRUCTURAL_CATEGORY_WHITELIST.Contains((BuiltInCategory)element.Category.Id.IntegerValue);
+        
+        public static void ClearGeometryCache() { } // No-op in R24
+        public static void ClearTransformCache() { } // No-op in R24
+        public static (int count, int maxSize, double memoryEstimateMB) GetGeometryCacheStats() => (0, 0, 0.0);
+        
+        // Transform cache stub - always return identity (no caching in R24)
+        public static Transform GetCachedTransform(Document doc, List<RevitLinkInstance> links, Action<string>? log = null)
+        {
+            var link = links?.FirstOrDefault(l => l.GetLinkDocument()?.Title == doc.Title);
+            return link?.GetTotalTransform() ?? Transform.Identity;
+        }
+        
+        // Legacy single-element methods (multiple overloads for backward compatibility)
+        public static List<(Element structuralElement, BoundingBoxXYZ bbox, XYZ center)> FindIntersections(
+            Element mepElement,
+            List<(Element, Transform?)> structuralElements,
+            Transform? mepTransform,
+            Action<string>? log = null)
+        {
+            var results = new List<(Element, BoundingBoxXYZ, XYZ)>();
+            var mepList = new List<(Element, Transform?)> { (mepElement, mepTransform) };
+            
+            var intersections = FindIntersectionsBatch(mepList, structuralElements, log);
+            foreach (var (_, structElem, bbox, center) in intersections)
+            {
+                results.Add((structElem, bbox, center));
+            }
+            return results;
+        }
+        
+        public static List<(Element structuralElement, BoundingBoxXYZ bbox, XYZ center)> FindIntersections(
+            Line mepLine,
+            BoundingBoxXYZ mepBBox,
+            List<(Element, Transform?)> structuralElements,
+            Action<string>? log = null)
+        {
+            // R24 minimal: Line-based intersection not fully supported, return empty
+            log?.Invoke("[R24-MINIMAL] Line-based FindIntersections called (not implemented)");
+            return new List<(Element, BoundingBoxXYZ, XYZ)>();
+        }
+        
+        public static List<(Element structuralElement, BoundingBoxXYZ bbox, XYZ center)> FindDamperIntersections(
+            Element damper,
+            List<(Element, Transform?)> structuralElements,
+            Transform? damperTransform,
+            Action<string>? log = null)
+        {
+            return FindIntersections(damper, structuralElements, damperTransform, log);
+        }
+        
+        public static List<Element> CollectStructuralElementsForDirectIntersectionVisibleOnly(
+            Document doc,
+            Action<string>? log = null)
+        {
+            var results = new List<Element>();
+            try
+            {
+                var collector = new FilteredElementCollector(doc);
+                foreach (var cat in STRUCTURAL_CATEGORY_WHITELIST)
+                {
+                    var elems = collector.OfCategory(cat).WhereElementIsNotElementType().ToElements();
+                    results.AddRange(elems);
+                }
+            }
+            catch (Exception ex)
+            {
+                log?.Invoke($"[R24] CollectStructural failed: {ex.Message}");
+            }
+            return results;
+        }
+    }
+}
+#endif // REVIT2024_OR_GREATER

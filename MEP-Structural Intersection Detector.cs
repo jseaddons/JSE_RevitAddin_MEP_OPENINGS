@@ -409,7 +409,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             try
             {
                 // Get solid geometry
-                Options geomOptions = new Options();
+                Options geomOptions = Helpers.GeometryOptionsFactory.CreateIntersectionOptions();
                 geomOptions.DetailLevel = ViewDetailLevel.Fine;
                 geomOptions.IncludeNonVisibleObjects = false;
 
@@ -510,13 +510,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 
         private class IntersectionResult
         {
-            public Element MepElement { get; set; }
-            public Element StructuralElement { get; set; }
-            public string MepCategory { get; set; }
-            public string StructuralCategory { get; set; }
-            public ElementId MepId { get; set; }
-            public ElementId WallId { get; set; }
-            public XYZ IntersectionCenter { get; set; }
+            public Element? MepElement { get; set; }
+            public Element? StructuralElement { get; set; }
+            public string? MepCategory { get; set; }
+            public string? StructuralCategory { get; set; }
+            public ElementId? MepId { get; set; }
+            public ElementId? WallId { get; set; }
+            public XYZ? IntersectionCenter { get; set; }
         }
     }
 }

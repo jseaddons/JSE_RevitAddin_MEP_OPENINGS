@@ -1808,8 +1808,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                var geom1 = element1.get_Geometry(new Options());
-                var geom2 = element2.get_Geometry(new Options());
+                var geom1 = element1.get_Geometry(Helpers.GeometryOptionsFactory.CreateIntersectionOptions());
+                var geom2 = element2.get_Geometry(Helpers.GeometryOptionsFactory.CreateIntersectionOptions());
                 
                 if (geom1 == null || geom2 == null) return false;
                 

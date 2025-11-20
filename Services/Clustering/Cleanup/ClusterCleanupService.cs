@@ -21,10 +21,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
             int deletedCount = 0;
             try
             {
-                if (placedClusters == null || placedClusters.Count == 0) return 0;
+                if (placedClusters == null || placedClusters.Count == 0)
+                {
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: No placed clusters, skipping cleanup\n");
+                    return 0;
+                }
+
+                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Starting cleanup with {placedClusters.Count} placed clusters\n");
 
                 // Build protection set of cluster sleeve IDs
                 var clusterSleeveIds = new HashSet<int>(placedClusters.Where(c => c != null).Select(c => c.Id.IntegerValue));
+                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Protection set contains {clusterSleeveIds.Count} cluster sleeve IDs: {string.Join(", ", clusterSleeveIds)}\n");
 
                 // Collect all potential sleeve family instances
                 var allSleeves = new FilteredElementCollector(doc)
@@ -39,19 +49,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                     })
                     .ToList();
 
+                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Found {allSleeves.Count} total sleeves in document\n");
+
                 var individualSleeves = new List<FamilyInstance>();
                 foreach (var s in allSleeves)
                 {
                     int id = s.Id.IntegerValue;
-                    if (clusterSleeveIds.Contains(id)) continue; // protected
+                    if (clusterSleeveIds.Contains(id))
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Sleeve {id} is in protection set (cluster sleeve) - SKIPPING\n");
+                        continue; // protected
+                    }
                     var clusterParam = s.LookupParameter("Cluster Sleeve Instance ID");
                     var sleeveInstanceParam = s.LookupParameter("Sleeve Instance ID");
                     int clusterValue = clusterParam?.AsInteger() ?? -1;
                     int sleeveInstanceValue = sleeveInstanceParam?.AsInteger() ?? -999;
                     bool isClusterSleeve = (sleeveInstanceValue == -1) || (clusterValue > 0 && clusterValue == id);
-                    if (isClusterSleeve) continue;
+                    if (isClusterSleeve)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Sleeve {id} is identified as cluster sleeve (ClusterParam={clusterValue}, SleeveInstanceId={sleeveInstanceValue}) - SKIPPING\n");
+                        continue;
+                    }
                     individualSleeves.Add(s);
                 }
+
+                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Found {individualSleeves.Count} individual sleeves to check\n");
 
                 if (individualSleeves.Count == 0) return 0;
 
@@ -61,6 +87,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                     .Where(b => b != null && b.Enabled)
                     .ToList();
 
+                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Built {clusterBboxes.Count} cluster bounding boxes\n");
+
                 if (clusterBboxes.Count == 0) return 0;
 
                 var toDelete = new List<ElementId>();
@@ -68,42 +97,114 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                 {
                     var ibbox = individual.get_BoundingBox(null);
                     if (ibbox == null || !ibbox.Enabled) continue;
+                    
                     foreach (var cbbox in clusterBboxes)
                     {
                         if (cbbox == null) continue;
-                        bool inside = ibbox.Min.X >= cbbox.Min.X && ibbox.Max.X <= cbbox.Max.X &&
-                                      ibbox.Min.Y >= cbbox.Min.Y && ibbox.Max.Y <= cbbox.Max.Y &&
-                                      ibbox.Min.Z >= cbbox.Min.Z && ibbox.Max.Z <= cbbox.Max.Z;
-                        if (inside)
+                        
+                        // ✅ EDGE CASE: Use more lenient containment check (allows partial overlap)
+                        // Original: strict containment (all corners inside)
+                        // New: center point inside OR significant overlap
+                        XYZ individualCenter = (ibbox.Min + ibbox.Max) / 2.0;
+                        bool centerInside = individualCenter.X >= cbbox.Min.X && individualCenter.X <= cbbox.Max.X &&
+                                           individualCenter.Y >= cbbox.Min.Y && individualCenter.Y <= cbbox.Max.Y &&
+                                           individualCenter.Z >= cbbox.Min.Z && individualCenter.Z <= cbbox.Max.Z;
+                        
+                        // Also check if there's significant overlap (at least 50% of individual sleeve volume)
+                        bool hasSignificantOverlap = ibbox.Min.X < cbbox.Max.X && ibbox.Max.X > cbbox.Min.X &&
+                                                    ibbox.Min.Y < cbbox.Max.Y && ibbox.Max.Y > cbbox.Min.Y &&
+                                                    ibbox.Min.Z < cbbox.Max.Z && ibbox.Max.Z > cbbox.Min.Z;
+                        
+                        // Calculate overlap volume
+                        double overlapVolume = 0.0;
+                        if (hasSignificantOverlap)
                         {
+                            double overlapX = Math.Max(0, Math.Min(ibbox.Max.X, cbbox.Max.X) - Math.Max(ibbox.Min.X, cbbox.Min.X));
+                            double overlapY = Math.Max(0, Math.Min(ibbox.Max.Y, cbbox.Max.Y) - Math.Max(ibbox.Min.Y, cbbox.Min.Y));
+                            double overlapZ = Math.Max(0, Math.Min(ibbox.Max.Z, cbbox.Max.Z) - Math.Max(ibbox.Min.Z, cbbox.Min.Z));
+                            overlapVolume = overlapX * overlapY * overlapZ;
+                            
+                            double individualVolume = (ibbox.Max.X - ibbox.Min.X) * (ibbox.Max.Y - ibbox.Min.Y) * (ibbox.Max.Z - ibbox.Min.Z);
+                            double overlapRatio = individualVolume > 0 ? overlapVolume / individualVolume : 0.0;
+                            hasSignificantOverlap = overlapRatio >= 0.5; // At least 50% overlap
+                        }
+                        
+                        if (centerInside || hasSignificantOverlap)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Individual sleeve {individual.Id.IntegerValue} is within cluster bbox (centerInside={centerInside}, hasOverlap={hasSignificantOverlap}) - MARKING FOR DELETION\n");
                             toDelete.Add(individual.Id);
                             break;
                         }
                     }
                 }
 
+                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Found {toDelete.Count} individual sleeves to delete\n");
+
                 if (toDelete.Count == 0) return 0;
 
-                using (var tx = new Transaction(doc, "Delete Individual Sleeves Within Clusters"))
+                // ✅ CRITICAL: Check if we're already in a transaction
+                // If doc.IsModifiable is true, we're in a transaction - don't create a new one
+                bool alreadyInTransaction = doc.IsModifiable;
+                
+                if (alreadyInTransaction)
                 {
-                    tx.Start();
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Already in transaction, deleting {toDelete.Count} sleeves without creating new transaction\n");
+                    
                     foreach (var id in toDelete)
                     {
                         try
                         {
                             doc.Delete(id);
                             deletedCount++;
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ✅ Deleted individual sleeve {id.IntegerValue}\n");
                         }
                         catch (Exception ex)
                         {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ❌ Failed deleting sleeve {id.IntegerValue}: {ex.Message}\n");
                             DebugLogger.Warning($"[ClusterCleanupService] Failed deleting sleeve {id.IntegerValue}: {ex.Message}");
                         }
                     }
-                    tx.Commit();
                 }
+                else
+                {
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Not in transaction, creating new transaction for {toDelete.Count} sleeves\n");
+                    
+                    using (var tx = new Transaction(doc, "Delete Individual Sleeves Within Clusters"))
+                    {
+                        tx.Start();
+                        foreach (var id in toDelete)
+                        {
+                            try
+                            {
+                                doc.Delete(id);
+                                deletedCount++;
+                                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ✅ Deleted individual sleeve {id.IntegerValue}\n");
+                            }
+                            catch (Exception ex)
+                            {
+                                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ❌ Failed deleting sleeve {id.IntegerValue}: {ex.Message}\n");
+                                DebugLogger.Warning($"[ClusterCleanupService] Failed deleting sleeve {id.IntegerValue}: {ex.Message}");
+                            }
+                        }
+                        tx.Commit();
+                    }
+                }
+                
+                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ✅ Completed cleanup: Deleted {deletedCount} individual sleeves\n");
             }
             catch (Exception ex)
             {
+                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ❌ ERROR during cleanup: {ex.Message}\n{ex.StackTrace}\n");
                 DebugLogger.Error($"[ClusterCleanupService] Error during cleanup: {ex.Message}");
             }
             return deletedCount;

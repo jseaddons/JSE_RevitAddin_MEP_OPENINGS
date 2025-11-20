@@ -148,8 +148,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Validation
             try
             {
                 // Get geometry from both elements
-                var mepGeometry = mepElement.get_Geometry(new Options());
-                var structuralGeometry = structuralElement.get_Geometry(new Options());
+                var mepGeometry = mepElement.get_Geometry(Helpers.GeometryOptionsFactory.CreateIntersectionOptions());
+                var structuralGeometry = structuralElement.get_Geometry(Helpers.GeometryOptionsFactory.CreateIntersectionOptions());
 
                 if (mepGeometry == null || structuralGeometry == null)
                 {

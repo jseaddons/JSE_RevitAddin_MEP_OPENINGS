@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Electrical;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders
 {
@@ -20,29 +21,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders
                     // Try to get top clearance first
                     if (uiClearances.TryGetValue("cabletray_top_normal", out double topClearance))
                     {
-                        return UnitUtils.ConvertToInternalUnits(topClearance, UnitTypeId.Millimeters);
+                        return RevitUnitConversionService.Instance.ToInternalMillimeters(topClearance);
                     }
                     if (uiClearances.TryGetValue("cabletray_top_insulated", out double topInsulatedClearance))
                     {
-                        return UnitUtils.ConvertToInternalUnits(topInsulatedClearance, UnitTypeId.Millimeters);
+                        return RevitUnitConversionService.Instance.ToInternalMillimeters(topInsulatedClearance);
                     }
                     
                     // Fallback to other sides clearance
                     if (uiClearances.TryGetValue("cabletray_other_normal", out double otherClearance))
                     {
-                        return UnitUtils.ConvertToInternalUnits(otherClearance, UnitTypeId.Millimeters);
+                        return RevitUnitConversionService.Instance.ToInternalMillimeters(otherClearance);
                     }
                     if (uiClearances.TryGetValue("cabletray_other_insulated", out double otherInsulatedClearance))
                     {
-                        return UnitUtils.ConvertToInternalUnits(otherInsulatedClearance, UnitTypeId.Millimeters);
+                        return RevitUnitConversionService.Instance.ToInternalMillimeters(otherInsulatedClearance);
                     }
                 }
                 
                 // UI should always provide default values, but if somehow missing, use reasonable defaults
-                return UnitUtils.ConvertToInternalUnits(75.0, UnitTypeId.Millimeters); // Default top clearance
+                return RevitUnitConversionService.Instance.ToInternalMillimeters(75.0); // Default top clearance
             }
             
-            return UnitUtils.ConvertToInternalUnits(75.0, UnitTypeId.Millimeters); // Default top clearance
+            return RevitUnitConversionService.Instance.ToInternalMillimeters(75.0); // Default top clearance
         }
 
         /// <summary>
@@ -68,20 +69,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders
                     
                     if (uiClearances.TryGetValue(key, out double clearance))
                     {
-                        return UnitUtils.ConvertToInternalUnits(clearance, UnitTypeId.Millimeters);
+                        return RevitUnitConversionService.Instance.ToInternalMillimeters(clearance);
                     }
                 }
                 
                 // UI should always provide default values, but if somehow missing, use reasonable defaults
                 return side.ToLower() switch
                 {
-                    "top" => UnitUtils.ConvertToInternalUnits(75.0, UnitTypeId.Millimeters), // Default top clearance
-                    "other" => UnitUtils.ConvertToInternalUnits(25.0, UnitTypeId.Millimeters), // Default other sides clearance
-                    _ => UnitUtils.ConvertToInternalUnits(25.0, UnitTypeId.Millimeters)
+                    "top" => RevitUnitConversionService.Instance.ToInternalMillimeters(75.0), // Default top clearance
+                    "other" => RevitUnitConversionService.Instance.ToInternalMillimeters(25.0), // Default other sides clearance
+                    _ => RevitUnitConversionService.Instance.ToInternalMillimeters(25.0)
                 };
             }
             
-            return UnitUtils.ConvertToInternalUnits(25.0, UnitTypeId.Millimeters); // Default other sides clearance
+            return RevitUnitConversionService.Instance.ToInternalMillimeters(25.0); // Default other sides clearance
         }
 
         public string GetCategory()

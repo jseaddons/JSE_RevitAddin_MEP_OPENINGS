@@ -69,7 +69,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Configuration
                     var diameterThreshold = processingLimits.RoundOpeningsBecomeRectangularIfDiameterGreaterThan; // 200mm
                     
                     // Convert diameter to mm for comparison
-                    var diameterMm = UnitUtils.ConvertFromInternalUnits(elementProps.Diameter, UnitTypeId.Millimeters);
+                    var diameterMm = RevitUnitConversionService.Instance.FromInternalMillimeters(elementProps.Diameter);
                     
                     if (diameterMm > diameterThreshold)
                     {
@@ -160,7 +160,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Configuration
                 
                 // Priority 2: Global size limits
                 var processingLimits = _globalConfigService.GetProcessingLimits();
-                var diameterMm = UnitUtils.ConvertFromInternalUnits(elementProps.Diameter, UnitTypeId.Millimeters);
+                var diameterMm = RevitUnitConversionService.Instance.FromInternalMillimeters(elementProps.Diameter);
                 
                 if (diameterMm < processingLimits.IgnoreOpeningsSmallerThan)
                 {

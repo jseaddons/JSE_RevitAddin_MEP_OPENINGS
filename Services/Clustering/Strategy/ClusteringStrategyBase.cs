@@ -232,9 +232,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
         }
 
         /// <summary>
-        /// Check if rotation angle is axis-aligned (0°, 90°, 180°, 270°).
+        /// Check if rotation angle is straight axis-aligned to WCS (0°, 90°, 180°, 270°).
+        /// Returns false for rotated axis-aligned (non-straight) angles (45°, 135°, 225°, 315°, etc.).
         /// </summary>
-        protected bool IsAxisAlignedAngle(double angleRad)
+        protected bool IsStraightAxisAlignedAngle(double angleRad)
         {
             double angleDeg = angleRad * 180.0 / Math.PI;
             while (angleDeg < 0) angleDeg += 360;

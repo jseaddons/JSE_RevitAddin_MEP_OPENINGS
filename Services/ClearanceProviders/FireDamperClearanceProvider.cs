@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders
 {
@@ -30,17 +31,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders
                     string clearanceKey = GetClearanceKey(damper);
                     if (uiClearances.TryGetValue(clearanceKey, out double uiClearance))
                     {
-                        return UnitUtils.ConvertToInternalUnits(uiClearance, UnitTypeId.Millimeters);
+                        return RevitUnitConversionService.Instance.ToInternalMillimeters(uiClearance);
                     }
                 }
                 
                 // UI should always provide default values, but if somehow missing, use reasonable defaults
                 return needsMepSideClearance ? 
-                    UnitUtils.ConvertToInternalUnits(100.0, UnitTypeId.Millimeters) : // MSFD/MSD/MD/Motorized: 100mm MEP side clearance
-                    UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters);    // Standard: 50mm
+                    RevitUnitConversionService.Instance.ToInternalMillimeters(100.0) : // MSFD/MSD/MD/Motorized: 100mm MEP side clearance
+                    RevitUnitConversionService.Instance.ToInternalMillimeters(50.0);    // Standard: 50mm
             }
             
-            return UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters); // Default standard damper clearance
+            return RevitUnitConversionService.Instance.ToInternalMillimeters(50.0); // Default standard damper clearance
         }
         
         public string GetCategory()

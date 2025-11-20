@@ -22,11 +22,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS
     {
         public override void OnStartup()
         {
-            // IMMEDIATE LOGGING - Create file as soon as add-in loads
+            // IMMEDIATE LOGGING - Create file as soon as add-in loads (Build: 2025-11-20 14:30)
             try
             {
                 string startupLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\addin_startup.log";
-                File.AppendAllText(startupLogPath, $"[{DateTime.Now}] ADD-IN STARTUP: OnStartup() called\n");
+                File.AppendAllText(startupLogPath, $"[{DateTime.Now}] ========================================\n");
+                File.AppendAllText(startupLogPath, $"[{DateTime.Now}] ADD-IN STARTUP BUILD 2025-11-20 14:30\n");
+                File.AppendAllText(startupLogPath, $"[{DateTime.Now}] ========================================\n");
                 File.AppendAllText(startupLogPath, $"[{DateTime.Now}] Assembly: {System.Reflection.Assembly.GetExecutingAssembly().Location}\n");
                 File.AppendAllText(startupLogPath, $"[{DateTime.Now}] Process: {System.Diagnostics.Process.GetCurrentProcess().ProcessName}\n");
             }
@@ -43,14 +45,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS
             // Initialize logging first so we can capture any startup failures
             try
             {
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\addin_startup.log", $"[{DateTime.Now}] About to CreateLogger()\n");
                 CreateLogger();
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\addin_startup.log", $"[{DateTime.Now}] CreateLogger() DONE\n");
                 
                 // ✅ CRITICAL: Copy native SQLite DLL to temporary execution directory
                 // Revit copies the add-in DLL to a temp directory but doesn't copy native DLLs
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\addin_startup.log", $"[{DateTime.Now}] About to CopyNativeSqliteDllToExecutionDirectory()\n");
                 CopyNativeSqliteDllToExecutionDirectory();
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\addin_startup.log", $"[{DateTime.Now}] CopyNativeSqliteDllToExecutionDirectory() DONE\n");
                 
                 // Initialize optimization services (Phase 1 - Foundation)
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\addin_startup.log", $"[{DateTime.Now}] About to InitializeOptimizationServices()\n");
                 InitializeOptimizationServices();
+                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\addin_startup.log", $"[{DateTime.Now}] InitializeOptimizationServices() DONE\n");
 
                 // Validate license before startup - Simple JSE domain check
                 bool licensed = true;
@@ -285,7 +293,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS
                     }
                 }
 
-                var revitVersions = new[] { "2023", "2024", "2025" };
+                // Supported versions pruned to 2023 & 2024 (2025 temporarily removed)
+                var revitVersions = new[] { "2023", "2024" };
                 foreach (var version in revitVersions)
                 {
                     var appDataDir = Path.Combine(

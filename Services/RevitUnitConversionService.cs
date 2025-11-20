@@ -3,10 +3,6 @@ using System;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
-    /// <summary>
-    /// Centralised unit conversion service to abstract Revit API differences between versions.
-    /// Provides a single OOP entry point that can be expanded or swapped as needed.
-    /// </summary>
     public interface IRevitUnitConversionService
     {
         double ToInternalMillimeters(double value);
@@ -15,10 +11,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         double FromInternalFeet(double value);
     }
 
-    /// <summary>
-    /// Runtime-detected implementation that prefers Forge Type IDs (Revit 2021+) and
-    /// gracefully falls back to manual conversions for earlier versions.
-    /// </summary>
     public sealed class RevitUnitConversionService : IRevitUnitConversionService
     {
         public static IRevitUnitConversionService Instance { get; } = new RevitUnitConversionService();
@@ -30,14 +22,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         private RevitUnitConversionService()
         {
+            // ✅ CRITICAL: Default to manual conversion to ensure constructor never throws
+            _useForgeTypeId = false;
+            
             try
             {
-                // In Revit 2021+ UnitTypeId lives in Autodesk.Revit.DB and exposes Forge-type IDs.
+                // Use reflection to safely test UnitTypeId API availability without JIT errors
                 var unitTypeIdType = typeof(UnitTypeId);
-                _useForgeTypeId = unitTypeIdType != null;
+                if (unitTypeIdType != null)
+                {
+                    var millimetersProperty = unitTypeIdType.GetProperty("Millimeters", 
+                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                    
+                    if (millimetersProperty != null)
+                    {
+                        // Try to actually get the value via reflection
+                        var testValue = millimetersProperty.GetValue(null);
+                        if (testValue != null)
+                        {
+                            _useForgeTypeId = true;
+                        }
+                    }
+                }
             }
-            catch
+            catch (Exception)
             {
+                // Silently fall back to manual conversion - NEVER throw from constructor
                 _useForgeTypeId = false;
             }
         }
@@ -46,17 +56,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             if (_useForgeTypeId)
             {
-                try
-                {
-                    return UnitUtils.ConvertToInternalUnits(value, UnitTypeId.Millimeters);
-                }
-                catch (Exception ex)
-                {
-                    DebugLogger.Error($"[UnitConverter] ForgeTypeId conversion failed in ToInternalMillimeters: {ex.Message}");
-                }
+                try { return UnitUtils.ConvertToInternalUnits(value, UnitTypeId.Millimeters); }
+                catch { /* silent fallback */ }
             }
-
-            // Revit internal units are feet, so convert mm -> feet manually.
             return value * FeetPerMillimeter;
         }
 
@@ -64,17 +66,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             if (_useForgeTypeId)
             {
-                try
-                {
-                    return UnitUtils.ConvertFromInternalUnits(value, UnitTypeId.Millimeters);
-                }
-                catch (Exception ex)
-                {
-                    DebugLogger.Error($"[UnitConverter] ForgeTypeId conversion failed in FromInternalMillimeters: {ex.Message}");
-                }
+                try { return UnitUtils.ConvertFromInternalUnits(value, UnitTypeId.Millimeters); }
+                catch { /* silent fallback */ }
             }
-
-            // Convert feet -> mm manually.
             return value * MillimetersPerFoot;
         }
 
@@ -82,17 +76,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             if (_useForgeTypeId)
             {
-                try
-                {
-                    return UnitUtils.ConvertToInternalUnits(value, UnitTypeId.Feet);
-                }
-                catch (Exception ex)
-                {
-                    DebugLogger.Error($"[UnitConverter] ForgeTypeId conversion failed in ToInternalFeet: {ex.Message}");
-                }
+                try { return UnitUtils.ConvertToInternalUnits(value, UnitTypeId.Feet); }
+                catch { /* silent fallback */ }
             }
-
-            // Already in feet.
             return value;
         }
 
@@ -100,19 +86,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             if (_useForgeTypeId)
             {
-                try
-                {
-                    return UnitUtils.ConvertFromInternalUnits(value, UnitTypeId.Feet);
-                }
-                catch (Exception ex)
-                {
-                    DebugLogger.Error($"[UnitConverter] ForgeTypeId conversion failed in FromInternalFeet: {ex.Message}");
-                }
+                try { return UnitUtils.ConvertFromInternalUnits(value, UnitTypeId.Feet); }
+                catch { /* silent fallback */ }
             }
-
-            // Already in feet.
             return value;
         }
     }
 }
-

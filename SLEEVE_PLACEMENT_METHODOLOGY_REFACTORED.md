@@ -931,8 +931,8 @@ New Zones (not in existing):
 
 **Logic:**
 - Determine dominant rotation angle (Phase 6: Rotation Service)
-- If angle is near axis-aligned (0°, 90°, 180°, 270°) → Use `AxisAlignedBoundingBoxCalculator`
-- Otherwise → Use `RotatedBoundingBoxCalculator` with corner-based algorithm
+- If angle is straight axis-aligned to WCS (0°, 90°, 180°, 270°) → Use `AxisAlignedBoundingBoxCalculator`
+- If angle is rotated axis-aligned (non-straight: 45°, 135°, 225°, 315°, etc.) → Use `RotatedBoundingBoxCalculator` with corner-based algorithm
 
 **Benefits:**
 - ✅ **Watertight Algorithm:** Works for all scenarios (single, stacked, inline, diagonal, grid)

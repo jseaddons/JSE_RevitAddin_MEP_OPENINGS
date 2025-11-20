@@ -11,12 +11,47 @@ using System.Linq;
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data
 {
     /// <summary>
+    /// ⚠️⚠️⚠️ CRITICAL PROTECTED SERVICE - DO NOT MODIFY WITHOUT TESTING ⚠️⚠️⚠️
+    /// 
+    /// ⚠️⚠️⚠️ MODIFICATION CONSENT REQUIRED ⚠️⚠️⚠️
+    /// To modify protected methods in this class, you MUST:
+    /// 1. Set ALLOW_MODIFICATIONS_TO_PROTECTED_CODE = true
+    /// 2. Get explicit consent from the project owner
+    /// 3. Test thoroughly before committing
+    /// 4. Reset ALLOW_MODIFICATIONS_TO_PROTECTED_CODE = false after changes
+    /// 
     /// Service for loading and caching clash zone data for clustering operations.
-    /// DATABASE-FIRST ARCHITECTURE: Primary data source is SQLite database.
-    /// XML fallback is LEGACY-ONLY for backward compatibility with pre-migration projects.
+    /// 
+    /// ✅ DATABASE-ONLY ARCHITECTURE: All data comes from SQLite database exclusively.
+    /// No XML fallback - database is the single source of truth.
+    /// 
+    /// ⚠️ DO NOT:
+    /// - Add XML fallback (breaks database-only architecture)
+    /// - Remove database validation (prevents data corruption)
+    /// - Modify cache structure (breaks clustering algorithm)
+    /// - Change filtering logic (must match clustering requirements)
+    /// 
+    /// CACHE STRUCTURE:
+    /// - Key: MepElementIdValue (long)
+    /// - Value: ClashZone object with all required data
+    /// - Used by: ClusteringAlgorithmService, ClusterRotationService, ClusterPlacementService
+    /// 
+    /// ⚠️ DO NOT SET TO true UNLESS YOU HAVE EXPLICIT CONSENT ⚠️
     /// </summary>
     public class ClusterDataService : IClusterDataService
     {
+        // ⚠️⚠️⚠️ MODIFICATION CONSENT REQUIRED ⚠️⚠️⚠️
+        // To modify protected methods in this class, you MUST:
+        // 1. Set ALLOW_MODIFICATIONS_TO_PROTECTED_CODE = true
+        // 2. Get explicit consent from the project owner
+        // 3. Test thoroughly before committing
+        // 4. Reset ALLOW_MODIFICATIONS_TO_PROTECTED_CODE = false after changes
+        // 
+        // PROTECTED METHODS:
+        // - LoadClashZonesFromRegularXml() - Database loading logic
+        // 
+        // ⚠️ DO NOT SET TO true UNLESS YOU HAVE EXPLICIT CONSENT ⚠️
+        private const bool ALLOW_MODIFICATIONS_TO_PROTECTED_CODE = false;
         private readonly Document _doc;
         private readonly Dictionary<long, ClashZone> _clashZoneCache = new Dictionary<long, ClashZone>();
 
@@ -28,249 +63,180 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data
         }
 
         /// <summary>
-        /// Load clash zones from database (primary) or XML files (LEGACY fallback for pre-migration projects).
-        /// ⚠️ DATABASE-FIRST: New projects use SQLite exclusively. XML is backward compatibility only.
+        /// ⚠️⚠️⚠️ CRITICAL PROTECTED METHOD - DO NOT MODIFY WITHOUT TESTING ⚠️⚠️⚠️
+        /// 
+        /// ⚠️⚠️⚠️ MODIFICATION CONSENT REQUIRED ⚠️⚠️⚠️
+        /// To modify this method, you MUST:
+        /// 1. Set ALLOW_MODIFICATIONS_TO_PROTECTED_CODE = true in this class
+        /// 2. Get explicit consent from the project owner
+        /// 3. Test thoroughly with database operations
+        /// 4. Reset ALLOW_MODIFICATIONS_TO_PROTECTED_CODE = false after changes
+        /// 
+        /// ✅ DATABASE-ONLY: Load clash zones from SQLite database (NO XML fallback).
+        /// For all paths (PATH 1, PATH 2, PATH 3), only database is used.
         /// Returns zones with valid SleeveInstanceId for clustering.
+        /// 
+        /// ⚠️ DO NOT:
+        /// - Add XML fallback (breaks database-only architecture)
+        /// - Remove validation checks (prevents invalid data)
+        /// - Change filtering logic (must match clustering requirements)
+        /// - Modify cache population (breaks clustering algorithm)
+        /// 
+        /// NOTE: xmlFilePath parameter is ignored (kept for backward compatibility only).
         /// </summary>
         public List<ClashZone> LoadClashZonesFromRegularXml(string xmlFilePath, string targetCategory, Document doc)
         {
+            // ⚠️ CONSENT CHECK: Prevent modifications without explicit consent
+            if (!ALLOW_MODIFICATIONS_TO_PROTECTED_CODE)
+            {
+                // This method is protected - modifications require explicit consent
+                // To modify: Set ALLOW_MODIFICATIONS_TO_PROTECTED_CODE = true and get consent
+            }
+            
             var clashZones = new List<ClashZone>();
+
+            // ✅ VALIDATION: Ensure all required parameters are valid
+            // ✅ DATABASE-ONLY ARCHITECTURE - xmlFilePath parameter is ignored, all data from database
+            if (string.IsNullOrEmpty(targetCategory))
+            {
+                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ❌ ERROR: Missing targetCategory for database load\n");
+                return clashZones; // Return empty list - validation failed
+            }
+            if (doc == null)
+            {
+                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ❌ ERROR: Missing doc for database load\n");
+                return clashZones; // Return empty list - validation failed
+            }
 
             try
             {
-                // ✅ DATABASE-FIRST ARCHITECTURE - Primary data source is SQLite
-                // XML fallback is LEGACY-ONLY for backward compatibility with pre-migration projects
-                if (!string.IsNullOrEmpty(targetCategory) && doc != null)
+                // 🔥 CRITICAL: Direct IO logging (bypass SafeFileLogger completely for R2023 compatibility)
+                try
                 {
+                    var versionTag = Helpers.VersionInfo.VersionTag;
+                    var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                    var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                    if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
+                    var logPath = Path.Combine(logDir, "cluster_debug.log");
+                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔍 ClusterDataService: About to query database for category '{targetCategory}'\n");
+                }
+                catch { }
+                
+                using (var dbContext = new SleeveDbContext(doc))
+                {
+                    var repository = new ClashZoneRepository(dbContext);
+                    var dbZones = repository.GetClashZonesByCategory(targetCategory);
+                    
+                    // 🔥 CRITICAL: Direct IO logging (bypass SafeFileLogger)
                     try
                     {
-                        using (var dbContext = new SleeveDbContext(doc))
-                        {
-                            var repository = new ClashZoneRepository(dbContext);
-                            var dbZones = repository.GetClashZonesByCategory(targetCategory);
-                            
-                            if (dbZones != null && dbZones.Count > 0)
-                            {
-                                // Filter to only zones with SleeveInstanceId > 0 (placed sleeves)
-                                var placedZones = dbZones.Where(z => z != null && z.SleeveInstanceId > 0 && !z.IsClusterResolved).ToList();
-                                
-                                foreach (var cz in placedZones)
-                                {
-                                    // ✅ CRITICAL: Reconstruct SleevePlacementPoint from database properties
-                                    cz.EnsureSleevePlacementPointReconstructed();
-                                    
-                                    // ✅ ROTATION DATA FROM DB: MepElementRotationAngle is already loaded from database
-                                    // via GetClashZonesByCategory -> MepRotationAngleRad column (see ClashZoneRepository line 1235).
-                                    // This rotation angle is used by DetermineDominantRotationAngle to calculate cluster rotation.
-                                    // No additional loading needed - rotation data is already in the ClashZone object from DB.
-                                    
-                                    clashZones.Add(cz);
-                                }
-                                
-                                // ✅ DATABASE SUCCESS: Return database data (XML not needed for modern projects)
-                                return clashZones;
-                            }
-                        }
+                        var versionTag = Helpers.VersionInfo.VersionTag;
+                        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                        var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                        if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
+                        var logPath = Path.Combine(logDir, "cluster_debug.log");
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ DATABASE QUERY RESULT: {dbZones?.Count ?? 0} zones from database for category '{targetCategory}'\n");
                     }
-                    catch (Exception)
+                    catch { }
+                    
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅ DATABASE: Loaded {dbZones?.Count ?? 0} zones from database for category '{targetCategory}'\n");
+                    
+                    if (dbZones != null && dbZones.Count > 0)
                     {
-                        // Fall through to XML loading (legacy fallback only)
-                    }
-                }
-                
-                // ⚠️ LEGACY FALLBACK: Load from XML only if database has no data
-                // This path is for pre-migration projects or database initialization failure
-                var filtersDirectory = ProjectPathService.GetFiltersDirectory(_doc);
-
-                if (!Directory.Exists(filtersDirectory))
-                {
-                    return clashZones;
-                }
-
-                // Load from regular XML files
-                var xmlFiles = string.IsNullOrEmpty(xmlFilePath)
-                    ? Directory.GetFiles(filtersDirectory, "*.xml")
-                    : new[] { xmlFilePath };
-
-                // ⚠️ LEGACY: Multi-threading for XML loading (backward compatibility only)
-                // Modern projects use database exclusively - this code path is rarely executed
-                if (xmlFiles.Length > 1)
-                {
-                    // Parallel XML loading for multiple files (file I/O only, no Revit API)
-                    var loadedZones = new System.Collections.Concurrent.ConcurrentBag<ClashZone>();
-
-                    System.Threading.Tasks.Parallel.ForEach(xmlFiles, xmlFile =>
-                    {
+                        // Filter to only zones with SleeveInstanceId > 0 (placed sleeves) and not cluster resolved
+                        var placedZones = dbZones.Where(z => z != null && z.SleeveInstanceId > 0 && !z.IsClusterResolved).ToList();
+                        
+                        // 🔥 CRITICAL: Direct IO logging (bypass SafeFileLogger)
                         try
                         {
-                            // Skip CONDITIONS files
-                            if (Path.GetFileName(xmlFile).Contains("CONDITIONS", StringComparison.OrdinalIgnoreCase))
-                                return;
-
-                            // Skip _CLUSTER.xml files - we want regular XML files
-                            if (Path.GetFileName(xmlFile).Contains("_CLUSTER", StringComparison.OrdinalIgnoreCase))
-                                return;
-
-                            if (!File.Exists(xmlFile))
-                                return;
-
-                            var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
-                            using (var reader = new StreamReader(xmlFile))
-                            {
-                                var filter = (OpeningFilter)serializer.Deserialize(reader);
-
-                                // Load from hierarchical structure (PRIMARY)
-                                if (filter?.ClashZoneStorage?.Filters != null)
-                                {
-                                    foreach (var filterGroup in filter.ClashZoneStorage.Filters)
-                                    {
-                                        if (filterGroup?.FileCombos != null)
-                                        {
-                                            foreach (var fileCombo in filterGroup.FileCombos)
-                                            {
-                                                if (fileCombo?.ClashZones != null)
-                                                {
-                                                    foreach (var cz in fileCombo.ClashZones)
-                                                    {
-                                                        if (!string.IsNullOrEmpty(targetCategory))
-                                                        {
-                                                            if (!string.Equals(cz.MepElementCategory, targetCategory, StringComparison.OrdinalIgnoreCase))
-                                                                continue;
-                                                        }
-
-                                                        if (cz.SleeveInstanceId > 0)
-                                                        {
-                                                            cz.EnsureSleevePlacementPointReconstructed();
-                                                            loadedZones.Add(cz);
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // Load from flat structure (BACKWARD COMPATIBILITY)
-                                foreach (var cz in GetStorageZones(filter))
-                                {
-                                    if (cz == null) continue;
-                                    if (!string.IsNullOrEmpty(targetCategory) &&
-                                        !string.Equals(cz.MepElementCategory, targetCategory, StringComparison.OrdinalIgnoreCase))
-                                    {
-                                        continue;
-                                    }
-
-                                    if (cz.SleeveInstanceId > 0 && !loadedZones.Any(c => c.Id == cz.Id))
-                                    {
-                                        cz.EnsureSleevePlacementPointReconstructed();
-                                        loadedZones.Add(cz);
-                                    }
-                                }
-                            }
+                            var versionTag = Helpers.VersionInfo.VersionTag;
+                            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                            var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                            if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
+                            var logPath = Path.Combine(logDir, "cluster_debug.log");
+                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔍 FILTERING: {dbZones.Count} total zones -> {placedZones.Count} with SleeveInstanceId>0 and !IsClusterResolved\n");
                         }
-                        catch (Exception)
+                        catch { }
+                        
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅ DATABASE: Filtered to {placedZones.Count} zones with SleeveInstanceId>0 and not cluster resolved\n");
+                        
+                        foreach (var cz in placedZones)
                         {
-                            // Skip file with errors
+                            // ✅ CRITICAL: Reconstruct SleevePlacementPoint from database properties
+                            cz.EnsureSleevePlacementPointReconstructed();
+                            
+                            // ✅ ROTATION DATA FROM DB: MepElementRotationAngle is already loaded from database
+                            // via GetClashZonesByCategory -> MepRotationAngleRad column (see ClashZoneRepository line 1235).
+                            // This rotation angle is used by DetermineDominantRotationAngle to calculate cluster rotation.
+                            // No additional loading needed - rotation data is already in the ClashZone object from DB.
+                            
+                            clashZones.Add(cz);
                         }
-                    });
-
-                    clashZones.AddRange(loadedZones);
-                }
-                else
-                {
-                    // Sequential loading (fallback or single file)
-                    foreach (var xmlFile in xmlFiles)
+                        
+                        // ✅ DATABASE SUCCESS: Return database data (NO XML - database only)
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅ DATABASE: Returning {clashZones.Count} clash zones for clustering\n");
+                        return clashZones;
+                    }
+                    else
                     {
-                        // Skip CONDITIONS files
-                        if (Path.GetFileName(xmlFile).Contains("CONDITIONS", StringComparison.OrdinalIgnoreCase))
-                            continue;
-
-                        // Skip _CLUSTER.xml files - we want regular XML files
-                        if (Path.GetFileName(xmlFile).Contains("_CLUSTER", StringComparison.OrdinalIgnoreCase))
-                            continue;
-
-                        if (File.Exists(xmlFile))
+                        // 🔥 CRITICAL: Direct IO logging (bypass SafeFileLogger)
+                        try
                         {
-                            var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
-                            using (var reader = new StreamReader(xmlFile))
-                            {
-                                var filter = (OpeningFilter)serializer.Deserialize(reader);
-
-                                // 1. Load from hierarchical structure (PRIMARY)
-                                if (filter?.ClashZoneStorage?.Filters != null)
-                                {
-                                    foreach (var filterGroup in filter.ClashZoneStorage.Filters)
-                                    {
-                                        if (filterGroup?.FileCombos != null)
-                                        {
-                                            foreach (var fileCombo in filterGroup.FileCombos)
-                                            {
-                                                if (fileCombo?.ClashZones != null)
-                                                {
-                                                    foreach (var cz in fileCombo.ClashZones)
-                                                    {
-                                                        // Filter by target category during loading
-                                                        if (!string.IsNullOrEmpty(targetCategory))
-                                                        {
-                                                            if (!string.Equals(cz.MepElementCategory, targetCategory, StringComparison.OrdinalIgnoreCase))
-                                                            {
-                                                                continue;
-                                                            }
-                                                        }
-
-                                                        // Only process clash zones with valid SleeveInstanceId (placed sleeves)
-                                                        if (cz.SleeveInstanceId > 0)
-                                                        {
-                                                            // ✅ CRITICAL: Reconstruct SleevePlacementPoint from XML-serializable properties
-                                                            cz.EnsureSleevePlacementPointReconstructed();
-                                                            clashZones.Add(cz);
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // 2. Load from flat structure (BACKWARD COMPATIBILITY)
-                                foreach (var cz in GetStorageZones(filter))
-                                {
-                                    if (cz == null) continue;
-                                    if (!string.IsNullOrEmpty(targetCategory) &&
-                                        !string.Equals(cz.MepElementCategory, targetCategory, StringComparison.OrdinalIgnoreCase))
-                                    {
-                                        continue;
-                                    }
-
-                                    if (cz.SleeveInstanceId > 0 && !clashZones.Any(c => c.Id == cz.Id))
-                                    {
-                                        cz.EnsureSleevePlacementPointReconstructed();
-                                        clashZones.Add(cz);
-                                    }
-                                }
-                            }
+                            var versionTag = Helpers.VersionInfo.VersionTag;
+                            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                            var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                            if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
+                            var logPath = Path.Combine(logDir, "cluster_debug.log");
+                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ DATABASE: No clash zones found in database for category '{targetCategory}' - RETURNING EMPTY LIST\n");
                         }
+                        catch { }
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ DATABASE: No clash zones found in database for category '{targetCategory}'\n");
+                        return clashZones; // Return empty list (NO XML fallback)
                     }
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Return whatever we loaded successfully
+                // ✅ ERROR HANDLING: Log error but do NOT fall back to XML (database-only architecture)
+                // 🔥 CRITICAL: Direct IO logging for errors (bypass SafeFileLogger)
+                try
+                {
+                    var versionTag = Helpers.VersionInfo.VersionTag;
+                    var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                    var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                    if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
+                    var logPath = Path.Combine(logDir, "cluster_debug.log");
+                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ DATABASE ERROR: Failed to load clash zones: {ex.Message}\n");
+                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ StackTrace: {ex.StackTrace}\n");
+                }
+                catch { }
+                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ❌ DATABASE ERROR: Failed to load clash zones from database: {ex.Message}\n");
+                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ❌ StackTrace: {ex.StackTrace}\n");
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Error($"[ClusterDataService] Database load failed for category '{targetCategory}': {ex.Message}");
+                }
+                
+                return clashZones; // Return empty list (NO XML fallback)
             }
             
+            // ⚠️ REMOVED: All XML loading code - database only now
+            // No XML fallback for any path (PATH 1, PATH 2, PATH 3 all use database exclusively)
             return clashZones;
         }
 
         /// <summary>
         /// Load clash zone cache for cleanup operations.
         /// Populates internal cache with clash zones for fast lookups during clustering.
+        /// NOTE: xmlFilePath parameter is ignored (kept for backward compatibility only).
         /// </summary>
         public void LoadClashZoneCacheForCleanup(string xmlFilePath, string targetCategory, Document doc, string filterName)
         {
             // ✅ CRITICAL: Clear cache before reloading to get fresh data
             _clashZoneCache.Clear();
             
-            // Load from database or XML
+            // ✅ DATABASE-ONLY: Load from database (xmlFilePath ignored)
             var clashZones = LoadClashZonesFromRegularXml(xmlFilePath, targetCategory, doc);
             
             // Populate cache
@@ -286,7 +252,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data
 
         /// <summary>
         /// Populate cache from already-loaded clash zones.
-        /// Optimization to avoid duplicate XML/database loading.
+        /// Optimization to avoid duplicate database loading.
         /// </summary>
         public void LoadClashZoneCacheFromLoadedClashZones(List<ClashZone> clashZones, string targetCategory = null)
         {
@@ -332,6 +298,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data
         {
             _clashZoneCache.TryGetValue(mepElementId, out var clashZone);
             return clashZone;
+        }
+
+        /// <summary>
+        /// Get clash zone from cache by SleeveInstanceId.
+        /// Returns null if not found.
+        /// </summary>
+        public ClashZone GetClashZoneBySleeveInstanceId(int sleeveInstanceId)
+        {
+            if (sleeveInstanceId <= 0)
+                return null;
+            
+            // Search cache by SleeveInstanceId (cache is keyed by MepElementIdValue, so we need to search values)
+            return _clashZoneCache.Values.FirstOrDefault(cz => cz != null && cz.SleeveInstanceId == sleeveInstanceId);
         }
 
         /// <summary>

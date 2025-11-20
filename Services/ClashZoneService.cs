@@ -10,6 +10,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using static JSE_RevitAddin_MEP_OPENINGS.Models.MepCategoryConstants;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -2185,7 +2186,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Log in millimeters for readability
             if (!DeploymentConfiguration.DeploymentMode)
             {
-                DebugLogger.Info($"[CLASH-ZONE-CREATE] Thickness values for Structural Element {structuralElement?.Id?.IntegerValue ?? -1} (Document='{structuralElement?.Document?.Title ?? "null"}'): Structural={UnitUtils.ConvertFromInternalUnits(clashZone.StructuralElementThickness, UnitTypeId.Millimeters):F1}mm, Wall={UnitUtils.ConvertFromInternalUnits(clashZone.WallThickness, UnitTypeId.Millimeters):F1}mm, Framing={UnitUtils.ConvertFromInternalUnits(clashZone.FramingThickness, UnitTypeId.Millimeters):F1}mm");
+                DebugLogger.Info($"[CLASH-ZONE-CREATE] Thickness values for Structural Element {structuralElement?.Id?.IntegerValue ?? -1} (Document='{structuralElement?.Document?.Title ?? "null"}'): Structural={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.StructuralElementThickness):F1}mm, Wall={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.WallThickness):F1}mm, Framing={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.FramingThickness):F1}mm");
             }
             
             // ✅ CRITICAL: Set deterministic GUID for stable identification across detection runs
@@ -2226,7 +2227,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 var th = clashZone.StructuralElementThickness;
-                var thMm = UnitUtils.ConvertFromInternalUnits(th, UnitTypeId.Millimeters);
+                var thMm = RevitUnitConversionService.Instance.FromInternalMillimeters(th);
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLASH-THICKNESS-ASSIGN] structuralId={structuralElement.Id.IntegerValue} thickness={th:F6}ft ({thMm:F1}mm)");
             }
@@ -2341,7 +2342,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 _log($"[METHOD3] Checking for damper at duct end: Duct {duct.Id} near intersection {intersectionPoint}");
 
                 // Get duct geometry and find end points
-                var ductGeometry = duct.get_Geometry(new Options());
+                var ductGeometry = duct.get_Geometry(Helpers.GeometryOptionsFactory.CreateIntersectionOptions());
                 if (ductGeometry == null) return false;
 
                 var ductEndPoints = GetDuctEndPoints(duct, ductGeometry);
@@ -2523,7 +2524,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     double insulationValue = insulationParam.AsDouble();
                     if (insulationValue > 0.0)
                     {
-                        double insulationMm = UnitUtils.ConvertFromInternalUnits(insulationValue, UnitTypeId.Millimeters);
+                        double insulationMm = RevitUnitConversionService.Instance.FromInternalMillimeters(insulationValue);
                         _log($"[DEBUG] Element {element.Id} has insulation: {insulationMm:F1}mm");
                         return "Insulated";
                     }
@@ -2570,8 +2571,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 // Fallback: Check by dimensions (if width ≈ height, likely round)
                 var (width, height) = GetMepElementDimensions(element);
-                double widthMm = UnitUtils.ConvertFromInternalUnits(width, UnitTypeId.Millimeters);
-                double heightMm = UnitUtils.ConvertFromInternalUnits(height, UnitTypeId.Millimeters);
+                double widthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(width);
+                double heightMm = RevitUnitConversionService.Instance.FromInternalMillimeters(height);
                 bool isRoundByDimensions = Math.Abs(widthMm - heightMm) < 10.0;
                 
                 return isRoundByDimensions ? "Round" : "Rectangular";
@@ -2851,7 +2852,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     if (tp.StorageType == StorageType.Double)
                                     {
                                         double d = tp?.AsDouble() ?? 0.0;
-                                        double mm = UnitUtils.ConvertFromInternalUnits(d, UnitTypeId.Millimeters);
+                                        double mm = RevitUnitConversionService.Instance.FromInternalMillimeters(d);
                                         val = mm.ToString("F1") + "mm";
                                     }
                                     else
@@ -2873,7 +2874,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // Convert to mm for logging
                         try
                         {
-                            var valMm = UnitUtils.ConvertFromInternalUnits(bVal, UnitTypeId.Millimeters);
+                            var valMm = RevitUnitConversionService.Instance.FromInternalMillimeters(bVal);
                                                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[FRAMING-THICKNESS] id={element.Id.IntegerValue}: key={(p?.Definition?.Name ?? "<null>")} value={valMm:F1}mm");
                         }
@@ -2911,7 +2912,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     double thickness = wall.Width;
                                         if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[WALL-THICKNESS] Wall {element.Id.IntegerValue}: thickness={UnitUtils.ConvertFromInternalUnits(thickness, UnitTypeId.Millimeters):F1}mm");
+                    DebugLogger.Info($"[WALL-THICKNESS] Wall {element.Id.IntegerValue}: thickness={RevitUnitConversionService.Instance.FromInternalMillimeters(thickness):F1}mm");
                     return thickness;
                 }
                 return 0.0; // Not a wall
@@ -2965,7 +2966,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     if (bVal > 0)
                                     {
                                                                                 if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Info($"[FRAMING-THICKNESS] Found parameter '{paramName}' = {bVal:F6}ft ({UnitUtils.ConvertFromInternalUnits(bVal, UnitTypeId.Millimeters):F1}mm) on framing {element.Id.IntegerValue}");
+                                        DebugLogger.Info($"[FRAMING-THICKNESS] Found parameter '{paramName}' = {bVal:F6}ft ({RevitUnitConversionService.Instance.FromInternalMillimeters(bVal):F1}mm) on framing {element.Id.IntegerValue}");
                                         break;
                                     }
                                 }
@@ -2992,7 +2993,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     if (tp.StorageType == StorageType.Double)
                                     {
                                         double d = tp?.AsDouble() ?? 0.0;
-                                        double mm = UnitUtils.ConvertFromInternalUnits(d, UnitTypeId.Millimeters);
+                                        double mm = RevitUnitConversionService.Instance.FromInternalMillimeters(d);
                                         val = mm.ToString("F1") + "mm";
                                     }
                                     else
@@ -3040,14 +3041,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (shape == "Round" || shape == "Circular")
                 {
                     // Convert from feet to mm and format as "Ø200"
-                    double diameterMm = UnitUtils.ConvertFromInternalUnits(width, UnitTypeId.Millimeters);
+                    double diameterMm = RevitUnitConversionService.Instance.FromInternalMillimeters(width);
                     return $"Ø{Math.Round(diameterMm, 0)}";
                 }
                 else
                 {
                     // Convert from feet to mm and format as "600x300"
-                    double widthMm = UnitUtils.ConvertFromInternalUnits(width, UnitTypeId.Millimeters);
-                    double heightMm = UnitUtils.ConvertFromInternalUnits(height, UnitTypeId.Millimeters);
+                    double widthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(width);
+                    double heightMm = RevitUnitConversionService.Instance.FromInternalMillimeters(height);
                     return $"{Math.Round(widthMm, 0)}x{Math.Round(heightMm, 0)}";
                 }
             }
@@ -4340,7 +4341,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             // Return clearance in feet (Revit internal units) for consistency
             // Convert 50mm to feet
-            return UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters);
+            return RevitUnitConversionService.Instance.ToInternalMillimeters(50.0);
         }
         
         private double CalculateRequiredClearance(double mepSize, Dictionary<string, double> clearanceSettings, Element mepElement)
@@ -4376,12 +4377,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 // Convert clearance from mm to feet (Revit internal units)
                 // UI stores values in mm, but Revit uses feet internally
-                return UnitUtils.ConvertToInternalUnits(clearanceInMm, UnitTypeId.Millimeters);
+                return RevitUnitConversionService.Instance.ToInternalMillimeters(clearanceInMm);
             }
             catch (Exception ex)
             {
                 _log($"Error calculating clearance: {ex.Message}, using default");
-                return UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters); // Fallback to 50mm converted to feet
+                return RevitUnitConversionService.Instance.ToInternalMillimeters(50.0); // Fallback to 50mm converted to feet
             }
         }
         
@@ -4588,7 +4589,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             try
             {
-                var value = UnitUtils.ConvertFromInternalUnits(param.AsDouble(), UnitTypeId.Millimeters);
+                var value = RevitUnitConversionService.Instance.FromInternalMillimeters(param.AsDouble());
                 return value > thresholdMm;
             }
             catch

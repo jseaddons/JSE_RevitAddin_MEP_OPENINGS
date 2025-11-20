@@ -426,18 +426,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         /// </summary>
         private Outline GetSectionBoxOutline(View3D view3D)
         {
-            if (view3D == null || !view3D.IsSectionBoxActive)
+            if (view3D == null)
+            {
+                _logger("[INTERSECTION-PROCESSOR] ⚠️ View3D is null - cannot get section box");
                 return null;
+            }
+
+            _logger($"[INTERSECTION-PROCESSOR] View3D: Name='{view3D.Name}', IsSectionBoxActive={view3D.IsSectionBoxActive}");
+
+            if (!view3D.IsSectionBoxActive)
+            {
+                _logger("[INTERSECTION-PROCESSOR] ⚠️ Section box is NOT active - returning null (will collect ALL elements without spatial filtering)");
+                return null;
+            }
 
             try
             {
                 var sectionBox = view3D.GetSectionBox();
-                if (sectionBox == null || sectionBox.Min == null || sectionBox.Max == null)
+                if (sectionBox == null)
+                {
+                    _logger("[INTERSECTION-PROCESSOR] ⚠️ GetSectionBox() returned null");
                     return null;
+                }
+
+                if (sectionBox.Min == null || sectionBox.Max == null)
+                {
+                    _logger("[INTERSECTION-PROCESSOR] ⚠️ Section box Min or Max is null");
+                    return null;
+                }
 
                 var transform = sectionBox.Transform;
                 if (transform == null)
+                {
+                    _logger("[INTERSECTION-PROCESSOR] ⚠️ Section box Transform is null");
                     return null;
+                }
 
                 // Convert section box corners to model coordinates
                 var corners = new List<XYZ>
@@ -455,11 +478,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 var modelMin = new XYZ(corners.Min(p => p.X), corners.Min(p => p.Y), corners.Min(p => p.Z));
                 var modelMax = new XYZ(corners.Max(p => p.X), corners.Max(p => p.Y), corners.Max(p => p.Z));
 
+                _logger($"[INTERSECTION-PROCESSOR] ✅ Section box outline: Min=({modelMin.X:F2}, {modelMin.Y:F2}, {modelMin.Z:F2}), Max=({modelMax.X:F2}, {modelMax.Y:F2}, {modelMax.Z:F2})");
+
                 return new Outline(modelMin, modelMax);
             }
             catch (Exception ex)
             {
                 _logger($"[INTERSECTION-PROCESSOR] ⚠️ Error getting section box outline: {ex.Message}");
+                _logger($"[INTERSECTION-PROCESSOR] Stack trace: {ex.StackTrace}");
                 return null;
             }
         }

@@ -97,8 +97,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
                 {
                     SafeFileLogger.SafeAppendText("geometry_errors.log",
                         $"[CornerBasedBoundingBoxCalculator] No sleeve data found - returning null");
+                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                        $"[{DateTime.Now:HH:mm:ss}] ❌ CornerBasedBoundingBoxCalculator: No sleeve data found (cluster.Count={cluster?.Count ?? 0})\n");
                     return null;
                 }
+                
+                // ✅ DIAGNOSTIC: Log how many sleeves have pre-calculated corners
+                int sleevesWithCorners = sleeveDataList.Count(s => s.preCalculatedCorners != null);
+                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                    $"[{DateTime.Now:HH:mm:ss}] CornerBasedBoundingBoxCalculator: {sleevesWithCorners}/{sleeveDataList.Count} sleeves have pre-calculated corners\n");
 
                 // Step 2: Choose reference point (first sleeve center as origin)
                 origin = sleeveDataList[0].center;

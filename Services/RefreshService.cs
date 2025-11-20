@@ -5651,8 +5651,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 // ✅ PERFORMANCE: Geometry extraction is expensive but necessary for accurate intersection calculation
                 // Bounding box would not provide precise intersection point required here
-                var mepGeometry = mepElement.get_Geometry(new Options());
-                var structuralGeometry = structuralElement.get_Geometry(new Options());
+                var mepGeometry = mepElement.get_Geometry(Helpers.GeometryOptionsFactory.CreateIntersectionOptions());
+                var structuralGeometry = structuralElement.get_Geometry(Helpers.GeometryOptionsFactory.CreateIntersectionOptions());
 
                 if (mepGeometry == null || structuralGeometry == null) return null;
 
