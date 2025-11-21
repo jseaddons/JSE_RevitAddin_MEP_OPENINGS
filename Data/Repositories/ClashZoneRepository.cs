@@ -2350,6 +2350,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         var intersectionYParam = cmd.Parameters.Add("@IntersectionY", System.Data.DbType.Double);
                         var intersectionZParam = cmd.Parameters.Add("@IntersectionZ", System.Data.DbType.Double);
 
+                        // 🚀 PERFORMANCE: Prepare statement once for reuse (compiles SQL query plan)
+                        cmd.Prepare();
+
                         int updateCount = 0;
                         int rowsAffectedTotal = 0;
                         int notFoundCount = 0;

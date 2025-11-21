@@ -76,6 +76,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                 _connection.Open();
                 _logger("[SQLite] ✅ Connection opened successfully");
 
+                // ✅ PERFORMANCE: Configure SQLite for maximum performance
                 using (var cmd = _connection.CreateCommand())
                 {
                     cmd.CommandText = "PRAGMA foreign_keys = ON;";
@@ -85,6 +86,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                 using (var cmd = _connection.CreateCommand())
                 {
                     cmd.CommandText = "PRAGMA journal_mode = WAL;";
+                    cmd.ExecuteNonQuery();
+                }
+
+                // 🚀 PERFORMANCE BOOST: Increase cache size to 64MB (default is 2MB)
+                // Larger cache = fewer disk I/O operations, especially for large datasets
+                using (var cmd = _connection.CreateCommand())
+                {
+                    cmd.CommandText = "PRAGMA cache_size = -65536;"; // Negative = KB, 64MB cache
+                    cmd.ExecuteNonQuery();
+                }
+
+                // 🚀 PERFORMANCE BOOST: Use NORMAL synchronous mode instead of FULL
+                // WAL mode already provides crash safety, NORMAL is 2-3x faster
+                using (var cmd = _connection.CreateCommand())
+                {
+                    cmd.CommandText = "PRAGMA synchronous = NORMAL;";
+                    cmd.ExecuteNonQuery();
+                }
+
+                // 🚀 PERFORMANCE BOOST: Use memory for temp storage instead of disk
+                // Speeds up complex queries with sorting/grouping
+                using (var cmd = _connection.CreateCommand())
+                {
+                    cmd.CommandText = "PRAGMA temp_store = MEMORY;";
+                    cmd.ExecuteNonQuery();
+                }
+
+                // 🚀 PERFORMANCE BOOST: Increase page size to 8KB (default 4KB)
+                // Better for larger records like ClashZones with many fields
+                // NOTE: This only works on new databases, existing DBs keep their page size
+                using (var cmd = _connection.CreateCommand())
+                {
+                    cmd.CommandText = "PRAGMA page_size = 8192;";
+                    cmd.ExecuteNonQuery();
+                }
+
+                // 🚀 PERFORMANCE BOOST: Set mmap_size to 256MB for memory-mapped I/O
+                // Significantly faster reads, especially for queries
+                using (var cmd = _connection.CreateCommand())
+                {
+                    cmd.CommandText = "PRAGMA mmap_size = 268435456;"; // 256MB
                     cmd.ExecuteNonQuery();
                 }
 
