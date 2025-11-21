@@ -162,6 +162,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             private readonly Stopwatch _timer;
             private readonly long _startMemory;
             private int _itemCount;
+            private readonly Dictionary<string, OperationMetrics> _subOperations;
             
             public OperationTracker(PlacementPerformanceMonitor monitor, string operationName)
             {
@@ -169,11 +170,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 _operationName = operationName;
                 _timer = Stopwatch.StartNew();
                 _startMemory = GC.GetTotalMemory(false);
+                _subOperations = new Dictionary<string, OperationMetrics>();
             }
             
             public void SetItemCount(int count)
             {
                 _itemCount = count;
+            }
+            
+            /// <summary>
+            /// Track a sub-operation within this operation
+            /// </summary>
+            public SubOperationTracker TrackSubOperation(string subOperationName)
+            {
+                return new SubOperationTracker(this, subOperationName);
+            }
+            
+            internal void RecordSubOperation(string name, long milliseconds, long memoryBytes, int itemCount)
+            {
+                if (!_subOperations.ContainsKey(name))
+                {
+                    _subOperations[name] = new OperationMetrics { Name = name };
+                }
+                
+                var metrics = _subOperations[name];
+                metrics.CallCount++;
+                metrics.TotalMilliseconds += milliseconds;
+                metrics.TotalMemoryBytes += memoryBytes;
+                metrics.TotalItemCount += itemCount;
+                
+                if (milliseconds > metrics.MaxMilliseconds)
+                    metrics.MaxMilliseconds = milliseconds;
+                
+                if (milliseconds < metrics.MinMilliseconds || metrics.MinMilliseconds == 0)
+                    metrics.MinMilliseconds = milliseconds;
             }
             
             public void Dispose()
@@ -187,6 +217,45 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 // ✅ LOG OPERATION COMPLETION: Log each operation completion
                 SafeFileLogger.SafeAppendText($"performance_{_monitor._logFileName}",
                     $"[{DateTime.Now:HH:mm:ss.fff}] {_operationName}: {_timer.ElapsedMilliseconds}ms, Memory: {memoryDelta / 1024.0:F2} KB, Items: {_itemCount}\n");
+                
+                // Log sub-operations
+                foreach (var subOp in _subOperations.Values.OrderByDescending(o => o.TotalMilliseconds))
+                {
+                    double avgMs = subOp.CallCount > 0 ? (double)subOp.TotalMilliseconds / subOp.CallCount : 0;
+                    SafeFileLogger.SafeAppendText($"performance_{_monitor._logFileName}",
+                        $"[{DateTime.Now:HH:mm:ss.fff}]   {subOp.Name}: {subOp.TotalMilliseconds}ms (avg: {avgMs:F1}ms, calls: {subOp.CallCount}, items: {subOp.TotalItemCount})\n");
+                }
+            }
+            
+            public class SubOperationTracker : IDisposable
+            {
+                private readonly OperationTracker _parent;
+                private readonly string _subOperationName;
+                private readonly Stopwatch _timer;
+                private readonly long _startMemory;
+                private int _itemCount;
+                
+                public SubOperationTracker(OperationTracker parent, string subOperationName)
+                {
+                    _parent = parent;
+                    _subOperationName = subOperationName;
+                    _timer = Stopwatch.StartNew();
+                    _startMemory = GC.GetTotalMemory(false);
+                }
+                
+                public void SetItemCount(int count)
+                {
+                    _itemCount = count;
+                }
+                
+                public void Dispose()
+                {
+                    _timer.Stop();
+                    long endMemory = GC.GetTotalMemory(false);
+                    long memoryDelta = endMemory - _startMemory;
+                    
+                    _parent.RecordSubOperation(_subOperationName, _timer.ElapsedMilliseconds, memoryDelta, _itemCount);
+                }
             }
         }
     }

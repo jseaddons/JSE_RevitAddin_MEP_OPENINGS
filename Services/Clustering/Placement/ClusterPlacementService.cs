@@ -142,7 +142,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                     File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 PlaceClusterSleeve: Starting placement, hostType={groupKey.hostType}, systemType={groupKey.systemType}\n");
                 }
                 catch { }
-                
+
                 // Determine family name based on host type and shape
                 string familyName = GetFamilyName(groupKey);
                 if (string.IsNullOrEmpty(familyName))
@@ -279,11 +279,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 }
 
                 // Set size parameters
-                bool shouldSwapDimensions = (groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing") && Math.Abs(rotationAngle) > 1e-6;
+                // ✅ WALL/FRAMING: No rotation for walls - shouldSwapDimensions is always false
+                // Rotation logic is only for floors (rotated axis/non-straight)
+                bool shouldSwapDimensions = false; // Walls/framing always use normal logic (no rotation)
                 SetSizeParameters(doc, inst, cluster, groupKey, width, height, depth, shouldSwapDimensions);
 
-                // ✅ ROTATION FIX: Apply rotation for ALL non-zero angles, including straight axis-aligned (0°, 90°, 180°, 270°)
-                // Previous code skipped rotation for straight axis-aligned angles, causing X-walls (90°) to be placed at 0° orientation
+                // ✅ ROTATION: Apply rotation only for floors (rotated axis/non-straight)
+                // Walls/framing always have rotationAngle=0 (no rotation, normal working logic)
+                // Only floors can have non-zero rotation angles for rotated axis-aligned clusters
                 if (Math.Abs(rotationAngle) > 1e-6)
                 {
                     ApplyRotation(doc, inst, placementPoint, rotationAngle);
@@ -318,7 +321,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 {
                     try
                     {
-                        _markClusterResolved(cluster, inst.Id, xmlFilePath, clusterBbox, null);
+                _markClusterResolved(cluster, inst.Id, xmlFilePath, clusterBbox, null);
                     }
                     catch (Exception markEx)
                     {
@@ -449,28 +452,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                     }
                     else // X-walls (and other orientations)
                     {
-                        // ✅ X-WALL COORDINATE SYSTEM: For X-walls
+                        // ✅ X-WALL COORDINATE SYSTEM: For X-walls (NO ROTATION - normal working logic only)
                         // World coordinate: X = along wall (width), Y = through wall (depth), Z = vertical (height)
                         // Sleeve parameter mapping: Width = X direction, Depth = Y direction, Height = Z direction
                         // Bounding box returns: width = X extent, height = Y extent, depth = Z extent
+                        // 
+                        // ✅ NO ROTATION: Walls always use normal logic (rotationAngle=0, shouldSwapDimensions=false)
+                        // Rotation logic is only for floors (rotated axis/non-straight)
                         
-                        if (shouldSwapDimensions) // X-walls with rotation
-                        {
-                            // X-wall with rotation: Width=W, Height=D, Depth=H (from backup code)
-                            openingWidth = width;   // X extent → Width parameter
-                            openingHeight = depth;  // Z extent → Height parameter
-                            openingDepth = height;  // Y extent → Depth parameter (will be overridden with wall thickness)
-                        }
-                        else // X-walls without rotation (rotationAngle=0)
-                        {
-                            // ✅ X-WALL MAPPING:
-                            // Width = X direction → width (X extent)
-                            // Depth = Y direction → height (Y extent), but overridden with wall thickness
-                            // Height = Z direction → depth (Z extent)
-                            openingWidth = width;   // X extent → Width parameter
-                            openingHeight = depth;  // Z extent → Height parameter
-                            openingDepth = height;  // Y extent → Depth parameter (will be overridden with wall thickness)
-                        }
+                        // ✅ X-WALL MAPPING (NO ROTATION):
+                        // Width = X direction → width (X extent)
+                        // Depth = Y direction → height (Y extent), but overridden with wall thickness
+                        // Height = Z direction → depth (Z extent)
+                        openingWidth = width;   // X extent → Width parameter
+                        openingHeight = depth;  // Z extent → Height parameter
+                        openingDepth = height;  // Y extent → Depth parameter (will be overridden with wall thickness)
                         
                         // ✅ WALL DEPTH FIX: Override depth with wall thickness for wall-hosted clusters
                         if (wallThickness > 0)
@@ -481,7 +477,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                                 double wallThicknessMm = RevitUnitConversionService.Instance.FromInternalMillimeters(wallThickness);
                                 double originalDepthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(height);
                                 SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss}] 🔧 X-WALL DEPTH FIX: Overriding depth from {originalDepthMm:F1}mm (Y extent) to wall thickness {wallThicknessMm:F1}mm (rotation={shouldSwapDimensions})\n");
+                                    $"[{DateTime.Now:HH:mm:ss}] 🔧 X-WALL DEPTH FIX: Overriding depth from {originalDepthMm:F1}mm (Y extent) to wall thickness {wallThicknessMm:F1}mm (no rotation, normal logic)\n");
                             }
                         }
                     }
@@ -496,7 +492,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                     SafeFileLogger.SafeAppendText("cluster_debug.log",
                         $"[{DateTime.Now:HH:mm:ss}] 📐 AFTER SWAP: Final W={finalWMm:F1}mm, H={finalHMm:F1}mm, D={finalDMm:F1}mm\n");
                 }
-                
+
                 // Set parameters
                 if (widthParam != null && !widthParam.IsReadOnly)
                 {

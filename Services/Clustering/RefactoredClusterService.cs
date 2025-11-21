@@ -885,7 +885,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 catch { }
                 
                 // ✅ PERFORMANCE: Track bounding box calculation
-                (double width, double height, double depth) bboxResult;
+                (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ) bboxResult;
                 using (performanceTracker?.TrackSubOperation("Calculate Rotated Bounding Box"))
                 {
                     bboxResult = _rotationService.CalculateRotatedBoundingBox(cluster, actualSleeves, rotationAngle, xmlFilePath);

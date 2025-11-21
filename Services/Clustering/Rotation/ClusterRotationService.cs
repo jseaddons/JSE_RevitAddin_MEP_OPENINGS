@@ -105,9 +105,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     return 0.0;
                 }
 
-                // ✅ WALL ORIENTATION LOGIC (PRIMARY): For walls/structural framing, rotation is based on wall orientation
-                // This is the MAIN logic for wall-hosted clusters, not a fallback
-                // Get host type and orientation from first clash zone
+                // ✅ WALL/STRUCTURAL FRAMING: No rotation for walls - use normal working logic only
+                // Rotation logic is only applied to floors (rotated axis/non-straight)
+                // Get host type from first clash zone
                 ClashZone? firstClashZone = null;
                 foreach (var sleeveData in cluster)
                 {
@@ -128,87 +128,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
 
                     if (isWallHost || isFramingHost)
                     {
-                        // ✅ WALL ROTATION LOGIC (PRIMARY): Use WallDirectionType to determine X-wall or Y-wall
-                        // CRITICAL: Only check WALL orientation (X-wall or Y-wall), NOT MEP orientation!
-                        // For wall clustering, rotation is determined ONLY by the wall's direction type
-                        // Individual sleeves: LEFT view family
-                        //   - X-walls: +90° rotation (LEFT family needs rotation for X-walls)
-                        //   - Y-walls: 0° rotation (LEFT family works naturally for Y-walls)
-                        // Cluster sleeves should use the SAME rotation as individual sleeves to maintain correct orientation
-                        
-                        // ✅ DIAGNOSTIC: Log all wall orientation data for debugging
-                        string wallDirectionType = firstClashZone.WallDirectionType ?? "";
-                        string hostOrientation = firstClashZone.HostOrientation ?? "";
+                        // ✅ WALL/FRAMING: No rotation - return 0.0° (use normal working logic)
+                        // Rotation logic is only for floors (rotated axis/non-straight)
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
+                            DebugLogger.Info($"[CLUSTER-ANGLE] WALL/FRAMING HOST: {firstClashZone.StructuralElementType} → Returning 0.0° (no rotation, use normal working logic)");
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE-DEBUG] WALL HOST DETECTED: StructuralType='{firstClashZone.StructuralElementType}', WallDirectionType='{wallDirectionType}', HostOrientation='{hostOrientation}'\n");
+                                $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE] ✅ WALL/FRAMING HOST DETECTED → 0.0° (no rotation, normal logic)\n");
                         }
-                        
-                        // ✅ CRITICAL: Check WallDirectionType directly (contains "X-WALL" or "Y-WALL")
-                        // DO NOT use MepElementOrientationDirection - that can contain MEP orientation for floors
-                        bool isXWall = wallDirectionType.Contains("X-WALL", StringComparison.OrdinalIgnoreCase);
-                        bool isYWall = wallDirectionType.Contains("Y-WALL", StringComparison.OrdinalIgnoreCase);
-                        
-                        if (isXWall)
-                        {
-                            // X-wall: +90° rotation required (same as individual sleeves)
-                            // LEFT view family extrudes along Y-axis, needs +90° rotation for X-walls
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                DebugLogger.Info($"[CLUSTER-ANGLE] WALL ROTATION: {firstClashZone.StructuralElementType} - X-WALL detected (WallDirectionType='{wallDirectionType}') → Returning 90.0° (π/2 radians - matches individual sleeve rotation)");
-                                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE] ✅ X-WALL DETECTED via WallDirectionType → 90.0°\n");
-                            }
-                            return Math.PI / 2.0; // 90° rotation for X-oriented walls/framing (same as individual sleeves)
-                        }
-                        else if (isYWall)
-                        {
-                            // Y-wall: 0° rotation (same as individual sleeves)
-                            // LEFT view family works naturally for Y-walls, no rotation needed
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                DebugLogger.Info($"[CLUSTER-ANGLE] WALL ROTATION: {firstClashZone.StructuralElementType} - Y-WALL detected (WallDirectionType='{wallDirectionType}') → Returning 0.0° (no rotation - matches individual sleeve rotation)");
-                                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE] ✅ Y-WALL DETECTED via WallDirectionType → 0.0°\n");
-                            }
-                            return 0.0; // No rotation for Y-oriented walls/framing (same as individual sleeves)
-                        }
-                        else
-                        {
-                            // ✅ FALLBACK: If WallDirectionType doesn't contain X-WALL or Y-WALL, check HostOrientation
-                            // HostOrientation should contain "X" or "Y" for walls/framing (this is what groupKey uses)
-                            if (string.Equals(hostOrientation, "X", StringComparison.OrdinalIgnoreCase))
-                            {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    DebugLogger.Info($"[CLUSTER-ANGLE] WALL ROTATION: {firstClashZone.StructuralElementType} - HostOrientation='X' (fallback from WallDirectionType='{wallDirectionType}') → Returning 90.0°");
-                                    SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                        $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE] ✅ X-WALL DETECTED via HostOrientation fallback → 90.0°\n");
-                                }
-                                return Math.PI / 2.0;
-                            }
-                            else if (string.Equals(hostOrientation, "Y", StringComparison.OrdinalIgnoreCase))
-                            {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    DebugLogger.Info($"[CLUSTER-ANGLE] WALL ROTATION: {firstClashZone.StructuralElementType} - HostOrientation='Y' (fallback from WallDirectionType='{wallDirectionType}') → Returning 0.0°");
-                                    SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                        $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE] ✅ Y-WALL DETECTED via HostOrientation fallback → 0.0°\n");
-                                }
-                                return 0.0;
-                            }
-                            else
-                            {
-                                // ✅ DIAGNOSTIC: Log when wall direction cannot be determined
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                        $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE] ⚠️ WALL HOST but cannot determine X/Y: WallDirectionType='{wallDirectionType}', HostOrientation='{hostOrientation}' → Continuing to MEP rotation calculation\n");
-                                }
-                            }
-                        }
-                        // If wall direction cannot be determined, continue to calculate from MEP rotation angles below
+                        return 0.0; // No rotation for walls/framing - use normal working logic
                     }
                 }
 

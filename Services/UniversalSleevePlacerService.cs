@@ -1059,23 +1059,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 // ⏱️ TIMING: Family selection and loading
                                 var familyTimer = System.Diagnostics.Stopwatch.StartNew();
                                 FamilySymbol familySymbol = null;
+                                string familyName = "";
+                                bool isCircular = false;
                                 using (singleSleeveTracker?.TrackSubOperation("Load Family Symbol"))
                                 {
-                                // Select universal family
-                                var (familyName, isCircular) = SelectUniversalFamily(clashZone, mepSize);
-                                try
-                                {                         // ✅ DEPLOYMENT MODE: Skip file writes
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 11: Family selected: '{familyName}', IsCircular={isCircular}\n");
+                                    // Select universal family
+                                    (familyName, isCircular) = SelectUniversalFamily(clashZone, mepSize);
+                                    try
+                                    {                         // ✅ DEPLOYMENT MODE: Skip file writes
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 11: Family selected: '{familyName}', IsCircular={isCircular}\n");
+                                        }
                                     }
-                                }
-                                catch { }
+                                    catch { }
 
-                                familySymbol = LoadFamilySymbol(familyName);
-                                familyTimer.Stop();
-                                totalFamilyLoadTime += familyTimer.Elapsed;
-                                sleeveLog.AppendLine($"  Family load: {familyTimer.ElapsedMilliseconds}ms");
+                                    familySymbol = LoadFamilySymbol(familyName);
+                                    familyTimer.Stop();
+                                    totalFamilyLoadTime += familyTimer.Elapsed;
+                                    sleeveLog.AppendLine($"  Family load: {familyTimer.ElapsedMilliseconds}ms");
                                 } // End Load Family Symbol sub-operation
 
                                 bool shouldSkipSleeve = false;
@@ -1394,54 +1396,53 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 // Uses placement coordinates, family selection, and dimensions from Filter XML
                                 // ⏱️ TIMING: Sleeve creation
                                 var createTimer = System.Diagnostics.Stopwatch.StartNew();
+                                FamilyInstance sleeveInstance = null;
                                 using (singleSleeveTracker?.TrackSubOperation("Create Sleeve Instance"))
                                 {
+                                    if (!DeploymentConfiguration.DeploymentMode && PlacedCount < 5)
+                                        DebugLogger.Info($"[SLEEVE-PLACEMENT-FLOW] Step 3: Placing sleeve at ({adjustedPlacementPoint.X:F3},{adjustedPlacementPoint.Y:F3},{adjustedPlacementPoint.Z:F3}) " +
+                                            $"using family '{familySymbol.Family.Name}' with dimensions W={finalWidth:F3}, H={finalHeight:F3}");
 
-                                if (!DeploymentConfiguration.DeploymentMode && PlacedCount < 5)
-                                    DebugLogger.Info($"[SLEEVE-PLACEMENT-FLOW] Step 3: Placing sleeve at ({adjustedPlacementPoint.X:F3},{adjustedPlacementPoint.Y:F3},{adjustedPlacementPoint.Z:F3}) " +
-                                        $"using family '{familySymbol.Family.Name}' with dimensions W={finalWidth:F3}, H={finalHeight:F3}");
-
-                                // Place sleeve instance (NO HOST PARAMETER - workplane-based families)
-                                // ✅ Works with linked structural elements because no host reference needed
-                                FamilyInstance sleeveInstance = null;
-                                try
-                                {
-                                    // ✅ STEP 3: Create sleeve instance using placement data from Filter XML
-                                    sleeveInstance = _doc.Create.NewFamilyInstance(
-                                        adjustedPlacementPoint,  // From Filter XML (IntersectionPoint)
-                                        familySymbol,            // Selected based on host type from Filter XML
-                                        nearestLevel,
-                                        StructuralType.NonStructural);
+                                    // Place sleeve instance (NO HOST PARAMETER - workplane-based families)
+                                    // ✅ Works with linked structural elements because no host reference needed
                                     try
-                                    {                             // ✅ DEPLOYMENT MODE: Skip file writes
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        {
-                                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 14: ✅ Sleeve instance created! ID={sleeveInstance?.Id?.IntegerValue ?? -1}\n");
+                                    {
+                                        // ✅ STEP 3: Create sleeve instance using placement data from Filter XML
+                                        sleeveInstance = _doc.Create.NewFamilyInstance(
+                                            adjustedPlacementPoint,  // From Filter XML (IntersectionPoint)
+                                            familySymbol,            // Selected based on host type from Filter XML
+                                            nearestLevel,
+                                            StructuralType.NonStructural);
+                                        try
+                                        {                             // ✅ DEPLOYMENT MODE: Skip file writes
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                            {
+                                                File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 14: ✅ Sleeve instance created! ID={sleeveInstance?.Id?.IntegerValue ?? -1}\n");
+                                            }
                                         }
+                                        catch { }
                                     }
-                                    catch { }
-                                }
-                                catch (Exception createEx)
-                                {
-                                    try
-                                    {                             // ✅ DEPLOYMENT MODE: Skip file writes
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        {
-                                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 14.1: ❌ EXCEPTION during sleeve creation: {createEx.Message}\n{createEx.StackTrace}\n");
+                                    catch (Exception createEx)
+                                    {
+                                        try
+                                        {                             // ✅ DEPLOYMENT MODE: Skip file writes
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                            {
+                                                File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 14.1: ❌ EXCEPTION during sleeve creation: {createEx.Message}\n{createEx.StackTrace}\n");
+                                            }
                                         }
+                                        catch { }
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Error($"[UniversalSleevePlacer] Exception creating sleeve: {createEx.Message}");
+                                        ErrorCount++;
+                                        singleSleeveTracker.SetItemCount(1); // Track error as 1 item
+                                        sleeveTimer.Stop();
+                                        continue;
                                     }
-                                    catch { }
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Error($"[UniversalSleevePlacer] Exception creating sleeve: {createEx.Message}");
-                                    ErrorCount++;
-                                    singleSleeveTracker.SetItemCount(1); // Track error as 1 item
-                                    sleeveTimer.Stop();
-                                    continue;
-                                }
 
-                                createTimer.Stop();
-                                totalSleeveCreateTime += createTimer.Elapsed;
-                                sleeveLog.AppendLine($"  Sleeve create: {createTimer.ElapsedMilliseconds}ms");
+                                    createTimer.Stop();
+                                    totalSleeveCreateTime += createTimer.Elapsed;
+                                    sleeveLog.AppendLine($"  Sleeve create: {createTimer.ElapsedMilliseconds}ms");
                                 } // End Create Sleeve Instance sub-operation
 
                                 if (sleeveInstance == null)
@@ -2306,8 +2307,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         placementLoopTracker.SetItemCount(processedCount);
                     } // ✅ PERFORMANCE: End of placement loop tracking
 
-                    // ✅ PERFORMANCE: Track XML save and flag updates
-                    using (var xmlSaveTracker = performanceMonitor.TrackOperation("Save XML Files & Update Flags"))
+                    // ✅ PERFORMANCE: Track database updates (XML creation is disabled - see DeploymentConfiguration.DisableXmlCreation)
+                    // NOTE: This operation updates the database for each placed sleeve individually.
+                    // Time shown is database I/O (creating context, repository, and committing transactions).
+                    // XML file writes are skipped when DeploymentConfiguration.DisableXmlCreation = true.
+                    using (var xmlSaveTracker = performanceMonitor.TrackOperation("Update Database Flags"))
                     {
                         // ✅ CRITICAL: Save Global XML IMMEDIATELY after placement (before clustering can delete sleeves)
                         if (PlacedCount > 0)
