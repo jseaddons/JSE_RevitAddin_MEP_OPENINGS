@@ -521,17 +521,54 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
 
             if (rotatedBboxes.Count == 0)
             {
-                // Fallback: axis-aligned union from Revit bounding boxes
+                // ✅ OPTIMIZATION: Use bounding box data from database instead of querying Revit
+                // Database has SleeveBoundingBoxMinX/Y/Z and MaxX/Y/Z stored after individual sleeve placement
+                // This is faster and avoids Revit API calls
+                var dbBboxes = new List<(XYZ min, XYZ max)>();
+                foreach (var sleeveData in cluster)
+                {
+                    var cz = _getClashZoneFunc(sleeveData.SleeveInstanceId, xmlFilePath);
+                    if (cz == null) continue;
+                    
+                    var clashZone = cz as ClashZone;
+                    if (clashZone == null) continue;
+                    
+                    // Check if database has valid bounding box data
+                    if (clashZone.SleeveBoundingBoxMinX != 0 || clashZone.SleeveBoundingBoxMaxX != 0 ||
+                        clashZone.SleeveBoundingBoxMinY != 0 || clashZone.SleeveBoundingBoxMaxY != 0 ||
+                        clashZone.SleeveBoundingBoxMinZ != 0 || clashZone.SleeveBoundingBoxMaxZ != 0)
+                    {
+                        dbBboxes.Add((
+                            new XYZ(clashZone.SleeveBoundingBoxMinX, clashZone.SleeveBoundingBoxMinY, clashZone.SleeveBoundingBoxMinZ),
+                            new XYZ(clashZone.SleeveBoundingBoxMaxX, clashZone.SleeveBoundingBoxMaxY, clashZone.SleeveBoundingBoxMaxZ)
+                        ));
+                    }
+                }
+                
+                // If database has bounding boxes, use them (faster, no Revit API calls)
+                if (dbBboxes.Count > 0)
+                {
+                    double minXf = dbBboxes.Min(b=>b.min.X); double minYf = dbBboxes.Min(b=>b.min.Y); double minZf = dbBboxes.Min(b=>b.min.Z);
+                    double maxXf = dbBboxes.Max(b=>b.max.X); double maxYf = dbBboxes.Max(b=>b.max.Y); double maxZf = dbBboxes.Max(b=>b.max.Z);
+                    double wf = maxXf - minXf; double hf = maxYf - minYf; double df = maxZf - minZf; XYZ midF = new XYZ((minXf+maxXf)/2,(minYf+maxYf)/2,(minZf+maxZf)/2);
+                    
+                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                        $"[{DateTime.Now:HH:mm:ss}] ✅ FALLBACK (axis-aligned from DB): W={wf:F1}mm, H={hf:F1}mm, D={df:F1}mm ({dbBboxes.Count} sleeves from database)\n");
+                    
+                    return (wf,hf,df,midF,null,null,null,null,null,null);
+                }
+                
+                // Last resort: Fallback to Revit bounding boxes if database data is missing
                 var revitBboxes = actualSleeves.Select(s => s.get_BoundingBox(null)).Where(b => b != null && b.Enabled).ToList();
                 if (revitBboxes.Count == 0) return (0,0,0,XYZ.Zero,null,null,null,null,null,null);
-                double minXf = revitBboxes.Min(b=>b.Min.X); double minYf = revitBboxes.Min(b=>b.Min.Y); double minZf = revitBboxes.Min(b=>b.Min.Z);
-                double maxXf = revitBboxes.Max(b=>b.Max.X); double maxYf = revitBboxes.Max(b=>b.Max.Y); double maxZf = revitBboxes.Max(b=>b.Max.Z);
-                double wf = maxXf - minXf; double hf = maxYf - minYf; double df = maxZf - minZf; XYZ midF = new XYZ((minXf+maxXf)/2,(minYf+maxYf)/2,(minZf+maxZf)/2);
+                double minXr = revitBboxes.Min(b=>b.Min.X); double minYr = revitBboxes.Min(b=>b.Min.Y); double minZr = revitBboxes.Min(b=>b.Min.Z);
+                double maxXr = revitBboxes.Max(b=>b.Max.X); double maxYr = revitBboxes.Max(b=>b.Max.Y); double maxZr = revitBboxes.Max(b=>b.Max.Z);
+                double wr = maxXr - minXr; double hr = maxYr - minYr; double dr = maxZr - minZr; XYZ midR = new XYZ((minXr+maxXr)/2,(minYr+maxYr)/2,(minZr+maxZr)/2);
                 
                 SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ FALLBACK (axis-aligned): W={wf:F1}mm, H={hf:F1}mm, D={df:F1}mm (no rotated bboxes)\n");
+                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ FALLBACK (axis-aligned from Revit): W={wr:F1}mm, H={hr:F1}mm, D={dr:F1}mm (database data missing, using Revit API)\n");
                 
-                return (wf,hf,df,midF,null,null,null,null,null,null);
+                return (wr,hr,dr,midR,null,null,null,null,null,null);
             }
 
             // ✅ FALLBACK: Simple union of rotated boxes (only if corner-based failed)

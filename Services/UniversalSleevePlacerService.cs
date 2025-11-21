@@ -259,43 +259,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         private List<ClashZone> PreFilterEligibleClashZones(List<ClashZone> clashZones)
         {
-            // ✅ PERFORMANCE: Pre-calculate clearances in parallel (non-Revit operation)
-            // This can save significant time for large clash zone lists
+            // ✅ PERFORMANCE: Pre-filter and validate clash zones (reserved for future optimization)
+            // Note: Actual clearance calculation happens during placement, not here
+            // ClashZone does not have SleeveDepth or cached clearance properties
+            // This method can be used for parallel validation in the future
+            
+            if (!OptimizationFlags.UseParallelClearanceCalculation || clashZones.Count <= 10)
+            {
+                // Skip parallel processing for small lists
+                return clashZones;
+            }
+
             var sw = System.Diagnostics.Stopwatch.StartNew();
             
-            if (OptimizationFlags.UseParallelClearanceCalculation && clashZones.Count > 10)
+            // Currently just returns the list as-is
+            // Future optimization: Add parallel validation logic here
+            // (e.g., check required properties are set, validate coordinates, etc.)
+            
+            sw.Stop();
+            if (!DeploymentConfiguration.DeploymentMode && sw.ElapsedMilliseconds > 5)
             {
-                System.Threading.Tasks.Parallel.ForEach(clashZones, 
-                    new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
-                    zone =>
-                    {
-                        try
-                        {
-                            // Pre-calculate clearance values (pure math, no Revit API)
-                            // These will be cached and reused during actual placement
-                            if (zone.StructuralElementCategoryId == (int)BuiltInCategory.OST_Walls)
-                            {
-                                var wallThickness = zone.WallThickness > 0 ? zone.WallThickness : 0.5; // Default 6" = 0.5ft
-                                zone.SleeveDepth = wallThickness + (2.0 / 12.0); // Add 2" clearance
-                            }
-                            else if (zone.StructuralElementCategoryId == (int)BuiltInCategory.OST_Floors)
-                            {
-                                var floorThickness = zone.FloorThickness > 0 ? zone.FloorThickness : 0.833; // Default 10" = 0.833ft
-                                zone.SleeveDepth = floorThickness + (2.0 / 12.0); // Add 2" clearance
-                            }
-                        }
-                        catch
-                        {
-                            // Silently skip on error - clearance will be calculated during placement
-                        }
-                    });
-                    
-                sw.Stop();
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    SafeFileLogger.SafeAppendText("placement_performance.log",
-                        $"[{DateTime.Now:HH:mm:ss}] ⚡ MULTI-THREADING: Pre-calculated clearances for {clashZones.Count} zones in {sw.ElapsedMilliseconds}ms using {Environment.ProcessorCount} cores\n");
-                }
+                SafeFileLogger.SafeAppendText("placement_performance.log",
+                    $"[{DateTime.Now:HH:mm:ss}] ⚡ Pre-filtered {clashZones.Count} clash zones in {sw.ElapsedMilliseconds}ms\n");
             }
             
             return clashZones.ToList();
