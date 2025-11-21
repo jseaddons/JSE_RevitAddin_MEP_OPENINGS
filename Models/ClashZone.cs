@@ -120,6 +120,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public double SleeveBoundingBoxMaxZ { get; set; } = 0.0;
         
         /// <summary>
+        /// ✅ RCS BOUNDING BOX: Wall-aligned Relative Coordinate System bounding boxes (for walls/framing only)
+        /// These are calculated and saved during individual sleeve placement for walls/framing
+        /// RCS Definition:
+        /// - RCS X-axis = Along wall direction (WallDirection vector)
+        /// - RCS Y-axis = Through wall (perpendicular to wall direction in XY plane)
+        /// - RCS Z-axis = Vertical (same as WCS Z)
+        /// 
+        /// Benefits:
+        /// - Eliminates rotation logic for walls (bounding boxes already wall-aligned)
+        /// - Accurate cluster sizes for angled walls (no oversized clusters)
+        /// - Direct dimension mapping: Width = RCS_X, Depth = RCS_Y, Height = RCS_Z
+        /// 
+        /// For floors: These remain 0.0 (floors use WCS bounding boxes)
+        /// </summary>
+        public double SleeveBoundingBoxRCS_MinX { get; set; } = 0.0;
+        public double SleeveBoundingBoxRCS_MinY { get; set; } = 0.0;
+        public double SleeveBoundingBoxRCS_MinZ { get; set; } = 0.0;
+        public double SleeveBoundingBoxRCS_MaxX { get; set; } = 0.0;
+        public double SleeveBoundingBoxRCS_MaxY { get; set; } = 0.0;
+        public double SleeveBoundingBoxRCS_MaxZ { get; set; } = 0.0;
+        
+        /// <summary>
         /// ✅ ROTATED BBOX: Rotated bounding box coordinates for non-axis-aligned sleeves
         /// These are calculated and saved when MepElementRotationAngle is non-zero
         /// For axis-aligned sleeves, these remain NULL

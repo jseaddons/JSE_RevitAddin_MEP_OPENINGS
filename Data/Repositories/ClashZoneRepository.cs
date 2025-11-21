@@ -451,6 +451,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         SleevePlacementX, SleevePlacementY, SleevePlacementZ,
                         BoundingBoxMinX, BoundingBoxMinY, BoundingBoxMinZ,
                         BoundingBoxMaxX, BoundingBoxMaxY, BoundingBoxMaxZ,
+                        SleeveBoundingBoxRCS_MinX, SleeveBoundingBoxRCS_MinY, SleeveBoundingBoxRCS_MinZ,
+                        SleeveBoundingBoxRCS_MaxX, SleeveBoundingBoxRCS_MaxY, SleeveBoundingBoxRCS_MaxZ,
                         PlacementSource, UpdatedAt,
                         ClashZoneGuid, MepCategory, StructuralType,
                         HostOrientation, MepOrientationDirection,
@@ -474,6 +476,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         @SleevePlacementX, @SleevePlacementY, @SleevePlacementZ,
                         @BoundingBoxMinX, @BoundingBoxMinY, @BoundingBoxMinZ,
                         @BoundingBoxMaxX, @BoundingBoxMaxY, @BoundingBoxMaxZ,
+                        @SleeveBoundingBoxRCS_MinX, @SleeveBoundingBoxRCS_MinY, @SleeveBoundingBoxRCS_MinZ,
+                        @SleeveBoundingBoxRCS_MaxX, @SleeveBoundingBoxRCS_MaxY, @SleeveBoundingBoxRCS_MaxZ,
                         @PlacementSource, CURRENT_TIMESTAMP,
                         @ClashZoneGuid, @MepCategory, @StructuralType,
                         @HostOrientation, @MepOrientationDirection,
@@ -685,6 +689,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             cmd.Parameters.AddWithValue("@BoundingBoxMaxX", (object)clashZone.SleeveBoundingBoxMaxX ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@BoundingBoxMaxY", (object)clashZone.SleeveBoundingBoxMaxY ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@BoundingBoxMaxZ", (object)clashZone.SleeveBoundingBoxMaxZ ?? DBNull.Value);
+            // ✅ RCS BBOX: Save wall-aligned RCS bounding box coordinates (for walls/framing only)
+            cmd.Parameters.AddWithValue("@SleeveBoundingBoxRCS_MinX", (object)clashZone.SleeveBoundingBoxRCS_MinX ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@SleeveBoundingBoxRCS_MinY", (object)clashZone.SleeveBoundingBoxRCS_MinY ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@SleeveBoundingBoxRCS_MinZ", (object)clashZone.SleeveBoundingBoxRCS_MinZ ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@SleeveBoundingBoxRCS_MaxX", (object)clashZone.SleeveBoundingBoxRCS_MaxX ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@SleeveBoundingBoxRCS_MaxY", (object)clashZone.SleeveBoundingBoxRCS_MaxY ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@SleeveBoundingBoxRCS_MaxZ", (object)clashZone.SleeveBoundingBoxRCS_MaxZ ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@PlacementSource", "XML");
             cmd.Parameters.AddWithValue("@ClashZoneGuid", clashZone.Id.ToString());
             cmd.Parameters.AddWithValue("@MepCategory", (object)clashZone.MepElementCategory ?? DBNull.Value);
@@ -1605,6 +1616,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             clashZone.SleeveBoundingBoxMaxY = GetNullableDouble(reader, "BoundingBoxMaxY") ?? 0.0;
             clashZone.SleeveBoundingBoxMaxZ = GetNullableDouble(reader, "BoundingBoxMaxZ") ?? 0.0;
             
+            // ✅ RCS BBOX: Load wall-aligned RCS bounding box coordinates (0.0 for floors or if not calculated)
+            clashZone.SleeveBoundingBoxRCS_MinX = GetNullableDouble(reader, "SleeveBoundingBoxRCS_MinX") ?? 0.0;
+            clashZone.SleeveBoundingBoxRCS_MinY = GetNullableDouble(reader, "SleeveBoundingBoxRCS_MinY") ?? 0.0;
+            clashZone.SleeveBoundingBoxRCS_MinZ = GetNullableDouble(reader, "SleeveBoundingBoxRCS_MinZ") ?? 0.0;
+            clashZone.SleeveBoundingBoxRCS_MaxX = GetNullableDouble(reader, "SleeveBoundingBoxRCS_MaxX") ?? 0.0;
+            clashZone.SleeveBoundingBoxRCS_MaxY = GetNullableDouble(reader, "SleeveBoundingBoxRCS_MaxY") ?? 0.0;
+            clashZone.SleeveBoundingBoxRCS_MaxZ = GetNullableDouble(reader, "SleeveBoundingBoxRCS_MaxZ") ?? 0.0;
+            
             // ✅ ROTATED BBOX: Load rotated bounding box coordinates (NULL for axis-aligned sleeves)
             clashZone.RotatedBoundingBoxMinX = GetNullableDouble(reader, "RotatedBoundingBoxMinX");
             clashZone.RotatedBoundingBoxMinY = GetNullableDouble(reader, "RotatedBoundingBoxMinY");
@@ -1932,6 +1951,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 {
                     _logger($"[SQLite] ⚠️ UpdateSleeveBoundingBoxes: No rows updated for GUID {clashZoneGuid}");
                 }
+            }
+        }
+
+        /// <summary>
+        /// Update RCS (wall-aligned) bounding box coordinates for an individual sleeve by ClashZone GUID.
+        /// Used for walls/framing to store bounding boxes in wall-aligned coordinate system.
+        /// </summary>
+        public void UpdateSleeveBoundingBoxesRcs(Guid clashZoneGuid, double rcsMinX, double rcsMinY, double rcsMinZ,
+            double rcsMaxX, double rcsMaxY, double rcsMaxZ)
+        {
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = @"
+                        UPDATE ClashZones SET
+                            SleeveBoundingBoxRCS_MinX = @RcsMinX,
+                            SleeveBoundingBoxRCS_MinY = @RcsMinY,
+                            SleeveBoundingBoxRCS_MinZ = @RcsMinZ,
+                            SleeveBoundingBoxRCS_MaxX = @RcsMaxX,
+                            SleeveBoundingBoxRCS_MaxY = @RcsMaxY,
+                            SleeveBoundingBoxRCS_MaxZ = @RcsMaxZ,
+                            UpdatedAt = CURRENT_TIMESTAMP
+                        WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)
+                          AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL";
+
+                    cmd.Parameters.AddWithValue("@ClashZoneGuid", clashZoneGuid.ToString());
+                    cmd.Parameters.AddWithValue("@RcsMinX", rcsMinX);
+                    cmd.Parameters.AddWithValue("@RcsMinY", rcsMinY);
+                    cmd.Parameters.AddWithValue("@RcsMinZ", rcsMinZ);
+                    cmd.Parameters.AddWithValue("@RcsMaxX", rcsMaxX);
+                    cmd.Parameters.AddWithValue("@RcsMaxY", rcsMaxY);
+                    cmd.Parameters.AddWithValue("@RcsMaxZ", rcsMaxZ);
+                    
+                    var rowsAffected = cmd.ExecuteNonQuery();
+                    if (rowsAffected == 0 && !DeploymentConfiguration.DeploymentMode)
+                    {
+                        _logger($"[SQLite] ⚠️ UpdateSleeveBoundingBoxesRcs: No rows updated for GUID {clashZoneGuid}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                SafeFileLogger.SafeAppendText("database_errors.log",
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [ClashZoneRepository] Error in UpdateSleeveBoundingBoxesRcs for GUID {clashZoneGuid}: {ex.Message}\n");
+                throw;
             }
         }
 

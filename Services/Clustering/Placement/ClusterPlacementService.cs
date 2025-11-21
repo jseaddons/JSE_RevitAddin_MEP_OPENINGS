@@ -285,10 +285,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 bool shouldSwapDimensions = false; // Walls use normal dimension mapping (no swap needed)
                 SetSizeParameters(doc, inst, cluster, groupKey, width, height, depth, shouldSwapDimensions);
 
-                // ✅ ROTATION: Apply rotation for walls (X-wall = +90°, Y-wall = 0°) and floors (rotated axis/non-straight)
-                // Wall rotation matches individual sleeve rotation to maintain correct orientation
+                // ✅ ROTATION: Apply rotation ONLY for floors (rotated axis/non-straight)
+                // Walls use RCS (no rotation needed - bounding boxes already wall-aligned)
                 // Floor rotation is for rotated axis-aligned clusters (non-straight)
-                if (Math.Abs(rotationAngle) > 1e-6)
+                bool isWallHost = groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing";
+                if (Math.Abs(rotationAngle) > 1e-6 && !isWallHost)
                 {
                     ApplyRotation(doc, inst, placementPoint, rotationAngle);
                 }
@@ -395,17 +396,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 double openingHeight = height;
                 double openingDepth = depth;
 
-                // ✅ DIMENSION SWAPPING: For walls/framing, swap dimensions based on orientation
+                // ✅ RCS DIMENSION MAPPING: For walls/framing, use RCS dimensions directly (already wall-aligned)
                 if (groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing")
                 {
-                    // ✅ DIAGNOSTIC: Log input dimensions before swapping
+                    // ✅ RCS: Dimensions are already in wall-aligned coordinates from CalculateRotatedBoundingBox
+                    // RCS Definition:
+                    // - RCS X = along wall (Width parameter)
+                    // - RCS Y = through wall (Depth parameter, will be overridden with wall thickness)
+                    // - RCS Z = vertical (Height parameter)
+                    // 
+                    // Direct mapping (no swapping needed - RCS handles wall alignment):
+                    // Width = RCS X (along wall)
+                    // Depth = RCS Y (through wall) - override with wall thickness
+                    // Height = RCS Z (vertical)
+                    
+                    // ✅ DIAGNOSTIC: Log input dimensions (already in RCS)
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         double wMm = RevitUnitConversionService.Instance.FromInternalMillimeters(width);
                         double hMm = RevitUnitConversionService.Instance.FromInternalMillimeters(height);
                         double dMm = RevitUnitConversionService.Instance.FromInternalMillimeters(depth);
                         SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss}] 📐 BEFORE SWAP: Orientation={groupKey.orientation}, ShouldSwap={shouldSwapDimensions}, BBox W={wMm:F1}mm, H={hMm:F1}mm, D={dMm:F1}mm\n");
+                            $"[{DateTime.Now:HH:mm:ss}] 📐 RCS DIMENSIONS: Orientation={groupKey.orientation}, RCS W={wMm:F1}mm (X=along wall), H={hMm:F1}mm (Z=vertical), D={dMm:F1}mm (Y=through wall)\n");
                     }
                     
                     // ✅ CRITICAL FIX: Get wall thickness from clash zones (should be same for all sleeves on same wall)
@@ -431,55 +443,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                             $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ⚠️ Error getting wall thickness: {ex.Message}\n");
                     }
                     
-                    if (groupKey.orientation == "Y")
+                    // ✅ RCS: Direct dimension mapping (no swapping needed)
+                    openingWidth = width;   // RCS X (along wall) → Width parameter
+                    openingHeight = height; // RCS Z (vertical) → Height parameter
+                    openingDepth = depth;   // RCS Y (through wall) → Depth parameter (will be overridden)
+                    
+                    // ✅ WALL DEPTH FIX: Override depth with wall thickness for wall-hosted clusters
+                    if (wallThickness > 0)
                     {
-                        // Y-wall: Width=H, Height=D, Depth=W
-                        openingWidth = height;
-                        openingHeight = depth;
-                        openingDepth = width;
-                        
-                        // ✅ WALL DEPTH FIX: Override depth with wall thickness for wall-hosted clusters
-                        if (wallThickness > 0)
+                        openingDepth = wallThickness;
+                        if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            openingDepth = wallThickness;
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                double wallThicknessMm = RevitUnitConversionService.Instance.FromInternalMillimeters(wallThickness);
-                                double depthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(depth);
-                                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss}] 🔧 Y-WALL DEPTH FIX: Overriding depth from {depthMm:F1}mm to wall thickness {wallThicknessMm:F1}mm\n");
-                            }
-                        }
-                    }
-                    else // X-walls (and other orientations)
-                    {
-                        // ✅ X-WALL COORDINATE SYSTEM: For X-walls (NO ROTATION - normal working logic only)
-                        // World coordinate: X = along wall (width), Y = through wall (depth), Z = vertical (height)
-                        // Sleeve parameter mapping: Width = X direction, Depth = Y direction, Height = Z direction
-                        // Bounding box returns: width = X extent, height = Y extent, depth = Z extent
-                        // 
-                        // ✅ NO ROTATION: Walls always use normal logic (rotationAngle=0, shouldSwapDimensions=false)
-                        // Rotation logic is only for floors (rotated axis/non-straight)
-                        
-                        // ✅ X-WALL MAPPING (NO ROTATION):
-                        // Width = X direction → width (X extent)
-                        // Depth = Y direction → height (Y extent), but overridden with wall thickness
-                        // Height = Z direction → depth (Z extent)
-                        openingWidth = width;   // X extent → Width parameter
-                        openingHeight = depth;  // Z extent → Height parameter
-                        openingDepth = height;  // Y extent → Depth parameter (will be overridden with wall thickness)
-                        
-                        // ✅ WALL DEPTH FIX: Override depth with wall thickness for wall-hosted clusters
-                        if (wallThickness > 0)
-                        {
-                            openingDepth = wallThickness;
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                double wallThicknessMm = RevitUnitConversionService.Instance.FromInternalMillimeters(wallThickness);
-                                double originalDepthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(height);
-                                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss}] 🔧 X-WALL DEPTH FIX: Overriding depth from {originalDepthMm:F1}mm (Y extent) to wall thickness {wallThicknessMm:F1}mm (no rotation, normal logic)\n");
-                            }
+                            double wallThicknessMm = RevitUnitConversionService.Instance.FromInternalMillimeters(wallThickness);
+                            double originalDepthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(depth);
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] 🔧 RCS WALL DEPTH FIX: Overriding depth from {originalDepthMm:F1}mm (RCS Y) to wall thickness {wallThicknessMm:F1}mm\n");
                         }
                     }
                 }

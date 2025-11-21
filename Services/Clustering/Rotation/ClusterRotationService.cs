@@ -5,6 +5,7 @@ using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Geometry;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
@@ -294,6 +295,95 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
             // Simplified rotated bounding box calculation (union + optional corner refinement) without external ambiguous loggers.
             if (cluster == null || cluster.Count == 0 || actualSleeves == null || actualSleeves.Count == 0)
                 return (0,0,0,XYZ.Zero,null,null,null,null,null,null);
+
+            // ✅ RCS: For walls/framing, use RCS bounding boxes directly (already wall-aligned, no rotation needed)
+            var firstSleeveData = cluster[0];
+            if (firstSleeveData != null)
+            {
+                try
+                {
+                    int firstSleeveInstanceId = firstSleeveData.SleeveInstanceId;
+                    if (firstSleeveInstanceId > 0)
+                    {
+                        var firstCz = _getClashZoneFunc(firstSleeveInstanceId, xmlFilePath) as ClashZone;
+                        if (firstCz != null)
+                        {
+                            bool isWallHost = string.Equals(firstCz.StructuralElementType, "Wall", StringComparison.OrdinalIgnoreCase) ||
+                                              string.Equals(firstCz.StructuralElementType, "Walls", StringComparison.OrdinalIgnoreCase);
+                            bool isFramingHost = string.Equals(firstCz.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
+                            
+                            if ((isWallHost || isFramingHost) && firstCz.WallDirection != null && !firstCz.WallDirection.IsZeroLength())
+                            {
+                                // ✅ RCS: Collect RCS bounding boxes from database (already wall-aligned)
+                                var rcsBboxes = new List<(XYZ min, XYZ max)>();
+                                foreach (var sleeveData in cluster)
+                                {
+                                    try
+                                    {
+                                        int sleeveInstanceId = sleeveData.SleeveInstanceId;
+                                        if (sleeveInstanceId > 0)
+                                        {
+                                            var cz = _getClashZoneFunc(sleeveInstanceId, xmlFilePath) as ClashZone;
+                                            if (cz != null && 
+                                                !(cz.SleeveBoundingBoxRCS_MinX == 0.0 && cz.SleeveBoundingBoxRCS_MinY == 0.0 && cz.SleeveBoundingBoxRCS_MinZ == 0.0 &&
+                                                  cz.SleeveBoundingBoxRCS_MaxX == 0.0 && cz.SleeveBoundingBoxRCS_MaxY == 0.0 && cz.SleeveBoundingBoxRCS_MaxZ == 0.0))
+                                            {
+                                                rcsBboxes.Add((
+                                                    new XYZ(cz.SleeveBoundingBoxRCS_MinX, cz.SleeveBoundingBoxRCS_MinY, cz.SleeveBoundingBoxRCS_MinZ),
+                                                    new XYZ(cz.SleeveBoundingBoxRCS_MaxX, cz.SleeveBoundingBoxRCS_MaxY, cz.SleeveBoundingBoxRCS_MaxZ)
+                                                ));
+                                            }
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ Error getting RCS bbox for sleeve: {ex.Message}\n");
+                                    }
+                                }
+                                
+                                if (rcsBboxes.Count > 0)
+                                {
+                                    // ✅ RCS: Simple union in RCS (no rotation needed - already wall-aligned!)
+                                    double rcsMinX = rcsBboxes.Min(b => b.min.X);
+                                    double rcsMinY = rcsBboxes.Min(b => b.min.Y);
+                                    double rcsMinZ = rcsBboxes.Min(b => b.min.Z);
+                                    double rcsMaxX = rcsBboxes.Max(b => b.max.X);
+                                    double rcsMaxY = rcsBboxes.Max(b => b.max.Y);
+                                    double rcsMaxZ = rcsBboxes.Max(b => b.max.Z);
+                                    
+                                    double rcsWidth = rcsMaxX - rcsMinX;   // RCS X = along wall = Width
+                                    double rcsHeight = rcsMaxZ - rcsMinZ;  // RCS Z = vertical = Height
+                                    double rcsDepth = rcsMaxY - rcsMinY;  // RCS Y = through wall = Depth
+                                    
+                                    // Midpoint in RCS
+                                    XYZ rcsMid = new XYZ((rcsMinX + rcsMaxX) / 2, (rcsMinY + rcsMaxY) / 2, (rcsMinZ + rcsMaxZ) / 2);
+                                    
+                                    // ✅ RCS: Transform midpoint back to WCS for placement
+                                    XYZ wcsMid = WallRcsTransformer.TransformToWcs(rcsMid, firstCz.WallDirection, 
+                                        new XYZ(firstCz.SleevePlacementPointActiveDocumentX, 
+                                               firstCz.SleevePlacementPointActiveDocumentY, 
+                                               firstCz.SleevePlacementPointActiveDocumentZ)) ?? XYZ.Zero;
+                                    
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                            $"[{DateTime.Now:HH:mm:ss}] ✅ RCS: Using wall-aligned RCS bounding boxes: {rcsBboxes.Count}/{cluster.Count} sleeves, " +
+                                            $"Size=({rcsWidth:F1}, {rcsHeight:F1}, {rcsDepth:F1}), RCSMid=({rcsMid.X:F1}, {rcsMid.Y:F1}, {rcsMid.Z:F1}), WCSMid=({wcsMid.X:F1}, {wcsMid.Y:F1}, {wcsMid.Z:F1})\n");
+                                    }
+                                    
+                                    return (rcsWidth, rcsHeight, rcsDepth, wcsMid, null, null, null, null, null, null);
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ Error checking RCS for walls: {ex.Message}\n");
+                }
+            }
 
             var rotatedBboxes = new List<(XYZ min, XYZ max)>();
             foreach (var sleeveData in cluster)

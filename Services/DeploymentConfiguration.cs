@@ -50,6 +50,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// XML reading is still enabled as fallback during transition
         /// </summary>
         public static bool DisableXmlCreation { get; set; } = true; // ✅ PHASE 2: Disable XML creation - database only
+
+        /// <summary>
+        /// ✅ PARALLEL PLANNING: Enable parallel pre-computation of sleeve dimensions, clearance, and rotation
+        /// When true: Uses ParallelSleevePlacementPlanner to pre-compute placement data in parallel
+        /// When false: Uses original sequential placement logic (backward compatible)
+        /// Benefits when enabled:
+        /// - Early skip detection (avoid Revit API calls for zones that will be skipped)
+        /// - Risk-based reordering (process low-risk zones first for better success rate)
+        /// - Parallel computation (dimensions, clearance, rotation calculated in parallel)
+        /// - Better diagnostics (risk classification available)
+        /// </summary>
+        public static bool EnableParallelPlanning { get; set; } = true; // ✅ PARALLEL PLANNING: Enable by default
     }
 }
 

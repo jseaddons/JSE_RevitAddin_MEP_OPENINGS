@@ -10,9 +10,11 @@ using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
 using JSE_RevitAddin_MEP_OPENINGS.Utils;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Geometry;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -37,6 +39,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         // ✅ OOP REFACTORING: Centralized flag management
         private readonly FlagManager _flagManager;
+        
+        // ✅ PARALLEL PLANNING: Optional planner for pre-computation (OOP, DI-ready)
+        private readonly ISleevePlacementPlanner _planner;
 
         // ⚠️ QUICK WIN: Pre-cached family symbols (load once, reuse many times)
         private static Dictionary<string, FamilySymbol> _familySymbolCache = new Dictionary<string, FamilySymbol>();
@@ -52,7 +57,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             Dictionary<string, double> clearanceSettings = null,
             string filterName = null,
             FlagManager flagManager = null,
-            bool isReplayPath = false)
+            bool isReplayPath = false,
+            ISleevePlacementPlanner planner = null)  // ✅ NEW: Optional planner injection
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _conditions = conditions ?? new OpeningConditions();
@@ -63,6 +69,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             // ✅ OOP REFACTORING: Initialize FlagManager (create if not provided for backward compatibility)
             _flagManager = flagManager ?? new FlagManager(doc);
+            
+            // ✅ PARALLEL PLANNING: Initialize planner (create default if not provided)
+            _planner = planner ?? new ParallelSleevePlacementPlanner();
             
             // 🔥 CRITICAL DEBUG: Direct file logging to trace service instantiation (SAFE - won't crash)
             SafeFileLogger.SafeAppendText("service_instantiation.log", 
@@ -516,17 +525,95 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 const int MAX_PLACEMENT_TIME_MS = 300000; // 5 minutes
                 int processedCount = 0;
 
+                // ✅ PARALLEL PLANNING PHASE: Pre-compute dimensions, clearance, rotation in parallel
+                Dictionary<Guid, SleevePlacementPlanningDto> planningMap = null;
+                List<ClashZone> planningOrderedZones = null;
+                var planningLogs = new System.Text.StringBuilder();
+                
+                if (DeploymentConfiguration.EnableParallelPlanning && _planner != null)
+                {
+                    try
+                    {
+                        using (var planningTracker = performanceMonitor.TrackOperation("Parallel Planning Phase"))
+                        {
+                            planningLogs.AppendLine($"[PLANNING] Starting parallel planning for {sortedClashZones.Count} zones...");
+                            
+                            var planningResult = _planner.Plan(sortedClashZones);
+                            
+                            planningLogs.AppendLine($"[PLANNING] Planning completed in {planningResult.PlanningDurationMs:F2} ms");
+                            planningLogs.AppendLine($"[PLANNING] Total zones: {planningResult.TotalCount}");
+                            planningLogs.AppendLine($"[PLANNING] Zones to skip: {planningResult.SkippedCount}");
+                            planningLogs.AppendLine($"[PLANNING] High-risk zones: {planningResult.HighRiskCount}");
+                            planningLogs.AppendLine($"[PLANNING] Critical-risk zones: {planningResult.CriticalRiskCount}");
+                            
+                            // Create lookup map for fast DTO access during placement
+                            planningMap = planningResult.Items.ToDictionary(dto => dto.ClashZoneId);
+                            
+                            // Filter out zones marked for skipping in planning phase
+                            var eligibleZones = planningResult.Items
+                                .Where(dto => !dto.ShouldSkip)
+                                .Select(dto => sortedClashZones.First(z => z.Id == dto.ClashZoneId))
+                                .ToList();
+                            
+                            // Reorder by risk (low → high) for better success rate
+                            planningOrderedZones = planningResult.Items
+                                .Where(dto => !dto.ShouldSkip)
+                                .OrderBy(dto => dto.ClearanceRisk) // Low risk first
+                                .Select(dto => sortedClashZones.First(z => z.Id == dto.ClashZoneId))
+                                .ToList();
+                            
+                            planningLogs.AppendLine($"[PLANNING] Processing order: {planningOrderedZones.Count} zones (low-risk → high-risk)");
+                            
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[PLANNING] Parallel planning succeeded: {planningResult.TotalCount} zones analyzed, {planningResult.SkippedCount} skipped, {planningOrderedZones.Count} eligible for placement");
+                            }
+                            
+                            planningTracker.SetItemCount(planningResult.TotalCount);
+                        }
+                    }
+                    catch (Exception planningEx)
+                    {
+                        planningLogs.AppendLine($"[PLANNING] ERROR: {planningEx.Message}");
+                        planningLogs.AppendLine($"[PLANNING] Falling back to original sorted order");
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Error($"[PLANNING] Planning phase failed: {planningEx.Message}. Falling back to original logic.");
+                        }
+                        
+                        // Fallback to original behavior
+                        planningMap = null;
+                        planningOrderedZones = null;
+                    }
+                }
+                else
+                {
+                    planningLogs.AppendLine($"[PLANNING] Parallel planning disabled (EnableParallelPlanning={DeploymentConfiguration.EnableParallelPlanning}, Planner={(_planner != null ? "available" : "null")})");
+                }
+                
+                // Use planning-ordered zones if available, otherwise use original sorted zones
+                var finalProcessingList = planningOrderedZones ?? sortedClashZones;
+                planningLogs.AppendLine($"[PLANNING] Final processing list: {finalProcessingList.Count} zones");
+
                 // ✅ PERFORMANCE: Track main placement loop
                 using (var placementLoopTracker = performanceMonitor.TrackOperation("Place Individual Sleeves Loop"))
                 {
-                    foreach (var clashZone in sortedClashZones)
+                    foreach (var clashZone in finalProcessingList)
                     {
                         // ✅ PERFORMANCE: Track each sleeve placement operation
                         using (var singleSleeveTracker = performanceMonitor.TrackOperation("Place Single Sleeve"))
                         {
+                            // ✅ PARALLEL PLANNING: Try to get pre-computed DTO for this zone
+                            SleevePlacementPlanningDto planningDto = null;
+                            planningMap?.TryGetValue(clashZone.Id, out planningDto);
+                            
                             // ✅ DEBUG: Log which clash zone is being processed
                             if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[PLACEMENT-LOOP] Processing ClashZone {clashZone.Id} ({processedCount + 1}/{sortedClashZones.Count}): MEP={clashZone.MepElementIdValue}, Flags: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}, SleeveId={clashZone.SleeveInstanceId}");
+                            {
+                                var riskLabel = planningDto != null ? $", Risk={planningDto.ClearanceRisk}" : "";
+                                DebugLogger.Info($"[PLACEMENT-LOOP] Processing ClashZone {clashZone.Id} ({processedCount + 1}/{finalProcessingList.Count}): MEP={clashZone.MepElementIdValue}, Flags: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}, SleeveId={clashZone.SleeveInstanceId}{riskLabel}");
+                            }
 
                             // ⚠️ CRITICAL: Check timeout every 10 sleeves to prevent infinite hangs
                             processedCount++;
@@ -914,10 +1001,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 XYZ placementOffset = XYZ.Zero;
                                 double finalWidth = 0.0, finalHeight = 0.0, finalDiameter = 0.0;
 
+                                // ✅ PARALLEL PLANNING: Use pre-computed dimensions if available
+                                if (planningDto != null && DeploymentConfiguration.EnableParallelPlanning)
+                                {
+                                    // Use planning layer dimensions (already includes clearance)
+                                    finalWidth = planningDto.TargetWidthFt;
+                                    finalHeight = planningDto.TargetHeightFt;
+                                    finalDiameter = Math.Max(finalWidth, finalHeight);
+                                    
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        DebugLogger.Info($"[PLANNING] Using pre-computed dimensions: W={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}mm, H={RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm (Risk={planningDto.ClearanceRisk})");
+                                    }
+                                }
                                 // ✅ CRITICAL FIX: PATH 1 (Replay) should use existing sleeve size and skip clearance calculation
                                 // For PATH 1, sleeve size data is already in ClashZone (SleeveWidth, SleeveHeight, SleeveDiameter)
                                 // No need to calculate clearance - just use existing data
-                                if (_isReplayPath && clashZone.SleeveWidth > 0 && clashZone.SleeveHeight > 0)
+                                else if (_isReplayPath && clashZone.SleeveWidth > 0 && clashZone.SleeveHeight > 0)
                                 {
                                     // ✅ PATH 1: Use existing sleeve size from ClashZone (already includes clearance)
                                     finalWidth = clashZone.SleeveWidth;
@@ -1501,7 +1601,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 SetClashZoneGuidOnSleeveStable(sleeveInstance, clashZone);
 
                                 // ⚠️ CRITICAL: Set orientation (rotation for floors, HostOrientation parameter for walls/framing)
-                                SetSleeveOrientation(sleeveInstance, clashZone);
+                                SetSleeveOrientation(sleeveInstance, clashZone, planningDto);
                                 parameterTimer.Stop();
                                 totalParameterTime += parameterTimer.Elapsed;
                                 sleeveLog.AppendLine($"  Parameters: {parameterTimer.ElapsedMilliseconds}ms");
@@ -1760,8 +1860,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     var actualBbox = sleeve.get_BoundingBox(null);
                                     if (actualBbox != null)
                                     {
-                                        // Set bounding box coordinates
+                                        // Set bounding box coordinates (WCS)
                                         zone.SetSleeveBoundingBox(actualBbox);
+
+                                        // ✅ RCS BBOX: Transform to wall-aligned RCS for walls/framing
+                                        // This eliminates rotation logic for walls - bounding boxes are already wall-aligned
+                                        bool isWallHost = string.Equals(zone.StructuralElementType, "Wall", StringComparison.OrdinalIgnoreCase) ||
+                                                          string.Equals(zone.StructuralElementType, "Walls", StringComparison.OrdinalIgnoreCase);
+                                        bool isFramingHost = string.Equals(zone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
+                                        
+                                        if ((isWallHost || isFramingHost) && zone.WallDirection != null && !zone.WallDirection.IsZeroLength())
+                                        {
+                                            try
+                                            {
+                                                var rcsBbox = WallRcsTransformer.TransformToRcs(actualBbox, zone.WallDirection);
+                                                if (rcsBbox != null)
+                                                {
+                                                    zone.SleeveBoundingBoxRCS_MinX = rcsBbox.Min.X;
+                                                    zone.SleeveBoundingBoxRCS_MinY = rcsBbox.Min.Y;
+                                                    zone.SleeveBoundingBoxRCS_MinZ = rcsBbox.Min.Z;
+                                                    zone.SleeveBoundingBoxRCS_MaxX = rcsBbox.Max.X;
+                                                    zone.SleeveBoundingBoxRCS_MaxY = rcsBbox.Max.Y;
+                                                    zone.SleeveBoundingBoxRCS_MaxZ = rcsBbox.Max.Z;
+                                                }
+                                            }
+                                            catch (Exception rcsEx)
+                                            {
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                {
+                                                    SafeFileLogger.SafeAppendText("placement_errors.log",
+                                                        $"[{DateTime.Now:HH:mm:ss.fff}] [RCS-TRANSFORM] Error transforming bbox to RCS for sleeve {sleeve?.Id?.IntegerValue ?? -1}: {rcsEx.Message}\n");
+                                                }
+                                            }
+                                        }
 
                                         // Update placement point from bounding box center
                                         zone.SleevePlacementPoint = new XYZ(
@@ -1849,6 +1980,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                         zone.Id,
                                                         zone.SleeveBoundingBoxMinX, zone.SleeveBoundingBoxMinY, zone.SleeveBoundingBoxMinZ,
                                                         zone.SleeveBoundingBoxMaxX, zone.SleeveBoundingBoxMaxY, zone.SleeveBoundingBoxMaxZ);
+
+                                                    // ✅ RCS BBOX: Save wall-aligned RCS bounding box for walls/framing
+                                                    // This eliminates rotation logic for walls - bounding boxes are already wall-aligned
+                                                    bool isWallHost = string.Equals(zone.StructuralElementType, "Wall", StringComparison.OrdinalIgnoreCase) ||
+                                                                      string.Equals(zone.StructuralElementType, "Walls", StringComparison.OrdinalIgnoreCase);
+                                                    bool isFramingHost = string.Equals(zone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
+                                                    
+                                                    if ((isWallHost || isFramingHost) && 
+                                                        !(zone.SleeveBoundingBoxRCS_MinX == 0.0 && zone.SleeveBoundingBoxRCS_MinY == 0.0 && zone.SleeveBoundingBoxRCS_MinZ == 0.0 &&
+                                                          zone.SleeveBoundingBoxRCS_MaxX == 0.0 && zone.SleeveBoundingBoxRCS_MaxY == 0.0 && zone.SleeveBoundingBoxRCS_MaxZ == 0.0))
+                                                    {
+                                                        repository.UpdateSleeveBoundingBoxesRcs(
+                                                            zone.Id,
+                                                            zone.SleeveBoundingBoxRCS_MinX, zone.SleeveBoundingBoxRCS_MinY, zone.SleeveBoundingBoxRCS_MinZ,
+                                                            zone.SleeveBoundingBoxRCS_MaxX, zone.SleeveBoundingBoxRCS_MaxY, zone.SleeveBoundingBoxRCS_MaxZ);
+                                                    }
 
                                                     // ✅ ROTATED BBOX: Calculate and save rotated bounding box ONLY for rotated axis-aligned sleeves (non-straight axis-aligned)
                                                     // Skip for straight axis-aligned angles to WCS: 0°, 90°, 180°, 270° (use straight axis-aligned bbox instead)
@@ -2327,6 +2474,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // ✅ PERFORMANCE: Update loop tracker with processed count
                         placementLoopTracker.SetItemCount(processedCount);
                     } // ✅ PERFORMANCE: End of placement loop tracking
+
+                    // ✅ PARALLEL PLANNING: Write planning logs after placement loop completes
+                    if (planningLogs != null && planningLogs.Length > 0 && !DeploymentConfiguration.DeploymentMode)
+                    {
+                        try
+                        {
+                            var planningLogContent = planningLogs.ToString();
+                            File.AppendAllText(debugLogPath, $"\n[{DateTime.Now:HH:mm:ss}] === PLANNING PHASE SUMMARY ===\n");
+                            File.AppendAllText(debugLogPath, planningLogContent);
+                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] === END PLANNING SUMMARY ===\n\n");
+                            
+                            DebugLogger.Info($"[PLANNING] Planning logs written to {debugLogPath}");
+                        }
+                        catch (Exception logEx)
+                        {
+                            DebugLogger.Error($"[PLANNING] Failed to write planning logs: {logEx.Message}");
+                        }
+                    }
 
                     // ✅ PERFORMANCE: Track database updates (XML creation is disabled - see DeploymentConfiguration.DisableXmlCreation)
                     // NOTE: This operation updates the database for each placed sleeve individually.
@@ -5364,7 +5529,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 // ============================================================================
 // CORRECTED SetSleeveOrientation Method
 // ============================================================================
-        private void SetSleeveOrientation(FamilyInstance sleeveInstance, ClashZone clashZone)
+        private void SetSleeveOrientation(FamilyInstance sleeveInstance, ClashZone clashZone, SleevePlacementPlanningDto planningDto = null)
         {
             try
             {
@@ -5414,8 +5579,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var loc = sleeveInstance.Location as LocationPoint;
                     if (loc != null)
                     {
-                        // ✅ CALCULATE ONCE, USE MANY TIMES: Use pre-calculated rotation angle from ClashZone
-                        double rotationAngle = clashZone.MepElementRotationAngle;
+                        // ✅ PARALLEL PLANNING: Use pre-computed rotation angle if available
+                        double rotationAngle;
+                        if (planningDto != null && DeploymentConfiguration.EnableParallelPlanning)
+                        {
+                            // Use planning layer rotation (converted to radians)
+                            rotationAngle = planningDto.RotationAngleDeg * Math.PI / 180.0;
+                            
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[PLANNING] Using pre-computed rotation: {planningDto.RotationAngleDeg:F1}° (Risk={planningDto.ClearanceRisk})");
+                            }
+                        }
+                        else
+                        {
+                            // ✅ CALCULATE ONCE, USE MANY TIMES: Use pre-calculated rotation angle from ClashZone
+                            rotationAngle = clashZone.MepElementRotationAngle;
+                        }
                         
                         // ✅ PATH 1 (Replay): Log if MEP orientation is missing (but don't retrieve - use existing data only)
                         if (_isReplayPath && Math.Abs(rotationAngle) < 1e-6 && string.IsNullOrEmpty(clashZone.MepElementOrientationDirection))

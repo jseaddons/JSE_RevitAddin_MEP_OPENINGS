@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
 
@@ -54,11 +55,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     // Host type string
                     string hostType = zone.StructuralElementType ?? string.Empty;
 
-                    // Raw MEP size (fallback to MepElementSizeData core value)
-                    double rawSize = zone.MepElementSizeData?.CoreDiameterFt > 0 ? zone.MepElementSizeData.CoreDiameterFt : zone.MepElementSize;
+                    // Raw MEP size (convert from internal units to feet)
+                    double rawSize = 0.0;
+                    if (zone.MepElementSizeData != null)
+                    {
+                        // MepElementSize stores in internal units, convert to feet
+                        if (zone.MepElementSizeData.Diameter > 0)
+                        {
+                            rawSize = UnitUtils.ConvertFromInternalUnits(zone.MepElementSizeData.Diameter, UnitTypeId.Feet);
+                        }
+                        else if (zone.MepElementSizeData.Width > 0)
+                        {
+                            // For rectangular, use width as base size
+                            rawSize = UnitUtils.ConvertFromInternalUnits(zone.MepElementSizeData.Width, UnitTypeId.Feet);
+                        }
+                    }
+                    // Fallback to MepElementSize (already in feet)
+                    if (rawSize <= 0) rawSize = zone.MepElementSize;
                     if (rawSize <= 0) rawSize = 0.25; // Minimum fallback 3"
 
-                    double insulation = zone.MepElementSizeData?.InsulationThicknessFt > 0 ? zone.MepElementSizeData.InsulationThicknessFt : 0.0;
+                    // Insulation thickness (convert from internal units to feet)
+                    double insulation = 0.0;
+                    if (zone.MepElementSizeData != null && zone.MepElementSizeData.InsulationThickness > 0)
+                    {
+                        insulation = UnitUtils.ConvertFromInternalUnits(zone.MepElementSizeData.InsulationThickness, UnitTypeId.Feet);
+                    }
 
                     // Nominal target: add insulation + 0.125ft (1.5") clearance ring
                     double targetWidth = rawSize + insulation + (1.5 / 12.0);
@@ -75,11 +96,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     double clearance = Math.Max(0.083, rawSize * 0.10); // >=1" or 10% of size
                     double requiredDepth = hostThickness + clearance;
 
-                    // Rotation heuristic placeholder
+                    // Rotation angle (convert from radians to degrees)
                     double rotationDeg = 0.0;
-                    if (zone.MepElementSizeData?.IsRotated == true)
+                    if (Math.Abs(zone.MepElementRotationAngle) > 1e-6)
                     {
-                        rotationDeg = zone.MepElementSizeData.RotationAngleDeg;
+                        rotationDeg = zone.MepElementRotationAngle * 180.0 / Math.PI; // Convert radians to degrees
                     }
 
                     // Risk classification

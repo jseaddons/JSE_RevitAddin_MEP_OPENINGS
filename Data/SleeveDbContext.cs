@@ -454,6 +454,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     AddColumnIfMissing("ClashZones", "SleeveCorner4X", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "SleeveCorner4Y", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "SleeveCorner4Z", "REAL", transaction);
+                    // ✅ RCS BOUNDING BOX: Wall-aligned Relative Coordinate System bounding boxes (for walls/framing only)
+                    // Stored in wall-aligned coordinates: RCS X = along wall, RCS Y = through wall, RCS Z = vertical
+                    // Calculated once during individual sleeve placement, stored for reuse during clustering
+                    // Eliminates need for rotation logic - bounding boxes already in wall-aligned coordinates
+                    AddColumnIfMissing("ClashZones", "SleeveBoundingBoxRCS_MinX", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "SleeveBoundingBoxRCS_MinY", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "SleeveBoundingBoxRCS_MinZ", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "SleeveBoundingBoxRCS_MaxX", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "SleeveBoundingBoxRCS_MaxY", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "SleeveBoundingBoxRCS_MaxZ", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "SourceDocKey", "TEXT", transaction);
                     AddColumnIfMissing("ClashZones", "HostDocKey", "TEXT", transaction);
                     AddColumnIfMissing("ClashZones", "MepElementUniqueId", "TEXT", transaction);

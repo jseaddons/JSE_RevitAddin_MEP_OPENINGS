@@ -2544,10 +2544,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var results = new List<(Element, BoundingBoxXYZ, XYZ)>();
             var mepList = new List<(Element, Transform?)> { (mepElement, mepTransform) };
             
-            var intersections = FindIntersectionsBatch(mepList, structuralElements, log);
-            foreach (var (_, structElem, bbox, center) in intersections)
+            // Call the overload that matches the tuple type: List<(Element, Transform?)>
+            var intersections = FindIntersectionsBatch(mepList, structuralElements, log ?? (_ => { }));
+            foreach (var intersection in intersections)
             {
-                results.Add((structElem, bbox, center));
+                // FindIntersectionsBatch returns (Element mepElement, Element structuralElement, BoundingBoxXYZ boundingBox, XYZ intersectionPoint)
+                // Use Item accessors: Item1=mepElement, Item2=structuralElement, Item3=boundingBox, Item4=intersectionPoint
+                results.Add((intersection.Item2, intersection.Item3, intersection.Item4)); // structuralElement, boundingBox, intersectionPoint
             }
             return results;
         }

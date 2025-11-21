@@ -642,8 +642,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                             else
                             {
-                                // Call the overload that returns List<(Element, Transform?)>
-                                var collected = MepIntersectionService.CollectStructuralElementsForDirectIntersectionVisibleOnly(_doc, log ?? (_ => { }), null);
+                                // Call the overload that returns List<(Element, Transform?)> - use explicit parameter to avoid ambiguity
+                                var collected = MepIntersectionService.CollectStructuralElementsForDirectIntersectionVisibleOnly(
+                                    _doc, 
+                                    log ?? (_ => { }), 
+                                    selectedHostTypes: null);
+                                // Return type is already List<(Element, Transform?)>, so use directly
                                 structural = collected;
                             }
                             var intersects = MepIntersectionService.FindIntersections(testLine, null, structural, log ?? (_ => { }));
