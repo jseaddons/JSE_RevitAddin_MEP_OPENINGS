@@ -151,49 +151,77 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                 if (alreadyInTransaction)
                 {
                     SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Already in transaction, deleting {toDelete.Count} sleeves without creating new transaction\n");
+                        $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Already in transaction, batch deleting {toDelete.Count} sleeves\n");
                     
-                    foreach (var id in toDelete)
+                    // ✅ PERFORMANCE: Use batch delete instead of deleting one by one
+                    try
                     {
-                        try
-                        {
-                            doc.Delete(id);
-                            deletedCount++;
-                            SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                                $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ✅ Deleted individual sleeve {id.IntegerValue}\n");
-                        }
-                        catch (Exception ex)
-                        {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                                $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ❌ Failed deleting sleeve {id.IntegerValue}: {ex.Message}\n");
-                            DebugLogger.Warning($"[ClusterCleanupService] Failed deleting sleeve {id.IntegerValue}: {ex.Message}");
-                        }
+                        var deletedIds = doc.Delete(toDelete);
+                        deletedCount = deletedIds.Count;
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ✅ Batch deleted {deletedCount} individual sleeves\n");
                     }
-                }
-                else
-                {
-                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Not in transaction, creating new transaction for {toDelete.Count} sleeves\n");
-                    
-                    using (var tx = new Transaction(doc, "Delete Individual Sleeves Within Clusters"))
+                    catch (Exception ex)
                     {
-                        tx.Start();
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ❌ Batch delete failed: {ex.Message}, falling back to individual deletes\n");
+                        
+                        // Fallback to individual deletes if batch fails
                         foreach (var id in toDelete)
                         {
                             try
                             {
                                 doc.Delete(id);
                                 deletedCount++;
-                                SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ✅ Deleted individual sleeve {id.IntegerValue}\n");
                             }
-                            catch (Exception ex)
+                            catch (Exception delEx)
                             {
                                 SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ❌ Failed deleting sleeve {id.IntegerValue}: {ex.Message}\n");
-                                DebugLogger.Warning($"[ClusterCleanupService] Failed deleting sleeve {id.IntegerValue}: {ex.Message}");
+                                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ❌ Failed deleting sleeve {id.IntegerValue}: {delEx.Message}\n");
+                                DebugLogger.Warning($"[ClusterCleanupService] Failed deleting sleeve {id.IntegerValue}: {delEx.Message}");
                             }
                         }
+                    }
+                }
+                else
+                {
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Not in transaction, creating new transaction for batch delete of {toDelete.Count} sleeves\n");
+                    
+                    using (var tx = new Transaction(doc, "Delete Individual Sleeves Within Clusters"))
+                    {
+                        tx.Start();
+                        
+                        // ✅ PERFORMANCE: Use batch delete instead of deleting one by one
+                        try
+                        {
+                            var deletedIds = doc.Delete(toDelete);
+                            deletedCount = deletedIds.Count;
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ✅ Batch deleted {deletedCount} individual sleeves\n");
+                        }
+                        catch (Exception ex)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ❌ Batch delete failed: {ex.Message}, falling back to individual deletes\n");
+                            
+                            // Fallback to individual deletes if batch fails
+                            foreach (var id in toDelete)
+                            {
+                                try
+                                {
+                                    doc.Delete(id);
+                                    deletedCount++;
+                                }
+                                catch (Exception delEx)
+                                {
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                        $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ❌ Failed deleting sleeve {id.IntegerValue}: {delEx.Message}\n");
+                                    DebugLogger.Warning($"[ClusterCleanupService] Failed deleting sleeve {id.IntegerValue}: {delEx.Message}");
+                                }
+                            }
+                        }
+                        
                         tx.Commit();
                     }
                 }
