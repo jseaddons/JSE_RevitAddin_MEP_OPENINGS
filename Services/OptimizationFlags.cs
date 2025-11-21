@@ -125,6 +125,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Default: true (safe to enable - pure math, no Revit API calls)
         /// </summary>
         public static bool UseParallelClearanceCalculation { get; set; } = true;
+
+        /// <summary>
+        /// Enable optimized single-write geometry and per-parameter timing instrumentation during sleeve placement.
+        /// When true: Uses SetSleeveParametersOptimized path with timing logs to param_timing.log.
+        /// Default: false (safe off; turn on for diagnostics only).
+        /// </summary>
+        public static bool EnableParameterTimingInstrumentation { get; set; } = true;
         
         #endregion
         

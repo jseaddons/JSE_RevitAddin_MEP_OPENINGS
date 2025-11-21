@@ -19,7 +19,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// <summary>
         /// Get clash zones by filter and category
         /// </summary>
-        List<ClashZone> GetClashZonesByFilter(string filterName, string category, bool unresolvedOnly = false);
+        List<ClashZone> GetClashZonesByFilter(string filterName, string category, bool unresolvedOnly = false, bool readyForPlacementOnly = false);
 
         /// <summary>
         /// Get clash zones by category (all filters)

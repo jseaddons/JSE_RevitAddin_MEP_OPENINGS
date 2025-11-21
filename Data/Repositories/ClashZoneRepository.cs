@@ -382,10 +382,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 var guid = clashZone.Id.ToString().ToUpperInvariant();
                 
                 // ✅ CRITICAL FIX: Check by GUID FIRST (to prevent UNIQUE constraint violation)
-                // Then fall back to MEP+Host+Point if GUID doesn't match
+                // Use UPPER() on both sides for case-insensitive comparison, and check for empty/NULL
+                // This ensures deterministic GUIDs always match existing rows
                 cmd.CommandText = @"
                     SELECT ClashZoneId FROM ClashZones 
-                    WHERE UPPER(ClashZoneGuid) = @ClashZoneGuid 
+                    WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid) 
                       AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL
                     LIMIT 1";
                 
@@ -396,11 +397,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 {
                     // ✅ Found by GUID - update existing
                     var clashZoneId = Convert.ToInt32(existingIdByGuid);
+                    
+                    // ✅ DIAGNOSTIC: Log GUID match for troubleshooting
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        _logger($"[SQLite] ✅ GUID MATCH: Found existing ClashZoneId={clashZoneId} for GUID={guid} - will UPDATE (not insert)");
+                    }
+                    
                     UpdateClashZone(clashZoneId, comboId, clashZone, transaction);
                     return false; // Was an update
                 }
+                else if (!string.IsNullOrWhiteSpace(guid) && !DeploymentConfiguration.DeploymentMode)
+                {
+                    // ✅ DIAGNOSTIC: Log GUID mismatch for troubleshooting
+                    _logger($"[SQLite] ⚠️ GUID NOT FOUND: GUID={guid} not in database - will check MEP+Host+Point fallback");
+                }
                 
                 // ✅ FALLBACK: Check by MEP+Host+Point if GUID didn't match
+                // This handles cases where GUID wasn't set or is different (legacy data)
                 cmd.CommandText = @"
                     SELECT ClashZoneId FROM ClashZones 
                     WHERE ComboId = @ComboId 
@@ -423,14 +437,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                 if (existingId != null)
                 {
-                    // Update existing
+                    // ✅ FALLBACK MATCH: Found by MEP+Host+Point - update existing AND set GUID
                     var clashZoneId = Convert.ToInt32(existingId);
+                    
+                    // ✅ CRITICAL FIX: If we found a row by MEP+Host+Point but GUID didn't match,
+                    // update the existing row's GUID to the deterministic GUID
+                    // This ensures future updates will match by GUID (faster lookup)
+                    if (!string.IsNullOrWhiteSpace(guid))
+                    {
+                        try
+                        {
+                            using (var updateCmd = _context.Connection.CreateCommand())
+                            {
+                                updateCmd.Transaction = transaction;
+                                updateCmd.CommandText = @"UPDATE ClashZones SET ClashZoneGuid = @ClashZoneGuid WHERE ClashZoneId = @ClashZoneId";
+                                updateCmd.Parameters.AddWithValue("@ClashZoneGuid", guid);
+                                updateCmd.Parameters.AddWithValue("@ClashZoneId", clashZoneId);
+                                updateCmd.ExecuteNonQuery();
+                                
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    _logger($"[SQLite] ✅ FALLBACK MATCH + GUID UPDATE: Found ClashZoneId={clashZoneId} by MEP+Host+Point, updated GUID to {guid}");
+                                }
+                            }
+                        }
+                        catch (Exception guidEx)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                _logger($"[SQLite] ⚠️ Failed to update GUID on fallback match: {guidEx.Message}");
+                            }
+                        }
+                    }
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        _logger($"[SQLite] ✅ FALLBACK MATCH: Found existing ClashZoneId={clashZoneId} by MEP+Host+Point - will UPDATE (not insert)");
+                    }
+                    
                     UpdateClashZone(clashZoneId, comboId, clashZone, transaction);
                     return false; // Was an update
                 }
                 else
                 {
-                    // Insert new
+                    // ✅ NEW INSERT: No match found - insert new clash zone
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        _logger($"[SQLite] ✅ NEW INSERT: No match found for GUID={guid} or MEP={mepElementId}+Host={hostElementId}+Point=({intersectionX:F3},{intersectionY:F3},{intersectionZ:F3}) - creating new row");
+                    }
+                    
                     InsertClashZone(comboId, clashZone, transaction);
                     return true; // Was an insert
                 }
@@ -552,11 +607,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 
                 // ✅ CRITICAL: If entry was reset by FlagManager, ALWAYS preserve flags/IDs, even if ClashZone has stale values
                 // This prevents SaveClashZones from overwriting correctly reset flags with old values from clash zone objects
-                bool preserveFlags = entryWasResetByFlagManager;
+                // 
+                // ✅ EXCEPTION: If ClashZone is being saved as NEW UNRESOLVED zone (IsResolved=false, IsClusterResolved=false, no sleeve IDs),
+                // always update flags to false, even if FlagManager didn't reset them.
+                // This handles the case where new zones are created during refresh and should update existing resolved zones.
+                bool zoneIsUnresolved = !clashZone.IsResolved && !clashZone.IsClusterResolved && clashZone.SleeveInstanceId <= 0 && clashZone.ClusterSleeveInstanceId <= 0;
+                bool preserveFlags = entryWasResetByFlagManager && !zoneIsUnresolved;
                 
                 if (preserveFlags && !DeploymentConfiguration.DeploymentMode)
                 {
                     _logger($"[SQLite] ✅ PRESERVING reset flags for ClashZoneId={clashZoneId}, GUID={clashZone.Id}: IsResolved=false, IsClusterResolved=false (FlagManager reset, ClashZone has stale values)");
+                }
+                
+                if (zoneIsUnresolved && !entryWasResetByFlagManager && !DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ✅ OVERRIDING flags for ClashZoneId={clashZoneId}, GUID={clashZone.Id}: Setting IsResolved=false, IsClusterResolved=false (new unresolved zone from refresh)");
                 }
                 
                 cmd.CommandText = @"
@@ -1268,7 +1333,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             return withoutExtension.Trim();
         }
 
-        public List<ClashZone> GetClashZonesByFilter(string filterName, string category, bool unresolvedOnly = false)
+        public List<ClashZone> GetClashZonesByFilter(string filterName, string category, bool unresolvedOnly = false, bool readyForPlacementOnly = false)
         {
             var result = new List<ClashZone>();
 
@@ -1277,7 +1342,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
             using (var cmd = _context.Connection.CreateCommand())
             {
-                cmd.CommandText = @"
+                // Build WHERE clause with optional filters
+                var whereConditions = new List<string>
+                {
+                    "f.FilterName = @FilterName",
+                    "f.Category = @Category"
+                };
+                
+                if (unresolvedOnly)
+                    whereConditions.Add("cz.SleeveState = 0");
+                    
+                if (readyForPlacementOnly)
+                    whereConditions.Add("cz.ReadyForPlacementFlag = 1");
+                
+                var whereClause = string.Join(" AND ", whereConditions);
+                
+                cmd.CommandText = $@"
                     SELECT 
                         cz.*,
                         fc.LinkedFileKey,
@@ -1286,8 +1366,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     FROM Filters f
                     INNER JOIN FileCombos fc ON f.FilterId = fc.FilterId
                     INNER JOIN ClashZones cz ON fc.ComboId = cz.ComboId
-                    WHERE f.FilterName = @FilterName
-                      AND f.Category = @Category" + (unresolvedOnly ? " AND cz.SleeveState = 0" : string.Empty) + @"
+                    WHERE {whereClause}
                     ORDER BY cz.UpdatedAt DESC";
 
                 cmd.Parameters.AddWithValue("@FilterName", filterName);
@@ -1305,6 +1384,241 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Update only ReadyForPlacementFlag for a clash zone identified by GUID.
+        /// Lightweight method used post-placement to mark zones as consumed for the session.
+        /// </summary>
+        public void SetReadyForPlacementFlag(Guid clashZoneGuid, bool value)
+        {
+            if (clashZoneGuid == Guid.Empty) return;
+            using (var cmd = _context.Connection.CreateCommand())
+            {
+                // ✅ CRITICAL FIX: Use UPPER() for case-insensitive GUID comparison (matches how GUIDs are stored)
+                // GUIDs are stored as UPPER in InsertOrUpdateClashZone, so we must match that format
+                cmd.CommandText = @"UPDATE ClashZones SET ReadyForPlacementFlag = @Flag, UpdatedAt = CURRENT_TIMESTAMP WHERE UPPER(ClashZoneGuid) = UPPER(@Guid) AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL";
+                cmd.Parameters.AddWithValue("@Flag", value ? 1 : 0);
+                cmd.Parameters.AddWithValue("@Guid", clashZoneGuid.ToString().ToUpperInvariant());
+                
+                var rowsAffected = cmd.ExecuteNonQuery();
+                
+                // ✅ DIAGNOSTIC: Log if no rows were updated (might indicate GUID mismatch)
+                if (rowsAffected == 0 && !DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ⚠️ SetReadyForPlacementFlag: No rows updated for GUID {clashZoneGuid} (GUID might not exist in database)");
+                }
+                else if (rowsAffected > 0 && !DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ✅ SetReadyForPlacementFlag: Updated {rowsAffected} row(s) for GUID {clashZoneGuid}, value={value}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Bulk reset ReadyForPlacementFlag for a collection of GUIDs. Batches to avoid oversized SQL.
+        /// Used after placement to mark zones as consumed, preventing re-processing in subsequent runs.
+        /// </summary>
+        public void BulkResetReadyForPlacementFlags(IEnumerable<Guid> clashZoneGuids)
+        {
+            if (clashZoneGuids == null) return;
+            var list = clashZoneGuids.Where(g => g != Guid.Empty).Distinct().ToList();
+            if (list.Count == 0) return;
+
+            const int batchSize = 100;
+            for (int i = 0; i < list.Count; i += batchSize)
+            {
+                var batch = list.Skip(i).Take(batchSize).Select(g => $"'{g}'");
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = $"UPDATE ClashZones SET ReadyForPlacementFlag = 0, UpdatedAt = CURRENT_TIMESTAMP WHERE ClashZoneGuid IN ({string.Join(",", batch)})";
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        /// <summary>
+        /// ✅ CRITICAL FIX: Set ReadyForPlacementFlag=1 for unresolved zones within section box.
+        /// Called AFTER flag manager resets flags for deleted sleeves to ensure we check unresolved status correctly.
+        /// Only zones that are BOTH unresolved (IsResolved=false AND IsClusterResolved=false) AND within section box get flagged.
+        /// </summary>
+        /// <param name="filterNames">List of filter names to process</param>
+        /// <param name="categories">List of categories to process</param>
+        /// <param name="sectionBox">Section box bounds (null if no section box active)</param>
+        /// <returns>Number of zones marked as ready</returns>
+        public int SetReadyForPlacementForUnresolvedZonesInSectionBox(
+            List<string> filterNames, 
+            List<string> categories, 
+            BoundingBoxXYZ? sectionBox)
+        {
+            if (filterNames == null || filterNames.Count == 0 || categories == null || categories.Count == 0)
+                return 0;
+
+            int totalMarked = 0;
+            const double tol = 0.1; // Tolerance to avoid precision misses (in feet ~ 30mm)
+
+            try
+            {
+                foreach (var filterName in filterNames)
+                {
+                    foreach (var category in categories)
+                    {
+                        if (string.IsNullOrWhiteSpace(filterName) || string.IsNullOrWhiteSpace(category))
+                            continue;
+
+                        // Load all zones for this filter/category
+                        var zones = GetClashZonesByFilter(filterName, category, unresolvedOnly: false) ?? new List<ClashZone>();
+                        
+                        var zonesToMark = new List<Guid>();
+                        
+                        foreach (var zone in zones)
+                        {
+                            if (zone == null) continue;
+                            
+                            // ✅ CHECK 1: Is zone unresolved? (AFTER flag manager reset)
+                            bool isUnresolved = !zone.IsResolved && !zone.IsClusterResolved;
+                            
+                            // ✅ CHECK 2: Is zone within section box? (if section box is active)
+                            bool isWithinSectionBox = true; // Default: true if no section box
+                            if (sectionBox != null)
+                            {
+                                var intersectionPoint = zone.IntersectionPoint;
+                                if (intersectionPoint != null)
+                                {
+                                    var sb = sectionBox;
+                                    // Use tolerance to avoid precision misses
+                                    isWithinSectionBox = 
+                                        intersectionPoint.X >= sb.Min.X - tol && intersectionPoint.X <= sb.Max.X + tol &&
+                                        intersectionPoint.Y >= sb.Min.Y - tol && intersectionPoint.Y <= sb.Max.Y + tol &&
+                                        intersectionPoint.Z >= sb.Min.Z - tol && intersectionPoint.Z <= sb.Max.Z + tol;
+                                }
+                                else
+                                {
+                                    isWithinSectionBox = false; // Can't check without intersection point
+                                }
+                            }
+                            
+                            // ✅ SET FLAG: Only if BOTH conditions are true
+                            if (isUnresolved && isWithinSectionBox)
+                            {
+                                zonesToMark.Add(zone.Id);
+                            }
+                        }
+                        
+                            // ✅ UPDATE DB: Set ReadyForPlacementFlag=1 for zones that meet criteria
+                            if (zonesToMark.Count > 0)
+                            {
+                                int successCount = 0;
+                                foreach (var guid in zonesToMark)
+                                {
+                                    try
+                                    {
+                                        SetReadyForPlacementFlag(guid, true);
+                                        successCount++;
+                                        
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            _logger($"[SQLite] ✅ Set ReadyForPlacementFlag=1 for GUID {guid} in filter '{filterName}', category '{category}'");
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            _logger($"[SQLite] ❌ Failed to set ReadyForPlacementFlag=1 for GUID {guid}: {ex.Message}");
+                                            DebugLogger.Error($"[ClashZoneRepository] Failed to set ReadyForPlacementFlag for GUID {guid}: {ex.Message}");
+                                        }
+                                    }
+                                }
+                                totalMarked += successCount;
+                                
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    _logger($"[SQLite] ✅ Set ReadyForPlacementFlag=1 for {successCount}/{zonesToMark.Count} zones (out of {zones.Count} total) in filter '{filterName}', category '{category}' (unresolved + within section box)");
+                                }
+                            }
+                            else if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                _logger($"[SQLite] ⚠️ No zones to mark as ReadyForPlacement in filter '{filterName}', category '{category}' (total zones: {zones.Count}, unresolved: {zones.Count(z => !z.IsResolved && !z.IsClusterResolved)}, within section box: checked)");
+                            }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ❌ Error setting ReadyForPlacementFlag for unresolved zones: {ex.Message}");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Error($"[ClashZoneRepository] Error setting ReadyForPlacementFlag: {ex.Message}");
+                }
+            }
+
+            return totalMarked;
+        }
+
+        /// <summary>
+        /// ✅ CRITICAL FIX: Bulk reset ReadyForPlacementFlag to 0 for ALL zones in selected filters and categories.
+        /// Called at the START of refresh to ensure only newly detected zones (within scope box) get ReadyForPlacementFlag=1.
+        /// This prevents zones outside scope box or from previous refreshes from being processed.
+        /// </summary>
+        /// <param name="filterNames">List of filter names to reset flags for</param>
+        /// <param name="categories">List of categories to reset flags for</param>
+        /// <returns>Number of zones reset</returns>
+        public int BulkResetReadyForPlacementFlagsForFilters(List<string> filterNames, List<string> categories)
+        {
+            if (filterNames == null || filterNames.Count == 0 || categories == null || categories.Count == 0)
+                return 0;
+
+            int totalReset = 0;
+
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    // Build WHERE clause: FilterName IN (...) AND Category IN (...)
+                    var filterNamePlaceholders = string.Join(",", filterNames.Select((_, i) => $"@FilterName{i}"));
+                    var categoryPlaceholders = string.Join(",", categories.Select((_, i) => $"@Category{i}"));
+
+                    cmd.CommandText = $@"
+                        UPDATE ClashZones 
+                        SET ReadyForPlacementFlag = 0, UpdatedAt = CURRENT_TIMESTAMP
+                        WHERE ClashZoneId IN (
+                            SELECT cz.ClashZoneId
+                            FROM Filters f
+                            INNER JOIN FileCombos fc ON f.FilterId = fc.FilterId
+                            INNER JOIN ClashZones cz ON fc.ComboId = cz.ComboId
+                            WHERE f.FilterName IN ({filterNamePlaceholders})
+                              AND f.Category IN ({categoryPlaceholders})
+                        )";
+
+                    // Add parameters
+                    for (int i = 0; i < filterNames.Count; i++)
+                    {
+                        cmd.Parameters.AddWithValue($"@FilterName{i}", filterNames[i]);
+                    }
+                    for (int i = 0; i < categories.Count; i++)
+                    {
+                        cmd.Parameters.AddWithValue($"@Category{i}", categories[i]);
+                    }
+
+                    totalReset = cmd.ExecuteNonQuery();
+
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        _logger($"[SQLite] ✅ Bulk reset ReadyForPlacementFlag=0 for {totalReset} zones in {filterNames.Count} filters, {categories.Count} categories");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ❌ Error bulk resetting ReadyForPlacementFlag: {ex.Message}");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Error($"[ClashZoneRepository] Error bulk resetting ReadyForPlacementFlag: {ex.Message}");
+                }
+            }
+
+            return totalReset;
         }
 
         /// <summary>
@@ -1651,8 +1965,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             clashZone.MepElementCategory = GetNullableString(reader, "MepCategory") ?? string.Empty;
             clashZone.StructuralElementType = GetNullableString(reader, "StructuralType") ?? string.Empty;
             clashZone.HostOrientation = GetNullableString(reader, "HostOrientation") ?? string.Empty;
+            clashZone.WallDirectionType = GetNullableString(reader, "WallDirectionType") ?? string.Empty;
 
             clashZone.MepElementOrientationDirection = GetNullableString(reader, "MepOrientationDirection") ?? string.Empty;
+            
+            // ✅ WALL DIRECTION: Calculate WallDirection from HostOrientation once when loading from DB
+            // This avoids expensive on-the-fly calculations during placement
+            // HostOrientation "X" = X-WALL (wall runs along X-axis, direction = +X)
+            // HostOrientation "Y" = Y-WALL (wall runs along Y-axis, direction = +Y)
+            bool isWallHost = string.Equals(clashZone.StructuralElementType, "Wall", StringComparison.OrdinalIgnoreCase) ||
+                              string.Equals(clashZone.StructuralElementType, "Walls", StringComparison.OrdinalIgnoreCase);
+            bool isFramingHost = string.Equals(clashZone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
+            
+            if (isWallHost || isFramingHost)
+            {
+                string hostOrientation = clashZone.HostOrientation ?? string.Empty;
+                string wallDirectionType = clashZone.WallDirectionType ?? string.Empty;
+                
+                if (!string.IsNullOrEmpty(hostOrientation))
+                {
+                    if (string.Equals(hostOrientation, "X", StringComparison.OrdinalIgnoreCase) ||
+                        wallDirectionType.Contains("X-WALL", StringComparison.OrdinalIgnoreCase))
+                    {
+                        clashZone.WallDirection = new XYZ(1, 0, 0); // X-WALL: direction along X-axis
+                    }
+                    else if (string.Equals(hostOrientation, "Y", StringComparison.OrdinalIgnoreCase) ||
+                             wallDirectionType.Contains("Y-WALL", StringComparison.OrdinalIgnoreCase))
+                    {
+                        clashZone.WallDirection = new XYZ(0, 1, 0); // Y-WALL: direction along Y-axis
+                    }
+                }
+            }
             clashZone.MepElementOrientation = new XYZ(
                 GetNullableDouble(reader, "MepOrientationX") ?? 0.0,
                 GetNullableDouble(reader, "MepOrientationY") ?? 0.0,
@@ -2350,7 +2693,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         // ✅ CRITICAL FIX: Prioritize GUID matching - only use fallbacks if GUID doesn't match or is empty
                         // This ensures we only match 1 row per update when GUIDs are unique
                         // Use COALESCE to try GUID first, then fallbacks in order
-                cmd.CommandText = @"
+                        cmd.CommandText = @"
                             UPDATE ClashZones SET
                                 IsResolvedFlag = @IsResolvedFlag,
                                 IsClusterResolvedFlag = @IsClusterResolvedFlag,
@@ -2359,6 +2702,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 MarkedForClusterProcess = @MarkedForClusterProcess,
                                 AfterClusterSleeveId = @AfterClusterSleeveId,
                                 IsClusteredFlag = @IsClusteredFlag,
+                                -- ✅ CRITICAL FIX: When flags are reset (both IsResolved=0 AND IsClusterResolved=0), 
+                                -- set ReadyForPlacementFlag=1 so zones become eligible for placement again
+                                -- This enables the ""Place Sleeves"" button when sleeves are deleted
+                                ReadyForPlacementFlag = CASE 
+                                    WHEN @IsResolvedFlag = 0 AND @IsClusterResolvedFlag = 0 THEN 1 
+                                    ELSE ReadyForPlacementFlag 
+                                END,
                                 UpdatedAt = datetime('now', '+5 hours', '+30 minutes')
                             WHERE ClashZoneId = COALESCE(
                                 -- ✅ PRIORITY 1: Try GUID first (most reliable, should match exactly 1 row)

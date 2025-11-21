@@ -157,7 +157,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // ✅ DATABASE OPTIMIZATION: Use optimized method for clustering
                     // This uses SleeveState index and only returns zones with individual sleeves
                     // ✅ Use GetClashZonesByFilter with SleeveState filter for clustering (zones with individual sleeves)
-                    var dbZones = repository.GetClashZonesByFilter(filterName, category, unresolvedOnly: false)
+                    // ⚠️ Clustering loads ALL zones (readyForPlacementOnly=false) because it operates on existing sleeves
+                    var dbZones = repository.GetClashZonesByFilter(filterName, category, unresolvedOnly: false, readyForPlacementOnly: false)
                         .Where(z => z.SleeveInstanceId > 0 && z.ClusterSleeveInstanceId <= 0)
                         .ToList();
 
@@ -198,16 +199,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     // ✅ DATABASE OPTIMIZATION: Use optimized method for unresolved-only queries
                     // This uses UnresolvedClashZones view for better performance
+                                        // ✅ SESSION FILTERING: Only load zones from current refresh session (ReadyForPlacement = true)
                     List<ClashZone> dbZones;
                     if (unresolvedOnly)
                     {
-                        Log($"[ClashZoneDataService][SQLite] Querying for UNRESOLVED zones only (unresolvedOnly=true)");
-                        dbZones = repository.GetClashZonesByFilter(filterName, category, unresolvedOnly: true);
+                        Log($"[ClashZoneDataService][SQLite] Querying for UNRESOLVED zones only (unresolvedOnly=true, readyForPlacement=true)");
+                        dbZones = repository.GetClashZonesByFilter(filterName, category, unresolvedOnly: true, readyForPlacementOnly: true);
                     }
                     else
                     {
-                        Log($"[ClashZoneDataService][SQLite] Querying for ALL zones (unresolvedOnly=false)");
-                        dbZones = repository.GetClashZonesByFilter(filterName, category, unresolvedOnly: false) ?? new List<ClashZone>();
+                        Log($"[ClashZoneDataService][SQLite] Querying for zones from CURRENT REFRESH SESSION (unresolvedOnly=false, readyForPlacement=true)");
+                        dbZones = repository.GetClashZonesByFilter(filterName, category, unresolvedOnly: false, readyForPlacementOnly: true) ?? new List<ClashZone>();
                     }
                     
                     Log($"[ClashZoneDataService][SQLite] Query returned {dbZones?.Count ?? 0} zones from database");

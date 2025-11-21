@@ -296,6 +296,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
             if (cluster == null || cluster.Count == 0 || actualSleeves == null || actualSleeves.Count == 0)
                 return (0,0,0,XYZ.Zero,null,null,null,null,null,null);
 
+            // ✅ CRITICAL FIX: Calculate placement point from intersection points (centroid), not bounding box midpoint
+            // Individual sleeves are placed at intersection points, so cluster should be at average of intersection points
+            XYZ placementPoint = CalculatePlacementPointFromIntersections(cluster, xmlFilePath);
+            
+            if (placementPoint.IsZeroLength() || double.IsNaN(placementPoint.X))
+            {
+                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ Failed to calculate placement point from intersections, falling back to first sleeve intersection point\n");
+                // Fallback: Use first sleeve's intersection point
+                var firstCz = _getClashZoneFunc(cluster[0].SleeveInstanceId, xmlFilePath) as ClashZone;
+                if (firstCz != null)
+                {
+                    placementPoint = new XYZ(firstCz.IntersectionPointX, firstCz.IntersectionPointY, firstCz.IntersectionPointZ);
+                }
+                else
+                {
+                    placementPoint = XYZ.Zero;
+                }
+            }
+
             // ✅ RCS: For walls/framing, use RCS bounding boxes directly (already wall-aligned, no rotation needed)
             var firstSleeveData = cluster[0];
             if (firstSleeveData != null)
@@ -369,10 +389,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                     {
                                         SafeFileLogger.SafeAppendText("cluster_sizing.log",
                                             $"[{DateTime.Now:HH:mm:ss}] ✅ RCS: Using wall-aligned RCS bounding boxes: {rcsBboxes.Count}/{cluster.Count} sleeves, " +
-                                            $"Size=({rcsWidth:F1}, {rcsHeight:F1}, {rcsDepth:F1}), RCSMid=({rcsMid.X:F1}, {rcsMid.Y:F1}, {rcsMid.Z:F1}), WCSMid=({wcsMid.X:F1}, {wcsMid.Y:F1}, {wcsMid.Z:F1})\n");
+                                            $"Size=({rcsWidth:F1}, {rcsHeight:F1}, {rcsDepth:F1}), RCSMid=({rcsMid.X:F1}, {rcsMid.Y:F1}, {rcsMid.Z:F1}), PlacementPoint=({placementPoint.X:F1}, {placementPoint.Y:F1}, {placementPoint.Z:F1})\n");
                                     }
                                     
-                                    return (rcsWidth, rcsHeight, rcsDepth, wcsMid, null, null, null, null, null, null);
+                                    // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
+                                    return (rcsWidth, rcsHeight, rcsDepth, placementPoint, null, null, null, null, null, null);
                                 }
                             }
                         }
@@ -585,7 +606,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             SafeFileLogger.SafeAppendText("cluster_sizing.log",
                                 $"[{DateTime.Now:HH:mm:ss}] ✅ CORNER-BASED: Cluster rotation={rotationAngle * 180 / Math.PI:F1}°, W={widthMm:F1}mm, H={heightMm:F1}mm, D={depthMm:F1}mm\n");
                             
-                            return (cornerResult.Value.width, cornerResult.Value.height, cornerDepth, cornerMid,
+                            // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
+                            return (cornerResult.Value.width, cornerResult.Value.height, cornerDepth, placementPoint,
                                 cornerResult.Value.minX, cornerResult.Value.minY, cornerMinZ,
                                 cornerResult.Value.maxX, cornerResult.Value.maxY, cornerMaxZ);
                         }
@@ -611,7 +633,94 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
 
             if (rotatedBboxes.Count == 0)
             {
-                // ✅ OPTIMIZATION: Use bounding box data from database instead of querying Revit
+                // ✅ CRITICAL: For walls/framing, check if we should use RCS or transform WCS to RCS
+                var fallbackFirstSleeveData = cluster[0];
+                if (fallbackFirstSleeveData != null)
+                {
+                    try
+                    {
+                        int firstSleeveInstanceId = fallbackFirstSleeveData.SleeveInstanceId;
+                        if (firstSleeveInstanceId > 0)
+                        {
+                            var firstCz = _getClashZoneFunc(firstSleeveInstanceId, xmlFilePath) as ClashZone;
+                            if (firstCz != null)
+                            {
+                                bool isWallHost = string.Equals(firstCz.StructuralElementType, "Wall", StringComparison.OrdinalIgnoreCase) ||
+                                                  string.Equals(firstCz.StructuralElementType, "Walls", StringComparison.OrdinalIgnoreCase);
+                                bool isFramingHost = string.Equals(firstCz.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
+                                
+                                // ✅ For walls/framing with 0° rotation, transform WCS bounding boxes to RCS on-the-fly
+                                if ((isWallHost || isFramingHost) && firstCz.WallDirection != null && !firstCz.WallDirection.IsZeroLength())
+                                {
+                                    // Transform WCS bounding boxes to RCS
+                                    var wcsBboxes = new List<(XYZ min, XYZ max)>();
+                                    foreach (var sleeveData in cluster)
+                                    {
+                                        var cz = _getClashZoneFunc(sleeveData.SleeveInstanceId, xmlFilePath) as ClashZone;
+                                        if (cz != null && 
+                                            (cz.SleeveBoundingBoxMinX != 0 || cz.SleeveBoundingBoxMaxX != 0 ||
+                                             cz.SleeveBoundingBoxMinY != 0 || cz.SleeveBoundingBoxMaxY != 0 ||
+                                             cz.SleeveBoundingBoxMinZ != 0 || cz.SleeveBoundingBoxMaxZ != 0))
+                                        {
+                                            var wcsBbox = new BoundingBoxXYZ
+                                            {
+                                                Min = new XYZ(cz.SleeveBoundingBoxMinX, cz.SleeveBoundingBoxMinY, cz.SleeveBoundingBoxMinZ),
+                                                Max = new XYZ(cz.SleeveBoundingBoxMaxX, cz.SleeveBoundingBoxMaxY, cz.SleeveBoundingBoxMaxZ)
+                                            };
+                                            
+                                            // Transform to RCS
+                                            var rcsBbox = WallRcsTransformer.TransformToRcs(wcsBbox, firstCz.WallDirection);
+                                            if (rcsBbox != null)
+                                            {
+                                                wcsBboxes.Add((rcsBbox.Min, rcsBbox.Max));
+                                            }
+                                        }
+                                    }
+                                    
+                                    if (wcsBboxes.Count > 0)
+                                    {
+                                        // Union in RCS
+                                        double rcsMinX = wcsBboxes.Min(b => b.min.X);
+                                        double rcsMinY = wcsBboxes.Min(b => b.min.Y);
+                                        double rcsMinZ = wcsBboxes.Min(b => b.min.Z);
+                                        double rcsMaxX = wcsBboxes.Max(b => b.max.X);
+                                        double rcsMaxY = wcsBboxes.Max(b => b.max.Y);
+                                        double rcsMaxZ = wcsBboxes.Max(b => b.max.Z);
+                                        
+                                        double rcsWidth = rcsMaxX - rcsMinX;
+                                        double rcsHeight = rcsMaxZ - rcsMinZ;
+                                        double rcsDepth = rcsMaxY - rcsMinY;
+                                        
+                                        XYZ rcsMid = new XYZ((rcsMinX + rcsMaxX) / 2, (rcsMinY + rcsMaxY) / 2, (rcsMinZ + rcsMaxZ) / 2);
+                                        XYZ wcsMid = WallRcsTransformer.TransformToWcs(rcsMid, firstCz.WallDirection,
+                                            new XYZ(firstCz.SleevePlacementPointActiveDocumentX,
+                                                   firstCz.SleevePlacementPointActiveDocumentY,
+                                                   firstCz.SleevePlacementPointActiveDocumentZ)) ?? XYZ.Zero;
+                                        
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            double wMm = RevitUnitConversionService.Instance.FromInternalMillimeters(rcsWidth);
+                                            double hMm = RevitUnitConversionService.Instance.FromInternalMillimeters(rcsHeight);
+                                            double dMm = RevitUnitConversionService.Instance.FromInternalMillimeters(rcsDepth);
+                                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                                $"[{DateTime.Now:HH:mm:ss}] ✅ RCS TRANSFORM: Converted WCS to RCS for wall cluster: W={wMm:F1}mm, H={hMm:F1}mm, D={dMm:F1}mm, PlacementPoint=({placementPoint.X:F1}, {placementPoint.Y:F1}, {placementPoint.Z:F1})\n");
+                                        }
+                                        
+                                        // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
+                                        return (rcsWidth, rcsHeight, rcsDepth, placementPoint, null, null, null, null, null, null);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception rcsEx)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ Error transforming to RCS: {rcsEx.Message}\n");
+                    }
+                }
+                
+                // ✅ OPTIMIZATION: Use bounding box data from database instead of querying Revit (for floors only)
                 // Database has SleeveBoundingBoxMinX/Y/Z and MaxX/Y/Z stored after individual sleeve placement
                 // This is faster and avoids Revit API calls
                 var dbBboxes = new List<(XYZ min, XYZ max)>();
@@ -635,17 +744,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     }
                 }
                 
-                // If database has bounding boxes, use them (faster, no Revit API calls)
+                // If database has bounding boxes, use them (faster, no Revit API calls) - only for floors!
                 if (dbBboxes.Count > 0)
                 {
                     double minXf = dbBboxes.Min(b=>b.min.X); double minYf = dbBboxes.Min(b=>b.min.Y); double minZf = dbBboxes.Min(b=>b.min.Z);
                     double maxXf = dbBboxes.Max(b=>b.max.X); double maxYf = dbBboxes.Max(b=>b.max.Y); double maxZf = dbBboxes.Max(b=>b.max.Z);
                     double wf = maxXf - minXf; double hf = maxYf - minYf; double df = maxZf - minZf; XYZ midF = new XYZ((minXf+maxXf)/2,(minYf+maxYf)/2,(minZf+maxZf)/2);
                     
-                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                        $"[{DateTime.Now:HH:mm:ss}] ✅ FALLBACK (axis-aligned from DB): W={wf:F1}mm, H={hf:F1}mm, D={df:F1}mm ({dbBboxes.Count} sleeves from database)\n");
+                    // ✅ FIX: Convert to millimeters for logging
+                    double wfMm = RevitUnitConversionService.Instance.FromInternalMillimeters(wf);
+                    double hfMm = RevitUnitConversionService.Instance.FromInternalMillimeters(hf);
+                    double dfMm = RevitUnitConversionService.Instance.FromInternalMillimeters(df);
                     
-                    return (wf,hf,df,midF,null,null,null,null,null,null);
+                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                        $"[{DateTime.Now:HH:mm:ss}] ✅ FALLBACK (axis-aligned from DB): W={wfMm:F1}mm, H={hfMm:F1}mm, D={dfMm:F1}mm ({dbBboxes.Count} sleeves from database)\n");
+                    
+                    // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
+                    return (wf,hf,df,placementPoint,null,null,null,null,null,null);
                 }
                 
                 // Last resort: Fallback to Revit bounding boxes if database data is missing
@@ -658,7 +773,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 SafeFileLogger.SafeAppendText("cluster_sizing.log",
                     $"[{DateTime.Now:HH:mm:ss}] ⚠️ FALLBACK (axis-aligned from Revit): W={wr:F1}mm, H={hr:F1}mm, D={dr:F1}mm (database data missing, using Revit API)\n");
                 
-                return (wr,hr,dr,midR,null,null,null,null,null,null);
+                // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
+                return (wr,hr,dr,placementPoint,null,null,null,null,null,null);
             }
 
             // ✅ FALLBACK: Simple union of rotated boxes (only if corner-based failed)
@@ -683,7 +799,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 SafeFileLogger.SafeAppendText("cluster_sizing.log",
                     $"[{DateTime.Now:HH:mm:ss}] ⚠️ UNION (fallback): W={unionWidthMm:F1}mm, H={unionHeightMm:F1}mm, D={unionDepthMm:F1}mm, Rotation={rotationAngle * 180 / Math.PI:F1}°\n");
             
-            return (width,height,depth,mid,minX,minY,minZ,maxX,maxY,maxZ);
+            // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
+            return (width,height,depth,placementPoint,minX,minY,minZ,maxX,maxY,maxZ);
         }
 
         /// <summary>
@@ -712,6 +829,78 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         public void ClearRotationData()
         {
             _clusterRotationData.Clear();
+        }
+
+        /// <summary>
+        /// ✅ CRITICAL FIX: Calculate cluster placement point from intersection points (centroid)
+        /// Individual sleeves are placed at intersection points, so cluster should be at average of intersection points
+        /// This ensures the cluster sleeve is placed correctly relative to the individual intersection points
+        /// </summary>
+        private XYZ CalculatePlacementPointFromIntersections(List<dynamic> cluster, string? xmlFilePath)
+        {
+            if (cluster == null || cluster.Count == 0)
+                return XYZ.Zero;
+
+            double sumX = 0.0;
+            double sumY = 0.0;
+            double sumZ = 0.0;
+            int validCount = 0;
+
+            foreach (var sleeveData in cluster)
+            {
+                try
+                {
+                    int sleeveInstanceId = sleeveData.SleeveInstanceId;
+                    if (sleeveInstanceId <= 0)
+                        continue;
+
+                    var cz = _getClashZoneFunc(sleeveInstanceId, xmlFilePath) as ClashZone;
+                    if (cz == null)
+                        continue;
+
+                    // ✅ Use intersection point coordinates (where MEP element intersects structural element)
+                    double ipX = cz.IntersectionPointX;
+                    double ipY = cz.IntersectionPointY;
+                    double ipZ = cz.IntersectionPointZ;
+
+                    // Validate coordinates are non-zero and not NaN
+                    if (ipX != 0.0 || ipY != 0.0 || ipZ != 0.0)
+                    {
+                        if (!double.IsNaN(ipX) && !double.IsInfinity(ipX) &&
+                            !double.IsNaN(ipY) && !double.IsInfinity(ipY) &&
+                            !double.IsNaN(ipZ) && !double.IsInfinity(ipZ))
+                        {
+                            sumX += ipX;
+                            sumY += ipY;
+                            sumZ += ipZ;
+                            validCount++;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ Error getting intersection point for sleeve in cluster: {ex.Message}\n");
+                }
+            }
+
+            if (validCount == 0)
+            {
+                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ No valid intersection points found in cluster ({cluster.Count} sleeves)\n");
+                return XYZ.Zero;
+            }
+
+            // Calculate centroid (average) of intersection points
+            XYZ centroid = new XYZ(sumX / validCount, sumY / validCount, sumZ / validCount);
+
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                    $"[{DateTime.Now:HH:mm:ss}] ✅ PLACEMENT POINT: Calculated from {validCount}/{cluster.Count} intersection points: ({centroid.X:F6}, {centroid.Y:F6}, {centroid.Z:F6})\n");
+            }
+
+            return centroid;
         }
     }
 }

@@ -2178,6 +2178,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 IsMSFDDamper = isMSFD, // Pre-calculated MSFD flag for offset calculation during placement
                 IsResolved = hasExistingSleeve,
                 
+                // ✅ SESSION FLAG: Mark new clash zones as ready for placement in current refresh session
+                // This ensures the UI button is enabled and placement processes these zones
+                // (Zones loaded from database during refresh also get this flag set in xml_cache_manager.cs)
+                ReadyForPlacement = true,
+                
                 DetectedAt = DateTime.Now,
                 LastUpdated = DateTime.Now
             };

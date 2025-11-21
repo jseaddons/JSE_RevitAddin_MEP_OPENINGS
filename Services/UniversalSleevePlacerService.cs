@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.IO;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Autodesk.Revit.DB;
@@ -311,6 +312,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ PERFORMANCE OPTIMIZATION: Track placed sleeves for batch processing
             var placedSleeveData = new List<(FamilyInstance sleeve, ClashZone zone, double finalWidth, double finalHeight, double finalDiameter)>();
             var placedSleeveIds = new List<ElementId>();
+            
+            // ✅ SESSION FLAG: Track processed zones for ReadyForPlacement flag reset
+            var processedZoneGuids = new List<Guid>();
             
             // ✅ PERFORMANCE OPTIMIZATION: Element cache to avoid redundant GetElement calls
             var elementCache = new Dictionary<int, Element>();
@@ -1742,6 +1746,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                                 PlacedCount++;
 
+                                // ✅ SESSION FLAG: Track processed zone for flag reset
+                                if (clashZone.Id != Guid.Empty && !processedZoneGuids.Contains(clashZone.Id))
+                                    processedZoneGuids.Add(clashZone.Id);
+
                                 // ✅ PERFORMANCE: Track successful placement
                                 singleSleeveTracker.SetItemCount(1); // 1 sleeve placed
 
@@ -1865,6 +1873,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                                         // ✅ RCS BBOX: Transform to wall-aligned RCS for walls/framing
                                         // This eliminates rotation logic for walls - bounding boxes are already wall-aligned
+                                        // NOTE: WallDirection should already be set when loading from DB (calculated in MapClashZone from HostOrientation)
                                         bool isWallHost = string.Equals(zone.StructuralElementType, "Wall", StringComparison.OrdinalIgnoreCase) ||
                                                           string.Equals(zone.StructuralElementType, "Walls", StringComparison.OrdinalIgnoreCase);
                                         bool isFramingHost = string.Equals(zone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
@@ -2681,6 +2690,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] [RETURN-PlaceAllSleevesInTransaction] Placed={PlacedCount}, Skipped={SkippedCount}, Errors={ErrorCount}\n");
             }
             catch { }
+            
+            // ✅ SESSION FLAG: Reset ReadyForPlacement for processed zones so they won't be re-processed
+            if (processedZoneGuids.Count > 0)
+            {
+                try
+                {
+                    using (var context = new Data.SleeveDbContext(_doc, msg => { }))
+                    {
+                        var repository = new Data.Repositories.ClashZoneRepository(context, msg => { });
+                        repository.BulkResetReadyForPlacementFlags(processedZoneGuids);
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[UniversalSleevePlacer] ✅ Reset ReadyForPlacementFlag on {processedZoneGuids.Count} processed zones");
+                            SafeFileLogger.SafeAppendText("placement_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ SESSION-FLAG-RESET: {processedZoneGuids.Count} zones marked as processed (ReadyForPlacement=false)\n");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ Failed to reset ReadyForPlacement flags: {ex.Message}");
+                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ SESSION-FLAG-RESET-ERROR: {ex.Message}\n");
+                    }
+                }
+            }
             
             return (PlacedCount, SkippedCount, ErrorCount);
         }
@@ -3803,6 +3841,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (param != null && !param.IsReadOnly)
                         paramCache[name] = param;
                 }
+
+                // Local timing + logging helpers (only active when EnableParameterTimingInstrumentation true)
+                void AppendTiming(string logicalName, long ticks, long ms, double internalValue)
+                {
+                    if (!OptimizationFlags.EnableParameterTimingInstrumentation || !OptimizationFlags.UseDiagnosticMode) return;
+                    try
+                    {
+                        var path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "param_timing.log");
+                        File.AppendAllText(path, $"{DateTime.Now:O}\tSleeve={sleeveInstance.Id.IntegerValue}\tParam={logicalName}\tValueInternal={internalValue:F6}\tTicks={ticks}\tMs={ms}\n");
+                    }
+                    catch { }
+                }
+
+                void TimedSetDouble(Parameter p, double value, string logicalName)
+                {
+                    if (p == null || p.IsReadOnly) return;
+                    if (OptimizationFlags.EnableParameterTimingInstrumentation)
+                    {
+                        var sw = Stopwatch.StartNew();
+                        p.Set(value);
+                        sw.Stop();
+                        AppendTiming(logicalName, sw.ElapsedTicks, sw.ElapsedMilliseconds, value);
+                    }
+                    else
+                    {
+                        p.Set(value);
+                    }
+                }
                 
                 // Cache all needed parameters once
                 CacheParam("Width");
@@ -3900,7 +3966,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var p = GetParam(name); // ✅ PERFORMANCE: Use cache only, no fallback LookupParameter
                 if (p != null && !p.IsReadOnly)
                 {
-                    p.Set(roundedDiameter);
+                    TimedSetDouble(p, roundedDiameter, name);
                     // Add to cache if not already cached
                     if (!paramCache.ContainsKey(name) && !p.IsReadOnly)
                         paramCache[name] = p;
@@ -3918,16 +3984,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (!setOk)
                     {
                         // Fallback to Width/Height for circular
-                        GetParam("Width")?.Set(roundedDiameter);
-                        GetParam("Height")?.Set(roundedDiameter);
+                        {
+                            var _w = GetParam("Width");
+                            var _h = GetParam("Height");
+                            TimedSetDouble(_w, roundedDiameter, "Width");
+                            TimedSetDouble(_h, roundedDiameter, "Height");
+                        }
                         // ✅ PERFORMANCE: Removed verbose logging
                     }
                 }
                 else
                 {
                     // Rectangular
-                    GetParam("Width")?.Set(roundedWidth);
-                    GetParam("Height")?.Set(roundedHeight);
+                    {
+                        var _w = GetParam("Width");
+                        var _h = GetParam("Height");
+                        TimedSetDouble(_w, roundedWidth, "Width");
+                        TimedSetDouble(_h, roundedHeight, "Height");
+                    }
                     // ✅ PERFORMANCE: Removed verbose logging
         }
         
@@ -3970,8 +4044,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             
             // Update the sleeve parameters with correct values
-            GetParam("Width")?.Set(roundedWidth);
-            GetParam("Height")?.Set(roundedHeight);
+            {
+                var _w = GetParam("Width");
+                var _h = GetParam("Height");
+                TimedSetDouble(_w, roundedWidth, "Width");
+                TimedSetDouble(_h, roundedHeight, "Height");
+            }
             
                         if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[UniversalSleevePlacer] FLOOR DUCT FINAL: Width={RevitUnitConversionService.Instance.FromInternalMillimeters(roundedWidth):F1}mm, Height={RevitUnitConversionService.Instance.FromInternalMillimeters(roundedHeight):F1}mm (NO ROTATION)");
@@ -4118,7 +4196,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         if (isWallHost && wallWidthParam != null && !wallWidthParam.IsReadOnly)
         {
             // Wall host: use Wall Width parameter
-            wallWidthParam.Set(thickness);
+            TimedSetDouble(wallWidthParam, thickness, "Wall Width");
             depthSetSuccess = true;
             if (!DeploymentConfiguration.DeploymentMode)
             {
@@ -4127,7 +4205,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         else if (depthParam != null && !depthParam.IsReadOnly)
         {
-            depthParam.Set(thickness);
+            TimedSetDouble(depthParam, thickness, "Depth");
             depthSetSuccess = true;
             if (!DeploymentConfiguration.DeploymentMode)
             {

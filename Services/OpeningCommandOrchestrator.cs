@@ -739,6 +739,92 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             {
                                 DebugLogger.Info($"[ORCHESTRATOR] ✅ Transaction COMMITTED successfully: '{tx.GetName()}'");
                             }
+                            
+                            // ✅ DIAGNOSTIC: Verify cluster sleeves still exist AFTER transaction commit
+                            if (placedClusterSleeves != null && placedClusterSleeves.Count > 0)
+                            {
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] 🔍 POST-COMMIT VERIFICATION: Checking {placedClusterSleeves.Count} cluster sleeves after transaction commit...\n");
+                                
+                                int foundAfterCommit = 0;
+                                int missingAfterCommit = 0;
+                                foreach (var cluster in placedClusterSleeves)
+                                {
+                                    if (cluster == null || !cluster.IsValidObject)
+                                    {
+                                        missingAfterCommit++;
+                                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                            $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ POST-COMMIT: Cluster sleeve is NULL or INVALID (was deleted during transaction!)\n");
+                                    }
+                                    else
+                                    {
+                                        foundAfterCommit++;
+                                        int clusterId = cluster.Id.IntegerValue;
+                                        var location = cluster.Location as LocationPoint;
+                                        var locPoint = location?.Point;
+                                        
+                                        // ✅ DIAGNOSTIC: Verify by ID lookup (not just object reference)
+                                        var verifyById = _document.GetElement(new ElementId(clusterId)) as FamilyInstance;
+                                        bool existsById = verifyById != null && verifyById.IsValidObject;
+                                        
+                                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                            $"[{DateTime.Now:HH:mm:ss}] ✅ POST-COMMIT: Cluster sleeve {clusterId} EXISTS: Name='{cluster.Name}', " +
+                                            $"Location=({locPoint?.X:F2}, {locPoint?.Y:F2}, {locPoint?.Z:F2}), " +
+                                            $"Category='{cluster.Category?.Name ?? "NULL"}', " +
+                                            $"Document='{cluster.Document?.Title ?? "NULL"}', " +
+                                            $"IsValid={cluster.IsValidObject}, " +
+                                            $"ExistsById={existsById}\n");
+                                        
+                                        if (!existsById)
+                                        {
+                                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                                $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ POST-COMMIT WARNING: Cluster sleeve {clusterId} reference is valid but GetElement by ID returns NULL!\n");
+                                        }
+                                    }
+                                }
+                                
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] 📊 POST-COMMIT RESULT: {foundAfterCommit} found, {missingAfterCommit} missing out of {placedClusterSleeves.Count} cluster sleeves\n");
+                                
+                                // ✅ ADDITIONAL DIAGNOSTIC: After a short delay, check again if cluster sleeves still exist
+                                // This helps detect if something else is deleting them after commit
+                                System.Threading.Thread.Sleep(100); // Small delay to allow any async operations to complete
+                                
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] 🔍 POST-COMMIT+100ms VERIFICATION: Re-checking {placedClusterSleeves.Count} cluster sleeves after delay...\n");
+                                
+                                int foundAfterDelay = 0;
+                                int missingAfterDelay = 0;
+                                foreach (var clusterRef in placedClusterSleeves)
+                                {
+                                    if (clusterRef == null) continue;
+                                    
+                                    int clusterId = clusterRef.Id.IntegerValue;
+                                    // ✅ CRITICAL: Look up by ID in active document, not use stale reference
+                                    var freshLookup = _document.GetElement(new ElementId(clusterId)) as FamilyInstance;
+                                    
+                                    if (freshLookup == null || !freshLookup.IsValidObject)
+                                    {
+                                        missingAfterDelay++;
+                                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                            $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ POST-COMMIT+100ms: Cluster sleeve {clusterId} MISSING (was deleted after commit!)\n");
+                                    }
+                                    else
+                                    {
+                                        foundAfterDelay++;
+                                        var loc = freshLookup.Location as LocationPoint;
+                                        var pt = loc?.Point;
+                                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                            $"[{DateTime.Now:HH:mm:ss}] ✅ POST-COMMIT+100ms: Cluster sleeve {clusterId} STILL EXISTS: " +
+                                            $"Name='{freshLookup.Name}', Document='{freshLookup.Document?.Title ?? "NULL"}', " +
+                                            $"IsActiveDoc={!freshLookup.Document?.IsLinked ?? false}, " +
+                                            $"Location=({pt?.X:F2}, {pt?.Y:F2}, {pt?.Z:F2})\n");
+                                    }
+                                }
+                                
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] 📊 POST-COMMIT+100ms RESULT: {foundAfterDelay} found, {missingAfterDelay} missing out of {placedClusterSleeves.Count} cluster sleeves\n");
+                            }
                         }
                         else
                         {
@@ -746,6 +832,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             {
                                 DebugLogger.Error($"[ORCHESTRATOR] ❌ Transaction FAILED to commit: '{tx.GetName()}', Status: {commitStatus}");
                             }
+                            
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ TRANSACTION NOT COMMITTED: Status={commitStatus}, cluster sleeves may have been rolled back!\n");
+                            
                             return Autodesk.Revit.UI.Result.Failed;
                         }
                         
@@ -1072,6 +1162,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     try
                     {
                         // Use FlagManager for efficient flag syncing by GUID
+                        // ✅ DATABASE-FIRST: FlagManager tries database first, falls back to Global XML only if needed
                         var flagManager = new FlagManager(_document);
                         flagManager.SyncFlagsFromGlobal(clashZones, categoryName);
                         
@@ -1079,7 +1170,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             int clusterResolvedAfterSync = clashZones.Count(cz => cz.IsClusterResolved);
                             int individualResolvedAfterSync = clashZones.Count(cz => cz.IsResolved);
-                            DebugLogger.Info($"[GUID-GUIDED-LOAD] ✅ Synced flags from Global XML: {clashZones.Count} zones, {clusterResolvedAfterSync} cluster-resolved, {individualResolvedAfterSync} individual-resolved");
+                            // ✅ NOTE: SyncFlagsFromGlobal uses database-first, only falls back to Global XML if database has no data
+                            DebugLogger.Info($"[GUID-GUIDED-LOAD] ✅ Synced flags (database-first): {clashZones.Count} zones, {clusterResolvedAfterSync} cluster-resolved, {individualResolvedAfterSync} individual-resolved");
                         }
                     }
                     catch (Exception syncEx)
@@ -1087,7 +1179,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // Log error but continue - don't fail placement if sync fails
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Warning($"[GUID-GUIDED-LOAD] Error syncing flags from Global XML: {syncEx.Message}");
+                            DebugLogger.Warning($"[GUID-GUIDED-LOAD] Error syncing flags (database-first): {syncEx.Message}");
                         }
                     }
                 }
@@ -1124,10 +1216,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             DebugLogger.Info($"[OpeningCommandOrchestrator][SQLite] {msg}");
                     });
 
-                    // ✅ CRITICAL FIX: Load ALL zones from DB (unresolvedOnly=false), then filter by flags in memory
-                    // This ensures we get zones even after flag reset (IsResolved=false, SleeveInstanceId=-1)
-                    // DB query filters by SleeveState which might not match reset flags correctly
-                    var zones = repository.GetClashZonesByFilter(filter.Name, categoryName, unresolvedOnly: false) ?? new List<ClashZone>();
+                    // ✅ CRITICAL FIX: Load zones with ReadyForPlacementFlag=1 from DB (set during refresh after flag reset)
+                    // This ensures we only get zones that are ready for placement in the current session
+                    // The database query filters by ReadyForPlacementFlag=1, which is set AFTER flag manager resets flags
+                    
+                    // ✅ DIAGNOSTIC: Log the query parameters before execution
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[OpeningCommandOrchestrator][QUERY] Querying database: filter='{filter.Name}', category='{categoryName}', unresolvedOnly=false, readyForPlacementOnly=true");
+                        
+                        // Also check total zones without the flag filter for comparison
+                        var allZones = repository.GetClashZonesByFilter(filter.Name, categoryName, unresolvedOnly: false, readyForPlacementOnly: false) ?? new List<ClashZone>();
+                        var readyZonesCount = allZones?.Count(z => z.ReadyForPlacement) ?? 0;
+                        DebugLogger.Info($"[OpeningCommandOrchestrator][DIAGNOSTIC] Total zones in DB: {allZones?.Count ?? 0}, zones with ReadyForPlacement=true in memory: {readyZonesCount}");
+                    }
+                    
+                    var zones = repository.GetClashZonesByFilter(filter.Name, categoryName, unresolvedOnly: false, readyForPlacementOnly: true) ?? new List<ClashZone>();
 
                     foreach (var zone in zones)
                     {
@@ -1135,14 +1239,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         zone?.EnsureSleevePlacementPointActiveDocumentReconstructed();
                     }
 
-                    // ✅ SESSION FLAG: Only process zones with ReadyForPlacement=true (set during refresh)
-                    // This replaces timestamp-based filtering - more reliable for session tracking
-                    var zonesBeforeFilter = zones.Count;
-                    zones = zones.Where(z => z.ReadyForPlacement).ToList();
-                    
-                    if (!DeploymentConfiguration.DeploymentMode && zonesBeforeFilter > zones.Count)
+                    if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        DebugLogger.Info($"[OpeningCommandOrchestrator][SESSION-FILTER] Filtered {zonesBeforeFilter} total zones → {zones.Count} ready for placement (ReadyForPlacement=true)");
+                        DebugLogger.Info($"[OpeningCommandOrchestrator][SESSION-FILTER] Loaded {zones.Count} zones with ReadyForPlacementFlag=1 from database query");
+                        
+                        // ✅ DIAGNOSTIC: Log to placement_debug.log
+                        var placementLogPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                        try
+                        {
+                            File.AppendAllText(placementLogPath, $"[{DateTime.Now:HH:mm:ss}] [QUERY-DIAGNOSTIC] Query: filter='{filter.Name}', category='{categoryName}', readyForPlacementOnly=true → returned {zones.Count} zones\n");
+                        }
+                        catch { }
                     }
 
                     // ✅ FILTER IN MEMORY: Only return zones that need placement (not resolved, not cluster resolved)

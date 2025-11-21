@@ -219,6 +219,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     });
                     
                     // Load zones for each category
+                    // ✅ NOTE: ReadyForPlacementFlag will be set AFTER flag manager resets flags for deleted sleeves
+                    // This ensures we check unresolved status AFTER flags are properly reset
                     foreach (var category in categories)
                     {
                         if (string.IsNullOrWhiteSpace(category))
@@ -229,22 +231,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                             // Load all zones (not just unresolved) for refresh operations
                             var categoryZones = repository.GetClashZonesByFilter(filterName, category, unresolvedOnly: false) ?? new List<ClashZone>();
                             
-                            // ✅ SESSION FLAG: Set ReadyForPlacement=true for ALL zones in current refresh
-                            // This marks them for processing by placement (replaces timestamp-based filtering)
                             foreach (var zone in categoryZones)
                             {
                                 if (zone != null)
                                 {
-                                    zone.ReadyForPlacement = true; // ✅ Mark for current session
                                     zone.EnsureSleevePlacementPointReconstructed();
                                     zone.EnsureSleevePlacementPointActiveDocumentReconstructed();
+                                    
+                                    // ✅ USE DATABASE VALUE: ReadyForPlacement is already loaded from ReadyForPlacementFlag column
+                                    // At START of refresh, all flags were reset to 0
+                                    // ReadyForPlacementFlag will be set to 1 AFTER flag manager resets flags for deleted sleeves
+                                    // (in refresh_service_refactored.cs, after Phase 5B)
+                                    
                                     allZones.Add(zone);
                                 }
                             }
                             
                             if (categoryZones.Count > 0 && !DeploymentConfiguration.DeploymentMode)
                             {
-                                Log($"[XML-CACHE] ✅ SQLite loaded {categoryZones.Count} zones for filter '{filterName}', category '{category}' (ReadyForPlacement=true)");
+                                Log($"[XML-CACHE] ✅ SQLite loaded {categoryZones.Count} zones for filter '{filterName}', category '{category}' (ReadyForPlacementFlag will be set after flag reset)");
                             }
                         }
                         catch (Exception categoryEx)

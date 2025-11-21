@@ -474,6 +474,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                     }
                                     catch { }
                                     
+                                    // ✅ SESSION PROTECTION: Register recently placed cluster sleeve to prevent deletion
+                                    // This protects the cluster sleeve from being deleted by FlagManager.DeleteSleeveForIntersectionPointChange()
+                                    FlagManager.RegisterRecentlyPlacedClusterSleeve(placementResult.capturedClusterSleeveId.Value);
+                                    
                                     placedClusters.Add(placementResult.placedClusterSleeve);
                                     
                                     // Track ClashZoneIds for database save
@@ -550,18 +554,76 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     placementLoopTracker.SetItemCount(placedCount);
                 } // ✅ PERFORMANCE: End of cluster placement loop tracking
 
+                // ✅ DIAGNOSTIC: Verify all cluster sleeves exist BEFORE cleanup
+                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss}] 🔍 PRE-CLEANUP VERIFICATION: Checking {placedClusters.Count} cluster sleeves before cleanup...\n");
+                int validBeforeCleanup = 0;
+                int invalidBeforeCleanup = 0;
+                foreach (var cluster in placedClusters)
+                {
+                    if (cluster == null || !cluster.IsValidObject)
+                    {
+                        invalidBeforeCleanup++;
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ PRE-CLEANUP: Cluster sleeve is NULL or INVALID!\n");
+                    }
+                    else
+                    {
+                        validBeforeCleanup++;
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ✅ PRE-CLEANUP: Cluster sleeve {cluster.Id.IntegerValue} EXISTS: Name='{cluster.Name}', IsValid={cluster.IsValidObject}\n");
+                    }
+                }
+                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss}] 📊 PRE-CLEANUP RESULT: {validBeforeCleanup} valid, {invalidBeforeCleanup} invalid out of {placedClusters.Count} cluster sleeves\n");
+                
                 // ✅ PERFORMANCE: Track cleanup
                 int deletedInCleanup = 0;
                 using (var cleanupTracker = performanceMonitor.TrackOperation("Cleanup Individual Sleeves"))
                 {
                     // ✅ STEP 15: Cleanup individual sleeves within placed clusters (Phase 7: Cleanup Service)
-                    if (placedClusters.Count > 0)
+                    // ⚠️ CRITICAL: Only pass VALID cluster sleeves to cleanup service to ensure they're protected
+                    var validClusters = placedClusters.Where(c => c != null && c.IsValidObject).ToList();
+                    if (validClusters.Count > 0)
                     {
-                        deletedInCleanup = _cleanupService.CleanupSleevesWithinClusters(doc, placedClusters);
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Calling cleanup service with {validClusters.Count} VALID cluster sleeves for protection\n");
+                        deletedInCleanup = _cleanupService.CleanupSleevesWithinClusters(doc, validClusters);
                         deletedCount += deletedInCleanup;
                         cleanupTracker.SetItemCount(deletedInCleanup);
                     }
+                    else
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ CLEANUP: No valid cluster sleeves to protect, skipping cleanup service\n");
+                    }
                 }
+                
+                // ✅ DIAGNOSTIC: Verify all cluster sleeves exist AFTER cleanup
+                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss}] 🔍 POST-CLEANUP VERIFICATION: Checking {placedClusters.Count} cluster sleeves after cleanup...\n");
+                int validAfterCleanup = 0;
+                int invalidAfterCleanup = 0;
+                foreach (var cluster in placedClusters)
+                {
+                    if (cluster == null || !cluster.IsValidObject)
+                    {
+                        invalidAfterCleanup++;
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ POST-CLEANUP: Cluster sleeve is NULL or INVALID (WAS DELETED BY CLEANUP!)\n");
+                    }
+                    else
+                    {
+                        validAfterCleanup++;
+                        var location = cluster.Location as LocationPoint;
+                        var locPoint = location?.Point;
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ✅ POST-CLEANUP: Cluster sleeve {cluster.Id.IntegerValue} EXISTS: Name='{cluster.Name}', " +
+                            $"Location=({locPoint?.X:F2}, {locPoint?.Y:F2}, {locPoint?.Z:F2})\n");
+                    }
+                }
+                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss}] 📊 POST-CLEANUP RESULT: {validAfterCleanup} valid, {invalidAfterCleanup} invalid (deleted) out of {placedClusters.Count} cluster sleeves\n");
 
                 // ✅ STEP 16: Return placed cluster sleeves if requested
                 if (placedClusterSleevesOut != null)
@@ -625,6 +687,53 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     
                     // ✅ STEP 17B: Save sleeve snapshots for cluster sleeves
                     SaveClusterSleeveSnapshots(doc, filterId.Value, placedClusters, targetCategory);
+                    
+                    // ✅ DIAGNOSTIC: Verify all cluster sleeves still exist in Revit after all operations
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss}] 🔍 FINAL VERIFICATION: Checking if all {_clusterToClashZoneIds.Count} cluster sleeves still exist in Revit...\n");
+                    
+                    int foundCount = 0;
+                    int missingCount = 0;
+                    foreach (var kvp in _clusterToClashZoneIds)
+                    {
+                        int clusterId = kvp.Key;
+                        var clusterSleeve = doc.GetElement(new ElementId(clusterId)) as FamilyInstance;
+                        if (clusterSleeve == null || !clusterSleeve.IsValidObject)
+                        {
+                            missingCount++;
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ CLUSTER SLEEVE {clusterId} MISSING in Revit!\n");
+                        }
+                        else
+                        {
+                            foundCount++;
+                            var location = clusterSleeve.Location as LocationPoint;
+                            var locPoint = location?.Point;
+                            
+                            // ✅ DIAGNOSTIC: Check if element is in active document or linked file
+                            string docTitle = clusterSleeve.Document?.Title ?? "NULL";
+                            bool isActiveDoc = clusterSleeve.Document?.IsLinked == false;
+                            bool isLinked = clusterSleeve.Document?.IsLinked == true;
+                            
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ Cluster sleeve {clusterId} EXISTS: Name='{clusterSleeve.Name}', " +
+                                $"Location=({locPoint?.X:F2}, {locPoint?.Y:F2}, {locPoint?.Z:F2}), " +
+                                $"Category='{clusterSleeve.Category?.Name ?? "NULL"}, " +
+                                $"Document='{docTitle}', " +
+                                $"IsActiveDocument={isActiveDoc}, " +
+                                $"IsLinked={isLinked}, " +
+                                $"IsValid={clusterSleeve.IsValidObject}\n");
+                            
+                            if (isLinked)
+                            {
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ WARNING: Cluster sleeve {clusterId} is in LINKED FILE '{docTitle}', not active document!\n");
+                            }
+                        }
+                    }
+                    
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss}] 📊 FINAL VERIFICATION RESULT: {foundCount} found, {missingCount} missing out of {_clusterToClashZoneIds.Count} cluster sleeves\n");
                 }
                 else
                 {
@@ -645,6 +754,54 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     }
                     dbSaveTracker.SetItemCount(_clusterToClashZoneIds.Count);
                 } // ✅ PERFORMANCE: End of database save tracking
+
+                // ✅ SESSION FLAG: Reset ReadyForPlacementFlag for all zones that were clustered
+                // This should happen AFTER cluster placement completes (whichever placement is last: individual or cluster)
+                // Individual sleeve placement already resets flags, so this ensures cluster-processed zones are also reset
+                if (_clusterToClashZoneIds != null && _clusterToClashZoneIds.Count > 0)
+                {
+                    try
+                    {
+                        // Collect all ClashZone GUIDs that were part of clusters
+                        var clusteredZoneGuids = new HashSet<Guid>();
+                        foreach (var clusterData in _clusterToClashZoneIds.Values)
+                        {
+                            foreach (var guid in clusterData)
+                            {
+                                if (guid != Guid.Empty)
+                                    clusteredZoneGuids.Add(guid);
+                            }
+                        }
+
+                        if (clusteredZoneGuids.Count > 0)
+                        {
+                            using (var dbContext = new SleeveDbContext(doc, msg => { }))
+                            {
+                                var repository = new ClashZoneRepository(dbContext, msg => { });
+                                repository.BulkResetReadyForPlacementFlags(clusteredZoneGuids);
+                                
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[RefactoredClusterService] ✅ Reset ReadyForPlacementFlag on {clusteredZoneGuids.Count} clustered zones after cluster placement");
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                        $"[{DateTime.Now:HH:mm:ss}] ✅ SESSION-FLAG-RESET: Reset ReadyForPlacementFlag=0 for {clusteredZoneGuids.Count} zones that were clustered\n");
+                                    SafeFileLogger.SafeAppendText("placement_debug.log",
+                                        $"[{DateTime.Now:HH:mm:ss}] ✅ CLUSTER-FLAG-RESET: Reset ReadyForPlacementFlag=0 for {clusteredZoneGuids.Count} clustered zones (after cluster placement completes)\n");
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception flagEx)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Warning($"[RefactoredClusterService] ⚠️ Failed to reset ReadyForPlacementFlag after cluster placement: {flagEx.Message}");
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ⚠️ SESSION-FLAG-RESET-ERROR: {flagEx.Message}\n");
+                        }
+                        // Continue even if flag reset fails (non-blocking)
+                    }
+                }
 
                 // ✅ PERFORMANCE: Generate final performance report
                 performanceMonitor.GenerateReport(0, placedCount); // 0 individual sleeves, placedCount clusters
@@ -1122,6 +1279,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 }
                 
                 // ✅ Step 6: Delete individual sleeves that formed this cluster (IMMEDIATE deletion, not deferred)
+                // ⚠️ CRITICAL: Verify cluster sleeve exists BEFORE deleting individual sleeves
+                if (capturedClusterSleeveId.HasValue && placedClusterSleeve != null)
+                {
+                    var verifyBeforeDelete = doc.GetElement(new ElementId(capturedClusterSleeveId.Value)) as FamilyInstance;
+                    if (verifyBeforeDelete == null || !verifyBeforeDelete.IsValidObject)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ CRITICAL: Cluster sleeve {capturedClusterSleeveId.Value} NOT FOUND before deleting individual sleeves - SKIPPING DELETION\n");
+                        return (true, 1, 0, placedClusterSleeve, capturedClusterSleeveId); // Return success but don't delete individual sleeves
+                    }
+                    else
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] ✅ VERIFY BEFORE DELETE: Cluster sleeve {capturedClusterSleeveId.Value} EXISTS before deleting {cluster.Count} individual sleeves\n");
+                    }
+                }
+                
                 int deletedIndividualCount = 0;
                 var sleevesToDelete = new List<ElementId>();
                 
@@ -1137,7 +1311,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         
                         // ✅ PROTECTION: Don't delete the cluster sleeve itself
                         if (placedClusterSleeve != null && sleeveElementId == placedClusterSleeve.Id)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ PROTECTION: Skipping cluster sleeve {sleeveInstanceId} (same as placedClusterSleeve)\n");
                             continue;
+                        }
+                        
+                        // ✅ DOUBLE-CHECK: Verify this is NOT the cluster sleeve by ID
+                        if (capturedClusterSleeveId.HasValue && sleeveInstanceId == capturedClusterSleeveId.Value)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ PROTECTION: Skipping cluster sleeve {sleeveInstanceId} (matches capturedClusterSleeveId)\n");
+                            continue;
+                        }
                         
                         if (sleeveElement != null && sleeveElement is FamilyInstance)
                         {
@@ -1162,6 +1348,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         {
                             try
                             {
+                                // ✅ TRIPLE-CHECK: Verify this is NOT the cluster sleeve
+                                if (capturedClusterSleeveId.HasValue && id.IntegerValue == capturedClusterSleeveId.Value)
+                                {
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                        $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ CRITICAL: Attempted to delete cluster sleeve {id.IntegerValue} - SKIPPING!\n");
+                                    continue;
+                                }
+                                
                                 doc.Delete(id);
                                 deletedIndividualCount++;
                                 SafeFileLogger.SafeAppendText("cluster_debug.log", 
@@ -1171,6 +1365,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             {
                                 SafeFileLogger.SafeAppendText("cluster_debug.log", 
                                     $"[{DateTime.Now:HH:mm:ss}] ❌ Failed to delete sleeve {id.IntegerValue}: {delEx.Message}\n");
+                            }
+                        }
+                        
+                        // ✅ CRITICAL: Verify cluster sleeve still exists AFTER deleting individual sleeves
+                        if (capturedClusterSleeveId.HasValue)
+                        {
+                            var verifyAfterDelete = doc.GetElement(new ElementId(capturedClusterSleeveId.Value)) as FamilyInstance;
+                            if (verifyAfterDelete == null || !verifyAfterDelete.IsValidObject)
+                            {
+                                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ CRITICAL: Cluster sleeve {capturedClusterSleeveId.Value} WAS DELETED during individual sleeve deletion!\n");
+                            }
+                            else
+                            {
+                                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] ✅ VERIFY AFTER DELETE: Cluster sleeve {capturedClusterSleeveId.Value} STILL EXISTS after deleting {deletedIndividualCount} individual sleeves\n");
                             }
                         }
                     }
@@ -1680,10 +1890,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             var clusterSleeve = doc.GetElement(new ElementId(clusterInstanceId)) as FamilyInstance;
                             if (clusterSleeve == null)
                             {
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ CLUSTER SLEEVE {clusterInstanceId} NOT FOUND IN REVIT - SKIPPING SAVE\n");
                                 if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Warning($"[RefactoredClusterService] Cluster sleeve {clusterInstanceId} not found, skipping save");
                                 continue;
                             }
+                            
+                            // ✅ DIAGNOSTIC: Verify cluster sleeve exists and log its properties
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ VERIFY: Cluster sleeve {clusterInstanceId} EXISTS in Revit: " +
+                                $"Name='{clusterSleeve.Name}', Category='{clusterSleeve.Category?.Name ?? "NULL"}', " +
+                                $"IsValid={clusterSleeve.IsValidObject}, Location={clusterSleeve.Location?.GetType().Name ?? "NULL"}\n");
                             
                             // Get bounding box
                             var bbox = clusterSleeve.get_BoundingBox(null);

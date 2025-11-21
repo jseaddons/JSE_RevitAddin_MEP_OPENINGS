@@ -95,6 +95,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                 var toDelete = new List<ElementId>();
                 foreach (var individual in individualSleeves)
                 {
+                    int individualId = individual.Id.IntegerValue;
+                    
+                    // ✅ CRITICAL SAFETY CHECK: Double-check this is NOT a cluster sleeve
+                    // This prevents any cluster sleeve from being marked for deletion, even if it somehow got into individualSleeves
+                    if (clusterSleeveIds.Contains(individualId))
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ SAFETY CHECK: Sleeve {individualId} found in individualSleeves but is in protection set (cluster sleeve) - SKIPPING containment check\n");
+                        continue;
+                    }
+                    
                     var ibbox = individual.get_BoundingBox(null);
                     if (ibbox == null || !ibbox.Enabled) continue;
                     
@@ -131,8 +142,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                         
                         if (centerInside || hasSignificantOverlap)
                         {
+                            // ✅ CRITICAL SAFETY CHECK: Triple-check this is NOT a cluster sleeve before marking for deletion
+                            if (clusterSleeveIds.Contains(individualId))
+                            {
+                                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ CRITICAL SAFETY: Sleeve {individualId} matched containment check but is a cluster sleeve - NOT MARKING FOR DELETION\n");
+                                break;
+                            }
+                            
                             SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                                $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Individual sleeve {individual.Id.IntegerValue} is within cluster bbox (centerInside={centerInside}, hasOverlap={hasSignificantOverlap}) - MARKING FOR DELETION\n");
+                                $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Individual sleeve {individualId} is within cluster bbox (centerInside={centerInside}, hasOverlap={hasSignificantOverlap}) - MARKING FOR DELETION\n");
                             toDelete.Add(individual.Id);
                             break;
                         }
@@ -144,6 +163,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
 
                 if (toDelete.Count == 0) return 0;
 
+                // ✅ CRITICAL PROTECTION: Final check before deletion - ensure NO cluster sleeve IDs are in toDelete list
+                // This is a safety net in case filtering logic above failed
+                var protectedIds = new HashSet<int>(clusterSleeveIds);
+                var filteredToDelete = toDelete.Where(id => !protectedIds.Contains(id.IntegerValue)).ToList();
+                int removedClusterSleeves = toDelete.Count - filteredToDelete.Count;
+                
+                if (removedClusterSleeves > 0)
+                {
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ CRITICAL PROTECTION: Removed {removedClusterSleeves} cluster sleeve ID(s) from deletion list before batch delete!\n");
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Protection set: {string.Join(", ", protectedIds)}\n");
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Original toDelete IDs: {string.Join(", ", toDelete.Select(id => id.IntegerValue))}\n");
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Filtered toDelete IDs: {string.Join(", ", filteredToDelete.Select(id => id.IntegerValue))}\n");
+                }
+                
+                if (filteredToDelete.Count == 0)
+                {
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: After protection filter, no sleeves to delete\n");
+                    return 0;
+                }
+
                 // ✅ CRITICAL: Check if we're already in a transaction
                 // If doc.IsModifiable is true, we're in a transaction - don't create a new one
                 bool alreadyInTransaction = doc.IsModifiable;
@@ -151,15 +195,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                 if (alreadyInTransaction)
                 {
                     SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Already in transaction, batch deleting {toDelete.Count} sleeves\n");
+                        $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Already in transaction, batch deleting {filteredToDelete.Count} sleeves (protected {removedClusterSleeves} cluster sleeves)\n");
                     
                     // ✅ PERFORMANCE: Use batch delete instead of deleting one by one
                     try
                     {
-                        var deletedIds = doc.Delete(toDelete);
+                        var deletedIds = doc.Delete(filteredToDelete);
                         deletedCount = deletedIds.Count;
                         SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ✅ Batch deleted {deletedCount} individual sleeves\n");
+                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ✅ Batch deleted {deletedCount} individual sleeves (IDs: {string.Join(", ", deletedIds.Select(id => id.IntegerValue))})\n");
                     }
                     catch (Exception ex)
                     {
@@ -167,10 +211,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                             $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ❌ Batch delete failed: {ex.Message}, falling back to individual deletes\n");
                         
                         // Fallback to individual deletes if batch fails
-                        foreach (var id in toDelete)
+                        foreach (var id in filteredToDelete)
                         {
                             try
                             {
+                                // ✅ FINAL PROTECTION: Double-check before individual delete
+                                if (protectedIds.Contains(id.IntegerValue))
+                                {
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                        $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ CRITICAL PROTECTION: Skipping cluster sleeve {id.IntegerValue} in fallback delete!\n");
+                                    continue;
+                                }
+                                
                                 doc.Delete(id);
                                 deletedCount++;
                             }
@@ -186,7 +238,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                 else
                 {
                     SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Not in transaction, creating new transaction for batch delete of {toDelete.Count} sleeves\n");
+                        $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Not in transaction, creating new transaction for batch delete of {filteredToDelete.Count} sleeves (protected {removedClusterSleeves} cluster sleeves)\n");
                     
                     using (var tx = new Transaction(doc, "Delete Individual Sleeves Within Clusters"))
                     {
@@ -195,10 +247,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                         // ✅ PERFORMANCE: Use batch delete instead of deleting one by one
                         try
                         {
-                            var deletedIds = doc.Delete(toDelete);
+                            var deletedIds = doc.Delete(filteredToDelete);
                             deletedCount = deletedIds.Count;
                             SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                                $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ✅ Batch deleted {deletedCount} individual sleeves\n");
+                                $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ✅ Batch deleted {deletedCount} individual sleeves (IDs: {string.Join(", ", deletedIds.Select(id => id.IntegerValue))})\n");
                         }
                         catch (Exception ex)
                         {
@@ -206,10 +258,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                                 $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ❌ Batch delete failed: {ex.Message}, falling back to individual deletes\n");
                             
                             // Fallback to individual deletes if batch fails
-                            foreach (var id in toDelete)
+                            foreach (var id in filteredToDelete)
                             {
                                 try
                                 {
+                                    // ✅ FINAL PROTECTION: Double-check before individual delete
+                                    if (protectedIds.Contains(id.IntegerValue))
+                                    {
+                                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                            $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ CRITICAL PROTECTION: Skipping cluster sleeve {id.IntegerValue} in fallback delete!\n");
+                                        continue;
+                                    }
+                                    
                                     doc.Delete(id);
                                     deletedCount++;
                                 }

@@ -285,17 +285,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 bool shouldSwapDimensions = false; // Walls use normal dimension mapping (no swap needed)
                 SetSizeParameters(doc, inst, cluster, groupKey, width, height, depth, shouldSwapDimensions);
 
-                // ✅ ROTATION: Apply rotation ONLY for floors (rotated axis/non-straight)
-                // Walls use RCS (no rotation needed - bounding boxes already wall-aligned)
-                // Floor rotation is for rotated axis-aligned clusters (non-straight)
+                // ✅ ROTATION: Apply rotation for X-walls (90°) and floors (rotated axis/non-straight)
+                // Y-walls get 0° rotation (no rotation needed - LEFT view family works naturally for Y-walls)
+                // X-walls need +90° rotation (matches individual sleeve placement logic)
+                // Floor rotation is for rotated axis-aligned clusters (non-straight, 45°, etc.)
                 bool isWallHost = groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing";
-                if (Math.Abs(rotationAngle) > 1e-6 && !isWallHost)
+                
+                // Apply rotation if:
+                // 1. It's a wall with significant rotation (X-wall with 90°), OR
+                // 2. It's a floor with rotated axis (non-straight)
+                if (Math.Abs(rotationAngle) > 1e-6)
                 {
+                    if (isWallHost)
+                    {
+                        // ✅ X-WALL: Apply +90° rotation (matches individual sleeve placement)
+                        // Individual sleeves apply rotation for X-walls, so clusters must match
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] 🔄 APPLYING X-WALL ROTATION: {rotationAngle * 180 / Math.PI:F1}° for wall-hosted cluster\n");
+                        }
+                    }
+                    // Apply rotation for both walls (X-walls) and floors (rotated axis)
                     ApplyRotation(doc, inst, placementPoint, rotationAngle);
                 }
+                else if (isWallHost)
+                {
+                    // ✅ Y-WALL: No rotation needed (0° rotation matches individual sleeve placement)
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ✅ Y-WALL: No rotation applied (0° matches individual sleeve placement)\n");
+                    }
+                }
 
-                // Set metadata
-                SetMetadata(inst, targetCategory, null);
+                // Set metadata (including HostOrientation for proper orientation)
+                SetMetadata(inst, cluster, groupKey, targetCategory, null);
 
                 // Mark clash zones as cluster-resolved
                 BoundingBoxXYZ? clusterBbox = null;
@@ -525,6 +550,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
         /// </summary>
         public void SetMetadata(
             FamilyInstance clusterSleeve,
+            List<dynamic> cluster,
+            SleeveGroupKey groupKey,
             string category,
             string? filterName = null)
         {
@@ -556,6 +583,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                     }
                 }
 
+                // ✅ CRITICAL FIX: Set HostOrientation parameter for proper orientation in plan view
+                // Individual sleeves set this parameter, so cluster sleeves must match
+                // This ensures correct orientation for Y-walls (and X-walls after rotation)
+                if (cluster != null && cluster.Count > 0 && 
+                    (groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing"))
+                {
+                    try
+                    {
+                        // Get HostOrientation from first clash zone in cluster
+                        var firstSleeve = cluster[0];
+                        if (firstSleeve != null)
+                        {
+                            var firstClashZone = firstSleeve.ClashZone as Models.ClashZone;
+                            if (firstClashZone != null && !string.IsNullOrEmpty(firstClashZone.HostOrientation))
+                            {
+                                Parameter? hostOrientationParam = GetParameter(clusterSleeve, "HostOrientation");
+                                if (hostOrientationParam != null && !hostOrientationParam.IsReadOnly)
+                                {
+                                    hostOrientationParam.Set(firstClashZone.HostOrientation);
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                            $"[{DateTime.Now:HH:mm:ss}] ✅ Set HostOrientation = '{firstClashZone.HostOrientation}' for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception hostOrientationEx)
+                    {
+                        SafeFileLogger.SafeAppendText("placement_errors.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ⚠️ Error setting HostOrientation parameter: {hostOrientationEx.Message}\n");
+                    }
+                }
+
                 // Set Sleeve Instance ID to -1 (indicates cluster sleeve)
                 Parameter? instanceIdParam = GetParameter(clusterSleeve, "Sleeve Instance ID");
                 if (instanceIdParam != null && !instanceIdParam.IsReadOnly)
@@ -575,6 +637,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 SafeFileLogger.SafeAppendText("placement_errors.log",
                     $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ❌ Error in SetMetadata: {ex.Message}\n");
             }
+        }
+
+        /// <summary>
+        /// Set metadata parameters on a cluster sleeve (legacy overload for backward compatibility).
+        /// </summary>
+        [Obsolete("Use SetMetadata(FamilyInstance, List<dynamic>, SleeveGroupKey, string, string?) instead")]
+        public void SetMetadata(
+            FamilyInstance clusterSleeve,
+            string category,
+            string? filterName = null)
+        {
+            // Call new overload with default values (cluster and groupKey not available in legacy call)
+            SetMetadata(clusterSleeve, new List<dynamic>(), new SleeveGroupKey { hostType = "", systemType = "", orientation = "" }, category, filterName);
         }
 
         /// <summary>
