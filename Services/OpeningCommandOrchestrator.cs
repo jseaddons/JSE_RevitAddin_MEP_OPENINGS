@@ -1135,21 +1135,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         zone?.EnsureSleevePlacementPointActiveDocumentReconstructed();
                     }
 
-                    // ✅ CRITICAL: Only process zones from CURRENT REFRESH SESSION
-                    // Find the most recent UpdatedAt timestamp (indicates latest refresh)
-                    if (zones.Count > 0)
+                    // ✅ SESSION FLAG: Only process zones with ReadyForPlacement=true (set during refresh)
+                    // This replaces timestamp-based filtering - more reliable for session tracking
+                    var zonesBeforeFilter = zones.Count;
+                    zones = zones.Where(z => z.ReadyForPlacement).ToList();
+                    
+                    if (!DeploymentConfiguration.DeploymentMode && zonesBeforeFilter > zones.Count)
                     {
-                        var mostRecentUpdate = zones.Max(z => z.LastUpdated);
-                        // Allow 5-minute window for refresh session (zones updated within 5 min of most recent)
-                        var sessionThreshold = mostRecentUpdate.AddMinutes(-5);
-                        
-                        var zonesBeforeFilter = zones.Count;
-                        zones = zones.Where(z => z.LastUpdated >= sessionThreshold).ToList();
-                        
-                        if (!DeploymentConfiguration.DeploymentMode && zonesBeforeFilter > zones.Count)
-                        {
-                            DebugLogger.Info($"[OpeningCommandOrchestrator][REFRESH-FILTER] Filtered {zonesBeforeFilter} total zones → {zones.Count} from current refresh session (LastUpdated >= {sessionThreshold:yyyy-MM-dd HH:mm:ss})");
-                        }
+                        DebugLogger.Info($"[OpeningCommandOrchestrator][SESSION-FILTER] Filtered {zonesBeforeFilter} total zones → {zones.Count} ready for placement (ReadyForPlacement=true)");
                     }
 
                     // ✅ FILTER IN MEMORY: Only return zones that need placement (not resolved, not cluster resolved)

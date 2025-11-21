@@ -64,21 +64,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     string hostType = zone.StructuralElementType ?? string.Empty;
 
                     // Raw MEP size (convert from internal units to feet)
-                    double rawSize = 0.0;
-                    if (zone.MepElementSizeData != null)
+                    // ✅ CRITICAL FIX: Use MepElementWidth/Height from ClashZone (already in database)
+                    // These are populated during refresh and persisted, unlike MepElementSizeData
+                    double rawWidth = zone.MepElementWidth;  // Already in feet
+                    double rawHeight = zone.MepElementHeight; // Already in feet
+                    double rawSize = Math.Max(rawWidth, rawHeight); // Use larger dimension
+                    
+                    // Fallback to MepElementSizeData if Width/Height are 0 (backward compatibility)
+                    if (rawSize <= 0 && zone.MepElementSizeData != null)
                     {
                         // MepElementSize stores in internal units, convert to feet
                         if (zone.MepElementSizeData.Diameter > 0)
                         {
                             rawSize = UnitUtils.ConvertFromInternalUnits(zone.MepElementSizeData.Diameter, UnitTypeId.Feet);
+                            rawWidth = rawSize;
+                            rawHeight = rawSize;
                         }
                         else if (zone.MepElementSizeData.Width > 0)
                         {
-                            // For rectangular, use width as base size
-                            rawSize = UnitUtils.ConvertFromInternalUnits(zone.MepElementSizeData.Width, UnitTypeId.Feet);
+                            rawWidth = UnitUtils.ConvertFromInternalUnits(zone.MepElementSizeData.Width, UnitTypeId.Feet);
+                            rawHeight = UnitUtils.ConvertFromInternalUnits(zone.MepElementSizeData.Height, UnitTypeId.Feet);
+                            rawSize = Math.Max(rawWidth, rawHeight);
                         }
                     }
-                    // Fallback to MepElementSize (already in feet)
+                    // Final fallback to MepElementSize (already in feet)
                     if (rawSize <= 0) rawSize = zone.MepElementSize;
                     if (rawSize <= 0) rawSize = 0.25; // Minimum fallback 3"
 
@@ -95,8 +104,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     double clearance = GetClearanceFromConditions(mepCategory, mepSizeInMm);
                     
                     // Target dimensions: raw size + insulation + clearance
-                    double targetWidth = rawSize + insulation + clearance;
-                    double targetHeight = targetWidth; // Assume circular for now; adapt later if rectangular
+                    // ✅ CRITICAL FIX: Use actual width/height for rectangular ducts
+                    double targetWidth = rawWidth + insulation + clearance;
+                    double targetHeight = rawHeight + insulation + clearance;
 
                     // Host thickness heuristics
                     double hostThickness = zone.StructuralElementThickness;

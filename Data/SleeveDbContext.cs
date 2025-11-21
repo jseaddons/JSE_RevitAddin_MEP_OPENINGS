@@ -474,6 +474,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     AddColumnIfMissing("ClashZones", "AfterClusterSleeveId", "INTEGER", transaction);
                     AddColumnIfMissing("ClashZones", "HasDamperNearbyFlag", "INTEGER NOT NULL DEFAULT 0", transaction);
                     AddColumnIfMissing("ClashZones", "IsCurrentClashFlag", "INTEGER NOT NULL DEFAULT 0", transaction);
+                    // ✅ SESSION FLAG: Track zones ready for placement in current refresh session
+                    // Replaces timestamp-based filtering - more reliable for session boundaries
+                    AddColumnIfMissing("ClashZones", "ReadyForPlacementFlag", "INTEGER NOT NULL DEFAULT 0", transaction);
                     // ✅ CRITICAL: Add thickness columns for depth calculation (for existing databases)
                     // Note: These are also in the initial CREATE TABLE for new databases
                     if (AddColumnIfMissing("ClashZones", "StructuralThickness", "REAL DEFAULT 0.0", transaction))

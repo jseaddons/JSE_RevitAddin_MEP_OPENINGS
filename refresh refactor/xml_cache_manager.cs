@@ -229,10 +229,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                             // Load all zones (not just unresolved) for refresh operations
                             var categoryZones = repository.GetClashZonesByFilter(filterName, category, unresolvedOnly: false) ?? new List<ClashZone>();
                             
+                            // ✅ SESSION FLAG: Set ReadyForPlacement=true for ALL zones in current refresh
+                            // This marks them for processing by placement (replaces timestamp-based filtering)
                             foreach (var zone in categoryZones)
                             {
                                 if (zone != null)
                                 {
+                                    zone.ReadyForPlacement = true; // ✅ Mark for current session
                                     zone.EnsureSleevePlacementPointReconstructed();
                                     zone.EnsureSleevePlacementPointActiveDocumentReconstructed();
                                     allZones.Add(zone);
@@ -241,7 +244,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                             
                             if (categoryZones.Count > 0 && !DeploymentConfiguration.DeploymentMode)
                             {
-                                Log($"[XML-CACHE] ✅ SQLite loaded {categoryZones.Count} zones for filter '{filterName}', category '{category}'");
+                                Log($"[XML-CACHE] ✅ SQLite loaded {categoryZones.Count} zones for filter '{filterName}', category '{category}' (ReadyForPlacement=true)");
                             }
                         }
                         catch (Exception categoryEx)

@@ -466,7 +466,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         SourceDocKey, HostDocKey, MepElementUniqueId,
                         IsResolvedFlag, IsClusterResolvedFlag, IsClusteredFlag,
                         MarkedForClusterProcess, AfterClusterSleeveId,
-                        HasDamperNearbyFlag, IsCurrentClashFlag,
+                        HasDamperNearbyFlag, IsCurrentClashFlag, ReadyForPlacementFlag,
                         StructuralThickness, WallThickness, FramingThickness
                     ) VALUES (
                         @ComboId, @MepElementId, @HostElementId,
@@ -491,7 +491,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         @SourceDocKey, @HostDocKey, @MepElementUniqueId,
                         @IsResolvedFlag, @IsClusterResolvedFlag, @IsClusteredFlag,
                         @MarkedForClusterProcess, @AfterClusterSleeveId,
-                        @HasDamperNearbyFlag, @IsCurrentClashFlag,
+                        @HasDamperNearbyFlag, @IsCurrentClashFlag, @ReadyForPlacementFlag,
                         @StructuralThickness, @WallThickness, @FramingThickness
                     )";
 
@@ -609,6 +609,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         AfterClusterSleeveId = @AfterClusterSleeveId,
                         HasDamperNearbyFlag = @HasDamperNearbyFlag,
                         IsCurrentClashFlag = @IsCurrentClashFlag,
+                        ReadyForPlacementFlag = @ReadyForPlacementFlag,
                         StructuralThickness = @StructuralThickness,
                         WallThickness = @WallThickness,
                         FramingThickness = @FramingThickness,
@@ -744,6 +745,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             cmd.Parameters.AddWithValue("@AfterClusterSleeveId", clashZone.AfterClusterSleevePlacedSleeveInstanceId);
             cmd.Parameters.AddWithValue("@HasDamperNearbyFlag", clashZone.HasDamperNearby ? 1 : 0);
             cmd.Parameters.AddWithValue("@IsCurrentClashFlag", clashZone.IsCurrentClash ? 1 : 0);
+            cmd.Parameters.AddWithValue("@ReadyForPlacementFlag", clashZone.ReadyForPlacement ? 1 : 0);
             
             // ✅ CRITICAL: Add thickness parameters for depth calculation
             cmd.Parameters.AddWithValue("@StructuralThickness", clashZone.StructuralElementThickness);
@@ -1683,6 +1685,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             clashZone.MarkedForClusteringSleeveProcess = GetNullableBool(reader, "MarkedForClusterProcess");
             clashZone.HasDamperNearby = GetBool(reader, "HasDamperNearbyFlag");
             clashZone.IsCurrentClash = GetBool(reader, "IsCurrentClashFlag");
+            clashZone.ReadyForPlacement = GetBool(reader, "ReadyForPlacementFlag");
             
             // ✅ CRITICAL: Load thickness values for depth calculation
             clashZone.StructuralElementThickness = GetDouble(reader, "StructuralThickness", 0.0);

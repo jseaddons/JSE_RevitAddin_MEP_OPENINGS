@@ -225,6 +225,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public bool IsCurrentClash { get; set; } = false; // ✅ CRITICAL FIX: Default to false for XML-loaded clashes
         
         /// <summary>
+        /// ✅ SESSION FLAG: Indicates this zone is ready for placement in current session
+        /// Set to true during refresh for zones that match current filter criteria
+        /// Set to false after successful placement or when zone should be skipped
+        /// REPLACES timestamp-based filtering - more reliable for session tracking
+        /// 
+        /// Workflow:
+        /// 1. Refresh sets ReadyForPlacement=true for zones detected in current session
+        /// 2. Placement processes only zones with ReadyForPlacement=true
+        /// 3. After placement, flag is set to false to prevent reprocessing
+        /// 
+        /// This ensures:
+        /// - Only current refresh zones are processed (respects section box, filter changes)
+        /// - No dependency on timestamps (avoid clock skew, batch update issues)
+        /// - Clear session boundaries (no ambiguity about which zones to process)
+        /// </summary>
+        public bool ReadyForPlacement { get; set; } = false;
+        
+        /// <summary>
         /// CLEAR FLAG: Indicates this sleeve should be processed for cluster placement
         /// true = sleeve is proximate to other sleeves and should be clustered
         /// false = sleeve should remain individual (not proximate)
