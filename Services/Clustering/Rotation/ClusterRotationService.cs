@@ -105,6 +105,89 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     return 0.0;
                 }
 
+                // ✅ WALL ORIENTATION LOGIC (PRIMARY): For walls/structural framing, rotation is based on wall orientation
+                // This is the MAIN logic for wall-hosted clusters, not a fallback
+                // Get host type and orientation from first clash zone
+                ClashZone? firstClashZone = null;
+                foreach (var sleeveData in cluster)
+                {
+                    if (sleeveData?.ClashZone == null)
+                        continue;
+
+                    firstClashZone = sleeveData.ClashZone as ClashZone;
+                    if (firstClashZone != null)
+                        break;
+                }
+
+                if (firstClashZone != null)
+                {
+                    // Check if this is a wall or structural framing host
+                    bool isWallHost = string.Equals(firstClashZone.StructuralElementType, "Wall", StringComparison.OrdinalIgnoreCase) ||
+                                     string.Equals(firstClashZone.StructuralElementType, "Walls", StringComparison.OrdinalIgnoreCase);
+                    bool isFramingHost = string.Equals(firstClashZone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
+
+                    if (isWallHost || isFramingHost)
+                    {
+                        // ✅ WALL ROTATION LOGIC (PRIMARY): Use WallDirectionType to determine X-wall or Y-wall
+                        // CRITICAL: Only check WALL orientation (X-wall or Y-wall), NOT MEP orientation!
+                        // For wall clustering, rotation is determined ONLY by the wall's direction type
+                        // Individual sleeves: LEFT view family
+                        //   - X-walls: +90° rotation (LEFT family needs rotation for X-walls)
+                        //   - Y-walls: 0° rotation (LEFT family works naturally for Y-walls)
+                        // Cluster sleeves should use the SAME rotation as individual sleeves to maintain correct orientation
+                        
+                        // ✅ CRITICAL: Check WallDirectionType directly (contains "X-WALL" or "Y-WALL")
+                        // DO NOT use MepElementOrientationDirection - that can contain MEP orientation for floors
+                        string wallDirectionType = firstClashZone.WallDirectionType ?? "";
+                        bool isXWall = wallDirectionType.Contains("X-WALL", StringComparison.OrdinalIgnoreCase);
+                        bool isYWall = wallDirectionType.Contains("Y-WALL", StringComparison.OrdinalIgnoreCase);
+                        
+                        if (isXWall)
+                        {
+                            // X-wall: +90° rotation required (same as individual sleeves)
+                            // LEFT view family extrudes along Y-axis, needs +90° rotation for X-walls
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[CLUSTER-ANGLE] WALL ROTATION: {firstClashZone.StructuralElementType} - X-WALL detected (WallDirectionType='{wallDirectionType}') → Returning 90.0° (π/2 radians - matches individual sleeve rotation)");
+                            }
+                            return Math.PI / 2.0; // 90° rotation for X-oriented walls/framing (same as individual sleeves)
+                        }
+                        else if (isYWall)
+                        {
+                            // Y-wall: 0° rotation (same as individual sleeves)
+                            // LEFT view family works naturally for Y-walls, no rotation needed
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[CLUSTER-ANGLE] WALL ROTATION: {firstClashZone.StructuralElementType} - Y-WALL detected (WallDirectionType='{wallDirectionType}') → Returning 0.0° (no rotation - matches individual sleeve rotation)");
+                            }
+                            return 0.0; // No rotation for Y-oriented walls/framing (same as individual sleeves)
+                        }
+                        else
+                        {
+                            // ✅ FALLBACK: If WallDirectionType doesn't contain X-WALL or Y-WALL, check HostOrientation
+                            // HostOrientation should contain "X" or "Y" for walls/framing
+                            string hostOrientation = firstClashZone.HostOrientation ?? "";
+                            if (string.Equals(hostOrientation, "X", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[CLUSTER-ANGLE] WALL ROTATION: {firstClashZone.StructuralElementType} - HostOrientation='X' (fallback from WallDirectionType='{wallDirectionType}') → Returning 90.0°");
+                                }
+                                return Math.PI / 2.0;
+                            }
+                            else if (string.Equals(hostOrientation, "Y", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[CLUSTER-ANGLE] WALL ROTATION: {firstClashZone.StructuralElementType} - HostOrientation='Y' (fallback from WallDirectionType='{wallDirectionType}') → Returning 0.0°");
+                                }
+                                return 0.0;
+                            }
+                        }
+                        // If wall direction cannot be determined, continue to calculate from MEP rotation angles below
+                    }
+                }
+
                 var rotationAngles = new List<double>();
 
                 foreach (var sleeveData in cluster)

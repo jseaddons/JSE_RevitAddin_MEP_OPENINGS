@@ -15,6 +15,26 @@
 6. [Service Components](#6-service-components)
 7. [Sleeve Placement Flow](#7-sleeve-placement-flow)
 8. [Clustering Flow](#8-clustering-flow)
+9. [Combine Sleeve Feature](#9-combine-sleeve-feature)
+
+---
+
+## 9. Combine Sleeve Feature
+
+**Status:** Planning Phase  
+**Related Document:** `COMBINE_SLEEVE_PLAN.md`
+
+### 9.1 Overview
+
+The **Combine Sleeve** feature allows combining cluster sleeves with individual sleeves from different categories, with strict wall group restrictions (Wall X, Wall Y, Floor).
+
+**Key Features:**
+- ✅ Auto Mode: Select category, system automatically combines compatible sleeves
+- ✅ Manual Mode: User manually selects 2 sleeves to combine
+- ✅ Wall Group Restrictions: Wall X only with Wall X, Wall Y only with Wall Y, Floor only with Floor
+- ✅ Straight Axis Only: Phase 1 focuses on straight axis-aligned sleeves (0°, 90°, 180°, 270°)
+
+**For detailed implementation plan, see:** `COMBINE_SLEEVE_PLAN.md`
 
 ---
 

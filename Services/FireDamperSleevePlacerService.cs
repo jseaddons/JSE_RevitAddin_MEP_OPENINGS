@@ -638,11 +638,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             List<(Element, Transform?)> structural;
                             if (structuralElements != null)
                             {
-                                structural = structuralElements.Select(t => ((Element)t.element, t.transform)).ToList();
+                                structural = structuralElements.Select(t => (t.element, t.transform)).ToList();
                             }
                             else
                             {
-                                structural = MepIntersectionService.CollectStructuralElementsForDirectIntersectionVisibleOnly(_doc, log ?? (_ => { }));
+                                // Call the overload that returns List<(Element, Transform?)>
+                                var collected = MepIntersectionService.CollectStructuralElementsForDirectIntersectionVisibleOnly(_doc, log ?? (_ => { }), null);
+                                structural = collected;
                             }
                             var intersects = MepIntersectionService.FindIntersections(testLine, null, structural, log ?? (_ => { }));
                             if (intersects != null && intersects.Count > 0)

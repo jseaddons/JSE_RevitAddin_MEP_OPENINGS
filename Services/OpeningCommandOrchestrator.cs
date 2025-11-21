@@ -9,6 +9,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Commands;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
@@ -245,41 +246,70 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         private void ExecuteCommandSequence(List<IExternalCommand> commands, OpeningFilter filter, bool showProgress)
         {
-            foreach (var command in commands)
+            // ✅ PERFORMANCE MONITORING: Initialize placement performance monitor
+            string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+            string performanceLogName = $"Placement_{filter.Name}_{filter.Category}_{timestamp}.log";
+            var performanceMonitor = new PlacementPerformanceMonitor(performanceLogName);
+            int totalIndividualSleeves = 0;
+            int totalClusters = 0;
+            
+            try
             {
-                ExecuteCommandWithResourceManagement(command, filter, showProgress);
-            }
+                foreach (var command in commands)
+                {
+                    ExecuteCommandWithResourceManagement(command, filter, showProgress);
+                }
 
-            // ⚠️ CRITICAL: INDIVIDUAL SLEEVES MUST RUN FIRST - DO NOT CHANGE THIS ORDER! ⚠️
-            // Clustering REQUIRES existing individual sleeves to work - it collects sleeves from Revit
-            // If clustering runs first, there will be no sleeves to cluster and it will fail
-            // NEVER PUT ExecuteClusteringForCategory BEFORE ExecuteUniversalSleevePlacement
-            ExecuteUniversalSleevePlacement(filter, showProgress);
-            
-            // 🔥 DIRECT IO: Log that we're about to call clustering (using versioned path)
-            try
-            {
-                string logPath = SafeFileLogger.GetLogFilePath("orchestrator_debug.log");
-                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 DIRECT IO: AFTER ExecuteUniversalSleevePlacement, ABOUT TO CALL ExecuteClusteringForCategory for filter={filter.Name}, category={filter.Category}\n");
+                // ⚠️ CRITICAL: INDIVIDUAL SLEEVES MUST RUN FIRST - DO NOT CHANGE THIS ORDER! ⚠️
+                // Clustering REQUIRES existing individual sleeves to work - it collects sleeves from Revit
+                // If clustering runs first, there will be no sleeves to cluster and it will fail
+                // NEVER PUT ExecuteClusteringForCategory BEFORE ExecuteUniversalSleevePlacement
+                
+                // ✅ PERFORMANCE: Track individual sleeve placement
+                using (var individualTracker = performanceMonitor.TrackOperation("Individual Sleeve Placement"))
+                {
+                    var individualResult = ExecuteUniversalSleevePlacement(filter, showProgress);
+                    totalIndividualSleeves = individualResult.placedCount;
+                    individualTracker.SetItemCount(totalIndividualSleeves);
+                }
+                
+                // ✅ LOGGING: Wrap with SafeFileLogger
+                SafeFileLogger.SafeAppendText("orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] AFTER ExecuteUniversalSleevePlacement, ABOUT TO CALL ExecuteClusteringForCategory for filter={filter.Name}, category={filter.Category}\n");
+                
+                // ✅ CRITICAL: Execute clustering immediately after sleeve placement for each category
+                // This follows the architecture: Place sleeves → Cluster sleeves → Mark sleeves
+                // Use UniversalClusterService directly (faster than old RectangularSleeveClusterCommandV2)
+                
+                // ✅ PERFORMANCE: Track cluster placement
+                using (var clusterTracker = performanceMonitor.TrackOperation("Cluster Sleeve Placement"))
+                {
+                    var clusterResult = ExecuteClusteringForCategory(filter, showProgress);
+                    totalClusters = clusterResult.placedCount;
+                    clusterTracker.SetItemCount(totalClusters);
+                }
+                
+                // ✅ LOGGING: Wrap with SafeFileLogger
+                SafeFileLogger.SafeAppendText("orchestrator_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] AFTER ExecuteClusteringForCategory completed for filter={filter.Name}, category={filter.Category}\n");
+                
+                // ✅ COMBO FLAG: Reset IsFilterComboNew to false after full sequence completes (individual + cluster)
+                // This marks the filter+category combo as "used" so next time it will use PATH 1 (Replay)
+                ResetFilterComboFlagAfterPlacement(filter);
+                
+                // ✅ PERFORMANCE: Generate final report
+                performanceMonitor.GenerateReport(totalIndividualSleeves, totalClusters);
             }
-            catch { }
-            
-            // ✅ CRITICAL: Execute clustering immediately after sleeve placement for each category
-            // This follows the architecture: Place sleeves → Cluster sleeves → Mark sleeves
-            // Use UniversalClusterService directly (faster than old RectangularSleeveClusterCommandV2)
-            ExecuteClusteringForCategory(filter, showProgress);
-            
-            // 🔥 DIRECT IO: Log that clustering completed (using versioned path)
-            try
+            catch (Exception ex)
             {
-                string logPath = SafeFileLogger.GetLogFilePath("orchestrator_debug.log");
-                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 DIRECT IO: AFTER ExecuteClusteringForCategory completed for filter={filter.Name}, category={filter.Category}\n");
+                // ✅ LOGGING: Wrap with SafeFileLogger
+                SafeFileLogger.SafeAppendText("placement_errors.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ERROR in ExecuteCommandSequence for {filter.Name}: {ex.Message}\n");
+                
+                // Still generate report even on error
+                performanceMonitor.GenerateReport(totalIndividualSleeves, totalClusters);
+                throw;
             }
-            catch { }
-            
-            // ✅ COMBO FLAG: Reset IsFilterComboNew to false after full sequence completes (individual + cluster)
-            // This marks the filter+category combo as "used" so next time it will use PATH 1 (Replay)
-            ResetFilterComboFlagAfterPlacement(filter);
         }
 
         /// <summary>
@@ -368,12 +398,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Execute clustering for a specific category after sleeve placement
         /// ⚠️ CRITICAL: Wrapped with timeout protection (5-minute limit per category)
         /// </summary>
-        private void ExecuteClusteringForCategory(OpeningFilter filter, bool showProgress = false)
+        private (int placedCount, int deletedCount) ExecuteClusteringForCategory(OpeningFilter filter, bool showProgress = false)
         {
             // Declare variables outside lambda for use after timeout execution
             List<FamilyInstance> placedClusterSleeves = new List<FamilyInstance>();
             string categoryString = null;
             string xmlFilePath = null;
+            
+            // ✅ PERFORMANCE: Store counts outside lambda for access after timeout execution
+            int placedCount = 0;
+            int deletedCount = 0;
             
             // ⚠️ CRITICAL: Execute with timeout protection to prevent infinite hangs
             var result = _crashSafeExecutor.ExecuteWithTimeout(() =>
@@ -648,13 +682,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     catch { }
                     
                     // ✅ FIX: Pass PATH 1 parameters to clustering service (check DB first, then XML)
-                    int placedCount = 0;
-                    int deletedCount = 0;
+                    // ✅ PERFORMANCE: Counts are now stored in outer scope variables
                     try
                     {
-                        var result = clusterService.ClusterSleeves(_document, categoryString, _uiDocument, xmlFilePath, filter.Name, placedClusterSleeves, isPath1Replay, comboId, filterId);
-                        placedCount = result.placedCount;
-                        deletedCount = result.deletedCount;
+                        var clusterResult = clusterService.ClusterSleeves(_document, categoryString, _uiDocument, xmlFilePath, filter.Name, placedClusterSleeves, isPath1Replay, comboId, filterId);
+                        placedCount = clusterResult.placedCount;
+                        deletedCount = clusterResult.deletedCount;
                         
                         // 🔥 TEST: Direct System.IO logging after successful call (using versioned path)
                         try
@@ -735,14 +768,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }, $"Cluster Sleeves for {filter.Category}");
             
+            // ✅ PERFORMANCE: Log and return counts
+            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                $"[{DateTime.Now:HH:mm:ss}] ExecuteClusteringForCategory completed: Status={result}, Placed={placedCount}, Deleted={deletedCount}\n");
+            
             if (result != Autodesk.Revit.UI.Result.Succeeded)
             {
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     DebugLogger.Warning($"[OpeningCommandOrchestrator] Clustering for {filter.Category} completed with status: {result}");
                 }
-                return; // Exit early if clustering failed
+                return (placedCount, deletedCount); // Return counts even on failure
             }
+            
+            return (placedCount, deletedCount);
             
             // ✅ PERFORMANCE FIX: After placing cluster sleeves, regenerate document and save their bounding boxes to XML
             // This uses SleeveCoordinateService to update coordinates (same as individual sleeves)
@@ -1129,12 +1168,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Execute UniversalSleevePlacementCommand
         /// ⚠️ CRITICAL: Wrapped with timeout protection (5-minute limit per category)
         /// </summary>
-        private void ExecuteUniversalSleevePlacement(OpeningFilter filter, bool showProgress)
+        private (int placedCount, int skippedCount, int errorCount) ExecuteUniversalSleevePlacement(OpeningFilter filter, bool showProgress)
         {
             // Declare variables outside lambda for use after timeout execution
             string xmlFilePath = GetXmlFilePathForFilter(filter);
             var tracePath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
             var placementDebugPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+            
+            // ✅ PERFORMANCE: Store counts outside lambda for access after timeout execution
+            int placedCount = 0;
+            int skippedCount = 0;
+            int errorCount = 0;
+            UniversalSleevePlacementCommand? universalCommand = null;
             
             // ⚠️ CRITICAL: Execute with timeout protection to prevent infinite hangs
             var result = _crashSafeExecutor.ExecuteWithTimeout(() =>
@@ -1304,7 +1349,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] About to create UniversalSleevePlacementCommand for category: {categoryString}, filter: {combinedFilterName}\n");
                     }
                     
-                    var universalCommand = new UniversalSleevePlacementCommand(_document, clashZones, categoryString, combinedFilterName, _uiClearances);
+                    universalCommand = new UniversalSleevePlacementCommand(_document, clashZones, categoryString, combinedFilterName, _uiClearances);
                     try {
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
@@ -1314,38 +1359,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] UniversalSleevePlacementCommand created successfully, about to execute\n");
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] UniversalSleevePlacementCommand created successfully, about to execute\n");
                     }
                     
                     universalCommand.Execute(_uiDocument.Application);
+                    
+                    // ✅ PERFORMANCE: Get counts from command properties
+                    placedCount = universalCommand.PlacedCount;
+                    skippedCount = universalCommand.SkippedCount;
+                    errorCount = universalCommand.ErrorCount;
+                    
+                    SafeFileLogger.SafeAppendText("placement_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss}] UniversalSleevePlacementCommand executed: Placed={placedCount}, Skipped={skippedCount}, Errors={errorCount}\n");
+                    
                     try {
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] COMMAND_EXECUTED\n");
+                            System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] COMMAND_EXECUTED: Placed={placedCount}, Skipped={skippedCount}, Errors={errorCount}\n");
                         }
                     } catch { }
                     
                     // ✅ DEPLOYMENT: Wrapped in deployment mode check
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] UniversalSleevePlacementCommand executed successfully\n");
-                    }
-                    try {
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] AFTER_EXECUTE_LOG\n");
-                        }
-                    } catch { }
-                    
-                    // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[OpeningCommandOrchestrator] UniversalSleevePlacementCommand completed successfully");
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] UniversalSleevePlacementCommand executed successfully: Placed={placedCount}, Skipped={skippedCount}, Errors={errorCount}\n");
                     }
                     
+                    // ✅ Return success after command execution
                     return Autodesk.Revit.UI.Result.Succeeded;
                     }
                     else
@@ -1370,12 +1410,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             if (result != Autodesk.Revit.UI.Result.Succeeded)
             {
+                SafeFileLogger.SafeAppendText("placement_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss}] ExecuteUniversalSleevePlacement completed with status: {result}, Placed={placedCount}, Skipped={skippedCount}, Errors={errorCount}\n");
+                
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     DebugLogger.Warning($"[OpeningCommandOrchestrator] Sleeve placement for {filter.Category} completed with status: {result}");
                 }
-                return; // Exit early if placement failed
+                return (placedCount, skippedCount, errorCount); // Return counts even on failure
             }
+            
+            // ✅ PERFORMANCE: Return counts
+            SafeFileLogger.SafeAppendText("placement_debug.log",
+                $"[{DateTime.Now:HH:mm:ss}] ExecuteUniversalSleevePlacement SUCCESS: Placed={placedCount}, Skipped={skippedCount}, Errors={errorCount}\n");
+            
+            return (placedCount, skippedCount, errorCount);
             
             // ✅ CRITICAL: Following reference document - Regenerate FIRST, then read from Revit and save to XML
             // Reference: SLEEVE_PLACEMENT_SEQUENCING_REFERENCE.md lines 22-35

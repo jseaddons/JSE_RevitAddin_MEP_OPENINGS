@@ -278,6 +278,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             var results = new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
             
+            // ✅ DIAGNOSTIC LOG: Use SafeFileLogger (should log to safefilelogger_diagnostic.log)
+            try
+            {
+                var buildTime = System.IO.File.GetLastWriteTime(System.Reflection.Assembly.GetExecutingAssembly().Location);
+                SafeFileLogger.SafeAppendText("DIAGNOSTIC_TEST.log", $"🔨 DLL BUILD TIME: {buildTime:yyyy-MM-dd HH:mm:ss}");
+                SafeFileLogger.SafeAppendText("DIAGNOSTIC_TEST.log", $"[{DateTime.Now:HH:mm:ss.fff}] FindIntersectionsBatchInternal CALLED - MEP={mepElements.Count}, Structural={structuralElements.Count}");
+            }
+            catch (Exception diagEx)
+            {
+                // If SafeFileLogger fails, try direct write as fallback
+                try
+                {
+                    var versionTag = Helpers.VersionInfo.VersionTag;
+                    var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                    var logDir = System.IO.Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                    if (!System.IO.Directory.Exists(logDir)) System.IO.Directory.CreateDirectory(logDir);
+                    var logPath = System.IO.Path.Combine(logDir, "DIAGNOSTIC_TEST.log");
+                    System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] FindIntersectionsBatchInternal CALLED (fallback) - MEP={mepElements.Count}, Structural={structuralElements.Count}\n");
+                }
+                catch { }
+            }
+            
+            // ✅ PERFORMANCE DIAGNOSTICS: Track timing and statistics
+            var overallStopwatch = System.Diagnostics.Stopwatch.StartNew();
+            var preprocessStopwatch = System.Diagnostics.Stopwatch.StartNew();
+            int totalCacheHits = 0;
+            int totalCacheMisses = 0;
+            int totalSpatiallyFiltered = 0;
+            int totalGeometryComputations = 0;
+            int totalKnownPairsSkipped = 0;
+            int totalIntersectionTests = 0;
+            
             // Lazy debug flag check on first use
             if (!IntersectionDebugEnabled)
             {
@@ -325,6 +357,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 SafeFileLogger.SafeAppendText(IntersectionDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Structural preprocessed count={structuralData.Count}\n");
             }
+            preprocessStopwatch.Stop();
+            
+            // ✅ DIAGNOSTIC LOG: Preprocessing complete
+            try
+            {
+                SafeFileLogger.SafeAppendText("DIAGNOSTIC_TEST.log", $"[{DateTime.Now:HH:mm:ss.fff}] PREPROCESSING COMPLETE - Structural elements processed: {structuralData.Count}, Time: {preprocessStopwatch.ElapsedMilliseconds}ms");
+            }
+            catch { }
             
             // ✅ MEMORY OPTIMIZATION: Log cache stats before processing
             var (cacheCount, cacheMax, cacheMB) = GetGeometryCacheStats();
@@ -341,23 +381,79 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             // ✅ TWO-TIER OPTIMIZATION: Initialize spatial service if enabled
+            var spatialBuildStopwatch = System.Diagnostics.Stopwatch.StartNew();
+            
+            // 🔍 DIAGNOSTIC: Show flag status at runtime
+            try { SafeFileLogger.SafeAppendText("DIAGNOSTIC_TEST.log", $"[SPATIAL_GRID_INIT] OptimizationFlags.UseSpatialGrid = {OptimizationFlags.UseSpatialGrid}"); } catch { }
+            
             if (OptimizationFlags.UseSpatialGrid)
             {
-                _spatialService = new SpatialPartitioningService(1.0); // 1ft grid size
+                // ✅ ADAPTIVE GRID SIZING: Calculate optimal grid size based on structural element distribution
+                // Target: 3-5 elements per cell on average for best performance
+                double gridSize = 1.0; // Default fallback
+                
+                if (structuralData.Count > 0)
+                {
+                    // Calculate bounding box of all structural elements (work area extent)
+                    double minX = structuralData.Min(sd => sd.bbox.Min.X);
+                    double maxX = structuralData.Max(sd => sd.bbox.Max.X);
+                    double minY = structuralData.Min(sd => sd.bbox.Min.Y);
+                    double maxY = structuralData.Max(sd => sd.bbox.Max.Y);
+                    double minZ = structuralData.Min(sd => sd.bbox.Min.Z);
+                    double maxZ = structuralData.Max(sd => sd.bbox.Max.Z);
+                    
+                    double width = maxX - minX;
+                    double height = maxY - minY;
+                    double depth = maxZ - minZ;
+                    
+                    // Calculate volume and element density
+                    double volume = width * height * depth;
+                    double elementsPerCubicFoot = structuralData.Count / Math.Max(volume, 1.0);
+                    
+                    // Target: 4 elements per cell (sweet spot for spatial filtering)
+                    const double TARGET_ELEMENTS_PER_CELL = 4.0;
+                    double idealGridSize = Math.Pow(TARGET_ELEMENTS_PER_CELL / Math.Max(elementsPerCubicFoot, 0.001), 1.0 / 3.0);
+                    
+                    // Clamp to reasonable range: 0.5 ft (tight spaces) to 5.0 ft (large spaces)
+                    gridSize = Math.Max(0.5, Math.Min(idealGridSize, 5.0));
+                    
+                    if (OptimizationFlags.UseDiagnosticMode)
+                    {
+                        log($"[SpatialGrid] Work area: {width:F1}×{height:F1}×{depth:F1} ft, {structuralData.Count} elements, density: {elementsPerCubicFoot:F3} elem/ft³");
+                        log($"[SpatialGrid] Adaptive grid size: {gridSize:F2} ft (target {TARGET_ELEMENTS_PER_CELL} elements/cell)");
+                    }
+                }
+                
+                _spatialService = new SpatialPartitioningService(gridSize);
                 // Build grid with structural data (need to convert to format expected by BuildGrid)
                 var structuralDataForGrid = structuralData.Select(sd => (sd.element, sd.transform, sd.bbox, (Solid?)null)).ToList();
                 _spatialService.BuildGrid(structuralDataForGrid);
+                spatialBuildStopwatch.Stop();
+                
+                try { SafeFileLogger.SafeAppendText("DIAGNOSTIC_TEST.log", $"[SPATIAL_GRID_INIT] _spatialService created successfully"); } catch { }
+                
                 if (OptimizationFlags.UseDiagnosticMode)
                 {
                     var (totalCells, usedCells, avgElements) = _spatialService.GetStatistics();
-                    log($"[TwoTier] Spatial grid initialized: {usedCells} cells used, avg {avgElements:F1} elements per cell");
+                    log($"[TwoTier] Spatial grid initialized in {spatialBuildStopwatch.ElapsedMilliseconds}ms: {usedCells} cells used, avg {avgElements:F1} elements per cell");
                 }
+            }
+            else
+            {
+                spatialBuildStopwatch.Stop();
+                try { SafeFileLogger.SafeAppendText("DIAGNOSTIC_TEST.log", $"[SPATIAL_GRID_INIT] Spatial grid DISABLED (flag is false)"); } catch { }
             }
 
             // ✅ TWO-TIER OPTIMIZATION: Use spatial grid + R-tree if enabled, otherwise use simple nested loop
             // Process each MEP element against structural elements
+            var mepProcessingStopwatch = System.Diagnostics.Stopwatch.StartNew();
+            int mepIndex = 0;
             foreach (var (mepElement, mepTransform) in mepElements)
             {
+                var perMepStopwatch = System.Diagnostics.Stopwatch.StartNew();
+                mepIndex++;
+                int mepCacheHits = 0;
+                int mepCacheMisses = 0;
                 var mepBBox = mepElement.get_BoundingBox(null);
                 if (mepBBox == null) continue;
 
@@ -456,7 +552,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         log($"[TRANSFORM] MEP line is in active document coordinates (no transform needed): MEP={mepElement.Id}");
                 }
 
-                const double tolerance = 1.0; // 1.0ft tolerance - original working value
+                const double tolerance = 0.2; // 0.2ft tolerance (2.4 inches) - tighter for better spatial filtering
                 var expandedMin = new XYZ(mepBBox.Min.X - tolerance, mepBBox.Min.Y - tolerance, mepBBox.Min.Z - tolerance);
                 var expandedMax = new XYZ(mepBBox.Max.X + tolerance, mepBBox.Max.Y + tolerance, mepBBox.Max.Z + tolerance);
                 var expandedBBox = new BoundingBoxXYZ { Min = expandedMin, Max = expandedMax };
@@ -466,7 +562,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 int rtreeFiltered = 0; // Track R-tree filtering for diagnostics
                 int nearbyElementsCount = 0; // Track Tier 1 filtering for diagnostics
                 
-                if (OptimizationFlags.UseSpatialGrid && _spatialService != null)
+                // 🔍 DIAGNOSTIC: Log condition check for EVERY MEP element
+                bool useSpatial = OptimizationFlags.UseSpatialGrid && _spatialService != null;
+                if (mepIndex == 1) // Only log for first MEP to avoid spam
+                {
+                    try { SafeFileLogger.SafeAppendText("DIAGNOSTIC_TEST.log", $"[SPATIAL_CHECK] UseSpatialGrid={OptimizationFlags.UseSpatialGrid}, _spatialService={(_spatialService != null ? "NOT NULL" : "NULL")}, useSpatial={useSpatial}"); } catch { }
+                }
+                
+                if (useSpatial)
                 {
                     // ✅ TWO-TIER SPATIAL INDEX: TIER 1 - Spatial hash grid (fast rejection)
                     var nearbyElements = _spatialService.GetNearbyElements(expandedBBox);
@@ -560,8 +663,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 int spatiallyFiltered = 0;
                 int geometrySkippedForKnownPairs = 0;
+                
+                // ✅ Z-PROXIMITY OPTIMIZATION: Quick vertical separation filter
+                // Most MEP clashes occur in ceiling zone (false ceiling to slab soffit) - typically 3-5 ft vertical range
+                // Skip structural elements that are too far away vertically (different floors/levels)
+                const double MAX_VERTICAL_SEPARATION = 5.0; // 5 ft max vertical distance for potential clashes
+                double mepCenterZ = (mepBBox.Min.Z + mepBBox.Max.Z) / 2.0;
+                
                 foreach (var (structElement, structTransform, structBBox, cacheKey) in candidatesToProcess)
                 {
+                    // ✅ FAST Z-PROXIMITY CHECK: Skip if too far apart vertically (before expensive bbox checks)
+                    double structCenterZ = (structBBox.Min.Z + structBBox.Max.Z) / 2.0;
+                    if (Math.Abs(mepCenterZ - structCenterZ) > MAX_VERTICAL_SEPARATION)
+                    {
+                        spatiallyFiltered++;
+                        totalSpatiallyFiltered++;
+                        continue; // Skip - different floor/level
+                    }
+                    
                     if (IntersectionDebugEnabled && results.Count < 25)
                     {
                         bool coarseOverlap = !(mepBBox.Max.X < structBBox.Min.X || mepBBox.Min.X > structBBox.Max.X ||
@@ -648,9 +767,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     // Try to get from cache first
                     Solid? solid = null;
+                    totalIntersectionTests++;
                     if (!TryGetFromGeometryCache(cacheKey, out solid))
                     {
                         // Cache miss - compute solid now (only for elements that passed all filters)
+                        mepCacheMisses++;
+                        totalCacheMisses++;
+                        totalGeometryComputations++;
                         var options = Helpers.GeometryOptionsFactory.CreateIntersectionOptions();
                         var geometry = structElement.get_Geometry(options);
                         if (geometry != null)
@@ -663,6 +786,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                         // Add to LRU cache (will evict oldest if over limit)
                         AddToGeometryCache(cacheKey, solid);
+                    }
+                    else
+                    {
+                        mepCacheHits++;
+                        totalCacheHits++;
                     }
                     
                     if (solid == null) continue;
@@ -696,13 +824,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
                 
+                // ✅ PERFORMANCE DIAGNOSTICS: Track aggregates
+                totalSpatiallyFiltered += spatiallyFiltered;
+                totalKnownPairsSkipped += geometrySkippedForKnownPairs;
+                
                 if (geometrySkippedForKnownPairs > 0 && OptimizationFlags.UseDiagnosticMode)
                 {
                     log($"[OPTIMIZATION] MEP {mepElement.Id}: Skipped geometry checks for {geometrySkippedForKnownPairs} known valid pairs");
                 }
 
+                perMepStopwatch.Stop();
                 if (OptimizationFlags.UseDiagnosticMode)
                 {
+                    var cacheHitRate = mepCacheHits + mepCacheMisses > 0 ? 100.0 * mepCacheHits / (mepCacheHits + mepCacheMisses) : 0;
+                    log($"[PERF] MEP {mepIndex}/{mepElements.Count} ({mepElement.Id}): {perMepStopwatch.ElapsedMilliseconds}ms, CacheHits={mepCacheHits}, CacheMisses={mepCacheMisses}, HitRate={cacheHitRate:F1}%");
+                    
                     if (OptimizationFlags.UseSpatialGrid && _spatialService != null)
                     {
                         log($"[BatchIntersection] MEP {mepElement.Id}: spatially filtered {spatiallyFiltered}/{candidatesToProcess.Count} structural elements after two-tier filtering");
@@ -723,8 +859,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
 
+            mepProcessingStopwatch.Stop();
+            overallStopwatch.Stop();
+            
+            // ✅ DIAGNOSTIC LOG: Processing complete
+            try
+            {
+                SafeFileLogger.SafeAppendText("DIAGNOSTIC_TEST.log", $"[{DateTime.Now:HH:mm:ss.fff}] PROCESSING COMPLETE - Found {results.Count} intersections, Total time: {overallStopwatch.ElapsedMilliseconds}ms, MEP processing: {mepProcessingStopwatch.ElapsedMilliseconds}ms");
+                SafeFileLogger.SafeAppendText("DIAGNOSTIC_TEST.log", $"[{DateTime.Now:HH:mm:ss.fff}] PERFORMANCE STATS - Cache hits: {totalCacheHits}, Cache misses: {totalCacheMisses}, Spatially filtered: {totalSpatiallyFiltered}, Geometry computations: {totalGeometryComputations}");
+            }
+            catch { }
+            
             if (OptimizationFlags.UseDiagnosticMode)
+            {
                 log($"[BatchIntersection] Found {results.Count} total intersections");
+                log($"\n========== PERFORMANCE SUMMARY ==========");
+                log($"Overall Time: {overallStopwatch.ElapsedMilliseconds}ms ({overallStopwatch.Elapsed.TotalSeconds:F2}s)");
+                log($"  - Preprocessing: {preprocessStopwatch.ElapsedMilliseconds}ms");
+                log($"  - Spatial Build: {spatialBuildStopwatch.ElapsedMilliseconds}ms");
+                log($"  - MEP Processing: {mepProcessingStopwatch.ElapsedMilliseconds}ms");
+                log($"\nCache Statistics:");
+                log($"  - Cache Hits: {totalCacheHits}");
+                log($"  - Cache Misses: {totalCacheMisses}");
+                var overallHitRate = totalCacheHits + totalCacheMisses > 0 ? 100.0 * totalCacheHits / (totalCacheHits + totalCacheMisses) : 0;
+                log($"  - Hit Rate: {overallHitRate:F1}%");
+                log($"  - Geometry Computations: {totalGeometryComputations}");
+                log($"\nFiltering Effectiveness:");
+                log($"  - Total Intersection Tests: {totalIntersectionTests}");
+                log($"  - Spatially Filtered: {totalSpatiallyFiltered}");
+                log($"  - Known Pairs Skipped: {totalKnownPairsSkipped}");
+                var avgTimePerMep = mepElements.Count > 0 ? mepProcessingStopwatch.ElapsedMilliseconds / (double)mepElements.Count : 0;
+                log($"  - Avg Time/MEP: {avgTimePerMep:F1}ms");
+                var zonesPerSecond = overallStopwatch.Elapsed.TotalSeconds > 0 ? results.Count / overallStopwatch.Elapsed.TotalSeconds : 0;
+                log($"  - Throughput: {zonesPerSecond:F1} zones/second");
+                log($"========================================\n");
+            }
             return results;
         }
 
@@ -2161,6 +2330,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             BuiltInCategory.OST_StructuralFoundation
         };
         
+        /* ❌ DISABLED R24-MINIMAL: Duplicate unoptimized method - using optimized version at line 213 instead
         public static List<(Element mepElement, Element structuralElement, BoundingBoxXYZ boundingBox, XYZ intersectionPoint)> FindIntersectionsBatch(
             List<(Element element, Transform? transform)> mepElements,
             List<(Element element, Transform? transform)> structuralElements,
@@ -2238,6 +2408,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 return results;
             }
         }
+        */ // End of disabled R24-MINIMAL duplicate method
         
         private static bool BoundingBoxesOverlap(BoundingBoxXYZ bbox1, BoundingBoxXYZ bbox2, 
             Transform? transform1, Transform? transform2)

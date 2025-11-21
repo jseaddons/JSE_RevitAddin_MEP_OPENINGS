@@ -20,7 +20,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Timeout;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Safety;
-using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 {
@@ -134,6 +134,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             int? comboId = null,
             int? filterId = null)
         {
+            // ✅ PERFORMANCE MONITORING: Initialize cluster performance monitor
+            string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+            string performanceLogName = $"ClusterPlacement_{targetCategory}_{timestamp}.log";
+            var performanceMonitor = new PlacementPerformanceMonitor(performanceLogName);
+            
             // 🔥 CRITICAL: Direct System.IO logging to ensure we always see entry (bypasses SafeFileLogger completely)
             // This MUST work in both R2023 and R2024
             try
@@ -208,17 +213,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         return (path1Result.placedCount, path1Result.deletedCount);
                 }
 
-                // ✅ STEP 2: Load clash zones from DATABASE ONLY (Phase 9: Data Service)
-                // ✅ DATABASE-ONLY: All paths (PATH 1, PATH 2, PATH 3) use database exclusively
-                // xmlFilePath parameter is passed as null and ignored - all data comes from database
-                try
+                // ✅ PERFORMANCE: Track clash zone loading
+                List<ClashZone> allClashZones;
+                using (var loadTracker = performanceMonitor.TrackOperation("Load Clash Zones from Database"))
                 {
-                    string logPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔍 ABOUT TO LOAD clash zones from database for category '{targetCategory}'\n");
+                    // ✅ STEP 2: Load clash zones from DATABASE ONLY (Phase 9: Data Service)
+                    // ✅ DATABASE-ONLY: All paths (PATH 1, PATH 2, PATH 3) use database exclusively
+                    // xmlFilePath parameter is passed as null and ignored - all data comes from database
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 ABOUT TO LOAD clash zones from database for category '{targetCategory}'\n");
+                    
+                    allClashZones = _dataService.LoadClashZonesFromRegularXml(null, targetCategory, doc);
+                    loadTracker.SetItemCount(allClashZones?.Count ?? 0);
                 }
-                catch { }
-                
-                var allClashZones = _dataService.LoadClashZonesFromRegularXml(null, targetCategory, doc);
                 
                 try
                 {
@@ -245,22 +251,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     return (0, 0);
                 }
 
-                // ✅ STEP 3: Populate cache (Phase 9: Data Service)
-                _dataService.LoadClashZoneCacheFromLoadedClashZones(allClashZones, targetCategory);
+                // ✅ PERFORMANCE: Track cache population
+                using (var cacheTracker = performanceMonitor.TrackOperation("Populate Clash Zone Cache"))
+                {
+                    // ✅ STEP 3: Populate cache (Phase 9: Data Service)
+                    _dataService.LoadClashZoneCacheFromLoadedClashZones(allClashZones, targetCategory);
+                    cacheTracker.SetItemCount(allClashZones.Count);
+                }
 
-                // ✅ STEP 4: Filter and prepare sleeves for clustering
-                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 FILTERING: Starting with {allClashZones.Count} total clash zones\n");
-                
-                var withSleeveId = allClashZones.Where(cz => cz.SleeveInstanceId > 0).ToList();
-                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 FILTERING: {withSleeveId.Count} zones with SleeveInstanceId > 0\n");
-                
-                var notClusterResolved = withSleeveId.Where(cz => !cz.IsClusterResolved).ToList();
-                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 FILTERING: {notClusterResolved.Count} zones not cluster resolved\n");
-                
-                var filteredClashZones = notClusterResolved
-                    .Where(cz => string.IsNullOrEmpty(targetCategory) || 
-                                string.Equals(cz.MepElementCategory, targetCategory, StringComparison.OrdinalIgnoreCase))
-                    .ToList();
+                // ✅ PERFORMANCE: Track filtering
+                List<ClashZone> filteredClashZones;
+                using (var filterTracker = performanceMonitor.TrackOperation("Filter Clash Zones"))
+                {
+                    // ✅ STEP 4: Filter and prepare sleeves for clustering
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 FILTERING: Starting with {allClashZones.Count} total clash zones\n");
+                    
+                    var withSleeveId = allClashZones.Where(cz => cz.SleeveInstanceId > 0).ToList();
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 FILTERING: {withSleeveId.Count} zones with SleeveInstanceId > 0\n");
+                    
+                    var notClusterResolved = withSleeveId.Where(cz => !cz.IsClusterResolved).ToList();
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 FILTERING: {notClusterResolved.Count} zones not cluster resolved\n");
+                    
+                    filteredClashZones = notClusterResolved
+                        .Where(cz => string.IsNullOrEmpty(targetCategory) || 
+                                    string.Equals(cz.MepElementCategory, targetCategory, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+                    filterTracker.SetItemCount(filteredClashZones.Count);
+                }
 
                 try
                 {
@@ -297,31 +314,45 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 // ✅ STEP 6: Get tolerance from settings
                 double toleranceDist = GetToleranceFromSettings(targetCategory);
 
-                // ✅ STEP 7: Prepare sleeve data (create dynamic objects with ClashZone references)
-                var rawSleeves = PrepareSleeveData(filteredClashZones, allClashZones);
-                
-                if (!DeploymentConfiguration.DeploymentMode)
+                // ✅ PERFORMANCE: Track sleeve data preparation
+                List<dynamic> rawSleeves;
+                using (var prepareTracker = performanceMonitor.TrackOperation("Prepare Sleeve Data"))
                 {
+                    // ✅ STEP 7: Prepare sleeve data (create dynamic objects with ClashZone references)
+                    rawSleeves = PrepareSleeveData(filteredClashZones, allClashZones);
                     SafeFileLogger.SafeAppendText("cluster_debug.log", $"Prepared {rawSleeves?.Count ?? 0} sleeve data objects\n");
+                    prepareTracker.SetItemCount(rawSleeves?.Count ?? 0);
                 }
 
-                // ✅ STEP 8: Group sleeves by host type, system type, and orientation
-                var sleeveGroups = rawSleeves.GroupBy(sleeve => new SleeveGroupKey(
-                    sleeve.HostType,
-                    sleeve.Category,  // systemType = Category (MEP element category)
-                    sleeve.Orientation
-                ));
+                // ✅ PERFORMANCE: Track grouping
+                IGrouping<SleeveGroupKey, dynamic>[] sleeveGroups;
+                using (var groupTracker = performanceMonitor.TrackOperation("Group Sleeves by Host/System/Orientation"))
+                {
+                    // ✅ STEP 8: Group sleeves by host type, system type, and orientation
+                    sleeveGroups = rawSleeves.GroupBy(sleeve => new SleeveGroupKey(
+                        sleeve.HostType,
+                        sleeve.Category,  // systemType = Category (MEP element category)
+                        sleeve.Orientation
+                    )).ToArray();
+                    groupTracker.SetItemCount(sleeveGroups.Length);
+                }
 
                 // ✅ STEP 9: Start timeout protection (Phase 10: Timeout Service)
                 _timeoutService.StartTimer();
 
-                // ✅ STEP 10: Form clusters using algorithm service (Phase 8: Algorithm Service)
-                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 CLUSTERING: Forming clusters with tolerance={RevitUnitConversionService.Instance.FromInternalMillimeters(toleranceDist):F1}mm, {sleeveGroups.Count()} sleeve groups\n");
-                var clustersByGroup = _algorithmService.FormClusters(sleeveGroups, toleranceDist, doc, enableParallel: true);
-                
-                int totalClusters = clustersByGroup?.Sum(g => g.Value?.Count ?? 0) ?? 0;
-                int totalClustersWithMultipleSleeves = clustersByGroup?.Sum(g => g.Value?.Count(c => c.Count > 1) ?? 0) ?? 0;
-                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅ CLUSTERING: Formed {clustersByGroup?.Count ?? 0} cluster groups, {totalClusters} total clusters, {totalClustersWithMultipleSleeves} clusters with >1 sleeve\n");
+                // ✅ PERFORMANCE: Track cluster formation
+                Dictionary<SleeveGroupKey, List<List<dynamic>>> clustersByGroup;
+                using (var formTracker = performanceMonitor.TrackOperation("Form Clusters"))
+                {
+                    // ✅ STEP 10: Form clusters using algorithm service (Phase 8: Algorithm Service)
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 CLUSTERING: Forming clusters with tolerance={RevitUnitConversionService.Instance.FromInternalMillimeters(toleranceDist):F1}mm, {sleeveGroups.Length} sleeve groups\n");
+                    clustersByGroup = _algorithmService.FormClusters(sleeveGroups, toleranceDist, doc, enableParallel: true);
+                    
+                    int totalClusters = clustersByGroup?.Sum(g => g.Value?.Count ?? 0) ?? 0;
+                    int totalClustersWithMultipleSleeves = clustersByGroup?.Sum(g => g.Value?.Count(c => c.Count > 1) ?? 0) ?? 0;
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅ CLUSTERING: Formed {clustersByGroup?.Count ?? 0} cluster groups, {totalClusters} total clusters, {totalClustersWithMultipleSleeves} clusters with >1 sleeve\n");
+                    formTracker.SetItemCount(totalClusters);
+                }
 
                 // ✅ STEP 11: Check timeout after clustering
                 if (_timeoutService.IsTimedOut())
@@ -332,29 +363,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     return (placedCount, deletedCount);
                 }
 
-                // ✅ STEP 12: Process each cluster group
+                // ✅ PERFORMANCE: Track cluster placement loop
                 int clusterProcessedCount = 0;
-                foreach (var groupEntry in clustersByGroup)
+                using (var placementLoopTracker = performanceMonitor.TrackOperation("Place Clusters Loop"))
                 {
-                    // Check timeout every 5 clusters
-                    clusterProcessedCount++;
-                    if (clusterProcessedCount % 5 == 0 && _timeoutService.IsTimedOut())
+                    // ✅ STEP 12: Process each cluster group
+                    foreach (var groupEntry in clustersByGroup)
                     {
-                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Error($"[RefactoredClusterService] ⏱ TIMEOUT: Exceeded limit after processing {clusterProcessedCount} clusters");
-                        _timeoutService.ShowTimeoutWarning($"after processing {clusterProcessedCount} clusters");
-                        break;
-                    }
+                        // Check timeout every 5 clusters
+                        clusterProcessedCount++;
+                        if (clusterProcessedCount % 5 == 0 && _timeoutService.IsTimedOut())
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Error($"[RefactoredClusterService] ⏱ TIMEOUT: Exceeded limit after processing {clusterProcessedCount} clusters");
+                            _timeoutService.ShowTimeoutWarning($"after processing {clusterProcessedCount} clusters");
+                            break;
+                        }
 
-                    var groupKey = groupEntry.Key;
-                    var clusters = groupEntry.Value;
+                        var groupKey = groupEntry.Key;
+                        var clusters = groupEntry.Value;
 
-                    // ✅ STEP 13: Select clustering strategy (Phase 4: Strategy Factory)
-                    var strategy = _strategyFactory.GetStrategy(groupKey, clusters.FirstOrDefault() ?? new List<dynamic>());
+                        // ✅ STEP 13: Select clustering strategy (Phase 4: Strategy Factory)
+                        var strategy = _strategyFactory.GetStrategy(groupKey, clusters.FirstOrDefault() ?? new List<dynamic>());
 
-                    // Process each cluster
-                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 PROCESSING: Group {groupKey.hostType}/{groupKey.systemType}/{groupKey.orientation} has {clusters.Count} clusters\n");
-                    foreach (var cluster in clusters)
+                        // Process each cluster
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 PROCESSING: Group {groupKey.hostType}/{groupKey.systemType}/{groupKey.orientation} has {clusters.Count} clusters\n");
+                        foreach (var cluster in clusters)
                     {
                         if (cluster.Count <= 1)
                         {
@@ -506,13 +540,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             // Continue with next cluster
                         }
                     }
-                }
+                    }
+                    placementLoopTracker.SetItemCount(placedCount);
+                } // ✅ PERFORMANCE: End of cluster placement loop tracking
 
-                // ✅ STEP 15: Cleanup individual sleeves within placed clusters (Phase 7: Cleanup Service)
-                if (placedClusters.Count > 0)
+                // ✅ PERFORMANCE: Track cleanup
+                int deletedInCleanup = 0;
+                using (var cleanupTracker = performanceMonitor.TrackOperation("Cleanup Individual Sleeves"))
                 {
-                    int deletedInCleanup = _cleanupService.CleanupSleevesWithinClusters(doc, placedClusters);
-                    deletedCount += deletedInCleanup;
+                    // ✅ STEP 15: Cleanup individual sleeves within placed clusters (Phase 7: Cleanup Service)
+                    if (placedClusters.Count > 0)
+                    {
+                        deletedInCleanup = _cleanupService.CleanupSleevesWithinClusters(doc, placedClusters);
+                        deletedCount += deletedInCleanup;
+                        cleanupTracker.SetItemCount(deletedInCleanup);
+                    }
                 }
 
                 // ✅ STEP 16: Return placed cluster sleeves if requested
@@ -521,7 +563,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     placedClusterSleevesOut.AddRange(placedClusters);
                 }
 
-                // ✅ STEP 17: Save cluster data to database (if comboId and filterId are available)
+                // ✅ PERFORMANCE: Track database save
+                using (var dbSaveTracker = performanceMonitor.TrackOperation("Save Cluster Data to Database"))
+                {
+                    // ✅ STEP 17: Save cluster data to database (if comboId and filterId are available)
                 // 🔥 CRITICAL: Direct IO logging for database save check
                 try
                 {
@@ -553,7 +598,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 SafeFileLogger.SafeAppendText("cluster_debug.log", 
                     $"[{DateTime.Now:HH:mm:ss}] 📊 DATABASE SAVE CHECK: comboId={comboId?.ToString() ?? "NULL"}, filterId={filterId?.ToString() ?? "NULL"}, _clusterToClashZoneIds.Count={_clusterToClashZoneIds.Count}\n");
                 
-                if (comboId.HasValue && filterId.HasValue && _clusterToClashZoneIds.Count > 0)
+                    if (comboId.HasValue && filterId.HasValue && _clusterToClashZoneIds.Count > 0)
                 {
                     try
                     {
@@ -589,7 +634,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     
                     SafeFileLogger.SafeAppendText("cluster_debug.log", 
                         $"[{DateTime.Now:HH:mm:ss}] ⚠️ SKIPPED saving cluster data: comboId={comboId?.ToString() ?? "NULL"}, filterId={filterId?.ToString() ?? "NULL"}, clusters={_clusterToClashZoneIds.Count}\n");
-                }
+                    }
+                    dbSaveTracker.SetItemCount(_clusterToClashZoneIds.Count);
+                } // ✅ PERFORMANCE: End of database save tracking
+
+                // ✅ PERFORMANCE: Generate final performance report
+                performanceMonitor.GenerateReport(0, placedCount); // 0 individual sleeves, placedCount clusters
 
                 try
                 {

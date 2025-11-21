@@ -264,6 +264,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         public (int PlacedCount, int SkippedCount, int ErrorCount) PlaceAllSleevesInTransaction(List<ClashZone> clashZones)
         {
+            // ✅ PERFORMANCE MONITORING: Initialize placement performance monitor
+            string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+            string performanceLogName = $"IndividualPlacement_{timestamp}.log";
+            var performanceMonitor = new Services.Placement.PlacementPerformanceMonitor(performanceLogName);
+
             // ⏱️ TIMING: Start overall placement timer
             var overallTimer = System.Diagnostics.Stopwatch.StartNew();
             var detailedTimingLog = new System.Text.StringBuilder();
@@ -302,17 +307,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             SkippedCount = 0;
             ErrorCount = 0;
             
-            // ⏱️ TIMING: Cache levels
-            var cacheTimer = System.Diagnostics.Stopwatch.StartNew();
+            // ✅ PERFORMANCE: Track level caching
+            var cachedLevels = new List<Level>();
+            using (var cacheTracker = performanceMonitor.TrackOperation("Cache Levels"))
+            {
             // ✅ PERFORMANCE OPTIMIZATION: Pre-cache expensive operations
             // Cache levels list once instead of scanning for each clash zone
-            var cachedLevels = new FilteredElementCollector(_doc)
+                cachedLevels = new FilteredElementCollector(_doc)
                 .OfClass(typeof(Level))
                 .Cast<Level>()
                 .OrderBy(l => l.Elevation)
                 .ToList();
-            cacheTimer.Stop();
-            detailedTimingLog.AppendLine($"[TIMING] Level caching: {cacheTimer.ElapsedMilliseconds}ms ({cachedLevels.Count} levels)");
+                cacheTracker.SetItemCount(cachedLevels.Count);
+            }
+            detailedTimingLog.AppendLine($"[TIMING] Level caching: {cachedLevels.Count} levels");
             
             // ✅ PERFORMANCE OPTIMIZATION: Cache GlobalIndexService lookups per category (not per clash zone)
             // NOTE: GlobalIndexService is static, no need to cache instances
@@ -408,18 +416,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!DeploymentConfiguration.DeploymentMode)
             DebugLogger.Info($"[UniversalSleevePlacer] Processing {clashZones.Count} clash zones (zero linked file access), trusting IsResolved flags from refresh");
             
+            // ✅ PERFORMANCE: Track pre-filtering
+            List<ClashZone> eligibleClashZones;
+            using (var preFilterTracker = performanceMonitor.TrackOperation("Pre-Filter Clash Zones"))
+            {
             // ✅ MULTI-THREADING: Pre-filter eligible clash zones in parallel (XML-only validation)
             // All validation uses XML data - completely safe for parallel processing
             // This filters out invalid zones BEFORE entering sequential placement loop
-            var preFilterTimer = System.Diagnostics.Stopwatch.StartNew();
             // NOTE: User requested to skip additional gating here – rely on upstream filtering only.
             // var eligibleClashZones = PreFilterEligibleClashZones(clashZones);
-            var eligibleClashZones = clashZones;
-            preFilterTimer.Stop();
-            detailedTimingLog.AppendLine($"[TIMING] Parallel pre-filtering: {preFilterTimer.ElapsedMilliseconds}ms ({clashZones.Count} → {eligibleClashZones.Count} eligible)");
+                eligibleClashZones = clashZones;
+                preFilterTracker.SetItemCount(eligibleClashZones.Count);
+            }
+            detailedTimingLog.AppendLine($"[TIMING] Pre-filtering: {clashZones.Count} → {eligibleClashZones.Count} eligible");
             
             if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Info($"[UniversalSleevePlacer] ✅ MULTI-THREADING: Pre-filtered {clashZones.Count} clash zones → {eligibleClashZones.Count} eligible in {preFilterTimer.ElapsedMilliseconds}ms");
+                DebugLogger.Info($"[UniversalSleevePlacer] ✅ MULTI-THREADING: Pre-filtered {clashZones.Count} clash zones → {eligibleClashZones.Count} eligible");
             
             // ✅ PRIORITY SORTING: Process Duct Accessories (Dampers) BEFORE Ducts
             var sortedClashZones = eligibleClashZones
@@ -450,15 +462,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Info($"  ClashZone {cz.Id}: Category='{cz.MepElementCategory}', Priority={GetCategoryPriority(cz.MepElementCategory)}");
             }
             
-            // ⏱️ TIMING: Pre-cache family symbols
-            var preCacheTimer = System.Diagnostics.Stopwatch.StartNew();
+            // ✅ PERFORMANCE: Track family symbol pre-caching
+            using (var preCacheTracker = performanceMonitor.TrackOperation("Pre-Cache Family Symbols"))
+            {
             // ⚠️ QUICK WIN: Pre-load family symbols for all needed families (significant performance gain)
             if (OptimizationFlags.UseFamilySymbolCache)
             {
                 PreCacheFamilySymbols(sortedClashZones);
             }
-            preCacheTimer.Stop();
-            detailedTimingLog.AppendLine($"[TIMING] Family symbol pre-caching: {preCacheTimer.ElapsedMilliseconds}ms");
+                preCacheTracker.SetItemCount(sortedClashZones.Count);
+            }
+            detailedTimingLog.AppendLine($"[TIMING] Family symbol pre-caching completed");
             
             // ⏱️ TIMING: Per-sleeve operation timers
             var totalPlacementTime = TimeSpan.Zero;
@@ -468,1703 +482,1785 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var totalSleeveCreateTime = TimeSpan.Zero;
             var totalParameterTime = TimeSpan.Zero;
             var totalValidationTime = TimeSpan.Zero;
-            
+
             try
             {
                 // ⚠️ CRITICAL: Iterate over CLASH ZONES, not MEP elements
                 // Each clash zone represents a unique (MEP Element + Structural Element) PAIR
                 // The same MEP element can appear in multiple clash zones if it intersects multiple walls
                 // Clash zones are already filtered by UI during refresh, so process all provided zones
-                
+
                 // ⚠️ CRITICAL: Add timeout protection to prevent infinite hangs
                 var placementTimer = System.Diagnostics.Stopwatch.StartNew();
                 const int MAX_PLACEMENT_TIME_MS = 300000; // 5 minutes
                 int processedCount = 0;
-                
-                foreach (var clashZone in sortedClashZones)
+
+                // ✅ PERFORMANCE: Track main placement loop
+                using (var placementLoopTracker = performanceMonitor.TrackOperation("Place Individual Sleeves Loop"))
                 {
-                    // ✅ DEBUG: Log which clash zone is being processed
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[PLACEMENT-LOOP] Processing ClashZone {clashZone.Id} ({processedCount + 1}/{sortedClashZones.Count}): MEP={clashZone.MepElementIdValue}, Flags: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}, SleeveId={clashZone.SleeveInstanceId}");
-                    
-                    // ⚠️ CRITICAL: Check timeout every 10 sleeves to prevent infinite hangs
-                    processedCount++;
-                    if (processedCount % 10 == 0 && placementTimer.ElapsedMilliseconds > MAX_PLACEMENT_TIME_MS)
+                    foreach (var clashZone in sortedClashZones)
                     {
-                        if (!DeploymentConfiguration.DeploymentMode)
+                        // ✅ PERFORMANCE: Track each sleeve placement operation
+                        using (var singleSleeveTracker = performanceMonitor.TrackOperation("Place Single Sleeve"))
                         {
-                            DebugLogger.Error($"[UniversalSleevePlacer] ⏱ TIMEOUT: Sleeve placement exceeded {MAX_PLACEMENT_TIME_MS / 1000} second limit after processing {processedCount} sleeves");
-                        }
-                        System.Windows.Forms.MessageBox.Show(
-                            $"Sleeve placement is taking too long and has been cancelled.\n\nProcessed: {processedCount} of {sortedClashZones.Count} sleeves\nTime: {placementTimer.ElapsedMilliseconds / 1000} seconds\nLimit: {MAX_PLACEMENT_TIME_MS / 1000} seconds\n\nThis usually indicates:\n• Very large model\n• Infinite loop\n• Corrupted clash zone data\n\nPlease check the log file and try processing in smaller batches.",
-                            "Operation Timeout",
-                            System.Windows.Forms.MessageBoxButtons.OK,
-                            System.Windows.Forms.MessageBoxIcon.Warning);
-                        break; // Exit loop to prevent crash
-                    }
-                    // ✅ STARTUP MARKER: Log to confirm new code is running (using SafeFileLogger path)
-                    // Note: debugLogPath is already declared at method level (line 254)
-                    try 
-                    { 
-                                                // ✅ DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                    { 
-                        File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 NEW CODE RUNNING: Zone={clashZone.Id}, MEP={clashZone.MepElementIdValue}, HOST={clashZone.StructuralElementIdValue}\n"); 
-                        } 
-                                                // ✅ DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            var pathName = _isReplayPath ? "PATH 1 (Replay)" : "PATH 2/3 (Sizing/Detection)";
-                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 0: Starting processing for Zone={clashZone.Id}, Placement Path={pathName}\n");
-                            DebugLogger.Info($"[UniversalSleevePlacer] Zone={clashZone.Id}: Using {pathName}");
-                        }
-                    } 
-                    catch { }
-                    
-                    // ⏱️ TIMING: Start per-sleeve timer (only for actual placement operations)
-                    var sleeveTimer = System.Diagnostics.Stopwatch.StartNew();
-                    var sleeveLog = new System.Text.StringBuilder();
-                    
-                    try
-                    {
-                        // ✅ DEPLOYMENT MODE: Skip file writes
-                        try { 
+                            // ✅ DEBUG: Log which clash zone is being processed
                             if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 1: Entered try block for Zone={clashZone.Id}\n");
-                            }
-                        } catch { }
-                        
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[UniversalSleevePlacer] Processing ClashZone {clashZone.Id}: MEP={clashZone.MepElementId.IntegerValue}, Structural={clashZone.StructuralElementId.IntegerValue}");
-                        
-                        // ✅ DEPLOYMENT MODE: Skip file writes
-                        try { 
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 2: About to validate placement point for Zone={clashZone.Id}, IP=({clashZone.IntersectionPointX},{clashZone.IntersectionPointY},{clashZone.IntersectionPointZ})\n");
-                            }
-                        } catch { }
-                        
-                        // ✅ CRITICAL: Validate intersection coordinates - NO FALLBACK to wall center
-                        // This will throw an exception if coordinates are invalid, which we catch and handle below
-                        try
-                        {
-                            ValidatePlacementPoint(clashZone);
-                            try {                             // ✅ DEPLOYMENT MODE: Skip file writes
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 2.1: ✅ Placement point validation PASSED for Zone={clashZone.Id}\n");
-                            } } catch { }
-                        }
-                        catch (InvalidOperationException validationEx)
-                        {
-                            // Invalid coordinates - skip this zone and log error
-                            var msg = $"[UniversalSleevePlacer] ERROR: {validationEx.Message}";
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Error(msg);
-                            if (PlacedCount + SkippedCount < 50) batchLogs.AppendLine($"✗ ERROR: ClashZone {clashZone.Id} has invalid intersection coordinates - SKIPPED");
-                            
-                            try {                             // ✅ DEPLOYMENT MODE: Skip file writes
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 2.2: ❌ VALIDATION FAILED: {validationEx.Message}\n");
-                            } } catch { }
-                            
-                            // ✅ FIXED: Use SafeFileLogger for correct log paths (dev + deployment)
-                            try 
-                            { 
-                                var errorLogFilePath = SafeFileLogger.GetLogFilePath("sleeve_placement_errors.log");
-                                // ✅ DEPLOYMENT MODE: Skip file writes
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    File.AppendAllText(errorLogFilePath, $"[{DateTime.Now}] {msg}\n"); 
-                                } 
-                                System.Diagnostics.Debug.WriteLine($"[Placement] ✅ Error logged to: {errorLogFilePath}");
-                            } 
-                            catch (Exception logEx) 
-                            { 
-                                System.Diagnostics.Debug.WriteLine($"[Placement] ❌ Failed to log error: {logEx.Message}");
-                            }
-                            try 
-                            { 
-                                // ✅ DEPLOYMENT MODE: Skip file writes
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] INVALID-POINT: Zone={clashZone.Id}, MEP={clashZone.MepElementIdValue}, HOST={clashZone.StructuralElementIdValue}, IP=({clashZone.IntersectionPointX},{clashZone.IntersectionPointY},{clashZone.IntersectionPointZ}), SPP=({clashZone.SleevePlacementPointX},{clashZone.SleevePlacementPointY},{clashZone.SleevePlacementPointZ})\n"); 
-                                }
-                            } 
-                            catch (Exception logEx) 
-                            { 
-                                System.Diagnostics.Debug.WriteLine($"[Placement] ❌ Failed to log debug: {logEx.Message}");
-                            }
-                            
-                            ErrorCount++;
-                            continue; // Skip this zone - cannot place without valid intersection point
-                        }
-                        
-                        // ✅ DEPLOYMENT MODE: Skip file writes
-                        try { 
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 3: Validation passed, checking flags: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}, SleeveId={clashZone.SleeveInstanceId}, ClusterId={clashZone.ClusterSleeveInstanceId}\n");
-                            }
-                        } catch { }
-                        
-                        // ✅ PERFORMANCE OPTIMIZATION: Batch file logging instead of individual writes
-                        // Only log to batch - will write once at end (or every 50 clash zones)
-                        if (PlacedCount + SkippedCount < 50) // Only log first 50 for debugging
-                        {
-                            batchLogs.AppendLine($"[{DateTime.Now:HH:mm:ss}] [SLEEVE-PLACER] ClashZone {clashZone.Id}: MEP={clashZone.MepElementId.IntegerValue}, Structural={clashZone.StructuralElementId.IntegerValue}");
-                            batchLogs.AppendLine($"[{DateTime.Now:HH:mm:ss}] [SLEEVE-PLACER] FLAGS: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}");
-                        }
-                        
-                        // ✅ BUG FIX: Check IsClusterResolved flag BEFORE individual placement
-                        // If IsClusterResolved=true, there MUST be a ClusterSleeveInstanceId (impossible to be cluster-resolved without a cluster sleeve ID)
-                        if (clashZone.IsClusterResolved && clashZone.ClusterSleeveInstanceId > 0)
-                        {
-                            var clusterSleeveElement = GetCachedElement(clashZone.ClusterSleeveInstanceId);
-                            if (clusterSleeveElement != null)
-                            {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} already cluster-resolved (IsClusterResolved=true) with cluster sleeve {clashZone.ClusterSleeveInstanceId}");
-                                SafeFileLogger.SafeAppendText(placementLogName, $"[{DateTime.Now}] SKIP ClusterResolved: ClashZone={clashZone.Id}, ClusterSleeveId={clashZone.ClusterSleeveInstanceId}, IsClusterResolved=true\n");
-                                SkippedCount++;
-                                continue;
-                            }
-                            else
-                            {
-                                // ✅ CRITICAL: Cluster sleeve was deleted - reset flags in memory
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[UniversalSleevePlacer] RESET: ClashZone {clashZone.Id} has IsClusterResolved=true but cluster sleeve {clashZone.ClusterSleeveInstanceId} was deleted - resetting flags");
-                                clashZone.IsClusterResolved = false;
-                                clashZone.ClusterSleeveInstanceId = -1;
-                                // Continue to individual placement check below
-                            }
-                        }
-                        
-                        // ✅ BUG FIX: Check IsResolved flag BEFORE checking SleeveInstanceId
-                        // PATH 1 should respect flag state from XML - if IsResolved=true, skip placement
-                        // If IsResolved=true, there MUST be a SleeveInstanceId (impossible to be resolved without a sleeve ID)
-                        if (clashZone.IsResolved && clashZone.SleeveInstanceId > 0)
-                        {
-                            var existingIndividualSleeve = GetCachedElement(clashZone.SleeveInstanceId);
-                            if (existingIndividualSleeve != null)
-                            {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} already resolved (IsResolved=true) with individual sleeve {clashZone.SleeveInstanceId}");
-                                SafeFileLogger.SafeAppendText(placementLogName, $"[{DateTime.Now}] SKIP AlreadyResolved: ClashZone={clashZone.Id}, SleeveId={clashZone.SleeveInstanceId}, IsResolved=true\n");
-                                SkippedCount++;
-                                continue;
-                            }
-                            else
-                            {
-                                // ✅ CRITICAL: Sleeve was deleted - reset flag and continue to placement
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[UniversalSleevePlacer] RESET: ClashZone {clashZone.Id} has IsResolved=true but sleeve {clashZone.SleeveInstanceId} was deleted - resetting flag");
-                                clashZone.IsResolved = false;
-                                clashZone.SleeveInstanceId = -1;
-                                // Continue to placement below
-                            }
-                        }
-                        
-                        // Check if sleeve exists by ID (even if flag is false - handles stale data)
-                        if (clashZone.SleeveInstanceId > 0)
-                        {
-                            var existingIndividualSleeve = GetCachedElement(clashZone.SleeveInstanceId);
-                            if (existingIndividualSleeve != null)
-                            {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} already has individual sleeve {clashZone.SleeveInstanceId}");
-                                SafeFileLogger.SafeAppendText(placementLogName, $"[{DateTime.Now}] SKIP IndividualExists: ClashZone={clashZone.Id}, SleeveId={clashZone.SleeveInstanceId}\n");
-                                SkippedCount++;
-                                continue;
-                            }
-                            else
-                            {
-                                    clashZone.IsResolved = false;
-                                    clashZone.SleeveInstanceId = -1;
-                            }
-                        }
-                        
-                        // STEP 3: If we reach here, place individual sleeve (fresh or replacement)
-                        
-                        // ✅ CRITICAL: Check Global XML before placement (prevents cross-filter duplicates)
-                        // ✅ USES GlobalIndexService (GUID-based) per methodology document
-                        try
-                        {
-                            var categoryName = clashZone.MepElementCategory;
-                            var globalIndex = GlobalIndexService.LoadOrCreate(_doc, categoryName);
-                            
-                            // ✅ CRITICAL FIX: Use GetAllEntries to get entries from BOTH hierarchical and flat structures
-                            // Entries are now stored in Filters → FileCombos → Entries, not just in flat Entries list
-                            var allEntries = GlobalIndexService.GetAllEntries(globalIndex).ToList();
-                            var entry = allEntries?.FirstOrDefault(e => e.Id == clashZone.Id.ToString());
-                            
-                            if (entry != null)
-                            {
-                                // ✅ DEBUG: Log Global XML entry state
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[GLOBAL-XML-CHECK] ClashZone {clashZone.Id}: Found Global XML entry - IsResolved={entry.IsResolved}, IsClusterResolved={entry.IsClusterResolved}, SleeveId={entry.SleeveInstanceId}, ClusterId={entry.ClusterSleeveInstanceId}");
-                                
-                                // Entry exists in Global XML - check if sleeve still exists in Revit
-                                if (entry.IsClusterResolved && entry.ClusterSleeveInstanceId > 0)
-                                {
-                                    // Cluster sleeve exists in Global XML - verify it exists in Revit
-                                    var clusterSleeve = _doc.GetElement(new ElementId(entry.ClusterSleeveInstanceId));
-                                    if (clusterSleeve != null)
-                                {
-                                        // Cluster sleeve exists - skip individual placement
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Info($"[GLOBAL-XML] SKIP: ClashZone {clashZone.Id} has cluster sleeve {entry.ClusterSleeveInstanceId} in Global XML (placed from another filter)");
-                                        if (PlacedCount + SkippedCount < 50) batchLogs.AppendLine($"✓ SKIP ClashZone {clashZone.Id}: Cluster sleeve {entry.ClusterSleeveInstanceId} exists in Global XML");
-                                    
-                                    // Update clash zone flags to match Global XML state
-                                    clashZone.IsClusterResolved = true;
-                                        clashZone.ClusterSleeveInstanceId = entry.ClusterSleeveInstanceId;
-                                    clashZone.IsResolved = false;
-                                    clashZone.SleeveInstanceId = -1;
-                                    
-                                    SkippedCount++;
-                                    continue;
-                                }
-                                    else
-                                    {
-                                        // ✅ CRITICAL FIX: Cluster sleeve was deleted - reset flags in memory
-                                        // DO NOT call UpdateFlagsForPlacement with isCluster=true here - it would set IsClusterResolved=true again!
-                                        // The flags will be persisted correctly when the new individual sleeve is placed below
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Info($"[FLAG-MANAGER] RESET: ClashZone {clashZone.Id} has cluster sleeve in Global XML but sleeve was deleted - resetting flags and proceeding with placement");
-                                        clashZone.IsClusterResolved = false;
-                                        clashZone.ClusterSleeveInstanceId = -1;
-                                        clashZone.IsResolved = false; // Also reset individual flag since cluster was deleted
-                                        clashZone.SleeveInstanceId = -1;
-                                        // ✅ NOTE: Flags will be persisted when new sleeve is placed via UpdateFlagsForPlacement(isCluster: false)
-                                    }
-                                }
-                                else if (entry.IsResolved && entry.SleeveInstanceId > 0)
-                                {
-                                    // ✅ CRITICAL: Always verify sleeve exists in Revit (Global XML may be stale)
-                                    // Revit is authoritative source - if sleeve doesn't exist, reset flags and place
-                                    var individualSleeve = _doc.GetElement(new ElementId(entry.SleeveInstanceId));
-                                    if (individualSleeve != null)
-                                    {
-                                        // Individual sleeve exists in Revit - skip placement
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Info($"[GLOBAL-XML] SKIP: ClashZone {clashZone.Id} has individual sleeve {entry.SleeveInstanceId} in Global XML (placed from another filter) - sleeve EXISTS in Revit");
-                                        if (PlacedCount + SkippedCount < 50) batchLogs.AppendLine($"✓ SKIP ClashZone {clashZone.Id}: Individual sleeve {entry.SleeveInstanceId} exists in Global XML and Revit");
-                                    
-                                    // Update clash zone flags to match Global XML state
-                                    clashZone.IsResolved = true;
-                                        clashZone.SleeveInstanceId = entry.SleeveInstanceId;
-                                    
-                                    SkippedCount++;
-                                    continue;
-                                }
-                                else
-                                {
-                                        // ✅ CRITICAL FIX: Sleeve doesn't exist in Revit - Global XML is stale
-                                        // Reset flags in Global XML and proceed with placement
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Info($"[FLAG-MANAGER] RESET: ClashZone {clashZone.Id} has individual sleeve {entry.SleeveInstanceId} in Global XML but sleeve was DELETED in Revit - resetting flags and proceeding with placement");
-                                        clashZone.IsResolved = false;
-                                        clashZone.SleeveInstanceId = -1;
-                                        
-                                        // ✅ CRITICAL: Update Global XML immediately to prevent future skips
-                                        _flagManager.UpdateFlagsForPlacement(clashZone, -1, isCluster: false, categoryName, _filterName);
-                                        
-                                        // Continue to placement (don't skip)
-                                    }
-                                }
-                            }
-                            else
-                            {
-                                // ✅ DEBUG: Log when no Global XML entry exists
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[GLOBAL-XML-CHECK] ClashZone {clashZone.Id}: No Global XML entry found - proceeding with placement");
-                            }
-                            // If no Global XML entry exists, proceed with placement (normal case)
-                        }
-                        catch (Exception globalEx)
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Warning($"[GLOBAL-XML] Error checking Global XML for ClashZone {clashZone.Id}: {globalEx.Message} - proceeding with placement");
-                            // Continue with placement on error (fail-safe)
-                        }
-                        
-                        // DEPLOYMENT MODE: Skip file writes
-                        try 
-                        { 
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 6: Checking category match: ZoneCategory='{clashZone.MepElementCategory}' vs StrategyCategory='{_strategy?.GetCategoryName() ?? "NULL"}'\n");
-                            }
-                        } catch { }
-                        
-                        // ✅ PERFORMANCE OPTIMIZATION: Removed excessive file logging - use DebugLogger only
-                        // Validate category match
-                        if (!string.IsNullOrEmpty(clashZone.MepElementCategory) && 
-                            clashZone.MepElementCategory != _strategy.GetCategoryName())
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Warning($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} category '{clashZone.MepElementCategory}' doesn't match '{_strategy.GetCategoryName()}'");
-                            try {                             // ✅ DEPLOYMENT MODE: Skip file writes
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 6.1: ❌ SKIPPED - Category mismatch\n");
-                            } } catch { }
-                            SkippedCount++;
-                            sleeveTimer.Stop();
-                            continue;
-                        }
-                        
-                        try {                         // ✅ DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 7: Category match passed, creating MEP size\n");
-                        } } catch { }
-                        
-                        // ✅ PERFORMANCE OPTIMIZATION: Removed excessive file logging
-                        
-                        // ⏱️ TIMING: MEP size creation
-                        var mepSizeTimer = System.Diagnostics.Stopwatch.StartNew();
-                        // ⚠️ ZERO LINKED FILE ACCESS - use pre-calculated MEP size from ClashZone
-                        var mepSize = new MepElementSize
-                        {
-                            Width = clashZone.MepElementWidth,
-                            Height = clashZone.MepElementHeight,
-                            Diameter = clashZone.MepElementWidth, // For round, width = diameter
-                            Shape = clashZone.DuctShape
-                        };
-                        mepSizeTimer.Stop();
-                        try {                         // ✅ DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 8: MEP size created: W={mepSize.Width}, H={mepSize.Height}, D={mepSize.Diameter}, Shape={mepSize.Shape}\n");
-                        } } catch { }
-                        
-						// ⚠️ SPECIAL HANDLING & SIZING ORDER:
-						// 1) Pipes (host-agnostic), 2) Dampers, 3) Cable trays, 4) Ducts/default
-                        XYZ placementOffset = XYZ.Zero;
-                        double finalWidth = 0.0, finalHeight = 0.0, finalDiameter = 0.0;
-                        
-                        // ✅ CRITICAL FIX: PATH 1 (Replay) should use existing sleeve size and skip clearance calculation
-                        // For PATH 1, sleeve size data is already in ClashZone (SleeveWidth, SleeveHeight, SleeveDiameter)
-                        // No need to calculate clearance - just use existing data
-                        if (_isReplayPath && clashZone.SleeveWidth > 0 && clashZone.SleeveHeight > 0)
-                        {
-                            // ✅ PATH 1: Use existing sleeve size from ClashZone (already includes clearance)
-                            finalWidth = clashZone.SleeveWidth;
-                            finalHeight = clashZone.SleeveHeight;
-                            finalDiameter = clashZone.SleeveDiameter > 0 ? clashZone.SleeveDiameter : Math.Max(finalWidth, finalHeight);
-                            
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                DebugLogger.Info($"[UniversalSleevePlacer] ✅ PATH 1 (Replay): Using existing sleeve size - W={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}mm, H={RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm, D={RevitUnitConversionService.Instance.FromInternalMillimeters(finalDiameter):F1}mm");
-                                File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9: ✅ PATH 1 (Replay) - Using existing sleeve size (skipping clearance calculation)\n");
-                            }
-                        }
-                        else if (_isReplayPath)
-                        {
-                            // ✅ PATH 1 but missing sleeve size data - log warning
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ PATH 1 (Replay): Missing sleeve size data for Zone={clashZone.Id} - SleeveWidth={clashZone.SleeveWidth}, SleeveHeight={clashZone.SleeveHeight}. Falling back to PATH 2/3 clearance calculation.");
-                                File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9: ⚠️ PATH 1 (Replay) - Missing sleeve size, falling back to clearance calculation\n");
-                            }
-                        }
-                        else
-                        {
-                            // ✅ PATH 2/3: Calculate clearance (normal flow)
-                            // ⏱️ TIMING: Clearance calculation
-                            var clearanceTimer = System.Diagnostics.Stopwatch.StartNew();
-                            // 🛡️ ARCHITECTURE FIX: Use CONDITIONS service for ALL clearance types
-                            // This ensures consistent architecture: CONDITIONS XML → UniversalSleevePlacerService
-                            // Raw dimensions from ClashZone + Clearance from CONDITIONS = Final dimensions
-                            
-                            if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[UniversalSleevePlacer] CLEARANCE CALCULATION START: Category='{clashZone.MepElementCategory}', Strategy={(_strategy?.GetType().Name ?? "NULL")}, Path={(_isReplayPath ? "Replay" : "Sizing/Detection")}");
-                        
-						bool isPipesCategory = string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
-						
-						// ✅ PERFORMANCE OPTIMIZATION: Removed excessive file logging
-						
-						if (isPipesCategory)
-						{
-							// ✅ Pipes: Raw dimensions + CONDITIONS clearance
-							var rawDiameter = clashZone.MepElementWidth; // Raw diameter from ClashZone
-							var clearance = GetClearanceFromConditions("Pipes", mepSize);
-							finalDiameter = rawDiameter + (2 * clearance);
-							finalWidth = finalDiameter;
-							finalHeight = finalDiameter;
-							       if (!DeploymentConfiguration.DeploymentMode)
-							DebugLogger.Info($"[UniversalSleevePlacer] PIPE: Raw={RevitUnitConversionService.Instance.FromInternalMillimeters(rawDiameter):F1}mm + Clearance={RevitUnitConversionService.Instance.FromInternalMillimeters(clearance):F1}mm = Final={RevitUnitConversionService.Instance.FromInternalMillimeters(finalDiameter):F1}mm");
-						}
-						else if (_strategy is DamperPlacementStrategy damperStrategy)
-                        {
-                            // ✅ Fire dampers: Raw dimensions + CONDITIONS clearance via strategy
-                            var rawWidth = clashZone.MepElementWidth;
-                            var rawHeight = clashZone.MepElementHeight;
-                            
-                            // Get offset and final dimensions from strategy (uses CONDITIONS)
-                            var adj = damperStrategy.GetDamperPlacementAdjustment(clashZone, _conditions);
-                            placementOffset = adj.offsetVector;
-                            finalWidth = adj.finalWidth;
-                            finalHeight = adj.finalHeight;
-                            finalDiameter = finalWidth; // Not used for dampers (rectangular only)
-                            
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[UniversalSleevePlacer] DAMPER: Raw={RevitUnitConversionService.Instance.FromInternalMillimeters(rawWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(rawHeight):F1}mm → Final={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm");
-                        }
-                        
-                        // ✅ DEBUG: Log strategy information
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[UniversalSleevePlacer] Strategy Type: {_strategy.GetType().Name}");
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[UniversalSleevePlacer] Strategy Category: {_strategy.GetCategoryName()}");
-                        
-                        if (_strategy is DuctPlacementStrategy ductStrategy)
-                        {
-                            // ✅ Ducts: Raw dimensions + CONDITIONS clearance via strategy
-                            var rawWidth = clashZone.MepElementWidth;
-                            var rawHeight = clashZone.MepElementHeight;
-                            
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[UniversalSleevePlacer] DUCT CALCULATION START: Raw dimensions {RevitUnitConversionService.Instance.FromInternalMillimeters(rawWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(rawHeight):F1}mm");
-                            
-                            var clearance = GetClearanceFromConditions("Ducts", mepSize);
-                            finalWidth = rawWidth + (2 * clearance);
-                            finalHeight = rawHeight + (2 * clearance);
-                            finalDiameter = finalWidth; // For round elements
-                            
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[UniversalSleevePlacer] DUCT: Raw={RevitUnitConversionService.Instance.FromInternalMillimeters(rawWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(rawHeight):F1}mm + Clearance={RevitUnitConversionService.Instance.FromInternalMillimeters(clearance):F1}mm = Final={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm");
-                        }
-                        else if (_strategy is CableTrayPlacementStrategy cableTrayStrategy)
-                        {
-                            // ✅ PERFORMANCE OPTIMIZATION: Removed excessive file logging
+                                DebugLogger.Info($"[PLACEMENT-LOOP] Processing ClashZone {clashZone.Id} ({processedCount + 1}/{sortedClashZones.Count}): MEP={clashZone.MepElementIdValue}, Flags: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}, SleeveId={clashZone.SleeveInstanceId}");
 
-                            // ✅ Cable trays: Raw dimensions + UI/XML clearance via strategy
-                            var rawWidth = clashZone.MepElementWidth;
-                            var rawHeight = clashZone.MepElementHeight;
-
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY STRATEGY: Raw={RevitUnitConversionService.Instance.FromInternalMillimeters(rawWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(rawHeight):F1}mm");
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY STRATEGY: UI Clearance Settings Count={_clearanceSettings.Count}");
-
-                            // Get offset and final dimensions from strategy (uses UI settings first, then CONDITIONS)
-                            var adj2 = cableTrayStrategy.GetCableTrayPlacementAdjustment(clashZone, _conditions, _clearanceSettings);
-                            placementOffset = adj2.offsetVector;
-                            finalWidth = adj2.finalWidth;
-                            finalHeight = adj2.finalHeight;
-
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY STRATEGY: Final={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm");
-                            finalDiameter = finalWidth; // Not used for cable trays (rectangular only)
-
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY: Raw={RevitUnitConversionService.Instance.FromInternalMillimeters(rawWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(rawHeight):F1}mm → Final={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm");
-                        }
-                        else
-                        {
-                            // ✅ PERFORMANCE OPTIMIZATION: Removed excessive file logging
-                            // 🔥 FALLBACK: Use raw dimensions + default clearance if no strategy matches
-                            var rawWidth = clashZone.MepElementWidth;
-                            var rawHeight = clashZone.MepElementHeight;
-                            var defaultClearance = RevitUnitConversionService.Instance.ToInternalMillimeters(50); // 50mm default
-                            
-                            finalWidth = rawWidth + (2 * defaultClearance);
-                            finalHeight = rawHeight + (2 * defaultClearance);
-                            finalDiameter = Math.Max(finalWidth, finalHeight);
-                            
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ NO STRATEGY MATCHED for ClashZone {clashZone.Id} - Using fallback dimensions");
+                            // ⚠️ CRITICAL: Check timeout every 10 sleeves to prevent infinite hangs
+                            processedCount++;
+                            if (processedCount % 10 == 0 && placementTimer.ElapsedMilliseconds > MAX_PLACEMENT_TIME_MS)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Error($"[UniversalSleevePlacer] ⏱ TIMEOUT: Sleeve placement exceeded {MAX_PLACEMENT_TIME_MS / 1000} second limit after processing {processedCount} sleeves");
+                                }
+                                System.Windows.Forms.MessageBox.Show(
+                                    $"Sleeve placement is taking too long and has been cancelled.\n\nProcessed: {processedCount} of {sortedClashZones.Count} sleeves\nTime: {placementTimer.ElapsedMilliseconds / 1000} seconds\nLimit: {MAX_PLACEMENT_TIME_MS / 1000} seconds\n\nThis usually indicates:\n• Very large model\n• Infinite loop\n• Corrupted clash zone data\n\nPlease check the log file and try processing in smaller batches.",
+                                    "Operation Timeout",
+                                    System.Windows.Forms.MessageBoxButtons.OK,
+                                    System.Windows.Forms.MessageBoxIcon.Warning);
+                                break; // Exit loop to prevent crash
                             }
-                            clearanceTimer.Stop();
-                            totalClearanceTime += clearanceTimer.Elapsed;
-                            sleeveLog.AppendLine($"  Clearance calc: {clearanceTimer.ElapsedMilliseconds}ms");
-                            
-                            try {                         // ✅ DEPLOYMENT MODE: Skip file writes
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9: Clearance calculation completed for PATH 2/3\n");
-                            } } catch { }
-                        }
-                        
-                        // ⚠️ REMOVED: Old width/height swapping logic that was causing double-swapping
-                        // The new logic later in the method (lines 660-665) handles this correctly
-                        // by ensuring the longer dimension becomes width, not just swapping blindly
-                        
-                        try {                         // ✅ DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 10: Final dimensions determined, selecting family\n");
-                        } } catch { }
-                        
-                        // ⏱️ TIMING: Family selection and loading
-                        var familyTimer = System.Diagnostics.Stopwatch.StartNew();
-                        // Select universal family
-                        var (familyName, isCircular) = SelectUniversalFamily(clashZone, mepSize);
-                        try {                         // ✅ DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 11: Family selected: '{familyName}', IsCircular={isCircular}\n");
-                        } } catch { }
-                        
-                        var familySymbol = LoadFamilySymbol(familyName);
-                        familyTimer.Stop();
-                        totalFamilyLoadTime += familyTimer.Elapsed;
-                        sleeveLog.AppendLine($"  Family load: {familyTimer.ElapsedMilliseconds}ms");
-                        
-                        bool shouldSkipSleeve = false;
-                        
-                        if (familySymbol == null)
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Error($"[UniversalSleevePlacer] Family '{familyName}' not found");
-                            try {                             // ✅ DEPLOYMENT MODE: Skip file writes
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 11.1: ❌ ERROR - Family '{familyName}' not found\n");
-                            } } catch { }
-                            ErrorCount++;
-                            continue;
-                        }
-                        try {                         // ✅ DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 12: ✅ Family symbol loaded successfully\n");
-                        } } catch { }
-                        
-                        // ✅ SIMPLIFIED: Activate symbol if needed - don't care about type name, just activate any type
-                        if (!familySymbol.IsActive)
-                        {
+                            // ✅ STARTUP MARKER: Log to confirm new code is running (using SafeFileLogger path)
+                            // Note: debugLogPath is already declared at method level (line 254)
                             try
                             {
-                                familySymbol.Activate();
-                            }
-                            catch (Exception activationEx)
-                            {
+                                // ✅ DEPLOYMENT MODE: Skip file writes
                                 if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Warning($"[UniversalSleevePlacer] Failed to activate family '{familyName}': {activationEx.Message}");
-
-                                var family = familySymbol.Family;
-                                var allSymbols = family.GetFamilySymbolIds()
-                                    .Select(id => _doc.GetElement(id) as FamilySymbol)
-                                    .Where(s => s != null)
-                                    .ToList();
-
-                                var activeSymbol = allSymbols.FirstOrDefault(s => s.IsActive);
-                                if (activeSymbol != null)
                                 {
-                                    familySymbol = activeSymbol;
+                                    File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 NEW CODE RUNNING: Zone={clashZone.Id}, MEP={clashZone.MepElementIdValue}, HOST={clashZone.StructuralElementIdValue}\n");
+                                }
+                                // ✅ DEPLOYMENT MODE: Skip file writes
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    var pathName = _isReplayPath ? "PATH 1 (Replay)" : "PATH 2/3 (Sizing/Detection)";
+                                    File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 0: Starting processing for Zone={clashZone.Id}, Placement Path={pathName}\n");
+                                    DebugLogger.Info($"[UniversalSleevePlacer] Zone={clashZone.Id}: Using {pathName}");
+                                }
+                            }
+                            catch { }
+
+                            // ⏱️ TIMING: Start per-sleeve timer (only for actual placement operations)
+                            var sleeveTimer = System.Diagnostics.Stopwatch.StartNew();
+                            var sleeveLog = new System.Text.StringBuilder();
+
+                            try
+                            {
+                                // ✅ DEPLOYMENT MODE: Skip file writes
+                                try
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 1: Entered try block for Zone={clashZone.Id}\n");
+                                    }
+                                }
+                                catch { }
+
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[UniversalSleevePlacer] Processing ClashZone {clashZone.Id}: MEP={clashZone.MepElementId.IntegerValue}, Structural={clashZone.StructuralElementId.IntegerValue}");
+
+                                // ✅ DEPLOYMENT MODE: Skip file writes
+                                try
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 2: About to validate placement point for Zone={clashZone.Id}, IP=({clashZone.IntersectionPointX},{clashZone.IntersectionPointY},{clashZone.IntersectionPointZ})\n");
+                                    }
+                                }
+                                catch { }
+
+                                // ✅ CRITICAL: Validate intersection coordinates - NO FALLBACK to wall center
+                                // This will throw an exception if coordinates are invalid, which we catch and handle below
+                                try
+                                {
+                                    ValidatePlacementPoint(clashZone);
+                                    try
+                                    {                             // ✅ DEPLOYMENT MODE: Skip file writes
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 2.1: ✅ Placement point validation PASSED for Zone={clashZone.Id}\n");
+                                        }
+                                    }
+                                    catch { }
+                                }
+                                catch (InvalidOperationException validationEx)
+                                {
+                                    // Invalid coordinates - skip this zone and log error
+                                    var msg = $"[UniversalSleevePlacer] ERROR: {validationEx.Message}";
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Error(msg);
+                                    if (PlacedCount + SkippedCount < 50) batchLogs.AppendLine($"✗ ERROR: ClashZone {clashZone.Id} has invalid intersection coordinates - SKIPPED");
+
+                                    try
+                                    {                             // ✅ DEPLOYMENT MODE: Skip file writes
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 2.2: ❌ VALIDATION FAILED: {validationEx.Message}\n");
+                                        }
+                                    }
+                                    catch { }
+
+                                    // ✅ FIXED: Use SafeFileLogger for correct log paths (dev + deployment)
+                                    try
+                                    {
+                                        var errorLogFilePath = SafeFileLogger.GetLogFilePath("sleeve_placement_errors.log");
+                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            File.AppendAllText(errorLogFilePath, $"[{DateTime.Now}] {msg}\n");
+                                        }
+                                        System.Diagnostics.Debug.WriteLine($"[Placement] ✅ Error logged to: {errorLogFilePath}");
+                                    }
+                                    catch (Exception logEx)
+                                    {
+                                        System.Diagnostics.Debug.WriteLine($"[Placement] ❌ Failed to log error: {logEx.Message}");
+                                    }
+                                    try
+                                    {
+                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] INVALID-POINT: Zone={clashZone.Id}, MEP={clashZone.MepElementIdValue}, HOST={clashZone.StructuralElementIdValue}, IP=({clashZone.IntersectionPointX},{clashZone.IntersectionPointY},{clashZone.IntersectionPointZ}), SPP=({clashZone.SleevePlacementPointX},{clashZone.SleevePlacementPointY},{clashZone.SleevePlacementPointZ})\n");
+                                        }
+                                    }
+                                    catch (Exception logEx)
+                                    {
+                                        System.Diagnostics.Debug.WriteLine($"[Placement] ❌ Failed to log debug: {logEx.Message}");
+                                    }
+
+                                    ErrorCount++;
+                                    singleSleeveTracker.SetItemCount(1); // Track error as 1 item
+                                    continue; // Skip this zone - cannot place without valid intersection point
+                                }
+
+                                // ✅ DEPLOYMENT MODE: Skip file writes
+                                try
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 3: Validation passed, checking flags: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}, SleeveId={clashZone.SleeveInstanceId}, ClusterId={clashZone.ClusterSleeveInstanceId}\n");
+                                    }
+                                }
+                                catch { }
+
+                                // ✅ PERFORMANCE OPTIMIZATION: Batch file logging instead of individual writes
+                                // Only log to batch - will write once at end (or every 50 clash zones)
+                                if (PlacedCount + SkippedCount < 50) // Only log first 50 for debugging
+                                {
+                                    batchLogs.AppendLine($"[{DateTime.Now:HH:mm:ss}] [SLEEVE-PLACER] ClashZone {clashZone.Id}: MEP={clashZone.MepElementId.IntegerValue}, Structural={clashZone.StructuralElementId.IntegerValue}");
+                                    batchLogs.AppendLine($"[{DateTime.Now:HH:mm:ss}] [SLEEVE-PLACER] FLAGS: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}");
+                                }
+
+                                // ✅ BUG FIX: Check IsClusterResolved flag BEFORE individual placement
+                                // If IsClusterResolved=true, there MUST be a ClusterSleeveInstanceId (impossible to be cluster-resolved without a cluster sleeve ID)
+                                if (clashZone.IsClusterResolved && clashZone.ClusterSleeveInstanceId > 0)
+                                {
+                                    var clusterSleeveElement = GetCachedElement(clashZone.ClusterSleeveInstanceId);
+                                    if (clusterSleeveElement != null)
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} already cluster-resolved (IsClusterResolved=true) with cluster sleeve {clashZone.ClusterSleeveInstanceId}");
+                                        SafeFileLogger.SafeAppendText(placementLogName, $"[{DateTime.Now}] SKIP ClusterResolved: ClashZone={clashZone.Id}, ClusterSleeveId={clashZone.ClusterSleeveInstanceId}, IsClusterResolved=true\n");
+                                        SkippedCount++;
+                                        singleSleeveTracker.SetItemCount(1); // Track skipped as 1 item
+                                        continue;
+                                    }
+                                    else
+                                    {
+                                        // ✅ CRITICAL: Cluster sleeve was deleted - reset flags in memory
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[UniversalSleevePlacer] RESET: ClashZone {clashZone.Id} has IsClusterResolved=true but cluster sleeve {clashZone.ClusterSleeveInstanceId} was deleted - resetting flags");
+                                        clashZone.IsClusterResolved = false;
+                                        clashZone.ClusterSleeveInstanceId = -1;
+                                        // Continue to individual placement check below
+                                    }
+                                }
+
+                                // ✅ BUG FIX: Check IsResolved flag BEFORE checking SleeveInstanceId
+                                // PATH 1 should respect flag state from XML - if IsResolved=true, skip placement
+                                // If IsResolved=true, there MUST be a SleeveInstanceId (impossible to be resolved without a sleeve ID)
+                                if (clashZone.IsResolved && clashZone.SleeveInstanceId > 0)
+                                {
+                                    var existingIndividualSleeve = GetCachedElement(clashZone.SleeveInstanceId);
+                                    if (existingIndividualSleeve != null)
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} already resolved (IsResolved=true) with individual sleeve {clashZone.SleeveInstanceId}");
+                                        SafeFileLogger.SafeAppendText(placementLogName, $"[{DateTime.Now}] SKIP AlreadyResolved: ClashZone={clashZone.Id}, SleeveId={clashZone.SleeveInstanceId}, IsResolved=true\n");
+                                        SkippedCount++;
+                                        singleSleeveTracker.SetItemCount(1); // Track skipped as 1 item
+                                        continue;
+                                    }
+                                    else
+                                    {
+                                        // ✅ CRITICAL: Sleeve was deleted - reset flag and continue to placement
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[UniversalSleevePlacer] RESET: ClashZone {clashZone.Id} has IsResolved=true but sleeve {clashZone.SleeveInstanceId} was deleted - resetting flag");
+                                        clashZone.IsResolved = false;
+                                        clashZone.SleeveInstanceId = -1;
+                                        // Continue to placement below
+                                    }
+                                }
+
+                                // Check if sleeve exists by ID (even if flag is false - handles stale data)
+                                if (clashZone.SleeveInstanceId > 0)
+                                {
+                                    var existingIndividualSleeve = GetCachedElement(clashZone.SleeveInstanceId);
+                                    if (existingIndividualSleeve != null)
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} already has individual sleeve {clashZone.SleeveInstanceId}");
+                                        SafeFileLogger.SafeAppendText(placementLogName, $"[{DateTime.Now}] SKIP IndividualExists: ClashZone={clashZone.Id}, SleeveId={clashZone.SleeveInstanceId}\n");
+                                        SkippedCount++;
+                                        continue;
+                                    }
+                                    else
+                                    {
+                                        clashZone.IsResolved = false;
+                                        clashZone.SleeveInstanceId = -1;
+                                    }
+                                }
+
+                                // STEP 3: If we reach here, place individual sleeve (fresh or replacement)
+
+                                // ✅ CRITICAL: Check Global XML before placement (prevents cross-filter duplicates)
+                                // ✅ USES GlobalIndexService (GUID-based) per methodology document
+                                try
+                                {
+                                    var categoryName = clashZone.MepElementCategory;
+                                    var globalIndex = GlobalIndexService.LoadOrCreate(_doc, categoryName);
+
+                                    // ✅ CRITICAL FIX: Use GetAllEntries to get entries from BOTH hierarchical and flat structures
+                                    // Entries are now stored in Filters → FileCombos → Entries, not just in flat Entries list
+                                    var allEntries = GlobalIndexService.GetAllEntries(globalIndex).ToList();
+                                    var entry = allEntries?.FirstOrDefault(e => e.Id == clashZone.Id.ToString());
+
+                                    if (entry != null)
+                                    {
+                                        // ✅ DEBUG: Log Global XML entry state
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[GLOBAL-XML-CHECK] ClashZone {clashZone.Id}: Found Global XML entry - IsResolved={entry.IsResolved}, IsClusterResolved={entry.IsClusterResolved}, SleeveId={entry.SleeveInstanceId}, ClusterId={entry.ClusterSleeveInstanceId}");
+
+                                        // Entry exists in Global XML - check if sleeve still exists in Revit
+                                        if (entry.IsClusterResolved && entry.ClusterSleeveInstanceId > 0)
+                                        {
+                                            // Cluster sleeve exists in Global XML - verify it exists in Revit
+                                            var clusterSleeve = _doc.GetElement(new ElementId(entry.ClusterSleeveInstanceId));
+                                            if (clusterSleeve != null)
+                                            {
+                                                // Cluster sleeve exists - skip individual placement
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                    DebugLogger.Info($"[GLOBAL-XML] SKIP: ClashZone {clashZone.Id} has cluster sleeve {entry.ClusterSleeveInstanceId} in Global XML (placed from another filter)");
+                                                if (PlacedCount + SkippedCount < 50) batchLogs.AppendLine($"✓ SKIP ClashZone {clashZone.Id}: Cluster sleeve {entry.ClusterSleeveInstanceId} exists in Global XML");
+
+                                                // Update clash zone flags to match Global XML state
+                                                clashZone.IsClusterResolved = true;
+                                                clashZone.ClusterSleeveInstanceId = entry.ClusterSleeveInstanceId;
+                                                clashZone.IsResolved = false;
+                                                clashZone.SleeveInstanceId = -1;
+
+                                                SkippedCount++;
+                                                continue;
+                                            }
+                                            else
+                                            {
+                                                // ✅ CRITICAL FIX: Cluster sleeve was deleted - reset flags in memory
+                                                // DO NOT call UpdateFlagsForPlacement with isCluster=true here - it would set IsClusterResolved=true again!
+                                                // The flags will be persisted correctly when the new individual sleeve is placed below
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                    DebugLogger.Info($"[FLAG-MANAGER] RESET: ClashZone {clashZone.Id} has cluster sleeve in Global XML but sleeve was deleted - resetting flags and proceeding with placement");
+                                                clashZone.IsClusterResolved = false;
+                                                clashZone.ClusterSleeveInstanceId = -1;
+                                                clashZone.IsResolved = false; // Also reset individual flag since cluster was deleted
+                                                clashZone.SleeveInstanceId = -1;
+                                                // ✅ NOTE: Flags will be persisted when new sleeve is placed via UpdateFlagsForPlacement(isCluster: false)
+                                            }
+                                        }
+                                        else if (entry.IsResolved && entry.SleeveInstanceId > 0)
+                                        {
+                                            // ✅ CRITICAL: Always verify sleeve exists in Revit (Global XML may be stale)
+                                            // Revit is authoritative source - if sleeve doesn't exist, reset flags and place
+                                            var individualSleeve = _doc.GetElement(new ElementId(entry.SleeveInstanceId));
+                                            if (individualSleeve != null)
+                                            {
+                                                // Individual sleeve exists in Revit - skip placement
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                    DebugLogger.Info($"[GLOBAL-XML] SKIP: ClashZone {clashZone.Id} has individual sleeve {entry.SleeveInstanceId} in Global XML (placed from another filter) - sleeve EXISTS in Revit");
+                                                if (PlacedCount + SkippedCount < 50) batchLogs.AppendLine($"✓ SKIP ClashZone {clashZone.Id}: Individual sleeve {entry.SleeveInstanceId} exists in Global XML and Revit");
+
+                                                // Update clash zone flags to match Global XML state
+                                                clashZone.IsResolved = true;
+                                                clashZone.SleeveInstanceId = entry.SleeveInstanceId;
+
+                                                SkippedCount++;
+                                                continue;
+                                            }
+                                            else
+                                            {
+                                                // ✅ CRITICAL FIX: Sleeve doesn't exist in Revit - Global XML is stale
+                                                // Reset flags in Global XML and proceed with placement
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                    DebugLogger.Info($"[FLAG-MANAGER] RESET: ClashZone {clashZone.Id} has individual sleeve {entry.SleeveInstanceId} in Global XML but sleeve was DELETED in Revit - resetting flags and proceeding with placement");
+                                                clashZone.IsResolved = false;
+                                                clashZone.SleeveInstanceId = -1;
+
+                                                // ✅ CRITICAL: Update Global XML immediately to prevent future skips
+                                                _flagManager.UpdateFlagsForPlacement(clashZone, -1, isCluster: false, categoryName, _filterName);
+
+                                                // Continue to placement (don't skip)
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // ✅ DEBUG: Log when no Global XML entry exists
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[GLOBAL-XML-CHECK] ClashZone {clashZone.Id}: No Global XML entry found - proceeding with placement");
+                                    }
+                                    // If no Global XML entry exists, proceed with placement (normal case)
+                                }
+                                catch (Exception globalEx)
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Warning($"[GLOBAL-XML] Error checking Global XML for ClashZone {clashZone.Id}: {globalEx.Message} - proceeding with placement");
+                                    // Continue with placement on error (fail-safe)
+                                }
+
+                                // DEPLOYMENT MODE: Skip file writes
+                                try
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 6: Checking category match: ZoneCategory='{clashZone.MepElementCategory}' vs StrategyCategory='{_strategy?.GetCategoryName() ?? "NULL"}'\n");
+                                    }
+                                }
+                                catch { }
+
+                                // ✅ PERFORMANCE OPTIMIZATION: Removed excessive file logging - use DebugLogger only
+                                // Validate category match
+                                if (!string.IsNullOrEmpty(clashZone.MepElementCategory) &&
+                                    clashZone.MepElementCategory != _strategy.GetCategoryName())
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Warning($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} category '{clashZone.MepElementCategory}' doesn't match '{_strategy.GetCategoryName()}'");
+                                    try
+                                    {                             // ✅ DEPLOYMENT MODE: Skip file writes
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 6.1: ❌ SKIPPED - Category mismatch\n");
+                                        }
+                                    }
+                                    catch { }
+                                    SkippedCount++;
+                                    sleeveTimer.Stop();
+                                    continue;
+                                }
+
+                                try
+                                {                         // ✅ DEPLOYMENT MODE: Skip file writes
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 7: Category match passed, creating MEP size\n");
+                                    }
+                                }
+                                catch { }
+
+                                // ✅ PERFORMANCE OPTIMIZATION: Removed excessive file logging
+
+                                // ⏱️ TIMING: MEP size creation
+                                var mepSizeTimer = System.Diagnostics.Stopwatch.StartNew();
+                                // ⚠️ ZERO LINKED FILE ACCESS - use pre-calculated MEP size from ClashZone
+                                var mepSize = new MepElementSize
+                                {
+                                    Width = clashZone.MepElementWidth,
+                                    Height = clashZone.MepElementHeight,
+                                    Diameter = clashZone.MepElementWidth, // For round, width = diameter
+                                    Shape = clashZone.DuctShape
+                                };
+                                mepSizeTimer.Stop();
+                                try
+                                {                         // ✅ DEPLOYMENT MODE: Skip file writes
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 8: MEP size created: W={mepSize.Width}, H={mepSize.Height}, D={mepSize.Diameter}, Shape={mepSize.Shape}\n");
+                                    }
+                                }
+                                catch { }
+
+                                // ⚠️ SPECIAL HANDLING & SIZING ORDER:
+                                // 1) Pipes (host-agnostic), 2) Dampers, 3) Cable trays, 4) Ducts/default
+                                XYZ placementOffset = XYZ.Zero;
+                                double finalWidth = 0.0, finalHeight = 0.0, finalDiameter = 0.0;
+
+                                // ✅ CRITICAL FIX: PATH 1 (Replay) should use existing sleeve size and skip clearance calculation
+                                // For PATH 1, sleeve size data is already in ClashZone (SleeveWidth, SleeveHeight, SleeveDiameter)
+                                // No need to calculate clearance - just use existing data
+                                if (_isReplayPath && clashZone.SleeveWidth > 0 && clashZone.SleeveHeight > 0)
+                                {
+                                    // ✅ PATH 1: Use existing sleeve size from ClashZone (already includes clearance)
+                                    finalWidth = clashZone.SleeveWidth;
+                                    finalHeight = clashZone.SleeveHeight;
+                                    finalDiameter = clashZone.SleeveDiameter > 0 ? clashZone.SleeveDiameter : Math.Max(finalWidth, finalHeight);
+
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        DebugLogger.Info($"[UniversalSleevePlacer] ✅ PATH 1 (Replay): Using existing sleeve size - W={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}mm, H={RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm, D={RevitUnitConversionService.Instance.FromInternalMillimeters(finalDiameter):F1}mm");
+                                        File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9: ✅ PATH 1 (Replay) - Using existing sleeve size (skipping clearance calculation)\n");
+                                    }
+                                }
+                                else if (_isReplayPath)
+                                {
+                                    // ✅ PATH 1 but missing sleeve size data - log warning
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ PATH 1 (Replay): Missing sleeve size data for Zone={clashZone.Id} - SleeveWidth={clashZone.SleeveWidth}, SleeveHeight={clashZone.SleeveHeight}. Falling back to PATH 2/3 clearance calculation.");
+                                        File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9: ⚠️ PATH 1 (Replay) - Missing sleeve size, falling back to clearance calculation\n");
+                                    }
                                 }
                                 else
                                 {
-                                    var firstSymbol = allSymbols.FirstOrDefault();
-                                    if (firstSymbol != null)
+                                    // ✅ PATH 2/3: Calculate clearance (normal flow)
+                                    // ⏱️ TIMING: Clearance calculation
+                                    var clearanceTimer = System.Diagnostics.Stopwatch.StartNew();
+                                    // 🛡️ ARCHITECTURE FIX: Use CONDITIONS service for ALL clearance types
+                                    // This ensures consistent architecture: CONDITIONS XML → UniversalSleevePlacerService
+                                    // Raw dimensions from ClashZone + Clearance from CONDITIONS = Final dimensions
+
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[UniversalSleevePlacer] CLEARANCE CALCULATION START: Category='{clashZone.MepElementCategory}', Strategy={(_strategy?.GetType().Name ?? "NULL")}, Path={(_isReplayPath ? "Replay" : "Sizing/Detection")}");
+
+                                    bool isPipesCategory = string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
+
+                                    // ✅ PERFORMANCE OPTIMIZATION: Removed excessive file logging
+
+                                    if (isPipesCategory)
                                     {
-                                        try
+                                        // ✅ Pipes: Raw dimensions + CONDITIONS clearance
+                                        var rawDiameter = clashZone.MepElementWidth; // Raw diameter from ClashZone
+                                        var clearance = GetClearanceFromConditions("Pipes", mepSize);
+                                        finalDiameter = rawDiameter + (2 * clearance);
+                                        finalWidth = finalDiameter;
+                                        finalHeight = finalDiameter;
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[UniversalSleevePlacer] PIPE: Raw={RevitUnitConversionService.Instance.FromInternalMillimeters(rawDiameter):F1}mm + Clearance={RevitUnitConversionService.Instance.FromInternalMillimeters(clearance):F1}mm = Final={RevitUnitConversionService.Instance.FromInternalMillimeters(finalDiameter):F1}mm");
+                                    }
+                                    else if (_strategy is DamperPlacementStrategy damperStrategy)
+                                    {
+                                        // ✅ Fire dampers: Raw dimensions + CONDITIONS clearance via strategy
+                                        var rawWidth = clashZone.MepElementWidth;
+                                        var rawHeight = clashZone.MepElementHeight;
+
+                                        // Get offset and final dimensions from strategy (uses CONDITIONS)
+                                        var adj = damperStrategy.GetDamperPlacementAdjustment(clashZone, _conditions);
+                                        placementOffset = adj.offsetVector;
+                                        finalWidth = adj.finalWidth;
+                                        finalHeight = adj.finalHeight;
+                                        finalDiameter = finalWidth; // Not used for dampers (rectangular only)
+
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[UniversalSleevePlacer] DAMPER: Raw={RevitUnitConversionService.Instance.FromInternalMillimeters(rawWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(rawHeight):F1}mm → Final={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm");
+                                    }
+
+                                    // ✅ DEBUG: Log strategy information
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[UniversalSleevePlacer] Strategy Type: {_strategy.GetType().Name}");
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[UniversalSleevePlacer] Strategy Category: {_strategy.GetCategoryName()}");
+
+                                    if (_strategy is DuctPlacementStrategy ductStrategy)
+                                    {
+                                        // ✅ Ducts: Raw dimensions + CONDITIONS clearance via strategy
+                                        var rawWidth = clashZone.MepElementWidth;
+                                        var rawHeight = clashZone.MepElementHeight;
+
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[UniversalSleevePlacer] DUCT CALCULATION START: Raw dimensions {RevitUnitConversionService.Instance.FromInternalMillimeters(rawWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(rawHeight):F1}mm");
+
+                                        var clearance = GetClearanceFromConditions("Ducts", mepSize);
+                                        finalWidth = rawWidth + (2 * clearance);
+                                        finalHeight = rawHeight + (2 * clearance);
+                                        finalDiameter = finalWidth; // For round elements
+
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[UniversalSleevePlacer] DUCT: Raw={RevitUnitConversionService.Instance.FromInternalMillimeters(rawWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(rawHeight):F1}mm + Clearance={RevitUnitConversionService.Instance.FromInternalMillimeters(clearance):F1}mm = Final={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm");
+                                    }
+                                    else if (_strategy is CableTrayPlacementStrategy cableTrayStrategy)
+                                    {
+                                        // ✅ PERFORMANCE OPTIMIZATION: Removed excessive file logging
+
+                                        // ✅ Cable trays: Raw dimensions + UI/XML clearance via strategy
+                                        var rawWidth = clashZone.MepElementWidth;
+                                        var rawHeight = clashZone.MepElementHeight;
+
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY STRATEGY: Raw={RevitUnitConversionService.Instance.FromInternalMillimeters(rawWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(rawHeight):F1}mm");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY STRATEGY: UI Clearance Settings Count={_clearanceSettings.Count}");
+
+                                        // Get offset and final dimensions from strategy (uses UI settings first, then CONDITIONS)
+                                        var adj2 = cableTrayStrategy.GetCableTrayPlacementAdjustment(clashZone, _conditions, _clearanceSettings);
+                                        placementOffset = adj2.offsetVector;
+                                        finalWidth = adj2.finalWidth;
+                                        finalHeight = adj2.finalHeight;
+
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY STRATEGY: Final={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm");
+                                        finalDiameter = finalWidth; // Not used for cable trays (rectangular only)
+
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[UniversalSleevePlacer] CABLE TRAY: Raw={RevitUnitConversionService.Instance.FromInternalMillimeters(rawWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(rawHeight):F1}mm → Final={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm");
+                                    }
+                                    else
+                                    {
+                                        // ✅ PERFORMANCE OPTIMIZATION: Removed excessive file logging
+                                        // 🔥 FALLBACK: Use raw dimensions + default clearance if no strategy matches
+                                        var rawWidth = clashZone.MepElementWidth;
+                                        var rawHeight = clashZone.MepElementHeight;
+                                        var defaultClearance = RevitUnitConversionService.Instance.ToInternalMillimeters(50); // 50mm default
+
+                                        finalWidth = rawWidth + (2 * defaultClearance);
+                                        finalHeight = rawHeight + (2 * defaultClearance);
+                                        finalDiameter = Math.Max(finalWidth, finalHeight);
+
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ NO STRATEGY MATCHED for ClashZone {clashZone.Id} - Using fallback dimensions");
+                                    }
+                                    clearanceTimer.Stop();
+                                    totalClearanceTime += clearanceTimer.Elapsed;
+                                    sleeveLog.AppendLine($"  Clearance calc: {clearanceTimer.ElapsedMilliseconds}ms");
+
+                                    try
+                                    {                         // ✅ DEPLOYMENT MODE: Skip file writes
+                                        if (!DeploymentConfiguration.DeploymentMode)
                                         {
-                                            firstSymbol.Activate();
-                                            familySymbol = firstSymbol;
+                                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9: Clearance calculation completed for PATH 2/3\n");
                                         }
-                                        catch (Exception reactivationEx)
+                                    }
+                                    catch { }
+                                }
+
+                                // ⚠️ REMOVED: Old width/height swapping logic that was causing double-swapping
+                                // The new logic later in the method (lines 660-665) handles this correctly
+                                // by ensuring the longer dimension becomes width, not just swapping blindly
+
+                                try
+                                {                         // ✅ DEPLOYMENT MODE: Skip file writes
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 10: Final dimensions determined, selecting family\n");
+                                    }
+                                }
+                                catch { }
+
+                                // ⏱️ TIMING: Family selection and loading
+                                var familyTimer = System.Diagnostics.Stopwatch.StartNew();
+                                // Select universal family
+                                var (familyName, isCircular) = SelectUniversalFamily(clashZone, mepSize);
+                                try
+                                {                         // ✅ DEPLOYMENT MODE: Skip file writes
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 11: Family selected: '{familyName}', IsCircular={isCircular}\n");
+                                    }
+                                }
+                                catch { }
+
+                                var familySymbol = LoadFamilySymbol(familyName);
+                                familyTimer.Stop();
+                                totalFamilyLoadTime += familyTimer.Elapsed;
+                                sleeveLog.AppendLine($"  Family load: {familyTimer.ElapsedMilliseconds}ms");
+
+                                bool shouldSkipSleeve = false;
+
+                                if (familySymbol == null)
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Error($"[UniversalSleevePlacer] Family '{familyName}' not found");
+                                    try
+                                    {                             // ✅ DEPLOYMENT MODE: Skip file writes
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 11.1: ❌ ERROR - Family '{familyName}' not found\n");
+                                        }
+                                    }
+                                    catch { }
+                                    ErrorCount++;
+                                    continue;
+                                }
+                                try
+                                {                         // ✅ DEPLOYMENT MODE: Skip file writes
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 12: ✅ Family symbol loaded successfully\n");
+                                    }
+                                }
+                                catch { }
+
+                                // ✅ SIMPLIFIED: Activate symbol if needed - don't care about type name, just activate any type
+                                if (!familySymbol.IsActive)
+                                {
+                                    try
+                                    {
+                                        familySymbol.Activate();
+                                    }
+                                    catch (Exception activationEx)
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Warning($"[UniversalSleevePlacer] Failed to activate family '{familyName}': {activationEx.Message}");
+
+                                        var family = familySymbol.Family;
+                                        var allSymbols = family.GetFamilySymbolIds()
+                                            .Select(id => _doc.GetElement(id) as FamilySymbol)
+                                            .Where(s => s != null)
+                                            .ToList();
+
+                                        var activeSymbol = allSymbols.FirstOrDefault(s => s.IsActive);
+                                        if (activeSymbol != null)
+                                        {
+                                            familySymbol = activeSymbol;
+                                        }
+                                        else
+                                        {
+                                            var firstSymbol = allSymbols.FirstOrDefault();
+                                            if (firstSymbol != null)
+                                            {
+                                                try
+                                                {
+                                                    firstSymbol.Activate();
+                                                    familySymbol = firstSymbol;
+                                                }
+                                                catch (Exception reactivationEx)
+                                                {
+                                                    if (!DeploymentConfiguration.DeploymentMode)
+                                                        DebugLogger.Error($"[UniversalSleevePlacer] Unable to activate any type in family '{familyName}': {reactivationEx.Message}");
+                                                    ErrorCount++;
+                                                    shouldSkipSleeve = true;
+                                                }
+                                            }
+                                            else
+                                            {
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                    DebugLogger.Error($"[UniversalSleevePlacer] Family '{familyName}' does not contain any symbols.");
+                                                ErrorCount++;
+                                                shouldSkipSleeve = true;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (shouldSkipSleeve)
+                                {
+                                    continue;
+                                }
+
+                                // ✅ SLEEVE PLACEMENT FLOW - Step 2: Determine placement origin
+                                bool hasSnapshotData = HasSnapshotPlacementData(clashZone);
+                                bool usingXmlSnapshot = false;
+                                bool usingDbPlacementPoint = false;
+                                XYZ placementPointChosen;
+
+                                if (_isReplayPath)
+                                {
+                                    // ✅ PATH 1: Prioritize DB placement point (from database), fallback to XML snapshot, then intersection point
+                                    var dbPlacementPoint = clashZone.SleevePlacementPoint;
+
+                                    if (dbPlacementPoint != null && HasValidPlacementCoordinate(dbPlacementPoint))
+                                    {
+                                        // ✅ Use DB placement point (from database)
+                                        placementPointChosen = dbPlacementPoint;
+                                        usingDbPlacementPoint = true;
+                                        clashZone.IntersectionPoint = placementPointChosen;
+                                        clashZone.IntersectionPointX = placementPointChosen.X;
+                                        clashZone.IntersectionPointY = placementPointChosen.Y;
+                                        clashZone.IntersectionPointZ = placementPointChosen.Z;
+
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            DebugLogger.Info($"[PLACEMENT-SOURCE] Zone={clashZone.Id}: Using DB placement point (from database)");
+                                        }
+                                    }
+                                    else if (hasSnapshotData)
+                                    {
+                                        // ✅ Fallback to XML snapshot if DB placement point is not available
+                                        placementPointChosen = GetSnapshotPlacementPoint(clashZone);
+
+                                        if (HasValidPlacementCoordinate(placementPointChosen))
+                                        {
+                                            usingXmlSnapshot = true;
+                                            clashZone.IntersectionPoint = placementPointChosen;
+                                            clashZone.IntersectionPointX = placementPointChosen.X;
+                                            clashZone.IntersectionPointY = placementPointChosen.Y;
+                                            clashZone.IntersectionPointZ = placementPointChosen.Z;
+
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                            {
+                                                DebugLogger.Warning($"[PLACEMENT-SOURCE] Zone={clashZone.Id}: Using XML snapshot (DB placement point not available)");
+                                            }
+                                        }
+                                        else
+                                        {
+                                            // Fallback: use intersection point
+                                            placementPointChosen = clashZone.IntersectionPoint ??
+                                                                   new XYZ(clashZone.IntersectionPointX, clashZone.IntersectionPointY, clashZone.IntersectionPointZ);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // Fallback: use intersection point
+                                        placementPointChosen = clashZone.IntersectionPoint ??
+                                                               new XYZ(clashZone.IntersectionPointX, clashZone.IntersectionPointY, clashZone.IntersectionPointZ);
+                                    }
+                                }
+                                else
+                                {
+                                    if (clashZone.IntersectionPoint == null)
+                                    {
+                                        placementPointChosen = new XYZ(clashZone.IntersectionPointX, clashZone.IntersectionPointY, clashZone.IntersectionPointZ);
+                                        clashZone.IntersectionPoint = placementPointChosen; // Rehydrate for downstream code
+                                    }
+                                    else
+                                    {
+                                        placementPointChosen = clashZone.IntersectionPoint;
+                                    }
+                                }
+
+                                if (!DeploymentConfiguration.DeploymentMode && PlacedCount < 5)
+                                {
+                                    DebugLogger.Info($"[SLEEVE-PLACEMENT-FLOW] Step 2: Placement data snapshot → HasSnapshot={hasSnapshotData}, ReplayPath={_isReplayPath}");
+                                }
+
+                                // Validate placement point has meaningful coordinates
+                                if (!HasValidPlacementCoordinate(placementPointChosen))
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Error($"[UniversalSleevePlacer] ❌ CRITICAL: Cannot place sleeve for Zone {clashZone.Id} - Placement point is (0,0,0)!");
+                                    try { File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 2.3: ❌ SKIPPED - Placement point is (0,0,0)\n"); } catch { }
+                                    SkippedCount++;
+                                    sleeveTimer.Stop();
+                                    continue;
+                                }
+
+                                // Keep SleevePlacementPoint in sync (for clustering compatibility, but for individual sleeves it's same as IntersectionPoint)
+                                clashZone.SleevePlacementPoint = placementPointChosen;
+                                clashZone.SleevePlacementPointX = placementPointChosen.X;
+                                clashZone.SleevePlacementPointY = placementPointChosen.Y;
+                                clashZone.SleevePlacementPointZ = placementPointChosen.Z;
+
+                                // ✅ CRITICAL DEBUG: Log placement point for each zone to detect same-point issue (using SafeFileLogger path)
+                                try
+                                {
+                                    // DEPLOYMENT MODE: Skip file writes
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                                        var placementSource = _isReplayPath
+                                            ? (usingDbPlacementPoint ? "DB placement point (from database)" : (usingXmlSnapshot ? "XML snapshot (placement point from XML)" : "Intersection point (fallback)"))
+                                            : "Recomputed intersection";
+
+                                        // ✅ DIAGNOSTIC: Log data source for placement point
+                                        var dbPlacementPoint = clashZone.SleevePlacementPoint;
+                                        var dbPlacementPointStr = dbPlacementPoint != null ? $"DB_SPP=({dbPlacementPoint.X:F3},{dbPlacementPoint.Y:F3},{dbPlacementPoint.Z:F3})" : "DB_SPP=null";
+
+                                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] [PLACEMENT-ORIGIN] Zone={clashZone.Id}, Source={placementSource}, Point=({placementPointChosen?.X:F3},{placementPointChosen?.Y:F3},{placementPointChosen?.Z:F3}), {dbPlacementPointStr}, XML_SPP=({clashZone.SleevePlacementPointX:F3},{clashZone.SleevePlacementPointY:F3},{clashZone.SleevePlacementPointZ:F3})\n");
+                                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] PLACEMENT: Zone={clashZone.Id}, MEP={clashZone.MepElementIdValue}, HOST={clashZone.StructuralElementIdValue}, Point=({placementPointChosen?.X:F3},{placementPointChosen?.Y:F3},{placementPointChosen?.Z:F3}), SPP_XML=({clashZone.SleevePlacementPointX:F3},{clashZone.SleevePlacementPointY:F3},{clashZone.SleevePlacementPointZ:F3}), IP=({clashZone.IntersectionPointX:F3},{clashZone.IntersectionPointY:F3},{clashZone.IntersectionPointZ:F3})\n");
+
+                                        // ✅ DIAGNOSTIC: Log if using XML snapshot when DB has placement point
+                                        if (usingXmlSnapshot && dbPlacementPoint != null && HasValidPlacementCoordinate(dbPlacementPoint))
                                         {
                                             if (!DeploymentConfiguration.DeploymentMode)
-                                                DebugLogger.Error($"[UniversalSleevePlacer] Unable to activate any type in family '{familyName}': {reactivationEx.Message}");
+                                            {
+                                                DebugLogger.Warning($"[PLACEMENT-SOURCE] ⚠️ Zone={clashZone.Id}: Using XML snapshot placement point, but DB has valid placement point! XML=({clashZone.SleevePlacementPointX:F3},{clashZone.SleevePlacementPointY:F3},{clashZone.SleevePlacementPointZ:F3}), DB=({dbPlacementPoint.X:F3},{dbPlacementPoint.Y:F3},{dbPlacementPoint.Z:F3})");
+                                            }
+                                        }
+                                    }
+                                }
+                                catch (Exception logEx)
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Error($"[PLACEMENT-LOG-ERROR] {logEx.Message}");
+                                }
+
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[UniversalSleevePlacer] Using exact intersection point {placementPointChosen} for {clashZone.MepElementCategory} on {clashZone.StructuralElementType}");
+
+                                XYZ adjustedPlacementPoint = placementPointChosen + placementOffset;
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[UniversalSleevePlacer] Using placement point {placementPointChosen} → adjusted {adjustedPlacementPoint}");
+
+                                if (placementOffset.GetLength() > 0.001)
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[UniversalSleevePlacer] Applied offset {placementOffset} to placement point");
+                                }
+
+                                // ⏱️ TIMING: Level finding
+                                var levelTimer = System.Diagnostics.Stopwatch.StartNew();
+                                // ✅ PERFORMANCE OPTIMIZATION: Use cached levels list and select level based on structural element type
+                                Level nearestLevel = null;
+
+                                // ✅ CORRECT: For walls and framing, find nearest BOTTOM level (where wall/framing starts)
+                                // For floors, find nearest level overall (floor can span multiple levels)
+                                bool isWallOrFraming = clashZone.StructuralElementType == "Wall" ||
+                                                      clashZone.StructuralElementType == "Walls" ||
+                                                      clashZone.StructuralElementType == "Structural Framing";
+
+                                if (isWallOrFraming)
+                                {
+                                    // Find nearest level BELOW or AT the placement point (bottom level for wall/framing)
+                                    double placementZ = adjustedPlacementPoint.Z;
+                                    Level nearestBottomLevel = null;
+                                    double minDistanceBelow = double.MaxValue;
+
+                                    foreach (var level in cachedLevels)
+                                    {
+                                        // Only consider levels at or below the placement point
+                                        if (level.Elevation <= placementZ)
+                                        {
+                                            var distance = placementZ - level.Elevation; // Distance from placement to level below
+                                            if (distance < minDistanceBelow)
+                                            {
+                                                minDistanceBelow = distance;
+                                                nearestBottomLevel = level;
+                                            }
+                                        }
+                                    }
+
+                                    nearestLevel = nearestBottomLevel;
+
+                                    if (nearestLevel == null)
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Warning($"[UniversalSleevePlacer] No level found BELOW placement point Z={placementZ:F3} for {clashZone.StructuralElementType}");
+                                        SkippedCount++;
+                                        sleeveTimer.Stop();
+                                        continue;
+                                    }
+
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[UniversalSleevePlacer] Found bottom level '{nearestLevel.Name}' (Elevation={nearestLevel.Elevation:F3}) for {clashZone.StructuralElementType} at Z={placementZ:F3}");
+                                }
+                                else
+                                {
+                                    // For floors: find nearest level overall (any direction)
+                                    double minDistance = double.MaxValue;
+                                    foreach (var level in cachedLevels)
+                                    {
+                                        var distance = Math.Abs(level.Elevation - adjustedPlacementPoint.Z);
+                                        if (distance < minDistance)
+                                        {
+                                            minDistance = distance;
+                                            nearestLevel = level;
+                                        }
+                                    }
+
+                                    if (nearestLevel == null)
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Warning($"[UniversalSleevePlacer] No level found for placement point");
+                                        SkippedCount++;
+                                        sleeveTimer.Stop();
+                                        continue;
+                                    }
+
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[UniversalSleevePlacer] Found nearest level '{nearestLevel.Name}' (Elevation={nearestLevel.Elevation:F3}) for Floor at Z={adjustedPlacementPoint.Z:F3}");
+                                }
+                                levelTimer.Stop();
+                                totalLevelFindTime += levelTimer.Elapsed;
+                                sleeveLog.AppendLine($"  Level find: {levelTimer.ElapsedMilliseconds}ms");
+
+                                // DEPLOYMENT MODE: Skip file writes
+                                try
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 13: About to create sleeve at point=({adjustedPlacementPoint.X:F3},{adjustedPlacementPoint.Y:F3},{adjustedPlacementPoint.Z:F3}), Level='{nearestLevel?.Name ?? "NULL"}'\n");
+                                    }
+                                }
+                                catch { }
+
+                                // ✅ SLEEVE PLACEMENT FLOW - Step 3: Place sleeve using data from Filter XML
+                                // Uses placement coordinates, family selection, and dimensions from Filter XML
+                                // ⏱️ TIMING: Sleeve creation
+                                var createTimer = System.Diagnostics.Stopwatch.StartNew();
+
+                                if (!DeploymentConfiguration.DeploymentMode && PlacedCount < 5)
+                                    DebugLogger.Info($"[SLEEVE-PLACEMENT-FLOW] Step 3: Placing sleeve at ({adjustedPlacementPoint.X:F3},{adjustedPlacementPoint.Y:F3},{adjustedPlacementPoint.Z:F3}) " +
+                                        $"using family '{familySymbol.Family.Name}' with dimensions W={finalWidth:F3}, H={finalHeight:F3}");
+
+                                // Place sleeve instance (NO HOST PARAMETER - workplane-based families)
+                                // ✅ Works with linked structural elements because no host reference needed
+                                FamilyInstance sleeveInstance = null;
+                                try
+                                {
+                                    // ✅ STEP 3: Create sleeve instance using placement data from Filter XML
+                                    sleeveInstance = _doc.Create.NewFamilyInstance(
+                                        adjustedPlacementPoint,  // From Filter XML (IntersectionPoint)
+                                        familySymbol,            // Selected based on host type from Filter XML
+                                        nearestLevel,
+                                        StructuralType.NonStructural);
+                                    try
+                                    {                             // ✅ DEPLOYMENT MODE: Skip file writes
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 14: ✅ Sleeve instance created! ID={sleeveInstance?.Id?.IntegerValue ?? -1}\n");
+                                        }
+                                    }
+                                    catch { }
+                                }
+                                catch (Exception createEx)
+                                {
+                                    try
+                                    {                             // ✅ DEPLOYMENT MODE: Skip file writes
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 14.1: ❌ EXCEPTION during sleeve creation: {createEx.Message}\n{createEx.StackTrace}\n");
+                                        }
+                                    }
+                                    catch { }
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Error($"[UniversalSleevePlacer] Exception creating sleeve: {createEx.Message}");
+                                    ErrorCount++;
+                                    singleSleeveTracker.SetItemCount(1); // Track error as 1 item
+                                    sleeveTimer.Stop();
+                                    continue;
+                                }
+
+                                createTimer.Stop();
+                                totalSleeveCreateTime += createTimer.Elapsed;
+                                sleeveLog.AppendLine($"  Sleeve create: {createTimer.ElapsedMilliseconds}ms");
+
+                                if (sleeveInstance == null)
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Error($"[UniversalSleevePlacer] Failed to create sleeve instance");
+                                    try
+                                    {                             // ✅ DEPLOYMENT MODE: Skip file writes
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 14.2: ❌ ERROR - Sleeve instance is NULL after creation\n");
+                                        }
+                                    }
+                                    catch { }
+                                    ErrorCount++;
+                                    singleSleeveTracker.SetItemCount(1); // Track error as 1 item
+                                    sleeveTimer.Stop();
+                                    continue;
+                                }
+
+                                // ⏱️ TIMING: Parameter setting
+                                var parameterTimer = System.Diagnostics.Stopwatch.StartNew();
+                                // Set parameters
+                                SetSleeveParameters(sleeveInstance, mepSize, finalWidth, finalHeight, finalDiameter, clashZone, isCircular);
+
+                                // Set sleeve metadata for fast parameter transfer
+                                SetSleeveMetadata(sleeveInstance, clashZone);
+
+                                // ✅ CRITICAL: Set ClashZone_GUID parameter with STABLE GUID per 3-point combo
+                                // GUID is looked up from Global XML first (if entry exists, use that GUID)
+                                // If not found, use clashZone.Id (stable per 3-point combo)
+                                // This ensures GUID is unique and stable across multiple detection runs
+                                SetClashZoneGuidOnSleeveStable(sleeveInstance, clashZone);
+
+                                // ⚠️ CRITICAL: Set orientation (rotation for floors, HostOrientation parameter for walls/framing)
+                                SetSleeveOrientation(sleeveInstance, clashZone);
+                                parameterTimer.Stop();
+                                totalParameterTime += parameterTimer.Elapsed;
+                                sleeveLog.AppendLine($"  Parameters: {parameterTimer.ElapsedMilliseconds}ms");
+
+                                // ✅ PERFORMANCE OPTIMIZATION: Removed excessive file logging
+
+                                // ⏱️ TIMING: Coordinate validation and update
+                                var validationTimer = System.Diagnostics.Stopwatch.StartNew();
+                                // Ensure final location matches the intended adjusted placement point (some families snap to level origin)
+                                try
+                                {
+                                    var loc = sleeveInstance.Location as LocationPoint;
+                                    if (loc != null)
+                                    {
+                                        var currentPt = loc.Point;
+                                        if (currentPt.DistanceTo(adjustedPlacementPoint) > 0.0001)
+                                        {
+                                            var delta = adjustedPlacementPoint - currentPt;
+                                            loc.Move(delta);
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                DebugLogger.Info($"[UniversalSleevePlacer] Moved sleeve {sleeveInstance.Id} to exact placement point {adjustedPlacementPoint} (from {currentPt})");
+                                        }
+                                        else
+                                        {
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                DebugLogger.Info($"[UniversalSleevePlacer] Sleeve {sleeveInstance.Id} already at desired point {currentPt}");
+                                        }
+
+                                        // ✅ CRITICAL FIX: Update ClashZone with actual sleeve placement coordinates
+                                        // This ensures PreCalculatedClusterService uses real sleeve locations for proximity calculation
+                                        clashZone.SleevePlacementPoint = currentPt;
+                                        clashZone.SleevePlacementPointX = currentPt.X;  // XML serializable
+                                        clashZone.SleevePlacementPointY = currentPt.Y;  // XML serializable
+                                        clashZone.SleevePlacementPointZ = currentPt.Z;  // XML serializable
+
+                                        // ✅ CRITICAL: Save active document coordinates for proximity calculation
+                                        clashZone.SleevePlacementPointActiveDocument = currentPt;
+                                        clashZone.SleevePlacementPointActiveDocumentX = currentPt.X;  // XML serializable
+                                        clashZone.SleevePlacementPointActiveDocumentY = currentPt.Y;  // XML serializable
+                                        clashZone.SleevePlacementPointActiveDocumentZ = currentPt.Z;  // XML serializable
+
+                                        // ✅ PERFORMANCE OPTIMIZATION: Removed excessive file logging
+
+                                        // 🔥 CRITICAL VALIDATION: Check if dimensions are valid before saving
+                                        if (finalWidth <= 0 || finalHeight <= 0 || finalDiameter <= 0)
+                                        {
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                DebugLogger.Error($"[UniversalSleevePlacer] ❌ INVALID DIMENSIONS DETECTED for sleeve {sleeveInstance.Id.IntegerValue}!");
                                             ErrorCount++;
-                                            shouldSkipSleeve = true;
+                                            sleeveTimer.Stop();
+                                            validationTimer.Stop();
+                                            continue;
+                                        }
+
+                                        clashZone.SleeveWidth = finalWidth;
+                                        clashZone.SleeveHeight = finalHeight;
+                                        clashZone.SleeveDiameter = finalDiameter;
+
+                                        // ✅ PERFORMANCE OPTIMIZATION: Defer bounding box retrieval until after batch regeneration
+                                        // Store sleeve data for batch processing instead of immediate bounding box call
+                                        placedSleeveIds.Add(sleeveInstance.Id);
+                                        placedSleeveData.Add((sleeveInstance, clashZone, finalWidth, finalHeight, finalDiameter));
+
+                                        // ✅ CRITICAL FIX: Set the actual Revit element ID immediately (needed for validation)
+                                        clashZone.SleeveInstanceId = sleeveInstance.Id.IntegerValue;
+
+                                        // ⚠️ NOTE: Bounding box will be retrieved after batch regeneration (see batch processing at end of method)
+
+                                        // ✅ PERFORMANCE OPTIMIZATION: Batch XML updates instead of updating per sleeve
+                                        // XML will be updated once at the end of placement via orchestrator
+
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            DebugLogger.Info($"[UniversalSleevePlacer] Placed sleeve {sleeveInstance.Id} for ClashZone {clashZone.Id}, W={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}mm, H={RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm (bbox deferred)");
+                                            try
+                                            {
+                                                var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                                                System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] [SLEEVE-ID-SET] ClashZone {clashZone.Id} ← SleeveId {clashZone.SleeveInstanceId}\n");
+                                            }
+                                            catch { }
                                         }
                                     }
                                     else
                                     {
                                         if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Error($"[UniversalSleevePlacer] Family '{familyName}' does not contain any symbols.");
-                                        ErrorCount++;
-                                        shouldSkipSleeve = true;
+                                            DebugLogger.Error($"[UniversalSleevePlacer] ❌ Failed to get LocationPoint for sleeve {sleeveInstance.Id} - cannot update coordinates!");
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[COORD-UPDATE-FAIL] Sleeve {sleeveInstance.Id.IntegerValue}: LocationPoint is NULL ❌\n");
                                     }
                                 }
-                            }
-                        }
+                                catch (Exception coordEx)
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Error($"[UniversalSleevePlacer] ❌ CRITICAL ERROR updating coordinates for sleeve {sleeveInstance.Id}: {coordEx.Message}");
+                                    if (PlacedCount + SkippedCount < 50) batchLogs.AppendLine($"[COORD-UPDATE-ERROR] Sleeve {sleeveInstance.Id.IntegerValue}: {coordEx.Message}");
+                                }
+                                validationTimer.Stop();
+                                totalValidationTime += validationTimer.Elapsed;
+                                sleeveLog.AppendLine($"  Validation/update: {validationTimer.ElapsedMilliseconds}ms");
 
-                        if (shouldSkipSleeve)
-                        {
-                            continue;
-                        }
-                        
-                        // ✅ SLEEVE PLACEMENT FLOW - Step 2: Determine placement origin
-                        bool hasSnapshotData = HasSnapshotPlacementData(clashZone);
-                        bool usingXmlSnapshot = false;
-                        bool usingDbPlacementPoint = false;
-                        XYZ placementPointChosen;
+                                // Update ClashZone flags
+                                clashZone.IsResolved = true;
+                                clashZone.SleeveInstanceId = sleeveInstance.Id.IntegerValue;
+                                clashZone.SleeveFamilyName = familySymbol.Family.Name;
 
-                        if (_isReplayPath)
-                        {
-                            // ✅ PATH 1: Prioritize DB placement point (from database), fallback to XML snapshot, then intersection point
-                            var dbPlacementPoint = clashZone.SleevePlacementPoint;
-                            
-                            if (dbPlacementPoint != null && HasValidPlacementCoordinate(dbPlacementPoint))
-                            {
-                                // ✅ Use DB placement point (from database)
-                                placementPointChosen = dbPlacementPoint;
-                                usingDbPlacementPoint = true;
-                                clashZone.IntersectionPoint = placementPointChosen;
-                                clashZone.IntersectionPointX = placementPointChosen.X;
-                                clashZone.IntersectionPointY = placementPointChosen.Y;
-                                clashZone.IntersectionPointZ = placementPointChosen.Z;
-                                
+                                // ✅ NOTE: Global XML update happens in batch at end (line ~1238) via GlobalIndexService.UpsertFlagsWithIds()
+                                // This ensures all placed sleeves are updated together efficiently
                                 if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[GLOBAL-XML] Individual sleeve {sleeveInstance.Id.IntegerValue} placed for ClashZone {clashZone.Id} - will be saved to Global XML in batch");
+
+                                // ✅ PERFORMANCE OPTIMIZATION: Batch logging instead of individual file writes
+                                if (PlacedCount < 50) batchLogs.AppendLine($"[SLEEVE-PLACED] ClashZone {clashZone.Id}: SleeveInstanceId = {clashZone.SleeveInstanceId}, RevitElementId = {sleeveInstance.Id.IntegerValue}");
+
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[UniversalSleevePlacer] ✅ SLEEVE PLACED: ClashZone {clashZone.Id} → SleeveInstanceId = {clashZone.SleeveInstanceId} (Revit: {sleeveInstance.Id.IntegerValue})");
+
+                                // ✅ CRITICAL: SleevePlacementPoint is already set to actual sleeve location above
+                                // DO NOT overwrite it with adjustedPlacementPoint - we need the REAL coordinates for clustering
+
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[UniversalSleevePlacer] Saved sleeve placement point: {adjustedPlacementPoint}");
+
+                                // ⏱️ TIMING: Stop per-sleeve timer and log details
+                                sleeveTimer.Stop();
+                                totalPlacementTime += sleeveTimer.Elapsed;
+                                sleeveLog.AppendLine($"  TOTAL: {sleeveTimer.ElapsedMilliseconds}ms");
+
+                                // Log per-sleeve timing details (first 10 sleeves for detailed analysis)
+                                if (PlacedCount < 10)
                                 {
-                                    DebugLogger.Info($"[PLACEMENT-SOURCE] Zone={clashZone.Id}: Using DB placement point (from database)");
+                                    SafeFileLogger.SafeAppendText("sleeve_placement_timing.log",
+                                        $"[SLEEVE {PlacedCount + 1}] ClashZone {clashZone.Id} - {sleeveLog.ToString().TrimEnd()}");
                                 }
+
+                                PlacedCount++;
+
+                                // ✅ PERFORMANCE: Track successful placement
+                                singleSleeveTracker.SetItemCount(1); // 1 sleeve placed
+
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[UniversalSleevePlacer] ✓ Placed {_strategy.GetCategoryName()} sleeve {sleeveInstance.Id} for ClashZone {clashZone.Id} at {adjustedPlacementPoint} ({sleeveTimer.ElapsedMilliseconds}ms)");
                             }
-                            else if (hasSnapshotData)
+                            catch (Exception ex)
                             {
-                                // ✅ Fallback to XML snapshot if DB placement point is not available
-                                placementPointChosen = GetSnapshotPlacementPoint(clashZone);
-                                
-                                if (HasValidPlacementCoordinate(placementPointChosen))
-                                {
-                                    usingXmlSnapshot = true;
-                                    clashZone.IntersectionPoint = placementPointChosen;
-                                    clashZone.IntersectionPointX = placementPointChosen.X;
-                                    clashZone.IntersectionPointY = placementPointChosen.Y;
-                                    clashZone.IntersectionPointZ = placementPointChosen.Z;
-                                    
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Error($"[UniversalSleevePlacer] Error placing sleeve for ClashZone {clashZone.Id}: {ex.Message}");
+                                try
+                                {                         // ✅ DEPLOYMENT MODE: Skip file writes
                                     if (!DeploymentConfiguration.DeploymentMode)
                                     {
-                                        DebugLogger.Warning($"[PLACEMENT-SOURCE] Zone={clashZone.Id}: Using XML snapshot (DB placement point not available)");
+                                        File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ EXCEPTION IN OUTER TRY-CATCH: Zone={clashZone.Id}, Error={ex.Message}\n{ex.StackTrace}\n");
                                     }
                                 }
-                                else
-                                {
-                                    // Fallback: use intersection point
-                                    placementPointChosen = clashZone.IntersectionPoint ??
-                                                           new XYZ(clashZone.IntersectionPointX, clashZone.IntersectionPointY, clashZone.IntersectionPointZ);
-                                }
+                                catch { }
+                                ErrorCount++;
+                                // Stop timer even on error
+                                if (sleeveTimer.IsRunning) sleeveTimer.Stop();
                             }
-                            else
-                            {
-                                // Fallback: use intersection point
-                                placementPointChosen = clashZone.IntersectionPoint ??
-                                                       new XYZ(clashZone.IntersectionPointX, clashZone.IntersectionPointY, clashZone.IntersectionPointZ);
-                            }
-                        }
-                        else
-                        {
-                        if (clashZone.IntersectionPoint == null)
-                        {
-                            placementPointChosen = new XYZ(clashZone.IntersectionPointX, clashZone.IntersectionPointY, clashZone.IntersectionPointZ);
-                                clashZone.IntersectionPoint = placementPointChosen; // Rehydrate for downstream code
-                        }
-                        else
-                        {
-                            placementPointChosen = clashZone.IntersectionPoint;
-                        }
                         }
 
-                        if (!DeploymentConfiguration.DeploymentMode && PlacedCount < 5)
-                        {
-                            DebugLogger.Info($"[SLEEVE-PLACEMENT-FLOW] Step 2: Placement data snapshot → HasSnapshot={hasSnapshotData}, ReplayPath={_isReplayPath}");
-                        }
-
-                        // Validate placement point has meaningful coordinates
-                        if (!HasValidPlacementCoordinate(placementPointChosen))
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Error($"[UniversalSleevePlacer] ❌ CRITICAL: Cannot place sleeve for Zone {clashZone.Id} - Placement point is (0,0,0)!");
-                            try { File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 2.3: ❌ SKIPPED - Placement point is (0,0,0)\n"); } catch { }
-                            SkippedCount++;
-                            sleeveTimer.Stop();
-                            continue;
-                        }
-                        
-                        // Keep SleevePlacementPoint in sync (for clustering compatibility, but for individual sleeves it's same as IntersectionPoint)
-                        clashZone.SleevePlacementPoint = placementPointChosen;
-                        clashZone.SleevePlacementPointX = placementPointChosen.X;
-                        clashZone.SleevePlacementPointY = placementPointChosen.Y;
-                        clashZone.SleevePlacementPointZ = placementPointChosen.Z;
-                        
-                        // ✅ CRITICAL DEBUG: Log placement point for each zone to detect same-point issue (using SafeFileLogger path)
-                        try 
-                        { 
-                            // DEPLOYMENT MODE: Skip file writes
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
-                                var placementSource = _isReplayPath
-                                    ? (usingDbPlacementPoint ? "DB placement point (from database)" : (usingXmlSnapshot ? "XML snapshot (placement point from XML)" : "Intersection point (fallback)"))
-                                    : "Recomputed intersection";
-                                
-                                // ✅ DIAGNOSTIC: Log data source for placement point
-                                var dbPlacementPoint = clashZone.SleevePlacementPoint;
-                                var dbPlacementPointStr = dbPlacementPoint != null ? $"DB_SPP=({dbPlacementPoint.X:F3},{dbPlacementPoint.Y:F3},{dbPlacementPoint.Z:F3})" : "DB_SPP=null";
-                                
-                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] [PLACEMENT-ORIGIN] Zone={clashZone.Id}, Source={placementSource}, Point=({placementPointChosen?.X:F3},{placementPointChosen?.Y:F3},{placementPointChosen?.Z:F3}), {dbPlacementPointStr}, XML_SPP=({clashZone.SleevePlacementPointX:F3},{clashZone.SleevePlacementPointY:F3},{clashZone.SleevePlacementPointZ:F3})\n");
-                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] PLACEMENT: Zone={clashZone.Id}, MEP={clashZone.MepElementIdValue}, HOST={clashZone.StructuralElementIdValue}, Point=({placementPointChosen?.X:F3},{placementPointChosen?.Y:F3},{placementPointChosen?.Z:F3}), SPP_XML=({clashZone.SleevePlacementPointX:F3},{clashZone.SleevePlacementPointY:F3},{clashZone.SleevePlacementPointZ:F3}), IP=({clashZone.IntersectionPointX:F3},{clashZone.IntersectionPointY:F3},{clashZone.IntersectionPointZ:F3})\n");
-                                
-                                // ✅ DIAGNOSTIC: Log if using XML snapshot when DB has placement point
-                                if (usingXmlSnapshot && dbPlacementPoint != null && HasValidPlacementCoordinate(dbPlacementPoint))
-                                {
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        DebugLogger.Warning($"[PLACEMENT-SOURCE] ⚠️ Zone={clashZone.Id}: Using XML snapshot placement point, but DB has valid placement point! XML=({clashZone.SleevePlacementPointX:F3},{clashZone.SleevePlacementPointY:F3},{clashZone.SleevePlacementPointZ:F3}), DB=({dbPlacementPoint.X:F3},{dbPlacementPoint.Y:F3},{dbPlacementPoint.Z:F3})");
-                                    }
-                                }
-                            }
-                        } 
-                        catch (Exception logEx) 
-                        { 
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Error($"[PLACEMENT-LOG-ERROR] {logEx.Message}"); 
-                        }
-                        
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[UniversalSleevePlacer] Using exact intersection point {placementPointChosen} for {clashZone.MepElementCategory} on {clashZone.StructuralElementType}");
-
-                        XYZ adjustedPlacementPoint = placementPointChosen + placementOffset;
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[UniversalSleevePlacer] Using placement point {placementPointChosen} → adjusted {adjustedPlacementPoint}");
-                        
-                        if (placementOffset.GetLength() > 0.001)
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[UniversalSleevePlacer] Applied offset {placementOffset} to placement point");
-                        }
-                        
-                        // ⏱️ TIMING: Level finding
-                        var levelTimer = System.Diagnostics.Stopwatch.StartNew();
-                        // ✅ PERFORMANCE OPTIMIZATION: Use cached levels list and select level based on structural element type
-                        Level nearestLevel = null;
-                        
-                        // ✅ CORRECT: For walls and framing, find nearest BOTTOM level (where wall/framing starts)
-                        // For floors, find nearest level overall (floor can span multiple levels)
-                        bool isWallOrFraming = clashZone.StructuralElementType == "Wall" || 
-                                              clashZone.StructuralElementType == "Walls" ||
-                                              clashZone.StructuralElementType == "Structural Framing";
-                        
-                        if (isWallOrFraming)
-                        {
-                            // Find nearest level BELOW or AT the placement point (bottom level for wall/framing)
-                            double placementZ = adjustedPlacementPoint.Z;
-                            Level nearestBottomLevel = null;
-                            double minDistanceBelow = double.MaxValue;
-                            
-                            foreach (var level in cachedLevels)
-                            {
-                                // Only consider levels at or below the placement point
-                                if (level.Elevation <= placementZ)
-                                {
-                                    var distance = placementZ - level.Elevation; // Distance from placement to level below
-                                    if (distance < minDistanceBelow)
-                                    {
-                                        minDistanceBelow = distance;
-                                        nearestBottomLevel = level;
-                                    }
-                                }
-                            }
-                            
-                            nearestLevel = nearestBottomLevel;
-                            
-                            if (nearestLevel == null)
-                            {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Warning($"[UniversalSleevePlacer] No level found BELOW placement point Z={placementZ:F3} for {clashZone.StructuralElementType}");
-                                SkippedCount++;
-                                sleeveTimer.Stop();
-                                continue;
-                            }
-                            
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[UniversalSleevePlacer] Found bottom level '{nearestLevel.Name}' (Elevation={nearestLevel.Elevation:F3}) for {clashZone.StructuralElementType} at Z={placementZ:F3}");
-                        }
-                        else
-                        {
-                            // For floors: find nearest level overall (any direction)
-                            double minDistance = double.MaxValue;
-                            foreach (var level in cachedLevels)
-                            {
-                                var distance = Math.Abs(level.Elevation - adjustedPlacementPoint.Z);
-                                if (distance < minDistance)
-                                {
-                                    minDistance = distance;
-                                    nearestLevel = level;
-                                }
-                            }
-                            
-                        if (nearestLevel == null)
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Warning($"[UniversalSleevePlacer] No level found for placement point");
-                            SkippedCount++;
-                                sleeveTimer.Stop();
-                            continue;
-                        }
-                        
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[UniversalSleevePlacer] Found nearest level '{nearestLevel.Name}' (Elevation={nearestLevel.Elevation:F3}) for Floor at Z={adjustedPlacementPoint.Z:F3}");
-                        }
-                        levelTimer.Stop();
-                        totalLevelFindTime += levelTimer.Elapsed;
-                        sleeveLog.AppendLine($"  Level find: {levelTimer.ElapsedMilliseconds}ms");
-                        
-                        // DEPLOYMENT MODE: Skip file writes
-                        try 
-                        { 
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 13: About to create sleeve at point=({adjustedPlacementPoint.X:F3},{adjustedPlacementPoint.Y:F3},{adjustedPlacementPoint.Z:F3}), Level='{nearestLevel?.Name ?? "NULL"}'\n");
-                            }
-                        } catch { }
-                        
-                        // ✅ SLEEVE PLACEMENT FLOW - Step 3: Place sleeve using data from Filter XML
-                        // Uses placement coordinates, family selection, and dimensions from Filter XML
-                        // ⏱️ TIMING: Sleeve creation
-                        var createTimer = System.Diagnostics.Stopwatch.StartNew();
-                        
-                        if (!DeploymentConfiguration.DeploymentMode && PlacedCount < 5)
-                            DebugLogger.Info($"[SLEEVE-PLACEMENT-FLOW] Step 3: Placing sleeve at ({adjustedPlacementPoint.X:F3},{adjustedPlacementPoint.Y:F3},{adjustedPlacementPoint.Z:F3}) " +
-                                $"using family '{familySymbol.Family.Name}' with dimensions W={finalWidth:F3}, H={finalHeight:F3}");
-                        
-                        // Place sleeve instance (NO HOST PARAMETER - workplane-based families)
-                        // ✅ Works with linked structural elements because no host reference needed
-                        FamilyInstance sleeveInstance = null;
-                        try
-                        {
-                            // ✅ STEP 3: Create sleeve instance using placement data from Filter XML
-                            sleeveInstance = _doc.Create.NewFamilyInstance(
-                                adjustedPlacementPoint,  // From Filter XML (IntersectionPoint)
-                                familySymbol,            // Selected based on host type from Filter XML
-                                nearestLevel,
-                                StructuralType.NonStructural);
-                            try {                             // ✅ DEPLOYMENT MODE: Skip file writes
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 14: ✅ Sleeve instance created! ID={sleeveInstance?.Id?.IntegerValue ?? -1}\n");
-                            } } catch { }
-                        }
-                        catch (Exception createEx)
-                        {
-                            try {                             // ✅ DEPLOYMENT MODE: Skip file writes
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 14.1: ❌ EXCEPTION during sleeve creation: {createEx.Message}\n{createEx.StackTrace}\n");
-                            } } catch { }
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Error($"[UniversalSleevePlacer] Exception creating sleeve: {createEx.Message}");
-                            ErrorCount++;
-                            sleeveTimer.Stop();
-                            continue;
-                        }
-                        
-                        createTimer.Stop();
-                        totalSleeveCreateTime += createTimer.Elapsed;
-                        sleeveLog.AppendLine($"  Sleeve create: {createTimer.ElapsedMilliseconds}ms");
-                        
-                        if (sleeveInstance == null)
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Error($"[UniversalSleevePlacer] Failed to create sleeve instance");
-                            try {                             // ✅ DEPLOYMENT MODE: Skip file writes
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 14.2: ❌ ERROR - Sleeve instance is NULL after creation\n");
-                            } } catch { }
-                            ErrorCount++;
-                            sleeveTimer.Stop();
-                            continue;
-                        }
-                        
-                        // ⏱️ TIMING: Parameter setting
-                        var parameterTimer = System.Diagnostics.Stopwatch.StartNew();
-                        // Set parameters
-                        SetSleeveParameters(sleeveInstance, mepSize, finalWidth, finalHeight, finalDiameter, clashZone, isCircular);
-                        
-                        // Set sleeve metadata for fast parameter transfer
-                        SetSleeveMetadata(sleeveInstance, clashZone);
-                        
-                        // ✅ CRITICAL: Set ClashZone_GUID parameter with STABLE GUID per 3-point combo
-                        // GUID is looked up from Global XML first (if entry exists, use that GUID)
-                        // If not found, use clashZone.Id (stable per 3-point combo)
-                        // This ensures GUID is unique and stable across multiple detection runs
-                        SetClashZoneGuidOnSleeveStable(sleeveInstance, clashZone);
-                        
-                        // ⚠️ CRITICAL: Set orientation (rotation for floors, HostOrientation parameter for walls/framing)
-                        SetSleeveOrientation(sleeveInstance, clashZone);
-                        parameterTimer.Stop();
-                        totalParameterTime += parameterTimer.Elapsed;
-                        sleeveLog.AppendLine($"  Parameters: {parameterTimer.ElapsedMilliseconds}ms");
-                        
-                        // ✅ PERFORMANCE OPTIMIZATION: Removed excessive file logging
-
-                        // ⏱️ TIMING: Coordinate validation and update
-                        var validationTimer = System.Diagnostics.Stopwatch.StartNew();
-                        // Ensure final location matches the intended adjusted placement point (some families snap to level origin)
-                        try
-                        {
-                            var loc = sleeveInstance.Location as LocationPoint;
-                            if (loc != null)
-                            {
-                                var currentPt = loc.Point;
-                                if (currentPt.DistanceTo(adjustedPlacementPoint) > 0.0001)
-                                {
-                                    var delta = adjustedPlacementPoint - currentPt;
-                                    loc.Move(delta);
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[UniversalSleevePlacer] Moved sleeve {sleeveInstance.Id} to exact placement point {adjustedPlacementPoint} (from {currentPt})");
-                                }
-                                else
-                                {
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[UniversalSleevePlacer] Sleeve {sleeveInstance.Id} already at desired point {currentPt}");
-                                }
-                                
-                                // ✅ CRITICAL FIX: Update ClashZone with actual sleeve placement coordinates
-                                // This ensures PreCalculatedClusterService uses real sleeve locations for proximity calculation
-                                clashZone.SleevePlacementPoint = currentPt;
-                                clashZone.SleevePlacementPointX = currentPt.X;  // XML serializable
-                                clashZone.SleevePlacementPointY = currentPt.Y;  // XML serializable
-                                clashZone.SleevePlacementPointZ = currentPt.Z;  // XML serializable
-                                
-                                // ✅ CRITICAL: Save active document coordinates for proximity calculation
-                                clashZone.SleevePlacementPointActiveDocument = currentPt;
-                                clashZone.SleevePlacementPointActiveDocumentX = currentPt.X;  // XML serializable
-                                clashZone.SleevePlacementPointActiveDocumentY = currentPt.Y;  // XML serializable
-                                clashZone.SleevePlacementPointActiveDocumentZ = currentPt.Z;  // XML serializable
-                                
-                                // ✅ PERFORMANCE OPTIMIZATION: Removed excessive file logging
-                                
-                                // 🔥 CRITICAL VALIDATION: Check if dimensions are valid before saving
-                                if (finalWidth <= 0 || finalHeight <= 0 || finalDiameter <= 0)
-                                {
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Error($"[UniversalSleevePlacer] ❌ INVALID DIMENSIONS DETECTED for sleeve {sleeveInstance.Id.IntegerValue}!");
-                                    ErrorCount++;
-                                    sleeveTimer.Stop();
-                                    validationTimer.Stop();
-                                    continue;
-                                }
-                                
-                                clashZone.SleeveWidth = finalWidth;
-                                clashZone.SleeveHeight = finalHeight;
-                                clashZone.SleeveDiameter = finalDiameter;
-                                
-                                // ✅ PERFORMANCE OPTIMIZATION: Defer bounding box retrieval until after batch regeneration
-                                // Store sleeve data for batch processing instead of immediate bounding box call
-                                placedSleeveIds.Add(sleeveInstance.Id);
-                                placedSleeveData.Add((sleeveInstance, clashZone, finalWidth, finalHeight, finalDiameter));
-                                
-                                // ✅ CRITICAL FIX: Set the actual Revit element ID immediately (needed for validation)
-                                    clashZone.SleeveInstanceId = sleeveInstance.Id.IntegerValue;
-                                    
-                                // ⚠️ NOTE: Bounding box will be retrieved after batch regeneration (see batch processing at end of method)
-                                
-                                // ✅ PERFORMANCE OPTIMIZATION: Batch XML updates instead of updating per sleeve
-                                // XML will be updated once at the end of placement via orchestrator
-                                
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                DebugLogger.Info($"[UniversalSleevePlacer] Placed sleeve {sleeveInstance.Id} for ClashZone {clashZone.Id}, W={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}mm, H={RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm (bbox deferred)");
-                                    try
-                                    {
-                                        var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
-                                        System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] [SLEEVE-ID-SET] ClashZone {clashZone.Id} ← SleeveId {clashZone.SleeveInstanceId}\n");
-                                    }
-                                    catch { }
-                                }
-                            }
-                            else
-                            {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Error($"[UniversalSleevePlacer] ❌ Failed to get LocationPoint for sleeve {sleeveInstance.Id} - cannot update coordinates!");
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[COORD-UPDATE-FAIL] Sleeve {sleeveInstance.Id.IntegerValue}: LocationPoint is NULL ❌\n");
-                            }
-                        }
-                        catch (Exception coordEx)
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Error($"[UniversalSleevePlacer] ❌ CRITICAL ERROR updating coordinates for sleeve {sleeveInstance.Id}: {coordEx.Message}");
-                            if (PlacedCount + SkippedCount < 50) batchLogs.AppendLine($"[COORD-UPDATE-ERROR] Sleeve {sleeveInstance.Id.IntegerValue}: {coordEx.Message}");
-                        }
-                        validationTimer.Stop();
-                        totalValidationTime += validationTimer.Elapsed;
-                        sleeveLog.AppendLine($"  Validation/update: {validationTimer.ElapsedMilliseconds}ms");
-                        
-                        // Update ClashZone flags
-                        clashZone.IsResolved = true;
-                        clashZone.SleeveInstanceId = sleeveInstance.Id.IntegerValue;
-                        clashZone.SleeveFamilyName = familySymbol.Family.Name;
-                        
-                        // ✅ NOTE: Global XML update happens in batch at end (line ~1238) via GlobalIndexService.UpsertFlagsWithIds()
-                        // This ensures all placed sleeves are updated together efficiently
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[GLOBAL-XML] Individual sleeve {sleeveInstance.Id.IntegerValue} placed for ClashZone {clashZone.Id} - will be saved to Global XML in batch");
-                        
-                        // ✅ PERFORMANCE OPTIMIZATION: Batch logging instead of individual file writes
-                        if (PlacedCount < 50) batchLogs.AppendLine($"[SLEEVE-PLACED] ClashZone {clashZone.Id}: SleeveInstanceId = {clashZone.SleeveInstanceId}, RevitElementId = {sleeveInstance.Id.IntegerValue}");
-                        
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[UniversalSleevePlacer] ✅ SLEEVE PLACED: ClashZone {clashZone.Id} → SleeveInstanceId = {clashZone.SleeveInstanceId} (Revit: {sleeveInstance.Id.IntegerValue})");
-                        
-                        // ✅ CRITICAL: SleevePlacementPoint is already set to actual sleeve location above
-                        // DO NOT overwrite it with adjustedPlacementPoint - we need the REAL coordinates for clustering
-                        
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[UniversalSleevePlacer] Saved sleeve placement point: {adjustedPlacementPoint}");
-                        
-                        // ⏱️ TIMING: Stop per-sleeve timer and log details
-                        sleeveTimer.Stop();
-                        totalPlacementTime += sleeveTimer.Elapsed;
-                        sleeveLog.AppendLine($"  TOTAL: {sleeveTimer.ElapsedMilliseconds}ms");
-                        
-                        // Log per-sleeve timing details (first 10 sleeves for detailed analysis)
-                        if (PlacedCount < 10)
-                        {
-                            SafeFileLogger.SafeAppendText("sleeve_placement_timing.log",
-                                $"[SLEEVE {PlacedCount + 1}] ClashZone {clashZone.Id} - {sleeveLog.ToString().TrimEnd()}");
-                        }
-                        
-                        PlacedCount++;
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[UniversalSleevePlacer] ✓ Placed {_strategy.GetCategoryName()} sleeve {sleeveInstance.Id} for ClashZone {clashZone.Id} at {adjustedPlacementPoint} ({sleeveTimer.ElapsedMilliseconds}ms)");
-                    }
-                    catch (Exception ex)
-                    {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Error($"[UniversalSleevePlacer] Error placing sleeve for ClashZone {clashZone.Id}: {ex.Message}");
-                        try {                         // ✅ DEPLOYMENT MODE: Skip file writes
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ EXCEPTION IN OUTER TRY-CATCH: Zone={clashZone.Id}, Error={ex.Message}\n{ex.StackTrace}\n");
-                        } } catch { }
-                        ErrorCount++;
-                        // Stop timer even on error
-                        if (sleeveTimer.IsRunning) sleeveTimer.Stop();
-                    }
-                }
-                
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    try
-                    {
-                        var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] [PLACEMENT-SUMMARY] Placed={PlacedCount}, Skipped={SkippedCount}, Errors={ErrorCount}\n");
-                    }
-                    catch { }
-                }
-                
-                // ⏱️ TIMING: Stop overall timer and generate summary
-                overallTimer.Stop();
-                
-                // Calculate averages
-                double avgPlacementTime = PlacedCount > 0 ? totalPlacementTime.TotalMilliseconds / PlacedCount : 0;
-                double avgClearanceTime = PlacedCount > 0 ? totalClearanceTime.TotalMilliseconds / PlacedCount : 0;
-                double avgLevelFindTime = PlacedCount > 0 ? totalLevelFindTime.TotalMilliseconds / PlacedCount : 0;
-                double avgFamilyLoadTime = PlacedCount > 0 ? totalFamilyLoadTime.TotalMilliseconds / PlacedCount : 0;
-                double avgSleeveCreateTime = PlacedCount > 0 ? totalSleeveCreateTime.TotalMilliseconds / PlacedCount : 0;
-                double avgParameterTime = PlacedCount > 0 ? totalParameterTime.TotalMilliseconds / PlacedCount : 0;
-                double avgValidationTime = PlacedCount > 0 ? totalValidationTime.TotalMilliseconds / PlacedCount : 0;
-                
-                // Build timing summary
-                detailedTimingLog.AppendLine($"\n=== SLEEVE PLACEMENT TIMING SUMMARY ===");
-                detailedTimingLog.AppendLine($"[OVERALL] Total time: {overallTimer.ElapsedMilliseconds}ms ({overallTimer.Elapsed.TotalSeconds:F2}s)");
-                detailedTimingLog.AppendLine($"[OVERALL] Total sleeves: {PlacedCount} placed, {SkippedCount} skipped, {ErrorCount} errors");
-                detailedTimingLog.AppendLine($"\n[PER-SLEEVE AVERAGES]");
-                detailedTimingLog.AppendLine($"  Average total per sleeve: {avgPlacementTime:F2}ms");
-                detailedTimingLog.AppendLine($"  Average clearance calc: {avgClearanceTime:F2}ms");
-                detailedTimingLog.AppendLine($"  Average level find: {avgLevelFindTime:F2}ms");
-                detailedTimingLog.AppendLine($"  Average family load: {avgFamilyLoadTime:F2}ms");
-                detailedTimingLog.AppendLine($"  Average sleeve create: {avgSleeveCreateTime:F2}ms");
-                detailedTimingLog.AppendLine($"  Average parameters: {avgParameterTime:F2}ms");
-                detailedTimingLog.AppendLine($"  Average validation/update: {avgValidationTime:F2}ms");
-                detailedTimingLog.AppendLine($"\n[TOTAL TIMES]");
-                detailedTimingLog.AppendLine($"  Total clearance time: {totalClearanceTime.TotalMilliseconds:F2}ms ({totalClearanceTime.TotalSeconds:F2}s)");
-                detailedTimingLog.AppendLine($"  Total level find time: {totalLevelFindTime.TotalMilliseconds:F2}ms ({totalLevelFindTime.TotalSeconds:F2}s)");
-                detailedTimingLog.AppendLine($"  Total family load time: {totalFamilyLoadTime.TotalMilliseconds:F2}ms ({totalFamilyLoadTime.TotalSeconds:F2}s)");
-                detailedTimingLog.AppendLine($"  Total sleeve create time: {totalSleeveCreateTime.TotalMilliseconds:F2}ms ({totalSleeveCreateTime.TotalSeconds:F2}s)");
-                detailedTimingLog.AppendLine($"  Total parameter time: {totalParameterTime.TotalMilliseconds:F2}ms ({totalParameterTime.TotalSeconds:F2}s)");
-                detailedTimingLog.AppendLine($"  Total validation time: {totalValidationTime.TotalMilliseconds:F2}ms ({totalValidationTime.TotalSeconds:F2}s)");
-                detailedTimingLog.AppendLine($"  Total placement time (all sleeves): {totalPlacementTime.TotalMilliseconds:F2}ms ({totalPlacementTime.TotalSeconds:F2}s)");
-                detailedTimingLog.AppendLine($"\n[PERFORMANCE ANALYSIS]");
-                if (PlacedCount > 0)
-                {
-                    double clearancePercent = (totalClearanceTime.TotalMilliseconds / totalPlacementTime.TotalMilliseconds) * 100;
-                    double createPercent = (totalSleeveCreateTime.TotalMilliseconds / totalPlacementTime.TotalMilliseconds) * 100;
-                    double parameterPercent = (totalParameterTime.TotalMilliseconds / totalPlacementTime.TotalMilliseconds) * 100;
-                    detailedTimingLog.AppendLine($"  Clearance calculation: {clearancePercent:F1}% of placement time");
-                    detailedTimingLog.AppendLine($"  Sleeve creation: {createPercent:F1}% of placement time");
-                    detailedTimingLog.AppendLine($"  Parameter setting: {parameterPercent:F1}% of placement time");
-                }
-                
-                // Write timing log to file
-                SafeFileLogger.SafeAppendText("sleeve_placement_timing.log", detailedTimingLog.ToString());
-                                if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Info($"[TIMING] Sleeve placement timing logged to file");
-                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Info($"[UniversalSleevePlacer] Placement loop complete - Placed: {PlacedCount}, Skipped: {SkippedCount}, Errors: {ErrorCount}");
-                                if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Info($"[TIMING] Total time: {overallTimer.ElapsedMilliseconds}ms, Avg per sleeve: {avgPlacementTime:F2}ms");
-                                if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Info($"[{DateTime.Now}] [PLACEMENT_COMPLETE] Placed: {PlacedCount}, Skipped: {SkippedCount}, Errors: {ErrorCount}, Total: {overallTimer.ElapsedMilliseconds}ms, Avg: {avgPlacementTime:F2}ms\n");
-                
-                // CRITICAL FIX: Save XML files with updated SleeveInstanceId values
-                // ✅ PERFORMANCE OPTIMIZATION: Batch regeneration after ALL sleeves placed
-                if (placedSleeveIds.Count > 0)
-                {
-                    var regenTimer = System.Diagnostics.Stopwatch.StartNew();
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"[BATCH-REGEN] Regenerating document for {placedSleeveIds.Count} sleeves...");
-                    }
-                    _doc.Regenerate(); // ✅ Single regeneration for all sleeves
-                    regenTimer.Stop();
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"[BATCH-REGEN] ✅ Regenerated {placedSleeveIds.Count} sleeves in {regenTimer.ElapsedMilliseconds}ms");
-                    }
-                    
-                    // ✅ PERFORMANCE OPTIMIZATION: Batch bounding box retrieval after regeneration
-                    var bboxTimer = System.Diagnostics.Stopwatch.StartNew();
-                    int bboxCount = 0;
-                    foreach (var (sleeve, zone, fw, fh, fd) in placedSleeveData)
-                    {
-                        try
-                        {
-                            // ✅ Validate sleeve still exists (may have been deleted by clustering)
-                            if (!sleeve.IsValidObject) continue;
-                            
-                            var actualBbox = sleeve.get_BoundingBox(null);
-                            if (actualBbox != null)
+                            try
                             {
-                                // Set bounding box coordinates
-                                zone.SetSleeveBoundingBox(actualBbox);
-                                
-                                // Update placement point from bounding box center
-                                zone.SleevePlacementPoint = new XYZ(
-                                    (actualBbox.Min.X + actualBbox.Max.X) / 2,
-                                    (actualBbox.Min.Y + actualBbox.Max.Y) / 2,
-                                    (actualBbox.Min.Z + actualBbox.Max.Z) / 2
-                                );
-                                
-                                zone.SleevePlacementPointX = zone.SleevePlacementPoint.X;
-                                zone.SleevePlacementPointY = zone.SleevePlacementPoint.Y;
-                                zone.SleevePlacementPointZ = zone.SleevePlacementPoint.Z;
-                                
-                                bboxCount++;
+                                var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] [PLACEMENT-SUMMARY] Placed={PlacedCount}, Skipped={SkippedCount}, Errors={ErrorCount}\n");
                             }
+                            catch { }
                         }
-                        catch (Exception bboxEx)
+
+                        // ⏱️ TIMING: Stop overall timer and generate summary
+                        overallTimer.Stop();
+
+                        // Calculate averages
+                        double avgPlacementTime = PlacedCount > 0 ? totalPlacementTime.TotalMilliseconds / PlacedCount : 0;
+                        double avgClearanceTime = PlacedCount > 0 ? totalClearanceTime.TotalMilliseconds / PlacedCount : 0;
+                        double avgLevelFindTime = PlacedCount > 0 ? totalLevelFindTime.TotalMilliseconds / PlacedCount : 0;
+                        double avgFamilyLoadTime = PlacedCount > 0 ? totalFamilyLoadTime.TotalMilliseconds / PlacedCount : 0;
+                        double avgSleeveCreateTime = PlacedCount > 0 ? totalSleeveCreateTime.TotalMilliseconds / PlacedCount : 0;
+                        double avgParameterTime = PlacedCount > 0 ? totalParameterTime.TotalMilliseconds / PlacedCount : 0;
+                        double avgValidationTime = PlacedCount > 0 ? totalValidationTime.TotalMilliseconds / PlacedCount : 0;
+
+                        // Build timing summary
+                        detailedTimingLog.AppendLine($"\n=== SLEEVE PLACEMENT TIMING SUMMARY ===");
+                        detailedTimingLog.AppendLine($"[OVERALL] Total time: {overallTimer.ElapsedMilliseconds}ms ({overallTimer.Elapsed.TotalSeconds:F2}s)");
+                        detailedTimingLog.AppendLine($"[OVERALL] Total sleeves: {PlacedCount} placed, {SkippedCount} skipped, {ErrorCount} errors");
+                        detailedTimingLog.AppendLine($"\n[PER-SLEEVE AVERAGES]");
+                        detailedTimingLog.AppendLine($"  Average total per sleeve: {avgPlacementTime:F2}ms");
+                        detailedTimingLog.AppendLine($"  Average clearance calc: {avgClearanceTime:F2}ms");
+                        detailedTimingLog.AppendLine($"  Average level find: {avgLevelFindTime:F2}ms");
+                        detailedTimingLog.AppendLine($"  Average family load: {avgFamilyLoadTime:F2}ms");
+                        detailedTimingLog.AppendLine($"  Average sleeve create: {avgSleeveCreateTime:F2}ms");
+                        detailedTimingLog.AppendLine($"  Average parameters: {avgParameterTime:F2}ms");
+                        detailedTimingLog.AppendLine($"  Average validation/update: {avgValidationTime:F2}ms");
+                        detailedTimingLog.AppendLine($"\n[TOTAL TIMES]");
+                        detailedTimingLog.AppendLine($"  Total clearance time: {totalClearanceTime.TotalMilliseconds:F2}ms ({totalClearanceTime.TotalSeconds:F2}s)");
+                        detailedTimingLog.AppendLine($"  Total level find time: {totalLevelFindTime.TotalMilliseconds:F2}ms ({totalLevelFindTime.TotalSeconds:F2}s)");
+                        detailedTimingLog.AppendLine($"  Total family load time: {totalFamilyLoadTime.TotalMilliseconds:F2}ms ({totalFamilyLoadTime.TotalSeconds:F2}s)");
+                        detailedTimingLog.AppendLine($"  Total sleeve create time: {totalSleeveCreateTime.TotalMilliseconds:F2}ms ({totalSleeveCreateTime.TotalSeconds:F2}s)");
+                        detailedTimingLog.AppendLine($"  Total parameter time: {totalParameterTime.TotalMilliseconds:F2}ms ({totalParameterTime.TotalSeconds:F2}s)");
+                        detailedTimingLog.AppendLine($"  Total validation time: {totalValidationTime.TotalMilliseconds:F2}ms ({totalValidationTime.TotalSeconds:F2}s)");
+                        detailedTimingLog.AppendLine($"  Total placement time (all sleeves): {totalPlacementTime.TotalMilliseconds:F2}ms ({totalPlacementTime.TotalSeconds:F2}s)");
+                        detailedTimingLog.AppendLine($"\n[PERFORMANCE ANALYSIS]");
+                        if (PlacedCount > 0)
                         {
+                            double clearancePercent = (totalClearanceTime.TotalMilliseconds / totalPlacementTime.TotalMilliseconds) * 100;
+                            double createPercent = (totalSleeveCreateTime.TotalMilliseconds / totalPlacementTime.TotalMilliseconds) * 100;
+                            double parameterPercent = (totalParameterTime.TotalMilliseconds / totalPlacementTime.TotalMilliseconds) * 100;
+                            detailedTimingLog.AppendLine($"  Clearance calculation: {clearancePercent:F1}% of placement time");
+                            detailedTimingLog.AppendLine($"  Sleeve creation: {createPercent:F1}% of placement time");
+                            detailedTimingLog.AppendLine($"  Parameter setting: {parameterPercent:F1}% of placement time");
+                        }
+
+                        // Write timing log to file
+                        SafeFileLogger.SafeAppendText("sleeve_placement_timing.log", detailedTimingLog.ToString());
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[TIMING] Sleeve placement timing logged to file");
+
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[UniversalSleevePlacer] Placement loop complete - Placed: {PlacedCount}, Skipped: {SkippedCount}, Errors: {ErrorCount}");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[TIMING] Total time: {overallTimer.ElapsedMilliseconds}ms, Avg per sleeve: {avgPlacementTime:F2}ms");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[{DateTime.Now}] [PLACEMENT_COMPLETE] Placed: {PlacedCount}, Skipped: {SkippedCount}, Errors: {ErrorCount}, Total: {overallTimer.ElapsedMilliseconds}ms, Avg: {avgPlacementTime:F2}ms\n");
+
+                        // CRITICAL FIX: Save XML files with updated SleeveInstanceId values
+                        // ✅ PERFORMANCE OPTIMIZATION: Batch regeneration after ALL sleeves placed
+                        if (placedSleeveIds.Count > 0)
+                        {
+                            var regenTimer = System.Diagnostics.Stopwatch.StartNew();
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                DebugLogger.Warning($"[BATCH-BBOX] Error retrieving bbox for sleeve {sleeve?.Id?.IntegerValue ?? -1}: {bboxEx.Message}");
+                                DebugLogger.Info($"[BATCH-REGEN] Regenerating document for {placedSleeveIds.Count} sleeves...");
                             }
-                        }
-                    }
-                    bboxTimer.Stop();
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"[BATCH-BBOX] ✅ Retrieved {bboxCount} bounding boxes in {bboxTimer.ElapsedMilliseconds}ms (avg: {bboxTimer.ElapsedMilliseconds / Math.Max(1, bboxCount):F1}ms per sleeve)");
-                    }
-                    
-                    // ✅ CRITICAL FIX: Save sleeve data to database IMMEDIATELY after placement
-                    // This ensures UpdateSleeveCoordinatesInXml can find sleeves by SleeveInstanceId
-                    if (bboxCount > 0)
-                    {
-                        try
-                        {
-                            using (var dbContext = new Data.SleeveDbContext(_doc))
+                            _doc.Regenerate(); // ✅ Single regeneration for all sleeves
+                            regenTimer.Stop();
+                            if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                var repository = new Data.Repositories.ClashZoneRepository(dbContext);
-                                int dbSavedCount = 0;
-                                
-                                foreach (var (sleeve, zone, fw, fh, fd) in placedSleeveData)
+                                DebugLogger.Info($"[BATCH-REGEN] ✅ Regenerated {placedSleeveIds.Count} sleeves in {regenTimer.ElapsedMilliseconds}ms");
+                            }
+
+                            // ✅ PERFORMANCE OPTIMIZATION: Batch bounding box retrieval after regeneration
+                            var bboxTimer = System.Diagnostics.Stopwatch.StartNew();
+                            int bboxCount = 0;
+                            foreach (var (sleeve, zone, fw, fh, fd) in placedSleeveData)
+                            {
+                                try
                                 {
-                                    if (zone != null && zone.SleeveInstanceId > 0 && sleeve.IsValidObject)
+                                    // ✅ Validate sleeve still exists (may have been deleted by clustering)
+                                    if (!sleeve.IsValidObject) continue;
+
+                                    var actualBbox = sleeve.get_BoundingBox(null);
+                                    if (actualBbox != null)
                                     {
-                                        // ⚠️ PROTECTED CODE: DO NOT MODIFY THIS SECTION WITHOUT UNDERSTANDING THE IMPACT
-                                        // This code saves sleeve coordinates to the database immediately after placement.
-                                        // It is critical for clustering to work correctly because:
-                                        // 1. SleeveInstanceId - Required for clustering to find sleeves in the database
-                                        // 2. Sleeve dimensions and placement point - Required for placement tracking
-                                        // 3. Bounding box coordinates - Required for clustering to calculate cluster bounding boxes
-                                        // 4. Rotation angle (MepElementRotationAngle) - Already saved during refresh in InsertOrUpdateClashZones,
-                                        //    and is loaded by cluster service from database. No need to update here as it doesn't change after placement.
-                                        // If this code is broken, clustering will fail because it won't find sleeves with valid bounding boxes.
-                                        
-                                        // ✅ ROTATION DATA: MepElementRotationAngle is already in database (saved during refresh).
-                                        // Cluster service reads it from DB via GetClashZonesByCategory -> MepRotationAngleRad column.
-                                        // No update needed here as rotation angle doesn't change after sleeve placement.
-                                        
-                                        // Save SleeveInstanceId
-                                        repository.UpdateSleeveInstanceId(zone.Id, zone.SleeveInstanceId);
-                                        
-                                        // Save sleeve dimensions
-                                        // ✅ CRITICAL: Also save Active document coordinates (where sleeve is actually placed)
-                                        // ✅ CRITICAL: Also save rotation angle (for corner calculations)
-                                        repository.UpdateSleevePlacement(
-                                            zone.Id, // Use ClashZone Guid
-                                            zone.SleeveInstanceId,
-                                            zone.SleeveWidth > 0 ? zone.SleeveWidth : fw,
-                                            zone.SleeveHeight > 0 ? zone.SleeveHeight : fh,
-                                            zone.SleeveDiameter > 0 ? zone.SleeveDiameter : fd,
-                                            zone.SleevePlacementPointX,
-                                            zone.SleevePlacementPointY,
-                                            zone.SleevePlacementPointZ,
-                                            zone.SleevePlacementPointActiveDocumentX,  // ✅ Active document coordinates (where sleeve is actually placed)
-                                            zone.SleevePlacementPointActiveDocumentY,
-                                            zone.SleevePlacementPointActiveDocumentZ,
-                                            zone.MepElementRotationAngle);  // ✅ Rotation angle in radians (for corner calculations)
-                                        
-                                        // ✅ BOUNDING BOX: Save axis-aligned bounding box coordinates (in model coordinate system).
-                                        // Bounding boxes are required for clustering to calculate cluster bounding boxes
-                                        if (!(zone.SleeveBoundingBoxMinX == 0.0 && zone.SleeveBoundingBoxMinY == 0.0 && zone.SleeveBoundingBoxMinZ == 0.0 &&
-                                              zone.SleeveBoundingBoxMaxX == 0.0 && zone.SleeveBoundingBoxMaxY == 0.0 && zone.SleeveBoundingBoxMaxZ == 0.0))
+                                        // Set bounding box coordinates
+                                        zone.SetSleeveBoundingBox(actualBbox);
+
+                                        // Update placement point from bounding box center
+                                        zone.SleevePlacementPoint = new XYZ(
+                                            (actualBbox.Min.X + actualBbox.Max.X) / 2,
+                                            (actualBbox.Min.Y + actualBbox.Max.Y) / 2,
+                                            (actualBbox.Min.Z + actualBbox.Max.Z) / 2
+                                        );
+
+                                        zone.SleevePlacementPointX = zone.SleevePlacementPoint.X;
+                                        zone.SleevePlacementPointY = zone.SleevePlacementPoint.Y;
+                                        zone.SleevePlacementPointZ = zone.SleevePlacementPoint.Z;
+
+                                        bboxCount++;
+                                    }
+                                }
+                                catch (Exception bboxEx)
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        DebugLogger.Warning($"[BATCH-BBOX] Error retrieving bbox for sleeve {sleeve?.Id?.IntegerValue ?? -1}: {bboxEx.Message}");
+                                    }
+                                }
+                            }
+                            bboxTimer.Stop();
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[BATCH-BBOX] ✅ Retrieved {bboxCount} bounding boxes in {bboxTimer.ElapsedMilliseconds}ms (avg: {bboxTimer.ElapsedMilliseconds / Math.Max(1, bboxCount):F1}ms per sleeve)");
+                            }
+
+                            // ✅ CRITICAL FIX: Save sleeve data to database IMMEDIATELY after placement
+                            // This ensures UpdateSleeveCoordinatesInXml can find sleeves by SleeveInstanceId
+                            if (bboxCount > 0)
+                            {
+                                try
+                                {
+                                    using (var dbContext = new Data.SleeveDbContext(_doc))
+                                    {
+                                        var repository = new Data.Repositories.ClashZoneRepository(dbContext);
+                                        int dbSavedCount = 0;
+
+                                        foreach (var (sleeve, zone, fw, fh, fd) in placedSleeveData)
                                         {
-                                            repository.UpdateSleeveBoundingBoxes(
-                                                zone.Id,
-                                                zone.SleeveBoundingBoxMinX, zone.SleeveBoundingBoxMinY, zone.SleeveBoundingBoxMinZ,
-                                                zone.SleeveBoundingBoxMaxX, zone.SleeveBoundingBoxMaxY, zone.SleeveBoundingBoxMaxZ);
-                                            
-                                            // ✅ ROTATED BBOX: Calculate and save rotated bounding box ONLY for rotated axis-aligned sleeves (non-straight axis-aligned)
-                                            // Skip for straight axis-aligned angles to WCS: 0°, 90°, 180°, 270° (use straight axis-aligned bbox instead)
-                                            // For rotated axis-aligned angles (45°, 135°, 225°, 315°), calculate rotated bbox
-                                            // For straight axis-aligned sleeves, rotated bbox columns remain NULL
-                                            var rotationAngleRad = zone.MepElementRotationAngle;
-                                            var rotationAngleDeg = Math.Abs(rotationAngleRad * 180.0 / Math.PI);
-                                            
-                                            // Check if angle is straight axis-aligned to WCS (0°, 90°, 180°, 270°) with 1° tolerance
-                                            bool isStraightAxisAligned = Math.Abs(rotationAngleDeg) < 1.0 || 
-                                                                Math.Abs(rotationAngleDeg - 90.0) < 1.0 ||
-                                                                Math.Abs(rotationAngleDeg - 180.0) < 1.0 ||
-                                                                Math.Abs(rotationAngleDeg - 270.0) < 1.0 ||
-                                                                Math.Abs(rotationAngleDeg - 360.0) < 1.0;
-                                            
-                                            if (Math.Abs(rotationAngleRad) > 1e-6 && !isStraightAxisAligned)
+                                            if (zone != null && zone.SleeveInstanceId > 0 && sleeve.IsValidObject)
                                             {
-                                                try
+                                                // ⚠️ PROTECTED CODE: DO NOT MODIFY THIS SECTION WITHOUT UNDERSTANDING THE IMPACT
+                                                // This code saves sleeve coordinates to the database immediately after placement.
+                                                // It is critical for clustering to work correctly because:
+                                                // 1. SleeveInstanceId - Required for clustering to find sleeves in the database
+                                                // 2. Sleeve dimensions and placement point - Required for placement tracking
+                                                // 3. Bounding box coordinates - Required for clustering to calculate cluster bounding boxes
+                                                // 4. Rotation angle (MepElementRotationAngle) - Already saved during refresh in InsertOrUpdateClashZones,
+                                                //    and is loaded by cluster service from database. No need to update here as it doesn't change after placement.
+                                                // If this code is broken, clustering will fail because it won't find sleeves with valid bounding boxes.
+
+                                                // ✅ ROTATION DATA: MepElementRotationAngle is already in database (saved during refresh).
+                                                // Cluster service reads it from DB via GetClashZonesByCategory -> MepRotationAngleRad column.
+                                                // No update needed here as rotation angle doesn't change after sleeve placement.
+
+                                                // Save SleeveInstanceId
+                                                repository.UpdateSleeveInstanceId(zone.Id, zone.SleeveInstanceId);
+
+                                                // Save sleeve dimensions
+                                                // ✅ CRITICAL: Also save Active document coordinates (where sleeve is actually placed)
+                                                // ✅ CRITICAL: Also save rotation angle (for corner calculations)
+                                                repository.UpdateSleevePlacement(
+                                                    zone.Id, // Use ClashZone Guid
+                                                    zone.SleeveInstanceId,
+                                                    zone.SleeveWidth > 0 ? zone.SleeveWidth : fw,
+                                                    zone.SleeveHeight > 0 ? zone.SleeveHeight : fh,
+                                                    zone.SleeveDiameter > 0 ? zone.SleeveDiameter : fd,
+                                                    zone.SleevePlacementPointX,
+                                                    zone.SleevePlacementPointY,
+                                                    zone.SleevePlacementPointZ,
+                                                    zone.SleevePlacementPointActiveDocumentX,  // ✅ Active document coordinates (where sleeve is actually placed)
+                                                    zone.SleevePlacementPointActiveDocumentY,
+                                                    zone.SleevePlacementPointActiveDocumentZ,
+                                                    zone.MepElementRotationAngle);  // ✅ Rotation angle in radians (for corner calculations)
+
+                                                // ✅ BOUNDING BOX: Save axis-aligned bounding box coordinates (in model coordinate system).
+                                                // Bounding boxes are required for clustering to calculate cluster bounding boxes
+                                                if (!(zone.SleeveBoundingBoxMinX == 0.0 && zone.SleeveBoundingBoxMinY == 0.0 && zone.SleeveBoundingBoxMinZ == 0.0 &&
+                                                      zone.SleeveBoundingBoxMaxX == 0.0 && zone.SleeveBoundingBoxMaxY == 0.0 && zone.SleeveBoundingBoxMaxZ == 0.0))
                                                 {
-                                                    // ✅ FIX: Get actual sleeve dimensions from Revit element (not axis-aligned world bbox)
-                                                    // The rotated bounding box should represent the sleeve in its LOCAL coordinate system
-                                                    double actualWidth = zone.SleeveWidth > 0 ? zone.SleeveWidth : fw;
-                                                    double actualHeight = zone.SleeveHeight > 0 ? zone.SleeveHeight : fh;
-                                                    double actualDepth = zone.SleeveBoundingBoxMaxZ - zone.SleeveBoundingBoxMinZ;
-                                                    
-                                                    // Try to get dimensions from sleeve element if available
-                                                    if (sleeve != null && sleeve.IsValidObject)
+                                                    repository.UpdateSleeveBoundingBoxes(
+                                                        zone.Id,
+                                                        zone.SleeveBoundingBoxMinX, zone.SleeveBoundingBoxMinY, zone.SleeveBoundingBoxMinZ,
+                                                        zone.SleeveBoundingBoxMaxX, zone.SleeveBoundingBoxMaxY, zone.SleeveBoundingBoxMaxZ);
+
+                                                    // ✅ ROTATED BBOX: Calculate and save rotated bounding box ONLY for rotated axis-aligned sleeves (non-straight axis-aligned)
+                                                    // Skip for straight axis-aligned angles to WCS: 0°, 90°, 180°, 270° (use straight axis-aligned bbox instead)
+                                                    // For rotated axis-aligned angles (45°, 135°, 225°, 315°), calculate rotated bbox
+                                                    // For straight axis-aligned sleeves, rotated bbox columns remain NULL
+                                                    var rotationAngleRad = zone.MepElementRotationAngle;
+                                                    var rotationAngleDeg = Math.Abs(rotationAngleRad * 180.0 / Math.PI);
+
+                                                    // Check if angle is straight axis-aligned to WCS (0°, 90°, 180°, 270°) with 1° tolerance
+                                                    bool isStraightAxisAligned = Math.Abs(rotationAngleDeg) < 1.0 ||
+                                                                        Math.Abs(rotationAngleDeg - 90.0) < 1.0 ||
+                                                                        Math.Abs(rotationAngleDeg - 180.0) < 1.0 ||
+                                                                        Math.Abs(rotationAngleDeg - 270.0) < 1.0 ||
+                                                                        Math.Abs(rotationAngleDeg - 360.0) < 1.0;
+
+                                                    if (Math.Abs(rotationAngleRad) > 1e-6 && !isStraightAxisAligned)
                                                     {
                                                         try
                                                         {
-                                                            var widthParam = sleeve.LookupParameter("Width");
-                                                            var heightParam = sleeve.LookupParameter("Height");
-                                                            var depthParam = sleeve.LookupParameter("Depth");
-                                                            
-                                                            if (widthParam != null && widthParam.HasValue)
-                                                                actualWidth = widthParam.AsDouble();
-                                                            if (heightParam != null && heightParam.HasValue)
-                                                                actualHeight = heightParam.AsDouble();
-                                                            if (depthParam != null && depthParam.HasValue)
-                                                                actualDepth = depthParam.AsDouble();
-                                                        }
-                                                        catch { /* Fallback to zone dimensions */ }
-                                                    }
-                                                    
-                                                    // ✅ FIX: Store LOCAL bounding box coordinates (centered at placement point)
-                                                    // The rotated bounding box should represent the sleeve's actual size in its LOCAL coordinate system
-                                                    // This ensures clustering uses correct dimensions (550mm × 200mm) not inflated world bbox
-                                                    
-                                                    // Calculate local bounding box (centered at placement point in sleeve's local coordinate system)
-                                                    double halfWidth = actualWidth / 2.0;
-                                                    double halfHeight = actualHeight / 2.0;
-                                                    double halfDepth = actualDepth / 2.0;
-                                                    
-                                                    // Local bbox min/max (centered at placement point in sleeve's local coordinate system)
-                                                    // These represent the actual sleeve dimensions (550mm × 200mm) in local coordinates
-                                                    var placementPoint = zone.SleevePlacementPoint;
-                                                    var rotatedLocalMinX = placementPoint.X - halfWidth;
-                                                    var rotatedLocalMinY = placementPoint.Y - halfHeight;
-                                                    var rotatedLocalMinZ = placementPoint.Z - halfDepth;
-                                                    var rotatedLocalMaxX = placementPoint.X + halfWidth;
-                                                    var rotatedLocalMaxY = placementPoint.Y + halfHeight;
-                                                    var rotatedLocalMaxZ = placementPoint.Z + halfDepth;
-                                                    
-                                                    // ✅ SAVE: Save rotated bounding box in LOCAL coordinates (centered at placement point)
-                                                    // These coordinates represent the sleeve's actual size (550mm × 200mm) in its local coordinate system
-                                                    // Clustering will use these directly for distance calculations in the rotated coordinate system
-                                                    repository.UpdateRotatedBoundingBoxes(
-                                                        zone.Id,
-                                                        rotatedLocalMinX, rotatedLocalMinY, rotatedLocalMinZ,
-                                                        rotatedLocalMaxX, rotatedLocalMaxY, rotatedLocalMaxZ);
-                                                    
-                                                    // ✅ SLEEVE CORNERS: Calculate and save 4 corner coordinates in WORLD space
-                                                    // Corner order: 1=Bottom-left, 2=Bottom-right, 3=Top-left, 4=Top-right (in local space, then rotated to world)
-                                                    // Pre-calculated once during individual sleeve placement, stored for reuse during clustering
-                                                    // ✅ CRITICAL: Sleeve center = SleevePlacementPointActiveDocument (Active document coordinates where sleeve is actually placed)
-                                                    try
-                                                    {
-                                                        // ✅ SLEEVE CENTER: Use Active document coordinates (where sleeve is actually placed)
-                                                        // This is saved to database via UpdateSleevePlacement (SleevePlacementActiveX/Y/Z)
-                                                        var sleeveCenter = new XYZ(
-                                                            zone.SleevePlacementPointActiveDocumentX,  // Active document X (sleeve center)
-                                                            zone.SleevePlacementPointActiveDocumentY,  // Active document Y (sleeve center)
-                                                            zone.SleevePlacementPointActiveDocumentZ   // Active document Z (sleeve center)
-                                                        );
-                                                        
-                                                        // ✅ DIAGNOSTIC: Log corner saving attempt
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                                        {
-                                                            DebugLogger.Info($"[SLEEVE-CORNERS] ATTEMPTING to save corners for zone {zone.Id}: " +
-                                                                $"Rotation={rotationAngleDeg:F1}°, " +
-                                                                $"ActiveCoords=({zone.SleevePlacementPointActiveDocumentX:F6}, {zone.SleevePlacementPointActiveDocumentY:F6}, {zone.SleevePlacementPointActiveDocumentZ:F6}), " +
-                                                                $"Width={actualWidth * 304.8:F1}mm, Height={actualHeight * 304.8:F1}mm");
-                                                        }
-                                                        
-                                                        // ✅ CRITICAL: Check if Active coordinates are valid (not all zero)
-                                                        if (Math.Abs(zone.SleevePlacementPointActiveDocumentX) < 1e-6 && 
-                                                            Math.Abs(zone.SleevePlacementPointActiveDocumentY) < 1e-6 && 
-                                                            Math.Abs(zone.SleevePlacementPointActiveDocumentZ) < 1e-6)
-                                                        {
-                                                            // ✅ FALLBACK: Use regular placement point if Active coordinates are not set
-                                                            sleeveCenter = zone.SleevePlacementPoint;
-                                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                            // ✅ FIX: Get actual sleeve dimensions from Revit element (not axis-aligned world bbox)
+                                                            // The rotated bounding box should represent the sleeve in its LOCAL coordinate system
+                                                            double actualWidth = zone.SleeveWidth > 0 ? zone.SleeveWidth : fw;
+                                                            double actualHeight = zone.SleeveHeight > 0 ? zone.SleeveHeight : fh;
+                                                            double actualDepth = zone.SleeveBoundingBoxMaxZ - zone.SleeveBoundingBoxMinZ;
+
+                                                            // Try to get dimensions from sleeve element if available
+                                                            if (sleeve != null && sleeve.IsValidObject)
                                                             {
-                                                                DebugLogger.Warning($"[SLEEVE-CORNERS] Active coordinates are zero for zone {zone.Id}, using SleevePlacementPoint instead: ({sleeveCenter.X:F6}, {sleeveCenter.Y:F6}, {sleeveCenter.Z:F6})");
+                                                                try
+                                                                {
+                                                                    var widthParam = sleeve.LookupParameter("Width");
+                                                                    var heightParam = sleeve.LookupParameter("Height");
+                                                                    var depthParam = sleeve.LookupParameter("Depth");
+
+                                                                    if (widthParam != null && widthParam.HasValue)
+                                                                        actualWidth = widthParam.AsDouble();
+                                                                    if (heightParam != null && heightParam.HasValue)
+                                                                        actualHeight = heightParam.AsDouble();
+                                                                    if (depthParam != null && depthParam.HasValue)
+                                                                        actualDepth = depthParam.AsDouble();
+                                                                }
+                                                                catch { /* Fallback to zone dimensions */ }
                                                             }
-                                                        }
-                                                        
-                                                        // Step 1: Calculate 4 corners in local coordinate system (before rotation)
-                                                        // Use sleeve width and height (saved to database via UpdateSleevePlacement)
-                                                        double halfW = actualWidth / 2.0;
-                                                        double halfH = actualHeight / 2.0;
-                                                        
-                                                        // Corner offsets in local space: (-1,-1), (1,-1), (-1,1), (1,1) multiplied by halfW/halfH
-                                                        var localCorners = new[]
-                                                        {
+
+                                                            // ✅ FIX: Store LOCAL bounding box coordinates (centered at placement point)
+                                                            // The rotated bounding box should represent the sleeve's actual size in its LOCAL coordinate system
+                                                            // This ensures clustering uses correct dimensions (550mm × 200mm) not inflated world bbox
+
+                                                            // Calculate local bounding box (centered at placement point in sleeve's local coordinate system)
+                                                            double halfWidth = actualWidth / 2.0;
+                                                            double halfHeight = actualHeight / 2.0;
+                                                            double halfDepth = actualDepth / 2.0;
+
+                                                            // Local bbox min/max (centered at placement point in sleeve's local coordinate system)
+                                                            // These represent the actual sleeve dimensions (550mm × 200mm) in local coordinates
+                                                            var placementPoint = zone.SleevePlacementPoint;
+                                                            var rotatedLocalMinX = placementPoint.X - halfWidth;
+                                                            var rotatedLocalMinY = placementPoint.Y - halfHeight;
+                                                            var rotatedLocalMinZ = placementPoint.Z - halfDepth;
+                                                            var rotatedLocalMaxX = placementPoint.X + halfWidth;
+                                                            var rotatedLocalMaxY = placementPoint.Y + halfHeight;
+                                                            var rotatedLocalMaxZ = placementPoint.Z + halfDepth;
+
+                                                            // ✅ SAVE: Save rotated bounding box in LOCAL coordinates (centered at placement point)
+                                                            // These coordinates represent the sleeve's actual size (550mm × 200mm) in its local coordinate system
+                                                            // Clustering will use these directly for distance calculations in the rotated coordinate system
+                                                            repository.UpdateRotatedBoundingBoxes(
+                                                                zone.Id,
+                                                                rotatedLocalMinX, rotatedLocalMinY, rotatedLocalMinZ,
+                                                                rotatedLocalMaxX, rotatedLocalMaxY, rotatedLocalMaxZ);
+
+                                                            // ✅ SLEEVE CORNERS: Calculate and save 4 corner coordinates in WORLD space
+                                                            // Corner order: 1=Bottom-left, 2=Bottom-right, 3=Top-left, 4=Top-right (in local space, then rotated to world)
+                                                            // Pre-calculated once during individual sleeve placement, stored for reuse during clustering
+                                                            // ✅ CRITICAL: Sleeve center = SleevePlacementPointActiveDocument (Active document coordinates where sleeve is actually placed)
+                                                            try
+                                                            {
+                                                                // ✅ SLEEVE CENTER: Use Active document coordinates (where sleeve is actually placed)
+                                                                // This is saved to database via UpdateSleevePlacement (SleevePlacementActiveX/Y/Z)
+                                                                var sleeveCenter = new XYZ(
+                                                                    zone.SleevePlacementPointActiveDocumentX,  // Active document X (sleeve center)
+                                                                    zone.SleevePlacementPointActiveDocumentY,  // Active document Y (sleeve center)
+                                                                    zone.SleevePlacementPointActiveDocumentZ   // Active document Z (sleeve center)
+                                                                );
+
+                                                                // ✅ DIAGNOSTIC: Log corner saving attempt
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                                {
+                                                                    DebugLogger.Info($"[SLEEVE-CORNERS] ATTEMPTING to save corners for zone {zone.Id}: " +
+                                                                        $"Rotation={rotationAngleDeg:F1}°, " +
+                                                                        $"ActiveCoords=({zone.SleevePlacementPointActiveDocumentX:F6}, {zone.SleevePlacementPointActiveDocumentY:F6}, {zone.SleevePlacementPointActiveDocumentZ:F6}), " +
+                                                                        $"Width={actualWidth * 304.8:F1}mm, Height={actualHeight * 304.8:F1}mm");
+                                                                }
+
+                                                                // ✅ CRITICAL: Check if Active coordinates are valid (not all zero)
+                                                                if (Math.Abs(zone.SleevePlacementPointActiveDocumentX) < 1e-6 &&
+                                                                    Math.Abs(zone.SleevePlacementPointActiveDocumentY) < 1e-6 &&
+                                                                    Math.Abs(zone.SleevePlacementPointActiveDocumentZ) < 1e-6)
+                                                                {
+                                                                    // ✅ FALLBACK: Use regular placement point if Active coordinates are not set
+                                                                    sleeveCenter = zone.SleevePlacementPoint;
+                                                                    if (!DeploymentConfiguration.DeploymentMode)
+                                                                    {
+                                                                        DebugLogger.Warning($"[SLEEVE-CORNERS] Active coordinates are zero for zone {zone.Id}, using SleevePlacementPoint instead: ({sleeveCenter.X:F6}, {sleeveCenter.Y:F6}, {sleeveCenter.Z:F6})");
+                                                                    }
+                                                                }
+
+                                                                // Step 1: Calculate 4 corners in local coordinate system (before rotation)
+                                                                // Use sleeve width and height (saved to database via UpdateSleevePlacement)
+                                                                double halfW = actualWidth / 2.0;
+                                                                double halfH = actualHeight / 2.0;
+
+                                                                // Corner offsets in local space: (-1,-1), (1,-1), (-1,1), (1,1) multiplied by halfW/halfH
+                                                                var localCorners = new[]
+                                                                {
                                                             new XYZ(-halfW, -halfH, 0),  // Corner 1: Bottom-left
                                                             new XYZ(halfW, -halfH, 0),   // Corner 2: Bottom-right
                                                             new XYZ(-halfW, halfH, 0),   // Corner 3: Top-left
                                                             new XYZ(halfW, halfH, 0)     // Corner 4: Top-right
                                                         };
-                                                        
-                                                        // Step 2: Rotate corners by sleeve rotation angle to get world-space corners
-                                                        // Use rotation matrix (cos, sin) based on MepElementRotationAngle (saved to database)
-                                                        double cosSleeve = Math.Cos(rotationAngleRad);
-                                                        double sinSleeve = Math.Sin(rotationAngleRad);
-                                                        
-                                                        var worldCorners = new XYZ[4];
-                                                        for (int j = 0; j < 4; j++)
-                                                        {
-                                                            double localX = localCorners[j].X;
-                                                            double localY = localCorners[j].Y;
-                                                            
-                                                            // Rotate corner by sleeve rotation matrix
-                                                            double worldX = localX * cosSleeve - localY * sinSleeve;
-                                                            double worldY = localX * sinSleeve + localY * cosSleeve;
-                                                            
-                                                            // ✅ TRANSLATE TO SLEEVE CENTER: Add rotated corner offset to sleeve center (placement point)
-                                                            worldCorners[j] = new XYZ(
-                                                                sleeveCenter.X + worldX,
-                                                                sleeveCenter.Y + worldY,
-                                                                sleeveCenter.Z
-                                                            );
+
+                                                                // Step 2: Rotate corners by sleeve rotation angle to get world-space corners
+                                                                // Use rotation matrix (cos, sin) based on MepElementRotationAngle (saved to database)
+                                                                double cosSleeve = Math.Cos(rotationAngleRad);
+                                                                double sinSleeve = Math.Sin(rotationAngleRad);
+
+                                                                var worldCorners = new XYZ[4];
+                                                                for (int j = 0; j < 4; j++)
+                                                                {
+                                                                    double localX = localCorners[j].X;
+                                                                    double localY = localCorners[j].Y;
+
+                                                                    // Rotate corner by sleeve rotation matrix
+                                                                    double worldX = localX * cosSleeve - localY * sinSleeve;
+                                                                    double worldY = localX * sinSleeve + localY * cosSleeve;
+
+                                                                    // ✅ TRANSLATE TO SLEEVE CENTER: Add rotated corner offset to sleeve center (placement point)
+                                                                    worldCorners[j] = new XYZ(
+                                                                        sleeveCenter.X + worldX,
+                                                                        sleeveCenter.Y + worldY,
+                                                                        sleeveCenter.Z
+                                                                    );
+                                                                }
+
+                                                                // Step 3: Save world-space corners to database
+                                                                repository.UpdateSleeveCorners(
+                                                                    zone.Id,
+                                                                    worldCorners[0].X, worldCorners[0].Y, worldCorners[0].Z,  // Corner 1
+                                                                    worldCorners[1].X, worldCorners[1].Y, worldCorners[1].Z,  // Corner 2
+                                                                    worldCorners[2].X, worldCorners[2].Y, worldCorners[2].Z,  // Corner 3
+                                                                    worldCorners[3].X, worldCorners[3].Y, worldCorners[3].Z   // Corner 4
+                                                                );
+
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                                {
+                                                                    DebugLogger.Info($"[SLEEVE-CORNERS] ✅ Saved 4 world-space corners for zone {zone.Id}: " +
+                                                                        $"C1=({worldCorners[0].X:F6}, {worldCorners[0].Y:F6}, {worldCorners[0].Z:F6}), " +
+                                                                        $"C2=({worldCorners[1].X:F6}, {worldCorners[1].Y:F6}, {worldCorners[1].Z:F6}), " +
+                                                                        $"C3=({worldCorners[2].X:F6}, {worldCorners[2].Y:F6}, {worldCorners[2].Z:F6}), " +
+                                                                        $"C4=({worldCorners[3].X:F6}, {worldCorners[3].Y:F6}, {worldCorners[3].Z:F6})");
+                                                                }
+                                                            }
+                                                            catch (Exception cornerEx)
+                                                            {
+                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                                {
+                                                                    DebugLogger.Warning($"[SLEEVE-CORNERS] Error calculating corners for zone {zone.Id}: {cornerEx.Message}");
+                                                                }
+                                                            }
+
+                                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                            {
+                                                                // Log local bounding box coordinates (centered at placement point)
+                                                                double localWidthMm = (rotatedLocalMaxX - rotatedLocalMinX) * 304.8;
+                                                                double localHeightMm = (rotatedLocalMaxY - rotatedLocalMinY) * 304.8;
+                                                                double localDepthMm = (rotatedLocalMaxZ - rotatedLocalMinZ) * 304.8;
+
+                                                                DebugLogger.Info($"[ROTATED-BBOX] ✅ Saved rotated bounding box (LOCAL coordinates) for zone {zone.Id}: " +
+                                                                    $"Angle={rotationAngleDeg:F1}° (non-axis-aligned), " +
+                                                                    $"ActualSize={actualWidth * 304.8:F1}mm × {actualHeight * 304.8:F1}mm, " +
+                                                                    $"LocalBBoxSize={localWidthMm:F1}mm × {localHeightMm:F1}mm × {localDepthMm:F1}mm, " +
+                                                                    $"PlacementPoint=({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6}), " +
+                                                                    $"RotatedMin=({rotatedLocalMinX:F6}, {rotatedLocalMinY:F6}, {rotatedLocalMinZ:F6}), " +
+                                                                    $"RotatedMax=({rotatedLocalMaxX:F6}, {rotatedLocalMaxY:F6}, {rotatedLocalMaxZ:F6})");
+                                                            }
                                                         }
-                                                        
-                                                        // Step 3: Save world-space corners to database
-                                                        repository.UpdateSleeveCorners(
-                                                            zone.Id,
-                                                            worldCorners[0].X, worldCorners[0].Y, worldCorners[0].Z,  // Corner 1
-                                                            worldCorners[1].X, worldCorners[1].Y, worldCorners[1].Z,  // Corner 2
-                                                            worldCorners[2].X, worldCorners[2].Y, worldCorners[2].Z,  // Corner 3
-                                                            worldCorners[3].X, worldCorners[3].Y, worldCorners[3].Z   // Corner 4
-                                                        );
-                                                        
+                                                        catch (Exception rotEx)
+                                                        {
+                                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                            {
+                                                                DebugLogger.Warning($"[ROTATED-BBOX] Error calculating rotated bounding box for zone {zone.Id}: {rotEx.Message}");
+                                                                DebugLogger.Warning($"[ROTATED-BBOX] Stack trace: {rotEx.StackTrace}");
+                                                            }
+                                                        }
+                                                    }
+                                                    else if (Math.Abs(rotationAngleRad) > 1e-6 && isStraightAxisAligned)
+                                                    {
+                                                        // Axis-aligned angle (0°, 90°, 180°, 270°) - no need for rotated bbox
                                                         if (!DeploymentConfiguration.DeploymentMode)
                                                         {
-                                                            DebugLogger.Info($"[SLEEVE-CORNERS] ✅ Saved 4 world-space corners for zone {zone.Id}: " +
-                                                                $"C1=({worldCorners[0].X:F6}, {worldCorners[0].Y:F6}, {worldCorners[0].Z:F6}), " +
-                                                                $"C2=({worldCorners[1].X:F6}, {worldCorners[1].Y:F6}, {worldCorners[1].Z:F6}), " +
-                                                                $"C3=({worldCorners[2].X:F6}, {worldCorners[2].Y:F6}, {worldCorners[2].Z:F6}), " +
-                                                                $"C4=({worldCorners[3].X:F6}, {worldCorners[3].Y:F6}, {worldCorners[3].Z:F6})");
+                                                            DebugLogger.Info($"[ROTATED-BBOX] Skipped rotated bounding box for zone {zone.Id}: Angle={rotationAngleDeg:F1}° (axis-aligned, using axis-aligned bbox)");
                                                         }
-                                                    }
-                                                    catch (Exception cornerEx)
-                                                    {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                                        {
-                                                            DebugLogger.Warning($"[SLEEVE-CORNERS] Error calculating corners for zone {zone.Id}: {cornerEx.Message}");
-                                                        }
-                                                    }
-                                                    
-                                                    if (!DeploymentConfiguration.DeploymentMode)
-                                                    {
-                                                        // Log local bounding box coordinates (centered at placement point)
-                                                        double localWidthMm = (rotatedLocalMaxX - rotatedLocalMinX) * 304.8;
-                                                        double localHeightMm = (rotatedLocalMaxY - rotatedLocalMinY) * 304.8;
-                                                        double localDepthMm = (rotatedLocalMaxZ - rotatedLocalMinZ) * 304.8;
-                                                        
-                                                        DebugLogger.Info($"[ROTATED-BBOX] ✅ Saved rotated bounding box (LOCAL coordinates) for zone {zone.Id}: " +
-                                                            $"Angle={rotationAngleDeg:F1}° (non-axis-aligned), " +
-                                                            $"ActualSize={actualWidth * 304.8:F1}mm × {actualHeight * 304.8:F1}mm, " +
-                                                            $"LocalBBoxSize={localWidthMm:F1}mm × {localHeightMm:F1}mm × {localDepthMm:F1}mm, " +
-                                                            $"PlacementPoint=({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6}), " +
-                                                            $"RotatedMin=({rotatedLocalMinX:F6}, {rotatedLocalMinY:F6}, {rotatedLocalMinZ:F6}), " +
-                                                            $"RotatedMax=({rotatedLocalMaxX:F6}, {rotatedLocalMaxY:F6}, {rotatedLocalMaxZ:F6})");
-                                                    }
-                                                }
-                                                catch (Exception rotEx)
-                                                {
-                                                    if (!DeploymentConfiguration.DeploymentMode)
-                                                    {
-                                                        DebugLogger.Warning($"[ROTATED-BBOX] Error calculating rotated bounding box for zone {zone.Id}: {rotEx.Message}");
-                                                        DebugLogger.Warning($"[ROTATED-BBOX] Stack trace: {rotEx.StackTrace}");
-                                                    }
-                                                }
-                                            }
-                                            else if (Math.Abs(rotationAngleRad) > 1e-6 && isStraightAxisAligned)
-                                            {
-                                                // Axis-aligned angle (0°, 90°, 180°, 270°) - no need for rotated bbox
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                {
-                                                    DebugLogger.Info($"[ROTATED-BBOX] Skipped rotated bounding box for zone {zone.Id}: Angle={rotationAngleDeg:F1}° (axis-aligned, using axis-aligned bbox)");
-                                                }
-                                                
-                                                // ✅ SLEEVE CORNERS: Still calculate and save 4 corner coordinates in WORLD space for axis-aligned sleeves
-                                                // Pre-calculated once during individual sleeve placement, stored for reuse during clustering
-                                                // ✅ CRITICAL: Sleeve center = SleevePlacementPointActiveDocument (Active document coordinates where sleeve is actually placed)
-                                                try
-                                                {
-                                                    // ✅ SLEEVE CENTER: Use Active document coordinates (where sleeve is actually placed)
-                                                    // This is saved to database via UpdateSleevePlacement (SleevePlacementActiveX/Y/Z)
-                                                    var sleeveCenter = new XYZ(
-                                                        zone.SleevePlacementPointActiveDocumentX,  // Active document X (sleeve center)
-                                                        zone.SleevePlacementPointActiveDocumentY,  // Active document Y (sleeve center)
-                                                        zone.SleevePlacementPointActiveDocumentZ   // Active document Z (sleeve center)
-                                                    );
-                                                    
-                                                    double actualWidth = zone.SleeveWidth > 0 ? zone.SleeveWidth : fw;
-                                                    double actualHeight = zone.SleeveHeight > 0 ? zone.SleeveHeight : fh;
-                                                    
-                                                    // Try to get dimensions from sleeve element if available
-                                                    if (sleeve != null && sleeve.IsValidObject)
-                                                    {
+
+                                                        // ✅ SLEEVE CORNERS: Still calculate and save 4 corner coordinates in WORLD space for axis-aligned sleeves
+                                                        // Pre-calculated once during individual sleeve placement, stored for reuse during clustering
+                                                        // ✅ CRITICAL: Sleeve center = SleevePlacementPointActiveDocument (Active document coordinates where sleeve is actually placed)
                                                         try
                                                         {
-                                                            var widthParam = sleeve.LookupParameter("Width");
-                                                            var heightParam = sleeve.LookupParameter("Height");
-                                                            
-                                                            if (widthParam != null && widthParam.HasValue)
-                                                                actualWidth = widthParam.AsDouble();
-                                                            if (heightParam != null && heightParam.HasValue)
-                                                                actualHeight = heightParam.AsDouble();
-                                                        }
-                                                        catch { /* Fallback to zone dimensions */ }
-                                                    }
-                                                    
-                                                    // Step 1: Calculate 4 corners in local coordinate system (before rotation)
-                                                    // Use sleeve width and height (saved to database via UpdateSleevePlacement)
-                                                    double halfW = actualWidth / 2.0;
-                                                    double halfH = actualHeight / 2.0;
-                                                    
-                                                    // Corner offsets in local space: (-1,-1), (1,-1), (-1,1), (1,1) multiplied by halfW/halfH
-                                                    var localCorners = new[]
-                                                    {
+                                                            // ✅ SLEEVE CENTER: Use Active document coordinates (where sleeve is actually placed)
+                                                            // This is saved to database via UpdateSleevePlacement (SleevePlacementActiveX/Y/Z)
+                                                            var sleeveCenter = new XYZ(
+                                                                zone.SleevePlacementPointActiveDocumentX,  // Active document X (sleeve center)
+                                                                zone.SleevePlacementPointActiveDocumentY,  // Active document Y (sleeve center)
+                                                                zone.SleevePlacementPointActiveDocumentZ   // Active document Z (sleeve center)
+                                                            );
+
+                                                            double actualWidth = zone.SleeveWidth > 0 ? zone.SleeveWidth : fw;
+                                                            double actualHeight = zone.SleeveHeight > 0 ? zone.SleeveHeight : fh;
+
+                                                            // Try to get dimensions from sleeve element if available
+                                                            if (sleeve != null && sleeve.IsValidObject)
+                                                            {
+                                                                try
+                                                                {
+                                                                    var widthParam = sleeve.LookupParameter("Width");
+                                                                    var heightParam = sleeve.LookupParameter("Height");
+
+                                                                    if (widthParam != null && widthParam.HasValue)
+                                                                        actualWidth = widthParam.AsDouble();
+                                                                    if (heightParam != null && heightParam.HasValue)
+                                                                        actualHeight = heightParam.AsDouble();
+                                                                }
+                                                                catch { /* Fallback to zone dimensions */ }
+                                                            }
+
+                                                            // Step 1: Calculate 4 corners in local coordinate system (before rotation)
+                                                            // Use sleeve width and height (saved to database via UpdateSleevePlacement)
+                                                            double halfW = actualWidth / 2.0;
+                                                            double halfH = actualHeight / 2.0;
+
+                                                            // Corner offsets in local space: (-1,-1), (1,-1), (-1,1), (1,1) multiplied by halfW/halfH
+                                                            var localCorners = new[]
+                                                            {
                                                         new XYZ(-halfW, -halfH, 0),  // Corner 1: Bottom-left
                                                         new XYZ(halfW, -halfH, 0),   // Corner 2: Bottom-right
                                                         new XYZ(-halfW, halfH, 0),   // Corner 3: Top-left
                                                         new XYZ(halfW, halfH, 0)     // Corner 4: Top-right
                                                     };
-                                                    
-                                                    // Step 2: Rotate corners by sleeve rotation angle to get world-space corners
-                                                    // Use rotation matrix (cos, sin) based on MepElementRotationAngle (saved to database)
-                                                    double cosSleeve = Math.Cos(rotationAngleRad);
-                                                    double sinSleeve = Math.Sin(rotationAngleRad);
-                                                    
-                                                    var worldCorners = new XYZ[4];
-                                                    for (int j = 0; j < 4; j++)
-                                                    {
-                                                        double localX = localCorners[j].X;
-                                                        double localY = localCorners[j].Y;
-                                                        
-                                                        // Rotate corner by sleeve rotation matrix
-                                                        double worldX = localX * cosSleeve - localY * sinSleeve;
-                                                        double worldY = localX * sinSleeve + localY * cosSleeve;
-                                                        
-                                                        // ✅ TRANSLATE TO SLEEVE CENTER: Add rotated corner offset to sleeve center (placement point)
-                                                        worldCorners[j] = new XYZ(
-                                                            sleeveCenter.X + worldX,
-                                                            sleeveCenter.Y + worldY,
-                                                            sleeveCenter.Z
-                                                        );
+
+                                                            // Step 2: Rotate corners by sleeve rotation angle to get world-space corners
+                                                            // Use rotation matrix (cos, sin) based on MepElementRotationAngle (saved to database)
+                                                            double cosSleeve = Math.Cos(rotationAngleRad);
+                                                            double sinSleeve = Math.Sin(rotationAngleRad);
+
+                                                            var worldCorners = new XYZ[4];
+                                                            for (int j = 0; j < 4; j++)
+                                                            {
+                                                                double localX = localCorners[j].X;
+                                                                double localY = localCorners[j].Y;
+
+                                                                // Rotate corner by sleeve rotation matrix
+                                                                double worldX = localX * cosSleeve - localY * sinSleeve;
+                                                                double worldY = localX * sinSleeve + localY * cosSleeve;
+
+                                                                // ✅ TRANSLATE TO SLEEVE CENTER: Add rotated corner offset to sleeve center (placement point)
+                                                                worldCorners[j] = new XYZ(
+                                                                    sleeveCenter.X + worldX,
+                                                                    sleeveCenter.Y + worldY,
+                                                                    sleeveCenter.Z
+                                                                );
+                                                            }
+
+                                                            // Step 3: Save world-space corners to database
+                                                            repository.UpdateSleeveCorners(
+                                                                zone.Id,
+                                                                worldCorners[0].X, worldCorners[0].Y, worldCorners[0].Z,  // Corner 1
+                                                                worldCorners[1].X, worldCorners[1].Y, worldCorners[1].Z,  // Corner 2
+                                                                worldCorners[2].X, worldCorners[2].Y, worldCorners[2].Z,  // Corner 3
+                                                                worldCorners[3].X, worldCorners[3].Y, worldCorners[3].Z   // Corner 4
+                                                            );
+
+                                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                            {
+                                                                DebugLogger.Info($"[SLEEVE-CORNERS] ✅ Saved 4 world-space corners (axis-aligned) for zone {zone.Id}: " +
+                                                                    $"C1=({worldCorners[0].X:F6}, {worldCorners[0].Y:F6}, {worldCorners[0].Z:F6}), " +
+                                                                    $"C2=({worldCorners[1].X:F6}, {worldCorners[1].Y:F6}, {worldCorners[1].Z:F6}), " +
+                                                                    $"C3=({worldCorners[2].X:F6}, {worldCorners[2].Y:F6}, {worldCorners[2].Z:F6}), " +
+                                                                    $"C4=({worldCorners[3].X:F6}, {worldCorners[3].Y:F6}, {worldCorners[3].Z:F6})");
+                                                            }
+                                                        }
+                                                        catch (Exception cornerEx)
+                                                        {
+                                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                            {
+                                                                DebugLogger.Warning($"[SLEEVE-CORNERS] Error calculating corners for zone {zone.Id}: {cornerEx.Message}");
+                                                            }
+                                                        }
                                                     }
-                                                    
-                                                    // Step 3: Save world-space corners to database
-                                                    repository.UpdateSleeveCorners(
-                                                        zone.Id,
-                                                        worldCorners[0].X, worldCorners[0].Y, worldCorners[0].Z,  // Corner 1
-                                                        worldCorners[1].X, worldCorners[1].Y, worldCorners[1].Z,  // Corner 2
-                                                        worldCorners[2].X, worldCorners[2].Y, worldCorners[2].Z,  // Corner 3
-                                                        worldCorners[3].X, worldCorners[3].Y, worldCorners[3].Z   // Corner 4
-                                                    );
-                                                    
-                                                    if (!DeploymentConfiguration.DeploymentMode)
+                                                    else
                                                     {
-                                                        DebugLogger.Info($"[SLEEVE-CORNERS] ✅ Saved 4 world-space corners (axis-aligned) for zone {zone.Id}: " +
-                                                            $"C1=({worldCorners[0].X:F6}, {worldCorners[0].Y:F6}, {worldCorners[0].Z:F6}), " +
-                                                            $"C2=({worldCorners[1].X:F6}, {worldCorners[1].Y:F6}, {worldCorners[1].Z:F6}), " +
-                                                            $"C3=({worldCorners[2].X:F6}, {worldCorners[2].Y:F6}, {worldCorners[2].Z:F6}), " +
-                                                            $"C4=({worldCorners[3].X:F6}, {worldCorners[3].Y:F6}, {worldCorners[3].Z:F6})");
-                                                    }
-                                                }
-                                                catch (Exception cornerEx)
-                                                {
-                                                    if (!DeploymentConfiguration.DeploymentMode)
-                                                    {
-                                                        DebugLogger.Warning($"[SLEEVE-CORNERS] Error calculating corners for zone {zone.Id}: {cornerEx.Message}");
-                                                    }
-                                                }
-                                            }
-                                            else
-                                            {
-                                                // Zero rotation (0°) - still calculate corners for consistency
-                                                // ✅ CRITICAL: Sleeve center = SleevePlacementPointActiveDocument (Active document coordinates where sleeve is actually placed)
-                                                try
-                                                {
-                                                    // ✅ SLEEVE CENTER: Use Active document coordinates (where sleeve is actually placed)
-                                                    // This is saved to database via UpdateSleevePlacement (SleevePlacementActiveX/Y/Z)
-                                                    var sleeveCenter = new XYZ(
-                                                        zone.SleevePlacementPointActiveDocumentX,  // Active document X (sleeve center)
-                                                        zone.SleevePlacementPointActiveDocumentY,  // Active document Y (sleeve center)
-                                                        zone.SleevePlacementPointActiveDocumentZ   // Active document Z (sleeve center)
-                                                    );
-                                                    
-                                                    double actualWidth = zone.SleeveWidth > 0 ? zone.SleeveWidth : fw;
-                                                    double actualHeight = zone.SleeveHeight > 0 ? zone.SleeveHeight : fh;
-                                                    
-                                                    // Try to get dimensions from sleeve element if available
-                                                    if (sleeve != null && sleeve.IsValidObject)
-                                                    {
+                                                        // Zero rotation (0°) - still calculate corners for consistency
+                                                        // ✅ CRITICAL: Sleeve center = SleevePlacementPointActiveDocument (Active document coordinates where sleeve is actually placed)
                                                         try
                                                         {
-                                                            var widthParam = sleeve.LookupParameter("Width");
-                                                            var heightParam = sleeve.LookupParameter("Height");
-                                                            
-                                                            if (widthParam != null && widthParam.HasValue)
-                                                                actualWidth = widthParam.AsDouble();
-                                                            if (heightParam != null && heightParam.HasValue)
-                                                                actualHeight = heightParam.AsDouble();
-                                                        }
-                                                        catch { /* Fallback to zone dimensions */ }
-                                                    }
-                                                    
-                                                    // Step 1: Calculate 4 corners in world space (no rotation needed for 0°)
-                                                    // Use sleeve width and height (saved to database via UpdateSleevePlacement)
-                                                    double halfW = actualWidth / 2.0;
-                                                    double halfH = actualHeight / 2.0;
-                                                    
-                                                    // ✅ CORNERS: Calculate directly in world space centered at sleeve center (placement point)
-                                                    var worldCorners = new[]
-                                                    {
+                                                            // ✅ SLEEVE CENTER: Use Active document coordinates (where sleeve is actually placed)
+                                                            // This is saved to database via UpdateSleevePlacement (SleevePlacementActiveX/Y/Z)
+                                                            var sleeveCenter = new XYZ(
+                                                                zone.SleevePlacementPointActiveDocumentX,  // Active document X (sleeve center)
+                                                                zone.SleevePlacementPointActiveDocumentY,  // Active document Y (sleeve center)
+                                                                zone.SleevePlacementPointActiveDocumentZ   // Active document Z (sleeve center)
+                                                            );
+
+                                                            double actualWidth = zone.SleeveWidth > 0 ? zone.SleeveWidth : fw;
+                                                            double actualHeight = zone.SleeveHeight > 0 ? zone.SleeveHeight : fh;
+
+                                                            // Try to get dimensions from sleeve element if available
+                                                            if (sleeve != null && sleeve.IsValidObject)
+                                                            {
+                                                                try
+                                                                {
+                                                                    var widthParam = sleeve.LookupParameter("Width");
+                                                                    var heightParam = sleeve.LookupParameter("Height");
+
+                                                                    if (widthParam != null && widthParam.HasValue)
+                                                                        actualWidth = widthParam.AsDouble();
+                                                                    if (heightParam != null && heightParam.HasValue)
+                                                                        actualHeight = heightParam.AsDouble();
+                                                                }
+                                                                catch { /* Fallback to zone dimensions */ }
+                                                            }
+
+                                                            // Step 1: Calculate 4 corners in world space (no rotation needed for 0°)
+                                                            // Use sleeve width and height (saved to database via UpdateSleevePlacement)
+                                                            double halfW = actualWidth / 2.0;
+                                                            double halfH = actualHeight / 2.0;
+
+                                                            // ✅ CORNERS: Calculate directly in world space centered at sleeve center (placement point)
+                                                            var worldCorners = new[]
+                                                            {
                                                         new XYZ(sleeveCenter.X - halfW, sleeveCenter.Y - halfH, sleeveCenter.Z),  // Corner 1: Bottom-left
                                                         new XYZ(sleeveCenter.X + halfW, sleeveCenter.Y - halfH, sleeveCenter.Z),  // Corner 2: Bottom-right
                                                         new XYZ(sleeveCenter.X - halfW, sleeveCenter.Y + halfH, sleeveCenter.Z),  // Corner 3: Top-left
                                                         new XYZ(sleeveCenter.X + halfW, sleeveCenter.Y + halfH, sleeveCenter.Z)   // Corner 4: Top-right
                                                     };
-                                                    
-                                                    // Step 2: Save world-space corners to database
-                                                    repository.UpdateSleeveCorners(
-                                                        zone.Id,
-                                                        worldCorners[0].X, worldCorners[0].Y, worldCorners[0].Z,  // Corner 1
-                                                        worldCorners[1].X, worldCorners[1].Y, worldCorners[1].Z,  // Corner 2
-                                                        worldCorners[2].X, worldCorners[2].Y, worldCorners[2].Z,  // Corner 3
-                                                        worldCorners[3].X, worldCorners[3].Y, worldCorners[3].Z   // Corner 4
-                                                    );
-                                                    
-                                                    if (!DeploymentConfiguration.DeploymentMode)
-                                                {
-                                                        DebugLogger.Info($"[SLEEVE-CORNERS] ✅ Saved 4 world-space corners (zero rotation) for zone {zone.Id}: " +
-                                                            $"C1=({worldCorners[0].X:F6}, {worldCorners[0].Y:F6}, {worldCorners[0].Z:F6}), " +
-                                                            $"C2=({worldCorners[1].X:F6}, {worldCorners[1].Y:F6}, {worldCorners[1].Z:F6}), " +
-                                                            $"C3=({worldCorners[2].X:F6}, {worldCorners[2].Y:F6}, {worldCorners[2].Z:F6}), " +
-                                                            $"C4=({worldCorners[3].X:F6}, {worldCorners[3].Y:F6}, {worldCorners[3].Z:F6})");
+
+                                                            // Step 2: Save world-space corners to database
+                                                            repository.UpdateSleeveCorners(
+                                                                zone.Id,
+                                                                worldCorners[0].X, worldCorners[0].Y, worldCorners[0].Z,  // Corner 1
+                                                                worldCorners[1].X, worldCorners[1].Y, worldCorners[1].Z,  // Corner 2
+                                                                worldCorners[2].X, worldCorners[2].Y, worldCorners[2].Z,  // Corner 3
+                                                                worldCorners[3].X, worldCorners[3].Y, worldCorners[3].Z   // Corner 4
+                                                            );
+
+                                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                            {
+                                                                DebugLogger.Info($"[SLEEVE-CORNERS] ✅ Saved 4 world-space corners (zero rotation) for zone {zone.Id}: " +
+                                                                    $"C1=({worldCorners[0].X:F6}, {worldCorners[0].Y:F6}, {worldCorners[0].Z:F6}), " +
+                                                                    $"C2=({worldCorners[1].X:F6}, {worldCorners[1].Y:F6}, {worldCorners[1].Z:F6}), " +
+                                                                    $"C3=({worldCorners[2].X:F6}, {worldCorners[2].Y:F6}, {worldCorners[2].Z:F6}), " +
+                                                                    $"C4=({worldCorners[3].X:F6}, {worldCorners[3].Y:F6}, {worldCorners[3].Z:F6})");
+                                                            }
+                                                        }
+                                                        catch (Exception cornerEx)
+                                                        {
+                                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                            {
+                                                                DebugLogger.Warning($"[SLEEVE-CORNERS] Error calculating corners for zone {zone.Id}: {cornerEx.Message}");
+                                                            }
+                                                        }
                                                     }
                                                 }
-                                                catch (Exception cornerEx)
-                                                {
-                                                    if (!DeploymentConfiguration.DeploymentMode)
-                                                    {
-                                                        DebugLogger.Warning($"[SLEEVE-CORNERS] Error calculating corners for zone {zone.Id}: {cornerEx.Message}");
-                                                    }
-                                                }
+
+                                                dbSavedCount++;
                                             }
                                         }
-                                        
-                                        dbSavedCount++;
-                                    }
-                                }
-                                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    DebugLogger.Info($"[UniversalSleevePlacer] ✅ DATABASE: Saved sleeve data for {dbSavedCount} clash zones immediately after placement");
-                                }
-                                
-                                // ✅ CRITICAL FIX: Save sleeve snapshots after placement
-                                // Snapshots are only saved when sleeves have SleeveInstanceId > 0 (after placement)
-                                // ✅ DOES NOT DEPEND ON XML - only requires filterName and placed sleeves
-                                if (placedSleeveData.Count > 0 && !string.IsNullOrWhiteSpace(_filterName))
-                                {
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        DebugLogger.Info($"[UniversalSleevePlacer] ✅ Attempting to save sleeve snapshots: FilterName='{_filterName}', PlacedSleeveData={placedSleeveData.Count}");
-                                    }
-                                    try
-                                    {
-                                        // Get FilterId from filter name
-                                        int filterId = -1;
-                                        using (var filterCmd = dbContext.Connection.CreateCommand())
+
+                                        if (!DeploymentConfiguration.DeploymentMode)
                                         {
-                                            filterCmd.CommandText = @"
+                                            DebugLogger.Info($"[UniversalSleevePlacer] ✅ DATABASE: Saved sleeve data for {dbSavedCount} clash zones immediately after placement");
+                                        }
+
+                                        // ✅ CRITICAL FIX: Save sleeve snapshots after placement
+                                        // Snapshots are only saved when sleeves have SleeveInstanceId > 0 (after placement)
+                                        // ✅ DOES NOT DEPEND ON XML - only requires filterName and placed sleeves
+                                        if (placedSleeveData.Count > 0 && !string.IsNullOrWhiteSpace(_filterName))
+                                        {
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                            {
+                                                DebugLogger.Info($"[UniversalSleevePlacer] ✅ Attempting to save sleeve snapshots: FilterName='{_filterName}', PlacedSleeveData={placedSleeveData.Count}");
+                                            }
+                                            try
+                                            {
+                                                // Get FilterId from filter name
+                                                int filterId = -1;
+                                                using (var filterCmd = dbContext.Connection.CreateCommand())
+                                                {
+                                                    filterCmd.CommandText = @"
                                                 SELECT FilterId FROM Filters 
                                                 WHERE FilterName = @FilterName 
                                                 LIMIT 1";
-                                            filterCmd.Parameters.AddWithValue("@FilterName", _filterName);
-                                            var filterResult = filterCmd.ExecuteScalar();
-                                            if (filterResult != null)
-                                            {
-                                                filterId = Convert.ToInt32(filterResult);
-                                            }
-                                        }
-                                        
-                                        if (filterId > 0)
-                                        {
-                                            // Get placed zones with SleeveInstanceId > 0
-                                            var placedZones = placedSleeveData
-                                                .Where(p => p.zone != null && p.zone.SleeveInstanceId > 0)
-                                                .Select(p => p.zone)
-                                                .Distinct()
-                                                .ToList();
-                                            
-                                            if (placedZones.Count > 0)
-                                            {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                {
-                                                    DebugLogger.Info($"[UniversalSleevePlacer] ✅ Saving sleeve snapshots: FilterId={filterId}, PlacedZones={placedZones.Count}");
+                                                    filterCmd.Parameters.AddWithValue("@FilterName", _filterName);
+                                                    var filterResult = filterCmd.ExecuteScalar();
+                                                    if (filterResult != null)
+                                                    {
+                                                        filterId = Convert.ToInt32(filterResult);
+                                                    }
                                                 }
-                                                repository.SaveSleeveSnapshotsForPlacedSleeves(filterId, placedZones);
-                                                
-                                                if (!DeploymentConfiguration.DeploymentMode)
+
+                                                if (filterId > 0)
                                                 {
-                                                    DebugLogger.Info($"[UniversalSleevePlacer] ✅ DATABASE: Saved sleeve snapshots for {placedZones.Count} placed sleeves");
+                                                    // Get placed zones with SleeveInstanceId > 0
+                                                    var placedZones = placedSleeveData
+                                                        .Where(p => p.zone != null && p.zone.SleeveInstanceId > 0)
+                                                        .Select(p => p.zone)
+                                                        .Distinct()
+                                                        .ToList();
+
+                                                    if (placedZones.Count > 0)
+                                                    {
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                                        {
+                                                            DebugLogger.Info($"[UniversalSleevePlacer] ✅ Saving sleeve snapshots: FilterId={filterId}, PlacedZones={placedZones.Count}");
+                                                        }
+                                                        repository.SaveSleeveSnapshotsForPlacedSleeves(filterId, placedZones);
+
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                                        {
+                                                            DebugLogger.Info($"[UniversalSleevePlacer] ✅ DATABASE: Saved sleeve snapshots for {placedZones.Count} placed sleeves");
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                                        {
+                                                            DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ No placed zones with SleeveInstanceId > 0 (placedSleeveData={placedSleeveData.Count})");
+                                                        }
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    if (!DeploymentConfiguration.DeploymentMode)
+                                                    {
+                                                        DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ FilterId not found for FilterName='{_filterName}' - cannot save sleeve snapshots");
+                                                    }
                                                 }
                                             }
-                                            else
+                                            catch (Exception snapshotEx)
                                             {
                                                 if (!DeploymentConfiguration.DeploymentMode)
                                                 {
-                                                    DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ No placed zones with SleeveInstanceId > 0 (placedSleeveData={placedSleeveData.Count})");
+                                                    DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ Failed to save sleeve snapshots: {snapshotEx.Message}");
+                                                    DebugLogger.Warning($"[UniversalSleevePlacer] Stack trace: {snapshotEx.StackTrace}");
                                                 }
                                             }
                                         }
@@ -2172,156 +2268,149 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         {
                                             if (!DeploymentConfiguration.DeploymentMode)
                                             {
-                                                DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ FilterId not found for FilterName='{_filterName}' - cannot save sleeve snapshots");
+                                                DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ SKIPPED saving sleeve snapshots: placedSleeveData={placedSleeveData.Count}, filterName='{_filterName}'");
                                             }
                                         }
                                     }
-                                    catch (Exception snapshotEx)
+                                }
+                                catch (Exception dbEx)
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
                                     {
-                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ Failed to save sleeve data to database after placement: {dbEx.Message}");
+                                    }
+                                }
+                            }
+                        } // ✅ PERFORMANCE: End of single sleeve placement tracking
+
+                        // ✅ PERFORMANCE: Update loop tracker with processed count
+                        placementLoopTracker.SetItemCount(processedCount);
+                    } // ✅ PERFORMANCE: End of placement loop tracking
+
+                    // ✅ PERFORMANCE: Track XML save and flag updates
+                    using (var xmlSaveTracker = performanceMonitor.TrackOperation("Save XML Files & Update Flags"))
+                    {
+                        // ✅ CRITICAL: Save Global XML IMMEDIATELY after placement (before clustering can delete sleeves)
+                        if (PlacedCount > 0)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[{DateTime.Now}] [XML_SAVE] PlacedCount > 0, starting save operations\n");
+
+                            // ⚠️ CRITICAL: Log flag states BEFORE any operations
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [XML-SAVE-BEFORE] About to save with {PlacedCount} placed sleeves\n");
+
+                            // ✅ STEP 1: Capture placed clash zones WITH valid SleeveInstanceId BEFORE any file operations
+                            // This ensures we have the correct state even if SaveUpdatedXmlFiles modifies the list
+                            var placedClashZonesForGlobal = clashZones
+                                .Where(cz => cz.IsResolved && cz.SleeveInstanceId > 0)
+                                .ToList(); // ✅ OOP REFACTORING: Keep actual ClashZone objects instead of anonymous types
+
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[GLOBAL_INDEX] CAPTURED {placedClashZonesForGlobal.Count} placed clash zones for Global XML update (before file operations)");
+                            foreach (var cz in placedClashZonesForGlobal.Take(10))
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[GLOBAL_INDEX-CAPTURED] ClashZone {cz.Id}: Category={cz.MepElementCategory}, IsResolved={cz.IsResolved}, SleeveInstanceId={cz.SleeveInstanceId}");
+                            }
+
+                            // ✅ STEP 2: Save Filter XML first
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                var zonesWithIds = clashZones.Where(cz => cz.SleeveInstanceId > 0).Select(cz => cz.Id).ToList();
+                                DebugLogger.Info($"[UniversalSleevePlacer] Preparing to persist {zonesWithIds.Count} clash zones with SleeveInstanceId > 0");
+                                try
+                                {
+                                    var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                                    System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] [XML-SAVE-PREP] Zones with SleeveId>0: {string.Join(", ", zonesWithIds.Select(id => id.ToString()).Take(10))}{(zonesWithIds.Count > 10 ? ", ..." : string.Empty)}\n");
+                                    var samplePairs = clashZones.Select(cz => $"{cz.Id}:{cz.SleeveInstanceId}").Take(10);
+                                    System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] [XML-SAVE-PREP-DETAIL] Sample pairs: {string.Join(", ", samplePairs)}\n");
+                                }
+                                catch { }
+                            }
+
+                            // ✅ PHASE 2: Skip XML file updates if XML creation is disabled (database only mode)
+                            if (!DeploymentConfiguration.DisableXmlCreation)
+                            {
+                                SaveUpdatedXmlFiles(clashZones);
+                            }
+                            else
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[UniversalSleevePlacer] ⚠️ XML creation disabled - skipping SaveUpdatedXmlFiles (database only mode). Zones={clashZones.Count}");
+                                    var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                                    System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] [XML-SAVE-SKIP] ⚠️ XML creation disabled - skipping SaveUpdatedXmlFiles (database only mode). Zones={clashZones.Count}\n");
+                                }
+                            }
+
+
+                            // ⚠️ REMOVED: Don't update coordinates here because clustering will delete individual sleeves
+
+                            // ⚠️ CRITICAL: Log flag states AFTER XML save (or skip)
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                if (DeploymentConfiguration.DisableXmlCreation)
+                                {
+                                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [XML-SAVE-AFTER] XML save skipped (database only mode) for {PlacedCount} placed sleeves\n");
+                                }
+                                else
+                                {
+                                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [XML-SAVE-AFTER] XML save completed for {PlacedCount} placed sleeves\n");
+                                }
+                            }
+
+                            // ✅ OOP REFACTORING: Use FlagManager for flag updates after placement
+                            // Per methodology document line 242-245: "Update Global XML" after placement
+                            try
+                            {
+                                if (placedClashZonesForGlobal.Count > 0)
+                                {
+                                    foreach (var clashZone in placedClashZonesForGlobal)
+                                    {
+                                        if (clashZone.SleeveInstanceId > 0)
                                         {
-                                            DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ Failed to save sleeve snapshots: {snapshotEx.Message}");
-                                            DebugLogger.Warning($"[UniversalSleevePlacer] Stack trace: {snapshotEx.StackTrace}");
+                                            _flagManager.UpdateFlagsForPlacement(
+                                                clashZone,
+                                                clashZone.SleeveInstanceId,
+                                                isCluster: false,
+                                                clashZone.MepElementCategory,
+                                                _filterName
+                                            );
                                         }
                                     }
+
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[FLAG-MANAGER] ✅ Successfully updated Global XML for {placedClashZonesForGlobal.Count} placed sleeves (BEFORE clustering)");
                                 }
                                 else
                                 {
                                     if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ SKIPPED saving sleeve snapshots: placedSleeveData={placedSleeveData.Count}, filterName='{_filterName}'");
-                                    }
+                                        DebugLogger.Warning($"[FLAG-MANAGER] ⚠️ No placed clash zones found to update in Global XML (PlacedCount={PlacedCount}, but no clash zones with IsResolved=true AND SleeveInstanceId > 0)");
                                 }
                             }
+                            catch (Exception upEx)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Error($"[FLAG-MANAGER] ❌ CRITICAL ERROR: Flag update after individual placement failed: {upEx.Message}");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Error($"[FLAG-MANAGER] Stack trace: {upEx.StackTrace}");
+                                // Don't throw - Global XML failure shouldn't stop placement, but log it clearly
+                            }
                         }
-                        catch (Exception dbEx)
+                        else
                         {
                             if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ Failed to save sleeve data to database after placement: {dbEx.Message}");
-                            }
+                                DebugLogger.Info($"[{DateTime.Now}] [XML_SAVE] PlacedCount = 0, skipping SaveUpdatedXmlFiles\n");
                         }
-                    }
-                }
-                
-                // ✅ CRITICAL: Save Global XML IMMEDIATELY after placement (before clustering can delete sleeves)
-                if (PlacedCount > 0)
-                {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now}] [XML_SAVE] PlacedCount > 0, starting save operations\n");
-                    
-                    // ⚠️ CRITICAL: Log flag states BEFORE any operations
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [XML-SAVE-BEFORE] About to save with {PlacedCount} placed sleeves\n");
-                    
-                    // ✅ STEP 1: Capture placed clash zones WITH valid SleeveInstanceId BEFORE any file operations
-                    // This ensures we have the correct state even if SaveUpdatedXmlFiles modifies the list
-                    var placedClashZonesForGlobal = clashZones
-                        .Where(cz => cz.IsResolved && cz.SleeveInstanceId > 0)
-                        .ToList(); // ✅ OOP REFACTORING: Keep actual ClashZone objects instead of anonymous types
-                    
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[GLOBAL_INDEX] CAPTURED {placedClashZonesForGlobal.Count} placed clash zones for Global XML update (before file operations)");
-                    foreach (var cz in placedClashZonesForGlobal.Take(10))
-                    {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[GLOBAL_INDEX-CAPTURED] ClashZone {cz.Id}: Category={cz.MepElementCategory}, IsResolved={cz.IsResolved}, SleeveInstanceId={cz.SleeveInstanceId}");
-                    }
-                    
-                    // ✅ STEP 2: Save Filter XML first
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        var zonesWithIds = clashZones.Where(cz => cz.SleeveInstanceId > 0).Select(cz => cz.Id).ToList();
-                        DebugLogger.Info($"[UniversalSleevePlacer] Preparing to persist {zonesWithIds.Count} clash zones with SleeveInstanceId > 0");
-                        try
-                        {
-                            var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
-                        System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] [XML-SAVE-PREP] Zones with SleeveId>0: {string.Join(", ", zonesWithIds.Select(id => id.ToString()).Take(10))}{(zonesWithIds.Count > 10 ? ", ..." : string.Empty)}\n");
-                        var samplePairs = clashZones.Select(cz => $"{cz.Id}:{cz.SleeveInstanceId}").Take(10);
-                        System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] [XML-SAVE-PREP-DETAIL] Sample pairs: {string.Join(", ", samplePairs)}\n");
-                        }
-                        catch { }
-                    }
-
-                    // ✅ PHASE 2: Skip XML file updates if XML creation is disabled (database only mode)
-                    if (!DeploymentConfiguration.DisableXmlCreation)
-                    {
-                        SaveUpdatedXmlFiles(clashZones);
-                    }
-                    else
-                    {
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            DebugLogger.Info($"[UniversalSleevePlacer] ⚠️ XML creation disabled - skipping SaveUpdatedXmlFiles (database only mode). Zones={clashZones.Count}");
-                            var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
-                            System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] [XML-SAVE-SKIP] ⚠️ XML creation disabled - skipping SaveUpdatedXmlFiles (database only mode). Zones={clashZones.Count}\n");
-                        }
-                    }
-                   
-                    
-                    // ⚠️ REMOVED: Don't update coordinates here because clustering will delete individual sleeves
-                    
-                    // ⚠️ CRITICAL: Log flag states AFTER XML save (or skip)
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        if (DeploymentConfiguration.DisableXmlCreation)
-                        {
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [XML-SAVE-AFTER] XML save skipped (database only mode) for {PlacedCount} placed sleeves\n");
-                        }
-                        else
-                        {
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [XML-SAVE-AFTER] XML save completed for {PlacedCount} placed sleeves\n");
-                        }
-                    }
-
-                    // ✅ OOP REFACTORING: Use FlagManager for flag updates after placement
-                    // Per methodology document line 242-245: "Update Global XML" after placement
-                    try
-                    {
-                        if (placedClashZonesForGlobal.Count > 0)
-                        {
-                            foreach (var clashZone in placedClashZonesForGlobal)
-                            {
-                                if (clashZone.SleeveInstanceId > 0)
-                                {
-                                    _flagManager.UpdateFlagsForPlacement(
-                                        clashZone,
-                                        clashZone.SleeveInstanceId,
-                                        isCluster: false,
-                                        clashZone.MepElementCategory,
-                                        _filterName
-                                    );
-                                }
-                            }
-                            
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[FLAG-MANAGER] ✅ Successfully updated Global XML for {placedClashZonesForGlobal.Count} placed sleeves (BEFORE clustering)");
-                        }
-                        else
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Warning($"[FLAG-MANAGER] ⚠️ No placed clash zones found to update in Global XML (PlacedCount={PlacedCount}, but no clash zones with IsResolved=true AND SleeveInstanceId > 0)");
-                        }
-                    }
-                    catch (Exception upEx)
-                    {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Error($"[FLAG-MANAGER] ❌ CRITICAL ERROR: Flag update after individual placement failed: {upEx.Message}");
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Error($"[FLAG-MANAGER] Stack trace: {upEx.StackTrace}");
-                        // Don't throw - Global XML failure shouldn't stop placement, but log it clearly
-                    }
-                }
-                else
-                {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now}] [XML_SAVE] PlacedCount = 0, skipping SaveUpdatedXmlFiles\n");
+                        xmlSaveTracker.SetItemCount(PlacedCount);
+                    } // ✅ PERFORMANCE: End of XML save tracking
                 }
             }
             catch (Exception ex)
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Error($"[UniversalSleevePlacer] Error in placement loop: {ex.Message}");
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[UniversalSleevePlacer] Error in placement loop: {ex.Message}");
                 try { SafeFileLogger.SafeAppendText("sleeve_placement_errors.log", $"[{DateTime.Now}] {ex}\n"); } catch { }
                 ErrorCount += 1;
             }
@@ -2358,9 +2447,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             // ✅ PERFORMANCE LOGGING: Log optimization metrics
             overallTimer.Stop();
+            
+            // ✅ PERFORMANCE: Generate final performance report
+            performanceMonitor.GenerateReport(PlacedCount, 0); // 0 clusters for individual placement
+            
             if (PlacedCount > 0 && !DeploymentConfiguration.DeploymentMode)
             {
                 var avgPlacementTime = overallTimer.ElapsedMilliseconds / (double)PlacedCount;
+                SafeFileLogger.SafeAppendText("placement_performance.log",
+                    $"[{DateTime.Now:HH:mm:ss}] PERFORMANCE SUMMARY: Total={overallTimer.ElapsedMilliseconds}ms, AvgPerSleeve={avgPlacementTime:F2}ms, Placed={PlacedCount}, Skipped={SkippedCount}, Errors={ErrorCount}\n");
                 DebugLogger.Info($"[PERFORMANCE] Total placement: {overallTimer.ElapsedMilliseconds}ms");
                 DebugLogger.Info($"[PERFORMANCE] Average per sleeve: {avgPlacementTime:F2}ms");
                 DebugLogger.Info($"[PERFORMANCE] Regenerations: 1 (batch) ✅");
@@ -5270,56 +5365,56 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     else
                     {
                         // ✅ DUCTS and CABLE TRAYS: Rotate based on MEP element orientation
-                        var loc = sleeveInstance.Location as LocationPoint;
-                        if (loc != null)
+                    var loc = sleeveInstance.Location as LocationPoint;
+                    if (loc != null)
+                    {
+                        // ✅ CALCULATE ONCE, USE MANY TIMES: Use pre-calculated rotation angle from ClashZone
+                        double rotationAngle = clashZone.MepElementRotationAngle;
+                        
+                        // ✅ PATH 1 (Replay): Log if MEP orientation is missing (but don't retrieve - use existing data only)
+                        if (_isReplayPath && Math.Abs(rotationAngle) < 1e-6 && string.IsNullOrEmpty(clashZone.MepElementOrientationDirection))
                         {
-                            // ✅ CALCULATE ONCE, USE MANY TIMES: Use pre-calculated rotation angle from ClashZone
-                            double rotationAngle = clashZone.MepElementRotationAngle;
-                            
-                            // ✅ PATH 1 (Replay): Log if MEP orientation is missing (but don't retrieve - use existing data only)
-                            if (_isReplayPath && Math.Abs(rotationAngle) < 1e-6 && string.IsNullOrEmpty(clashZone.MepElementOrientationDirection))
+                            if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    DebugLogger.Warning($"[PATH-1-DIAGNOSTIC] Zone={clashZone.Id}: Missing MEP orientation (BasisX) - MepElementRotationAngle={clashZone.MepElementRotationAngle}, MepElementOrientationDirection='{clashZone.MepElementOrientationDirection}', MepElementOrientationX={clashZone.MepElementOrientationX}. PATH 1 will use 0° rotation (no retrieval from linked files).");
-                                }
+                                DebugLogger.Warning($"[PATH-1-DIAGNOSTIC] Zone={clashZone.Id}: Missing MEP orientation (BasisX) - MepElementRotationAngle={clashZone.MepElementRotationAngle}, MepElementOrientationDirection='{clashZone.MepElementOrientationDirection}', MepElementOrientationX={clashZone.MepElementOrientationX}. PATH 1 will use 0° rotation (no retrieval from linked files).");
                             }
-                            
-                            // ✅ FALLBACK: If rotation angle not calculated (old XML data), calculate from orientation direction
-                            // This maintains backward compatibility with existing XML files
-                            // ✅ BUG FIX: Only use fallback if BOTH angle is zero AND orientation direction is missing
-                            // If MepElementOrientationDirection exists, the angle was calculated (even if 0°), so use it as-is
-                            if (Math.Abs(rotationAngle) < 1e-6 && string.IsNullOrEmpty(clashZone.MepElementOrientationDirection))
-                            {
-                                // Old XML data - angle not calculated, use fallback
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[UniversalSleevePlacer] FLOOR: MepElementRotationAngle is 0 and MepElementOrientationDirection is missing - this is old XML data, skipping fallback (will use 0°)");
-                            }
-                            else if (Math.Abs(rotationAngle) < 1e-6 && !string.IsNullOrEmpty(clashZone.MepElementOrientationDirection))
-                            {
-                                // ✅ BUG FIX: Angle is 0° and orientation direction exists - this means 0° was calculated, use it as-is
-                                // Do NOT use fallback - 0° is a valid calculated angle
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[UniversalSleevePlacer] FLOOR: Using calculated MepElementRotationAngle=0° (MepElementOrientationDirection='{clashZone.MepElementOrientationDirection}' exists, so angle was calculated)");
-                            }
-                            
+                        }
+                        
+                        // ✅ FALLBACK: If rotation angle not calculated (old XML data), calculate from orientation direction
+                        // This maintains backward compatibility with existing XML files
+                        // ✅ BUG FIX: Only use fallback if BOTH angle is zero AND orientation direction is missing
+                        // If MepElementOrientationDirection exists, the angle was calculated (even if 0°), so use it as-is
+                        if (Math.Abs(rotationAngle) < 1e-6 && string.IsNullOrEmpty(clashZone.MepElementOrientationDirection))
+                        {
+                            // Old XML data - angle not calculated, use fallback
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[UniversalSleevePlacer] FLOOR: MepElementRotationAngle is 0 and MepElementOrientationDirection is missing - this is old XML data, skipping fallback (will use 0°)");
+                        }
+                        else if (Math.Abs(rotationAngle) < 1e-6 && !string.IsNullOrEmpty(clashZone.MepElementOrientationDirection))
+                        {
+                            // ✅ BUG FIX: Angle is 0° and orientation direction exists - this means 0° was calculated, use it as-is
+                            // Do NOT use fallback - 0° is a valid calculated angle
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[UniversalSleevePlacer] FLOOR: Using calculated MepElementRotationAngle=0° (MepElementOrientationDirection='{clashZone.MepElementOrientationDirection}' exists, so angle was calculated)");
+                        }
+                        
                             // ✅ APPLY ROTATION: Rotate sleeve to match MEP element angle (for ducts and cable trays only)
-                            if (Math.Abs(rotationAngle) > 1e-6) // Only rotate if angle is significant
+                        if (Math.Abs(rotationAngle) > 1e-6) // Only rotate if angle is significant
+                        {
+                            double rotationAngleDegrees = rotationAngle * 180 / Math.PI;
+                            Line rotationAxis = Line.CreateBound(loc.Point, loc.Point + XYZ.BasisZ);
+                            ElementTransformUtils.RotateElement(_doc, sleeveInstance.Id, rotationAxis, rotationAngle);
+                            
+                            if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                double rotationAngleDegrees = rotationAngle * 180 / Math.PI;
-                                Line rotationAxis = Line.CreateBound(loc.Point, loc.Point + XYZ.BasisZ);
-                                ElementTransformUtils.RotateElement(_doc, sleeveInstance.Id, rotationAxis, rotationAngle);
-                                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    DebugLogger.Info($"[ORIENTATION-SET] Zone={clashZone.Id}, Sleeve={sleeveInstance.Id}: Rotated {rotationAngleDegrees:F1}° (from DB: MepElementRotationAngle={clashZone.MepElementRotationAngle * 180 / Math.PI:F1}°, MepElementOrientationDirection='{clashZone.MepElementOrientationDirection}')");
-                                }
+                                DebugLogger.Info($"[ORIENTATION-SET] Zone={clashZone.Id}, Sleeve={sleeveInstance.Id}: Rotated {rotationAngleDegrees:F1}° (from DB: MepElementRotationAngle={clashZone.MepElementRotationAngle * 180 / Math.PI:F1}°, MepElementOrientationDirection='{clashZone.MepElementOrientationDirection}')");
                             }
-                            else
+                        }
+                        else
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    DebugLogger.Warning($"[ORIENTATION-SET] ⚠️ Zone={clashZone.Id}, Sleeve={sleeveInstance.Id}: No rotation applied (angle=0°) - from DB: MepElementRotationAngle={clashZone.MepElementRotationAngle * 180 / Math.PI:F1}°, MepElementOrientationDirection='{clashZone.MepElementOrientationDirection}', MepElementOrientationX={clashZone.MepElementOrientation?.X:F6}");
+                                DebugLogger.Warning($"[ORIENTATION-SET] ⚠️ Zone={clashZone.Id}, Sleeve={sleeveInstance.Id}: No rotation applied (angle=0°) - from DB: MepElementRotationAngle={clashZone.MepElementRotationAngle * 180 / Math.PI:F1}°, MepElementOrientationDirection='{clashZone.MepElementOrientationDirection}', MepElementOrientationX={clashZone.MepElementOrientation?.X:F6}");
                                 }
                             }
                         }

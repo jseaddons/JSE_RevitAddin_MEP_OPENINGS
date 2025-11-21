@@ -393,23 +393,109 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 // ✅ DIMENSION SWAPPING: For walls/framing, swap dimensions based on orientation
                 if (groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing")
                 {
+                    // ✅ DIAGNOSTIC: Log input dimensions before swapping
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        double wMm = RevitUnitConversionService.Instance.FromInternalMillimeters(width);
+                        double hMm = RevitUnitConversionService.Instance.FromInternalMillimeters(height);
+                        double dMm = RevitUnitConversionService.Instance.FromInternalMillimeters(depth);
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}] 📐 BEFORE SWAP: Orientation={groupKey.orientation}, ShouldSwap={shouldSwapDimensions}, BBox W={wMm:F1}mm, H={hMm:F1}mm, D={dMm:F1}mm\n");
+                    }
+                    
+                    // ✅ CRITICAL FIX: Get wall thickness from clash zones (should be same for all sleeves on same wall)
+                    double wallThickness = 0.0;
+                    try
+                    {
+                        if (cluster.Count > 0)
+                        {
+                            var firstSleeve = cluster[0];
+                            var firstClashZone = firstSleeve?.ClashZone as Models.ClashZone;
+                            if (firstClashZone != null)
+                            {
+                                // Get wall thickness (prefer WallThickness over StructuralElementThickness)
+                                wallThickness = firstClashZone.WallThickness > 0 
+                                    ? firstClashZone.WallThickness 
+                                    : firstClashZone.StructuralElementThickness;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        SafeFileLogger.SafeAppendText("placement_errors.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ⚠️ Error getting wall thickness: {ex.Message}\n");
+                    }
+                    
                     if (groupKey.orientation == "Y")
                     {
                         // Y-wall: Width=H, Height=D, Depth=W
                         openingWidth = height;
                         openingHeight = depth;
                         openingDepth = width;
+                        
+                        // ✅ WALL DEPTH FIX: Override depth with wall thickness for wall-hosted clusters
+                        if (wallThickness > 0)
+                        {
+                            openingDepth = wallThickness;
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                double wallThicknessMm = RevitUnitConversionService.Instance.FromInternalMillimeters(wallThickness);
+                                double depthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(depth);
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] 🔧 Y-WALL DEPTH FIX: Overriding depth from {depthMm:F1}mm to wall thickness {wallThicknessMm:F1}mm\n");
+                            }
+                        }
                     }
-                    else if (shouldSwapDimensions) // X-walls
+                    else // X-walls (and other orientations)
                     {
-                        // X-wall: Width=W, Height=D, Depth=H
-                        openingWidth = width;
-                        openingHeight = depth;
-                        openingDepth = height;
+                        // ✅ X-WALL COORDINATE SYSTEM: For X-walls
+                        // World coordinate: X = along wall (width), Y = through wall (depth), Z = vertical (height)
+                        // Sleeve parameter mapping: Width = X direction, Depth = Y direction, Height = Z direction
+                        // Bounding box returns: width = X extent, height = Y extent, depth = Z extent
+                        
+                        if (shouldSwapDimensions) // X-walls with rotation
+                        {
+                            // X-wall with rotation: Width=W, Height=D, Depth=H (from backup code)
+                            openingWidth = width;   // X extent → Width parameter
+                            openingHeight = depth;  // Z extent → Height parameter
+                            openingDepth = height;  // Y extent → Depth parameter (will be overridden with wall thickness)
+                        }
+                        else // X-walls without rotation (rotationAngle=0)
+                        {
+                            // ✅ X-WALL MAPPING:
+                            // Width = X direction → width (X extent)
+                            // Depth = Y direction → height (Y extent), but overridden with wall thickness
+                            // Height = Z direction → depth (Z extent)
+                            openingWidth = width;   // X extent → Width parameter
+                            openingHeight = depth;  // Z extent → Height parameter
+                            openingDepth = height;  // Y extent → Depth parameter (will be overridden with wall thickness)
+                        }
+                        
+                        // ✅ WALL DEPTH FIX: Override depth with wall thickness for wall-hosted clusters
+                        if (wallThickness > 0)
+                        {
+                            openingDepth = wallThickness;
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                double wallThicknessMm = RevitUnitConversionService.Instance.FromInternalMillimeters(wallThickness);
+                                double originalDepthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(height);
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] 🔧 X-WALL DEPTH FIX: Overriding depth from {originalDepthMm:F1}mm (Y extent) to wall thickness {wallThicknessMm:F1}mm (rotation={shouldSwapDimensions})\n");
+                            }
+                        }
                     }
-                    // For floors, no swap needed - use bounding box values directly
                 }
 
+                // ✅ DIAGNOSTIC: Log final dimensions after swapping
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    double finalWMm = RevitUnitConversionService.Instance.FromInternalMillimeters(openingWidth);
+                    double finalHMm = RevitUnitConversionService.Instance.FromInternalMillimeters(openingHeight);
+                    double finalDMm = RevitUnitConversionService.Instance.FromInternalMillimeters(openingDepth);
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss}] 📐 AFTER SWAP: Final W={finalWMm:F1}mm, H={finalHMm:F1}mm, D={finalDMm:F1}mm\n");
+                }
+                
                 // Set parameters
                 if (widthParam != null && !widthParam.IsReadOnly)
                 {
@@ -851,20 +937,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
             {
                 // ⚠️⚠️⚠️ CRITICAL: DO NOT MODIFY THIS OFFSET - IT IS REQUIRED FOR CORRECT ALIGNMENT ⚠️⚠️⚠️
                 // ✅ CRITICAL FIX: Add 90 degrees (π/2) to MEP orientation angle to fix alignment issue
-                // The cluster sleeve is currently 90 degrees off from MEP elements
-                // Adding π/2 (90 degrees) aligns it correctly with the MEP element axis
-                // 
-                // ⚠️ PROTECTED: This offset was determined through testing and must remain π/2
-                // Changing this value will cause cluster sleeves to be misaligned with MEP elements
-                // 
-                // ⚠️ MODIFICATION CONSENT REQUIRED: To change this value, you MUST:
-                // 1. Set ALLOW_MODIFICATIONS_TO_PROTECTED_CODE = true
-                // 2. Get explicit consent from project owner
-                // 3. Test with all rotation angles (0°, 45°, 90°, 135°, 180°, 225°, 270°, 315°)
-                // 4. Verify cluster sleeves align correctly with MEP elements
-                // 5. Reset ALLOW_MODIFICATIONS_TO_PROTECTED_CODE = false after changes
-                const double REQUIRED_OFFSET_RADIANS = Math.PI / 2.0; // 90 degrees - DO NOT CHANGE WITHOUT CONSENT
-                double adjustedRotationAngle = rotationAngle + REQUIRED_OFFSET_RADIANS;
+                // ✅ ROTATION FIX: ClusterRotationService already calculates the correct rotation angle
+                // (X-wall = 90°, Y-wall = 0°), so we use it directly without adding offset.
+                // Previous code added +90° offset which caused double rotation (180° for X-walls, 90° for Y-walls).
+                double adjustedRotationAngle = rotationAngle; // Use rotation angle directly from ClusterRotationService
                 
                 // ✅ VALIDATION: Normalize angle to 0-2π range
                 while (adjustedRotationAngle < 0) adjustedRotationAngle += 2 * Math.PI;

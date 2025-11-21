@@ -484,7 +484,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // Directory.CreateDirectory creates all parent directories if they don't exist
                         Directory.CreateDirectory(directory);
                         WriteDiagnosticLog(fileName, $"Recreated directory: {directory}", logPathFinal, true);
-                                                // ✅ DEPLOYMENT MODE: Skip file writes
+                        // ✅ DEPLOYMENT MODE: Skip file writes
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             File.AppendAllText(logPathFinal, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}\n");

@@ -11,6 +11,12 @@ if exist "obj" rmdir /s /q "obj"
 echo Clean completed.
 echo.
 
+REM Restore NuGet packages
+echo [1.5/4] Restoring NuGet packages...
+dotnet restore JSE_Openings.sln
+echo Restore completed.
+echo.
+
 REM Build with minimal output
 echo [2/4] Building project...
 "C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe" JSE_RevitAddin_MEP_OPENINGS.csproj /p:Configuration=Debug /verbosity:minimal /nologo

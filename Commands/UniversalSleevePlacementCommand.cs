@@ -31,6 +31,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         private readonly string _logPrefix;
         private OpeningConditions _conditions;
         private readonly Dictionary<string, double> _clearanceSettings;
+        
+        // ✅ PERFORMANCE: Properties to expose placement counts
+        public int PlacedCount { get; private set; }
+        public int SkippedCount { get; private set; }
+        public int ErrorCount { get; private set; }
 
         public UniversalSleevePlacementCommand(Document doc, List<ClashZone> clashZones, string category, string filterName, Dictionary<string, double>? clearanceSettings = null)
         {
@@ -190,6 +195,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             placementPath);
 
                         var result = placementCoordinator.Execute(placementRequest);
+                        
+                        // ✅ PERFORMANCE: Store counts in command properties for access after execution
+                        PlacedCount = result.PlacedCount;
+                        SkippedCount = result.SkippedCount;
+                        ErrorCount = result.ErrorCount;
                         
                         // Commit and check status
                         var status = t.Commit();
