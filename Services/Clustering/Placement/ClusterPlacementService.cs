@@ -279,14 +279,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 }
 
                 // Set size parameters
-                // ✅ WALL/FRAMING: No rotation for walls - shouldSwapDimensions is always false
-                // Rotation logic is only for floors (rotated axis/non-straight)
-                bool shouldSwapDimensions = false; // Walls/framing always use normal logic (no rotation)
+                // ✅ WALL/FRAMING: X-walls get +90° rotation (matches individual sleeves), Y-walls get 0°
+                // shouldSwapDimensions is false for walls (dimension mapping is handled in SetSizeParameters)
+                // Rotation logic for floors (rotated axis/non-straight) is separate from wall orientation rotation
+                bool shouldSwapDimensions = false; // Walls use normal dimension mapping (no swap needed)
                 SetSizeParameters(doc, inst, cluster, groupKey, width, height, depth, shouldSwapDimensions);
 
-                // ✅ ROTATION: Apply rotation only for floors (rotated axis/non-straight)
-                // Walls/framing always have rotationAngle=0 (no rotation, normal working logic)
-                // Only floors can have non-zero rotation angles for rotated axis-aligned clusters
+                // ✅ ROTATION: Apply rotation for walls (X-wall = +90°, Y-wall = 0°) and floors (rotated axis/non-straight)
+                // Wall rotation matches individual sleeve rotation to maintain correct orientation
+                // Floor rotation is for rotated axis-aligned clusters (non-straight)
                 if (Math.Abs(rotationAngle) > 1e-6)
                 {
                     ApplyRotation(doc, inst, placementPoint, rotationAngle);

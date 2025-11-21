@@ -119,6 +119,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static bool UseClusterServiceMultiThreading { get; set; } = true;
         
+        /// <summary>
+        /// Enable parallel clearance calculation for individual sleeve placement (non-Revit operation)
+        /// Pre-calculates clearance values before placement loop to save time
+        /// Default: true (safe to enable - pure math, no Revit API calls)
+        /// </summary>
+        public static bool UseParallelClearanceCalculation { get; set; } = true;
+        
         #endregion
         
         #region Configuration Methods
@@ -156,6 +163,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 UseIncrementalCache = GetConfigValue("UseIncrementalCache", true);
                 UseParallelPreFiltering = GetConfigValue("UseParallelPreFiltering", true);
                 UseClusterServiceMultiThreading = GetConfigValue("UseClusterServiceMultiThreading", true);
+                UseParallelClearanceCalculation = GetConfigValue("UseParallelClearanceCalculation", true);
                 
                                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[OptimizationFlags] Loaded configuration successfully");

@@ -105,9 +105,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     return 0.0;
                 }
 
-                // ✅ WALL/STRUCTURAL FRAMING: No rotation for walls - use normal working logic only
-                // Rotation logic is only applied to floors (rotated axis/non-straight)
-                // Get host type from first clash zone
+                // ✅ WALL/STRUCTURAL FRAMING: Rotation based on X-wall vs Y-wall (same as individual sleeves)
+                // Individual sleeves: X-walls get +90°, Y-walls get 0°
+                // Cluster sleeves must match individual sleeve rotation to maintain correct orientation
+                // Get host type and orientation from first clash zone
                 ClashZone? firstClashZone = null;
                 foreach (var sleeveData in cluster)
                 {
@@ -128,15 +129,56 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
 
                     if (isWallHost || isFramingHost)
                     {
-                        // ✅ WALL/FRAMING: No rotation - return 0.0° (use normal working logic)
-                        // Rotation logic is only for floors (rotated axis/non-straight)
+                        // ✅ WALL ROTATION: Match individual sleeve rotation logic
+                        // Individual sleeves: X-walls get +90° rotation, Y-walls get 0° rotation
+                        // Cluster sleeves must use the SAME rotation to match individual sleeve orientation
+                        string wallDirectionType = firstClashZone.WallDirectionType ?? "";
+                        string hostOrientation = firstClashZone.HostOrientation ?? "";
+                        
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Info($"[CLUSTER-ANGLE] WALL/FRAMING HOST: {firstClashZone.StructuralElementType} → Returning 0.0° (no rotation, use normal working logic)");
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE] ✅ WALL/FRAMING HOST DETECTED → 0.0° (no rotation, normal logic)\n");
+                                $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE-DEBUG] WALL HOST: StructuralType='{firstClashZone.StructuralElementType}', WallDirectionType='{wallDirectionType}', HostOrientation='{hostOrientation}'\n");
                         }
-                        return 0.0; // No rotation for walls/framing - use normal working logic
+                        
+                        // Check WallDirectionType or HostOrientation to determine X-wall vs Y-wall
+                        bool isXWall = wallDirectionType.Contains("X-WALL", StringComparison.OrdinalIgnoreCase) ||
+                                      string.Equals(hostOrientation, "X", StringComparison.OrdinalIgnoreCase);
+                        bool isYWall = wallDirectionType.Contains("Y-WALL", StringComparison.OrdinalIgnoreCase) ||
+                                      string.Equals(hostOrientation, "Y", StringComparison.OrdinalIgnoreCase);
+                        
+                        if (isXWall)
+                        {
+                            // X-wall: +90° rotation (matches individual sleeve rotation)
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[CLUSTER-ANGLE] WALL ROTATION: {firstClashZone.StructuralElementType} - X-WALL → Returning 90.0° (matches individual sleeve rotation)");
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE] ✅ X-WALL DETECTED → 90.0° (matches individual sleeve)\n");
+                            }
+                            return Math.PI / 2.0; // 90° rotation for X-walls (matches individual sleeves)
+                        }
+                        else if (isYWall)
+                        {
+                            // Y-wall: 0° rotation (matches individual sleeve rotation)
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[CLUSTER-ANGLE] WALL ROTATION: {firstClashZone.StructuralElementType} - Y-WALL → Returning 0.0° (matches individual sleeve rotation)");
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE] ✅ Y-WALL DETECTED → 0.0° (matches individual sleeve)\n");
+                            }
+                            return 0.0; // No rotation for Y-walls (matches individual sleeves)
+                        }
+                        else
+                        {
+                            // Fallback: Default to 0° if cannot determine
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE] ⚠️ WALL HOST but cannot determine X/Y → Defaulting to 0.0°\n");
+                            }
+                            return 0.0;
+                        }
                     }
                 }
 
