@@ -17,11 +17,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
     {
         private readonly int _minParallelCount;
         private readonly int _maxDegree;
+        private readonly OpeningConditions _conditions;
+        private readonly Dictionary<string, double> _clearanceSettings;
 
-        public ParallelSleevePlacementPlanner(int minParallelCount = 12, int? maxDegree = null)
+        public ParallelSleevePlacementPlanner(
+            OpeningConditions conditions = null,
+            Dictionary<string, double> clearanceSettings = null,
+            int minParallelCount = 12,
+            int? maxDegree = null)
         {
             _minParallelCount = minParallelCount < 1 ? 1 : minParallelCount;
             _maxDegree = maxDegree ?? Environment.ProcessorCount;
+            _conditions = conditions ?? new OpeningConditions();
+            _clearanceSettings = clearanceSettings ?? new Dictionary<string, double>();
         }
 
         public SleevePlacementPlanningResult Plan(IEnumerable<ClashZone> clashZones)
@@ -81,8 +89,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                         insulation = UnitUtils.ConvertFromInternalUnits(zone.MepElementSizeData.InsulationThickness, UnitTypeId.Feet);
                     }
 
-                    // Nominal target: add insulation + 0.125ft (1.5") clearance ring
-                    double targetWidth = rawSize + insulation + (1.5 / 12.0);
+                    // ✅ CRITICAL: Get clearance from OpeningConditions (same logic as UniversalSleevePlacerService)
+                    string mepCategory = zone.MepElementCategory ?? "Unknown";
+                    double mepSizeInMm = rawSize * 304.8; // Convert feet to mm for clearance lookup
+                    double clearance = GetClearanceFromConditions(mepCategory, mepSizeInMm);
+                    
+                    // Target dimensions: raw size + insulation + clearance
+                    double targetWidth = rawSize + insulation + clearance;
                     double targetHeight = targetWidth; // Assume circular for now; adapt later if rectangular
 
                     // Host thickness heuristics
@@ -92,8 +105,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     if (hostThickness <= 0 && hostType.Equals("Floor", StringComparison.OrdinalIgnoreCase)) hostThickness = 0.833; // 10" default
                     if (hostThickness <= 0) hostThickness = 0.5; // Generic fallback 6"
 
-                    // Clearance heuristic: scale with raw size
-                    double clearance = Math.Max(0.083, rawSize * 0.10); // >=1" or 10% of size
                     double requiredDepth = hostThickness + clearance;
 
                     // Rotation angle (convert from radians to degrees)
@@ -157,6 +168,58 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             if (ratio < 0.10) return ClearanceRiskClassification.High;
             if (ratio < 0.15) return ClearanceRiskClassification.Medium;
             return ClearanceRiskClassification.Low;
+        }
+
+        /// <summary>
+        /// Get clearance from OpeningConditions based on MEP category and size.
+        /// Simplified version that matches UniversalSleevePlacerService logic.
+        /// </summary>
+        private double GetClearanceFromConditions(string category, double mepSizeInMm)
+        {
+            try
+            {
+                // 1. Try UI clearance settings first (user-provided values take priority)
+                if (_clearanceSettings != null && _clearanceSettings.Count > 0)
+                {
+                    // Direct category lookup
+                    if (_clearanceSettings.TryGetValue(category, out double clearanceMm) && clearanceMm > 0)
+                    {
+                        // Convert mm to feet
+                        return clearanceMm / 304.8;
+                    }
+                }
+
+                // 2. Fall back to OpeningConditions XML defaults
+                if (_conditions?.ClearanceSettings != null)
+                {
+                    double clearanceMm = 50.0; // default
+                    
+                    // Get clearance based on category
+                    if (string.Equals(category, "Ducts", StringComparison.OrdinalIgnoreCase))
+                    {
+                        clearanceMm = _conditions.ClearanceSettings.RectangularNormal;
+                    }
+                    else if (string.Equals(category, "Pipes", StringComparison.OrdinalIgnoreCase))
+                    {
+                        clearanceMm = _conditions.ClearanceSettings.PipesNormal;
+                    }
+                    else if (string.Equals(category, "Cable Trays", StringComparison.OrdinalIgnoreCase))
+                    {
+                        clearanceMm = _conditions.ClearanceSettings.CableTrayTop;
+                    }
+                    
+                    // Convert mm to feet
+                    return clearanceMm / 304.8;
+                }
+
+                // 3. Fallback: 50mm (2") default clearance
+                return 50.0 / 304.8; // 50mm in feet
+            }
+            catch
+            {
+                // Fallback on error
+                return 50.0 / 304.8; // 50mm in feet
+            }
         }
     }
 }

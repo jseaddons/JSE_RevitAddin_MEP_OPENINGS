@@ -10,7 +10,7 @@ using System.Linq;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
-    public static class MepIntersectionService
+    public static partial class MepIntersectionService
     {
         // ✅ MEMORY OPTIMIZATION: LRU cache with max size to prevent unbounded growth
         // Large linked files can have thousands of structural elements - cache can grow to 100MB+ without limits
@@ -2342,7 +2342,7 @@ using System.Linq;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
-    public static class MepIntersectionService
+    public static partial class MepIntersectionService
     {
         // NO STATIC CACHES - avoid TypeInitializationException
         private const double MillimetersPerFoot = 304.8;
@@ -2374,10 +2374,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             BuiltInCategory.OST_StructuralFoundation
         };
         
-        /* ❌ DISABLED R24-MINIMAL: Duplicate unoptimized method - using optimized version at line 213 instead
-        public static List<(Element mepElement, Element structuralElement, BoundingBoxXYZ boundingBox, XYZ intersectionPoint)> FindIntersectionsBatch(
-            List<(Element element, Transform? transform)> mepElements,
-            List<(Element element, Transform? transform)> structuralElements,
+        // ✅ R24: FindIntersectionsBatch implementation (minimal version without static caches)
+        public static List<(Element, Element, BoundingBoxXYZ, XYZ)> FindIntersectionsBatch(
+            List<(Element, Transform?)> mepElements,
+            List<(Element, Transform?)> structuralElements,
             Action<string> log,
             HashSet<(int mepId, int structuralId)>? knownValidPairs = null,
             bool skipKnownPairsGeometryCheck = false)
@@ -2452,7 +2452,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 return results;
             }
         }
-        */ // End of disabled R24-MINIMAL duplicate method
         
         private static bool BoundingBoxesOverlap(BoundingBoxXYZ bbox1, BoundingBoxXYZ bbox2, 
             Transform? transform1, Transform? transform2)
@@ -2544,11 +2543,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var results = new List<(Element, BoundingBoxXYZ, XYZ)>();
             var mepList = new List<(Element, Transform?)> { (mepElement, mepTransform) };
             
-            // Call the overload that matches the tuple type: List<(Element, Transform?)>
+            // Call FindIntersectionsBatch from the first part of the class (line 213)
+            // Since both are in the same namespace and same class name, they're treated as the same class
             var intersections = FindIntersectionsBatch(mepList, structuralElements, log ?? (_ => { }));
             foreach (var intersection in intersections)
             {
-                // FindIntersectionsBatch returns (Element mepElement, Element structuralElement, BoundingBoxXYZ boundingBox, XYZ intersectionPoint)
+                // FindIntersectionsBatch returns (Element, Element, BoundingBoxXYZ, XYZ)
                 // Use Item accessors: Item1=mepElement, Item2=structuralElement, Item3=boundingBox, Item4=intersectionPoint
                 results.Add((intersection.Item2, intersection.Item3, intersection.Item4)); // structuralElement, boundingBox, intersectionPoint
             }

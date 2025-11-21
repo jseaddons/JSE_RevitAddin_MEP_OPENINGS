@@ -642,13 +642,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                             else
                             {
-                                // Call the overload that returns List<(Element, Transform?)> - use explicit parameter to avoid ambiguity
-                                var collected = MepIntersectionService.CollectStructuralElementsForDirectIntersectionVisibleOnly(
-                                    _doc, 
-                                    log ?? (_ => { }), 
-                                    selectedHostTypes: null);
-                                // Return type is already List<(Element, Transform?)>, so use directly
-                                structural = collected;
+                                // Call CollectStructuralElementsForDirectIntersectionVisibleOnly
+                                // In R24, this returns List<Element>, so we need to convert to List<(Element, Transform?)>
+                                var collected = MepIntersectionService.CollectStructuralElementsForDirectIntersectionVisibleOnly(_doc, log ?? (_ => { }));
+                                // Convert List<Element> to List<(Element, Transform?)>
+                                structural = collected.Select(e => (e, (Transform?)null)).ToList();
                             }
                             var intersects = MepIntersectionService.FindIntersections(testLine, null, structural, log ?? (_ => { }));
                             if (intersects != null && intersects.Count > 0)

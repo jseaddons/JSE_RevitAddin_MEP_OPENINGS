@@ -70,8 +70,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ OOP REFACTORING: Initialize FlagManager (create if not provided for backward compatibility)
             _flagManager = flagManager ?? new FlagManager(doc);
             
-            // ✅ PARALLEL PLANNING: Initialize planner (create default if not provided)
-            _planner = planner ?? new ParallelSleevePlacementPlanner();
+            // ✅ PARALLEL PLANNING: Initialize planner with conditions and clearance settings
+            _planner = planner ?? new ParallelSleevePlacementPlanner(_conditions, _clearanceSettings);
             
             // 🔥 CRITICAL DEBUG: Direct file logging to trace service instantiation (SAFE - won't crash)
             SafeFileLogger.SafeAppendText("service_instantiation.log", 

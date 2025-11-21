@@ -1135,6 +1135,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         zone?.EnsureSleevePlacementPointActiveDocumentReconstructed();
                     }
 
+                    // ✅ CRITICAL: Only process zones from CURRENT REFRESH SESSION
+                    // Find the most recent UpdatedAt timestamp (indicates latest refresh)
+                    if (zones.Count > 0)
+                    {
+                        var mostRecentUpdate = zones.Max(z => z.LastUpdated);
+                        // Allow 5-minute window for refresh session (zones updated within 5 min of most recent)
+                        var sessionThreshold = mostRecentUpdate.AddMinutes(-5);
+                        
+                        var zonesBeforeFilter = zones.Count;
+                        zones = zones.Where(z => z.LastUpdated >= sessionThreshold).ToList();
+                        
+                        if (!DeploymentConfiguration.DeploymentMode && zonesBeforeFilter > zones.Count)
+                        {
+                            DebugLogger.Info($"[OpeningCommandOrchestrator][REFRESH-FILTER] Filtered {zonesBeforeFilter} total zones → {zones.Count} from current refresh session (LastUpdated >= {sessionThreshold:yyyy-MM-dd HH:mm:ss})");
+                        }
+                    }
+
                     // ✅ FILTER IN MEMORY: Only return zones that need placement (not resolved, not cluster resolved)
                     // This ensures placement uses DB zones correctly, filtering by actual flag state
                     var eligibleZones = zones
@@ -1143,7 +1160,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        DebugLogger.Info($"[OpeningCommandOrchestrator][SQLite] Loaded {zones.Count} total zones, {eligibleZones.Count} eligible for placement (filtered by flags in memory) - DATA SOURCE: DATABASE");
+                        DebugLogger.Info($"[OpeningCommandOrchestrator][SQLite] Loaded {zones.Count} zones from current refresh, {eligibleZones.Count} eligible for placement (filtered by flags in memory) - DATA SOURCE: DATABASE");
                         // ✅ CRITICAL: Log data source for placement debugging
                         var placementLogPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
                         try
