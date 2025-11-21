@@ -765,12 +765,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // ✅ MEMORY OPTIMIZATION: Lazy solid loading - only compute after all cheap checks pass
                     // cacheKey is already available from foreach loop deconstruction
                     
-                    // Try to get from cache first
-                    Solid? solid = null;
+                    // ✅ R2024 FIX: Get ALL solids instead of trying to union them (BooleanOperations fails in R2024)
+                    // For compound walls, this returns multiple solids (one per layer)
+                    // We check intersection against ALL layers to avoid missing intersections
+                    List<Solid> solids = null;
                     totalIntersectionTests++;
-                    if (!TryGetFromGeometryCache(cacheKey, out solid))
+                    
+                    // Try to get from cache first (cache stores list of solids now)
+                    if (!TryGetFromGeometryCache(cacheKey, out var cachedSolid))
                     {
-                        // Cache miss - compute solid now (only for elements that passed all filters)
+                        // Cache miss - compute solids now (only for elements that passed all filters)
                         mepCacheMisses++;
                         totalCacheMisses++;
                         totalGeometryComputations++;
@@ -778,32 +782,60 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var geometry = structElement.get_Geometry(options);
                         if (geometry != null)
                         {
-                            solid = GetSolidFromGeometry(geometry);
-                            if (solid != null && structTransform != null)
+                            solids = GetSolidsFromGeometry(geometry);
+                            
+                            // Transform all solids if needed
+                            if (solids != null && solids.Count > 0 && structTransform != null)
                             {
-                                solid = SolidUtils.CreateTransformed(solid, structTransform);
+                                var transformedSolids = new List<Solid>();
+                                foreach (var s in solids)
+                                {
+                                    if (s != null)
+                                    {
+                                        transformedSolids.Add(SolidUtils.CreateTransformed(s, structTransform));
+                                    }
+                                }
+                                solids = transformedSolids;
                             }
+                            
+                            // Cache the first solid for backwards compatibility with existing cache structure
+                            // TODO: Update cache to store List<Solid> instead of Solid for better R2024 support
+                            AddToGeometryCache(cacheKey, solids != null && solids.Count > 0 ? solids[0] : null);
                         }
-                        // Add to LRU cache (will evict oldest if over limit)
-                        AddToGeometryCache(cacheKey, solid);
                     }
                     else
                     {
                         mepCacheHits++;
                         totalCacheHits++;
+                        // For now, wrap cached single solid in a list
+                        // TODO: Update cache structure to store List<Solid>
+                        solids = cachedSolid != null ? new List<Solid> { cachedSolid } : new List<Solid>();
                     }
                     
-                    if (solid == null) continue;
+                    if (solids == null || solids.Count == 0) continue;
 
-                    var intersectionPoints = GetIntersectionPoints(solid, line, log);
-                    if (intersectionPoints.Count > 0)
+                    // ✅ R2024 FIX: Check intersection against ALL solids (for compound walls with multiple layers)
+                    // Collect all intersection points from all layers
+                    var allIntersectionPoints = new List<XYZ>();
+                    foreach (var solid in solids)
                     {
-                        var bbox = CreateBoundingBox(intersectionPoints);
+                        if (solid == null || solid.Volume <= 0) continue;
+                        
+                        var layerIntersectionPoints = GetIntersectionPoints(solid, line, log);
+                        if (layerIntersectionPoints != null && layerIntersectionPoints.Count > 0)
+                        {
+                            allIntersectionPoints.AddRange(layerIntersectionPoints);
+                        }
+                    }
+                    
+                    if (allIntersectionPoints.Count > 0)
+                    {
+                        var bbox = CreateBoundingBox(allIntersectionPoints);
                         
                         // ✅ CRITICAL FIX: Validate bounding box is not null before using it
                         if (bbox == null)
                         {
-                            log?.Invoke($"[⚠️ SKIP-NULL-BBOX] Skipping intersection with null bounding box: MEP={mepElement.Id}, Structural={structElement.Id}, IntersectionPoints={intersectionPoints.Count}");
+                            log?.Invoke($"[⚠️ SKIP-NULL-BBOX] Skipping intersection with null bounding box: MEP={mepElement.Id}, Structural={structElement.Id}, IntersectionPoints={allIntersectionPoints.Count}");
                             continue;
                         }
                         
@@ -815,6 +847,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (center != null && Math.Abs(center.X) > 1e-9 && Math.Abs(center.Y) > 1e-9 && Math.Abs(center.Z) > 1e-9)
                         {
                             results.Add((mepElement, structElement, bbox, center));
+                            
+                            if (OptimizationFlags.UseDiagnosticMode && solids.Count > 1)
+                            {
+                                log?.Invoke($"[R2024-MULTILAYER] Found intersection in compound wall with {solids.Count} layers: MEP={mepElement.Id}, Structural={structElement.Id}, TotalPoints={allIntersectionPoints.Count}");
+                            }
                         }
                         else
                         {
@@ -990,28 +1027,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
 
                     // ✅ MEMORY OPTIMIZATION: Get geometry from LRU cache or compute it
+                    // ✅ R2024 FIX: Get ALL solids for compound walls
                     string cacheKey = $"{structuralElement.Id.IntegerValue}_{linkTransform?.GetHashCode() ?? 0}";
-                    Solid? solid;
+                    List<Solid> solids;
                     
-                    if (!TryGetFromGeometryCache(cacheKey, out solid))
+                    if (!TryGetFromGeometryCache(cacheKey, out var cachedSolid))
                     {
                         var options = Helpers.GeometryOptionsFactory.CreateIntersectionOptions();
                         var geometry = structuralElement.get_Geometry(options);
                         if (geometry == null) continue;
 
-                        solid = GetSolidFromGeometry(geometry);
-                        if (solid != null && linkTransform != null)
+                        solids = GetSolidsFromGeometry(geometry);
+                        if (solids != null && solids.Count > 0 && linkTransform != null)
                         {
-                            solid = SolidUtils.CreateTransformed(solid, linkTransform);
+                            var transformedSolids = new List<Solid>();
+                            foreach (var s in solids)
+                            {
+                                if (s != null) transformedSolids.Add(SolidUtils.CreateTransformed(s, linkTransform));
+                            }
+                            solids = transformedSolids;
                         }
                         
                         // ✅ MEMORY OPTIMIZATION: Add to LRU cache (will evict oldest if over limit)
-                        AddToGeometryCache(cacheKey, solid);
+                        AddToGeometryCache(cacheKey, solids != null && solids.Count > 0 ? solids[0] : null);
+                    }
+                    else
+                    {
+                        solids = cachedSolid != null ? new List<Solid> { cachedSolid } : new List<Solid>();
                     }
                     
-                    if (solid == null) continue;
+                    if (solids == null || solids.Count == 0) continue;
 
-                    var intersectionPoints = GetIntersectionPoints(solid, line, log);
+                    // ✅ R2024 FIX: Check intersection against ALL solids (for compound walls)
+                    var allIntersectionPoints = new List<XYZ>();
+                    foreach (var solid in solids)
+                    {
+                        if (solid == null || solid.Volume <= 0) continue;
+                        var layerPoints = GetIntersectionPoints(solid, line, log);
+                        if (layerPoints != null && layerPoints.Count > 0) allIntersectionPoints.AddRange(layerPoints);
+                    }
+                    var intersectionPoints = allIntersectionPoints;
                     if (intersectionPoints.Count > 0)
                     {
                         var bbox = CreateBoundingBox(intersectionPoints);
@@ -1134,22 +1189,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
 
                     // ✅ MEMORY OPTIMIZATION: Get from LRU cache or compute
+                    // ✅ R2024 FIX: Get ALL solids for compound walls
                     string cacheKey = $"{structuralElement.Id.IntegerValue}_{linkTransform?.GetHashCode() ?? 0}";
-                    Solid? solid;
-                    if (!TryGetFromGeometryCache(cacheKey, out solid))
+                    List<Solid> solids;
+                    if (!TryGetFromGeometryCache(cacheKey, out var cachedSolid))
                     {
                         var options = Helpers.GeometryOptionsFactory.CreateIntersectionOptions();
                         var geometry = structuralElement.get_Geometry(options);
                         if (geometry == null) continue;
-                        solid = GetSolidFromGeometry(geometry);
-                        if (solid != null && linkTransform != null)
-                            solid = SolidUtils.CreateTransformed(solid, linkTransform);
+                        solids = GetSolidsFromGeometry(geometry);
+                        if (solids != null && solids.Count > 0 && linkTransform != null)
+                        {
+                            var transformedSolids = new List<Solid>();
+                            foreach (var s in solids)
+                            {
+                                if (s != null) transformedSolids.Add(SolidUtils.CreateTransformed(s, linkTransform));
+                            }
+                            solids = transformedSolids;
+                        }
                         // ✅ MEMORY OPTIMIZATION: Add to LRU cache (will evict oldest if over limit)
-                        AddToGeometryCache(cacheKey, solid);
+                        AddToGeometryCache(cacheKey, solids != null && solids.Count > 0 ? solids[0] : null);
                     }
-                    if (solid == null) continue;
+                    else
+                    {
+                        solids = cachedSolid != null ? new List<Solid> { cachedSolid } : new List<Solid>();
+                    }
+                    if (solids == null || solids.Count == 0) continue;
 
-                    var intersectionPoints = GetIntersectionPoints(solid, hostLine, log);
+                    // ✅ R2024 FIX: Check intersection against ALL solids (for compound walls)
+                    var allIntersectionPoints = new List<XYZ>();
+                    foreach (var solid in solids)
+                    {
+                        if (solid == null || solid.Volume <= 0) continue;
+                        var layerPoints = GetIntersectionPoints(solid, hostLine, log);
+                        if (layerPoints != null && layerPoints.Count > 0) allIntersectionPoints.AddRange(layerPoints);
+                    }
+                    var intersectionPoints = allIntersectionPoints;
                     if (intersectionPoints.Count > 0)
                     {
                         var bbox = CreateBoundingBox(intersectionPoints);
@@ -1303,8 +1378,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                    point.Z >= boxMin.Z && point.Z <= boxMax.Z;
         }
 
-        // Extracts a solid from a geometry object
-        private static Solid? GetSolidFromGeometry(GeometryElement geometry)
+        // Extracts all solids from a geometry object (returns list for compound walls with multiple layers)
+        // ✅ R2024 FIX: Return ALL solids instead of trying to union them (BooleanOperations fails in R2024)
+        private static List<Solid> GetSolidsFromGeometry(GeometryElement geometry)
         {
             List<Solid> allSolids = new List<Solid>();
             
@@ -1326,48 +1402,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
             
-            // If no solids found, return null
-            if (allSolids.Count == 0)
-                return null;
-            
-            // For single solid, return it directly (original behavior)
-            if (allSolids.Count == 1)
-                return allSolids[0];
-            
-            // For multiple solids (compound walls), union them into one solid
-            // This ensures we get one sleeve for the entire wall, not one per layer
-            try
-            {
-                Solid resultSolid = allSolids[0];
-                for (int i = 1; i < allSolids.Count; i++)
-                {
-                    resultSolid = BooleanOperationsUtils.ExecuteBooleanOperation(
-                        resultSolid, allSolids[i], BooleanOperationsType.Union);
-                    
-                    // Safety check: if union fails, fall back to first solid
-                    if (resultSolid == null || resultSolid.Volume <= 0)
-                    {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Warning($"[MepIntersectionService] Wall union failed: Solid {i}/{allSolids.Count} union resulted in null or invalid volume. Falling back to first solid. This may result in individual sleeves per layer that will be clustered.");
-                        resultSolid = allSolids[0];
-                        break;
-                    }
-                }
-                
-                // Log successful union
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[MepIntersectionService] Successfully united {allSolids.Count} wall layer solids into single solid");
-                return resultSolid;
-            }
-            catch (Exception ex)
-            {
-                // If union fails for any reason, log and return the first solid as fallback
-                // NOTE: Union failures are rare in Revit. If this occurs, only one sleeve will be placed
-                // (first layer only). The clustering logic will handle multiple sleeves in nearby walls.
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Warning($"[MepIntersectionService] Wall union failed with exception: {ex.Message}. Returning first solid only. Total layers detected: {allSolids.Count}.");
-                return allSolids[0];
-            }
+            return allSolids;
+        }
+        
+        // Legacy method for backwards compatibility - returns first solid only
+        // NOTE: This may miss intersections in compound walls if MEP passes through a different layer
+        // Consider using GetSolidsFromGeometry instead for R2024 compatibility
+        private static Solid? GetSolidFromGeometry(GeometryElement geometry)
+        {
+            var solids = GetSolidsFromGeometry(geometry);
+            return solids.Count > 0 ? solids[0] : null;
         }
 
         // Intersects a solid with a line and returns the intersection points

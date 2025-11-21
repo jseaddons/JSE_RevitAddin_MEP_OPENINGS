@@ -136,9 +136,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                         //   - Y-walls: 0° rotation (LEFT family works naturally for Y-walls)
                         // Cluster sleeves should use the SAME rotation as individual sleeves to maintain correct orientation
                         
+                        // ✅ DIAGNOSTIC: Log all wall orientation data for debugging
+                        string wallDirectionType = firstClashZone.WallDirectionType ?? "";
+                        string hostOrientation = firstClashZone.HostOrientation ?? "";
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE-DEBUG] WALL HOST DETECTED: StructuralType='{firstClashZone.StructuralElementType}', WallDirectionType='{wallDirectionType}', HostOrientation='{hostOrientation}'\n");
+                        }
+                        
                         // ✅ CRITICAL: Check WallDirectionType directly (contains "X-WALL" or "Y-WALL")
                         // DO NOT use MepElementOrientationDirection - that can contain MEP orientation for floors
-                        string wallDirectionType = firstClashZone.WallDirectionType ?? "";
                         bool isXWall = wallDirectionType.Contains("X-WALL", StringComparison.OrdinalIgnoreCase);
                         bool isYWall = wallDirectionType.Contains("Y-WALL", StringComparison.OrdinalIgnoreCase);
                         
@@ -149,6 +157,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
                                 DebugLogger.Info($"[CLUSTER-ANGLE] WALL ROTATION: {firstClashZone.StructuralElementType} - X-WALL detected (WallDirectionType='{wallDirectionType}') → Returning 90.0° (π/2 radians - matches individual sleeve rotation)");
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE] ✅ X-WALL DETECTED via WallDirectionType → 90.0°\n");
                             }
                             return Math.PI / 2.0; // 90° rotation for X-oriented walls/framing (same as individual sleeves)
                         }
@@ -159,19 +169,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
                                 DebugLogger.Info($"[CLUSTER-ANGLE] WALL ROTATION: {firstClashZone.StructuralElementType} - Y-WALL detected (WallDirectionType='{wallDirectionType}') → Returning 0.0° (no rotation - matches individual sleeve rotation)");
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE] ✅ Y-WALL DETECTED via WallDirectionType → 0.0°\n");
                             }
                             return 0.0; // No rotation for Y-oriented walls/framing (same as individual sleeves)
                         }
                         else
                         {
                             // ✅ FALLBACK: If WallDirectionType doesn't contain X-WALL or Y-WALL, check HostOrientation
-                            // HostOrientation should contain "X" or "Y" for walls/framing
-                            string hostOrientation = firstClashZone.HostOrientation ?? "";
+                            // HostOrientation should contain "X" or "Y" for walls/framing (this is what groupKey uses)
                             if (string.Equals(hostOrientation, "X", StringComparison.OrdinalIgnoreCase))
                             {
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
                                     DebugLogger.Info($"[CLUSTER-ANGLE] WALL ROTATION: {firstClashZone.StructuralElementType} - HostOrientation='X' (fallback from WallDirectionType='{wallDirectionType}') → Returning 90.0°");
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                        $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE] ✅ X-WALL DETECTED via HostOrientation fallback → 90.0°\n");
                                 }
                                 return Math.PI / 2.0;
                             }
@@ -180,8 +193,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
                                     DebugLogger.Info($"[CLUSTER-ANGLE] WALL ROTATION: {firstClashZone.StructuralElementType} - HostOrientation='Y' (fallback from WallDirectionType='{wallDirectionType}') → Returning 0.0°");
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                        $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE] ✅ Y-WALL DETECTED via HostOrientation fallback → 0.0°\n");
                                 }
                                 return 0.0;
+                            }
+                            else
+                            {
+                                // ✅ DIAGNOSTIC: Log when wall direction cannot be determined
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                        $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE] ⚠️ WALL HOST but cannot determine X/Y: WallDirectionType='{wallDirectionType}', HostOrientation='{hostOrientation}' → Continuing to MEP rotation calculation\n");
+                                }
                             }
                         }
                         // If wall direction cannot be determined, continue to calculate from MEP rotation angles below

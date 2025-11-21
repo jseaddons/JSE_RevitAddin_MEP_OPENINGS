@@ -921,8 +921,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 else
                                 {
                                     // ✅ PATH 2/3: Calculate clearance (normal flow)
-                                    // ⏱️ TIMING: Clearance calculation
-                                    var clearanceTimer = System.Diagnostics.Stopwatch.StartNew();
+                                // ⏱️ TIMING: Clearance calculation
+                                var clearanceTimer = System.Diagnostics.Stopwatch.StartNew();
+                                using (singleSleeveTracker?.TrackSubOperation("Clearance Calculation"))
+                                {
                                     // 🛡️ ARCHITECTURE FIX: Use CONDITIONS service for ALL clearance types
                                     // This ensures consistent architecture: CONDITIONS XML → UniversalSleevePlacerService
                                     // Raw dimensions from ClashZone + Clearance from CONDITIONS = Final dimensions
@@ -1029,6 +1031,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     clearanceTimer.Stop();
                                     totalClearanceTime += clearanceTimer.Elapsed;
                                     sleeveLog.AppendLine($"  Clearance calc: {clearanceTimer.ElapsedMilliseconds}ms");
+                                } // End Clearance Calculation sub-operation
 
                                     try
                                     {                         // ✅ DEPLOYMENT MODE: Skip file writes
@@ -1055,6 +1058,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                                 // ⏱️ TIMING: Family selection and loading
                                 var familyTimer = System.Diagnostics.Stopwatch.StartNew();
+                                FamilySymbol familySymbol = null;
+                                using (singleSleeveTracker?.TrackSubOperation("Load Family Symbol"))
+                                {
                                 // Select universal family
                                 var (familyName, isCircular) = SelectUniversalFamily(clashZone, mepSize);
                                 try
@@ -1066,10 +1072,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 }
                                 catch { }
 
-                                var familySymbol = LoadFamilySymbol(familyName);
+                                familySymbol = LoadFamilySymbol(familyName);
                                 familyTimer.Stop();
                                 totalFamilyLoadTime += familyTimer.Elapsed;
                                 sleeveLog.AppendLine($"  Family load: {familyTimer.ElapsedMilliseconds}ms");
+                                } // End Load Family Symbol sub-operation
 
                                 bool shouldSkipSleeve = false;
 
@@ -1296,8 +1303,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                                 // ⏱️ TIMING: Level finding
                                 var levelTimer = System.Diagnostics.Stopwatch.StartNew();
-                                // ✅ PERFORMANCE OPTIMIZATION: Use cached levels list and select level based on structural element type
                                 Level nearestLevel = null;
+                                using (singleSleeveTracker?.TrackSubOperation("Find Nearest Level"))
+                                {
+                                // ✅ PERFORMANCE OPTIMIZATION: Use cached levels list and select level based on structural element type
 
                                 // ✅ CORRECT: For walls and framing, find nearest BOTTOM level (where wall/framing starts)
                                 // For floors, find nearest level overall (floor can span multiple levels)
@@ -1369,6 +1378,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 levelTimer.Stop();
                                 totalLevelFindTime += levelTimer.Elapsed;
                                 sleeveLog.AppendLine($"  Level find: {levelTimer.ElapsedMilliseconds}ms");
+                                } // End Find Nearest Level sub-operation
 
                                 // DEPLOYMENT MODE: Skip file writes
                                 try
@@ -1384,6 +1394,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 // Uses placement coordinates, family selection, and dimensions from Filter XML
                                 // ⏱️ TIMING: Sleeve creation
                                 var createTimer = System.Diagnostics.Stopwatch.StartNew();
+                                using (singleSleeveTracker?.TrackSubOperation("Create Sleeve Instance"))
+                                {
 
                                 if (!DeploymentConfiguration.DeploymentMode && PlacedCount < 5)
                                     DebugLogger.Info($"[SLEEVE-PLACEMENT-FLOW] Step 3: Placing sleeve at ({adjustedPlacementPoint.X:F3},{adjustedPlacementPoint.Y:F3},{adjustedPlacementPoint.Z:F3}) " +
@@ -1430,6 +1442,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 createTimer.Stop();
                                 totalSleeveCreateTime += createTimer.Elapsed;
                                 sleeveLog.AppendLine($"  Sleeve create: {createTimer.ElapsedMilliseconds}ms");
+                                } // End Create Sleeve Instance sub-operation
 
                                 if (sleeveInstance == null)
                                 {
@@ -1451,6 +1464,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                                 // ⏱️ TIMING: Parameter setting
                                 var parameterTimer = System.Diagnostics.Stopwatch.StartNew();
+                                using (singleSleeveTracker?.TrackSubOperation("Set Sleeve Parameters"))
+                                {
                                 // Set parameters
                                 SetSleeveParameters(sleeveInstance, mepSize, finalWidth, finalHeight, finalDiameter, clashZone, isCircular);
 
@@ -1468,11 +1483,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 parameterTimer.Stop();
                                 totalParameterTime += parameterTimer.Elapsed;
                                 sleeveLog.AppendLine($"  Parameters: {parameterTimer.ElapsedMilliseconds}ms");
+                                } // End Set Sleeve Parameters sub-operation
 
                                 // ✅ PERFORMANCE OPTIMIZATION: Removed excessive file logging
 
                                 // ⏱️ TIMING: Coordinate validation and update
                                 var validationTimer = System.Diagnostics.Stopwatch.StartNew();
+                                using (singleSleeveTracker?.TrackSubOperation("Update ClashZone"))
+                                {
                                 // Ensure final location matches the intended adjusted placement point (some families snap to level origin)
                                 try
                                 {
@@ -1564,6 +1582,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 validationTimer.Stop();
                                 totalValidationTime += validationTimer.Elapsed;
                                 sleeveLog.AppendLine($"  Validation/update: {validationTimer.ElapsedMilliseconds}ms");
+                                } // End Update ClashZone sub-operation
 
                                 // Update ClashZone flags
                                 clashZone.IsResolved = true;

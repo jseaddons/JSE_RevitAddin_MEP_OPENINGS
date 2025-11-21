@@ -282,8 +282,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 bool shouldSwapDimensions = (groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing") && Math.Abs(rotationAngle) > 1e-6;
                 SetSizeParameters(doc, inst, cluster, groupKey, width, height, depth, shouldSwapDimensions);
 
-                // Apply rotation if needed (non-straight axis-aligned)
-                if (Math.Abs(rotationAngle) > 1e-6 && !IsStraightAxisAlignedAngle(rotationAngle))
+                // ✅ ROTATION FIX: Apply rotation for ALL non-zero angles, including straight axis-aligned (0°, 90°, 180°, 270°)
+                // Previous code skipped rotation for straight axis-aligned angles, causing X-walls (90°) to be placed at 0° orientation
+                if (Math.Abs(rotationAngle) > 1e-6)
                 {
                     ApplyRotation(doc, inst, placementPoint, rotationAngle);
                 }

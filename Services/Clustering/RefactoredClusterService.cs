@@ -412,14 +412,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             }
                             catch { }
                             
-                // ✅ STEP 14: Place cluster sleeve (Phase 5: Placement Service + Phase 6: Rotation Service + Phase 3: BoundingBox)
-                // Note: Placement service needs to be wired with functions from rotation service and data service
-                var placementResult = PlaceClusterForGroup(
-                    doc,
-                    cluster,
-                    groupKey,
-                    targetCategory,
-                    xmlFilePath);
+                // ✅ PERFORMANCE: Track cluster placement
+                (bool success, int placedCount, int deletedCount, FamilyInstance? placedClusterSleeve, int? capturedClusterSleeveId) placementResult;
+                using (placementLoopTracker?.TrackSubOperation("Place Cluster Sleeve"))
+                {
+                    // ✅ STEP 14: Place cluster sleeve (Phase 5: Placement Service + Phase 6: Rotation Service + Phase 3: BoundingBox)
+                    // Note: Placement service needs to be wired with functions from rotation service and data service
+                    placementResult = PlaceClusterForGroup(
+                        doc,
+                        cluster,
+                        groupKey,
+                        targetCategory,
+                        xmlFilePath,
+                        placementLoopTracker); // Pass tracker for sub-operation tracking
+                } // End Place Cluster Sleeve sub-operation
 
                             // 🔥 CRITICAL: Direct IO logging after placement attempt
                             try
@@ -787,7 +793,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             List<dynamic> cluster,
             SleeveGroupKey groupKey,
             string targetCategory,
-            string? xmlFilePath)
+            string? xmlFilePath,
+            PlacementPerformanceMonitor.OperationTracker? performanceTracker = null)
         {
             // 🔥 CRITICAL: Direct IO logging at method entry
             try
@@ -815,8 +822,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 }
                 catch { }
                 
-                // ✅ Step 1: Determine rotation angle (Phase 6: Rotation Service)
-                double rotationAngle = _rotationService.DetermineRotationAngle(cluster, xmlFilePath);
+                // ✅ PERFORMANCE: Track rotation angle determination
+                double rotationAngle;
+                using (performanceTracker?.TrackSubOperation("Determine Rotation Angle"))
+                {
+                    // ✅ Step 1: Determine rotation angle (Phase 6: Rotation Service)
+                    rotationAngle = _rotationService.DetermineRotationAngle(cluster, xmlFilePath);
+                } // End Determine Rotation Angle sub-operation
                 
                 // 🔥 CRITICAL: Log after rotation angle calculation
                 try
@@ -872,7 +884,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 }
                 catch { }
                 
-                var bboxResult = _rotationService.CalculateRotatedBoundingBox(cluster, actualSleeves, rotationAngle, xmlFilePath);
+                // ✅ PERFORMANCE: Track bounding box calculation
+                (double width, double height, double depth) bboxResult;
+                using (performanceTracker?.TrackSubOperation("Calculate Rotated Bounding Box"))
+                {
+                    bboxResult = _rotationService.CalculateRotatedBoundingBox(cluster, actualSleeves, rotationAngle, xmlFilePath);
+                } // End Calculate Rotated Bounding Box sub-operation
                 
                 // 🔥 CRITICAL: Log after bounding box calculation
                 try
