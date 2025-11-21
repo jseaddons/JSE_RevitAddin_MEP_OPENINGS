@@ -47,13 +47,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
 
             try
             {
+                // ✅ PERFORMANCE: Measure multi-threading benefit
+                var singleThreadedTime = 0L;
+                var multiThreadedTime = 0L;
+                
                 if (enableParallel)
                 {
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
                     Parallel.ForEach(groupsList, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, processGroup);
+                    sw.Stop();
+                    multiThreadedTime = sw.ElapsedMilliseconds;
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_performance.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ⚡ MULTI-THREADING: Processed {groupsList.Count} groups in {multiThreadedTime}ms using {Environment.ProcessorCount} cores\n");
+                    }
                 }
                 else
                 {
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
                     foreach (var g in groupsList) processGroup(g);
+                    sw.Stop();
+                    singleThreadedTime = sw.ElapsedMilliseconds;
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_performance.log",
+                            $"[{DateTime.Now:HH:mm:ss}] 🐌 SINGLE-THREADED: Processed {groupsList.Count} groups in {singleThreadedTime}ms\n");
+                    }
                 }
 
                 clustersByGroup = clustersConcurrent.ToDictionary(k => k.Key, v => v.Value);

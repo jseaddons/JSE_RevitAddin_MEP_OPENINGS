@@ -1909,6 +1909,126 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
+        /// ✅ PERFORMANCE: Batch update flags for multiple placed sleeves at once.
+        /// This avoids creating a new database context for each sleeve (87ms for 2 sleeves → ~10ms expected).
+        /// </summary>
+        /// <param name="clashZones">List of clash zones with their sleeve IDs</param>
+        /// <param name="isCluster">True if these are cluster sleeves, false for individual sleeves</param>
+        /// <param name="category">MEP element category name</param>
+        /// <param name="filterName">Filter name that contains this clash zone's placement data (optional)</param>
+        public void BatchUpdateFlagsForPlacement(List<(ClashZone clashZone, int sleeveId)> clashZones, bool isCluster, string category, string filterName = null)
+        {
+            if (clashZones == null || clashZones.Count == 0)
+                return;
+                
+            if (string.IsNullOrWhiteSpace(category))
+                throw new ArgumentException("Category cannot be null or empty", nameof(category));
+            
+            try
+            {
+                var dbUpdates = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId, bool? MarkedForClusterProcess, int AfterClusterSleeveId, bool? IsClusteredFlag)>();
+                
+                // ✅ STEP 1: Update in-memory ClashZone objects and prepare batch database updates
+                foreach (var (clashZone, sleeveId) in clashZones)
+                {
+                    if (clashZone == null || sleeveId <= 0) continue;
+                    
+                    int oldSleeveInstanceId = clashZone.SleeveInstanceId;
+                    int oldClusterInstanceId = clashZone.ClusterSleeveInstanceId;
+                    
+                    if (isCluster)
+                    {
+                        // Save original SleeveInstanceId before clearing
+                        if (clashZone.AfterClusterSleevePlacedSleeveInstanceId <= 0 && clashZone.SleeveInstanceId > 0)
+                        {
+                            clashZone.AfterClusterSleevePlacedSleeveInstanceId = clashZone.SleeveInstanceId;
+                        }
+                        
+                        // Cluster sleeve placed
+                        clashZone.IsClusterResolved = true;
+                        clashZone.ClusterSleeveInstanceId = sleeveId;
+                        clashZone.IsResolved = true;
+                        clashZone.SleeveInstanceId = -1;
+                        
+                        // Use original sleeve ID for database matching
+                        if (clashZone.AfterClusterSleevePlacedSleeveInstanceId > 0)
+                        {
+                            oldSleeveInstanceId = clashZone.AfterClusterSleevePlacedSleeveInstanceId;
+                        }
+                    }
+                    else
+                    {
+                        // Individual sleeve placed
+                        clashZone.IsResolved = true;
+                        clashZone.SleeveInstanceId = sleeveId;
+                        clashZone.IsClusterResolved = false;
+                        clashZone.ClusterSleeveInstanceId = -1;
+                    }
+                    
+                    // Add to batch update list
+                    dbUpdates.Add((
+                        clashZone.Id,
+                        clashZone.IsResolved,
+                        clashZone.IsClusterResolved,
+                        clashZone.SleeveInstanceId,
+                        clashZone.ClusterSleeveInstanceId,
+                        clashZone.MepElementIdValue,
+                        clashZone.StructuralElementIdValue,
+                        clashZone.IntersectionPointX,
+                        clashZone.IntersectionPointY,
+                        clashZone.IntersectionPointZ,
+                        oldSleeveInstanceId,
+                        oldClusterInstanceId,
+                        clashZone.MarkedForClusteringSleeveProcess,
+                        clashZone.AfterClusterSleevePlacedSleeveInstanceId,
+                        null
+                    ));
+                }
+                
+                if (dbUpdates.Count == 0) return;
+                
+                // ✅ STEP 2: Batch update database (single transaction for all sleeves)
+                using (var context = new SleeveDbContext(_document, msg =>
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[FLAG-MANAGER][BATCH][SQLite] {msg}");
+                }))
+                {
+                    var repository = new ClashZoneRepository(context, msg =>
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[FLAG-MANAGER][BATCH][SQLite] {msg}");
+                    });
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[FLAG-MANAGER] 📝 BATCH: Calling BatchUpdateFlags for {dbUpdates.Count} clash zones");
+                        SafeFileLogger.SafeAppendText("flag_state_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}] 📝 [FLAG-MANAGER] BATCH: Calling BatchUpdateFlags for {dbUpdates.Count} clash zones, IsCluster={isCluster}\n");
+                    }
+                    
+                    repository.BatchUpdateFlags(dbUpdates);
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[FLAG-MANAGER] ✅ BATCH: Updated database flags for {dbUpdates.Count} clash zones");
+                        SafeFileLogger.SafeAppendText("flag_state_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ✅ [FLAG-MANAGER] BATCH: BatchUpdateFlags completed for {dbUpdates.Count} clash zones\n");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Error($"[FLAG-MANAGER] ❌ BATCH: Error in BatchUpdateFlagsForPlacement: {ex.Message}");
+                    DebugLogger.Error($"[FLAG-MANAGER] Stack trace: {ex.StackTrace}");
+                }
+                throw; // Re-throw to let caller handle
+            }
+        }
+        
+        /// <summary>
         /// Updates both in-memory ClashZone object and Global XML.
         /// ✅ CRITICAL: Accepts FilterName to identify which Filter XML file contains placement data
         /// </summary>
