@@ -59,9 +59,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         {
             _totalTimer.Stop();
             
+            // ✅ BUILD TIMESTAMP: Get build timestamp to verify latest code is running
+            string buildTimestamp = "unknown";
+            string assemblyPath = "unknown";
+            try
+            {
+                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                assemblyPath = assembly?.Location ?? "unknown";
+                if (!string.IsNullOrWhiteSpace(assemblyPath) && System.IO.File.Exists(assemblyPath))
+                {
+                    buildTimestamp = System.IO.File.GetLastWriteTime(assemblyPath).ToString("yyyy-MM-dd HH:mm:ss");
+                }
+            }
+            catch { }
+            
             var report = new StringBuilder();
             report.AppendLine($"=== REFRESH PERFORMANCE REPORT ===");
             report.AppendLine($"Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+            report.AppendLine($"🔨 Build Timestamp: {buildTimestamp} | Assembly: {System.IO.Path.GetFileName(assemblyPath)}");
             report.AppendLine($"Total Time: {_totalTimer.ElapsedMilliseconds}ms ({_totalTimer.Elapsed:mm\\:ss})");
             report.AppendLine($"Total Clash Zones: {totalClashZones}");
             report.AppendLine();

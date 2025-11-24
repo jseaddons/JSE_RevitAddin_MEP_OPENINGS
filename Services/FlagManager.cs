@@ -100,6 +100,69 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             int totalResetCount = 0;
             
+            // ✅ PERFORMANCE OPTIMIZATION: Collect ALL sleeves from Revit ONCE (not per category)
+            // This reduces N Revit API calls (one per category) to just 1 call
+            // Then filter by category in memory (much faster)
+            Dictionary<string, HashSet<int>> sleevesByCategory = null;
+            Dictionary<int, string> sleeveIdToCategory = null;
+            
+            if (categories.Count > 1)
+            {
+                // ✅ BATCH COLLECTION: Collect all sleeves once for all categories
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[FLAG-MANAGER] ===== BATCH COLLECTING ALL SLEEVES FROM REVIT (for {categories.Count} categories) =====");
+                
+                var allSleeves = new FilteredElementCollector(_document)
+                    .OfClass(typeof(FamilyInstance))
+                    .Cast<FamilyInstance>()
+                    .Where(s => 
+                    {
+                        // Check if it's a sleeve family
+                        bool hasSleeveKeyword = s.Symbol?.FamilyName?.Contains("Sleeve", StringComparison.OrdinalIgnoreCase) == true ||
+                                               s.Symbol?.FamilyName?.Contains("Opening", StringComparison.OrdinalIgnoreCase) == true;
+                        
+                        string familyName = s.Symbol?.FamilyName ?? "";
+                        bool isKnownFamily = familyName.Contains("CircularOpening", StringComparison.OrdinalIgnoreCase) ||
+                                            familyName.Contains("RectangularOpening", StringComparison.OrdinalIgnoreCase);
+                        
+                        return (s.Category?.Name == "Generic Models" || s.Category?.Name == "Structural Connections") &&
+                               (hasSleeveKeyword || isKnownFamily);
+                    })
+                    .ToList();
+                
+                // ✅ BUILD CATEGORY INDEX: Group sleeves by MEP_Category parameter
+                sleevesByCategory = new Dictionary<string, HashSet<int>>(StringComparer.OrdinalIgnoreCase);
+                sleeveIdToCategory = new Dictionary<int, string>();
+                
+                foreach (var sleeve in allSleeves)
+                {
+                    var mepCategoryParam = sleeve.LookupParameter("MEP_Category");
+                    if (mepCategoryParam != null && !string.IsNullOrWhiteSpace(mepCategoryParam.AsString()))
+                    {
+                        string sleeveCategory = mepCategoryParam.AsString().Trim();
+                        if (!string.IsNullOrWhiteSpace(sleeveCategory))
+                        {
+                            if (!sleevesByCategory.ContainsKey(sleeveCategory))
+                                sleevesByCategory[sleeveCategory] = new HashSet<int>();
+                            
+                            int sleeveId = sleeve.Id.IntegerValue;
+                            sleevesByCategory[sleeveCategory].Add(sleeveId);
+                            sleeveIdToCategory[sleeveId] = sleeveCategory;
+                        }
+                    }
+                }
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    int totalSleeves = sleevesByCategory.Values.Sum(hs => hs.Count);
+                    DebugLogger.Info($"[FLAG-MANAGER] ✅ BATCH COLLECTED: {totalSleeves} total sleeves across {sleevesByCategory.Count} categories from Revit (1 API call instead of {categories.Count})");
+                    foreach (var kvp in sleevesByCategory)
+                    {
+                        DebugLogger.Info($"[FLAG-MANAGER]   Category '{kvp.Key}': {kvp.Value.Count} sleeves");
+                    }
+                }
+            }
+            
             foreach (var category in categories)
             {
                 if (string.IsNullOrWhiteSpace(category))
@@ -666,6 +729,69 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[FLAG-MANAGER] ===== UNIFIED RESET: CHECKING FOR DELETED SLEEVES FOR {categories.Count} CATEGORIES =====");
                 
+                // ✅ PERFORMANCE OPTIMIZATION: Collect ALL sleeves from Revit ONCE (not per category)
+                // This reduces N Revit API calls (one per category) to just 1 call
+                // Then filter by category in memory (much faster)
+                Dictionary<string, HashSet<int>> sleevesByCategory = null;
+                Dictionary<int, string> sleeveIdToCategory = null;
+                
+                if (categories.Count > 1)
+                {
+                    // ✅ BATCH COLLECTION: Collect all sleeves once for all categories
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[FLAG-MANAGER] ===== BATCH COLLECTING ALL SLEEVES FROM REVIT (for {categories.Count} categories) =====");
+                    
+                    var allSleeves = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(s => 
+                        {
+                            // Check if it's a sleeve family
+                            bool hasSleeveKeyword = s.Symbol?.FamilyName?.Contains("Sleeve", StringComparison.OrdinalIgnoreCase) == true ||
+                                                   s.Symbol?.FamilyName?.Contains("Opening", StringComparison.OrdinalIgnoreCase) == true;
+                            
+                            string familyName = s.Symbol?.FamilyName ?? "";
+                            bool isKnownFamily = familyName.Contains("CircularOpening", StringComparison.OrdinalIgnoreCase) ||
+                                                familyName.Contains("RectangularOpening", StringComparison.OrdinalIgnoreCase);
+                            
+                            return (s.Category?.Name == "Generic Models" || s.Category?.Name == "Structural Connections") &&
+                                   (hasSleeveKeyword || isKnownFamily);
+                        })
+                        .ToList();
+                    
+                    // ✅ BUILD CATEGORY INDEX: Group sleeves by MEP_Category parameter
+                    sleevesByCategory = new Dictionary<string, HashSet<int>>(StringComparer.OrdinalIgnoreCase);
+                    sleeveIdToCategory = new Dictionary<int, string>();
+                    
+                    foreach (var sleeve in allSleeves)
+                    {
+                        var mepCategoryParam = sleeve.LookupParameter("MEP_Category");
+                        if (mepCategoryParam != null && !string.IsNullOrWhiteSpace(mepCategoryParam.AsString()))
+                        {
+                            string sleeveCategory = mepCategoryParam.AsString().Trim();
+                            if (!string.IsNullOrWhiteSpace(sleeveCategory))
+                            {
+                                if (!sleevesByCategory.ContainsKey(sleeveCategory))
+                                    sleevesByCategory[sleeveCategory] = new HashSet<int>();
+                                
+                                int sleeveId = sleeve.Id.IntegerValue;
+                                sleevesByCategory[sleeveCategory].Add(sleeveId);
+                                sleeveIdToCategory[sleeveId] = sleeveCategory;
+                            }
+                        }
+                    }
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        int totalSleeves = sleevesByCategory.Values.Sum(hs => hs.Count);
+                        DebugLogger.Info($"[FLAG-MANAGER] ✅ BATCH COLLECTED: {totalSleeves} total sleeves across {sleevesByCategory.Count} categories from Revit (1 API call instead of {categories.Count})");
+                        foreach (var kvp in sleevesByCategory)
+                        {
+                            DebugLogger.Info($"[FLAG-MANAGER]   Category '{kvp.Key}': {kvp.Value.Count} sleeves");
+                        }
+                    }
+                }
+                
                 foreach (var category in categories)
                 {
                     if (string.IsNullOrWhiteSpace(category))
@@ -847,7 +973,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         // ✅ EFFICIENT: Use doc.GetElement() for O(1) lookup instead of scanning all sleeves
                         var existingSleeveIdsSet = new HashSet<int>();
-                        var sleeveIdToCategory = new Dictionary<int, string>();
+                        var categoryLookup = new Dictionary<int, string>(); // Renamed to avoid conflict with outer scope
                         var guidToSleeveId = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                         
                         foreach (var sleeveId in sleeveIdsToCheck)
@@ -873,7 +999,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         if (!string.IsNullOrWhiteSpace(sleeveCategory))
                                         {
                                             sleeveCategory = sleeveCategory.Trim();
-                                            sleeveIdToCategory[sleeveId] = sleeveCategory;
+                                            categoryLookup[sleeveId] = sleeveCategory;
                                         }
                                         
                                         string clashGuid = GetClashZoneGuidValue(sleeve);
@@ -924,7 +1050,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             string sleeveCategory = GetSleeveCategory(sleeve);
                             if (!string.IsNullOrWhiteSpace(sleeveCategory))
                             {
-                                        sleeveIdToCategory[sleeve.Id.IntegerValue] = sleeveCategory.Trim();
+                                        categoryLookup[sleeve.Id.IntegerValue] = sleeveCategory.Trim();
                                 }
                             }
                             }
@@ -1778,39 +1904,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var updates = new List<(Guid Id, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterSleeveInstanceId)>();
                 int resetCount = 0;
                 
-                // ✅ OPTIMIZATION: Pre-collect all sleeve IDs by category (calculate once, use many times)
-                // Same optimization pattern as recovery method and ClashZoneService
-                var allSleeves = new FilteredElementCollector(_document)
-                    .OfClass(typeof(FamilyInstance))
-                    .Cast<FamilyInstance>()
-                    .Where(s => 
-                    {
-                        // Check if it's a sleeve family
-                        bool hasSleeveKeyword = s.Symbol?.FamilyName?.Contains("Sleeve", StringComparison.OrdinalIgnoreCase) == true ||
-                                               s.Symbol?.FamilyName?.Contains("Opening", StringComparison.OrdinalIgnoreCase) == true;
-                        
-                        string familyName = s.Symbol?.FamilyName ?? "";
-                        bool isKnownFamily = familyName.Contains("CircularOpening", StringComparison.OrdinalIgnoreCase) ||
-                                            familyName.Contains("RectangularOpening", StringComparison.OrdinalIgnoreCase);
-                        
-                        if (!((s.Category?.Name == "Generic Models" || s.Category?.Name == "Structural Connections") &&
-                               (hasSleeveKeyword || isKnownFamily)))
-                            return false;
-                        
-                        // ✅ PERFORMANCE: Filter by MEP_Category parameter (no Revit API call needed)
-                        var mepCategoryParam = s.LookupParameter("MEP_Category");
-                        if (mepCategoryParam != null && !string.IsNullOrWhiteSpace(mepCategoryParam.AsString()))
-                        {
-                            string sleeveCategory = mepCategoryParam.AsString();
-                            return string.Equals(sleeveCategory, category, StringComparison.OrdinalIgnoreCase);
-                        }
-                        
-                        return false;
-                    })
-                    .ToList();
+                // ✅ Collect sleeves for this category (this is an obsolete method, no batch optimization)
+                HashSet<int> existingSleeveIdsSet;
                 
-                // ✅ OPTIMIZATION: Build HashSet for O(1) lookup (calculate once, use many times)
-                var existingSleeveIdsSet = new HashSet<int>(allSleeves.Select(s => s.Id.IntegerValue));
+                {
+                    // Collect sleeves for this category only
+                    var allSleeves = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(s => 
+                        {
+                            // Check if it's a sleeve family
+                            bool hasSleeveKeyword = s.Symbol?.FamilyName?.Contains("Sleeve", StringComparison.OrdinalIgnoreCase) == true ||
+                                                   s.Symbol?.FamilyName?.Contains("Opening", StringComparison.OrdinalIgnoreCase) == true;
+                            
+                            string familyName = s.Symbol?.FamilyName ?? "";
+                            bool isKnownFamily = familyName.Contains("CircularOpening", StringComparison.OrdinalIgnoreCase) ||
+                                                familyName.Contains("RectangularOpening", StringComparison.OrdinalIgnoreCase);
+                            
+                            if (!((s.Category?.Name == "Generic Models" || s.Category?.Name == "Structural Connections") &&
+                                   (hasSleeveKeyword || isKnownFamily)))
+                                return false;
+                            
+                            // ✅ PERFORMANCE: Filter by MEP_Category parameter (no Revit API call needed)
+                            var mepCategoryParam = s.LookupParameter("MEP_Category");
+                            if (mepCategoryParam != null && !string.IsNullOrWhiteSpace(mepCategoryParam.AsString()))
+                            {
+                                string sleeveCategory = mepCategoryParam.AsString();
+                                return string.Equals(sleeveCategory, category, StringComparison.OrdinalIgnoreCase);
+                            }
+                            
+                            return false;
+                        })
+                        .ToList();
+                    
+                    // ✅ OPTIMIZATION: Build HashSet for O(1) lookup (calculate once, use many times)
+                    existingSleeveIdsSet = new HashSet<int>(allSleeves.Select(s => s.Id.IntegerValue));
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[FLAG-MANAGER] ✅ Collected sleeves for category '{category}': {existingSleeveIdsSet.Count} sleeves (fallback - single category collection)");
+                }
                 
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
@@ -2011,13 +2144,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // ✅ STEP 2: Update Global XML (for backward compatibility)
                         // ✅ PHASE 2: Only update Global XML if XML creation is enabled
                         if (!DeploymentConfiguration.DisableXmlCreation)
-                        {
-                            // ✅ CRITICAL FIX: Try to preserve FilterName from Global XML entries when resetting flags
-                            // If FilterName exists in Global XML, use it; otherwise leave empty
-                            GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, updatesWithData, filterName: string.Empty);
-                        
-                            if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[FLAG-MANAGER] Updated Global XML for {updates.Count} clash zones with reset flags in category '{category}'");
+                    {
+                        // ✅ CRITICAL FIX: Try to preserve FilterName from Global XML entries when resetting flags
+                        // If FilterName exists in Global XML, use it; otherwise leave empty
+                        GlobalIndexService.UpsertFlagsWithIdsAndClashZoneData(_document, category, updatesWithData, filterName: string.Empty);
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[FLAG-MANAGER] Updated Global XML for {updates.Count} clash zones with reset flags in category '{category}'");
                         }
                         else
                         {
@@ -3395,32 +3528,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             $"[{DateTime.Now:HH:mm:ss}] [FLAG-MANAGER] ✅✅✅ PROTECTED: Recently placed cluster sleeve {globalEntry.ClusterSleeveInstanceId} - SKIPPED deletion (protected from deletion)\n");
                     }
                     else
+                {
+                    var clusterSleeve = _document.GetElement(new ElementId(globalEntry.ClusterSleeveInstanceId));
+                    if (clusterSleeve != null)
                     {
-                        var clusterSleeve = _document.GetElement(new ElementId(globalEntry.ClusterSleeveInstanceId));
-                        if (clusterSleeve != null)
+                        try
                         {
-                            try
-                            {
                                 SafeFileLogger.SafeAppendText("cluster_debug.log",
                                     $"[{DateTime.Now:HH:mm:ss}] [FLAG-MANAGER] 🗑️ DELETING existing cluster sleeve {globalEntry.ClusterSleeveInstanceId} (not recently placed, intersection moved {movementDistance:F3}ft > {tolerance:F3}ft)\n");
                                 
-                                _document.Delete(clusterSleeve.Id);
-                                deleted = true;
+                            _document.Delete(clusterSleeve.Id);
+                            deleted = true;
                                 
                                 SafeFileLogger.SafeAppendText("cluster_debug.log",
                                     $"[{DateTime.Now:HH:mm:ss}] [FLAG-MANAGER] ✅ Deleted existing cluster sleeve {globalEntry.ClusterSleeveInstanceId} due to intersection point change\n");
                                 
-                                if (!DeploymentConfiguration.DeploymentMode)
+                            if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[FLAG-MANAGER] ✅ Deleted existing cluster sleeve {globalEntry.ClusterSleeveInstanceId} due to intersection point change (Δ={movementDistance:F3}ft > {tolerance:F3}ft tolerance)");
-                            }
-                            catch (Exception ex)
-                            {
+                        }
+                        catch (Exception ex)
+                        {
                                 SafeFileLogger.SafeAppendText("cluster_debug.log",
                                     $"[{DateTime.Now:HH:mm:ss}] [FLAG-MANAGER] ❌ ERROR deleting cluster sleeve {globalEntry.ClusterSleeveInstanceId}: {ex.Message}\n");
                                 
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Error($"[FLAG-MANAGER] Error deleting cluster sleeve {globalEntry.ClusterSleeveInstanceId}: {ex.Message}");
-                                throw;
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Error($"[FLAG-MANAGER] Error deleting cluster sleeve {globalEntry.ClusterSleeveInstanceId}: {ex.Message}");
+                            throw;
                             }
                         }
                         else

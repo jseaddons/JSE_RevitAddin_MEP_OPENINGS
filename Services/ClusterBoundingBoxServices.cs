@@ -3,6 +3,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 
@@ -10,6 +12,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
     public static class ClusterBoundingBoxServices
     {
+        // ✅ PERFORMANCE: Cache bounding box calculations per geometry hash
+        // Key: Geometry hash (sorted element IDs + rotation angle), Value: (width, height, depth, mid)
+        private static readonly Dictionary<string, (double width, double height, double depth, XYZ mid)> _bboxCache = new Dictionary<string, (double, double, double, XYZ)>();
+        private const int MAX_BBOX_CACHE_SIZE = 5000; // Limit cache size to prevent memory growth
+        
+        /// <summary>
+        /// Generate a hash key for bounding box cache based on element IDs and rotation angle
+        /// </summary>
+        private static string GenerateGeometryHash(List<FamilyInstance> cluster, double rotationAngle)
+        {
+            if (cluster == null || cluster.Count == 0)
+                return "EMPTY";
+            
+            // Sort element IDs for consistent hashing
+            var sortedIds = cluster.Select(s => s.Id.IntegerValue).OrderBy(id => id).ToList();
+            
+            // Create hash from sorted IDs + rotation angle
+            var hashInput = string.Join(",", sortedIds) + $"|R:{rotationAngle:F6}";
+            
+            // Use SHA256 for hash (fast enough for this use case)
+            using (var sha256 = SHA256.Create())
+            {
+                var hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(hashInput));
+                return Convert.ToBase64String(hashBytes).Substring(0, 16); // Use first 16 chars
+            }
+        }
+        
+        /// <summary>
+        /// Clear cache if it exceeds maximum size
+        /// </summary>
+        private static void MaintainCacheSize()
+        {
+            if (_bboxCache.Count > MAX_BBOX_CACHE_SIZE)
+            {
+                // Remove oldest 50% of entries (simple FIFO-like behavior)
+                var keysToRemove = _bboxCache.Keys.Take(_bboxCache.Count / 2).ToList();
+                foreach (var key in keysToRemove)
+                {
+                    _bboxCache.Remove(key);
+                }
+            }
+        }
         /// <summary>
         /// Returns bounding box dimensions and midpoint for a cluster of sleeves
         /// Uses axis-aligned bounding box (original behavior)
@@ -22,6 +66,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Returns bounding box dimensions and midpoint for a cluster of sleeves in a rotated coordinate system
         /// This ensures cluster sleeves follow the actual outline of individual sleeves, not just 0°/90° boxes
+        /// ✅ PERFORMANCE: Caches results per geometry hash to avoid redundant calculations
         /// </summary>
         /// <param name="cluster">List of sleeve family instances</param>
         /// <param name="rotationAngle">Rotation angle in radians. If 0, uses axis-aligned bounding box.</param>
@@ -30,14 +75,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (cluster == null || cluster.Count == 0)
                 return (0, 0, 0, XYZ.Zero);
 
+            // ✅ PERFORMANCE: Check cache first
+            string cacheKey = GenerateGeometryHash(cluster, rotationAngle);
+            if (_bboxCache.TryGetValue(cacheKey, out var cachedResult))
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[BBOX-CACHE] ✅ Cache HIT for cluster with {cluster.Count} sleeves, rotation={rotationAngle * 180 / Math.PI:F1}°");
+                }
+                return cachedResult;
+            }
+
+            // Cache miss - calculate bounding box
+            (double width, double height, double depth, XYZ mid) result;
+            
             // If no rotation, use original axis-aligned approach
             if (Math.Abs(rotationAngle) < 1e-6)
             {
-                return GetAxisAlignedBoundingBox(cluster);
+                result = GetAxisAlignedBoundingBox(cluster);
             }
-
-            // ✅ NEW: Calculate bounding box in rotated coordinate system
-            return GetRotatedBoundingBox(cluster, rotationAngle);
+            else
+            {
+                // ✅ NEW: Calculate bounding box in rotated coordinate system
+                result = GetRotatedBoundingBox(cluster, rotationAngle);
+            }
+            
+            // ✅ PERFORMANCE: Store in cache
+            MaintainCacheSize();
+            _bboxCache[cacheKey] = result;
+            
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Info($"[BBOX-CACHE] 💾 Cache MISS - calculated and stored for cluster with {cluster.Count} sleeves, rotation={rotationAngle * 180 / Math.PI:F1}°");
+            }
+            
+            return result;
         }
 
         /// <summary>

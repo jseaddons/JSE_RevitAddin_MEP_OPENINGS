@@ -25,7 +25,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS
             // IMMEDIATE LOGGING - Create file as soon as add-in loads (Build: 2025-11-20 14:30)
             try
             {
-                string startupLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\addin_startup.log";
+                // ✅ CONFIGURATION: Use AppData\Roaming (consistent with SafeFileLogger)
+                string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                string logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs");
+                Directory.CreateDirectory(logDir);
+                string startupLogPath = Path.Combine(logDir, "addin_startup.log");
+                
                 File.AppendAllText(startupLogPath, $"[{DateTime.Now}] ========================================\n");
                 File.AppendAllText(startupLogPath, $"[{DateTime.Now}] ADD-IN STARTUP BUILD 2025-11-20 14:30\n");
                 File.AppendAllText(startupLogPath, $"[{DateTime.Now}] ========================================\n");
@@ -37,7 +42,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS
                 // Try alternative location if main log fails
                 try
                 {
-                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\temp\addin_startup.log", $"[{DateTime.Now}] ADD-IN STARTUP FAILED: {startupEx.Message}\n");
+                    string tempPath = Path.Combine(Path.GetTempPath(), "addin_startup.log");
+                    File.AppendAllText(tempPath, $"[{DateTime.Now}] ADD-IN STARTUP FAILED: {startupEx.Message}\n");
                 }
                 catch { }
             }
@@ -45,20 +51,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS
             // Initialize logging first so we can capture any startup failures
             try
             {
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\addin_startup.log", $"[{DateTime.Now}] About to CreateLogger()\n");
+                // ✅ CONFIGURATION: Use AppData\Roaming (consistent with SafeFileLogger)
+                string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                string logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs");
+                string startupLogPath = Path.Combine(logDir, "addin_startup.log");
+
+                File.AppendAllText(startupLogPath, $"[{DateTime.Now}] About to CreateLogger()\n");
                 CreateLogger();
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\addin_startup.log", $"[{DateTime.Now}] CreateLogger() DONE\n");
+                File.AppendAllText(startupLogPath, $"[{DateTime.Now}] CreateLogger() DONE\n");
                 
                 // ✅ CRITICAL: Copy native SQLite DLL to temporary execution directory
                 // Revit copies the add-in DLL to a temp directory but doesn't copy native DLLs
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\addin_startup.log", $"[{DateTime.Now}] About to CopyNativeSqliteDllToExecutionDirectory()\n");
+                File.AppendAllText(startupLogPath, $"[{DateTime.Now}] About to CopyNativeSqliteDllToExecutionDirectory()\n");
                 CopyNativeSqliteDllToExecutionDirectory();
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\addin_startup.log", $"[{DateTime.Now}] CopyNativeSqliteDllToExecutionDirectory() DONE\n");
+                File.AppendAllText(startupLogPath, $"[{DateTime.Now}] CopyNativeSqliteDllToExecutionDirectory() DONE\n");
+
+                // ✅ VERIFY SQLITE DEPLOYMENT (managed + native)
+                File.AppendAllText(startupLogPath, $"[{DateTime.Now}] About to SqliteDeploymentVerifier.Verify()\n");
+                Services.Diagnostics.SqliteDeploymentVerifier.Verify(startupLogPath);
+                File.AppendAllText(startupLogPath, $"[{DateTime.Now}] SqliteDeploymentVerifier.Verify() DONE\n");
                 
                 // Initialize optimization services (Phase 1 - Foundation)
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\addin_startup.log", $"[{DateTime.Now}] About to InitializeOptimizationServices()\n");
+                File.AppendAllText(startupLogPath, $"[{DateTime.Now}] About to InitializeOptimizationServices()\n");
                 InitializeOptimizationServices();
-                File.AppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\addin_startup.log", $"[{DateTime.Now}] InitializeOptimizationServices() DONE\n");
+                File.AppendAllText(startupLogPath, $"[{DateTime.Now}] InitializeOptimizationServices() DONE\n");
 
                 // Validate license before startup - Simple JSE domain check
                 bool licensed = true;
@@ -98,10 +114,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS
 
         private void CreateRibbon()
         {
+            // ✅ CONFIGURATION: Use AppData\Roaming path for ribbon logs (consistent with SafeFileLogger)
+            string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            string logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs");
+            string ribbonLogPath = Path.Combine(logDir, "ribbon_creation.log");
+            
             // Log ribbon creation start
             try
             {
-                string ribbonLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\ribbon_creation.log";
                 File.AppendAllText(ribbonLogPath, $"[{DateTime.Now}] CreateRibbon() started\n");
             }
             catch { }
@@ -112,7 +132,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS
                 // Panel creation failed for some environment; skip ribbon creation to avoid null references.
                 try
                 {
-                    string ribbonLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\ribbon_creation.log";
                     File.AppendAllText(ribbonLogPath, $"[{DateTime.Now}] Panel creation FAILED - null panel returned\n");
                 }
                 catch { }
@@ -121,7 +140,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS
 
             try
             {
-                string ribbonLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\ribbon_creation.log";
                 File.AppendAllText(ribbonLogPath, $"[{DateTime.Now}] Panel created successfully\n");
             }
             catch { }
@@ -147,7 +165,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS
 
             try
             {
-                string ribbonLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\ribbon_creation.log";
                 File.AppendAllText(ribbonLogPath, $"[{DateTime.Now}] TestProfileManagementCommand button added to ribbon\n");
                 File.AppendAllText(ribbonLogPath, $"[{DateTime.Now}] Ribbon creation COMPLETED\n");
             }

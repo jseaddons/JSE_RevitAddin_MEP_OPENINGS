@@ -631,6 +631,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         DebugLogger.Info($"[ORCHESTRATOR] ✅ Transaction STARTED: '{tx.GetName()}', Document.IsModifiable: {_document.IsModifiable}");
                     }
                     
+                    // ✅ STEP 5 OPTIMIZATION: Declare clusterService in outer scope for parameter flush access
+                    RefactoredClusterService? clusterService = null;
+                    
                     // 🔥 UNCONDITIONAL LOGGING: Prove clustering is being called (DATABASE-ONLY, no XML)
                     SafeFileLogger.SafeAppendText("orchestrator_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔥🔥🔥 ABOUT TO CALL ClusterSleeves: category={categoryString}, isPath1Replay={isPath1Replay}, comboId={comboId}, filterId={filterId} (DATABASE-ONLY, NO XML)\n");
                     
@@ -646,7 +649,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         try { System.Diagnostics.EventLog.WriteEntry("Application", $"JSE Cluster: IO Error: {ioEx.Message}", System.Diagnostics.EventLogEntryType.Error); } catch { }
                     }
                     
-                    RefactoredClusterService? clusterService = null;
                     try
                     {
                         string logPath = SafeFileLogger.GetLogFilePath("orchestrator_debug.log");
@@ -871,8 +873,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 return (placedCount, deletedCount); // Return counts even on failure
             }
             
-            return (placedCount, deletedCount);
-            
             // ✅ PERFORMANCE FIX: After placing cluster sleeves, regenerate document and save their bounding boxes to XML
             // This uses SleeveCoordinateService to update coordinates (same as individual sleeves)
             if (placedClusterSleeves != null && placedClusterSleeves.Count > 0 && categoryString != null && xmlFilePath != null)
@@ -890,6 +890,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         // Step 2: Wait for regeneration to complete
                         System.Threading.Thread.Sleep(200);
+                        
+                        // ✅ STEP 5 OPTIMIZATION: Parameter flushing handled internally by RefactoredClusterService
+                        // (See PlaceClustersFromDatabase method for flush implementation)
                     }
                     catch (Exception regenEx)
                     {
@@ -968,6 +971,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                     }
                 }
+            
+            // Return counts after all processing (regeneration, flush, cleanup) complete
+            return (placedCount, deletedCount);
         }
 
         /// <summary>

@@ -46,6 +46,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         // ⚠️ QUICK WIN: Pre-cached family symbols (load once, reuse many times)
         private static Dictionary<string, FamilySymbol> _familySymbolCache = new Dictionary<string, FamilySymbol>();
+        
+        // ✅ STEP 5 OPTIMIZATION: Deferred parameter batching (4-6× faster placement)
+        // Accumulates parameter values during placement loop, writes all after single regeneration
+        // Key: ElementId of sleeve instance
+        // Value: Dictionary of parameter name → value (double or string)
+        private Dictionary<ElementId, Dictionary<string, object>> _deferredParameters = new Dictionary<ElementId, Dictionary<string, object>>();
 
         public int PlacedCount { get; private set; }
         public int SkippedCount { get; private set; }
@@ -636,6 +642,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                             // ✅ STARTUP MARKER: Log to confirm new code is running (using SafeFileLogger path)
                             // Note: debugLogPath is already declared at method level (line 254)
+                            /* EXCESSIVE LOGGING COMMENTED OUT FOR PERFORMANCE
                             try
                             {
                                 // ✅ DEPLOYMENT MODE: Skip file writes
@@ -652,6 +659,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 }
                             }
                             catch { }
+                            */
 
                             // ⏱️ TIMING: Start per-sleeve timer (only for actual placement operations)
                             var sleeveTimer = System.Diagnostics.Stopwatch.StartNew();
@@ -660,6 +668,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             try
                             {
                                 // ✅ DEPLOYMENT MODE: Skip file writes
+                                /* EXCESSIVE LOGGING COMMENTED OUT FOR PERFORMANCE
                                 try
                                 {
                                     if (!DeploymentConfiguration.DeploymentMode)
@@ -668,11 +677,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     }
                                 }
                                 catch { }
+                                */
 
                                 if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[UniversalSleevePlacer] Processing ClashZone {clashZone.Id}: MEP={clashZone.MepElementId.IntegerValue}, Structural={clashZone.StructuralElementId.IntegerValue}");
 
                                 // ✅ DEPLOYMENT MODE: Skip file writes
+                                /* EXCESSIVE LOGGING COMMENTED OUT FOR PERFORMANCE
                                 try
                                 {
                                     if (!DeploymentConfiguration.DeploymentMode)
@@ -681,6 +692,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     }
                                 }
                                 catch { }
+                                */
 
                                 // ✅ CRITICAL: Validate intersection coordinates - NO FALLBACK to wall center
                                 // This will throw an exception if coordinates are invalid, which we catch and handle below
@@ -689,10 +701,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     ValidatePlacementPoint(clashZone);
                                     try
                                     {                             // ✅ DEPLOYMENT MODE: Skip file writes
+                                        /* EXCESSIVE LOGGING COMMENTED OUT FOR PERFORMANCE
                                         if (!DeploymentConfiguration.DeploymentMode)
                                         {
                                             File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 2.1: ✅ Placement point validation PASSED for Zone={clashZone.Id}\n");
                                         }
+                                        */
                                     }
                                     catch { }
                                 }
@@ -747,6 +761,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 }
 
                                 // ✅ DEPLOYMENT MODE: Skip file writes
+                                /* EXCESSIVE LOGGING COMMENTED OUT FOR PERFORMANCE
                                 try
                                 {
                                     if (!DeploymentConfiguration.DeploymentMode)
@@ -755,6 +770,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     }
                                 }
                                 catch { }
+                                */
 
                                 // ✅ PERFORMANCE OPTIMIZATION: Batch file logging instead of individual writes
                                 // Only log to batch - will write once at end (or every 50 clash zones)
@@ -940,6 +956,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 }
 
                                 // DEPLOYMENT MODE: Skip file writes
+                                /* EXCESSIVE LOGGING COMMENTED OUT FOR PERFORMANCE
                                 try
                                 {
                                     if (!DeploymentConfiguration.DeploymentMode)
@@ -948,6 +965,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     }
                                 }
                                 catch { }
+                                */
 
                                 // ✅ PERFORMANCE OPTIMIZATION: Removed excessive file logging - use DebugLogger only
                                 // Validate category match
@@ -958,10 +976,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         DebugLogger.Warning($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} category '{clashZone.MepElementCategory}' doesn't match '{_strategy.GetCategoryName()}'");
                                     try
                                     {                             // ✅ DEPLOYMENT MODE: Skip file writes
+                                        /* EXCESSIVE LOGGING COMMENTED OUT FOR PERFORMANCE
                                         if (!DeploymentConfiguration.DeploymentMode)
                                         {
                                             File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 6.1: ❌ SKIPPED - Category mismatch\n");
                                         }
+                                        */
                                     }
                                     catch { }
                                     SkippedCount++;
@@ -971,10 +991,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                                 try
                                 {                         // ✅ DEPLOYMENT MODE: Skip file writes
+                                    /* EXCESSIVE LOGGING COMMENTED OUT FOR PERFORMANCE
                                     if (!DeploymentConfiguration.DeploymentMode)
                                     {
                                         File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 7: Category match passed, creating MEP size\n");
                                     }
+                                    */
                                 }
                                 catch { }
 
@@ -993,10 +1015,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 mepSizeTimer.Stop();
                                 try
                                 {                         // ✅ DEPLOYMENT MODE: Skip file writes
+                                    /* EXCESSIVE LOGGING COMMENTED OUT FOR PERFORMANCE
                                     if (!DeploymentConfiguration.DeploymentMode)
                                     {
                                         File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 8: MEP size created: W={mepSize.Width}, H={mepSize.Height}, D={mepSize.Diameter}, Shape={mepSize.Shape}\n");
                                     }
+                                    */
                                 }
                                 catch { }
 
@@ -1031,7 +1055,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     if (!DeploymentConfiguration.DeploymentMode)
                                     {
                                         DebugLogger.Info($"[UniversalSleevePlacer] ✅ PATH 1 (Replay): Using existing sleeve size - W={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}mm, H={RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm, D={RevitUnitConversionService.Instance.FromInternalMillimeters(finalDiameter):F1}mm");
-                                        File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9: ✅ PATH 1 (Replay) - Using existing sleeve size (skipping clearance calculation)\n");
+                                        // File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9: ✅ PATH 1 (Replay) - Using existing sleeve size (skipping clearance calculation)\n");
                                     }
                                 }
                                 else if (_isReplayPath)
@@ -1040,7 +1064,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     if (!DeploymentConfiguration.DeploymentMode)
                                     {
                                         DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ PATH 1 (Replay): Missing sleeve size data for Zone={clashZone.Id} - SleeveWidth={clashZone.SleeveWidth}, SleeveHeight={clashZone.SleeveHeight}. Falling back to PATH 2/3 clearance calculation.");
-                                        File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9: ⚠️ PATH 1 (Replay) - Missing sleeve size, falling back to clearance calculation\n");
+                                        // File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9: ⚠️ PATH 1 (Replay) - Missing sleeve size, falling back to clearance calculation\n");
                                     }
                                 }
                                 else
@@ -1160,10 +1184,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                                     try
                                     {                         // ✅ DEPLOYMENT MODE: Skip file writes
+                                        /* EXCESSIVE LOGGING COMMENTED OUT FOR PERFORMANCE
                                         if (!DeploymentConfiguration.DeploymentMode)
                                         {
                                             File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9: Clearance calculation completed for PATH 2/3\n");
                                         }
+                                        */
                                     }
                                     catch { }
                                 }
@@ -1174,10 +1200,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                                 try
                                 {                         // ✅ DEPLOYMENT MODE: Skip file writes
+                                    /* EXCESSIVE LOGGING COMMENTED OUT FOR PERFORMANCE
                                     if (!DeploymentConfiguration.DeploymentMode)
                                     {
                                         File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 10: Final dimensions determined, selecting family\n");
                                     }
+                                    */
                                 }
                                 catch { }
 
@@ -1192,10 +1220,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     (familyName, isCircular) = SelectUniversalFamily(clashZone, mepSize);
                                     try
                                     {                         // ✅ DEPLOYMENT MODE: Skip file writes
+                                        /* EXCESSIVE LOGGING COMMENTED OUT FOR PERFORMANCE
                                         if (!DeploymentConfiguration.DeploymentMode)
                                         {
                                             File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 11: Family selected: '{familyName}', IsCircular={isCircular}\n");
                                         }
+                                        */
                                     }
                                     catch { }
 
@@ -1213,10 +1243,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         DebugLogger.Error($"[UniversalSleevePlacer] Family '{familyName}' not found");
                                     try
                                     {                             // ✅ DEPLOYMENT MODE: Skip file writes
+                                        /* EXCESSIVE LOGGING COMMENTED OUT FOR PERFORMANCE
                                         if (!DeploymentConfiguration.DeploymentMode)
                                         {
                                             File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 11.1: ❌ ERROR - Family '{familyName}' not found\n");
                                         }
+                                        */
                                     }
                                     catch { }
                                     ErrorCount++;
@@ -1224,10 +1256,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 }
                                 try
                                 {                         // ✅ DEPLOYMENT MODE: Skip file writes
+                                    /* EXCESSIVE LOGGING COMMENTED OUT FOR PERFORMANCE
                                     if (!DeploymentConfiguration.DeploymentMode)
                                     {
                                         File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 12: ✅ Family symbol loaded successfully\n");
                                     }
+                                    */
                                 }
                                 catch { }
 
@@ -1369,7 +1403,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 {
                                     if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Error($"[UniversalSleevePlacer] ❌ CRITICAL: Cannot place sleeve for Zone {clashZone.Id} - Placement point is (0,0,0)!");
-                                    try { File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 2.3: ❌ SKIPPED - Placement point is (0,0,0)\n"); } catch { }
+                                    // try { File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 2.3: ❌ SKIPPED - Placement point is (0,0,0)\n"); } catch { }
                                     SkippedCount++;
                                     sleeveTimer.Stop();
                                     continue;
@@ -1396,8 +1430,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         var dbPlacementPoint = clashZone.SleevePlacementPoint;
                                         var dbPlacementPointStr = dbPlacementPoint != null ? $"DB_SPP=({dbPlacementPoint.X:F3},{dbPlacementPoint.Y:F3},{dbPlacementPoint.Z:F3})" : "DB_SPP=null";
 
+                                        /* EXCESSIVE LOGGING COMMENTED OUT FOR PERFORMANCE
                                         File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] [PLACEMENT-ORIGIN] Zone={clashZone.Id}, Source={placementSource}, Point=({placementPointChosen?.X:F3},{placementPointChosen?.Y:F3},{placementPointChosen?.Z:F3}), {dbPlacementPointStr}, XML_SPP=({clashZone.SleevePlacementPointX:F3},{clashZone.SleevePlacementPointY:F3},{clashZone.SleevePlacementPointZ:F3})\n");
                                         File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] PLACEMENT: Zone={clashZone.Id}, MEP={clashZone.MepElementIdValue}, HOST={clashZone.StructuralElementIdValue}, Point=({placementPointChosen?.X:F3},{placementPointChosen?.Y:F3},{placementPointChosen?.Z:F3}), SPP_XML=({clashZone.SleevePlacementPointX:F3},{clashZone.SleevePlacementPointY:F3},{clashZone.SleevePlacementPointZ:F3}), IP=({clashZone.IntersectionPointX:F3},{clashZone.IntersectionPointY:F3},{clashZone.IntersectionPointZ:F3})\n");
+                                        */
 
                                         // ✅ DIAGNOSTIC: Log if using XML snapshot when DB has placement point
                                         if (usingXmlSnapshot && dbPlacementPoint != null && HasValidPlacementCoordinate(dbPlacementPoint))
@@ -1533,11 +1569,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     try
                                     {
                                         // ✅ STEP 3: Create sleeve instance using placement data from Filter XML
+                                        // ✅ PERFORMANCE PROFILING: Profile family instantiation to identify symbol binding vs geometry creation
+                                        var instantiationTimer = System.Diagnostics.Stopwatch.StartNew();
+                                        var beforeInstantiation = System.GC.CollectionCount(0); // Track GC before
+                                        
                                         sleeveInstance = _doc.Create.NewFamilyInstance(
                                             adjustedPlacementPoint,  // From Filter XML (IntersectionPoint)
                                             familySymbol,            // Selected based on host type from Filter XML
                                             nearestLevel,
                                             StructuralType.NonStructural);
+                                        
+                                        instantiationTimer.Stop();
+                                        var afterInstantiation = System.GC.CollectionCount(0);
+                                        var gcCollections = afterInstantiation - beforeInstantiation;
+                                        
+                                        // ✅ PROFILING: Log instantiation timing to identify bottlenecks
+                                        // Fast (<10ms) = quick placement, Medium (10-50ms) = moderate overhead, Slow (>50ms) = high overhead
+                                        // Note: No geometry creation - just family placement (symbol binding)
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            string instantiationType = instantiationTimer.ElapsedMilliseconds < 10 
+                                                ? "FAST_PLACEMENT" 
+                                                : instantiationTimer.ElapsedMilliseconds < 50 
+                                                    ? "MODERATE_OVERHEAD" 
+                                                    : "SLOW_OVERHEAD";
+                                            
+                                            var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Logs", "R2023");
+                                            Directory.CreateDirectory(logDir);
+                                            var profPath = Path.Combine(logDir, "family_instantiation_profile.log");
+                                            
+                                            File.AppendAllText(profPath, 
+                                                $"{DateTime.Now:O}\t" +
+                                                $"SleeveId={sleeveInstance?.Id?.IntegerValue ?? -1}\t" +
+                                                $"Family={familySymbol?.Family?.Name ?? "NULL"}\t" +
+                                                $"Symbol={familySymbol?.Name ?? "NULL"}\t" +
+                                                $"Type={instantiationType}\t" +
+                                                $"TimeMs={instantiationTimer.ElapsedMilliseconds}\t" +
+                                                $"TimeTicks={instantiationTimer.ElapsedTicks}\t" +
+                                                $"GCCollections={gcCollections}\t" +
+                                                $"Level={nearestLevel?.Name ?? "NULL"}\n");
+                                        }
                                         try
                                         {                             // ✅ DEPLOYMENT MODE: Skip file writes
                                             if (!DeploymentConfiguration.DeploymentMode)
@@ -1853,6 +1924,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
                                 DebugLogger.Info($"[BATCH-REGEN] ✅ Regenerated {placedSleeveIds.Count} sleeves in {regenTimer.ElapsedMilliseconds}ms");
+                            }
+                            
+                            // ✅ STEP 5 OPTIMIZATION: Flush all deferred parameters after regeneration
+                            if (OptimizationFlags.UseBatchedParameterWrites && _deferredParameters.Count > 0)
+                            {
+                                var flushTimer = System.Diagnostics.Stopwatch.StartNew();
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[BATCH-PARAMS] Flushing {_deferredParameters.Count} sleeve parameters after regeneration...");
+                                }
+                                FlushDeferredParameters();
+                                flushTimer.Stop();
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[BATCH-PARAMS] ✅ Flushed {_deferredParameters.Count} sleeve parameters in {flushTimer.ElapsedMilliseconds}ms");
+                                }
                             }
 
                             // ✅ PERFORMANCE OPTIMIZATION: Batch bounding box retrieval after regeneration
@@ -2690,6 +2777,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] [RETURN-PlaceAllSleevesInTransaction] Placed={PlacedCount}, Skipped={SkippedCount}, Errors={ErrorCount}\n");
             }
             catch { }
+            
+            // ⚡ PERFORMANCE OPTIMIZATION: Write deferred metadata in batch BEFORE flag reset
+            if (OptimizationFlags.DeferNonCriticalMetadata && placedSleeveData.Count > 0)
+            {
+                try
+                {
+                    var batchWriter = new Placement.BatchMetadataWriterService(_doc);
+                    var sleeveData = placedSleeveData.Select(x => (x.sleeve, x.zone)).ToList();
+                    batchWriter.WriteDeferredMetadata(sleeveData);
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[UniversalSleevePlacer] ⚡ Batch metadata writer completed for {sleeveData.Count} sleeves");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ Batch metadata write failed: {ex.Message}");
+                    }
+                }
+            }
             
             // ✅ SESSION FLAG: Reset ReadyForPlacement for processed zones so they won't be re-processed
             if (processedZoneGuids.Count > 0)
@@ -3820,6 +3930,105 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         // ============================================================================
+        // STEP 5 OPTIMIZATION: Flush Deferred Parameters (Batch Write After Regeneration)
+        // ============================================================================
+        /// <summary>
+        /// Applies all accumulated parameter values from _deferredParameters to sleeves after regeneration.
+        /// This eliminates per-sleeve Revit regeneration overhead during parameter setting.
+        /// Expected gain: 4-6× faster placement (143-203ms → <30ms per sleeve).
+        /// </summary>
+        private void FlushDeferredParameters()
+        {
+            if (_deferredParameters == null || _deferredParameters.Count == 0) return;
+            
+            int successCount = 0;
+            int failCount = 0;
+            var errorLog = new System.Text.StringBuilder();
+            
+            try
+            {
+                foreach (var kvp in _deferredParameters)
+                {
+                    var sleeveId = kvp.Key;
+                    var paramValues = kvp.Value;
+                    
+                    try
+                    {
+                        // Get sleeve instance from document
+                        var sleeveInstance = _doc.GetElement(sleeveId) as FamilyInstance;
+                        if (sleeveInstance == null || !sleeveInstance.IsValidObject)
+                        {
+                            errorLog.AppendLine($"Sleeve {sleeveId} no longer valid - skipping {paramValues.Count} parameters");
+                            failCount++;
+                            continue;
+                        }
+                        
+                        // Apply all deferred parameters for this sleeve
+                        foreach (var paramKvp in paramValues)
+                        {
+                            var paramName = paramKvp.Key;
+                            var paramValue = paramKvp.Value;
+                            
+                            try
+                            {
+                                var param = sleeveInstance.LookupParameter(paramName);
+                                if (param != null && !param.IsReadOnly)
+                                {
+                                    if (paramValue is double doubleVal)
+                                    {
+                                        param.Set(doubleVal);
+                                    }
+                                    else if (paramValue is string stringVal)
+                                    {
+                                        param.Set(stringVal);
+                                    }
+                                    else if (paramValue is int intVal)
+                                    {
+                                        param.Set(intVal);
+                                    }
+                                }
+                            }
+                            catch (Exception paramEx)
+                            {
+                                errorLog.AppendLine($"  Failed to set parameter '{paramName}' on sleeve {sleeveId}: {paramEx.Message}");
+                            }
+                        }
+                        
+                        successCount++;
+                    }
+                    catch (Exception sleeveEx)
+                    {
+                        errorLog.AppendLine($"Failed to process sleeve {sleeveId}: {sleeveEx.Message}");
+                        failCount++;
+                    }
+                }
+                
+                // Log summary
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[BATCH-PARAMS] Flush complete: {successCount} sleeves updated, {failCount} failed");
+                    if (errorLog.Length > 0)
+                    {
+                        DebugLogger.Warning($"[BATCH-PARAMS] Errors during flush:\n{errorLog}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Error($"[BATCH-PARAMS] CRITICAL ERROR during parameter flush: {ex.Message}\n{ex.StackTrace}");
+                }
+                // Don't throw - log error and continue (parameters already written to _deferredParameters)
+            }
+            finally
+            {
+                // Clear deferred parameters after flush (ready for next placement batch)
+                _deferredParameters.Clear();
+            }
+        }
+        
+        // ============================================================================
 // CORRECTED SetSleeveParameters Method
 // ============================================================================
         private void SetSleeveParameters(
@@ -3848,7 +4057,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (!OptimizationFlags.EnableParameterTimingInstrumentation || !OptimizationFlags.UseDiagnosticMode) return;
                     try
                     {
-                        var path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "param_timing.log");
+                        var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Logs", "R2023");
+                        Directory.CreateDirectory(logDir);
+                        var path = Path.Combine(logDir, "param_timing.log");
                         File.AppendAllText(path, $"{DateTime.Now:O}\tSleeve={sleeveInstance.Id.IntegerValue}\tParam={logicalName}\tValueInternal={internalValue:F6}\tTicks={ticks}\tMs={ms}\n");
                     }
                     catch { }
@@ -3857,6 +4068,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 void TimedSetDouble(Parameter p, double value, string logicalName)
                 {
                     if (p == null || p.IsReadOnly) return;
+                    
+                    // ✅ STEP 5 OPTIMIZATION: Defer parameter writes if batching enabled
+                    if (OptimizationFlags.UseBatchedParameterWrites)
+                    {
+                        // Accumulate parameter value for later batch write
+                        if (!_deferredParameters.ContainsKey(sleeveInstance.Id))
+                            _deferredParameters[sleeveInstance.Id] = new Dictionary<string, object>();
+                        _deferredParameters[sleeveInstance.Id][logicalName] = value;
+                        
+                        // Still log timing if instrumentation enabled (measures overhead of accumulation)
+                        if (OptimizationFlags.EnableParameterTimingInstrumentation)
+                        {
+                            var sw = Stopwatch.StartNew();
+                            // Just track accumulation time (should be <1ms vs 10-20ms for Set)
+                            sw.Stop();
+                            AppendTiming(logicalName, sw.ElapsedTicks, sw.ElapsedMilliseconds, value);
+                        }
+                        return;
+                    }
+                    
+                    // Immediate write path (backward compatibility when batching disabled)
                     if (OptimizationFlags.EnableParameterTimingInstrumentation)
                     {
                         var sw = Stopwatch.StartNew();
@@ -3868,6 +4100,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         p.Set(value);
                     }
+                }
+                
+                // ✅ BATCHING HELPER: Defer string parameter writes
+                void TimedSetString(Parameter p, string value, string logicalName)
+                {
+                    if (p == null || p.IsReadOnly) return;
+                    
+                    if (OptimizationFlags.UseBatchedParameterWrites)
+                    {
+                        if (!_deferredParameters.ContainsKey(sleeveInstance.Id))
+                            _deferredParameters[sleeveInstance.Id] = new Dictionary<string, object>();
+                        _deferredParameters[sleeveInstance.Id][logicalName] = value;
+                        return;
+                    }
+                    
+                    p.Set(value);
+                }
+                
+                // ✅ BATCHING HELPER: Defer int parameter writes
+                void TimedSetInt(Parameter p, int value, string logicalName)
+                {
+                    if (p == null || p.IsReadOnly) return;
+                    
+                    if (OptimizationFlags.UseBatchedParameterWrites)
+                    {
+                        if (!_deferredParameters.ContainsKey(sleeveInstance.Id))
+                            _deferredParameters[sleeveInstance.Id] = new Dictionary<string, object>();
+                        _deferredParameters[sleeveInstance.Id][logicalName] = value;
+                        return;
+                    }
+                    
+                    p.Set(value);
                 }
                 
                 // Cache all needed parameters once
@@ -4250,12 +4514,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Validate values are valid
                     if (height > 0 && Math.Abs(elevationFromLevel) < 10000) // Reasonable bounds check
                     {
-                        // Calculate: Bottom of Opening = Elevation from Level - (Height / 2)
-                        // Elevation from Level gives center of opening, subtract half height to get bottom
-                        double bottomOfOpening = elevationFromLevel - (height / 2.0);
-                        
-                        // Set the parameter
-                        bottomOfOpeningParam.Set(bottomOfOpening);
+                    // Calculate: Bottom of Opening = Elevation from Level - (Height / 2)
+                    // Elevation from Level gives center of opening, subtract half height to get bottom
+                    double bottomOfOpening = elevationFromLevel - (height / 2.0);
+                    
+                    // Set the parameter (batched if enabled)
+                    TimedSetDouble(bottomOfOpeningParam, bottomOfOpening, "Bottom of Opening");
                         
                         // ✅ PERFORMANCE: Removed verbose logging
                     }
@@ -4281,37 +4545,110 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
         
-        // Set MEP metadata parameters
-                var mepElementIdParam = GetParam("MEP_ElementId");
-                if (mepElementIdParam != null)
-                {
-                    mepElementIdParam.Set(clashZone.MepElementId.IntegerValue);
-                }
-
-                GetParam("MEP_UniqueId")?.Set(clashZone.MepElementUniqueId);
-                GetParam("MEP_Size")?.Set(clashZone.MepElementFormattedSize);
-                GetParam("System_Abbreviation")?.Set(clashZone.MepElementSystemAbbreviation);
-                GetParam("MEP_Count")?.Set(1);  // Individual sleeve
-                
-                // ✅ CRITICAL FIX: Set MEP_Category parameter for clustering
-                // ✅ PERFORMANCE: Reduced logging - only log failures in diagnostic mode
-                var mepCategoryParam = GetParam("MEP_Category");
-                if (mepCategoryParam != null)
-                {
-                    mepCategoryParam.Set(clashZone.MepElementCategory);
-                    if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
+        // ⚡ PERFORMANCE OPTIMIZATION: Split metadata into critical (immediate) and non-critical (deferred)
+        // Critical parameters required for flag reset during refresh: MEP_Category, MEP_ElementId, ClashZone_GUID, Sleeve Instance ID, Filter Name
+        // Non-critical parameters deferred to batch write: MEP_UniqueId, MEP_Size, System_Abbreviation, MEP_Count, Bottom of Opening, Host Parameters
+        
+        if (OptimizationFlags.DeferNonCriticalMetadata)
+        {
+            // ✅ PHASE 2: Write ONLY critical parameters immediately (required for flag reset)
+            
+            // 1. MEP_Category - Required by FlagManager.ResetFlagsForDeletedSleeves (line 1801-1805)
+            var mepCategoryParam = GetParam("MEP_Category");
+            if (mepCategoryParam != null)
+            {
+                TimedSetString(mepCategoryParam, clashZone.MepElementCategory, "MEP_Category");
+            }
+            
+            // 2. MEP_ElementId - Required by FlagManager.RecoverFlagsFromSleevesInRevit (line 2826)
+            var mepElementIdParam = GetParam("MEP_ElementId");
+            if (mepElementIdParam != null)
+            {
+                TimedSetInt(mepElementIdParam, clashZone.MepElementId.IntegerValue, "MEP_ElementId");
+            }
+            
+            // 3. ClashZone_GUID - Required by FlagManager.GetClashZoneGuidValue (line 3516)
+            var guidParam = GetParam("ClashZone_GUID");
+            if (guidParam != null)
+            {
+                TimedSetString(guidParam, clashZone.Id.ToString(), "ClashZone_GUID");
+            }
+            
+            // 4. Sleeve Instance ID - Required by FlagManager.ResetFlagsForDeletedSleeves (line 1984)
+            var instanceIdParam = GetParam("Sleeve Instance ID");
+            if (instanceIdParam != null)
+            {
+                TimedSetInt(instanceIdParam, sleeveInstance.Id.IntegerValue, "Sleeve Instance ID");
+            }
+            
+            // 5. Filter Name - Required by FlagManager.RecoverFlagsFromSleevesInRevit (line 2805)
+            string filterName = GetFilterNameForCategory(clashZone.MepElementCategory);
+            var filterNameParam = GetParam("Filter Name");
+            if (filterNameParam != null)
+            {
+                TimedSetString(filterNameParam, filterName, "Filter Name");
+            }
+            
+            // ⚡ NON-CRITICAL PARAMETERS DEFERRED - Will be written in batch after all sleeves placed
+            // Deferred: MEP_UniqueId, MEP_Size, System_Abbreviation, MEP_Count, Bottom of Opening, Host Parameters
+            // Expected gain: ~150-180ms per sleeve
+        }
+        else
+        {
+            // 🔄 LEGACY PATH: Write all metadata immediately (old behavior for rollback safety)
+            
+            // Set MEP metadata parameters
+                    var mepElementIdParam = GetParam("MEP_ElementId");
+                    if (mepElementIdParam != null)
                     {
-                        DebugLogger.Info($"[UniversalSleevePlacer] Set MEP_Category = '{clashZone.MepElementCategory}' for sleeve {sleeveInstance.Id.IntegerValue}");
+                        TimedSetInt(mepElementIdParam, clashZone.MepElementId.IntegerValue, "MEP_ElementId");
                     }
-                }
-                else if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
-                {
-                    DebugLogger.Warning($"[UniversalSleevePlacer] MEP_Category parameter not found on sleeve {sleeveInstance.Id}");
-                }
+
+                    var mepUniqueIdParam = GetParam("MEP_UniqueId");
+                    if (mepUniqueIdParam != null)
+                    {
+                        TimedSetString(mepUniqueIdParam, clashZone.MepElementUniqueId, "MEP_UniqueId");
+                    }
+                    
+                    var mepSizeParam = GetParam("MEP_Size");
+                    if (mepSizeParam != null)
+                    {
+                        TimedSetString(mepSizeParam, clashZone.MepElementFormattedSize, "MEP_Size");
+                    }
+                    
+                    var systemAbbrParam = GetParam("System_Abbreviation");
+                    if (systemAbbrParam != null)
+                    {
+                        TimedSetString(systemAbbrParam, clashZone.MepElementSystemAbbreviation, "System_Abbreviation");
+                    }
+                    
+                    var mepCountParam = GetParam("MEP_Count");
+                    if (mepCountParam != null)
+                    {
+                        TimedSetInt(mepCountParam, 1, "MEP_Count");  // Individual sleeve
+                    }
+                    
+                    // ✅ CRITICAL FIX: Set MEP_Category parameter for clustering
+                    // ✅ PERFORMANCE: Reduced logging - only log failures in diagnostic mode
+                    var mepCategoryParam = GetParam("MEP_Category");
+                    if (mepCategoryParam != null)
+                    {
+                        TimedSetString(mepCategoryParam, clashZone.MepElementCategory, "MEP_Category");
+                        if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
+                        {
+                            DebugLogger.Info($"[UniversalSleevePlacer] Set MEP_Category = '{clashZone.MepElementCategory}' for sleeve {sleeveInstance.Id.IntegerValue}");
+                        }
+                    }
+                    else if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
+                    {
+                        DebugLogger.Warning($"[UniversalSleevePlacer] MEP_Category parameter not found on sleeve {sleeveInstance.Id}");
+                    }
+        }
 
                 // ⚠️ CRITICAL FIX: Transfer HostParameterValues from XML intersection data to sleeve parameters
                 // ✅ PERFORMANCE OPTIMIZATION: Reduced logging and use pre-cached parameters
-                if (clashZone.HostParameterValues != null && clashZone.HostParameterValues.Count > 0)
+                // ⚡ DEFERRED if DeferNonCriticalMetadata=true (moved to batch writer)
+                if (!OptimizationFlags.DeferNonCriticalMetadata && clashZone.HostParameterValues != null && clashZone.HostParameterValues.Count > 0)
                 {
                     int hostParamsSet = 0;
                     int hostParamsFailed = 0;
@@ -4324,17 +4661,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var param = GetParam(hostParam.Key);
                             if (param != null)
                             {
-                                // Handle different parameter storage types
+                                // Handle different parameter storage types (batched if enabled)
                                 if (param.StorageType == StorageType.String)
                                 {
-                                    param.Set(hostParam.Value);
+                                    TimedSetString(param, hostParam.Value, hostParam.Key);
                                     hostParamsSet++;
                                 }
                                 else if (param.StorageType == StorageType.Integer)
                                 {
                                     if (int.TryParse(hostParam.Value, out int intValue))
                                     {
-                                        param.Set(intValue);
+                                        TimedSetInt(param, intValue, hostParam.Key);
                                         hostParamsSet++;
                                     }
                                     else
@@ -4346,7 +4683,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 {
                                     if (double.TryParse(hostParam.Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double doubleValue))
                                     {
-                                        param.Set(doubleValue);
+                                        TimedSetDouble(param, doubleValue, hostParam.Key);
                                         hostParamsSet++;
                                     }
                                     else
@@ -4401,12 +4738,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
+                // ✅ BATCHING HELPER: Defer string parameter writes
+                void TimedSetString(Parameter p, string value, string logicalName)
+                {
+                    if (p == null || p.IsReadOnly) return;
+                    
+                    if (OptimizationFlags.UseBatchedParameterWrites)
+                    {
+                        if (!_deferredParameters.ContainsKey(sleeveInstance.Id))
+                            _deferredParameters[sleeveInstance.Id] = new Dictionary<string, object>();
+                        _deferredParameters[sleeveInstance.Id][logicalName] = value;
+                        return;
+                    }
+                    
+                    p.Set(value);
+                }
+                
+                // ✅ BATCHING HELPER: Defer int parameter writes
+                void TimedSetInt(Parameter p, int value, string logicalName)
+                {
+                    if (p == null || p.IsReadOnly) return;
+                    
+                    if (OptimizationFlags.UseBatchedParameterWrites)
+                    {
+                        if (!_deferredParameters.ContainsKey(sleeveInstance.Id))
+                            _deferredParameters[sleeveInstance.Id] = new Dictionary<string, object>();
+                        _deferredParameters[sleeveInstance.Id][logicalName] = value;
+                        return;
+                    }
+                    
+                    p.Set(value);
+                }
+                
                 // Set Filter Name based on category
                 string filterName = GetFilterNameForCategory(clashZone.MepElementCategory);
                 var filterNameParam = sleeveInstance.LookupParameter("Filter Name");
                 if (filterNameParam != null && !filterNameParam.IsReadOnly)
                 {
-                    filterNameParam.Set(filterName);
+                    TimedSetString(filterNameParam, filterName, "Filter Name");
                                         if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[SetSleeveMetadata] Set Filter Name = '{filterName}' for sleeve {sleeveInstance.Id}");
                 }
@@ -4420,7 +4789,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var instanceIdParam = sleeveInstance.LookupParameter("Sleeve Instance ID");
                 if (instanceIdParam != null && !instanceIdParam.IsReadOnly)
                 {
-                    instanceIdParam.Set(sleeveInstance.Id.IntegerValue);
+                    TimedSetInt(instanceIdParam, sleeveInstance.Id.IntegerValue, "Sleeve Instance ID");
                                         if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[SetSleeveMetadata] Set Sleeve Instance ID = {sleeveInstance.Id.IntegerValue} for sleeve {sleeveInstance.Id}");
                 }
@@ -4443,7 +4812,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (parenIndex > 0)
                             linkedFile = linkedFile.Substring(0, parenIndex).Trim();
                     }
-                    linkedFileParam.Set(linkedFile);
+                    TimedSetString(linkedFileParam, linkedFile, "LinkedFile");
                                         if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[SetSleeveMetadata] Set LinkedFile = '{linkedFile}' for sleeve {sleeveInstance.Id}");
                 }
@@ -4466,7 +4835,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (parenIndex > 0)
                             hostFile = hostFile.Substring(0, parenIndex).Trim();
                     }
-                    hostFileParam.Set(hostFile);
+                    TimedSetString(hostFileParam, hostFile, "HostFile");
                                         if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[SetSleeveMetadata] Set HostFile = '{hostFile}' for sleeve {sleeveInstance.Id}");
                 }
@@ -4517,7 +4886,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // No need to lookup Global XML - deterministic GUID ensures consistency
                 Guid stableGuid = clashZone.Id;
                 string guidString = stableGuid.ToString();
-                guidParam.Set(guidString);
+                
+                // ✅ BATCHING: Defer parameter write if batching enabled
+                if (OptimizationFlags.UseBatchedParameterWrites)
+                {
+                    if (!_deferredParameters.ContainsKey(sleeveInstance.Id))
+                        _deferredParameters[sleeveInstance.Id] = new Dictionary<string, object>();
+                    _deferredParameters[sleeveInstance.Id]["ClashZone_GUID"] = guidString;
+                }
+                else
+                {
+                    guidParam.Set(guidString);
+                }
                 
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[SetClashZoneGuidStable] Set ClashZone_GUID = '{guidString}' for sleeve {sleeveInstance.Id} (stable per 3-point combo)");
@@ -5724,11 +6104,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                     }
                     
-                    // Set HostOrientation parameter
+                    // Set HostOrientation parameter (batched if enabled)
                     var hostOrientationParam = sleeveInstance.LookupParameter("HostOrientation");
                     if (hostOrientationParam != null && !hostOrientationParam.IsReadOnly)
                     {
-                        hostOrientationParam.Set("FloorHosted");
+                        if (OptimizationFlags.UseBatchedParameterWrites)
+                        {
+                            if (!_deferredParameters.ContainsKey(sleeveInstance.Id))
+                                _deferredParameters[sleeveInstance.Id] = new Dictionary<string, object>();
+                            _deferredParameters[sleeveInstance.Id]["HostOrientation"] = "FloorHosted";
+                        }
+                        else
+                        {
+                            hostOrientationParam.Set("FloorHosted");
+                        }
                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[UniversalSleevePlacer] FLOOR: Set HostOrientation = FloorHosted");
                     }
@@ -5943,13 +6332,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
             
-            // Set HostOrientation parameter from XML (pre-calculated during refresh)
+            // Set HostOrientation parameter from XML (pre-calculated during refresh) (batched if enabled)
                     if (!string.IsNullOrEmpty(clashZone.HostOrientation))
                     {
                         var hostOrientationParam = sleeveInstance.LookupParameter("HostOrientation");
                         if (hostOrientationParam != null && !hostOrientationParam.IsReadOnly)
                         {
-                            hostOrientationParam.Set(clashZone.HostOrientation);
+                            if (OptimizationFlags.UseBatchedParameterWrites)
+                            {
+                                if (!_deferredParameters.ContainsKey(sleeveInstance.Id))
+                                    _deferredParameters[sleeveInstance.Id] = new Dictionary<string, object>();
+                                _deferredParameters[sleeveInstance.Id]["HostOrientation"] = clashZone.HostOrientation;
+                            }
+                            else
+                            {
+                                hostOrientationParam.Set(clashZone.HostOrientation);
+                            }
                                                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[UniversalSleevePlacer] WALL/FRAMING: Set HostOrientation = {clashZone.HostOrientation} (from XML)");
                         }

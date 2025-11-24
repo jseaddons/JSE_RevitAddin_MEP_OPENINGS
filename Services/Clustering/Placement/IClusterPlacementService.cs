@@ -27,6 +27,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
         /// <param name="placedClusterSleeve">Output: The placed cluster sleeve instance</param>
         /// <param name="capturedClusterSleeveId">Output: The captured cluster sleeve ID</param>
         /// <returns>True if placement succeeded, false otherwise</returns>
+        /// <summary>
+        /// Place a cluster sleeve in the document.
+        /// </summary>
+        /// <param name="doc">Revit document</param>
+        /// <param name="cluster">List of sleeves in the cluster (dynamic type)</param>
+        /// <param name="groupKey">Group key (host type, system type, orientation)</param>
+        /// <param name="targetCategory">Target MEP category</param>
+        /// <param name="placementPoint">Placement point in world coordinates</param>
+        /// <param name="width">Cluster width in internal units</param>
+        /// <param name="height">Cluster height in internal units</param>
+        /// <param name="depth">Cluster depth in internal units</param>
+        /// <param name="rotationAngle">Rotation angle in radians</param>
+        /// <param name="xmlFilePath">Optional XML file path for data lookup</param>
+        /// <param name="placedClusterSleeve">Output: The placed cluster sleeve instance</param>
+        /// <param name="capturedClusterSleeveId">Output: The captured cluster sleeve ID</param>
+        /// <param name="deferredParameters">Optional dictionary for batch parameter updates</param>
+        /// <returns>True if placement succeeded, false otherwise</returns>
         bool PlaceClusterSleeve(
             Document doc,
             List<dynamic> cluster,
@@ -39,7 +56,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
             double rotationAngle,
             string? xmlFilePath,
             out FamilyInstance? placedClusterSleeve,
-            out int? capturedClusterSleeveId);
+            out int? capturedClusterSleeveId,
+            Dictionary<ElementId, Dictionary<string, object>>? deferredParameters = null);
 
         /// <summary>
         /// Set size parameters (Width, Height, Depth) on a cluster sleeve.
@@ -52,6 +70,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
         /// <param name="height">Cluster height in internal units</param>
         /// <param name="depth">Cluster depth in internal units</param>
         /// <param name="shouldSwapDimensions">Whether to swap dimensions for wall/framing hosts</param>
+        /// <param name="deferredParameters">Optional dictionary for batch parameter updates</param>
         void SetSizeParameters(
             Document doc,
             FamilyInstance clusterSleeve,
@@ -60,7 +79,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
             double width,
             double height,
             double depth,
-            bool shouldSwapDimensions = false);
+            bool shouldSwapDimensions = false,
+            Dictionary<ElementId, Dictionary<string, object>>? deferredParameters = null);
 
         /// <summary>
         /// Set metadata parameters on a cluster sleeve (MEP_Category, Filter Name, Sleeve Instance ID, etc.).
@@ -68,10 +88,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
         /// <param name="clusterSleeve">The cluster sleeve instance</param>
         /// <param name="category">MEP category name</param>
         /// <param name="filterName">Optional filter name (if null, will be looked up by category)</param>
+        /// <param name="deferredParameters">Optional dictionary for batch parameter updates</param>
         void SetMetadata(
             FamilyInstance clusterSleeve,
             string category,
-            string? filterName = null);
+            string? filterName = null,
+            Dictionary<ElementId, Dictionary<string, object>>? deferredParameters = null);
 
         /// <summary>
         /// Get reference level for cluster sleeve placement.

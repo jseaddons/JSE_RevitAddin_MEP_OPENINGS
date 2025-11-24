@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
@@ -90,7 +91,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
             double rotationAngle,
             string? xmlFilePath,
             out FamilyInstance? placedClusterSleeve,
-            out int? capturedClusterSleeveId)
+            out int? capturedClusterSleeveId,
+            Dictionary<ElementId, Dictionary<string, object>>? deferredParameters = null)
         {
             placedClusterSleeve = null;
             capturedClusterSleeveId = null;
@@ -207,11 +209,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
 
                 // Create cluster sleeve instance
                 FamilyInstance? inst = null;
+                var versionTag = Helpers.VersionInfo.VersionTag; // Declare in outer scope for profiling
                 try
                 {
                     try
                     {
-                        var versionTag = Helpers.VersionInfo.VersionTag;
                         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                         var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                         if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
@@ -220,7 +222,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                     }
                     catch { }
                     
+                    // ✅ PERFORMANCE PROFILING: Profile family instantiation to identify symbol binding vs geometry creation
+                    var instantiationTimer = System.Diagnostics.Stopwatch.StartNew();
+                    var beforeInstantiation = System.GC.CollectionCount(0); // Track GC before
+                    
                     inst = doc.Create.NewFamilyInstance(placementPoint, familySymbol, refLevel, StructuralType.NonStructural);
+                    
+                    instantiationTimer.Stop();
+                    var afterInstantiation = System.GC.CollectionCount(0);
+                    var gcCollections = afterInstantiation - beforeInstantiation;
+                    
+                    // ✅ PROFILING: Log instantiation timing to identify bottlenecks
+                    // Fast (<10ms) = quick placement, Medium (10-50ms) = moderate overhead, Slow (>50ms) = high overhead
+                    // Note: No geometry creation - just family placement (symbol binding)
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        string instantiationType = instantiationTimer.ElapsedMilliseconds < 10 
+                            ? "FAST_PLACEMENT" 
+                            : instantiationTimer.ElapsedMilliseconds < 50 
+                                ? "MODERATE_OVERHEAD" 
+                                : "SLOW_OVERHEAD";
+                        
+                        var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Logs", versionTag);
+                        Directory.CreateDirectory(logDir);
+                        var profPath = Path.Combine(logDir, "family_instantiation_profile.log");
+                        
+                        File.AppendAllText(profPath, 
+                            $"{DateTime.Now:O}\t" +
+                            $"ClusterSleeveId={inst?.Id?.IntegerValue ?? -1}\t" +
+                            $"Family={familySymbol?.Family?.Name ?? "NULL"}\t" +
+                            $"Symbol={familySymbol?.Name ?? "NULL"}\t" +
+                            $"Type={instantiationType}\t" +
+                            $"TimeMs={instantiationTimer.ElapsedMilliseconds}\t" +
+                            $"TimeTicks={instantiationTimer.ElapsedTicks}\t" +
+                            $"GCCollections={gcCollections}\t" +
+                            $"Level={refLevel?.Name ?? "NULL"}\t" +
+                            $"ClusterSize={cluster?.Count ?? 0}\n");
+                    }
                     
                     // ✅ CRITICAL: Capture ID immediately while element is valid
                     capturedClusterSleeveId = inst.Id.IntegerValue;
@@ -283,17 +321,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 // shouldSwapDimensions is false for walls (dimension mapping is handled in SetSizeParameters)
                 // Rotation logic for floors (rotated axis/non-straight) is separate from wall orientation rotation
                 bool shouldSwapDimensions = false; // Walls use normal dimension mapping (no swap needed)
-                SetSizeParameters(doc, inst, cluster, groupKey, width, height, depth, shouldSwapDimensions);
+                SetSizeParameters(doc, inst, cluster, groupKey, width, height, depth, shouldSwapDimensions, deferredParameters);
 
                 // ✅ ROTATION: Apply rotation for X-walls (90°) and floors (rotated axis/non-straight)
                 // Y-walls get 0° rotation (no rotation needed - LEFT view family works naturally for Y-walls)
                 // X-walls need +90° rotation (matches individual sleeve placement logic)
                 // Floor rotation is for rotated axis-aligned clusters (non-straight, 45°, etc.)
+                // ⚠️ CABLETRAY FIX: Cable trays on floors don't need rotation like ducts do
                 bool isWallHost = groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing";
+                bool isFloorHost = groupKey.hostType == "Floor" || groupKey.hostType == "Floors";
+                
+                // ✅ CATEGORY CHECK: Determine if this is a cable tray cluster
+                bool isCableTrayCategory = false;
+                if (cluster != null && cluster.Count > 0)
+                {
+                    var firstSleeve = cluster[0];
+                    if (firstSleeve?.ClashZone != null)
+                    {
+                        var firstClashZone = firstSleeve.ClashZone as Models.ClashZone;
+                        if (firstClashZone != null)
+                        {
+                            string category = firstClashZone.MepElementCategory ?? "";
+                            isCableTrayCategory = category.Contains("Cable", StringComparison.OrdinalIgnoreCase) ||
+                                                 category.Contains("CableTray", StringComparison.OrdinalIgnoreCase);
+                        }
+                    }
+                }
                 
                 // Apply rotation if:
                 // 1. It's a wall with significant rotation (X-wall with 90°), OR
                 // 2. It's a floor with rotated axis (non-straight)
+                // ⚠️ CABLETRAY FIX: Cable trays on floors get rotation based on MEP orientation WITHOUT extra 90° offset
+                // Ducts on floors get rotation based on MEP orientation WITH extra 90° offset
                 if (Math.Abs(rotationAngle) > 1e-6)
                 {
                     if (isWallHost)
@@ -305,9 +364,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
                                 $"[{DateTime.Now:HH:mm:ss}] 🔄 APPLYING X-WALL ROTATION: {rotationAngle * 180 / Math.PI:F1}° for wall-hosted cluster\n");
                         }
+                        ApplyRotation(doc, inst, placementPoint, rotationAngle, skip90DegreeOffset: false);
                     }
-                    // Apply rotation for both walls (X-walls) and floors (rotated axis)
-                    ApplyRotation(doc, inst, placementPoint, rotationAngle);
+                    else if (isFloorHost)
+                    {
+                        // ✅ FLOOR: Apply rotation for both ducts and cable trays
+                        // Cable trays: MEP orientation angle + 90° offset (to fix disorientation) - skip90DegreeOffset = false
+                        // Ducts/Pipes: MEP orientation angle + 90° offset - skip90DegreeOffset = false
+                        // Both get 90° offset for floors
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] 🔄 APPLYING FLOOR ROTATION: {rotationAngle * 180 / Math.PI:F1}° for floor-hosted cluster (category: {targetCategory}, WITH 90° OFFSET)\n");
+                        }
+                        ApplyRotation(doc, inst, placementPoint, rotationAngle, skip90DegreeOffset: false);
+                    }
                 }
                 else if (isWallHost)
                 {
@@ -320,7 +391,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 }
 
                 // Set metadata (including HostOrientation for proper orientation)
-                SetMetadata(inst, cluster, groupKey, targetCategory, null);
+                SetMetadata(inst, targetCategory, null, deferredParameters);
 
                 // Mark clash zones as cluster-resolved
                 BoundingBoxXYZ? clusterBbox = null;
@@ -400,7 +471,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
             double width,
             double height,
             double depth,
-            bool shouldSwapDimensions = false)
+            bool shouldSwapDimensions = false,
+            Dictionary<ElementId, Dictionary<string, object>>? deferredParameters = null)
         {
             // ✅ CRASH-SAFE: Validate inputs
             if (doc == null || clusterSleeve == null || cluster == null || cluster.Count == 0)
@@ -502,7 +574,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 {
                     try
                     {
-                        widthParam.Set(openingWidth);
+                        if (deferredParameters != null && OptimizationFlags.UseBatchedParameterWrites)
+                        {
+                            if (!deferredParameters.ContainsKey(clusterSleeve.Id))
+                                deferredParameters[clusterSleeve.Id] = new Dictionary<string, object>();
+                            deferredParameters[clusterSleeve.Id]["Width"] = openingWidth;
+                        }
+                        else
+                        {
+                            widthParam.Set(openingWidth);
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -515,7 +596,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 {
                     try
                     {
-                        heightParam.Set(openingHeight);
+                        if (deferredParameters != null && OptimizationFlags.UseBatchedParameterWrites)
+                        {
+                            if (!deferredParameters.ContainsKey(clusterSleeve.Id))
+                                deferredParameters[clusterSleeve.Id] = new Dictionary<string, object>();
+                            deferredParameters[clusterSleeve.Id]["Height"] = openingHeight;
+                        }
+                        else
+                        {
+                            heightParam.Set(openingHeight);
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -528,7 +618,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 {
                     try
                     {
-                        depthParam.Set(openingDepth);
+                        if (deferredParameters != null && OptimizationFlags.UseBatchedParameterWrites)
+                        {
+                            if (!deferredParameters.ContainsKey(clusterSleeve.Id))
+                                deferredParameters[clusterSleeve.Id] = new Dictionary<string, object>();
+                            deferredParameters[clusterSleeve.Id]["Depth"] = openingDepth;
+                        }
+                        else
+                        {
+                            depthParam.Set(openingDepth);
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -550,10 +649,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
         /// </summary>
         public void SetMetadata(
             FamilyInstance clusterSleeve,
-            List<dynamic> cluster,
-            SleeveGroupKey groupKey,
             string category,
-            string? filterName = null)
+            string? filterName = null,
+            Dictionary<ElementId, Dictionary<string, object>>? deferredParameters = null)
         {
             // ✅ CRASH-SAFE: Validate inputs
             if (clusterSleeve == null || string.IsNullOrEmpty(category))
@@ -569,7 +667,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 Parameter? mepCategoryParam = GetParameter(clusterSleeve, "MEP_Category");
                 if (mepCategoryParam != null && !mepCategoryParam.IsReadOnly)
                 {
-                    mepCategoryParam.Set(category);
+                    if (deferredParameters != null && OptimizationFlags.UseBatchedParameterWrites)
+                    {
+                        if (!deferredParameters.ContainsKey(clusterSleeve.Id))
+                            deferredParameters[clusterSleeve.Id] = new Dictionary<string, object>();
+                        deferredParameters[clusterSleeve.Id]["MEP_Category"] = category;
+                    }
+                    else
+                    {
+                        mepCategoryParam.Set(category);
+                    }
                 }
 
                 // Set Filter Name
@@ -579,42 +686,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                     Parameter? filterNameParam = GetParameter(clusterSleeve, "Filter Name");
                     if (filterNameParam != null && !filterNameParam.IsReadOnly)
                     {
-                        filterNameParam.Set(actualFilterName);
-                    }
-                }
-
-                // ✅ CRITICAL FIX: Set HostOrientation parameter for proper orientation in plan view
-                // Individual sleeves set this parameter, so cluster sleeves must match
-                // This ensures correct orientation for Y-walls (and X-walls after rotation)
-                if (cluster != null && cluster.Count > 0 && 
-                    (groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing"))
-                {
-                    try
-                    {
-                        // Get HostOrientation from first clash zone in cluster
-                        var firstSleeve = cluster[0];
-                        if (firstSleeve != null)
+                        if (deferredParameters != null && OptimizationFlags.UseBatchedParameterWrites)
                         {
-                            var firstClashZone = firstSleeve.ClashZone as Models.ClashZone;
-                            if (firstClashZone != null && !string.IsNullOrEmpty(firstClashZone.HostOrientation))
-                            {
-                                Parameter? hostOrientationParam = GetParameter(clusterSleeve, "HostOrientation");
-                                if (hostOrientationParam != null && !hostOrientationParam.IsReadOnly)
-                                {
-                                    hostOrientationParam.Set(firstClashZone.HostOrientation);
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                            $"[{DateTime.Now:HH:mm:ss}] ✅ Set HostOrientation = '{firstClashZone.HostOrientation}' for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
-                                    }
-                                }
-                            }
+                            if (!deferredParameters.ContainsKey(clusterSleeve.Id))
+                                deferredParameters[clusterSleeve.Id] = new Dictionary<string, object>();
+                            deferredParameters[clusterSleeve.Id]["Filter Name"] = actualFilterName;
                         }
-                    }
-                    catch (Exception hostOrientationEx)
-                    {
-                        SafeFileLogger.SafeAppendText("placement_errors.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ⚠️ Error setting HostOrientation parameter: {hostOrientationEx.Message}\n");
+                        else
+                        {
+                            filterNameParam.Set(actualFilterName);
+                        }
                     }
                 }
 
@@ -622,14 +703,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 Parameter? instanceIdParam = GetParameter(clusterSleeve, "Sleeve Instance ID");
                 if (instanceIdParam != null && !instanceIdParam.IsReadOnly)
                 {
-                    instanceIdParam.Set(-1);
+                    if (deferredParameters != null && OptimizationFlags.UseBatchedParameterWrites)
+                    {
+                        if (!deferredParameters.ContainsKey(clusterSleeve.Id))
+                            deferredParameters[clusterSleeve.Id] = new Dictionary<string, object>();
+                        deferredParameters[clusterSleeve.Id]["Sleeve Instance ID"] = -1;
+                    }
+                    else
+                    {
+                        instanceIdParam.Set(-1);
+                    }
                 }
 
                 // Set Cluster Sleeve Instance ID
                 Parameter? clusterInstanceIdParam = GetParameter(clusterSleeve, "Cluster Sleeve Instance ID");
                 if (clusterInstanceIdParam != null && !clusterInstanceIdParam.IsReadOnly)
                 {
-                    clusterInstanceIdParam.Set(clusterSleeve.Id.IntegerValue);
+                    if (deferredParameters != null && OptimizationFlags.UseBatchedParameterWrites)
+                    {
+                        if (!deferredParameters.ContainsKey(clusterSleeve.Id))
+                            deferredParameters[clusterSleeve.Id] = new Dictionary<string, object>();
+                        deferredParameters[clusterSleeve.Id]["Cluster Sleeve Instance ID"] = clusterSleeve.Id.IntegerValue;
+                    }
+                    else
+                    {
+                        clusterInstanceIdParam.Set(clusterSleeve.Id.IntegerValue);
+                    }
                 }
             }
             catch (Exception ex)
@@ -642,14 +741,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
         /// <summary>
         /// Set metadata parameters on a cluster sleeve (legacy overload for backward compatibility).
         /// </summary>
-        [Obsolete("Use SetMetadata(FamilyInstance, List<dynamic>, SleeveGroupKey, string, string?) instead")]
-        public void SetMetadata(
+        [Obsolete("Use SetMetadata(FamilyInstance, string, string?, Dictionary<ElementId, Dictionary<string, object>>?) instead")]
+        public void SetMetadata_Obsolete(
             FamilyInstance clusterSleeve,
             string category,
             string? filterName = null)
         {
-            // Call new overload with default values (cluster and groupKey not available in legacy call)
-            SetMetadata(clusterSleeve, new List<dynamic>(), new SleeveGroupKey { hostType = "", systemType = "", orientation = "" }, category, filterName);
+            // Call new signature without deferred parameters
+            SetMetadata(clusterSleeve, category, filterName, null);
         }
 
         /// <summary>
@@ -959,7 +1058,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
         /// ⚠️ DO NOT REMOVE THE 90-DEGREE OFFSET - This will break rotated cluster alignment!
         /// ⚠️ DO NOT CHANGE THE OFFSET VALUE - π/2 (90°) is the correct value!
         /// </summary>
-        private void ApplyRotation(Document doc, FamilyInstance inst, XYZ placementPoint, double rotationAngle)
+        private void ApplyRotation(Document doc, FamilyInstance inst, XYZ placementPoint, double rotationAngle, bool skip90DegreeOffset = false)
         {
             // ⚠️ CONSENT CHECK: Prevent modifications without explicit consent
             if (!ALLOW_MODIFICATIONS_TO_PROTECTED_CODE)
@@ -987,11 +1086,45 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
             try
             {
                 // ⚠️⚠️⚠️ CRITICAL: DO NOT MODIFY THIS OFFSET - IT IS REQUIRED FOR CORRECT ALIGNMENT ⚠️⚠️⚠️
-                // ✅ CRITICAL FIX: Add 90 degrees (π/2) to MEP orientation angle to fix alignment issue
+                // ✅ CRITICAL FIX: Add 90 degrees (π/2) to MEP orientation angle to fix alignment issue for ducts
                 // ✅ ROTATION FIX: ClusterRotationService already calculates the correct rotation angle
-                // (X-wall = 90°, Y-wall = 0°), so we use it directly without adding offset.
-                // Previous code added +90° offset which caused double rotation (180° for X-walls, 90° for Y-walls).
-                double adjustedRotationAngle = rotationAngle; // Use rotation angle directly from ClusterRotationService
+                // (X-wall = 90°, Y-wall = 0°), so we use it directly without adding offset for walls.
+                // For floors: Both ducts and cable trays need +90° offset to align correctly
+                // Walls: Use rotation angle directly (already correct from ClusterRotationService)
+                double adjustedRotationAngle = rotationAngle;
+                
+                if (skip90DegreeOffset)
+                {
+                    // ✅ WALLS: Use rotation angle directly (already correct from ClusterRotationService)
+                    // This path is only for walls now (cable trays on floors also get 90° offset)
+                    adjustedRotationAngle = rotationAngle;
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ✅ WALL: Using rotation angle directly (no 90° offset): {rotationAngle * 180 / Math.PI:F1}°\n");
+                    }
+                }
+                else
+                {
+                    // ✅ FLOOR (DUCTS AND CABLE TRAYS): Check if this is a floor rotation (not wall rotation)
+                    // Wall rotations are 0° (Y-wall) or 90° (X-wall), floor rotations are arbitrary angles
+                    bool isWallRotation = Math.Abs(rotationAngle) < 1e-6 || Math.Abs(rotationAngle - Math.PI / 2.0) < 1e-6;
+                    if (!isWallRotation && Math.Abs(rotationAngle) > 1e-6)
+                    {
+                        // ✅ FLOOR (ALL CATEGORIES): Add 90° offset for both ducts and cable trays on floors
+                        adjustedRotationAngle = rotationAngle + Math.PI / 2.0;
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] 🔄 FLOOR: Adding 90° offset: {rotationAngle * 180 / Math.PI:F1}° → {adjustedRotationAngle * 180 / Math.PI:F1}°\n");
+                        }
+                    }
+                    else
+                    {
+                        // ✅ WALLS: Use rotation angle directly (already correct from ClusterRotationService)
+                        adjustedRotationAngle = rotationAngle;
+                    }
+                }
                 
                 // ✅ VALIDATION: Normalize angle to 0-2π range
                 while (adjustedRotationAngle < 0) adjustedRotationAngle += 2 * Math.PI;
@@ -1007,8 +1140,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 {
                     double originalDegrees = rotationAngle * 180 / Math.PI;
                     double adjustedDegrees = adjustedRotationAngle * 180 / Math.PI;
+                    double offsetDegrees = adjustedDegrees - originalDegrees;
+                    
+                    // ✅ FIX LOG MESSAGE: Show actual offset applied (not always "+ 90°")
+                    string offsetText = Math.Abs(offsetDegrees) < 1e-3 ? " (no offset)" : 
+                                       offsetDegrees > 0 ? $" + {offsetDegrees:F1}°" : $" {offsetDegrees:F1}°";
+                    
                     SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss}] 🔄 ROTATION: Applied {adjustedDegrees:F1}° (original: {originalDegrees:F1}° + 90°) to cluster sleeve {inst.Id.IntegerValue}\n");
+                        $"[{DateTime.Now:HH:mm:ss}] 🔄 ROTATION: Applied {adjustedDegrees:F1}° (original: {originalDegrees:F1}°{offsetText}) to cluster sleeve {inst.Id.IntegerValue}\n");
                 }
             }
             catch (Exception ex)

@@ -1804,34 +1804,58 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 		/// <param name="doc">Revit document</param>
 		/// <param name="categoryName">Category name</param>
 		/// <returns>Set of normalized file combo keys (format: "linkedfile|hostfile")</returns>
-		public static HashSet<string> GetProcessedFileComboKeys(Document doc, string categoryName)
+	public static HashSet<string> GetProcessedFileComboKeys(Document doc, string categoryName)
+	{
+		var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		
+		if (string.IsNullOrWhiteSpace(categoryName))
+			return keys;
+		
+		try
 		{
-			var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+			var index = LoadOrCreate(doc, categoryName);
 			
-			if (string.IsNullOrWhiteSpace(categoryName))
-				return keys;
-			
-			try
+			// ✅ FIX: Check hierarchical structure first (Filters → FileCombos)
+			// This matches the logic in IsFileComboProcessed
+			if (index?.Filters != null && index.Filters.Count > 0)
 			{
-				var index = LoadOrCreate(doc, categoryName);
-				if (index?.ProcessedFileCombos != null && index.ProcessedFileCombos.Count > 0)
+				foreach (var filter in index.Filters)
 				{
-					foreach (var combo in index.ProcessedFileCombos)
+					if (filter.FileCombos != null)
 					{
-						var key = combo.GetNormalizedKey();
-						if (!string.IsNullOrEmpty(key))
-							keys.Add(key);
+						foreach (var fileCombo in filter.FileCombos)
+						{
+							// ✅ Only include combos that are marked as processed
+							if (fileCombo.IsProcessed)
+							{
+								var key = fileCombo.GetNormalizedKey();
+								if (!string.IsNullOrEmpty(key))
+									keys.Add(key);
+							}
+						}
 					}
 				}
 			}
-			catch (Exception ex)
-			{
-				SafeFileLogger.SafeAppendText("Refresh_GlobalIndex.log", 
-					$"Error getting processed file combo keys for '{categoryName}': {ex.Message}");
-			}
 			
-			return keys;
+			// ✅ FALLBACK: Also check flat structure (backward compatibility)
+			if (index?.ProcessedFileCombos != null && index.ProcessedFileCombos.Count > 0)
+			{
+				foreach (var combo in index.ProcessedFileCombos)
+				{
+					var key = combo.GetNormalizedKey();
+					if (!string.IsNullOrEmpty(key))
+						keys.Add(key);
+				}
+			}
 		}
+		catch (Exception ex)
+		{
+			SafeFileLogger.SafeAppendText("Refresh_GlobalIndex.log", 
+				$"Error getting processed file combo keys for '{categoryName}': {ex.Message}");
+		}
+		
+		return keys;
+	}
 
 		private static string Sanitize(string name)
 		{

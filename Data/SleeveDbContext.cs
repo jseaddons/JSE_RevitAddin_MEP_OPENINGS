@@ -132,6 +132,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
 
                 EnsureSchemaCreated();
                 EnsureSchemaUpgraded();
+                
+                // ✅ R-TREE CHECK: Test if R-tree extension is available
+                CheckRTreeSupport();
 
                 if (File.Exists(_databasePath))
                 {
@@ -370,6 +373,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
 
                     EnsureSleeveSnapshotTable(transaction);
                     EnsureClusterSleevesTable(transaction);
+                    
+                    // ✅ R-TREE: Create R-tree virtual table for spatial indexing (if enabled)
+                    EnsureRTreeTable(transaction);
 
                     // Create migration tracking table
                     ExecuteCommand(@"
@@ -401,6 +407,106 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
             }
         }
 
+        /// <summary>
+        /// ✅ R-TREE CHECK: Test if SQLite R-tree extension is available and supported
+        /// R-tree is built into SQLite but may need to be enabled in some builds
+        /// </summary>
+        private void CheckRTreeSupport()
+        {
+            try
+            {
+                // Step 1: Check SQLite version (R-tree has been available since SQLite 3.5.0)
+                string sqliteVersion = string.Empty;
+                using (var cmd = _connection.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT sqlite_version()";
+                    var result = cmd.ExecuteScalar();
+                    sqliteVersion = result?.ToString() ?? "unknown";
+                }
+                _logger($"[SQLite] SQLite version: {sqliteVersion}");
+
+                // Step 2: Try to create a test R-tree virtual table
+                // If this succeeds, R-tree is available
+                bool rtreeSupported = false;
+                string errorMessage = string.Empty;
+                
+                try
+                {
+                    using (var cmd = _connection.CreateCommand())
+                    {
+                        // Create a temporary test R-tree table
+                        cmd.CommandText = @"
+                            CREATE VIRTUAL TABLE IF NOT EXISTS _rtree_test USING rtree(
+                                id INTEGER PRIMARY KEY,
+                                minX REAL, maxX REAL,
+                                minY REAL, maxY REAL,
+                                minZ REAL, maxZ REAL
+                            )";
+                        cmd.ExecuteNonQuery();
+                        
+                        // Try to insert a test record
+                        cmd.CommandText = @"
+                            INSERT INTO _rtree_test (id, minX, maxX, minY, maxY, minZ, maxZ)
+                            VALUES (1, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0)";
+                        cmd.ExecuteNonQuery();
+                        
+                        // Try to query it
+                        cmd.CommandText = @"
+                            SELECT COUNT(*) FROM _rtree_test 
+                            WHERE minX <= 1.0 AND maxX >= 0.0
+                              AND minY <= 1.0 AND maxY >= 0.0
+                              AND minZ <= 1.0 AND maxZ >= 0.0";
+                        var count = cmd.ExecuteScalar();
+                        
+                        // Clean up test table
+                        cmd.CommandText = "DROP TABLE IF EXISTS _rtree_test";
+                        cmd.ExecuteNonQuery();
+                        
+                        rtreeSupported = true;
+                        _logger($"[SQLite] ✅ R-tree extension is SUPPORTED and working correctly");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    rtreeSupported = false;
+                    errorMessage = ex.Message;
+                    
+                    // Clean up test table if it was partially created
+                    try
+                    {
+                        using (var cmd = _connection.CreateCommand())
+                        {
+                            cmd.CommandText = "DROP TABLE IF EXISTS _rtree_test";
+                            cmd.ExecuteNonQuery();
+                        }
+                    }
+                    catch { }
+                    
+                    _logger($"[SQLite] ❌ R-tree extension is NOT available: {errorMessage}");
+                }
+
+                // Step 3: Log detailed information
+                if (rtreeSupported)
+                {
+                    _logger($"[SQLite] ✅ R-tree is ready for spatial indexing implementation");
+                    _logger($"[SQLite]    - Can create R-tree virtual tables");
+                    _logger($"[SQLite]    - Can perform spatial queries (bounding box, proximity)");
+                    _logger($"[SQLite]    - Recommended for section box filtering optimization");
+                }
+                else
+                {
+                    _logger($"[SQLite] ⚠️ R-tree is NOT available - spatial queries will use in-memory filtering");
+                    _logger($"[SQLite]    - Section box filtering will load all zones, then filter in C#");
+                    _logger($"[SQLite]    - Consider upgrading SQLite if R-tree support is needed");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ⚠️ Error checking R-tree support: {ex.Message}");
+                _logger($"[SQLite]    Assuming R-tree is NOT available (fallback to in-memory filtering)");
+            }
+        }
+
         private void EnsureSchemaUpgraded()
         {
             try
@@ -408,6 +514,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                 using (var transaction = _connection.BeginTransaction())
                 {
                     EnsureSleeveSnapshotTable(transaction);
+                    EnsureClusterSleevesTable(transaction);
+                    
+                    // ✅ R-TREE: Create R-tree table for existing databases (if enabled)
+                    EnsureRTreeTable(transaction);
 
                     AddColumnIfMissing("ClashZones", "ClashZoneGuid", "TEXT NOT NULL DEFAULT ''", transaction);
                     AddColumnIfMissing("ClashZones", "MepCategory", "TEXT", transaction);
@@ -489,6 +599,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     // ✅ COMBO FLAG: Add IsFilterComboNew column to FileCombos table (defaults to 0=false for existing combos)
                     if (AddColumnIfMissing("FileCombos", "IsFilterComboNew", "INTEGER NOT NULL DEFAULT 0", transaction))
                         _logger("[SQLite] ✅ Added IsFilterComboNew column to FileCombos (existing combos default to 0=false)");
+                    
+                    // ✅ R-TREE: Populate R-tree index from existing ClashZones (if enabled and table exists)
+                    PopulateRTreeFromExistingData(transaction);
                     
                     // ✅ PHASE 2: Add CreatedAt and UpdatedAt columns to FileCombos table for consistency
                     if (AddColumnIfMissing("FileCombos", "CreatedAt", "DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes'))", transaction))
@@ -954,6 +1067,180 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                 _connection?.Close();
                 _connection?.Dispose();
                 _disposed = true;
+            }
+        }
+        
+        /// <summary>
+        /// ✅ R-TREE: Create R-tree virtual table for spatial indexing
+        /// Only creates if UseRTreeDatabaseIndex flag is enabled
+        /// Falls back gracefully if R-tree is not available
+        /// </summary>
+        private void EnsureRTreeTable(SQLiteTransaction transaction)
+        {
+            if (!Services.OptimizationFlags.UseRTreeDatabaseIndex)
+            {
+                _logger("[SQLite] R-tree database index disabled (UseRTreeDatabaseIndex=false) - skipping R-tree table creation");
+                return;
+            }
+            
+            try
+            {
+                // Check if R-tree is available (from CheckRTreeSupport)
+                // If not available, skip creation and log warning
+                bool rtreeAvailable = false;
+                try
+                {
+                    using (var testCmd = _connection.CreateCommand())
+                    {
+                        testCmd.CommandText = "CREATE VIRTUAL TABLE IF NOT EXISTS _rtree_test_availability USING rtree(id INTEGER PRIMARY KEY, minX REAL, maxX REAL, minY REAL, maxY REAL, minZ REAL, maxZ REAL)";
+                        testCmd.Transaction = transaction;
+                        testCmd.ExecuteNonQuery();
+                        
+                        testCmd.CommandText = "DROP TABLE IF EXISTS _rtree_test_availability";
+                        testCmd.ExecuteNonQuery();
+                        
+                        rtreeAvailable = true;
+                    }
+                }
+                catch
+                {
+                    rtreeAvailable = false;
+                }
+                
+                if (!rtreeAvailable)
+                {
+                    _logger("[SQLite] ⚠️ R-tree not available - skipping R-tree table creation (will use B-tree fallback)");
+                    return;
+                }
+                
+                // Create R-tree virtual table for spatial indexing
+                // Links to ClashZones table via ClashZoneId
+                ExecuteCommand(@"
+                    CREATE VIRTUAL TABLE IF NOT EXISTS ClashZonesRTree USING rtree(
+                        id INTEGER PRIMARY KEY,           -- ClashZoneId (links to ClashZones.ClashZoneId)
+                        minX REAL, maxX REAL,            -- Bounding box X coordinates (world space)
+                        minY REAL, maxY REAL,            -- Bounding box Y coordinates (world space)
+                        minZ REAL, maxZ REAL             -- Bounding box Z coordinates (world space)
+                    )", transaction);
+                
+                _logger("[SQLite] ✅ R-tree virtual table created/verified: ClashZonesRTree");
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ⚠️ Failed to create R-tree table (will use B-tree fallback): {ex.Message}");
+                // Don't throw - allow fallback to B-tree indexes
+            }
+        }
+        
+        /// <summary>
+        /// ✅ R-TREE MIGRATION: Populate R-tree index from existing ClashZones data
+        /// Called during schema upgrade to backfill R-tree for existing databases
+        /// </summary>
+        private void PopulateRTreeFromExistingData(SQLiteTransaction transaction)
+        {
+            if (!Services.OptimizationFlags.UseRTreeDatabaseIndex)
+                return;
+            
+            try
+            {
+                // Check if R-tree table exists
+                using (var checkCmd = _connection.CreateCommand())
+                {
+                    checkCmd.Transaction = transaction;
+                    checkCmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='ClashZonesRTree'";
+                    var tableExists = checkCmd.ExecuteScalar() != null;
+                    
+                    if (!tableExists)
+                    {
+                        _logger("[SQLite] R-tree table does not exist - skipping population");
+                        return;
+                    }
+                }
+                
+                // ✅ FIX: Check if R-tree count matches expected count (zones with valid bounding boxes)
+                // If counts don't match, clear and re-populate to ensure consistency
+                int rtreeCount = 0;
+                int expectedCount = 0;
+                
+                using (var countCmd = _connection.CreateCommand())
+                {
+                    countCmd.Transaction = transaction;
+                    
+                    // Get current R-tree count
+                    countCmd.CommandText = "SELECT COUNT(*) FROM ClashZonesRTree";
+                    rtreeCount = Convert.ToInt32(countCmd.ExecuteScalar());
+                    
+                    // Get expected count (zones with valid bounding boxes)
+                    // Use same validation logic as UpdateRTreeIndex: min < max and not all zeros
+                    countCmd.CommandText = @"
+                        SELECT COUNT(*) FROM ClashZones
+                        WHERE BoundingBoxMinX IS NOT NULL 
+                          AND BoundingBoxMaxX IS NOT NULL
+                          AND BoundingBoxMinY IS NOT NULL 
+                          AND BoundingBoxMaxY IS NOT NULL
+                          AND BoundingBoxMinZ IS NOT NULL 
+                          AND BoundingBoxMaxZ IS NOT NULL
+                          AND BoundingBoxMinX < BoundingBoxMaxX
+                          AND BoundingBoxMinY < BoundingBoxMaxY
+                          AND BoundingBoxMinZ < BoundingBoxMaxZ
+                          AND (BoundingBoxMinX != 0.0 OR BoundingBoxMaxX != 0.0 OR
+                               BoundingBoxMinY != 0.0 OR BoundingBoxMaxY != 0.0 OR
+                               BoundingBoxMinZ != 0.0 OR BoundingBoxMaxZ != 0.0)";
+                    expectedCount = Convert.ToInt32(countCmd.ExecuteScalar());
+                    
+                    _logger($"[SQLite] R-tree check: Current={rtreeCount}, Expected={expectedCount}");
+                    
+                    // If counts match and R-tree has entries, skip re-population
+                    if (rtreeCount == expectedCount && rtreeCount > 0)
+                    {
+                        _logger($"[SQLite] ✅ R-tree already populated correctly with {rtreeCount} entries - skipping");
+                        return;
+                    }
+                    
+                    // ✅ FIX: If counts don't match, clear and re-populate
+                    if (rtreeCount > 0)
+                    {
+                        _logger($"[SQLite] ⚠️ R-tree count mismatch ({rtreeCount} vs {expectedCount}) - clearing and re-populating");
+                        countCmd.CommandText = "DELETE FROM ClashZonesRTree";
+                        countCmd.ExecuteNonQuery();
+                    }
+                }
+                
+                // Populate R-tree from existing ClashZones
+                // Use BoundingBoxMinX/MaxX columns (stored in database, mapped from SleeveBoundingBoxMinX/MaxX)
+                // Only include valid bounding boxes (min < max for each dimension and not all zeros)
+                using (var populateCmd = _connection.CreateCommand())
+                {
+                    populateCmd.Transaction = transaction;
+                    populateCmd.CommandText = @"
+                        INSERT INTO ClashZonesRTree (id, minX, maxX, minY, maxY, minZ, maxZ)
+                        SELECT 
+                            ClashZoneId,
+                            BoundingBoxMinX, BoundingBoxMaxX,
+                            BoundingBoxMinY, BoundingBoxMaxY,
+                            BoundingBoxMinZ, BoundingBoxMaxZ
+                        FROM ClashZones
+                        WHERE BoundingBoxMinX IS NOT NULL 
+                          AND BoundingBoxMaxX IS NOT NULL
+                          AND BoundingBoxMinY IS NOT NULL 
+                          AND BoundingBoxMaxY IS NOT NULL
+                          AND BoundingBoxMinZ IS NOT NULL 
+                          AND BoundingBoxMaxZ IS NOT NULL
+                          AND BoundingBoxMinX < BoundingBoxMaxX
+                          AND BoundingBoxMinY < BoundingBoxMaxY
+                          AND BoundingBoxMinZ < BoundingBoxMaxZ
+                          AND (BoundingBoxMinX != 0.0 OR BoundingBoxMaxX != 0.0 OR
+                               BoundingBoxMinY != 0.0 OR BoundingBoxMaxY != 0.0 OR
+                               BoundingBoxMinZ != 0.0 OR BoundingBoxMaxZ != 0.0)";
+                    
+                    var rowsInserted = populateCmd.ExecuteNonQuery();
+                    _logger($"[SQLite] ✅ Populated R-tree index with {rowsInserted} entries from existing ClashZones (expected {expectedCount})");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ⚠️ Failed to populate R-tree from existing data: {ex.Message}");
+                // Don't throw - allow fallback to B-tree indexes
             }
         }
     }

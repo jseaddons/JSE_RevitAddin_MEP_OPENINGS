@@ -544,7 +544,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Perform solid intersection between line and element
         /// </summary>
-        private static List<XYZ> PerformSolidIntersection(Line mepLine, Element structuralElement, Transform? linkTransform)
+        public static List<XYZ> PerformSolidIntersection(Line mepLine, Element structuralElement, Transform? linkTransform)
         {
             var intersectionPoints = new List<XYZ>();
 

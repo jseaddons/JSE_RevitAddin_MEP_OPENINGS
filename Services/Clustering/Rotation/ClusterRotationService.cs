@@ -20,6 +20,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         // Key: ClusterInstanceId
         private readonly Dictionary<int, (double rotationAngleDeg, bool isRotated, XYZ rotatedBboxMin, XYZ rotatedBboxMax, double rotatedWidth, double rotatedHeight, double rotatedDepth)> _clusterRotationData;
 
+        // ✅ PERFORMANCE: Cache rotated bounding box calculations by cluster signature + rotation angle
+        // Key: Hash of (sorted sleeve IDs + rotation angle), Value: (width, height, depth, mid, rotatedMinX, ...)
+        private readonly Dictionary<string, (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ)> _rotatedBboxCache;
+        private const int MAX_ROTATED_BBOX_CACHE_SIZE = 1000; // Limit cache size to prevent memory growth
+
         // Delegate for getting ClashZone by sleeve instance ID (injected dependency)
         private readonly Func<int, string, ClashZone> _getClashZoneFunc;
 
@@ -37,6 +42,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
             }
             
             _clusterRotationData = new Dictionary<int, (double, bool, XYZ, XYZ, double, double, double)>();
+            _rotatedBboxCache = new Dictionary<string, (double, double, double, XYZ, double?, double?, double?, double?, double?, double?)>();
             _getClashZoneFunc = getClashZoneFunc;
         }
 
@@ -292,6 +298,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         public (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ)
         CalculateRotatedBoundingBox(List<dynamic> cluster, List<FamilyInstance> actualSleeves, double rotationAngle, string? xmlFilePath = null)
         {
+            // ✅ PERFORMANCE: Track calculation time (initialize at start for all code paths)
+            var calcStopwatch = System.Diagnostics.Stopwatch.StartNew();
+            
+            // ✅ PERFORMANCE: Check cache first (cache key = sorted sleeve IDs + rotation angle)
+            if (cluster != null && cluster.Count > 0)
+            {
+                try
+                {
+                    // Create cache key from sorted sleeve IDs + rotation angle
+                    var sleeveIds = cluster.Select(s => s?.SleeveInstanceId ?? 0).Where(id => id > 0).OrderBy(id => id).ToList();
+                    if (sleeveIds.Count == cluster.Count) // Only cache if all sleeves have valid IDs
+                    {
+                        string cacheKey = $"RBB_{string.Join("_", sleeveIds)}_{rotationAngle:F6}";
+                        
+                        if (_rotatedBboxCache.TryGetValue(cacheKey, out var cachedResult))
+                        {
+                            calcStopwatch.Stop();
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] ✅ CACHE HIT: Rotated bounding box for {cluster.Count} sleeves, rotation={rotationAngle * 180 / Math.PI:F1}° (saved {calcStopwatch.ElapsedMilliseconds}ms)\n");
+                            }
+                            return cachedResult;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // If cache key generation fails, continue with calculation
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ Cache key generation failed: {ex.Message}\n");
+                    }
+                }
+            }
+            
             // Simplified rotated bounding box calculation (union + optional corner refinement) without external ambiguous loggers.
             if (cluster == null || cluster.Count == 0 || actualSleeves == null || actualSleeves.Count == 0)
                 return (0,0,0,XYZ.Zero,null,null,null,null,null,null);
@@ -393,7 +436,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                     }
                                     
                                     // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
-                                    return (rcsWidth, rcsHeight, rcsDepth, placementPoint, null, null, null, null, null, null);
+                                    (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ) rcsResult = 
+                                        (rcsWidth, rcsHeight, rcsDepth, placementPoint, null, null, null, null, null, null);
+                                    StoreInCache(cluster, rotationAngle, rcsResult, calcStopwatch);
+                                    return rcsResult;
                                 }
                             }
                         }
@@ -607,9 +653,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                 $"[{DateTime.Now:HH:mm:ss}] ✅ CORNER-BASED: Cluster rotation={rotationAngle * 180 / Math.PI:F1}°, W={widthMm:F1}mm, H={heightMm:F1}mm, D={depthMm:F1}mm\n");
                             
                             // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
-                            return (cornerResult.Value.width, cornerResult.Value.height, cornerDepth, placementPoint,
+                            (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ) cornerResultValue = 
+                                (cornerResult.Value.width, cornerResult.Value.height, cornerDepth, placementPoint,
                                 cornerResult.Value.minX, cornerResult.Value.minY, cornerMinZ,
                                 cornerResult.Value.maxX, cornerResult.Value.maxY, cornerMaxZ);
+                            StoreInCache(cluster, rotationAngle, cornerResultValue, calcStopwatch);
+                            return cornerResultValue;
                         }
                         else
                         {
@@ -707,7 +756,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                         }
                                         
                                         // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
-                                        return (rcsWidth, rcsHeight, rcsDepth, placementPoint, null, null, null, null, null, null);
+                                        (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ) rcsResult = 
+                                            (rcsWidth, rcsHeight, rcsDepth, placementPoint, null, null, null, null, null, null);
+                                        StoreInCache(cluster, rotationAngle, rcsResult, calcStopwatch);
+                                        return rcsResult;
                                     }
                                 }
                             }
@@ -800,7 +852,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     $"[{DateTime.Now:HH:mm:ss}] ⚠️ UNION (fallback): W={unionWidthMm:F1}mm, H={unionHeightMm:F1}mm, D={unionDepthMm:F1}mm, Rotation={rotationAngle * 180 / Math.PI:F1}°\n");
             
             // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
-            return (width,height,depth,placementPoint,minX,minY,minZ,maxX,maxY,maxZ);
+            var result = (width,height,depth,placementPoint,minX,minY,minZ,maxX,maxY,maxZ);
+            
+            // ✅ PERFORMANCE: Store result in cache for future use
+            try
+            {
+                if (cluster != null && cluster.Count > 0)
+                {
+                    var sleeveIds = cluster.Select(s => s?.SleeveInstanceId ?? 0).Where(id => id > 0).OrderBy(id => id).ToList();
+                    if (sleeveIds.Count == cluster.Count && _rotatedBboxCache.Count < MAX_ROTATED_BBOX_CACHE_SIZE)
+                    {
+                        string cacheKey = $"RBB_{string.Join("_", sleeveIds)}_{rotationAngle:F6}";
+                        _rotatedBboxCache[cacheKey] = result;
+                        
+                        if (!DeploymentConfiguration.DeploymentMode && calcStopwatch.ElapsedMilliseconds > 10)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ CACHE STORED: Rotated bounding box calculated in {calcStopwatch.ElapsedMilliseconds}ms for {cluster.Count} sleeves, rotation={rotationAngle * 180 / Math.PI:F1}°\n");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // If cache storage fails, continue (non-critical)
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ Cache storage failed: {ex.Message}\n");
+                }
+            }
+            
+            return result;
         }
 
         /// <summary>
@@ -829,6 +912,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         public void ClearRotationData()
         {
             _clusterRotationData.Clear();
+        }
+        
+        /// <summary>
+        /// ✅ PERFORMANCE: Helper method to store rotated bounding box result in cache
+        /// </summary>
+        private void StoreInCache(List<dynamic> cluster, double rotationAngle, 
+            (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ) result,
+            System.Diagnostics.Stopwatch calcStopwatch)
+        {
+            try
+            {
+                if (cluster != null && cluster.Count > 0 && _rotatedBboxCache.Count < MAX_ROTATED_BBOX_CACHE_SIZE)
+                {
+                    var sleeveIds = cluster.Select(s => s?.SleeveInstanceId ?? 0).Where(id => id > 0).OrderBy(id => id).ToList();
+                    if (sleeveIds.Count == cluster.Count)
+                    {
+                        string cacheKey = $"RBB_{string.Join("_", sleeveIds)}_{rotationAngle:F6}";
+                        _rotatedBboxCache[cacheKey] = result;
+                        
+                        if (!DeploymentConfiguration.DeploymentMode && calcStopwatch.ElapsedMilliseconds > 10)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ CACHE STORED: Rotated bounding box calculated in {calcStopwatch.ElapsedMilliseconds}ms for {cluster.Count} sleeves, rotation={rotationAngle * 180 / Math.PI:F1}°\n");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // If cache storage fails, continue (non-critical)
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ Cache storage failed: {ex.Message}\n");
+                }
+            }
         }
 
         /// <summary>

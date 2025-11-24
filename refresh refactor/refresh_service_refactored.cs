@@ -56,8 +56,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             List<string> selectedHostFiles,
             Dictionary<string, double> clearanceSettings)
         {
-            // ✅ CRITICAL: Log start of refresh
+            // ✅ BUILD TIMESTAMP: Get build timestamp to verify latest code is running
+            string buildTimestamp = "unknown";
+            string assemblyPath = "unknown";
+            try
+            {
+                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                assemblyPath = assembly?.Location ?? "unknown";
+                if (!string.IsNullOrWhiteSpace(assemblyPath) && System.IO.File.Exists(assemblyPath))
+                {
+                    buildTimestamp = System.IO.File.GetLastWriteTime(assemblyPath).ToString("yyyy-MM-dd HH:mm:ss");
+                }
+            }
+            catch { }
+            
+            // ✅ CRITICAL: Log start of refresh with build timestamp
             DebugLogger.Info("[REFRESH-REFACTORED] ===== STARTING REFRESH =====");
+            DebugLogger.Info($"[REFRESH-REFACTORED] 🔨 BUILD TIMESTAMP: {buildTimestamp} | Assembly: {System.IO.Path.GetFileName(assemblyPath)}");
             DebugLogger.Info($"[REFRESH-REFACTORED] Filters: {string.Join(", ", selectedFilterItems ?? new List<string>())}");
             DebugLogger.Info($"[REFRESH-REFACTORED] Categories: {string.Join(", ", selectedMepCategories ?? new List<string>())}");
             DebugLogger.Info($"[REFRESH-REFACTORED] Reference Files: {string.Join(", ", selectedReferenceFiles ?? new List<string>())}");
@@ -84,6 +99,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     enableThreePointValidation))
                 {
                     DebugLogger.Info($"[REFRESH-REFACTORED] Context created, RefreshLogName: {context.RefreshLogName}");
+                    
+                    // ✅ BUILD TIMESTAMP: Write build timestamp to refresh log header
+                    try
+                    {
+                        SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                            $"[{DateTime.Now}] ===== REFRESH LOG STARTED =====\n");
+                        SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                            $"[{DateTime.Now}] 🔨 BUILD TIMESTAMP: {buildTimestamp} | Assembly: {System.IO.Path.GetFileName(assemblyPath)}\n");
+                        SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                            $"[{DateTime.Now}] Filters: {string.Join(", ", selectedFilterItems ?? new List<string>())}\n");
+                        SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                            $"[{DateTime.Now}] Categories: {string.Join(", ", selectedMepCategories ?? new List<string>())}\n");
+                        SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                            $"[{DateTime.Now}] ============================================\n\n");
+                    }
+                    catch { }
                     
                     try
                     {
@@ -306,6 +337,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     if (!context.IsDeploymentMode)
                                         DebugLogger.Info($"[REFRESH-REFACTORED][SQLite] {msg}");
                                 });
+
+                                // ✅ DIAGNOSTIC: Log call site before method call (direct DebugLogger to ensure it appears)
+                                if (!context.IsDeploymentMode)
+                                {
+                                    try
+                                    {
+                                        DebugLogger.Info($"[REFRESH-REFACTORED] [BEFORE-FLAG-SET] About to call SetReadyForPlacementForUnresolvedZonesInSectionBox: filters={context.SelectedFilterNames?.Count ?? 0}, categories={context.SelectedMepCategories?.Count ?? 0}, sectionBox={(sectionBoxNullable != null ? "Present" : "NULL")}");
+                                        SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                            $"[{DateTime.Now}] [REFRESH-REFACTORED] [BEFORE-FLAG-SET] About to call SetReadyForPlacementForUnresolvedZonesInSectionBox: filters={context.SelectedFilterNames?.Count ?? 0}, categories={context.SelectedMepCategories?.Count ?? 0}, sectionBox={(sectionBoxNullable != null ? "Present" : "NULL")}\n");
+                                    }
+                                    catch { }
+                                }
 
                                 int markedCount = repository.SetReadyForPlacementForUnresolvedZonesInSectionBox(
                                     context.SelectedFilterNames ?? new List<string>(),
@@ -729,6 +772,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     BoundingBoxXYZ sb = sectionBoxNullable;
                                     DebugLogger.Info($"[REFRESH-REFACTORED] Section box active: Min=({sb.Min.X:F2}, {sb.Min.Y:F2}, {sb.Min.Z:F2}), Max=({sb.Max.X:F2}, {sb.Max.Y:F2}, {sb.Max.Z:F2})");
                                 }
+                            }
+
+                            // ✅ DIAGNOSTIC: Log call site before method call (direct DebugLogger + SafeFileLogger to ensure it appears)
+                            if (!context.IsDeploymentMode)
+                            {
+                                try
+                                {
+                                    DebugLogger.Info($"[REFRESH-REFACTORED] [BEFORE-FLAG-SET] About to call SetReadyForPlacementForUnresolvedZonesInSectionBox (AFTER SaveClashZones): filters={context.SelectedFilterNames?.Count ?? 0}, categories={context.SelectedMepCategories?.Count ?? 0}, sectionBox={(sectionBoxNullable != null ? "Present" : "NULL")}");
+                                    SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                        $"[{DateTime.Now}] [REFRESH-REFACTORED] [BEFORE-FLAG-SET] About to call SetReadyForPlacementForUnresolvedZonesInSectionBox (AFTER SaveClashZones): filters={context.SelectedFilterNames?.Count ?? 0}, categories={context.SelectedMepCategories?.Count ?? 0}, sectionBox={(sectionBoxNullable != null ? "Present" : "NULL")}\n");
+                                }
+                                catch { }
                             }
 
                             // Set ReadyForPlacementFlag=1 for ALL unresolved zones (existing + new) within section box

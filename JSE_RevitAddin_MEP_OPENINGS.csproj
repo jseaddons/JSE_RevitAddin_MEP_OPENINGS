@@ -19,6 +19,8 @@
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <FileVersion>1.0.0.0</FileVersion>
     <Deterministic>false</Deterministic>
+    <!-- Ensure lock file assemblies are copied (was incorrectly placed in ItemGroup causing MSB4232) -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
   <!-- Revit configuration -->
@@ -58,7 +60,8 @@
   <!-- Native DLLs must remain as separate files and be copied alongside the merged DLL -->
   <!-- Nice3point.Revit.Build.Tasks uses RepackBinariesExcludes property to exclude files from ILRepack -->
   <PropertyGroup Condition="'$(IsRepackable)' == 'true'">
-    <RepackBinariesExcludes>e_sqlite3.dll</RepackBinariesExcludes>
+    <!-- Exclude SQLite managed and native binaries so they are not merged and remain deployable -->
+    <RepackBinariesExcludes>System.Data.SQLite.dll;SQLite.Interop.dll;e_sqlite3.dll</RepackBinariesExcludes>
   </PropertyGroup>
 
   <ItemGroup>
@@ -125,7 +128,9 @@
     <!-- ✅ Copy SQLite native DLLs for team deployment -->
     <ItemGroup>
       <SqliteDlls Include="$(OutputPath)System.Data.SQLite.dll" Condition="Exists('$(OutputPath)System.Data.SQLite.dll')" />
+      <!-- Native may be under x64 folder only -->
       <SqliteDlls Include="$(OutputPath)SQLite.Interop.dll" Condition="Exists('$(OutputPath)SQLite.Interop.dll')" />
+      <SqliteDlls Include="$(OutputPath)x64\SQLite.Interop.dll" Condition="Exists('$(OutputPath)x64\SQLite.Interop.dll')" />
     </ItemGroup>
     <Message Text="[PostBuild] Copying SQLite DLLs to $(RevitAddinFolder)" Importance="high" />
     <Message Text="[PostBuild] Found @(SqliteDlls->Count()) SQLite DLL(s) to copy" Importance="high" />
@@ -140,7 +145,9 @@
     <MakeDir Directories="$(RevitAddinFolder)x64\" Condition="@(SqliteInteropX64) != ''" />
     <Copy SourceFiles="@(SqliteInteropX64)" DestinationFolder="$(RevitAddinFolder)x64\" SkipUnchangedFiles="true" Condition="@(SqliteInteropX64) != ''" />
     <!-- Warn if critical native DLL is missing -->
-    <Warning Text="[PostBuild] ⚠️ WARNING: SQLite.Interop.dll not found in build output! SQLite will not work. Check System.Data.SQLite package restore." Condition="!Exists('$(OutputPath)SQLite.Interop.dll') AND !Exists('$(OutputPath)x64\SQLite.Interop.dll')" />
+    <Warning Text="[PostBuild] ⚠️ WARNING: SQLite.Interop.dll not found in build output (neither root nor x64). SQLite will not work. Check System.Data.SQLite package restore." Condition="!Exists('$(OutputPath)SQLite.Interop.dll') AND !Exists('$(OutputPath)x64\SQLite.Interop.dll')" />
+
+    <!-- Verification marker removed (MSB4012) to avoid item list concatenation error -->
   </Target>
 
   <!-- Exclude backup files and reference files -->
