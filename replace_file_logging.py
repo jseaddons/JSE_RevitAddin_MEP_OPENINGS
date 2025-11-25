@@ -128,7 +128,10 @@ def remove_unused_log_path_variables(content):
     return '\n'.join(new_lines)
 
 def main():
-    file_path = Path('Services/UniversalClusterService.cs')
+    if len(sys.argv) > 1:
+        file_path = Path(sys.argv[1])
+    else:
+        file_path = Path('Services/UniversalClusterService.cs')
     
     if not file_path.exists():
         print(f"Error: {file_path} not found!")

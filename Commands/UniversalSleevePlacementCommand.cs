@@ -1,15 +1,15 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Windows.Forms;
-using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
 using JSE_RevitAddin_MEP_OPENINGS.Utils;
 using System.Threading.Tasks;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces;
+using System.IO;
+using System;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 {
@@ -182,44 +182,75 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         } 
                         catch { }
 
-                        var placementCoordinator = SleevePlacementCoordinator.CreateDefault();
+                        // ✅ PATH DETERMINATION: Determine placement path (PATH 1 vs PATH 2/3)
                         var placementPath = DeterminePlacementPath();
-                        var placementRequest = new SleevePlacementRequest(
-                            _doc,
-                            filteredClashZones,
-                            _category,
-                            _filterName,
-                            _conditions,
-                            _strategy,
-                            _clearanceSettings,
-                            placementPath);
+                        bool isReplayPath = placementPath == Services.SleevePlacementPath.Replay;
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"{_logPrefix} [PLACEMENT-PATH] Determined path: {placementPath}, isReplayPath={isReplayPath}");
+                        }
+                        
+                        int placed = 0, skipped = 0, errors = 0;
 
-                        var result = placementCoordinator.Execute(placementRequest);
-                        
-                        // ✅ PERFORMANCE: Store counts in command properties for access after execution
-                        PlacedCount = result.PlacedCount;
-                        SkippedCount = result.SkippedCount;
-                        ErrorCount = result.ErrorCount;
-                        
+                        // ✅ REFACTORED: Use NewSleevePlacerService when flag is enabled
+                        // ⚠️ TEMPORARILY DISABLED: NewSleevePlacerService excluded from build due to incompatibilities
+                        /*
+                        if (OptimizationFlags.UseNewSleevePlacerService)
+                        {
+                            // ✅ NEW: Use refactored NewSleevePlacerService (SOLID principles)
+                            var sleeveRepository = new SleeveRepository();
+                            var zoneFilterService = new ZoneFilterService();
+                            var flagManager = new FlagManager(_doc);
+                            
+                            var newPlacerService = new NewSleevePlacerService(
+                                _doc,
+                                _conditions,
+                                _strategy,
+                                _clearanceSettings,
+                                sleeveRepository,
+                                zoneFilterService, // ✅ Now injecting ZoneFilterService
+                                null, // familyManager (not yet implemented)
+                                flagManager,
+                                isReplayPath,
+                                _filterName);
+                            
+                            (placed, skipped, errors) = newPlacerService.PlaceAllSleevesInTransaction(filteredClashZones);
+                        }
+                        else
+                        */
+                        {
+                            // ✅ LEGACY: Use existing UniversalSleevePlacerService (proven working implementation)
+                            // ✅ FIX: Pass isReplayPath parameter so PATH 1 uses saved sizes without calculations
+                            var placerService = new UniversalSleevePlacerService(
+                                _doc, 
+                                _conditions, 
+                                _strategy, 
+                                _clearanceSettings, 
+                                _filterName,
+                                null, // flagManager (will be created internally)
+                                isReplayPath); // ✅ CRITICAL: Pass placement path flag
+                            (placed, skipped, errors) = placerService.PlaceAllSleevesInTransaction(filteredClashZones);
+                        }
                         // Commit and check status
                         var status = t.Commit();
                         if (status == TransactionStatus.Committed)
                         {
-                            DebugLogger.Info($"{_logPrefix} ✓ Transaction committed successfully - Placed: {result.PlacedCount}, Skipped: {result.SkippedCount}");
+                            DebugLogger.Info($"{_logPrefix} ✓ Transaction committed successfully - Placed: {placed}, Skipped: {skipped}");
                             
                             // Show success feedback
                             string message;
-                            if (result.PlacedCount > 0)
+                            if (placed > 0)
                             {
-                                message = $"✓ Successfully placed {result.PlacedCount} {_category} sleeve(s)\n✗ Skipped {result.SkippedCount} (already resolved)";
+                                message = $"✓ Successfully placed {placed} {_category} sleeve(s)\n✗ Skipped {skipped} (already resolved)";
                             }
-                            else if (result.ErrorCount > 0)
+                            else if (errors > 0)
                             {
-                                message = $"No {_category} sleeves placed\n✗ {result.ErrorCount} error(s) occurred (see sleeve_placement_errors.log)";
+                                message = $"No {_category} sleeves placed\n✗ {errors} error(s) occurred (see sleeve_placement_errors.log)";
                             }
-                            else if (result.SkippedCount > 0)
+                            else if (skipped > 0)
                             {
-                                message = $"No {_category} sleeves placed\n✗ All {result.SkippedCount} were already resolved";
+                                message = $"No {_category} sleeves placed\n✗ All {skipped} were already resolved";
                             }
                             else
                             {
@@ -516,14 +547,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     // 🚨 TROUBLESHOOTING: Re-enabling filters one by one
                     
                     // Filter 1: MEP category filtering (safety check) - RE-ENABLED FOR TESTING
-                    bool categoryMatch = string.Equals(cz.MepElementCategory, _category, StringComparison.OrdinalIgnoreCase);
+                    // ✅ CRITICAL FIX: Normalize both category names before comparison to handle variations
+                    // (e.g., "Duct Curves" vs "Ducts", "Cable Tray" vs "Cable Trays")
+                    string normalizedZoneCategory = MepCategoryConstants.Normalize(cz.MepElementCategory);
+                    string normalizedCommandCategory = MepCategoryConstants.Normalize(_category);
+                    bool categoryMatch = string.Equals(normalizedZoneCategory, normalizedCommandCategory, StringComparison.OrdinalIgnoreCase);
+                    
                     if (!categoryMatch)
                     {
-                        DebugLogger.Info($"{_logPrefix} Filtered out ClashZone {cz.Id}: MEP category '{cz.MepElementCategory}' doesn't match command category '{_category}'");
+                        DebugLogger.Info($"{_logPrefix} Filtered out ClashZone {cz.Id}: MEP category '{cz.MepElementCategory}' (normalized: '{normalizedZoneCategory}') doesn't match command category '{_category}' (normalized: '{normalizedCommandCategory}')");
                         // ✅ DEPLOYMENT MODE: Skip file writes
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            try { File.AppendAllText(SafeFileLogger.GetLogFilePath("placement_debug.log"), $"[{DateTime.Now:HH:mm:ss}] ❌ FILTERED: Category mismatch\n"); } catch { }
+                            try { File.AppendAllText(SafeFileLogger.GetLogFilePath("placement_debug.log"), $"[{DateTime.Now:HH:mm:ss}] ❌ FILTERED: Category mismatch - Zone='{cz.MepElementCategory}' (norm: '{normalizedZoneCategory}') vs Command='{_category}' (norm: '{normalizedCommandCategory}')\n"); } catch { }
                         }
                         return false;
                     }

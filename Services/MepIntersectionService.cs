@@ -523,7 +523,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     SafeFileLogger.SafeAppendText(IntersectionDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] MEP[{mepElement.Id.IntegerValue}] BBOX_ft W={mw:F3} H={mh:F3} D={md:F3} Cat={(BuiltInCategory)mepElement.Category.Id.IntegerValue}\n");
                 }
 
-                var line = GetElementLine(mepElement, mepBBox, log);
+                var (line, isFallbackLine) = GetElementLineWithSource(mepElement, mepBBox, log);
                 if (line == null)
                 {
                     // Handle damper-style elements
@@ -537,45 +537,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // When MEP is in active document, mepTransform is null, so line stays in active doc coordinates (correct)
                 // When MEP is in linked document, mepTransform is not null, so transform line to host coordinates
                 // BUT: If line is from fallback path (created from transformed bbox), it's already in host coordinates - don't transform again
-                if (mepTransform != null)
+                if (mepTransform != null && !isFallbackLine)
                 {
-                    // Check if line is from fallback path (created from transformed bbox)
-                    // Fallback lines have endpoints within the transformed bbox (with tolerance)
-                    bool isFallbackLine = false;
-                    try
-                    {
-                        var lineStart = line.GetEndPoint(0);
-                        var lineEnd = line.GetEndPoint(1);
-                        double bboxTolerance = 0.1; // 0.1ft tolerance for bbox check
-                        bool startInBbox = lineStart.X >= mepBBox.Min.X - bboxTolerance && lineStart.X <= mepBBox.Max.X + bboxTolerance &&
-                                          lineStart.Y >= mepBBox.Min.Y - bboxTolerance && lineStart.Y <= mepBBox.Max.Y + bboxTolerance &&
-                                          lineStart.Z >= mepBBox.Min.Z - bboxTolerance && lineStart.Z <= mepBBox.Max.Z + bboxTolerance;
-                        bool endInBbox = lineEnd.X >= mepBBox.Min.X - bboxTolerance && lineEnd.X <= mepBBox.Max.X + bboxTolerance &&
-                                        lineEnd.Y >= mepBBox.Min.Y - bboxTolerance && lineEnd.Y <= mepBBox.Max.Y + bboxTolerance &&
-                                        lineEnd.Z >= mepBBox.Min.Z - bboxTolerance && lineEnd.Z <= mepBBox.Max.Z + bboxTolerance;
-                        isFallbackLine = startInBbox && endInBbox;
-                    }
-                    catch
-                    {
-                        // If check fails, assume not fallback (safe to transform)
-                        isFallbackLine = false;
-                    }
-                    
-                    if (!isFallbackLine)
-                    {
-                        // Line is from LocationCurve or Connectors - needs transformation
-                        var transformedStart = mepTransform.OfPoint(line.GetEndPoint(0));
-                        var transformedEnd = mepTransform.OfPoint(line.GetEndPoint(1));
-                        line = Line.CreateBound(transformedStart, transformedEnd);
-                        if (OptimizationFlags.UseDiagnosticMode)
-                            log($"[TRANSFORM] Transformed MEP line from linked document to host coordinates: MEP={mepElement.Id}, Transform={mepTransform.Origin}");
-                    }
-                    else
-                    {
-                        // Line is from fallback path - already in host coordinates (created from transformed bbox)
-                        if (OptimizationFlags.UseDiagnosticMode)
-                            log($"[TRANSFORM] MEP line is from fallback path (already in host coordinates, skipping transform): MEP={mepElement.Id}");
-                    }
+                    // Line is from LocationCurve or Connectors - needs transformation
+                    var transformedStart = mepTransform.OfPoint(line.GetEndPoint(0));
+                    var transformedEnd = mepTransform.OfPoint(line.GetEndPoint(1));
+                    line = Line.CreateBound(transformedStart, transformedEnd);
+                    if (OptimizationFlags.UseDiagnosticMode)
+                        log($"[TRANSFORM] Transformed MEP line from linked document to host coordinates: MEP={mepElement.Id}, Transform={mepTransform.Origin}");
+                }
+                else if (mepTransform != null && isFallbackLine)
+                {
+                    // Line is from fallback path - already in host coordinates (created from transformed bbox)
+                    if (OptimizationFlags.UseDiagnosticMode)
+                        log($"[TRANSFORM] MEP line is from fallback path (already in host coordinates, skipping transform): MEP={mepElement.Id}");
                 }
                 else
                 {
@@ -2149,20 +2124,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         // ✅ OOP REFACTORING: Removed duplicate TransformBoundingBox - now uses BoundingBoxService.TransformBoundingBox()
 
-        private static Line? GetElementLine(Element element, BoundingBoxXYZ mepBBox, Action<string> log)
+        /// <summary>
+        /// Gets the centerline of an MEP element and indicates whether it's from the fallback path.
+        /// Returns (line, isFallbackLine) where isFallbackLine=true means line is already in host coordinates.
+        /// </summary>
+        private static (Line? line, bool isFallbackLine) GetElementLineWithSource(Element element, BoundingBoxXYZ mepBBox, Action<string> log)
         {
             if (element is FamilyInstance fi && fi.Symbol?.Family?.Name?.IndexOf("Damper", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 log($"[MepIntersectionService] Element {element.Id} identified as damper; using bounding-box intersection approach.");
-
-                return null;
+                return (null, false);
             }
 
             if (element.Location is LocationCurve locCurve && locCurve.Curve is Line curveLine)
             {
                 if (OptimizationFlags.UseDiagnosticMode)
                     log($"[GetElementLine] Using LocationCurve path for element {element.Id} - line is in '{element.Document.Title}' coordinates (needs transform to host)");
-                return curveLine;
+                return (curveLine, false); // LocationCurve is in linked doc coordinates, needs transform
             }
 
             if (element is MEPCurve mepCurve)
@@ -2183,7 +2161,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             if (OptimizationFlags.UseDiagnosticMode)
                                 log($"[GetElementLine] Using Connector path for element {element.Id} - line is in '{element.Document.Title}' coordinates (needs transform to host)");
-                            return Line.CreateBound(endpoints.First.Origin, endpoints.Second.Origin);
+                            return (Line.CreateBound(endpoints.First.Origin, endpoints.Second.Origin), false); // Connector is in linked doc coordinates, needs transform
                         }
                     }
                 }
@@ -2215,13 +2193,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (OptimizationFlags.UseDiagnosticMode)
                     log($"[GetElementLine] Using Fallback path for element {element.Id} - line created from transformed bbox (already in host coordinates, no transform needed)");
-                return Line.CreateBound(p1, p2);
+                return (Line.CreateBound(p1, p2), true); // Fallback line is created from transformed bbox, already in host coordinates
             }
             catch (Exception ex)
             {
                 log($"[MepIntersectionService] Failed to derive fallback line for element {element.Id}: {ex.Message}");
-                return null;
+                return (null, false);
             }
+        }
+        
+        // Legacy method for compatibility with other code paths
+        private static Line? GetElementLine(Element element, BoundingBoxXYZ mepBBox, Action<string> log)
+        {
+            return GetElementLineWithSource(element, mepBBox, log).line;
         }
 
         /// <summary>
@@ -2485,10 +2469,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             BuiltInCategory.OST_StructuralFoundation
         };
         
-        // ✅ R24: FindIntersectionsBatch implementation (Fixed with Face.Intersect + Caching)
-        // Cache for structural solids to avoid re-extracting geometry for every MEP element
-        private static Dictionary<int, List<XYZ>> _geometryCache = new Dictionary<int, List<XYZ>>();
-        private static object _cacheLock = new object();
+        // ✅ R24: FindIntersectionsBatch implementation (Fixed with Face.Intersect)
+        // ✅ CRITICAL: NO STATIC CACHES - removed to avoid TypeInitializationException
+        // Geometry is computed on-demand without caching
 
         public static List<(Element, Element, BoundingBoxXYZ, XYZ)> FindIntersectionsBatch(
             List<(Element, Transform?)> mepElements,
@@ -2657,26 +2640,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public static bool IsStructuralCategoryWhitelisted(Element element) => 
             STRUCTURAL_CATEGORY_WHITELIST.Contains((BuiltInCategory)element.Category.Id.IntegerValue);
         
+        // ✅ R2024 FIX: No static caches - these methods are no-ops
         public static void ClearGeometryCache() 
         {
-            lock (_cacheLock)
-            {
-                _geometryCache.Clear();
-            }
+            // No-op: No static cache in R2024 to clear
         }
-        public static void ClearTransformCache() { } // No-op in R24
+        
+        public static void ClearTransformCache() 
+        { 
+            // No-op: No static cache in R24
+        }
+        
         public static (int count, int maxSize, double memoryEstimateMB) GetGeometryCacheStats() 
         {
-            lock (_cacheLock)
-            {
-                return (_geometryCache.Count, 0, 0.0);
-            }
+            // No static cache in R2024 - return zeros
+            return (0, 0, 0.0);
         }
         
         public static Transform GetCachedTransform(Document doc, List<RevitLinkInstance> links, Action<string>? log = null)
         {
-            var link = links?.FirstOrDefault(l => l.GetLinkDocument()?.Title == doc.Title);
-            return link?.GetTotalTransform() ?? Transform.Identity;
+            try
+            {
+                var link = links?.FirstOrDefault(l => l.GetLinkDocument()?.Title == doc.Title);
+                return link?.GetTotalTransform() ?? Transform.Identity;
+            }
+            catch (TypeInitializationException tiex)
+            {
+                // ✅ R2024 FIX: Handle TypeInitializationException from static initialization
+                log?.Invoke($"[R24-FIX] TypeInitializationException in GetCachedTransform: {tiex.Message}, Inner: {tiex.InnerException?.Message ?? "None"}");
+                // Fallback: Direct transform without cache
+                var link = links?.FirstOrDefault(l => l.GetLinkDocument()?.Title == doc.Title);
+                return link?.GetTotalTransform() ?? Transform.Identity;
+            }
         }
         
         // Legacy single-element methods

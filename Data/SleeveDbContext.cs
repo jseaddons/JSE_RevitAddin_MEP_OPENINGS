@@ -593,8 +593,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                         _logger("[SQLite] ✅ Added StructuralThickness column to ClashZones");
                     if (AddColumnIfMissing("ClashZones", "WallThickness", "REAL DEFAULT 0.0", transaction))
                         _logger("[SQLite] ✅ Added WallThickness column to ClashZones");
-                    if (                    AddColumnIfMissing("ClashZones", "FramingThickness", "REAL DEFAULT 0.0", transaction))
+                    if (AddColumnIfMissing("ClashZones", "FramingThickness", "REAL DEFAULT 0.0", transaction))
                         _logger("[SQLite] ✅ Added FramingThickness column to ClashZones");
+                    
+                    // ✅ PARAMETER VALUES: Store parameter values as JSON for SleeveSnapshots
+                    // These are collected during refresh and needed when snapshots are saved after placement
+                    if (AddColumnIfMissing("ClashZones", "MepParameterValuesJson", "TEXT", transaction))
+                        _logger("[SQLite] ✅ Added MepParameterValuesJson column to ClashZones (stores MEP parameter values as JSON)");
+                    if (AddColumnIfMissing("ClashZones", "HostParameterValuesJson", "TEXT", transaction))
+                        _logger("[SQLite] ✅ Added HostParameterValuesJson column to ClashZones (stores Host parameter values as JSON)");
                     
                     // ✅ COMBO FLAG: Add IsFilterComboNew column to FileCombos table (defaults to 0=false for existing combos)
                     if (AddColumnIfMissing("FileCombos", "IsFilterComboNew", "INTEGER NOT NULL DEFAULT 0", transaction))

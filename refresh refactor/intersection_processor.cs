@@ -880,8 +880,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         {
             var decision = new IntersectionDecision();
 
-            // Check if all file combos are already processed
+            // Check if all file combos are already processed (database-only check)
             bool allCombosProcessed = _xmlCache.AreAllFileCombosProcessed(
+                _context.SelectedFilterNames,
                 _context.SelectedMepCategories,
                 _context.SelectedReferenceFiles,
                 _context.SelectedHostFiles);

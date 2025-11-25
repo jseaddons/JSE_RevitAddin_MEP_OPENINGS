@@ -143,11 +143,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                     var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                     if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                     var logPath = Path.Combine(logDir, "cluster_debug.log");
-                    // DEPLOYMENT MODE: Skip file writes
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔥 PlaceClusterSleeve: Starting placement, hostType={groupKey.hostType}, systemType={groupKey.systemType}\n");
-                    }
+                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 PlaceClusterSleeve: Starting placement, hostType={groupKey.hostType}, systemType={groupKey.systemType}\n");
                 }
                 catch { }
 
@@ -161,11 +157,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                         var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                         if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                         var logPath = Path.Combine(logDir, "cluster_debug.log");
-                        // DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ PlaceClusterSleeve FAILED: Unknown host type '{groupKey.hostType}' - cannot determine family name\n");
-                        }
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ PlaceClusterSleeve FAILED: Unknown host type '{groupKey.hostType}' - cannot determine family name\n");
                     }
                     catch { }
                     SafeFileLogger.SafeAppendText("cluster_debug.log",
@@ -183,11 +175,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                         var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                         if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                         var logPath = Path.Combine(logDir, "cluster_debug.log");
-                        // DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ PlaceClusterSleeve FAILED: Failed to load family '{familyName}'\n");
-                        }
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ PlaceClusterSleeve FAILED: Failed to load family '{familyName}'\n");
                     }
                     catch { }
                     SafeFileLogger.SafeAppendText("cluster_debug.log",
@@ -205,11 +193,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                         var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                         if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                         var logPath = Path.Combine(logDir, "cluster_debug.log");
-                        // DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ PlaceClusterSleeve FAILED: Reference level not found\n");
-                        }
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ PlaceClusterSleeve FAILED: Reference level not found\n");
                     }
                     catch { }
                     SafeFileLogger.SafeAppendText("cluster_debug.log",
@@ -232,11 +216,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                         var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                         if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                         var logPath = Path.Combine(logDir, "cluster_debug.log");
-                        // DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔥 ABOUT TO CREATE cluster sleeve instance: familyName={familyName}, level={refLevel?.Name ?? "NULL"}\n");
-                        }
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 ABOUT TO CREATE cluster sleeve instance: familyName={familyName}, level={refLevel?.Name ?? "NULL"}\n");
                     }
                     catch { }
                     
@@ -265,7 +245,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                         Directory.CreateDirectory(logDir);
                         var profPath = Path.Combine(logDir, "family_instantiation_profile.log");
                         
-                        SafeFileLogger.SafeAppendText("cluster_debug.log", $"{DateTime.Now:O}\t" +
+                        File.AppendAllText(profPath, 
+                            $"{DateTime.Now:O}\t" +
                             $"ClusterSleeveId={inst?.Id?.IntegerValue ?? -1}\t" +
                             $"Family={familySymbol?.Family?.Name ?? "NULL"}\t" +
                             $"Symbol={familySymbol?.Name ?? "NULL"}\t" +
@@ -286,11 +267,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                         var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                         if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                         var logPath = Path.Combine(logDir, "cluster_debug.log");
-                        // DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅✅✅ Cluster sleeve CREATED: ID={capturedClusterSleeveId}\n");
-                        }
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅✅✅ Cluster sleeve CREATED: ID={capturedClusterSleeveId}\n");
                     }
                     catch { }
                     
@@ -309,16 +286,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                         var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                         if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                         var logPath = Path.Combine(logDir, "cluster_debug.log");
-                        // DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ EXCEPTION creating cluster sleeve: {createEx.Message}\n");
-                        }
-                        // DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] StackTrace: {createEx.StackTrace}\n");
-                        }
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ EXCEPTION creating cluster sleeve: {createEx.Message}\n");
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] StackTrace: {createEx.StackTrace}\n");
                     }
                     catch { }
                     SafeFileLogger.SafeAppendText("placement_errors.log",
@@ -334,11 +303,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                         var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                         if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                         var logPath = Path.Combine(logDir, "cluster_debug.log");
-                        // DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ Cluster sleeve instance is NULL after creation\n");
-                        }
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ Cluster sleeve instance is NULL after creation\n");
                     }
                     catch { }
                     SafeFileLogger.SafeAppendText("placement_errors.log",
@@ -440,11 +405,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                         var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                         if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                         var logPath = Path.Combine(logDir, "cluster_debug.log");
-                        // DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ _markClusterResolved delegate is NULL - skipping mark cluster resolved\n");
-                        }
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ⚠️ _markClusterResolved delegate is NULL - skipping mark cluster resolved\n");
                     }
                     catch { }
                 }
@@ -462,11 +423,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                             var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                             if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                             var logPath = Path.Combine(logDir, "cluster_debug.log");
-                            // DEPLOYMENT MODE: Skip file writes
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ Exception in _markClusterResolved: {markEx.Message}\n");
-                            }
+                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ⚠️ Exception in _markClusterResolved: {markEx.Message}\n");
                         }
                         catch { }
                     }
@@ -480,11 +437,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                     var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                     if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                     var logPath = Path.Combine(logDir, "cluster_debug.log");
-                    // DEPLOYMENT MODE: Skip file writes
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅✅✅ PlaceClusterSleeve RETURNING TRUE: placedClusterSleeve={(placedClusterSleeve != null ? "NOT NULL" : "NULL")}, capturedId={capturedClusterSleeveId?.ToString() ?? "NULL"}\n");
-                    }
+                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅✅✅ PlaceClusterSleeve RETURNING TRUE: placedClusterSleeve={(placedClusterSleeve != null ? "NOT NULL" : "NULL")}, capturedId={capturedClusterSleeveId?.ToString() ?? "NULL"}\n");
                 }
                 catch { }
                 

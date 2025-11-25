@@ -842,6 +842,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
+        /// <summary>
+        /// ✅ NICE3POINT TEMPLATE PATTERN: Get MepIntersectionService via factory to avoid static initialization
+        /// </summary>
+        private IMepIntersectionService GetMepIntersectionService()
+        {
+            return MepIntersectionServiceFactory.GetInstance();
+        }
+
+        /// <summary>
+        /// ✅ R2024 FIX: Get transform directly from link instance without accessing MepIntersectionService
+        /// This avoids TypeInitializationException that occurs when accessing static class in R2024
+        /// </summary>
+        private static Transform? GetTransformDirectly(RevitLinkInstance? link)
+        {
+            if (link == null) return null;
+            try
+            {
+                return link.GetTotalTransform();
+            }
+            catch
+            {
+                return Transform.Identity;
+            }
+        }
+
         private List<(Element, Element, BoundingBoxXYZ, XYZ)> FindIntersectionsInternal(
             List<Element> mepElements, 
             List<Element> wallElements, 
@@ -857,6 +882,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 .ToList();
 
             // ✅ PHASE 2 OPTIMIZATION: Prepare MEP and structural elements for batch processing
+            // ✅ R2024 FIX: Use direct transform method to avoid TypeInitializationException
             var mepElementsWithTransforms = new List<(Element, Transform?)>();
             foreach (var mep in mepElements)
             {
@@ -870,7 +896,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
 
                     var mepLink = links.FirstOrDefault(link => link.GetLinkDocument()?.Title == mep.Document.Title);
-                    Transform? mepTransform = mepLink != null ? MepIntersectionService.GetCachedTransform(mep.Document, links) : null;
+                    // ✅ R2024 FIX: Get transform directly without accessing MepIntersectionService static class
+                    Transform? mepTransform = GetTransformDirectly(mepLink);
                     mepElementsWithTransforms.Add((mep, mepTransform));
                 }
                 catch (Exception ex)
@@ -885,7 +912,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 try
                 {
                     var wallLink = links.FirstOrDefault(link => link.GetLinkDocument()?.Title == wall.Document.Title);
-                    Transform? wallTransform = wallLink != null ? MepIntersectionService.GetCachedTransform(wall.Document, links) : null;
+                    // ✅ R2024 FIX: Get transform directly without accessing MepIntersectionService static class
+                    Transform? wallTransform = GetTransformDirectly(wallLink);
                     structuralElementsWithTransforms.Add((wall, wallTransform));
                 }
                 catch (Exception ex)
@@ -895,8 +923,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             // ✅ PHASE 2 OPTIMIZATION: Use batch processing with spatial hash grid and curve-in-bbox test
+            // ✅ NICE3POINT TEMPLATE PATTERN: Use factory to get version-specific implementation
             _logger($"[PHASE2] Calling MepIntersectionService.FindIntersectionsBatch with {mepElementsWithTransforms.Count} MEP and {structuralElementsWithTransforms.Count} structural elements");
-            var intersections = MepIntersectionService.FindIntersectionsBatch(
+            var intersectionService = GetMepIntersectionService();
+            var intersections = intersectionService.FindIntersectionsBatch(
                 mepElementsWithTransforms,
                 structuralElementsWithTransforms,
                 _logger,

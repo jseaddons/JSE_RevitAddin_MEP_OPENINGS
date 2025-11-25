@@ -139,7 +139,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             List<FamilyInstance>? placedClusterSleevesOut = null,
             bool isPath1Replay = false,
             int? comboId = null,
-            int? filterId = null)
+            int? filterId = null,
+            Dictionary<string, double> currentClearanceSettings = null)
         {
             // ✅ PERFORMANCE MONITORING: Initialize cluster performance monitor
             string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
@@ -213,9 +214,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             try
             {
                 // ✅ STEP 1: Path 1 Replay - Load from database if available
+                // ✅ FIX: Pass currentClearanceSettings to check if conditions changed
                 if (isPath1Replay && comboId.HasValue && filterId.HasValue)
                 {
-                    var path1Result = HandlePath1Replay(doc, comboId.Value, filterId.Value, targetCategory, uiDoc, placedClusterSleevesOut, xmlFilePath);
+                    var path1Result = HandlePath1Replay(doc, comboId.Value, filterId.Value, targetCategory, uiDoc, placedClusterSleevesOut, xmlFilePath, currentClearanceSettings);
                     if (path1Result.hasData)
                         return (path1Result.placedCount, path1Result.deletedCount);
                 }
@@ -831,6 +833,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     }
                 }
 
+                // ✅ STEP 5 OPTIMIZATION: Flush deferred cluster parameters after all placements
+                // This writes all accumulated parameters in a single transaction (much faster)
+                if (OptimizationFlags.UseBatchedParameterWrites)
+                {
+                    int flushedCount = FlushDeferredClusterParameters();
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] ✅ BATCH-FLUSH: Flushed parameters for {flushedCount} cluster sleeves\n");
+                    }
+                }
+
                 // ✅ PERFORMANCE: Generate final performance report
                 performanceMonitor.GenerateReport(0, placedCount); // 0 individual sleeves, placedCount clusters
 
@@ -863,7 +877,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         }
 
         /// <summary>
-        /// Handle Path 1 Replay: Load pre-calculated clusters from database.
+        /// ✅ PATH 1 REPLAY: Load pre-calculated clusters from database.
+        /// ✅ FIX: Checks if conditions changed - if changed, uses normal calculation instead of database replay
         /// </summary>
         private (bool hasData, int placedCount, int deletedCount) HandlePath1Replay(
             Document doc,
@@ -872,10 +887,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             string targetCategory,
             UIDocument? uiDoc,
             List<FamilyInstance>? placedClusterSleevesOut,
-            string? xmlFilePath)
+            string? xmlFilePath,
+            Dictionary<string, double> currentClearanceSettings = null)
         {
             try
             {
+                // ✅ CRITICAL FIX: Check if conditions changed BEFORE loading from database
+                // If clearance values changed, cluster sizes may be different → must recalculate
+                if (currentClearanceSettings != null && !string.IsNullOrEmpty(_filterName))
+                {
+                    bool conditionsChanged = Services.Refresh.RefreshPathDeterminer.CheckConditionsChanged(
+                        doc, _filterName, targetCategory, currentClearanceSettings);
+                    
+                    if (conditionsChanged)
+                    {
+                        // ✅ Conditions changed → Skip database replay, use normal calculation
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[RefactoredClusterService] PATH 1: ⚠️ Conditions changed (clearance values) for filter '{_filterName}' + category '{targetCategory}' - using normal calculation instead of database replay");
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] PATH 1: ⚠️ Conditions changed - skipping database replay, will use normal calculation\n");
+                        }
+                        return (false, 0, 0); // Fall through to normal calculation
+                    }
+                }
+                
+                // ✅ Conditions unchanged → Safe to use database replay ("dump one-time use many times")
                 using (var dbContext = new SleeveDbContext(doc))
                 {
                     var clusterRepository = new ClusterSleeveRepository(dbContext);
@@ -884,7 +921,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     if (existingClusters != null && existingClusters.Count > 0)
                     {
                         if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[RefactoredClusterService] PATH 1: Found {existingClusters.Count} pre-calculated clusters in database");
+                            DebugLogger.Info($"[RefactoredClusterService] PATH 1: Found {existingClusters.Count} pre-calculated clusters in database (conditions unchanged, using database replay)");
                         
                         // ✅ PATH 1: Place clusters from database (skip calculation)
                         var path1Result = PlaceClustersFromDatabase(doc, existingClusters, uiDoc, placedClusterSleevesOut, xmlFilePath, targetCategory, comboId);
@@ -1749,10 +1786,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         var parameter = element.LookupParameter(paramName);
                         if (parameter != null && !parameter.IsReadOnly)
                         {
-                            if (paramValue is double doubleValue)
-                                parameter.Set(doubleValue);
-                            else if (paramValue is string stringValue)
-                                parameter.Set(stringValue);
+                            try
+                            {
+                                if (paramValue is double doubleValue)
+                                    parameter.Set(doubleValue);
+                                else if (paramValue is int intValue)
+                                    parameter.Set(intValue);
+                                else if (paramValue is string stringValue)
+                                    parameter.Set(stringValue);
+                                else
+                                {
+                                    // Try to convert to int (for Cluster Sleeve Instance ID)
+                                    if (paramValue != null && int.TryParse(paramValue.ToString(), out int parsedInt))
+                                        parameter.Set(parsedInt);
+                                    else
+                                    {
+                                        SafeFileLogger.SafeAppendText("cluster_param_timing.log",
+                                            $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-PARAMS] ⚠️ Unsupported parameter type for '{paramName}': {paramValue?.GetType().Name ?? "null"}\n");
+                                    }
+                                }
+                            }
+                            catch (Exception paramEx)
+                            {
+                                SafeFileLogger.SafeAppendText("cluster_param_timing.log",
+                                    $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-PARAMS] ⚠️ Error setting parameter '{paramName}' = {paramValue}: {paramEx.Message}\n");
+                            }
+                        }
+                        else if (parameter == null)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_param_timing.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-PARAMS] ⚠️ Parameter '{paramName}' not found on element {elementId}\n");
+                        }
+                        else if (parameter.IsReadOnly)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_param_timing.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-PARAMS] ⚠️ Parameter '{paramName}' is read-only on element {elementId}\n");
                         }
                     }
                     
@@ -1824,6 +1892,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             if (clusterSleeve == null)
                             {
                                 skippedCount++;
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ SKIPPED CLUSTER {clusterInstanceId}: Cluster sleeve not found in Revit document\n");
                                 if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Warning($"[RefactoredClusterService] Cluster sleeve {clusterInstanceId} not found, skipping save");
                                 continue;
@@ -1834,6 +1904,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             if (bbox == null)
                             {
                                 skippedCount++;
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ SKIPPED CLUSTER {clusterInstanceId}: Could not get bounding box from Revit element\n");
                                 if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Warning($"[RefactoredClusterService] Could not get bounding box for cluster {clusterInstanceId}, skipping save");
                                 continue;
@@ -1858,11 +1930,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             {
                                 rotationAngleDeg = rotationData.Value.rotationAngleDeg;
                                 isRotated = rotationData.Value.isRotated;
-                                bboxMin = rotationData.Value.rotatedBboxMin;
-                                bboxMax = rotationData.Value.rotatedBboxMax;
-                                width = rotationData.Value.rotatedWidth;
-                                height = rotationData.Value.rotatedHeight;
-                                depth = rotationData.Value.rotatedDepth;
+                                
+                                // ✅ CRITICAL FIX: Only use rotated bounding box if it's valid (not zero/empty)
+                                // If rotated bounding box is invalid, fall back to Revit bounding box
+                                var rotatedBboxMin = rotationData.Value.rotatedBboxMin;
+                                var rotatedBboxMax = rotationData.Value.rotatedBboxMax;
+                                
+                                // Check if rotated bounding box is valid (not zero and min < max)
+                                bool isValidRotatedBbox = rotatedBboxMin != null && rotatedBboxMax != null &&
+                                                          !rotatedBboxMin.IsAlmostEqualTo(XYZ.Zero) &&
+                                                          !rotatedBboxMax.IsAlmostEqualTo(XYZ.Zero) &&
+                                                          rotatedBboxMin.X < rotatedBboxMax.X &&
+                                                          rotatedBboxMin.Y < rotatedBboxMax.Y &&
+                                                          rotatedBboxMin.Z < rotatedBboxMax.Z;
+                                
+                                if (isValidRotatedBbox)
+                                {
+                                    bboxMin = rotatedBboxMin;
+                                    bboxMax = rotatedBboxMax;
+                                }
+                                // Otherwise, keep using Revit bounding box (bbox.Min/Max from above)
+                                
+                                // Use rotated dimensions if available and valid
+                                if (rotationData.Value.rotatedWidth > 0)
+                                    width = rotationData.Value.rotatedWidth;
+                                if (rotationData.Value.rotatedHeight > 0)
+                                    height = rotationData.Value.rotatedHeight;
+                                if (rotationData.Value.rotatedDepth > 0)
+                                    depth = rotationData.Value.rotatedDepth;
                             }
                             
                             // Get host type and orientation
@@ -1871,6 +1966,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             
                             // Get placement point
                             var placementPoint = (bboxMin + bboxMax) / 2.0;
+                            
+                            // ✅ DIAGNOSTIC: Log bounding box values before saving
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] 📦 PREPARE SAVE: Cluster {clusterInstanceId} - " +
+                                $"BBoxMin=({bboxMin.X:F6}, {bboxMin.Y:F6}, {bboxMin.Z:F6}), " +
+                                $"BBoxMax=({bboxMax.X:F6}, {bboxMax.Y:F6}, {bboxMax.Z:F6}), " +
+                                $"Placement=({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6})\n");
                             
                             // Add to batch
                             clustersToSave.Add(new ClusterSaveData
@@ -1901,6 +2003,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         catch (Exception prepEx)
                         {
                             skippedCount++;
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ SKIPPED CLUSTER {kvp.Key}: Error preparing for batch save - {prepEx.Message}\n" +
+                                $"StackTrace: {prepEx.StackTrace}\n");
                             if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Warning($"[RefactoredClusterService] Error preparing cluster {kvp.Key} for batch save: {prepEx.Message}");
                         }
@@ -2063,14 +2168,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             
                             if (rotationData.HasValue)
                             {
-                                // Use stored rotated bounding box
                                 rotationAngleDeg = rotationData.Value.rotationAngleDeg;
                                 isRotated = rotationData.Value.isRotated;
-                                bboxMin = rotationData.Value.rotatedBboxMin;
-                                bboxMax = rotationData.Value.rotatedBboxMax;
-                                width = rotationData.Value.rotatedWidth;
-                                height = rotationData.Value.rotatedHeight;
-                                depth = rotationData.Value.rotatedDepth;
+                                
+                                // ✅ CRITICAL FIX: Only use rotated bounding box if it's valid (not zero/empty)
+                                // If rotated bounding box is invalid, fall back to Revit bounding box
+                                var rotatedBboxMin = rotationData.Value.rotatedBboxMin;
+                                var rotatedBboxMax = rotationData.Value.rotatedBboxMax;
+                                
+                                // Check if rotated bounding box is valid (not zero and min < max)
+                                bool isValidRotatedBbox = rotatedBboxMin != null && rotatedBboxMax != null &&
+                                                          !rotatedBboxMin.IsAlmostEqualTo(XYZ.Zero) &&
+                                                          !rotatedBboxMax.IsAlmostEqualTo(XYZ.Zero) &&
+                                                          rotatedBboxMin.X < rotatedBboxMax.X &&
+                                                          rotatedBboxMin.Y < rotatedBboxMax.Y &&
+                                                          rotatedBboxMin.Z < rotatedBboxMax.Z;
+                                
+                                if (isValidRotatedBbox)
+                                {
+                                    bboxMin = rotatedBboxMin;
+                                    bboxMax = rotatedBboxMax;
+                                }
+                                // Otherwise, keep using Revit bounding box (bbox.Min/Max from above)
+                                
+                                // Use rotated dimensions if available and valid
+                                if (rotationData.Value.rotatedWidth > 0)
+                                    width = rotationData.Value.rotatedWidth;
+                                if (rotationData.Value.rotatedHeight > 0)
+                                    height = rotationData.Value.rotatedHeight;
+                                if (rotationData.Value.rotatedDepth > 0)
+                                    depth = rotationData.Value.rotatedDepth;
                             }
                             
                             // Get host type and orientation

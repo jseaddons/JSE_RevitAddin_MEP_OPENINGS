@@ -597,7 +597,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         /// Compares current UI OpeningSettings with saved OpeningSettings in database
         /// Returns true if conditions changed, false if unchanged
         /// </summary>
-        private static bool CheckConditionsChanged(
+        public static bool CheckConditionsChanged(
             Document document,
             string filterName,
             string category,
@@ -715,10 +715,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         {
             try
             {
+                // ✅ CRITICAL FIX: Normalize category name to match database storage format
+                // Database stores normalized category (e.g., "Cable Trays"), but might also have host-specific variants
+                // We need to check both the exact category and normalized category
+                string normalizedCategory = Models.MepCategoryConstants.Normalize(category ?? "Unknown");
+                
                 using (var dbContext = new Data.SleeveDbContext(document))
                 {
                     var filterRepository = new Data.Repositories.FilterRepository(dbContext, _ => { });
-                    int filterId = filterRepository.GetFilterId(filterName, category);
+                    
+                    // ✅ FIX: Try normalized category first (most common case)
+                    int filterId = filterRepository.GetFilterId(filterName, normalizedCategory);
+                    
+                    // ✅ FALLBACK: If not found with normalized category, try original category (for host-specific variants like "Cable Trays Walls")
+                    if (filterId <= 0 && !string.Equals(category, normalizedCategory, StringComparison.OrdinalIgnoreCase))
+                    {
+                        filterId = filterRepository.GetFilterId(filterName, category);
+                    }
                     
                     if (filterId <= 0)
                     {
@@ -728,14 +741,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     
                     using (var cmd = dbContext.Connection.CreateCommand())
                     {
-                        // Check if ANY file combo has IsFilterComboNew=1 for this filter
+                        // ✅ CRITICAL FIX: Check if ANY file combo has IsFilterComboNew=1 for this filter AND category
+                        // Category column contains MEP category only (e.g., "Cable Trays")
+                        // SelectedHostCategories column contains host types (e.g., "Walls")
                         cmd.CommandText = @"
                             SELECT COUNT(*) FROM FileCombos 
-                            WHERE FilterId = @FilterId AND IsFilterComboNew = 1";
+                            WHERE FilterId = @FilterId AND Category = @Category AND IsFilterComboNew = 1";
                         cmd.Parameters.AddWithValue("@FilterId", filterId);
+                        cmd.Parameters.AddWithValue("@Category", normalizedCategory);
                         
                         var count = cmd.ExecuteScalar();
-                        if (count != null && Convert.ToInt32(count) > 0)
+                        int newComboCount = count != null ? Convert.ToInt32(count) : 0;
+                        
+                        // ✅ DIAGNOSTIC: Always log file combo flag status for debugging
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            // Get total count for context (filtered by category)
+                            cmd.CommandText = @"
+                                SELECT COUNT(*) FROM FileCombos 
+                                WHERE FilterId = @FilterId AND Category = @Category";
+                            cmd.Parameters.Clear();
+                            cmd.Parameters.AddWithValue("@FilterId", filterId);
+                            cmd.Parameters.AddWithValue("@Category", normalizedCategory);
+                            var totalCount = cmd.ExecuteScalar();
+                            int totalCombos = totalCount != null ? Convert.ToInt32(totalCount) : 0;
+                            
+                            if (newComboCount > 0)
+                            {
+                                DebugLogger.Info($"[PLACEMENT-PATH-CHECK] Found {newComboCount} file combo(s) with IsFilterComboNew=1 for filter '{filterName}' + category '{normalizedCategory}' → PATH 2 (Sizing)");
+                                DebugLogger.Info($"[PLACEMENT-PATH-CHECK] Total file combos: {totalCombos}, New (IsFilterComboNew=1): {newComboCount}, Used (IsFilterComboNew=0): {totalCombos - newComboCount}");
+                            }
+                            else
+                            {
+                                DebugLogger.Info($"[PLACEMENT-PATH-CHECK] No new file combos found (IsFilterComboNew=0) for filter '{filterName}' + category '{normalizedCategory}' → PATH 1 (Replay)");
+                                DebugLogger.Info($"[PLACEMENT-PATH-CHECK] Total file combos: {totalCombos}, All processed (IsFilterComboNew=0)");
+                            }
+                        }
+                        
+                        if (newComboCount > 0)
                         {
                             // At least one file combo is new
                             return true;

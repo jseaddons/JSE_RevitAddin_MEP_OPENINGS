@@ -296,14 +296,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         }
         
         /// <summary>
-        /// Check if all file combos are already processed
+        /// Check if all file combos are already processed (database-only check)
         /// Used by IntersectionProcessor to determine Replace/Replay/FullDetection mode
+        /// ✅ DATABASE-ONLY: Checks IsFilterComboNew flag in FileCombos table (no XML dependency)
         /// </summary>
         public bool AreAllFileCombosProcessed(
+            List<string> selectedFilterNames,
             List<string> selectedMepCategories,
             List<string> selectedReferenceFiles,
             List<string> selectedHostFiles)
         {
+            if (selectedFilterNames == null || selectedFilterNames.Count == 0)
+                return false;
+            
             if (selectedMepCategories == null || selectedMepCategories.Count == 0)
                 return false;
             
@@ -313,39 +318,126 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             if (selectedHostFiles == null || selectedHostFiles.Count == 0)
                 return false;
             
-            // Build all file combos from selections
-            var allCombos = new List<(string LinkedFile, string HostFile)>();
-            foreach (var refFile in selectedReferenceFiles)
+            try
             {
-                foreach (var hostFile in selectedHostFiles)
+                using (var dbContext = new SleeveDbContext(_document))
                 {
-                    allCombos.Add((refFile, hostFile));
-                }
-            }
-            
-            // Check if all combos are processed for all categories
-            foreach (var category in selectedMepCategories)
-            {
-                var processedKeys = GlobalIndexService.GetProcessedFileComboKeys(_document, category);
-                
-                foreach (var combo in allCombos)
-                {
-                    var normalizedCombo = new ProcessedFileCombo 
-                    { 
-                        LinkedFile = combo.LinkedFile, 
-                        HostFile = combo.HostFile 
-                    };
-                    var comboKey = normalizedCombo.GetNormalizedKey();
+                    var filterRepository = new FilterRepository(dbContext, _ => { });
                     
-                    if (!processedKeys.Contains(comboKey))
+                    // Build all file combos from selections
+                    var allCombos = new List<(string LinkedFileKey, string HostFileKey)>();
+                    foreach (var refFile in selectedReferenceFiles)
                     {
-                        Log($"[XML-CACHE] Combo not processed: Category={category}, Linked={combo.LinkedFile}, Host={combo.HostFile}");
-                        return false;
+                        foreach (var hostFile in selectedHostFiles)
+                        {
+                            // Normalize file keys (same logic as used in database)
+                            var linkedKey = NormalizeDocumentKey(refFile);
+                            var hostKey = NormalizeDocumentKey(hostFile);
+                            allCombos.Add((linkedKey, hostKey));
+                        }
                     }
+                    
+                    // Check if all combos are processed for all filter+category combinations
+                    foreach (var filterName in selectedFilterNames)
+                    {
+                        foreach (var category in selectedMepCategories)
+                        {
+                            int filterId = filterRepository.GetFilterId(filterName, category);
+                            if (filterId <= 0)
+                            {
+                                // Filter doesn't exist = not processed
+                                Log($"[DB-COMBO-CHECK] Filter not found: Filter='{filterName}', Category='{category}' → not processed");
+                                return false;
+                            }
+                            
+                            // Check each file combo for this filter+category
+                            foreach (var combo in allCombos)
+                            {
+                                using (var cmd = dbContext.Connection.CreateCommand())
+                                {
+                                    cmd.CommandText = @"
+                                        SELECT IsFilterComboNew 
+                                        FROM FileCombos 
+                                        WHERE FilterId = @FilterId 
+                                          AND Category = @Category 
+                                          AND LinkedFileKey = @LinkedFileKey 
+                                          AND HostFileKey = @HostFileKey";
+                                    cmd.Parameters.AddWithValue("@FilterId", filterId);
+                                    cmd.Parameters.AddWithValue("@Category", category);
+                                    cmd.Parameters.AddWithValue("@LinkedFileKey", combo.LinkedFileKey);
+                                    cmd.Parameters.AddWithValue("@HostFileKey", combo.HostFileKey);
+                                    
+                                    var result = cmd.ExecuteScalar();
+                                    if (result == null || result == DBNull.Value)
+                                    {
+                                        // File combo doesn't exist = not processed
+                                        Log($"[DB-COMBO-CHECK] Combo not found: Filter='{filterName}', Category='{category}', Linked='{combo.LinkedFileKey}', Host='{combo.HostFileKey}' → not processed");
+                                        return false;
+                                    }
+                                    
+                                    int isNew = Convert.ToInt32(result);
+                                    if (isNew != 0)
+                                    {
+                                        // IsFilterComboNew = 1 means not processed yet
+                                        Log($"[DB-COMBO-CHECK] Combo not processed: Filter='{filterName}', Category='{category}', Linked='{combo.LinkedFileKey}', Host='{combo.HostFileKey}' → IsFilterComboNew={isNew}");
+                                        return false;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    Log($"[DB-COMBO-CHECK] ✅ All file combos are processed (IsFilterComboNew=0) for all filter+category combinations");
+                    return true;
                 }
             }
-            
-            return true;
+            catch (Exception ex)
+            {
+                Log($"[DB-COMBO-CHECK] ❌ Error checking file combos in database: {ex.Message}");
+                return false; // On error, assume not processed to be safe
+            }
+        }
+        
+        /// <summary>
+        /// Normalizes document key (same logic as ClashZoneRepository.NormalizeDocumentKey)
+        /// </summary>
+        private static string NormalizeDocumentKey(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return "Unknown";
+            }
+
+            var trimmed = value.Trim();
+
+            // Strip ": <number> : location Shared" style suffixes
+            var locationMatch = System.Text.RegularExpressions.Regex.Match(
+                trimmed,
+                @":\s*\d+\s*:\s*location\s+Shared",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (locationMatch.Success)
+            {
+                trimmed = trimmed.Substring(0, locationMatch.Index).Trim();
+            }
+
+            // Remove trailing "(xx elements)" or similar
+            var parenIndex = trimmed.IndexOf('(');
+            if (parenIndex >= 0)
+            {
+                trimmed = trimmed.Substring(0, parenIndex).Trim();
+            }
+
+            // If the string is a full path, reduce to file name
+            trimmed = System.IO.Path.GetFileName(trimmed);
+
+            // Drop extension
+            var withoutExtension = System.IO.Path.GetFileNameWithoutExtension(trimmed);
+            if (string.IsNullOrWhiteSpace(withoutExtension))
+            {
+                withoutExtension = trimmed;
+            }
+
+            return withoutExtension.Trim();
         }
         
         /// <summary>

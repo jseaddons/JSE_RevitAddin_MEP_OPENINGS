@@ -88,10 +88,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Re-enable TestCurveInBoundingBox filter for cheap rejection before solid intersection
         /// When true: Skips expensive solid extraction for non-intersecting curves (10-15% faster)
         /// When false: Always performs solid intersection (slower but more reliable)
-        /// Default: false (disabled initially - enable after intersection point validation)
+        /// Default: false (disabled - causes inconsistent results with linked files)
+        /// ⚠️ KEEP DISABLED: Edge cases with coordinate transforms cause false rejections
         /// Location: Services/MepIntersectionService.cs (line 757)
         /// </summary>
-        public static bool UseCurveInBoundingBoxFilter { get; set; } = true;
+        public static bool UseCurveInBoundingBoxFilter { get; set; } = false;
         
         /// <summary>
         /// Use WhereElementIsViewIndependent() in FilteredElementCollector to skip view-dependent filtering
@@ -242,9 +243,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Default: true (enabled - safe with fallback to immediate writes on error).
         /// Expected gain: 4-6× faster individual placement (143-203ms → <30ms per sleeve).
         /// Location: Services/UniversalSleevePlacerService.cs, Services/OpeningCommandOrchestrator.cs
+        /// ✅ VERIFIED: Set to true (2025-11-24) - Individual sleeve parameter batching enabled
         /// </summary>
         public static bool UseBatchedParameterWrites { get; set; } = true;
         
+        #region Refactoring Flags (Phase 1 - Safe Rollout)
+        
+        /// <summary>
+        /// Enable new SleeveRepository for data persistence (XML/DB)
+        /// When true: Uses extracted SleeveRepository service
+        /// When false: Uses legacy private methods in UniversalSleevePlacerService
+        /// Default: false (disabled initially)
+        /// </summary>
+        public static bool UseNewSleeveRepository { get; set; } = false;
+
+        /// <summary>
+        /// Enable new ZoneFilterService for clash zone filtering
+        /// When true: Uses extracted ZoneFilterService
+        /// When false: Uses legacy private methods in UniversalSleevePlacerService
+        /// Default: false (disabled initially)
+        /// </summary>
+        public static bool UseNewZoneFilter { get; set; } = false;
+
+        /// <summary>
+        /// Enable new FamilyManager for family loading and caching
+        /// When true: Uses extracted FamilyManager service
+        /// When false: Uses legacy private methods in UniversalSleevePlacerService
+        /// Default: false (disabled initially)
+        /// </summary>
+        public static bool UseNewFamilyManager { get; set; } = false;
+
+        /// <summary>
+        /// Enable new NewSleevePlacerService as the main entry point
+        /// When true: Uses NewSleevePlacerService
+        /// When false: Uses legacy UniversalSleevePlacerService
+        /// Default: false (disabled initially)
+        /// </summary>
+        public static bool UseNewSleevePlacerService { get; set; } = false;
+
+        #endregion
+
         #endregion
         
         #region Configuration Methods
@@ -406,7 +444,8 @@ Phase 2 (45% gain): RTreeFilter={UseRTreeFilter}, ParallelProcessing={UseParalle
 Phase 3 (10% + 90% incremental): IncrementalDetection={UseIncrementalDetection}, DiagnosticMode={UseDiagnosticMode}
 Section Box Optimizations: BoundingBoxSectionBoxFilter={UseBoundingBoxSectionBoxFilter}, CurveInBoundingBoxFilter={UseCurveInBoundingBoxFilter}, ViewIndependentCollector={UseViewIndependentCollector}
 Spatial Optimizations: LevelBasedSpatialGrid={UseLevelBasedSpatialGrid}, MultiSolidCache={UseMultiSolidCache}
-Advanced Optimizations: ProgressiveLOD={UseProgressiveLOD}, HybridSpatialIndex={UseHybridSpatialIndex}, LogPerformanceMetrics={LogPerformanceMetrics}";
+Advanced Optimizations: ProgressiveLOD={UseProgressiveLOD}, HybridSpatialIndex={UseHybridSpatialIndex}, LogPerformanceMetrics={LogPerformanceMetrics}
+Refactoring Flags: SleeveRepository={UseNewSleeveRepository}, ZoneFilter={UseNewZoneFilter}, FamilyManager={UseNewFamilyManager}";
         }
         
         #endregion

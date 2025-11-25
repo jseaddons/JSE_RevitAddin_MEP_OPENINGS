@@ -202,6 +202,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DebugLogger.Info($"[RotatedClusterSleevePlacementService] ✅ Successfully placed rotated cluster sleeve {inst.Id.IntegerValue}: W={width * 304.8:F1}mm × H={height * 304.8:F1}mm, Angle={rotationAngle * 180 / Math.PI:F1}°");
                 }
 
+                // Step 10: Database persistence
+                // Persistence of cluster sleeve bbox/rotation is centralized in RefactoredClusterService
+                // via BatchSaveClusterDataToDatabase/SaveClusterDataToDatabase after placement.
+                // Do not save here to avoid duplicate writes and inconsistent data paths.
                 return inst;
             }
             catch (Exception ex)

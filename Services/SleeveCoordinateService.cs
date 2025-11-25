@@ -97,9 +97,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
-        /// Update sleeve coordinates in XML files with correct coordinates from model
+        /// ✅ DATABASE-ONLY: Update sleeve coordinates in database with correct coordinates from model
+        /// Loads clash zones from database, updates bounding boxes from Revit, and saves to database
         /// </summary>
-        public void UpdateSleeveCoordinatesInXml(string xmlFilePath = null)
+        /// <param name="category">Category name (required for database loading).</param>
+        /// <param name="xmlFilePath">DEPRECATED: No longer used, kept for backward compatibility. Use category parameter instead.</param>
+        public void UpdateSleeveCoordinatesInXml(string category, string xmlFilePath = null)
         {
             try
             {
@@ -128,118 +131,88 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 var coordinateUpdater = new SleeveCoordinateUpdater(_doc);
                 
-                // ✅ PHASE 2: DATABASE-FIRST - Load clash zones from database first (primary source of truth)
-                // Fallback to XML only if database has no data (backward compatibility)
-                var clashZones = new List<ClashZone>();
-                
-                // Try to determine category from XML file path or load from database
-                string category = null;
-                if (!string.IsNullOrEmpty(xmlFilePath))
+                // ✅ DATABASE-ONLY: Load clash zones from database (required parameter)
+                if (string.IsNullOrEmpty(category))
                 {
-                    // Extract category from filename (e.g., "Electrical_cable_trays.xml" -> "Cable Trays")
-                    var fileName = Path.GetFileNameWithoutExtension(xmlFilePath);
-                    if (fileName.Contains("_"))
+                    if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        var parts = fileName.Split('_');
-                        if (parts.Length >= 2)
-                        {
-                            // Try to map to category name - take last part and capitalize properly
-                            var categoryPart = parts[parts.Length - 1];
-                            // Convert "cable_trays" -> "Cable Trays"
-                            var words = categoryPart.Split('_');
-                            category = string.Join(" ", words.Select(w => 
-                                w.Length > 0 ? char.ToUpper(w[0]) + (w.Length > 1 ? w.Substring(1).ToLower() : "") : w));
-                        }
+                        DebugLogger.Error($"[SleeveCoordinateService] ❌ Category parameter is required for database-only mode");
+                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ❌ ERROR: Category parameter is required (database-only mode, XML obsolete)\n");
                     }
+                    return;
                 }
                 
-                // ✅ DATABASE-FIRST: Load from database if category is known
-                if (!string.IsNullOrEmpty(category))
+                var clashZones = new List<ClashZone>();
+                
+                // ✅ DATABASE-ONLY: Load clash zones from database
+                try
                 {
-                    try
+                    if (!DeploymentConfiguration.DeploymentMode)
                     {
+                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] 🔍 Loading clash zones from database for category '{category}' (database-only mode)\n");
+                    }
+                    
+                    using (var dbContext = new Data.SleeveDbContext(_doc))
+                    {
+                        var repository = new Data.Repositories.ClashZoneRepository(dbContext);
+                        var dbZones = repository.GetClashZonesByCategory(category);
+                        
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] 🔍 Attempting to load clash zones from database for category '{category}' (extracted from filename: {Path.GetFileName(xmlFilePath ?? "NULL")})\n");
+                            File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] 🔍 Database query returned {dbZones?.Count ?? 0} zones for category '{category}'\n");
                         }
                         
-                        using (var dbContext = new Data.SleeveDbContext(_doc))
+                        if (dbZones != null && dbZones.Count > 0)
                         {
-                            var repository = new Data.Repositories.ClashZoneRepository(dbContext);
-                            var dbZones = repository.GetClashZonesByCategory(category);
+                            // ✅ CRITICAL: Load ALL zones (not just those with SleeveInstanceId > 0)
+                            // This includes zones with ClusterSleeveInstanceId > 0 (after clustering)
+                            // SleeveInstanceId may not be saved to DB yet after placement, so we need to match by position
+                            clashZones = dbZones.Where(z => z != null).ToList();
+                            
+                            foreach (var cz in clashZones)
+                            {
+                                // ✅ CRITICAL: Reconstruct SleevePlacementPoint from database properties
+                                cz.EnsureSleevePlacementPointReconstructed();
+                            }
+                            
+                            // ✅ DEBUG: Log sample zone data to diagnose matching issues
+                            var zonesWithPlacementPoint = clashZones.Count(z => z != null && (z.SleevePlacementPointX != 0 || z.SleevePlacementPointY != 0 || z.SleevePlacementPointZ != 0));
+                            var zonesWithSleeveId = clashZones.Count(z => z != null && z.SleeveInstanceId > 0);
+                            var zonesWithClusterId = clashZones.Count(z => z != null && z.ClusterSleeveInstanceId > 0);
                             
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] 🔍 Database query returned {dbZones?.Count ?? 0} zones for category '{category}'\n");
-                            }
-                            
-                            if (dbZones != null && dbZones.Count > 0)
-                            {
-                                // ✅ CRITICAL FIX: Load ALL zones (not just those with SleeveInstanceId > 0)
-                                // This includes zones with ClusterSleeveInstanceId > 0 (after clustering)
-                                // SleeveInstanceId may not be saved to DB yet after placement, so we need to match by position
-                                clashZones = dbZones.Where(z => z != null).ToList();
+                                DebugLogger.Info($"[SleeveCoordinateService] ✅ DATABASE-ONLY: Loaded {clashZones.Count} clash zones from database for category '{category}' (all zones, will match by position)");
+                                File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ✅ DATABASE-ONLY: Loaded {clashZones.Count} clash zones from database for category '{category}' (all zones)\n");
+                                File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] DEBUG: Zones with placement point: {zonesWithPlacementPoint}/{clashZones.Count}, Zones with SleeveInstanceId>0: {zonesWithSleeveId}/{clashZones.Count}, Zones with ClusterSleeveInstanceId>0: {zonesWithClusterId}/{clashZones.Count}\n");
                                 
-                                foreach (var cz in clashZones)
+                                // Log sample placement points
+                                var sampleZones = clashZones.Where(z => z != null && (z.SleevePlacementPointX != 0 || z.SleevePlacementPointY != 0)).Take(3).ToList();
+                                foreach (var sample in sampleZones)
                                 {
-                                    // ✅ CRITICAL: Reconstruct SleevePlacementPoint from database properties
-                                    cz.EnsureSleevePlacementPointReconstructed();
-                                }
-                                
-                                // ✅ DEBUG: Log sample zone data to diagnose matching issues
-                                var zonesWithPlacementPoint = clashZones.Count(z => z != null && (z.SleevePlacementPointX != 0 || z.SleevePlacementPointY != 0 || z.SleevePlacementPointZ != 0));
-                                var zonesWithSleeveId = clashZones.Count(z => z != null && z.SleeveInstanceId > 0);
-                                var zonesWithClusterId = clashZones.Count(z => z != null && z.ClusterSleeveInstanceId > 0);
-                                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    DebugLogger.Info($"[SleeveCoordinateService] ✅ DATABASE-FIRST: Loaded {clashZones.Count} clash zones from database for category '{category}' (all zones, will match by position)");
-                                    File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ✅ DATABASE-FIRST: Loaded {clashZones.Count} clash zones from database for category '{category}' (all zones)\n");
-                                    File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] DEBUG: Zones with placement point: {zonesWithPlacementPoint}/{clashZones.Count}, Zones with SleeveInstanceId>0: {zonesWithSleeveId}/{clashZones.Count}, Zones with ClusterSleeveInstanceId>0: {zonesWithClusterId}/{clashZones.Count}\n");
-                                    
-                                    // Log sample placement points
-                                    var sampleZones = clashZones.Where(z => z != null && (z.SleevePlacementPointX != 0 || z.SleevePlacementPointY != 0)).Take(3).ToList();
-                                    foreach (var sample in sampleZones)
-                                    {
-                                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] SAMPLE: Zone {sample.Id}, SPP=({sample.SleevePlacementPointX:F3}, {sample.SleevePlacementPointY:F3}, {sample.SleevePlacementPointZ:F3}), SleeveId={sample.SleeveInstanceId}, ClusterId={sample.ClusterSleeveInstanceId}\n");
-                                    }
-                                }
-                            }
-                            else
-                            {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ⚠️ Database returned 0 zones for category '{category}' - will fall back to XML\n");
+                                    File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] SAMPLE: Zone {sample.Id}, SPP=({sample.SleevePlacementPointX:F3}, {sample.SleevePlacementPointY:F3}, {sample.SleevePlacementPointZ:F3}), SleeveId={sample.SleeveInstanceId}, ClusterId={sample.ClusterSleeveInstanceId}\n");
                                 }
                             }
                         }
-                    }
-                    catch (Exception dbEx)
-                    {
-                        if (!DeploymentConfiguration.DeploymentMode)
+                        else
                         {
-                            DebugLogger.Warning($"[SleeveCoordinateService] ⚠️ Database load failed, falling back to XML: {dbEx.Message}");
-                            File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ⚠️ Database load failed: {dbEx.Message} (falling back to XML)\n");
-                            File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ⚠️ Stack trace: {dbEx.StackTrace}\n");
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Warning($"[SleeveCoordinateService] ⚠️ Database returned 0 zones for category '{category}'");
+                                File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ⚠️ Database returned 0 zones for category '{category}'\n");
+                            }
                         }
                     }
                 }
-                else
+                catch (Exception dbEx)
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ⚠️ Could not extract category from filename '{xmlFilePath ?? "NULL"}' - will fall back to XML\n");
+                        DebugLogger.Error($"[SleeveCoordinateService] ❌ Database load failed: {dbEx.Message}");
+                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ❌ Database load failed: {dbEx.Message}\n");
+                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] Stack trace: {dbEx.StackTrace}\n");
                     }
-                }
-                
-                // ✅ FALLBACK: Load from XML if database has no data
-                if (clashZones.Count == 0)
-                {
-                    clashZones = LoadClashZonesFromXml(xmlFilePath);
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ⚠️ Loaded {clashZones.Count} clash zones from XML (fallback)\n");
-                    }
+                    return; // Cannot proceed without database data
                 }
                 
                 // ✅ CRITICAL DEBUG: Log how many have SleeveInstanceId (calculate outside condition for use later)
@@ -249,18 +222,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 { 
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] Loaded {clashZones.Count} clash zones from XML\n");
-                    }
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
+                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] Loaded {clashZones.Count} clash zones from database\n");
                         File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] {withSleeveId} out of {clashZones.Count} clash zones have SleeveInstanceId > 0\n");
-                    }
-                    
-                    // ✅ CRITICAL: Log which sleeve IDs we're looking for
-                    if (withSleeveId > 0)
-                    {
-                        var sleeveIds = clashZones.Where(cz => cz.SleeveInstanceId > 0).Select(cz => cz.SleeveInstanceId).Take(10).ToList();
-                        System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] Looking for sleeves with IDs: [{string.Join(", ", sleeveIds)}...]\n");
+                        
+                        // ✅ CRITICAL: Log which sleeve IDs we're looking for
+                        if (withSleeveId > 0)
+                        {
+                            var sleeveIds = clashZones.Where(cz => cz.SleeveInstanceId > 0).Select(cz => cz.SleeveInstanceId).Take(10).ToList();
+                            System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] Looking for sleeves with IDs: [{string.Join(", ", sleeveIds)}...]\n");
+                        }
                     }
                 } 
                 catch { }
@@ -400,18 +370,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
                 
-                // ✅ FALLBACK: Save updated XML (only if XML creation is enabled)
-                if (!DeploymentConfiguration.DisableXmlCreation)
+                // ✅ XML OBSOLETE: All data is saved to database only (lines 284-401 above)
+                // No XML saving needed - database is the single source of truth
+                if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    SaveClashZonesToXml(clashZones, xmlFilePath);
-                }
-                else
-                {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"[SleeveCoordinateService] ⚠️ XML creation disabled - skipping SaveClashZonesToXml (database only mode)");
-                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ⚠️ XML creation disabled - skipping XML save (database only mode)\n");
-                    }
+                    DebugLogger.Info($"[SleeveCoordinateService] ✅ DATABASE-ONLY: All coordinates saved to database (XML obsolete)");
+                    File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ✅ DATABASE-ONLY: All coordinates saved to database (XML obsolete)\n");
                 }
                 
                 // ✅ Direct file write
@@ -434,8 +398,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
         
+        /// <summary>
+        /// ✅ OBSOLETE: XML is no longer used - all data is in database
+        /// This method is kept for backward compatibility but should not be called
+        /// </summary>
+        /// <summary>
+        /// ✅ OBSOLETE: XML is no longer used - all data is in database
+        /// This method is kept for backward compatibility but should not be called
+        /// </summary>
+        [Obsolete("XML is obsolete - use database instead. This method returns empty list.")]
         private List<ClashZone> LoadClashZonesFromXml(string xmlFilePath = null)
         {
+            // ✅ XML OBSOLETE: Return empty list - all data must come from database
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Warning($"[LOAD-XML] ⚠️ LoadClashZonesFromXml is obsolete - XML no longer used. Returning empty list. Use database instead.");
+            }
+            return new List<ClashZone>();
+            
+            /* REMOVED: All XML loading code is obsolete
             var clashZones = new List<ClashZone>();
             
             try
@@ -513,15 +494,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
             
-            return clashZones;
+            */
+            return new List<ClashZone>(); // Always return empty - XML obsolete
         }
-        
         /// <summary>
-        /// ✅ CORRECT APPROACH: Use ClashZonePersistenceService to save updated clash zones with bounding boxes
-        /// This ensures the tree structure is maintained correctly using the dedicated service
+        /// ✅ OBSOLETE: XML is no longer used - all data is saved to database only
+        /// This method is kept for backward compatibility but should not be called
         /// </summary>
+        [Obsolete("XML is obsolete - all data is saved to database only. This method does nothing.")]
         public void SaveClashZonesToXml(List<ClashZone> clashZones, string xmlFilePath = null)
         {
+            // ✅ XML OBSOLETE: Do nothing - all data is saved to database only
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Warning($"[SAVE-XML] ⚠️ SaveClashZonesToXml is obsolete - XML no longer used. All data is saved to database only.");
+            }
+            return;
+            
+            /* REMOVED: All XML saving code is obsolete - database only
             try
             {
                 // ✅ STRICT: Use ONLY the specified file path - no file searching allowed
@@ -646,6 +636,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DebugLogger.Error($"[SAVE-XML] Stack trace: {ex.StackTrace}\n");
                 }
             }
+            */
         }
         
         private void UpdateXmlNode(System.Xml.XmlNode parentNode, string nodeName, string value)

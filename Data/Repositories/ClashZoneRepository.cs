@@ -522,7 +522,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         IsResolvedFlag, IsClusterResolvedFlag, IsClusteredFlag,
                         MarkedForClusterProcess, AfterClusterSleeveId,
                         HasDamperNearbyFlag, IsCurrentClashFlag, ReadyForPlacementFlag,
-                        StructuralThickness, WallThickness, FramingThickness
+                        StructuralThickness, WallThickness, FramingThickness,
+                        MepParameterValuesJson, HostParameterValuesJson
                     ) VALUES (
                         @ComboId, @MepElementId, @HostElementId,
                         @IntersectionX, @IntersectionY, @IntersectionZ,
@@ -547,7 +548,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         @IsResolvedFlag, @IsClusterResolvedFlag, @IsClusteredFlag,
                         @MarkedForClusterProcess, @AfterClusterSleeveId,
                         @HasDamperNearbyFlag, @IsCurrentClashFlag, @ReadyForPlacementFlag,
-                        @StructuralThickness, @WallThickness, @FramingThickness
+                        @StructuralThickness, @WallThickness, @FramingThickness,
+                        @MepParameterValuesJson, @HostParameterValuesJson
                     )";
 
                 AddClashZoneParameters(cmd, comboId, clashZone);
@@ -683,6 +685,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         StructuralThickness = @StructuralThickness,
                         WallThickness = @WallThickness,
                         FramingThickness = @FramingThickness,
+                        MepParameterValuesJson = @MepParameterValuesJson,
+                        HostParameterValuesJson = @HostParameterValuesJson,
                         UpdatedAt = CURRENT_TIMESTAMP
                     WHERE ClashZoneId = @ClashZoneId";
 
@@ -824,6 +828,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             cmd.Parameters.AddWithValue("@StructuralThickness", clashZone.StructuralElementThickness);
             cmd.Parameters.AddWithValue("@WallThickness", clashZone.WallThickness);
             cmd.Parameters.AddWithValue("@FramingThickness", clashZone.FramingThickness);
+            
+            // ✅ PARAMETER VALUES: Serialize parameter values to JSON for storage
+            // Convert List<SerializableKeyValue> to Dictionary<string, string> then to JSON
+            var mepParamsJson = "{}";
+            if (clashZone.MepParameterValues != null && clashZone.MepParameterValues.Count > 0)
+            {
+                var mepDict = clashZone.MepParameterValues
+                    .Where(kv => kv != null && !string.IsNullOrEmpty(kv.Key) && !string.IsNullOrEmpty(kv.Value))
+                    .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
+                if (mepDict.Count > 0)
+                {
+                    mepParamsJson = JsonSerializer.Serialize(mepDict);
+                }
+            }
+            
+            var hostParamsJson = "{}";
+            if (clashZone.HostParameterValues != null && clashZone.HostParameterValues.Count > 0)
+            {
+                var hostDict = clashZone.HostParameterValues
+                    .Where(kv => kv != null && !string.IsNullOrEmpty(kv.Key) && !string.IsNullOrEmpty(kv.Value))
+                    .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
+                if (hostDict.Count > 0)
+                {
+                    hostParamsJson = JsonSerializer.Serialize(hostDict);
+                }
+            }
+            
+            cmd.Parameters.AddWithValue("@MepParameterValuesJson", mepParamsJson);
+            cmd.Parameters.AddWithValue("@HostParameterValuesJson", hostParamsJson);
         }
 
         /// <summary>
@@ -954,8 +987,51 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                 var comboId = group.Select(g => g.ComboId).FirstOrDefault();
 
+                // ✅ DEBUG: Check if zones have parameter values before aggregating
+                var zonesWithMepParams = zones.Count(z => z.MepParameterValues != null && z.MepParameterValues.Count > 0);
+                var zonesWithHostParams = zones.Count(z => z.HostParameterValues != null && z.HostParameterValues.Count > 0);
+                
+                // ✅ CRITICAL FIX: If zones don't have parameters, try to load them from database
+                if (zonesWithMepParams == 0 || zonesWithHostParams == 0)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        _logger($"[SQLite] ⚠️ SleeveSnapshots: {zones.Count} zones, but only {zonesWithMepParams} have MEP params, {zonesWithHostParams} have Host params. Attempting to load from database...");
+                    }
+                    
+                    // Try to load parameters from database for zones that don't have them
+                    foreach (var zone in zones)
+                    {
+                        if ((zone.MepParameterValues == null || zone.MepParameterValues.Count == 0) ||
+                            (zone.HostParameterValues == null || zone.HostParameterValues.Count == 0))
+                        {
+                            LoadParameterValuesFromDatabase(zone, transaction);
+                        }
+                    }
+                    
+                    // Re-count after loading
+                    zonesWithMepParams = zones.Count(z => z.MepParameterValues != null && z.MepParameterValues.Count > 0);
+                    zonesWithHostParams = zones.Count(z => z.HostParameterValues != null && z.HostParameterValues.Count > 0);
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        _logger($"[SQLite] ✅ After loading from DB: {zonesWithMepParams} zones have MEP params, {zonesWithHostParams} have Host params");
+                    }
+                }
+                
+                if (!DeploymentConfiguration.DeploymentMode && zones.Count > 0 && (zonesWithMepParams == 0 || zonesWithHostParams == 0))
+                {
+                    _logger($"[SQLite] ⚠️ SleeveSnapshots: {zones.Count} zones, but only {zonesWithMepParams} have MEP params, {zonesWithHostParams} have Host params. This may result in empty JSON.");
+                }
+                
                 var mepParams = AggregateParameterValues(zones, useHost: false);
                 var hostParams = AggregateParameterValues(zones, useHost: true);
+                
+                // ✅ DEBUG: Log aggregated parameter counts
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] SleeveSnapshots: Aggregated {mepParams.Count} MEP params, {hostParams.Count} Host params for {zones.Count} zones (isCluster={isCluster}, groupId={groupId})");
+                }
 
                 var mepElementIds = zones
                     .Select(z => z.MepElementIdValue)
@@ -1813,6 +1889,240 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         }
 
         /// <summary>
+        /// ✅ R-TREE OPTIMIZATION: Query ALL clash zones within section box for a given CATEGORY.
+        /// Does NOT filter by resolution status - returns both resolved and unresolved zones.
+        /// Falls back to B-tree query when R-tree is disabled or section box is null.
+        /// </summary>
+        public List<ClashZone> GetClashZonesByCategoryInSectionBox(
+            string category,
+            BoundingBoxXYZ? sectionBox)
+        {
+            var zones = new List<ClashZone>();
+
+            // Fallback path: no section box or R-tree disabled
+            if (sectionBox == null || !Services.OptimizationFlags.UseRTreeDatabaseIndex)
+            {
+                return GetClashZonesByCategory(category) ?? new List<ClashZone>();
+            }
+
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = @"
+                        SELECT DISTINCT cz.*,
+                               fc.LinkedFileKey,
+                               fc.HostFileKey,
+                               f.FilterName
+                        FROM ClashZones cz
+                        INNER JOIN ClashZonesRTree rtree ON cz.ClashZoneId = rtree.id
+                        INNER JOIN FileCombos fc ON cz.ComboId = fc.ComboId
+                        INNER JOIN Filters f ON fc.FilterId = f.FilterId
+                        WHERE f.Category = @category
+                          AND rtree.minX <= @maxX AND rtree.maxX >= @minX
+                          AND rtree.minY <= @maxY AND rtree.maxY >= @minY
+                          AND rtree.minZ <= @maxZ AND rtree.maxZ >= @minZ";
+
+                    cmd.Parameters.AddWithValue("@category", category);
+                    cmd.Parameters.AddWithValue("@minX", sectionBox.Min.X);
+                    cmd.Parameters.AddWithValue("@maxX", sectionBox.Max.X);
+                    cmd.Parameters.AddWithValue("@minY", sectionBox.Min.Y);
+                    cmd.Parameters.AddWithValue("@maxY", sectionBox.Max.Y);
+                    cmd.Parameters.AddWithValue("@minZ", sectionBox.Min.Z);
+                    cmd.Parameters.AddWithValue("@maxZ", sectionBox.Max.Z);
+
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            var zone = MapClashZone(reader);
+                            if (zone != null)
+                                zones.Add(zone);
+                        }
+                    }
+                }
+
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ✅ R-tree category query: Found {zones.Count} zones in section box for category '{category}'");
+                }
+                
+                // ✅ CRITICAL: Load parameter values from snapshots
+                LoadParameterValuesFromSnapshots(zones);
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ⚠️ R-tree category query failed: {ex.Message}, falling back to B-tree");
+                }
+                
+                // Fallback to B-tree query
+                zones = GetClashZonesByCategory(category) ?? new List<ClashZone>();
+            }
+
+            return zones;
+        }
+
+        /// <summary>
+        /// ✅ R-TREE OPTIMIZATION: Query ONLY resolved clash zones within section box for a given CATEGORY (all filters).
+        /// Filters by (IsResolved=1 OR IsClusterResolved=1) at the database level to avoid loading all zones.
+        /// Falls back to B-tree query + in-memory filtering when R-tree is disabled or section box is null.
+        /// </summary>
+        public List<ClashZone> GetResolvedClashZonesByCategoryInSectionBox(
+            string category,
+            BoundingBoxXYZ? sectionBox)
+        {
+            var zones = new List<ClashZone>();
+
+            // Fallback path: no section box or R-tree disabled
+            if (sectionBox == null || !Services.OptimizationFlags.UseRTreeDatabaseIndex)
+            {
+                var all = GetClashZonesByCategory(category) ?? new List<ClashZone>();
+                return all.Where(z => z != null && (z.IsResolved || z.IsClusterResolved)).ToList();
+            }
+
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = @"
+                        SELECT DISTINCT cz.*,
+                               fc.LinkedFileKey,
+                               fc.HostFileKey,
+                               f.FilterName
+                        FROM ClashZones cz
+                        INNER JOIN ClashZonesRTree rtree ON cz.ClashZoneId = rtree.id
+                        INNER JOIN FileCombos fc ON cz.ComboId = fc.ComboId
+                        INNER JOIN Filters f ON fc.FilterId = f.FilterId
+                        WHERE f.Category = @category
+                          AND (cz.IsResolved = 1 OR cz.IsClusterResolved = 1)
+                          AND rtree.minX <= @maxX AND rtree.maxX >= @minX
+                          AND rtree.minY <= @maxY AND rtree.maxY >= @minY
+                          AND rtree.minZ <= @maxZ AND rtree.maxZ >= @minZ";
+
+                    cmd.Parameters.AddWithValue("@category", category);
+                    cmd.Parameters.AddWithValue("@minX", sectionBox.Min.X);
+                    cmd.Parameters.AddWithValue("@maxX", sectionBox.Max.X);
+                    cmd.Parameters.AddWithValue("@minY", sectionBox.Min.Y);
+                    cmd.Parameters.AddWithValue("@maxY", sectionBox.Max.Y);
+                    cmd.Parameters.AddWithValue("@minZ", sectionBox.Min.Z);
+                    cmd.Parameters.AddWithValue("@maxZ", sectionBox.Max.Z);
+
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            var zone = MapClashZone(reader);
+                            if (zone != null)
+                                zones.Add(zone);
+                        }
+                    }
+                }
+
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ✅ R-tree resolved category query: Found {zones.Count} zones in section box for category '{category}'");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ⚠️ R-tree resolved category query failed: {ex.Message}, falling back to B-tree");
+                }
+                
+                // Fallback to B-tree query
+                var all = GetClashZonesByCategory(category) ?? new List<ClashZone>();
+                zones = all.Where(z => z != null && (z.IsResolved || z.IsClusterResolved)).ToList();
+            }
+
+            return zones;
+        }
+
+        /// <summary>
+        /// R-TREE OPTIMIZATION: Query ONLY resolved clash zones within section box for a given filter/category.
+        /// Filters by (IsResolved=1 OR IsClusterResolved=1) at the database level to avoid loading all zones.
+        /// Falls back to B-tree query + in-memory filtering when R-tree is disabled or section box is null.
+        /// </summary>
+        public List<ClashZone> GetResolvedClashZonesByFilterInSectionBox(
+            string filterName,
+            string category,
+            BoundingBoxXYZ? sectionBox)
+        {
+            var zones = new List<ClashZone>();
+
+            // Fallback path: no section box or R-tree disabled
+            if (sectionBox == null || !Services.OptimizationFlags.UseRTreeDatabaseIndex)
+            {
+                var all = GetClashZonesByFilter(filterName, category, unresolvedOnly: false) ?? new List<ClashZone>();
+                return all.Where(z => z != null && (z.IsResolved || z.IsClusterResolved)).ToList();
+            }
+
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = @"
+                        SELECT DISTINCT cz.*
+                        FROM ClashZones cz
+                        INNER JOIN ClashZonesRTree rtree ON cz.ClashZoneId = rtree.id
+                        INNER JOIN FileCombos fc ON cz.ComboId = fc.ComboId
+                        INNER JOIN Filters f ON fc.FilterId = f.FilterId
+                        WHERE f.FilterName = @filterName
+                          AND f.Category = @category
+                          AND (cz.IsResolved = 1 OR cz.IsClusterResolved = 1)
+                          AND rtree.minX <= @maxX AND rtree.maxX >= @minX
+                          AND rtree.minY <= @maxY AND rtree.maxY >= @minY
+                          AND rtree.minZ <= @maxZ AND rtree.maxZ >= @minZ";
+
+                    cmd.Parameters.AddWithValue("@filterName", filterName);
+                    cmd.Parameters.AddWithValue("@category", category);
+                    cmd.Parameters.AddWithValue("@minX", sectionBox.Min.X);
+                    cmd.Parameters.AddWithValue("@maxX", sectionBox.Max.X);
+                    cmd.Parameters.AddWithValue("@minY", sectionBox.Min.Y);
+                    cmd.Parameters.AddWithValue("@maxY", sectionBox.Max.Y);
+                    cmd.Parameters.AddWithValue("@minZ", sectionBox.Min.Z);
+                    cmd.Parameters.AddWithValue("@maxZ", sectionBox.Max.Z);
+
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            var zone = MapClashZone(reader);
+                            if (zone != null)
+                                zones.Add(zone);
+                        }
+                    }
+                }
+
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ✅ R-tree resolved query: Found {zones.Count} zones in section box for filter '{filterName}', category '{category}'");
+                }
+            }
+            catch (Exception ex)
+            {
+                // Fall back to B-tree + in-memory filtering
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ⚠️ R-tree resolved query failed: {ex.Message} - falling back to B-tree");
+                    DebugLogger.Warning($"[ClashZoneRepository] R-tree resolved query failed: {ex.Message}");
+                }
+
+                var all = GetClashZonesByFilter(filterName, category, unresolvedOnly: false) ?? new List<ClashZone>();
+                zones = all.Where(z => z != null && (z.IsResolved || z.IsClusterResolved))
+                           .Where(z => z.IntersectionPoint != null &&
+                               z.IntersectionPoint.X >= sectionBox.Min.X && z.IntersectionPoint.X <= sectionBox.Max.X &&
+                               z.IntersectionPoint.Y >= sectionBox.Min.Y && z.IntersectionPoint.Y <= sectionBox.Max.Y &&
+                               z.IntersectionPoint.Z >= sectionBox.Min.Z && z.IntersectionPoint.Z <= sectionBox.Max.Z)
+                           .ToList();
+            }
+
+            return zones;
+        }
+
+        /// <summary>
         /// ✅ R-TREE MAINTENANCE: Update R-tree index when clash zone is inserted/updated
         /// Called automatically from InsertOrUpdateClashZone
         /// </summary>
@@ -2194,6 +2504,69 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             }
         }
 
+        /// <summary>
+        /// Loads parameter values from ClashZones table for a specific zone
+        /// </summary>
+        private void LoadParameterValuesFromDatabase(ClashZone zone, SQLiteTransaction transaction)
+        {
+            if (zone == null || string.IsNullOrEmpty(zone.Id.ToString()))
+                return;
+
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.Transaction = transaction;
+                    cmd.CommandText = @"
+                        SELECT MepParameterValuesJson, HostParameterValuesJson
+                        FROM ClashZones
+                        WHERE ClashZoneGuid = @ClashZoneGuid
+                        LIMIT 1";
+                    cmd.Parameters.AddWithValue("@ClashZoneGuid", zone.Id.ToString());
+
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        if (reader.Read())
+                        {
+                            var mepParamsJson = GetNullableString(reader, "MepParameterValuesJson");
+                            var hostParamsJson = GetNullableString(reader, "HostParameterValuesJson");
+
+                            // Deserialize MEP parameters
+                            if (!string.IsNullOrWhiteSpace(mepParamsJson) && mepParamsJson != "{}")
+                            {
+                                var mepDict = DeserializeDictionary(mepParamsJson);
+                                if (mepDict != null && mepDict.Count > 0)
+                                {
+                                    zone.MepParameterValues = mepDict
+                                        .Select(kv => new Models.SerializableKeyValue { Key = kv.Key, Value = kv.Value })
+                                        .ToList();
+                                }
+                            }
+
+                            // Deserialize Host parameters
+                            if (!string.IsNullOrWhiteSpace(hostParamsJson) && hostParamsJson != "{}")
+                            {
+                                var hostDict = DeserializeDictionary(hostParamsJson);
+                                if (hostDict != null && hostDict.Count > 0)
+                                {
+                                    zone.HostParameterValues = hostDict
+                                        .Select(kv => new Models.SerializableKeyValue { Key = kv.Key, Value = kv.Value })
+                                        .ToList();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ⚠️ Error loading parameter values from ClashZones for zone {zone.Id}: {ex.Message}");
+                }
+            }
+        }
+
         private Dictionary<string, string> DeserializeDictionary(string json)
         {
             if (string.IsNullOrWhiteSpace(json) || json == "{}" || json == "NULL")
@@ -2311,6 +2684,45 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             clashZone.StructuralElementType = GetNullableString(reader, "StructuralType") ?? string.Empty;
             clashZone.HostOrientation = GetNullableString(reader, "HostOrientation") ?? string.Empty;
             clashZone.WallDirectionType = GetNullableString(reader, "WallDirectionType") ?? string.Empty;
+            
+            // ✅ PARAMETER VALUES: Load parameter values from JSON columns
+            var mepParamsJson = GetNullableString(reader, "MepParameterValuesJson");
+            if (!string.IsNullOrWhiteSpace(mepParamsJson) && mepParamsJson != "{}")
+            {
+                try
+                {
+                    var mepDict = JsonSerializer.Deserialize<Dictionary<string, string>>(mepParamsJson);
+                    clashZone.MepParameterValues = mepDict
+                        .Select(kv => new SerializableKeyValue { Key = kv.Key, Value = kv.Value })
+                        .ToList();
+                }
+                catch (Exception ex)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        _logger($"[SQLite] ⚠️ Failed to deserialize MepParameterValuesJson: {ex.Message}");
+                    }
+                }
+            }
+            
+            var hostParamsJson = GetNullableString(reader, "HostParameterValuesJson");
+            if (!string.IsNullOrWhiteSpace(hostParamsJson) && hostParamsJson != "{}")
+            {
+                try
+                {
+                    var hostDict = JsonSerializer.Deserialize<Dictionary<string, string>>(hostParamsJson);
+                    clashZone.HostParameterValues = hostDict
+                        .Select(kv => new SerializableKeyValue { Key = kv.Key, Value = kv.Value })
+                        .ToList();
+                }
+                catch (Exception ex)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        _logger($"[SQLite] ⚠️ Failed to deserialize HostParameterValuesJson: {ex.Message}");
+                    }
+                }
+            }
 
             clashZone.MepElementOrientationDirection = GetNullableString(reader, "MepOrientationDirection") ?? string.Empty;
             
@@ -2615,33 +3027,69 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         public void UpdateSleeveBoundingBoxes(Guid clashZoneGuid, double minX, double minY, double minZ,
             double maxX, double maxY, double maxZ)
         {
-            using (var cmd = _context.Connection.CreateCommand())
+            using (var transaction = _context.Connection.BeginTransaction())
             {
-                cmd.CommandText = @"
-                    UPDATE ClashZones SET
-                        BoundingBoxMinX = @BoundingBoxMinX,
-                        BoundingBoxMinY = @BoundingBoxMinY,
-                        BoundingBoxMinZ = @BoundingBoxMinZ,
-                        BoundingBoxMaxX = @BoundingBoxMaxX,
-                        BoundingBoxMaxY = @BoundingBoxMaxY,
-                        BoundingBoxMaxZ = @BoundingBoxMaxZ,
-                        UpdatedAt = CURRENT_TIMESTAMP
-                    WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)
-                      AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL";
-
-                cmd.Parameters.AddWithValue("@ClashZoneGuid", clashZoneGuid.ToString());
-                cmd.Parameters.AddWithValue("@BoundingBoxMinX", minX);
-                cmd.Parameters.AddWithValue("@BoundingBoxMinY", minY);
-                cmd.Parameters.AddWithValue("@BoundingBoxMinZ", minZ);
-                cmd.Parameters.AddWithValue("@BoundingBoxMaxX", maxX);
-                cmd.Parameters.AddWithValue("@BoundingBoxMaxY", maxY);
-                cmd.Parameters.AddWithValue("@BoundingBoxMaxZ", maxZ);
-                
-                var rowsAffected = cmd.ExecuteNonQuery();
-                if (rowsAffected == 0 && !DeploymentConfiguration.DeploymentMode)
+                using (var cmd = _context.Connection.CreateCommand())
                 {
-                    _logger($"[SQLite] ⚠️ UpdateSleeveBoundingBoxes: No rows updated for GUID {clashZoneGuid}");
+                    cmd.Transaction = transaction;
+                    
+                    cmd.CommandText = @"
+                        UPDATE ClashZones SET
+                            BoundingBoxMinX = @BoundingBoxMinX,
+                            BoundingBoxMinY = @BoundingBoxMinY,
+                            BoundingBoxMinZ = @BoundingBoxMinZ,
+                            BoundingBoxMaxX = @BoundingBoxMaxX,
+                            BoundingBoxMaxY = @BoundingBoxMaxY,
+                            BoundingBoxMaxZ = @BoundingBoxMaxZ,
+                            UpdatedAt = CURRENT_TIMESTAMP
+                        WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)
+                          AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL";
+
+                    cmd.Parameters.AddWithValue("@ClashZoneGuid", clashZoneGuid.ToString());
+                    cmd.Parameters.AddWithValue("@BoundingBoxMinX", minX);
+                    cmd.Parameters.AddWithValue("@BoundingBoxMinY", minY);
+                    cmd.Parameters.AddWithValue("@BoundingBoxMinZ", minZ);
+                    cmd.Parameters.AddWithValue("@BoundingBoxMaxX", maxX);
+                    cmd.Parameters.AddWithValue("@BoundingBoxMaxY", maxY);
+                    cmd.Parameters.AddWithValue("@BoundingBoxMaxZ", maxZ);
+                    
+                    var rowsAffected = cmd.ExecuteNonQuery();
+                    if (rowsAffected == 0 && !DeploymentConfiguration.DeploymentMode)
+                    {
+                        _logger($"[SQLite] ⚠️ UpdateSleeveBoundingBoxes: No rows updated for GUID {clashZoneGuid}");
+                    }
+                    else if (rowsAffected > 0)
+                    {
+                        // ✅ R-TREE MAINTENANCE: Get ClashZoneId and update R-tree index
+                        cmd.CommandText = @"
+                            SELECT ClashZoneId FROM ClashZones
+                            WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)
+                              AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL
+                            LIMIT 1";
+                        var clashZoneIdResult = cmd.ExecuteScalar();
+                        
+                        if (clashZoneIdResult != null)
+                        {
+                            int clashZoneId = Convert.ToInt32(clashZoneIdResult);
+                            
+                            // ✅ Create a temporary ClashZone object with updated bounding boxes for R-tree update
+                            var tempClashZone = new ClashZone
+                            {
+                                SleeveBoundingBoxMinX = minX,
+                                SleeveBoundingBoxMaxX = maxX,
+                                SleeveBoundingBoxMinY = minY,
+                                SleeveBoundingBoxMaxY = maxY,
+                                SleeveBoundingBoxMinZ = minZ,
+                                SleeveBoundingBoxMaxZ = maxZ
+                            };
+                            
+                            // ✅ Update R-tree index with new bounding boxes
+                            UpdateRTreeIndex(clashZoneId, tempClashZone, transaction);
+                        }
+                    }
                 }
+                
+                transaction.Commit();
             }
         }
 
@@ -3028,358 +3476,168 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             using (var transaction = _context.Connection.BeginTransaction())
             {
                 try
-        {
-            using (var cmd = _context.Connection.CreateCommand())
-            {
-                        cmd.Transaction = transaction;
-                        // ✅ OPTION 4: Triggers automatically compute SleeveState - no manual computation needed
-                        // ✅ CRITICAL: Match by GUID first, then by OLD SleeveInstanceId/ClusterInstanceId, then MEP+Host+Point
-                        // This is much simpler and more reliable than GUID-only matching
-                        // ✅ CRITICAL FIX: Prioritize GUID matching - only use fallbacks if GUID doesn't match or is empty
-                        // This ensures we only match 1 row per update when GUIDs are unique
-                        // Use COALESCE to try GUID first, then fallbacks in order
-                        cmd.CommandText = @"
-                            UPDATE ClashZones SET
-                                IsResolvedFlag = @IsResolvedFlag,
-                                IsClusterResolvedFlag = @IsClusterResolvedFlag,
-                                SleeveInstanceId = @SleeveInstanceId,
-                                ClusterInstanceId = @ClusterInstanceId,
-                                MarkedForClusterProcess = @MarkedForClusterProcess,
-                                AfterClusterSleeveId = @AfterClusterSleeveId,
-                                IsClusteredFlag = @IsClusteredFlag,
-                                -- ✅ CRITICAL FIX: When flags are reset (both IsResolved=0 AND IsClusterResolved=0), 
-                                -- set ReadyForPlacementFlag=1 so zones become eligible for placement again
-                                -- This enables the ""Place Sleeves"" button when sleeves are deleted
-                                ReadyForPlacementFlag = CASE 
-                                    WHEN @IsResolvedFlag = 0 AND @IsClusterResolvedFlag = 0 THEN 1 
-                                    ELSE ReadyForPlacementFlag 
-                                END,
-                                UpdatedAt = datetime('now', '+5 hours', '+30 minutes')
-                            WHERE ClashZoneId = COALESCE(
-                                -- ✅ PRIORITY 1: Try GUID first (most reliable, should match exactly 1 row)
-                                (SELECT ClashZoneId FROM ClashZones 
-                                 WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid) 
-                                   AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL
-                                 LIMIT 1),
-                                -- ✅ PRIORITY 2: If GUID didn't match, try OLD SleeveInstanceId + MEP+Host+Point
-                                (SELECT ClashZoneId FROM ClashZones 
-                                 WHERE @OldSleeveInstanceId > 0 
-                                   AND SleeveInstanceId = @OldSleeveInstanceId
-                                   AND MepElementId = @MepElementId 
-                                   AND HostElementId = @HostElementId 
-                                   AND ABS(IntersectionX - @IntersectionX) < 0.001 
-                                   AND ABS(IntersectionY - @IntersectionY) < 0.001 
-                                   AND ABS(IntersectionZ - @IntersectionZ) < 0.001
-                                 LIMIT 1),
-                                -- ✅ PRIORITY 3: If SleeveInstanceId didn't match, try OLD ClusterInstanceId + MEP+Host+Point
-                                (SELECT ClashZoneId FROM ClashZones 
-                                 WHERE @OldClusterInstanceId > 0 
-                                   AND ClusterInstanceId = @OldClusterInstanceId
-                                   AND MepElementId = @MepElementId 
-                                   AND HostElementId = @HostElementId 
-                                   AND ABS(IntersectionX - @IntersectionX) < 0.001 
-                                   AND ABS(IntersectionY - @IntersectionY) < 0.001 
-                                   AND ABS(IntersectionZ - @IntersectionZ) < 0.001
-                                 LIMIT 1),
-                                -- ✅ PRIORITY 4: If all else fails, match by MEP+Host+Point only (when GUID is empty)
-                                (SELECT ClashZoneId FROM ClashZones 
-                                 WHERE (ClashZoneGuid = '' OR ClashZoneGuid IS NULL) 
-                                   AND MepElementId = @MepElementId 
-                                   AND HostElementId = @HostElementId 
-                                   AND ABS(IntersectionX - @IntersectionX) < 0.001 
-                                   AND ABS(IntersectionY - @IntersectionY) < 0.001 
-                                   AND ABS(IntersectionZ - @IntersectionZ) < 0.001
-                                 LIMIT 1),
-                                -- ✅ If nothing matches, return NULL (no update)
-                                NULL
-                            )";
+                {
+                    int rowsAffectedTotal = 0;
 
-                        var guidParam = cmd.Parameters.Add("@ClashZoneGuid", System.Data.DbType.String);
-                        var isResolvedParam = cmd.Parameters.Add("@IsResolvedFlag", System.Data.DbType.Int32);
-                        var isClusterResolvedParam = cmd.Parameters.Add("@IsClusterResolvedFlag", System.Data.DbType.Int32);
-                        var sleeveIdParam = cmd.Parameters.Add("@SleeveInstanceId", System.Data.DbType.Int32);
-                        var clusterIdParam = cmd.Parameters.Add("@ClusterInstanceId", System.Data.DbType.Int32);
-                        // ✅ EDGE CASE FIELDS: Add parameters for MarkedForClusterProcess, AfterClusterSleeveId, IsClusteredFlag
-                        var markedForClusterParam = cmd.Parameters.Add("@MarkedForClusterProcess", System.Data.DbType.Int32);
-                        var afterClusterSleeveIdParam = cmd.Parameters.Add("@AfterClusterSleeveId", System.Data.DbType.Int32);
-                        var isClusteredFlagParam = cmd.Parameters.Add("@IsClusteredFlag", System.Data.DbType.Int32);
-                        // ✅ SIMPLER MATCHING: Use OLD SleeveInstanceId/ClusterInstanceId for direct matching
-                        var oldSleeveIdParam = cmd.Parameters.Add("@OldSleeveInstanceId", System.Data.DbType.Int32);
-                        var oldClusterIdParam = cmd.Parameters.Add("@OldClusterInstanceId", System.Data.DbType.Int32);
-                        // ✅ FALLBACK MATCHING: Add parameters for MEP+Host+Point matching when GUID is empty
-                        var mepIdParam = cmd.Parameters.Add("@MepElementId", System.Data.DbType.Int32);
-                        var hostIdParam = cmd.Parameters.Add("@HostElementId", System.Data.DbType.Int32);
-                        var intersectionXParam = cmd.Parameters.Add("@IntersectionX", System.Data.DbType.Double);
-                        var intersectionYParam = cmd.Parameters.Add("@IntersectionY", System.Data.DbType.Double);
-                        var intersectionZParam = cmd.Parameters.Add("@IntersectionZ", System.Data.DbType.Double);
-
-                        // 🚀 PERFORMANCE: Prepare statement once for reuse (compiles SQL query plan)
-                        cmd.Prepare();
-
-                        int updateCount = 0;
-                        int rowsAffectedTotal = 0;
-                        int notFoundCount = 0;
-                        int multipleRowsCount = 0; // ✅ Track updates that match multiple rows
-                        
-                        foreach (var update in updatesList)
+                    // 🚀 PERFORMANCE OPTIMIZATION: Use temp table + single UPDATE instead of N individual UPDATEs
+                    // Old approach: 68 individual UPDATEs = 897ms
+                    // New approach: 1 temp table INSERT + 1 UPDATE JOIN = ~10-50ms
+                    
+                    // Step 1: Create temp table for batch data
+                        using (var tempCmd = _context.Connection.CreateCommand())
                         {
-                            // ✅ CRITICAL: Use uppercase GUID format for consistent matching (SQLite TEXT is case-sensitive)
-                            string guidString = update.ClashZoneId.ToString().ToUpperInvariant();
-                            guidParam.Value = guidString;
-                            isResolvedParam.Value = update.IsResolved ? 1 : 0;
-                            isClusterResolvedParam.Value = update.IsClusterResolved ? 1 : 0;
-                            sleeveIdParam.Value = update.SleeveInstanceId > 0 ? (object)update.SleeveInstanceId : DBNull.Value;
-                            clusterIdParam.Value = update.ClusterInstanceId > 0 ? (object)update.ClusterInstanceId : DBNull.Value;
-                            // ✅ EDGE CASE FIELDS: Set MarkedForClusterProcess, AfterClusterSleeveId, IsClusteredFlag
-                            markedForClusterParam.Value = update.MarkedForClusterProcess.HasValue ? (object)(update.MarkedForClusterProcess.Value ? 1 : 0) : DBNull.Value;
-                            
-                            // ✅ CRITICAL: Save AfterClusterSleeveId (original individual sleeve ID before deletion)
-                            // This is set by RefactoredClusterService BEFORE calling UpdateFlagsForPlacement
-                            if (update.AfterClusterSleeveId > 0)
-                            {
-                                afterClusterSleeveIdParam.Value = update.AfterClusterSleeveId;
-                                // ✅ DIAGNOSTIC: Log to database operations log
-                                DatabaseOperationLogger.LogOperation(
-                                    "UPDATE",
-                                    "ClashZones",
-                                    new Dictionary<string, object>
-                                    {
-                                        { "ClashZoneGuid", guidString },
-                                        { "AfterClusterSleeveId", update.AfterClusterSleeveId },
-                                        { "IsClusterResolvedFlag", update.IsClusterResolved ? 1 : 0 },
-                                        { "ClusterInstanceId", update.ClusterInstanceId }
-                                    },
-                                    rowsAffected: -1,
-                                    additionalInfo: $"Setting AfterClusterSleeveId={update.AfterClusterSleeveId} for cluster {update.ClusterInstanceId}");
-                            }
-                            else
-                            {
-                                afterClusterSleeveIdParam.Value = DBNull.Value;
-                            }
-                            
-                            isClusteredFlagParam.Value = update.IsClusteredFlag.HasValue ? (object)(update.IsClusteredFlag.Value ? 1 : 0) : DBNull.Value;
-                            // ✅ SIMPLER MATCHING: Use OLD sleeve/cluster IDs for direct matching (much more reliable!)
-                            oldSleeveIdParam.Value = update.OldSleeveInstanceId > 0 ? (object)update.OldSleeveInstanceId : DBNull.Value;
-                            oldClusterIdParam.Value = update.OldClusterInstanceId > 0 ? (object)update.OldClusterInstanceId : DBNull.Value;
-                            // ✅ FALLBACK: Set MEP+Host+Point parameters (will be used if GUID doesn't match or is empty)
-                            mepIdParam.Value = update.MepElementId;
-                            hostIdParam.Value = update.StructuralElementId;
-                            intersectionXParam.Value = update.IntersectionPointX;
-                            intersectionYParam.Value = update.IntersectionPointY;
-                            intersectionZParam.Value = update.IntersectionPointZ;
-                            
-                            int rowsAffected = cmd.ExecuteNonQuery();
-                            rowsAffectedTotal += rowsAffected;
-                            
-                            // ✅ CRITICAL: Track if no rows were affected (indicates ClashZone not found in database)
-                            if (rowsAffected == 0)
-                            {
-                                notFoundCount++;
-                                _logger($"[SQLite] ⚠️⚠️⚠️ WARNING: GUID {update.ClashZoneId} matched 0 rows! ClashZone not found in database.");
-                                _logger($"[SQLite] ⚠️ Update details: GUID={guidString}, OldSleeveId={update.OldSleeveInstanceId}, OldClusterId={update.OldClusterInstanceId}, MEP={update.MepElementId}, Host={update.StructuralElementId}");
-                                _logger($"[SQLite] ⚠️ IsClusterResolved={update.IsClusterResolved}, ClusterId={update.ClusterInstanceId}");
-                                
-                                // ✅ DIAGNOSTIC: Try to find why it didn't match
-                                using (var diagCmd = _context.Connection.CreateCommand())
-                                {
-                                    diagCmd.Transaction = transaction;
-                                    diagCmd.CommandText = @"
-                                        SELECT ClashZoneId, ClashZoneGuid, SleeveInstanceId, ClusterInstanceId, 
-                                               MepElementId, HostElementId, IsClusterResolvedFlag
-                                        FROM ClashZones
-                                        WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid) 
-                                           OR (SleeveInstanceId = @OldSleeveInstanceId AND MepElementId = @MepElementId AND HostElementId = @HostElementId)
-                                           OR (ClusterInstanceId = @OldClusterInstanceId AND MepElementId = @MepElementId AND HostElementId = @HostElementId)
-                                        LIMIT 5";
-                                    diagCmd.Parameters.AddWithValue("@ClashZoneGuid", guidString);
-                                    diagCmd.Parameters.AddWithValue("@OldSleeveInstanceId", update.OldSleeveInstanceId);
-                                    diagCmd.Parameters.AddWithValue("@OldClusterInstanceId", update.OldClusterInstanceId);
-                                    diagCmd.Parameters.AddWithValue("@MepElementId", update.MepElementId);
-                                    diagCmd.Parameters.AddWithValue("@HostElementId", update.StructuralElementId);
-                                    
-                                    using (var reader = diagCmd.ExecuteReader())
-                                    {
-                                        int foundCount = 0;
-                                        while (reader.Read())
-                                        {
-                                            foundCount++;
-                                            var foundGuid = GetNullableString(reader, "ClashZoneGuid");
-                                            var foundSleeveId = GetInt(reader, "SleeveInstanceId", -1);
-                                            var foundClusterId = GetInt(reader, "ClusterInstanceId", -1);
-                                            var foundMepId = GetInt(reader, "MepElementId");
-                                            var foundHostId = GetInt(reader, "HostElementId");
-                                            var foundIsClusterResolved = GetBool(reader, "IsClusterResolvedFlag");
-                                            _logger($"[SQLite] ⚠️   Found ClashZone {foundCount}: GUID={foundGuid}, SleeveId={foundSleeveId}, ClusterId={foundClusterId}, MEP={foundMepId}, Host={foundHostId}, IsClusterResolved={foundIsClusterResolved}");
-                                        }
-                                        if (foundCount == 0)
-                                        {
-                                            _logger($"[SQLite] ⚠️   No matching ClashZones found with any criteria - GUID, SleeveId, or ClusterId");
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // ✅ CRITICAL: Track if multiple rows were affected (indicates duplicate entries or WHERE clause issue)
-                            if (rowsAffected > 1)
-                            {
-                                multipleRowsCount++;
-                                _logger($"[SQLite] ⚠️⚠️⚠️ WARNING: GUID {update.ClashZoneId} matched {rowsAffected} rows (expected 1)! This indicates duplicate entries.");
-                                _logger($"[SQLite] ⚠️ Update details: GUID={guidString}, OldSleeveId={update.OldSleeveInstanceId}, OldClusterId={update.OldClusterInstanceId}, MEP={update.MepElementId}, Host={update.StructuralElementId}");
-                                
-                                // ✅ DIAGNOSTIC: Query to see which condition matched
-                                using (var diagCmd = _context.Connection.CreateCommand())
-                                {
-                                    diagCmd.Transaction = transaction;
-                                    diagCmd.CommandText = @"
-                                        SELECT 
-                                            ClashZoneId,
-                                            ClashZoneGuid,
-                                            SleeveInstanceId,
-                                            ClusterInstanceId,
-                                            MepElementId,
-                                            HostElementId,
-                                            IntersectionX,
-                                            IntersectionY,
-                                            IntersectionZ,
-                                            CASE 
-                                                WHEN UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid) THEN 'GUID'
-                                                WHEN @OldSleeveInstanceId > 0 AND SleeveInstanceId = @OldSleeveInstanceId AND MepElementId = @MepElementId AND HostElementId = @HostElementId AND ABS(IntersectionX - @IntersectionX) < 0.001 AND ABS(IntersectionY - @IntersectionY) < 0.001 AND ABS(IntersectionZ - @IntersectionZ) < 0.001 THEN 'SleeveId+MEP+Host+Point'
-                                                WHEN @OldClusterInstanceId > 0 AND ClusterInstanceId = @OldClusterInstanceId AND MepElementId = @MepElementId AND HostElementId = @HostElementId AND ABS(IntersectionX - @IntersectionX) < 0.001 AND ABS(IntersectionY - @IntersectionY) < 0.001 AND ABS(IntersectionZ - @IntersectionZ) < 0.001 THEN 'ClusterId+MEP+Host+Point'
-                                                ELSE 'MEP+Host+Point'
-                                            END as MatchType
-                                        FROM ClashZones
-                                        WHERE (
-                                            UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)
-                                        ) OR (
-                                            @OldSleeveInstanceId > 0 
-                                            AND SleeveInstanceId = @OldSleeveInstanceId
-                                            AND MepElementId = @MepElementId 
-                                            AND HostElementId = @HostElementId 
-                                            AND ABS(IntersectionX - @IntersectionX) < 0.001 
-                                            AND ABS(IntersectionY - @IntersectionY) < 0.001 
-                                            AND ABS(IntersectionZ - @IntersectionZ) < 0.001
-                                        ) OR (
-                                            @OldClusterInstanceId > 0 
-                                            AND ClusterInstanceId = @OldClusterInstanceId
-                                            AND MepElementId = @MepElementId 
-                                            AND HostElementId = @HostElementId 
-                                            AND ABS(IntersectionX - @IntersectionX) < 0.001 
-                                            AND ABS(IntersectionY - @IntersectionY) < 0.001 
-                                            AND ABS(IntersectionZ - @IntersectionZ) < 0.001
-                                        )";
-                                    
-                                    diagCmd.Parameters.AddWithValue("@ClashZoneGuid", guidString);
-                                    diagCmd.Parameters.AddWithValue("@OldSleeveInstanceId", update.OldSleeveInstanceId > 0 ? (object)update.OldSleeveInstanceId : DBNull.Value);
-                                    diagCmd.Parameters.AddWithValue("@OldClusterInstanceId", update.OldClusterInstanceId > 0 ? (object)update.OldClusterInstanceId : DBNull.Value);
-                                    diagCmd.Parameters.AddWithValue("@MepElementId", update.MepElementId);
-                                    diagCmd.Parameters.AddWithValue("@HostElementId", update.StructuralElementId);
-                                    diagCmd.Parameters.AddWithValue("@IntersectionX", update.IntersectionPointX);
-                                    diagCmd.Parameters.AddWithValue("@IntersectionY", update.IntersectionPointY);
-                                    diagCmd.Parameters.AddWithValue("@IntersectionZ", update.IntersectionPointZ);
-                                    
-                                    using (var diagReader = diagCmd.ExecuteReader())
-                                    {
-                                        int matchIndex = 0;
-                                        while (diagReader.Read())
-                                        {
-                                            matchIndex++;
-                                            int clashZoneId = GetInt(diagReader, "ClashZoneId", -1);
-                                            string matchedGuid = GetNullableString(diagReader, "ClashZoneGuid") ?? "NULL";
-                                            int sleeveId = GetInt(diagReader, "SleeveInstanceId", -1);
-                                            int clusterId = GetInt(diagReader, "ClusterInstanceId", -1);
-                                            string matchType = GetNullableString(diagReader, "MatchType") ?? "Unknown";
-                                            
-                                            _logger($"[SQLite] 🔍 Match #{matchIndex}: ClashZoneId={clashZoneId}, GUID={matchedGuid}, SleeveId={sleeveId}, ClusterId={clusterId}, MatchType={matchType}");
-                                        }
-                                    }
-                                }
-                            }
-                            else if (rowsAffected == 0)
-                            {
-                                notFoundCount++;
-                                _logger($"[SQLite] ⚠️ GUID {guidString} NOT FOUND in database - no rows updated");
-                                _logger($"[SQLite] ⚠️ Searching for GUID: {guidString} (original: {update.ClashZoneId})");
-                                _logger($"[SQLite] ⚠️ Will try fallback matching by MEP={update.MepElementId}, Host={update.StructuralElementId}, Point=({update.IntersectionPointX:F3}, {update.IntersectionPointY:F3}, {update.IntersectionPointZ:F3})");
-                                _logger($"[SQLite] ⚠️ OldSleeveId={update.OldSleeveInstanceId}, OldClusterId={update.OldClusterInstanceId}, IsClusterResolved={update.IsClusterResolved}");
-                                
-                                // ✅ DIAGNOSTIC: Query database to see what exists for this GUID
-                                using (var diagCmd = _context.Connection.CreateCommand())
-                                {
-                                    diagCmd.Transaction = transaction;
-                                    diagCmd.CommandText = @"
-                                        SELECT ClashZoneId, ClashZoneGuid, SleeveInstanceId, ClusterInstanceId, 
-                                               IsResolvedFlag, IsClusterResolvedFlag, MepElementId, HostElementId
-                                        FROM ClashZones
-                                        WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)
-                                           OR (MepElementId = @MepElementId AND HostElementId = @HostElementId 
-                                               AND ABS(IntersectionX - @IntersectionX) < 0.001 
-                                               AND ABS(IntersectionY - @IntersectionY) < 0.001 
-                                               AND ABS(IntersectionZ - @IntersectionZ) < 0.001)
-                                        LIMIT 5";
-                                    diagCmd.Parameters.AddWithValue("@ClashZoneGuid", guidString);
-                                    diagCmd.Parameters.AddWithValue("@MepElementId", update.MepElementId);
-                                    diagCmd.Parameters.AddWithValue("@HostElementId", update.StructuralElementId);
-                                    diagCmd.Parameters.AddWithValue("@IntersectionX", update.IntersectionPointX);
-                                    diagCmd.Parameters.AddWithValue("@IntersectionY", update.IntersectionPointY);
-                                    diagCmd.Parameters.AddWithValue("@IntersectionZ", update.IntersectionPointZ);
-                                    
-                                    using (var diagReader = diagCmd.ExecuteReader())
-                                    {
-                                        int matchCount = 0;
-                                        while (diagReader.Read())
-                                        {
-                                            matchCount++;
-                                            int czId = GetInt(diagReader, "ClashZoneId", -1);
-                                            string dbGuid = GetNullableString(diagReader, "ClashZoneGuid") ?? "NULL";
-                                            int dbSleeveId = GetInt(diagReader, "SleeveInstanceId", -1);
-                                            int dbClusterId = GetInt(diagReader, "ClusterInstanceId", -1);
-                                            int dbIsResolved = GetInt(diagReader, "IsResolvedFlag", 0);
-                                            int dbIsClusterResolved = GetInt(diagReader, "IsClusterResolvedFlag", 0);
-                                            _logger($"[SQLite] 🔍 Match #{matchCount}: ClashZoneId={czId}, GUID={dbGuid}, SleeveId={dbSleeveId}, ClusterId={dbClusterId}, IsResolved={dbIsResolved}, IsClusterResolved={dbIsClusterResolved}");
-                                        }
-                                        if (matchCount == 0)
-                                        {
-                                            _logger($"[SQLite] ❌ NO MATCHES FOUND in database for GUID {guidString} or MEP+Host+Point");
-                                        }
-                                    }
-                                }
-                            }
-                            else if (rowsAffected == 1)
-                            {
-                                // ✅ SUCCESS: Log with AfterClusterSleeveId
-                                _logger($"[SQLite] ✅ Updated GUID {update.ClashZoneId}: IsResolved={update.IsResolved}, IsClusterResolved={update.IsClusterResolved}, " +
-                                    $"SleeveId={update.SleeveInstanceId}, ClusterId={update.ClusterInstanceId}, AfterClusterSleeveId={update.AfterClusterSleeveId} (1 row affected)");
-                                
-                                // ✅ DIAGNOSTIC: Log to database operations log for AfterClusterSleeveId updates
-                                if (update.AfterClusterSleeveId > 0)
-                                {
-                                    DatabaseOperationLogger.LogOperation(
-                                        "UPDATE",
-                                        "ClashZones",
-                                        new Dictionary<string, object>
-                                        {
-                                            { "ClashZoneGuid", guidString },
-                                            { "AfterClusterSleeveId", update.AfterClusterSleeveId },
-                                            { "IsClusterResolvedFlag", update.IsClusterResolved ? 1 : 0 },
-                                            { "ClusterInstanceId", update.ClusterInstanceId },
-                                            { "SleeveInstanceId", update.SleeveInstanceId }
-                                        },
-                                        rowsAffected: 1,
-                                        additionalInfo: $"✅ Saved AfterClusterSleeveId={update.AfterClusterSleeveId} (original individual sleeve ID before deletion)");
-                                }
-                            }
-                            
-                            updateCount++;
+                            tempCmd.Transaction = transaction;
+                            tempCmd.CommandText = @"
+                                CREATE TEMP TABLE IF NOT EXISTS TempFlagUpdates (
+                                    ClashZoneGuid TEXT,
+                                    IsResolvedFlag INTEGER,
+                                    IsClusterResolvedFlag INTEGER,
+                                    SleeveInstanceId INTEGER,
+                                    ClusterInstanceId INTEGER,
+                                    OldSleeveInstanceId INTEGER,
+                                    OldClusterInstanceId INTEGER,
+                                    MepElementId INTEGER,
+                                    HostElementId INTEGER,
+                                    IntersectionX REAL,
+                                    IntersectionY REAL,
+                                    IntersectionZ REAL,
+                                    MarkedForClusterProcess INTEGER,
+                                    AfterClusterSleeveId INTEGER,
+                                    IsClusteredFlag INTEGER
+                                )";
+                            tempCmd.ExecuteNonQuery();
                         }
+                        
+                        // Step 2: Bulk insert all updates into temp table
+                        using (var insertCmd = _context.Connection.CreateCommand())
+                        {
+                            insertCmd.Transaction = transaction;
+                            insertCmd.CommandText = @"
+                                INSERT INTO TempFlagUpdates (
+                                    ClashZoneGuid, IsResolvedFlag, IsClusterResolvedFlag, 
+                                    SleeveInstanceId, ClusterInstanceId,
+                                    OldSleeveInstanceId, OldClusterInstanceId,
+                                    MepElementId, HostElementId,
+                                    IntersectionX, IntersectionY, IntersectionZ,
+                                    MarkedForClusterProcess, AfterClusterSleeveId, IsClusteredFlag
+                                ) VALUES (
+                                    @ClashZoneGuid, @IsResolvedFlag, @IsClusterResolvedFlag,
+                                    @SleeveInstanceId, @ClusterInstanceId,
+                                    @OldSleeveInstanceId, @OldClusterInstanceId,
+                                    @MepElementId, @HostElementId,
+                                    @IntersectionX, @IntersectionY, @IntersectionZ,
+                                    @MarkedForClusterProcess, @AfterClusterSleeveId, @IsClusteredFlag
+                                )";
+                            
+                            var guidParam = insertCmd.Parameters.Add("@ClashZoneGuid", System.Data.DbType.String);
+                            var isResolvedParam = insertCmd.Parameters.Add("@IsResolvedFlag", System.Data.DbType.Int32);
+                            var isClusterResolvedParam = insertCmd.Parameters.Add("@IsClusterResolvedFlag", System.Data.DbType.Int32);
+                            var sleeveIdParam = insertCmd.Parameters.Add("@SleeveInstanceId", System.Data.DbType.Int32);
+                            var clusterIdParam = insertCmd.Parameters.Add("@ClusterInstanceId", System.Data.DbType.Int32);
+                            var oldSleeveIdParam = insertCmd.Parameters.Add("@OldSleeveInstanceId", System.Data.DbType.Int32);
+                            var oldClusterIdParam = insertCmd.Parameters.Add("@OldClusterInstanceId", System.Data.DbType.Int32);
+                            var mepIdParam = insertCmd.Parameters.Add("@MepElementId", System.Data.DbType.Int32);
+                            var hostIdParam = insertCmd.Parameters.Add("@HostElementId", System.Data.DbType.Int32);
+                            var intersectionXParam = insertCmd.Parameters.Add("@IntersectionX", System.Data.DbType.Double);
+                            var intersectionYParam = insertCmd.Parameters.Add("@IntersectionY", System.Data.DbType.Double);
+                            var intersectionZParam = insertCmd.Parameters.Add("@IntersectionZ", System.Data.DbType.Double);
+                            var markedForClusterParam = insertCmd.Parameters.Add("@MarkedForClusterProcess", System.Data.DbType.Int32);
+                            var afterClusterSleeveIdParam = insertCmd.Parameters.Add("@AfterClusterSleeveId", System.Data.DbType.Int32);
+                            var isClusteredFlagParam = insertCmd.Parameters.Add("@IsClusteredFlag", System.Data.DbType.Int32);
+                            
+                            insertCmd.Prepare();
+                            
+                            foreach (var update in updatesList)
+                            {
+                                guidParam.Value = update.ClashZoneId.ToString().ToUpperInvariant();
+                                isResolvedParam.Value = update.IsResolved ? 1 : 0;
+                                isClusterResolvedParam.Value = update.IsClusterResolved ? 1 : 0;
+                                sleeveIdParam.Value = update.SleeveInstanceId > 0 ? (object)update.SleeveInstanceId : DBNull.Value;
+                                clusterIdParam.Value = update.ClusterInstanceId > 0 ? (object)update.ClusterInstanceId : DBNull.Value;
+                                oldSleeveIdParam.Value = update.OldSleeveInstanceId > 0 ? (object)update.OldSleeveInstanceId : DBNull.Value;
+                                oldClusterIdParam.Value = update.OldClusterInstanceId > 0 ? (object)update.OldClusterInstanceId : DBNull.Value;
+                                mepIdParam.Value = update.MepElementId;
+                                hostIdParam.Value = update.StructuralElementId;
+                                intersectionXParam.Value = update.IntersectionPointX;
+                                intersectionYParam.Value = update.IntersectionPointY;
+                                intersectionZParam.Value = update.IntersectionPointZ;
+                                markedForClusterParam.Value = update.MarkedForClusterProcess.HasValue ? (object)(update.MarkedForClusterProcess.Value ? 1 : 0) : DBNull.Value;
+                                afterClusterSleeveIdParam.Value = update.AfterClusterSleeveId > 0 ? (object)update.AfterClusterSleeveId : DBNull.Value;
+                                isClusteredFlagParam.Value = update.IsClusteredFlag.HasValue ? (object)(update.IsClusteredFlag.Value ? 1 : 0) : DBNull.Value;
+                                
+                                insertCmd.ExecuteNonQuery();
+                            }
+                        }
+                        
+                        // Step 3: Single UPDATE with JOIN to temp table (1 SQL statement for all updates)
+                        using (var bulkUpdateCmd = _context.Connection.CreateCommand())
+                        {
+                            bulkUpdateCmd.Transaction = transaction;
+                            bulkUpdateCmd.CommandText = @"
+                                UPDATE ClashZones
+                                SET 
+                                    IsResolvedFlag = t.IsResolvedFlag,
+                                    IsClusterResolvedFlag = t.IsClusterResolvedFlag,
+                                    SleeveInstanceId = t.SleeveInstanceId,
+                                    ClusterInstanceId = t.ClusterInstanceId,
+                                    MarkedForClusterProcess = t.MarkedForClusterProcess,
+                                    AfterClusterSleeveId = t.AfterClusterSleeveId,
+                                    IsClusteredFlag = t.IsClusteredFlag,
+                                    ReadyForPlacementFlag = CASE 
+                                        WHEN t.IsResolvedFlag = 0 AND t.IsClusterResolvedFlag = 0 THEN 1 
+                                        ELSE ClashZones.ReadyForPlacementFlag 
+                                    END,
+                                    UpdatedAt = datetime('now', '+5 hours', '+30 minutes')
+                                FROM TempFlagUpdates t
+                                WHERE ClashZones.ClashZoneId = COALESCE(
+                                    (SELECT ClashZoneId FROM ClashZones cz 
+                                     WHERE UPPER(cz.ClashZoneGuid) = UPPER(t.ClashZoneGuid) 
+                                       AND cz.ClashZoneGuid != '' AND cz.ClashZoneGuid IS NOT NULL
+                                     LIMIT 1),
+                                    (SELECT ClashZoneId FROM ClashZones cz 
+                                     WHERE t.OldSleeveInstanceId > 0 
+                                       AND cz.SleeveInstanceId = t.OldSleeveInstanceId
+                                       AND cz.MepElementId = t.MepElementId 
+                                       AND cz.HostElementId = t.HostElementId 
+                                       AND ABS(cz.IntersectionX - t.IntersectionX) < 0.001 
+                                       AND ABS(cz.IntersectionY - t.IntersectionY) < 0.001 
+                                       AND ABS(cz.IntersectionZ - t.IntersectionZ) < 0.001
+                                     LIMIT 1),
+                                    (SELECT ClashZoneId FROM ClashZones cz 
+                                     WHERE t.OldClusterInstanceId > 0 
+                                       AND cz.ClusterInstanceId = t.OldClusterInstanceId
+                                       AND cz.MepElementId = t.MepElementId 
+                                       AND cz.HostElementId = t.HostElementId 
+                                       AND ABS(cz.IntersectionX - t.IntersectionX) < 0.001 
+                                       AND ABS(cz.IntersectionY - t.IntersectionY) < 0.001 
+                                       AND ABS(cz.IntersectionZ - t.IntersectionZ) < 0.001
+                                     LIMIT 1),
+                                    NULL
+                                )";
+                            rowsAffectedTotal = bulkUpdateCmd.ExecuteNonQuery();
+                        }
+                        
+                        // Step 4: Cleanup temp table
+                        using (var dropCmd = _context.Connection.CreateCommand())
+                        {
+                            dropCmd.Transaction = transaction;
+                            dropCmd.CommandText = "DROP TABLE IF EXISTS TempFlagUpdates";
+                            dropCmd.ExecuteNonQuery();
+                        }
+                        
+                        int updateCount = updatesList.Count;
+                        int notFoundCount = updateCount - rowsAffectedTotal;
+                        int multipleRowsCount = 0; // Can't track this in bulk mode
+                        
+                        // ✅ Old per-row loop completely removed - replaced with bulk temp table approach above
 
                         transaction.Commit();
-                        _logger($"[SQLite] ✅ Batch updated flags: {updateCount} updates attempted, {rowsAffectedTotal} rows affected, {notFoundCount} GUIDs not found, {multipleRowsCount} updates matched multiple rows");
+                        _logger($"[SQLite] ✅ 🚀 BULK UPDATE: {updateCount} updates in single transaction, {rowsAffectedTotal} rows affected, {notFoundCount} not found");
                         
                         if (multipleRowsCount > 0)
                         {
                             _logger($"[SQLite] ⚠️⚠️⚠️ WARNING: {multipleRowsCount} updates matched multiple rows! This indicates duplicate entries in the database. Expected: 1 row per update. Actual: {rowsAffectedTotal} rows for {updateCount} updates.");
                         }
-                    }
                 }
                 catch (Exception ex)
                 {

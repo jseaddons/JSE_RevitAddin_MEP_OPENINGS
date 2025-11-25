@@ -4,6 +4,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
@@ -30,6 +31,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _document = document ?? throw new ArgumentNullException(nameof(document));
         }
         
+        /// <summary>
+        /// ✅ OOP HELPER: Gets the section box from the active 3D view.
+        /// Returns null if no 3D view is active or no section box is enabled.
+        /// </summary>
         /// <summary>
         /// ✅ SESSION PROTECTION: Register a cluster sleeve as recently placed.
         /// This prevents it from being deleted by DeleteSleeveForIntersectionPointChange() during refresh.
@@ -170,16 +175,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 try
                 {
-                    // ✅ PHASE 2: DATABASE-FIRST - Get clash zones with sleeve IDs from database
+                    // ✅ SOLID REFACTOR: Use existing SectionBoxHelper for section box detection
                     List<ClashZone> dbZones = null;
+                    var activeView = _document.ActiveView;
+                    BoundingBoxXYZ sectionBox = null;
+                    
+                    if (activeView is View3D view3D)
+                    {
+                        sectionBox = SectionBoxHelper.GetSectionBoxBounds(view3D);
+                    }
+                    
                     try
                     {
                         using (var context = new SleeveDbContext(_document))
                         {
                             var repository = new ClashZoneRepository(context);
-                            dbZones = repository.GetClashZonesByCategory(category)
-                                ?.Where(z => z != null && (z.SleeveInstanceId > 0 || z.ClusterSleeveInstanceId > 0))
-                                .ToList();
+                            
+                            // ✅ Use section-box-aware query if section box is active
+                            if (sectionBox != null && OptimizationFlags.UseRTreeDatabaseIndex)
+                            {
+                                // Query ALL zones within section box (R-tree spatial index)
+                                dbZones = repository.GetClashZonesByCategoryInSectionBox(category, sectionBox);
+                                
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[FLAG-MANAGER] ✅ Section-box query: Loaded {dbZones?.Count ?? 0} zones (filtered by R-tree) for category '{category}'");
+                            }
+                            else
+                            {
+                                // Fallback: Load all zones for category (no section box or R-tree disabled)
+                                dbZones = repository.GetClashZonesByCategory(category);
+                                
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[FLAG-MANAGER] ⚠️ Loaded {dbZones?.Count ?? 0} zones (NO section-box filter) for category '{category}'");
+                            }
+                            
+                            // Filter to only zones with sleeve IDs
+                            if (dbZones != null)
+                            {
+                                dbZones = dbZones.Where(z => z != null && (z.SleeveInstanceId > 0 || z.ClusterSleeveInstanceId > 0))
+                                    .ToList();
+                            }
                         }
                     }
                     catch (Exception dbEx)
@@ -799,6 +834,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     try
                     {
+                        // ✅ SOLID REFACTOR: Use existing SectionBoxHelper for section box detection
+                        var activeView = _document.ActiveView;
+                        BoundingBoxXYZ sectionBoxFromHelper = null;
+                        
+                        if (activeView is View3D view3D)
+                        {
+                            sectionBoxFromHelper = SectionBoxHelper.GetSectionBoxBounds(view3D);
+                        }
+                        
                         // ✅ CRITICAL FIX: When "Adopt to document" is enabled, check DATABASE directly first
                         // Database is the source of truth - if database has IsResolved=1 but sleeve is deleted in Revit, reset database flags
                         List<ClashZone> dbZonesWithResolvedFlags = null;
@@ -822,10 +866,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 
                                 // ✅ CRITICAL: Load zones from DATABASE where IsResolved=1 OR IsClusterResolved=1
                                 // This is the source of truth - database flags tell us which zones have sleeves placed
-                                // ✅ SIMPLE FIX: Load by FILTER NAME (if provided) then filter by SECTION BOX
                                 var allDbZones = new List<ClashZone>();
                                 
-                                if (filterNames != null && filterNames.Count > 0)
+                                // ✅ Use section box from helper (prefer parameter, fallback to helper)
+                                var activeSectionBox = sectionBox ?? sectionBoxFromHelper;
+                                
+                                // ✅ SECTION BOX OPTIMIZATION: Use database-level filtering when section box is active
+                                if (activeSectionBox != null && OptimizationFlags.UseRTreeDatabaseIndex)
+                                {
+                                    // Query only zones within section box (R-tree spatial index)
+                                    allDbZones = repository.GetClashZonesByCategoryInSectionBox(category, activeSectionBox) ?? new List<ClashZone>();
+                                    
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[FLAG-MANAGER] ✅ Section-box query: Loaded {allDbZones.Count} zones (filtered by R-tree) for category '{category}'");
+                                    if (!string.IsNullOrWhiteSpace(refreshLogName))
+                                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER] ✅ Section-box query: Loaded {allDbZones.Count} zones (filtered by R-tree) for category '{category}'\n");
+                                }
+                                else if (filterNames != null && filterNames.Count > 0)
                                 {
                                     // ✅ Load zones by filter name (only zones from selected filters)
                                     foreach (var filterName in filterNames)
@@ -836,40 +893,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         var filterZones = repository.GetClashZonesByFilter(filterName, category, unresolvedOnly: false, readyForPlacementOnly: false) ?? new List<ClashZone>();
                                         allDbZones.AddRange(filterZones);
                                     }
+                                    
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[FLAG-MANAGER] ✅ Loaded {allDbZones.Count} zones by filter name for category '{category}'");
+                                    if (!string.IsNullOrWhiteSpace(refreshLogName))
+                                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER] ✅ Loaded {allDbZones.Count} zones by filter name for category '{category}'\n");
                                 }
                                 else
                                 {
-                                    // Fallback: Load all zones for category (if no filter names provided)
+                                    // Fallback: Load all zones for category (no section box or R-tree disabled)
                                     allDbZones = repository.GetClashZonesByCategory(category) ?? new List<ClashZone>();
+                                    
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[FLAG-MANAGER] ⚠️ Loaded {allDbZones.Count} zones (NO section-box filter) for category '{category}'");
+                                    if (!string.IsNullOrWhiteSpace(refreshLogName))
+                                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER] ⚠️ Loaded {allDbZones.Count} zones (NO section-box filter) for category '{category}'\n");
                                 }
                                 
-                                // ✅ FILTER: Only check zones within section box + with resolved flags
+                                // ✅ FILTER: Only check zones with resolved flags
                                 dbZonesWithResolvedFlags = allDbZones?
                                     .Where(z => z != null && (z.IsResolved || z.IsClusterResolved))
-                                    .Where(z => 
-                                    {
-                                        // ✅ FILTER BY SECTION BOX: Only check zones within section box
-                                        if (sectionBox == null)
-                                            return true; // No section box - check all zones
-                                        
-                                        var intersectionPoint = z.IntersectionPoint;
-                                        if (intersectionPoint == null)
-                                            return false; // Can't check without intersection point
-                                        
-                                        const double tol = 0.1; // Tolerance to avoid precision misses (in feet ~ 30mm)
-                                        var sb = sectionBox;
-                                        return intersectionPoint.X >= sb.Min.X - tol && intersectionPoint.X <= sb.Max.X + tol &&
-                                               intersectionPoint.Y >= sb.Min.Y - tol && intersectionPoint.Y <= sb.Max.Y + tol &&
-                                               intersectionPoint.Z >= sb.Min.Z - tol && intersectionPoint.Z <= sb.Max.Z + tol;
-                                    })
                                     .ToList();
                                 
                                 if (dbZonesWithResolvedFlags != null && dbZonesWithResolvedFlags.Count > 0)
                                 {
                                     if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Info($"[FLAG-MANAGER] ✅ Loaded {dbZonesWithResolvedFlags.Count} zones from DATABASE with resolved flags for category '{category}'");
+                                        DebugLogger.Info($"[FLAG-MANAGER] ✅ Filtered to {dbZonesWithResolvedFlags.Count} zones with resolved flags for category '{category}'");
                                     if (!string.IsNullOrWhiteSpace(refreshLogName))
-                                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER] ✅ Loaded {dbZonesWithResolvedFlags.Count} zones from DATABASE with resolved flags for category '{category}'\n");
+                                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER] ✅ Filtered to {dbZonesWithResolvedFlags.Count} zones with resolved flags for category '{category}'\n");
                                 }
                             }
                         }

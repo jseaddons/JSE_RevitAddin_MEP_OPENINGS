@@ -304,6 +304,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         public (int PlacedCount, int SkippedCount, int ErrorCount) PlaceAllSleevesInTransaction(List<ClashZone> clashZones)
         {
+            // ✅ DIAGNOSTIC: Log batching flag status at placement start
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Info($"[BATCH-PARAMS] ═══ PLACEMENT START ═══ UseBatchedParameterWrites={OptimizationFlags.UseBatchedParameterWrites}, _deferredParameters initialized={_deferredParameters != null}");
+            }
+            
             // ✅ PERFORMANCE MONITORING: Initialize placement performance monitor
             string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
             string performanceLogName = $"IndividualPlacement_{timestamp}.log";
@@ -837,20 +843,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     var existingIndividualSleeve = GetCachedElement(clashZone.SleeveInstanceId);
                                     if (existingIndividualSleeve != null)
                                     {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} already has individual sleeve {clashZone.SleeveInstanceId}");
-                                        SafeFileLogger.SafeAppendText(placementLogName, $"[{DateTime.Now}] SKIP IndividualExists: ClashZone={clashZone.Id}, SleeveId={clashZone.SleeveInstanceId}\n");
-                                        SkippedCount++;
-                                        continue;
+                                        // ✅ PATH 1 FIX: If sleeve exists and PATH 1 (Replay), just reset flags and skip placement
+                                        // No calculations needed - sleeve instance IDs are already in DB
+                                        if (_isReplayPath)
+                                        {
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                DebugLogger.Info($"[UniversalSleevePlacer] ✅ PATH 1: Sleeve {clashZone.SleeveInstanceId} exists for ClashZone {clashZone.Id} - resetting flags only, skipping placement");
+                                            
+                                            // Reset flags to true (sleeve exists, so it's resolved)
+                                            clashZone.IsResolved = true;
+                                            
+                                            // Update flags in DB/XML
+                                            try
+                                            {
+                                                _flagManager.UpdateFlagsForPlacement(clashZone, clashZone.SleeveInstanceId, isCluster: false, clashZone.MepElementCategory, _filterName);
+                                            }
+                                            catch (Exception flagEx)
+                                            {
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                    DebugLogger.Warning($"[UniversalSleevePlacer] Error updating flags for PATH 1 zone {clashZone.Id}: {flagEx.Message}");
+                                            }
+                                            
+                                            SkippedCount++;
+                                            SafeFileLogger.SafeAppendText(placementLogName, $"[{DateTime.Now}] PATH 1 SKIP IndividualExists: ClashZone={clashZone.Id}, SleeveId={clashZone.SleeveInstanceId}, Flags reset\n");
+                                            singleSleeveTracker.SetItemCount(1);
+                                            continue;
+                                        }
+                                        else
+                                        {
+                                            // PATH 2/3: Normal skip logic
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                DebugLogger.Info($"[UniversalSleevePlacer] SKIP: ClashZone {clashZone.Id} already has individual sleeve {clashZone.SleeveInstanceId}");
+                                            SafeFileLogger.SafeAppendText(placementLogName, $"[{DateTime.Now}] SKIP IndividualExists: ClashZone={clashZone.Id}, SleeveId={clashZone.SleeveInstanceId}\n");
+                                            SkippedCount++;
+                                            continue;
+                                        }
                                     }
                                     else
                                     {
+                                        // Sleeve ID exists in DB but sleeve was deleted - reset and place
                                         clashZone.IsResolved = false;
                                         clashZone.SleeveInstanceId = -1;
                                     }
                                 }
 
                                 // STEP 3: If we reach here, place individual sleeve (fresh or replacement)
+                                // ✅ PATH 1: This only happens if sleeve was deleted (ID in DB but sleeve missing in Revit)
 
                                 // ✅ CRITICAL: Check Global XML before placement (prevents cross-filter duplicates)
                                 // ✅ USES GlobalIndexService (GUID-based) per methodology document
@@ -1927,19 +1965,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                             
                             // ✅ STEP 5 OPTIMIZATION: Flush all deferred parameters after regeneration
-                            if (OptimizationFlags.UseBatchedParameterWrites && _deferredParameters.Count > 0)
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[BATCH-PARAMS] ═══ BEFORE FLUSH CHECK ═══ UseBatchedParameterWrites={OptimizationFlags.UseBatchedParameterWrites}, _deferredParameters.Count={_deferredParameters?.Count ?? 0}, placedSleeveIds.Count={placedSleeveIds.Count}");
+                                if (_deferredParameters != null && _deferredParameters.Count > 0)
+                                {
+                                    var sleeveIds = string.Join(", ", _deferredParameters.Keys.Select(id => id.IntegerValue));
+                                    DebugLogger.Info($"[BATCH-PARAMS] 📋 Deferred sleeve IDs: [{sleeveIds}]");
+                                }
+                            }
+                            
+                            if (OptimizationFlags.UseBatchedParameterWrites && _deferredParameters != null && _deferredParameters.Count > 0)
                             {
                                 var flushTimer = System.Diagnostics.Stopwatch.StartNew();
+                                int paramCountBeforeFlush = _deferredParameters.Count;
+                                int totalParams = _deferredParameters.Values.Sum(d => d.Count);
+                                
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
-                                    DebugLogger.Info($"[BATCH-PARAMS] Flushing {_deferredParameters.Count} sleeve parameters after regeneration...");
+                                    DebugLogger.Info($"[BATCH-PARAMS] 🔄 ABOUT TO FLUSH: {paramCountBeforeFlush} sleeves with {totalParams} total parameters after regeneration...");
                                 }
                                 FlushDeferredParameters();
                                 flushTimer.Stop();
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
-                                    DebugLogger.Info($"[BATCH-PARAMS] ✅ Flushed {_deferredParameters.Count} sleeve parameters in {flushTimer.ElapsedMilliseconds}ms");
+                                    DebugLogger.Info($"[BATCH-PARAMS] ✅ FLUSH COMPLETE: {paramCountBeforeFlush} sleeves ({totalParams} parameters) in {flushTimer.ElapsedMilliseconds}ms");
                                 }
+                            }
+                            else if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[BATCH-PARAMS] ⚠️ SKIPPED FLUSH: UseBatchedParameterWrites={OptimizationFlags.UseBatchedParameterWrites}, _deferredParameters.Count={_deferredParameters?.Count ?? 0}");
                             }
 
                             // ✅ PERFORMANCE OPTIMIZATION: Batch bounding box retrieval after regeneration
@@ -3939,7 +3994,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         private void FlushDeferredParameters()
         {
-            if (_deferredParameters == null || _deferredParameters.Count == 0) return;
+            // ✅ CRITICAL DIAGNOSTIC: Log call stack to identify where this is being called from
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                var stackTrace = new System.Diagnostics.StackTrace(skipFrames: 1, fNeedFileInfo: false);
+                var caller = stackTrace.GetFrame(0)?.GetMethod()?.Name ?? "Unknown";
+                DebugLogger.Info($"[BATCH-PARAMS] 🔍 FlushDeferredParameters CALLED from: {caller}, StackDepth={stackTrace.FrameCount}");
+            }
+            
+            if (_deferredParameters == null || _deferredParameters.Count == 0)
+            {
+                // ✅ DIAGNOSTIC: Log when batching is enabled but no parameters deferred
+                if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseBatchedParameterWrites)
+                {
+                    DebugLogger.Info($"[BATCH-PARAMS] ⚠️ FlushDeferredParameters called but _deferredParameters is empty (batching enabled but no parameters deferred)");
+                }
+                return;
+            }
+            
+            // ✅ DIAGNOSTIC: Log flush start with count
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                int totalParams = _deferredParameters.Values.Sum(d => d.Count);
+                DebugLogger.Info($"[BATCH-PARAMS] 🔄 Flushing {_deferredParameters.Count} individual sleeves with {totalParams} total parameters...");
+                DebugLogger.Info($"[BATCH-PARAMS] 📊 Sleeve IDs: [{string.Join(", ", _deferredParameters.Keys.Select(id => id.IntegerValue))}]");
+            }
             
             int successCount = 0;
             int failCount = 0;
@@ -4006,11 +4085,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Log summary
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    DebugLogger.Info($"[BATCH-PARAMS] Flush complete: {successCount} sleeves updated, {failCount} failed");
+                    int totalParams = _deferredParameters.Values.Sum(d => d.Count);
+                    DebugLogger.Info($"[BATCH-PARAMS] ✅ Flushed {successCount} individual sleeves ({totalParams} parameters) in batch, {failCount} failed");
                     if (errorLog.Length > 0)
                     {
                         DebugLogger.Warning($"[BATCH-PARAMS] Errors during flush:\n{errorLog}");
                     }
+                    
+                    // ✅ ALSO: Log to file for verification
+                    var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Logs", "R2023");
+                    Directory.CreateDirectory(logDir);
+                    var profPath = Path.Combine(logDir, "individual_sleeve_param_batching.log");
+                    File.AppendAllText(profPath, 
+                        $"{DateTime.Now:O}\t" +
+                        $"Sleeves={successCount}\t" +
+                        $"TotalParams={totalParams}\t" +
+                        $"Failed={failCount}\n");
                 }
             }
             catch (Exception ex)
@@ -4023,6 +4113,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             finally
             {
+                // ✅ CRITICAL DIAGNOSTIC: Log before clearing to track when/why it's cleared
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[BATCH-PARAMS] 🗑️ CLEARING _deferredParameters: Count={_deferredParameters?.Count ?? 0} sleeves, StackDepth={new System.Diagnostics.StackTrace(skipFrames: 1, fNeedFileInfo: false).FrameCount}");
+                }
+                
                 // Clear deferred parameters after flush (ready for next placement batch)
                 _deferredParameters.Clear();
             }
@@ -4076,6 +4172,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!_deferredParameters.ContainsKey(sleeveInstance.Id))
                             _deferredParameters[sleeveInstance.Id] = new Dictionary<string, object>();
                         _deferredParameters[sleeveInstance.Id][logicalName] = value;
+                        
+                        // ✅ DIAGNOSTIC: Log when parameters are deferred (first 5 sleeves only to avoid spam)
+                        if (!DeploymentConfiguration.DeploymentMode && _deferredParameters.Count <= 5)
+                        {
+                            DebugLogger.Info($"[BATCH-PARAMS] ⚡ DEFERRED: Sleeve={sleeveInstance.Id.IntegerValue}, Param={logicalName}, TotalDeferred={_deferredParameters.Count} sleeves, ParamsForThisSleeve={_deferredParameters[sleeveInstance.Id].Count}");
+                        }
                         
                         // Still log timing if instrumentation enabled (measures overhead of accumulation)
                         if (OptimizationFlags.EnableParameterTimingInstrumentation)

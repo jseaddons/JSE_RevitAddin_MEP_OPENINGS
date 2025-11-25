@@ -194,32 +194,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public SleevePlacementPath Path => SleevePlacementPath.Replay;
 
         public SleevePlacementResult Execute(SleevePlacementRequest request)
-        {
-            if (request == null) throw new ArgumentNullException(nameof(request));
-
-            var clearanceSettings = request.ClearanceSettings != null
-                ? request.ClearanceSettings.ToDictionary(kv => kv.Key, kv => kv.Value)
-                : new Dictionary<string, double>();
-
-            var placerService = new UniversalSleevePlacerService(
-                request.Document,
-                request.Conditions,
-                request.Strategy,
-                clearanceSettings,
-                request.FilterName,
-                request.FlagManager,
-                isReplayPath: request.RequestedPath == SleevePlacementPath.Replay);
-
-            var placementOutcome = placerService.PlaceAllSleevesInTransaction(
-                request.ClashZones?.ToList() ?? new List<ClashZone>());
-
-            return SleevePlacementResult.FromCounts(
-                placementOutcome.PlacedCount,
-                placementOutcome.SkippedCount,
-                placementOutcome.ErrorCount,
-                SleevePlacementPath.Replay);
-        }
-    }
 
     /// <summary>
     /// ✅ PATH 2 (Sizing): Performs full detection/sizing for fresh filter+category combos.

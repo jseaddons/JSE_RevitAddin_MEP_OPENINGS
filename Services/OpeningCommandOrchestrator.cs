@@ -352,10 +352,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         using (var cmd = dbContext.Connection.CreateCommand())
                         {
-                            // Reset all file combos for this filter that have IsFilterComboNew=1
+                            // ✅ DATABASE-ONLY: Reset all file combos for this filter that have IsFilterComboNew=1
+                            // This marks them as processed (IsFilterComboNew=0) so Path 1 will be available next refresh
                             cmd.CommandText = @"
                                 UPDATE FileCombos
-                                SET IsFilterComboNew = 0
+                                SET IsFilterComboNew = 0, ProcessedAt = CURRENT_TIMESTAMP
                                 WHERE FilterId = @FilterId AND IsFilterComboNew = 1";
                             cmd.Parameters.AddWithValue("@FilterId", filterId);
                             
@@ -364,14 +365,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             {
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
-                                    DebugLogger.Info($"[COMBO-FLAG] ✅ Reset IsFilterComboNew=false for {affected} file combo(s) for filter '{filter.Name}' (Category='{categoryName}') - file combos marked as used");
+                                    DebugLogger.Info($"[COMBO-FLAG] ✅ Reset IsFilterComboNew=0 for {affected} file combo(s) for filter '{filter.Name}' (Category='{categoryName}') - file combos marked as processed (database-only, no XML)");
                                 }
                             }
                             else
                             {
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
-                                    DebugLogger.Info($"[COMBO-FLAG] No file combos to reset for filter '{filter.Name}' (Category='{categoryName}') - all already marked as used");
+                                    DebugLogger.Info($"[COMBO-FLAG] No file combos to reset for filter '{filter.Name}' (Category='{categoryName}') - all combos already processed");
                                 }
                             }
                         }
@@ -687,7 +688,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // ✅ PERFORMANCE: Counts are now stored in outer scope variables
                     try
                     {
-                        var clusterResult = clusterService.ClusterSleeves(_document, categoryString, _uiDocument, xmlFilePath, filter.Name, placedClusterSleeves, isPath1Replay, comboId, filterId);
+                        // ✅ FIX: Pass clearance settings to clustering service for condition change check
+                        var clusterResult = clusterService.ClusterSleeves(_document, categoryString, _uiDocument, xmlFilePath, filter.Name, placedClusterSleeves, isPath1Replay, comboId, filterId, _uiClearances);
                         placedCount = clusterResult.placedCount;
                         deletedCount = clusterResult.deletedCount;
                         
@@ -873,9 +875,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 return (placedCount, deletedCount); // Return counts even on failure
             }
             
-            // ✅ PERFORMANCE FIX: After placing cluster sleeves, regenerate document and save their bounding boxes to XML
+            // ✅ PERFORMANCE FIX: After placing cluster sleeves, regenerate document and save their bounding boxes to database
             // This uses SleeveCoordinateService to update coordinates (same as individual sleeves)
-            if (placedClusterSleeves != null && placedClusterSleeves.Count > 0 && categoryString != null && xmlFilePath != null)
+            // ✅ FIX: Call even when xmlFilePath is null (database-only mode) - pass category instead
+            if (placedClusterSleeves != null && placedClusterSleeves.Count > 0 && categoryString != null)
             {
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
@@ -903,20 +906,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                     }
                     
-                    // Step 3: Save cluster sleeve bounding boxes to XML
+                    // Step 3: Save cluster sleeve bounding boxes to database (database-only mode)
                     try
                     {
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                                                         if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[OpeningCommandOrchestrator] About to call UpdateSleeveCoordinatesInXml with xmlFilePath: {xmlFilePath ?? "NULL"}");
+                                DebugLogger.Info($"[OpeningCommandOrchestrator] About to call UpdateSleeveCoordinatesInXml with category: {categoryString ?? "NULL"} (database-only mode)");
                         }
                         var coordinateService = new SleeveCoordinateService(_document);
-                        coordinateService.UpdateSleeveCoordinatesInXml(xmlFilePath);
+                        // ✅ DATABASE-ONLY: Pass category parameter (xmlFilePath obsolete, kept for backward compatibility)
+                        coordinateService.UpdateSleeveCoordinatesInXml(categoryString);
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                                                         if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[OpeningCommandOrchestrator] ✓ Updated sleeve coordinates for cluster sleeves");
+                                DebugLogger.Info($"[OpeningCommandOrchestrator] ✓ Updated sleeve coordinates for cluster sleeves (including bounding boxes) in database");
                         }
                     }
                     catch (Exception coordEx)
@@ -1706,20 +1710,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 } catch { }
                 
-                // ✅ DEPLOYMENT: Wrapped in deployment mode check
+                // ✅ DATABASE-ONLY: Use category parameter instead of xmlFilePath (XML obsolete)
+                // Get category string from filter
+                string categoryForUpdate = filter.Category switch
+                {
+                    Models.MepCategory.Ducts => "Ducts",
+                    Models.MepCategory.DuctAccessories => "Duct Accessories",
+                    Models.MepCategory.Pipes => "Pipes",
+                    Models.MepCategory.CableTrays => "Cable Trays",
+                    _ => "Ducts"
+                };
+                
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ⚠️ About to call UpdateSleeveCoordinatesInXml with xmlFilePath: {xmlFilePath ?? "NULL"}\n");
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] About to call UpdateSleeveCoordinatesInXml with category: {categoryForUpdate ?? "NULL"} (database-only mode)\n");
                 }
                 try {
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] CALLING_UpdateSleeveCoordinatesInXml: {xmlFilePath ?? "NULL"}\n");
+                        System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] CALLING_UpdateSleeveCoordinatesInXml: category={categoryForUpdate ?? "NULL"} (database-only)\n");
                     }
                 } catch { }
                 
-                coordinateService.UpdateSleeveCoordinatesInXml(xmlFilePath);
+                coordinateService.UpdateSleeveCoordinatesInXml(categoryForUpdate);
                 
                 try {
                     if (!DeploymentConfiguration.DeploymentMode)
