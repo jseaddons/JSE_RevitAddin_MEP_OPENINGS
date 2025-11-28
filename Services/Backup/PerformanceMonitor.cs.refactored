@@ -1,0 +1,134 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces;
+using JSE_RevitAddin_MEP_OPENINGS.Utils;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
+
+namespace JSE_RevitAddin_MEP_OPENINGS.Services
+{
+    /// <summary>
+    /// Monitors and logs performance metrics for sleeve placement operations.
+    /// Implements Single Responsibility Principle - only handles performance tracking.
+    /// </summary>
+    public class PerformanceMonitor : IPerformanceMonitor
+    {
+        private readonly Dictionary<string, Stopwatch> _timers;
+        private readonly object _lock = new object();
+
+        public PerformanceMonitor()
+        {
+            _timers = new Dictionary<string, Stopwatch>();
+        }
+
+        public bool IsEnabled => !DeploymentConfiguration.DeploymentMode && OptimizationFlags.EnablePerformanceLogging;
+
+        public void StartOperation(string operationName)
+        {
+            if (!IsEnabled || string.IsNullOrEmpty(operationName))
+                return;
+
+            lock (_lock)
+            {
+                if (!_timers.ContainsKey(operationName))
+                {
+                    _timers[operationName] = new Stopwatch();
+                }
+
+                _timers[operationName].Restart();
+            }
+        }
+
+        public void StopOperation(string operationName, int itemCount = 0)
+        {
+            if (!IsEnabled || string.IsNullOrEmpty(operationName))
+                return;
+
+            lock (_lock)
+            {
+                if (!_timers.ContainsKey(operationName))
+                {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[PERF] Attempted to stop operation '{operationName}' that was never started");
+                    return;
+                }
+
+                var timer = _timers[operationName];
+                timer.Stop();
+
+                var message = itemCount > 0
+                    ? $"[{DateTime.Now:HH:mm:ss}] {operationName}: {timer.ElapsedMilliseconds}ms ({itemCount} items, {(double)timer.ElapsedMilliseconds / itemCount:F2}ms/item)"
+                    : $"[{DateTime.Now:HH:mm:ss}] {operationName}: {timer.ElapsedMilliseconds}ms";
+
+                                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[PERF] {message}");
+                SafeFileLogger.SafeAppendText("placement_performance.log", message);
+            }
+        }
+
+        public void LogMetric(string metricName, object value)
+        {
+            if (!IsEnabled || string.IsNullOrEmpty(metricName))
+                return;
+
+            var message = $"[{DateTime.Now:HH:mm:ss}] {metricName}: {value}";
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[PERF] {message}");
+            SafeFileLogger.SafeAppendText("placement_performance.log", message);
+        }
+        
+        /// <summary>
+        /// Tracks an operation using a disposable tracker pattern.
+        /// Automatically stops timing when the tracker is disposed.
+        /// </summary>
+        /// <param name="operationName">Name of the operation</param>
+        /// <returns>OperationTracker that stops timing when disposed</returns>
+        public OperationTracker TrackOperation(string operationName)
+        {
+            return new OperationTracker(this, operationName);
+        }
+        
+        /// <summary>
+        /// Disposable tracker for operation timing.
+        /// Automatically stops timing when disposed (using pattern).
+        /// </summary>
+        public class OperationTracker : IDisposable
+        {
+            private readonly PerformanceMonitor _monitor;
+            private readonly string _operationName;
+            private bool _disposed = false;
+            private int _itemCount = 0;
+            
+            internal OperationTracker(PerformanceMonitor monitor, string operationName)
+            {
+                _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
+                _operationName = operationName ?? throw new ArgumentNullException(nameof(operationName));
+                
+                if (_monitor.IsEnabled && !string.IsNullOrEmpty(_operationName))
+                {
+                    _monitor.StartOperation(_operationName);
+                }
+            }
+            
+            /// <summary>
+            /// Sets the item count for this operation (used when stopping)
+            /// </summary>
+            public void SetItemCount(int count)
+            {
+                _itemCount = count;
+            }
+            
+            public void Dispose()
+            {
+                if (!_disposed)
+                {
+                    if (_monitor.IsEnabled && !string.IsNullOrEmpty(_operationName))
+                    {
+                        _monitor.StopOperation(_operationName, _itemCount);
+                    }
+                    _disposed = true;
+                }
+            }
+        }
+    }
+}

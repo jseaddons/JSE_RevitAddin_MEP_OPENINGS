@@ -250,7 +250,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 return new List<ClashZone>();
             }
 
-            // ✅ STEP 6: Convert intersections to ClashZones using ClashZoneService
+            // ✅ STEP 6: Convert intersections to ClashZones using ClashZoneService (Legacy)
+            // Note: Using legacy ClashZoneService from ClashZoneService_Legacy.cs
             var clashZoneService = new ClashZoneService(
                 new ClashZoneStorage(),
                 msg => _logger($"[CLASH-ZONE-SERVICE] {msg}"),

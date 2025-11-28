@@ -222,6 +222,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 // Removed redundant check - if doc is not modifiable, Create.NewFamilyInstance will throw
                 // which will be caught and logged below
 
+                // ✅ WALL/FRAMING MIDPOINT OVERRIDE: Replace delegate midpoint with computed midpoint from stored sleeve bounding boxes
+                // This permanently guards against the 33mm intersection-point offset without touching floor/rotated flows
+                // ⚠️⚠️⚠️ CRITICAL PROTECTION: Do not remove this override unless _getClusterBoundingBox is updated to emit the corrected centroid
+                bool isWallHost = groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing";
+                XYZ originalPlacementPoint = placementPoint;
+                
+                if (isWallHost)
+                {
+                    XYZ? theoreticalMid = ComputeClusterMidpoint(cluster);
+                    if (theoreticalMid != null)
+                    {
+                        // Calculate delta for diagnostic logging
+                        double deltaX = (theoreticalMid.X - placementPoint.X) * 304.8; // Convert to mm
+                        double deltaY = (theoreticalMid.Y - placementPoint.Y) * 304.8;
+                        double deltaZ = (theoreticalMid.Z - placementPoint.Z) * 304.8;
+                        double deltaDistance = Math.Sqrt(deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ);
+                        
+                        // Override placement point with computed midpoint
+                        placementPoint = theoreticalMid;
+                        
+                        // ✅ DIAGNOSTIC LOGGING: Log the override and delta
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            string midpointMsg = $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] 🔥 WALL/FRAMING MIDPOINT OVERRIDE:\n";
+                            midpointMsg += $"  Original PlacementPoint (from delegate): ({originalPlacementPoint.X:F6}, {originalPlacementPoint.Y:F6}, {originalPlacementPoint.Z:F6})\n";
+                            midpointMsg += $"  TheoreticalMid (from stored bboxes): ({theoreticalMid.X:F6}, {theoreticalMid.Y:F6}, {theoreticalMid.Z:F6})\n";
+                            midpointMsg += $"  Delta: X={deltaX:F2}mm, Y={deltaY:F2}mm, Z={deltaZ:F2}mm, Distance={deltaDistance:F2}mm\n";
+                            midpointMsg += $"  ✅ Using TheoreticalMid for placement (overriding delegate midpoint)\n";
+                            DebugLogger.Info(midpointMsg);
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", midpointMsg);
+                        }
+                    }
+                    else
+                    {
+                        // Log warning if midpoint computation failed
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            string warningMsg = $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ⚠️ WALL/FRAMING: ComputeClusterMidpoint returned null, using delegate placementPoint\n";
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", warningMsg);
+                        }
+                    }
+                }
+
                 // Create cluster sleeve instance
                 FamilyInstance? inst = null;
                 try
@@ -358,7 +401,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 // X-walls need +90° rotation (matches individual sleeve placement logic)
                 // Floor rotation is for rotated axis-aligned clusters (non-straight, 45°, etc.)
                 // ⚠️ CABLETRAY FIX: Cable trays on floors don't need rotation like ducts do
-                bool isWallHost = groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing";
+                // Note: isWallHost is already declared earlier in the method (for midpoint override)
                 bool isFloorHost = groupKey.hostType == "Floor" || groupKey.hostType == "Floors";
                 
                 // ✅ CATEGORY CHECK: Determine if this is a cable tray cluster
@@ -1194,6 +1237,110 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 SafeFileLogger.SafeAppendText("placement_errors.log",
                     $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ❌ Error applying rotation: {ex.Message}\n");
                 throw; // Re-throw to prevent silent failures
+            }
+        }
+
+        /// <summary>
+        /// ✅ WALL/FRAMING MIDPOINT CALCULATION: Compute cluster midpoint from stored sleeve bounding boxes.
+        /// This calculates the theoretical midpoint by unioning all stored sleeve bounding boxes and finding the centroid.
+        /// This is used to override the delegate midpoint for wall/framing clusters to prevent the 33mm intersection-point offset.
+        /// 
+        /// ⚠️⚠️⚠️ CRITICAL PROTECTION: This method is part of the regression-defense toolkit for legacy clustering.
+        /// Do not remove unless _getClusterBoundingBox is updated to emit the corrected centroid.
+        /// </summary>
+        /// <param name="cluster">List of cluster items (dynamic objects with ClashZone property)</param>
+        /// <returns>Midpoint XYZ calculated from stored sleeve bounding boxes, or null if calculation fails</returns>
+        private XYZ? ComputeClusterMidpoint(List<dynamic> cluster)
+        {
+            if (cluster == null || cluster.Count == 0)
+                return null;
+
+            try
+            {
+                double minX = double.MaxValue, minY = double.MaxValue, minZ = double.MaxValue;
+                double maxX = double.MinValue, maxY = double.MinValue, maxZ = double.MinValue;
+                int validBboxCount = 0;
+
+                // Union all stored sleeve bounding boxes
+                foreach (var item in cluster)
+                {
+                    // Extract ClashZone from dynamic item
+                    ClashZone? clashZone = null;
+                    if (item is ClashZone cz)
+                    {
+                        clashZone = cz;
+                    }
+                    else if (item?.ClashZone != null)
+                    {
+                        clashZone = item.ClashZone as ClashZone;
+                    }
+
+                    if (clashZone == null)
+                        continue;
+
+                    // Check if bounding box is initialized (not all zeros)
+                    double bboxWidth = clashZone.SleeveBoundingBoxMaxX - clashZone.SleeveBoundingBoxMinX;
+                    double bboxHeight = clashZone.SleeveBoundingBoxMaxY - clashZone.SleeveBoundingBoxMinY;
+                    double bboxDepth = clashZone.SleeveBoundingBoxMaxZ - clashZone.SleeveBoundingBoxMinZ;
+
+                    // Skip uninitialized bounding boxes (all zeros or invalid)
+                    if (bboxWidth <= 0 || bboxHeight <= 0 || bboxDepth <= 0)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [ComputeClusterMidpoint] ⚠️ Skipping uninitialized bbox for ClashZone {clashZone.Id}: W={bboxWidth:F6}, H={bboxHeight:F6}, D={bboxDepth:F6}\n");
+                        }
+                        continue;
+                    }
+
+                    // Update min/max extents
+                    minX = Math.Min(minX, clashZone.SleeveBoundingBoxMinX);
+                    minY = Math.Min(minY, clashZone.SleeveBoundingBoxMinY);
+                    minZ = Math.Min(minZ, clashZone.SleeveBoundingBoxMinZ);
+                    maxX = Math.Max(maxX, clashZone.SleeveBoundingBoxMaxX);
+                    maxY = Math.Max(maxY, clashZone.SleeveBoundingBoxMaxY);
+                    maxZ = Math.Max(maxZ, clashZone.SleeveBoundingBoxMaxZ);
+                    validBboxCount++;
+                }
+
+                // Validate that we found at least one valid bounding box
+                if (validBboxCount == 0)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [ComputeClusterMidpoint] ❌ No valid bounding boxes found in cluster (size={cluster.Count})\n");
+                    }
+                    return null;
+                }
+
+                // Calculate midpoint (centroid) of the union
+                XYZ midpoint = new XYZ(
+                    (minX + maxX) / 2.0,
+                    (minY + maxY) / 2.0,
+                    (minZ + maxZ) / 2.0
+                );
+
+                // ✅ DIAGNOSTIC LOGGING: Log the calculation details
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    string calcMsg = $"[{DateTime.Now:HH:mm:ss.fff}] [ComputeClusterMidpoint] ✅ Calculated midpoint from {validBboxCount}/{cluster.Count} valid bboxes:\n";
+                    calcMsg += $"  Bbox Union: Min=({minX:F6}, {minY:F6}, {minZ:F6}), Max=({maxX:F6}, {maxY:F6}, {maxZ:F6})\n";
+                    calcMsg += $"  Midpoint: ({midpoint.X:F6}, {midpoint.Y:F6}, {midpoint.Z:F6})\n";
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", calcMsg);
+                }
+
+                return midpoint;
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [ComputeClusterMidpoint] ❌ Exception calculating midpoint: {ex.Message}\n");
+                }
+                return null;
             }
         }
 

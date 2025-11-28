@@ -865,7 +865,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         public void SaveSleeveSnapshotsForPlacedSleeves(int filterId, List<ClashZone> placedZones)
         {
             if (placedZones == null || placedZones.Count == 0)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ⚠️ SaveSleeveSnapshotsForPlacedSleeves: No zones provided (null or empty)");
+                }
                 return;
+            }
+
+            // ✅ DIAGNOSTIC: Log what zones we received (ALWAYS log, even in deployment mode for debugging)
+            int individualCount = placedZones.Count(z => z != null && z.SleeveInstanceId > 0 && z.ClusterSleeveInstanceId <= 0);
+            int clusterCount = placedZones.Count(z => z != null && z.ClusterSleeveInstanceId > 0);
+            int bothCount = placedZones.Count(z => z != null && z.SleeveInstanceId > 0 && z.ClusterSleeveInstanceId > 0);
+            int invalidCount = placedZones.Count(z => z == null || (z.SleeveInstanceId <= 0 && z.ClusterSleeveInstanceId <= 0));
+            
+            // ✅ CRITICAL: Always log this diagnostic (even in deployment mode) to debug missing individual sleeves
+            string diagnosticMsg = $"[SQLite] SaveSleeveSnapshotsForPlacedSleeves: Total={placedZones.Count}, Individual={individualCount}, Cluster={clusterCount}, Both={bothCount}, Invalid={invalidCount}";
+            _logger(diagnosticMsg);
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                // Also log sample IDs for individual sleeves
+                var individualSamples = placedZones
+                    .Where(z => z != null && z.SleeveInstanceId > 0 && z.ClusterSleeveInstanceId <= 0)
+                    .Take(5)
+                    .Select(z => $"{z.Id}:SleeveId={z.SleeveInstanceId}")
+                    .ToList();
+                if (individualSamples.Any())
+                {
+                    _logger($"[SQLite] SaveSleeveSnapshotsForPlacedSleeves: Individual sleeve samples: {string.Join(", ", individualSamples)}");
+                }
+            }
 
             using (var transaction = _context.Connection.BeginTransaction())
             {
@@ -881,6 +910,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             return -1; // ComboId will be determined from FilterId + Category + FileKeys
                         })
                         .ToList();
+                    
+                    // ✅ DIAGNOSTIC: Log filtered zones
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        int validCount = zonesByCombo.SelectMany(g => g).Count();
+                        _logger($"[SQLite] SaveSleeveSnapshotsForPlacedSleeves: After filtering, {validCount} valid zones in {zonesByCombo.Count} combo group(s)");
+                    }
 
                     foreach (var comboGroup in zonesByCombo)
                     {
@@ -962,15 +998,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 .ToList();
 
             if (validZones.Count == 0)
+            {
+                // ✅ DIAGNOSTIC: Log why zones were filtered out
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    int nullZones = processedZones.Count(p => p.Zone == null);
+                    int noSleeveId = processedZones.Count(p => p.Zone != null && p.Zone.SleeveInstanceId <= 0 && p.Zone.ClusterSleeveInstanceId <= 0);
+                    int withSleeveId = processedZones.Count(p => p.Zone != null && p.Zone.SleeveInstanceId > 0);
+                    int withClusterId = processedZones.Count(p => p.Zone != null && p.Zone.ClusterSleeveInstanceId > 0);
+                    _logger($"[SQLite] ⚠️ InsertOrUpdateSleeveSnapshotsInternal: No valid zones! Total={processedZones.Count}, Null={nullZones}, NoIds={noSleeveId}, WithSleeveId={withSleeveId}, WithClusterId={withClusterId}");
+                }
                 return;
+            }
+
+            // ✅ DIAGNOSTIC: Log zone breakdown before grouping
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                int individualZones = validZones.Count(p => p.Zone.SleeveInstanceId > 0 && p.Zone.ClusterSleeveInstanceId <= 0);
+                int clusterZones = validZones.Count(p => p.Zone.ClusterSleeveInstanceId > 0);
+                int bothZones = validZones.Count(p => p.Zone.SleeveInstanceId > 0 && p.Zone.ClusterSleeveInstanceId > 0);
+                _logger($"[SQLite] InsertOrUpdateSleeveSnapshotsInternal: Valid zones breakdown - Individual={individualZones}, Cluster={clusterZones}, Both={bothZones}, Total={validZones.Count}");
+            }
 
             var groups = validZones.GroupBy(p =>
             {
                 var zone = p.Zone;
-                if (zone.ClusterSleeveInstanceId > 0)
+                // ✅ CRITICAL FIX: Individual sleeves should NOT be grouped as clusters
+                // Only group as cluster if ClusterSleeveInstanceId > 0 AND SleeveInstanceId <= 0 (pure cluster)
+                // If both are > 0, it's an individual sleeve that was later clustered, but we want to save it as individual
+                if (zone.ClusterSleeveInstanceId > 0 && zone.SleeveInstanceId <= 0)
                     return ("cluster", zone.ClusterSleeveInstanceId);
+                // ✅ INDIVIDUAL SLEEVE: Group by SleeveInstanceId (even if ClusterSleeveInstanceId is also set)
                 return ("sleeve", zone.SleeveInstanceId > 0 ? zone.SleeveInstanceId : -1);
             });
+
+            // ✅ DIAGNOSTIC: Log grouping results
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                int groupsCount = groups.Count();
+                int clusterGroups = groups.Count((IGrouping<(string, int), (int ComboId, ClashZone Zone)> g) => string.Equals(g.Key.Item1, "cluster", StringComparison.OrdinalIgnoreCase));
+                int sleeveGroups = groups.Count((IGrouping<(string, int), (int ComboId, ClashZone Zone)> g) => string.Equals(g.Key.Item1, "sleeve", StringComparison.OrdinalIgnoreCase));
+                int skippedGroups = groups.Count((IGrouping<(string, int), (int ComboId, ClashZone Zone)> g) => g.Key.Item2 <= 0);
+                string logMsg = $"[SQLite] InsertOrUpdateSleeveSnapshotsInternal: Grouped into {groupsCount} groups (Cluster={clusterGroups}, Sleeve={sleeveGroups}, Skipped={skippedGroups})";
+                _logger(logMsg);
+            }
 
             foreach (var group in groups)
             {
@@ -979,7 +1050,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 int groupId = key.Item2;
 
                 if (groupId <= 0)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        _logger($"[SQLite] ⚠️ Skipping group with invalid groupId={groupId}, isCluster={isCluster}, zoneCount={group.Count()}");
+                    }
                     continue;
+                }
 
                 var zones = group.Select(g => g.Zone).Where(z => z != null).ToList();
                 if (zones.Count == 0)
@@ -1060,6 +1137,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 var sleeveInstanceId = isCluster ? (int?)null : groupId;
                 var clusterInstanceId = isCluster ? (int?)groupId : null;
 
+                // ✅ DETERMINISTIC GUID: For individual sleeves, use the zone's Id (deterministic GUID)
+                // For clusters, use the first zone's GUID as the primary identifier
+                var clashZoneGuidString = zones.FirstOrDefault()?.Id.ToString().ToUpperInvariant();
+                
                 UpsertSleeveSnapshot(
                     transaction,
                     new SleeveSnapshot
@@ -1075,6 +1156,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         HostParametersJson = SerializeDictionary(hostParams),
                         SourceDocKeysJson = SerializeList(sourceDocKeys),
                         HostDocKeysJson = SerializeList(hostDocKeys),
+                        ClashZoneGuid = clashZoneGuidString, // ✅ DETERMINISTIC: Save ClashZoneGuid from zone.Id
                         UpdatedAt = DateTime.UtcNow
                     });
             }
@@ -1085,42 +1167,102 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             if (snapshot == null)
                 return;
 
-            var existingId = GetExistingSnapshotId(snapshot.SleeveInstanceId, snapshot.ClusterInstanceId, transaction);
+            // ✅ DETERMINISTIC GUID PRIORITY: Check by ClashZoneGuid first (deterministic matching)
+            // Then fall back to SleeveInstanceId/ClusterInstanceId for legacy data or when GUID is missing
+            var existingId = GetExistingSnapshotId(
+                snapshot.ClashZoneGuid, 
+                snapshot.SleeveInstanceId, 
+                snapshot.ClusterInstanceId, 
+                transaction);
 
             if (existingId.HasValue)
             {
                 snapshot.SnapshotId = existingId.Value;
                 UpdateSleeveSnapshot(transaction, snapshot);
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ✅ UPSERT: Updated existing SleeveSnapshot SnapshotId={existingId.Value} (ClashZoneGuid={snapshot.ClashZoneGuid ?? "NULL"}, SleeveInstanceId={snapshot.SleeveInstanceId?.ToString() ?? "NULL"}, ClusterInstanceId={snapshot.ClusterInstanceId?.ToString() ?? "NULL"})");
+                }
             }
             else
             {
                 InsertSleeveSnapshot(transaction, snapshot);
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ✅ UPSERT: Inserted new SleeveSnapshot (ClashZoneGuid={snapshot.ClashZoneGuid ?? "NULL"}, SleeveInstanceId={snapshot.SleeveInstanceId?.ToString() ?? "NULL"}, ClusterInstanceId={snapshot.ClusterInstanceId?.ToString() ?? "NULL"})");
+                }
             }
         }
 
-        private int? GetExistingSnapshotId(int? sleeveInstanceId, int? clusterInstanceId, SQLiteTransaction transaction)
+        /// <summary>
+        /// ✅ DETERMINISTIC GUID: Find existing snapshot by ClashZoneGuid first (deterministic), 
+        /// then fall back to SleeveInstanceId/ClusterInstanceId for legacy data or when GUID is missing.
+        /// This ensures snapshots are updated instead of appended, following the deterministic GUID principle.
+        /// </summary>
+        private int? GetExistingSnapshotId(string? clashZoneGuid, int? sleeveInstanceId, int? clusterInstanceId, SQLiteTransaction transaction)
         {
-            if (!sleeveInstanceId.HasValue && !clusterInstanceId.HasValue)
-                return null;
-
             using (var cmd = _context.Connection.CreateCommand())
             {
                 cmd.Transaction = transaction;
 
-                if (sleeveInstanceId.HasValue)
+                // ✅ PRIORITY 1: Check by ClashZoneGuid (deterministic GUID) - most reliable
+                if (!string.IsNullOrWhiteSpace(clashZoneGuid))
                 {
-                    cmd.CommandText = "SELECT SnapshotId FROM SleeveSnapshots WHERE SleeveInstanceId = @SleeveInstanceId";
-                    cmd.Parameters.AddWithValue("@SleeveInstanceId", sleeveInstanceId.Value);
-                }
-                else
-                {
-                    cmd.CommandText = "SELECT SnapshotId FROM SleeveSnapshots WHERE ClusterInstanceId = @ClusterInstanceId";
-                    cmd.Parameters.AddWithValue("@ClusterInstanceId", clusterInstanceId.Value);
+                    cmd.CommandText = @"
+                        SELECT SnapshotId FROM SleeveSnapshots 
+                        WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid) 
+                          AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL
+                        LIMIT 1";
+                    cmd.Parameters.AddWithValue("@ClashZoneGuid", clashZoneGuid);
+                    
+                    var resultByGuid = cmd.ExecuteScalar();
+                    if (resultByGuid != null && resultByGuid != DBNull.Value)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            _logger($"[SQLite] ✅ Found existing snapshot by ClashZoneGuid={clashZoneGuid}, SnapshotId={Convert.ToInt32(resultByGuid)}");
+                        }
+                        return Convert.ToInt32(resultByGuid);
+                    }
                 }
 
-                var result = cmd.ExecuteScalar();
-                if (result != null && result != DBNull.Value)
-                    return Convert.ToInt32(result);
+                // ✅ PRIORITY 2: Fall back to SleeveInstanceId (for individual sleeves)
+                if (sleeveInstanceId.HasValue && sleeveInstanceId.Value > 0)
+                {
+                    cmd.Parameters.Clear();
+                    cmd.CommandText = "SELECT SnapshotId FROM SleeveSnapshots WHERE SleeveInstanceId = @SleeveInstanceId LIMIT 1";
+                    cmd.Parameters.AddWithValue("@SleeveInstanceId", sleeveInstanceId.Value);
+                    
+                    var resultBySleeveId = cmd.ExecuteScalar();
+                    if (resultBySleeveId != null && resultBySleeveId != DBNull.Value)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            _logger($"[SQLite] ✅ Found existing snapshot by SleeveInstanceId={sleeveInstanceId.Value}, SnapshotId={Convert.ToInt32(resultBySleeveId)} (fallback - GUID lookup failed)");
+                        }
+                        return Convert.ToInt32(resultBySleeveId);
+                    }
+                }
+
+                // ✅ PRIORITY 3: Fall back to ClusterInstanceId (for cluster sleeves)
+                if (clusterInstanceId.HasValue && clusterInstanceId.Value > 0)
+                {
+                    cmd.Parameters.Clear();
+                    cmd.CommandText = "SELECT SnapshotId FROM SleeveSnapshots WHERE ClusterInstanceId = @ClusterInstanceId LIMIT 1";
+                    cmd.Parameters.AddWithValue("@ClusterInstanceId", clusterInstanceId.Value);
+                    
+                    var resultByClusterId = cmd.ExecuteScalar();
+                    if (resultByClusterId != null && resultByClusterId != DBNull.Value)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            _logger($"[SQLite] ✅ Found existing snapshot by ClusterInstanceId={clusterInstanceId.Value}, SnapshotId={Convert.ToInt32(resultByClusterId)} (fallback - GUID lookup failed)");
+                        }
+                        return Convert.ToInt32(resultByClusterId);
+                    }
+                }
             }
 
             return null;
@@ -1144,6 +1286,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         HostParametersJson,
                         SourceDocKeysJson,
                         HostDocKeysJson,
+                        ClashZoneGuid,
                         CreatedAt,
                         UpdatedAt
                     ) VALUES (
@@ -1158,6 +1301,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         @HostParametersJson,
                         @SourceDocKeysJson,
                         @HostDocKeysJson,
+                        @ClashZoneGuid,
                         CURRENT_TIMESTAMP,
                         CURRENT_TIMESTAMP
                     )";
@@ -1178,7 +1322,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     { "MepParametersJson", snapshot.MepParametersJson ?? "NULL" },
                     { "HostParametersJson", snapshot.HostParametersJson ?? "NULL" },
                     { "SourceDocKeysJson", snapshot.SourceDocKeysJson ?? "NULL" },
-                    { "HostDocKeysJson", snapshot.HostDocKeysJson ?? "NULL" }
+                    { "HostDocKeysJson", snapshot.HostDocKeysJson ?? "NULL" },
+                    { "ClashZoneGuid", snapshot.ClashZoneGuid ?? "NULL" }
                 };
                 
                 DatabaseOperationLogger.LogOperation(
@@ -1208,6 +1353,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         HostParametersJson = @HostParametersJson,
                         SourceDocKeysJson = @SourceDocKeysJson,
                         HostDocKeysJson = @HostDocKeysJson,
+                        ClashZoneGuid = @ClashZoneGuid,
                         UpdatedAt = CURRENT_TIMESTAMP
                     WHERE SnapshotId = @SnapshotId";
 
@@ -1230,6 +1376,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             cmd.Parameters.AddWithValue("@HostParametersJson", snapshot.HostParametersJson ?? "{}");
             cmd.Parameters.AddWithValue("@SourceDocKeysJson", snapshot.SourceDocKeysJson ?? "[]");
             cmd.Parameters.AddWithValue("@HostDocKeysJson", snapshot.HostDocKeysJson ?? "[]");
+            cmd.Parameters.AddWithValue("@ClashZoneGuid", (object)snapshot.ClashZoneGuid ?? DBNull.Value);
         }
 
         private Dictionary<string, string> AggregateParameterValues(IEnumerable<ClashZone> zones, bool useHost)

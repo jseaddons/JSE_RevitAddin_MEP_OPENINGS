@@ -35,10 +35,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         ComboId,
                         MepElementIdsJson,
                         HostElementIdsJson,
-                        MepParametersJson,
                         HostParametersJson,
                         SourceDocKeysJson,
-                        HostDocKeysJson
+                        HostDocKeysJson,
+                        ClashZoneGuid
                     FROM SleeveSnapshots";
 
                 using (var reader = cmd.ExecuteReader())
@@ -68,7 +68,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 MepParameters = DeserializeDictionary(SafeGetString(reader, "MepParametersJson")),
                                 HostParameters = DeserializeDictionary(SafeGetString(reader, "HostParametersJson")),
                                 SourceDocKeys = DeserializeStringList(SafeGetString(reader, "SourceDocKeysJson")),
-                                HostDocKeys = DeserializeStringList(SafeGetString(reader, "HostDocKeysJson"))
+                                HostDocKeys = DeserializeStringList(SafeGetString(reader, "HostDocKeysJson")),
+                                ClashZoneGuid = SafeGetString(reader, "ClashZoneGuid") // ✅ NEW: Load ClashZoneGuid
                             };
 
                             if (view.SleeveInstanceId.HasValue && view.SleeveInstanceId.Value > 0)
@@ -176,6 +177,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         public Dictionary<string, string> HostParameters { get; set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         public List<string> SourceDocKeys { get; set; } = new List<string>();
         public List<string> HostDocKeys { get; set; } = new List<string>();
+        public string ClashZoneGuid { get; set; } // ✅ NEW
     }
 }
 

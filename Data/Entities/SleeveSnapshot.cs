@@ -21,6 +21,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Entities
         public string HostParametersJson { get; set; } = "{}";
         public string SourceDocKeysJson { get; set; } = "[]";
         public string HostDocKeysJson { get; set; } = "[]";
+        public string ClashZoneGuid { get; set; } // ✅ NEW: Deterministic GUID for tracking
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     }

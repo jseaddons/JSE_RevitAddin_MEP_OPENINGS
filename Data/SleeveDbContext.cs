@@ -690,6 +690,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     AddColumnIfMissing("SleeveSnapshots", "HostDocKeysJson", "TEXT", transaction);
                     AddColumnIfMissing("SleeveSnapshots", "CreatedAt", "DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes'))", transaction);
                     AddColumnIfMissing("SleeveSnapshots", "UpdatedAt", "DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes'))", transaction);
+                    AddColumnIfMissing("SleeveSnapshots", "ClashZoneGuid", "TEXT", transaction); // ✅ NEW: Add ClashZoneGuid column
 
                     // ✅ DATABASE GUID MANAGEMENT: Create indexes for GUID after column is added
                     // These indexes are created here (not in EnsureSchemaCreated) to ensure ClashZoneGuid column exists first
@@ -697,6 +698,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     {
                         ExecuteCommand("CREATE UNIQUE INDEX IF NOT EXISTS idx_clashzones_guid_unique ON ClashZones(ClashZoneGuid) WHERE ClashZoneGuid != ''", transaction);
                         ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_clashzones_guid ON ClashZones(ClashZoneGuid)", transaction);
+                    }
+                    
+                    // ✅ SNAPSHOT GUID INDEX: Create index for SleeveSnapshots GUID
+                    if (ColumnExists("SleeveSnapshots", "ClashZoneGuid", transaction))
+                    {
+                        ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_sleevesnapshots_guid ON SleeveSnapshots(ClashZoneGuid)", transaction);
                     }
 
                     // ✅ OPTION 4 IMPLEMENTATION: Add triggers, constraints, and views for sophisticated flag management
@@ -785,6 +792,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     HostParametersJson  TEXT,
                     SourceDocKeysJson   TEXT,
                     HostDocKeysJson     TEXT,
+                    ClashZoneGuid       TEXT,
                     CreatedAt           DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
                     UpdatedAt           DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
                     FOREIGN KEY(FilterId) REFERENCES Filters(FilterId) ON DELETE CASCADE,
@@ -793,6 +801,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
 
             ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_sleevesnapshots_sleeve ON SleeveSnapshots(SleeveInstanceId)", transaction);
             ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_sleevesnapshots_cluster ON SleeveSnapshots(ClusterInstanceId)", transaction);
+            ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_sleevesnapshots_guid ON SleeveSnapshots(ClashZoneGuid)", transaction);
         }
 
         /// <summary>
