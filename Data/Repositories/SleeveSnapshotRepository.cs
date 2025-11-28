@@ -35,6 +35,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         ComboId,
                         MepElementIdsJson,
                         HostElementIdsJson,
+                        MepParametersJson,
                         HostParametersJson,
                         SourceDocKeysJson,
                         HostDocKeysJson,

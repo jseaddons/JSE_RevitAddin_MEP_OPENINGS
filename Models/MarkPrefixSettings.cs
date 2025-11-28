@@ -1,3 +1,7 @@
+using System;
+using System.Linq;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
+
 namespace JSE_RevitAddin_MEP_OPENINGS.Models
 {
     /// <summary>
@@ -61,6 +65,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public Dictionary<string, string> DuctSystemTypeOverrides { get; set; } = new Dictionary<string, string>();
         
         /// <summary>
+        /// ✅ NEW: System Type overrides for Pipes (System Type → Prefix mapping)
+        /// Tier 2: Overrides discipline prefix when System Type matches
+        /// Example: "Domestic Cold Water" → "CW" (overrides "PLU")
+        /// </summary>
+        public Dictionary<string, string> PipeSystemTypeOverrides { get; set; } = new Dictionary<string, string>();
+        
+        /// <summary>
+        /// ✅ NEW: System Type overrides for Duct Accessories (System Type → Prefix mapping)
+        /// Tier 2: Overrides discipline prefix when System Type matches
+        /// Example: "Fire Damper" → "FD" (overrides "DMP")
+        /// </summary>
+        public Dictionary<string, string> DuctAccessoriesSystemTypeOverrides { get; set; } = new Dictionary<string, string>();
+        
+        /// <summary>
         /// ✅ NEW: Service Type overrides for Cable Trays (Service Type → Prefix mapping)
         /// Tier 2: Overrides discipline prefix when Service Type matches
         /// Example: "Power" → "P" (overrides "ELE")
@@ -113,23 +131,88 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         }
         
         /// <summary>
-        /// ✅ NEW: Two-tier prefix resolution - checks System Type override first, then falls back to discipline prefix
+        /// ✅ CRITICAL: Two-tier prefix resolution - System Type override takes PRECEDENCE over discipline prefix
+        /// Uses case-insensitive matching to ensure system types are found correctly
         /// </summary>
         public string GetPrefixForElement(string category, string? systemType = null, string? serviceType = null)
         {
-            // Tier 2: Check System Type override first (if applicable)
-            if (category == "Ducts" && !string.IsNullOrEmpty(systemType) && DuctSystemTypeOverrides.ContainsKey(systemType))
+            // ✅ TIER 2 (HIGHEST PRIORITY): Check System Type override first (if applicable)
+            // This MUST take precedence over discipline prefix
+            if (category == "Ducts" && !string.IsNullOrEmpty(systemType))
             {
-                return DuctSystemTypeOverrides[systemType]; // Override: System Type prefix
+                // ✅ CRITICAL FIX: Use case-insensitive matching for system type lookup
+                var matchingOverride = DuctSystemTypeOverrides.FirstOrDefault(kvp => 
+                    string.Equals(kvp.Key, systemType, StringComparison.OrdinalIgnoreCase));
+                
+                if (!string.IsNullOrEmpty(matchingOverride.Key))
+                {
+                    // ✅ SYSTEM TYPE OVERRIDE FOUND - Return it (takes precedence over discipline prefix)
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[MarkPrefixSettings] ✅ SYSTEM TYPE OVERRIDE: Duct System Type '{systemType}' → Prefix '{matchingOverride.Value}' (overrides discipline prefix)");
+                    }
+                    return matchingOverride.Value; // System Type prefix takes precedence
+                }
             }
             
-            if (category == "Cable Trays" && !string.IsNullOrEmpty(serviceType) && CableTrayServiceTypeOverrides.ContainsKey(serviceType))
+            if (category == "Pipes" && !string.IsNullOrEmpty(systemType))
             {
-                return CableTrayServiceTypeOverrides[serviceType]; // Override: Service Type prefix
+                // ✅ CRITICAL FIX: Use case-insensitive matching for system type lookup
+                var matchingOverride = PipeSystemTypeOverrides.FirstOrDefault(kvp => 
+                    string.Equals(kvp.Key, systemType, StringComparison.OrdinalIgnoreCase));
+                
+                if (!string.IsNullOrEmpty(matchingOverride.Key))
+                {
+                    // ✅ SYSTEM TYPE OVERRIDE FOUND - Return it (takes precedence over discipline prefix)
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[MarkPrefixSettings] ✅ SYSTEM TYPE OVERRIDE: Pipe System Type '{systemType}' → Prefix '{matchingOverride.Value}' (overrides discipline prefix)");
+                    }
+                    return matchingOverride.Value; // System Type prefix takes precedence
+                }
             }
             
-            // Tier 1: Fallback to discipline prefix
-            return GetDisciplinePrefix(category);
+            if (category == "Duct Accessories" && !string.IsNullOrEmpty(systemType))
+            {
+                // ✅ CRITICAL FIX: Use case-insensitive matching for system type lookup
+                var matchingOverride = DuctAccessoriesSystemTypeOverrides.FirstOrDefault(kvp => 
+                    string.Equals(kvp.Key, systemType, StringComparison.OrdinalIgnoreCase));
+                
+                if (!string.IsNullOrEmpty(matchingOverride.Key))
+                {
+                    // ✅ SYSTEM TYPE OVERRIDE FOUND - Return it (takes precedence over discipline prefix)
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[MarkPrefixSettings] ✅ SYSTEM TYPE OVERRIDE: Duct Accessories System Type '{systemType}' → Prefix '{matchingOverride.Value}' (overrides discipline prefix)");
+                    }
+                    return matchingOverride.Value; // System Type prefix takes precedence
+                }
+            }
+            
+            if (category == "Cable Trays" && !string.IsNullOrEmpty(serviceType))
+            {
+                // ✅ CRITICAL FIX: Use case-insensitive matching for service type lookup
+                var matchingOverride = CableTrayServiceTypeOverrides.FirstOrDefault(kvp => 
+                    string.Equals(kvp.Key, serviceType, StringComparison.OrdinalIgnoreCase));
+                
+                if (!string.IsNullOrEmpty(matchingOverride.Key))
+                {
+                    // ✅ SERVICE TYPE OVERRIDE FOUND - Return it (takes precedence over discipline prefix)
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[MarkPrefixSettings] ✅ SERVICE TYPE OVERRIDE: Cable Tray Service Type '{serviceType}' → Prefix '{matchingOverride.Value}' (overrides discipline prefix)");
+                    }
+                    return matchingOverride.Value; // Service Type prefix takes precedence
+                }
+            }
+            
+            // ✅ TIER 1 (FALLBACK): No system/service type override found - use discipline prefix
+            var disciplinePrefix = GetDisciplinePrefix(category);
+            if (!DeploymentConfiguration.DeploymentMode && !string.IsNullOrEmpty(systemType))
+            {
+                DebugLogger.Info($"[MarkPrefixSettings] No override found for System Type '{systemType}' in category '{category}' - using discipline prefix '{disciplinePrefix}'");
+            }
+            return disciplinePrefix;
         }
     }
 }

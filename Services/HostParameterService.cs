@@ -638,8 +638,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             try
             {
-                // Path to shared parameter file
-                string sharedParamFile = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Resources\Opening family shared parameter.txt";
+                // ✅ DEPLOYMENT FIX: Use Assembly location to find Resources folder (deployed next to DLL)
+                var executingAssembly = System.Reflection.Assembly.GetExecutingAssembly();
+                var assemblyDir = System.IO.Path.GetDirectoryName(executingAssembly.Location);
+                string sharedParamFile = System.IO.Path.Combine(assemblyDir, "Resources", "Opening family shared parameter.txt");
 
                 if (!System.IO.File.Exists(sharedParamFile))
                 {

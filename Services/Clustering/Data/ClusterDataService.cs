@@ -143,8 +143,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data
                     
                     if (dbZones != null && dbZones.Count > 0)
                     {
-                        // Filter to only zones with SleeveInstanceId > 0 (placed sleeves) and not cluster resolved
+                        // ✅ CRITICAL FIX: Filter to only zones with SleeveInstanceId > 0 (placed sleeves) and not cluster resolved
+                        // ⚠️ BUG CHECK: If a zone has ClusterSleeveInstanceId > 0, it MUST have IsClusterResolved=true
+                        // If it doesn't, the flags are inconsistent (bug in flag management)
                         var placedZones = dbZones.Where(z => z != null && z.SleeveInstanceId > 0 && !z.IsClusterResolved).ToList();
+                        
+                        // ✅ DIAGNOSTIC: Check for inconsistent flags (SleeveInstanceId > 0 AND ClusterSleeveInstanceId > 0 but IsClusterResolved=false)
+                        // This indicates a bug where cluster flags were not set correctly
+                        var inconsistentFlags = dbZones.Where(z => z != null && 
+                                                                  z.SleeveInstanceId > 0 && 
+                                                                  z.ClusterSleeveInstanceId > 0 && 
+                                                                  !z.IsClusterResolved).ToList();
+                        
+                        if (inconsistentFlags.Count > 0)
+                        {
+                            // 🔥 CRITICAL: Direct IO logging (bypass SafeFileLogger)
+                            try
+                            {
+                                var versionTag = Helpers.VersionInfo.VersionTag;
+                                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                                var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                                if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
+                                var logPath = Path.Combine(logDir, "cluster_debug.log");
+                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ INCONSISTENT FLAGS DETECTED: {inconsistentFlags.Count} zones have ClusterSleeveInstanceId>0 but IsClusterResolved=false!\n");
+                                foreach (var cz in inconsistentFlags.Take(20))
+                                {
+                                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}]   Zone {cz.Id}: SleeveId={cz.SleeveInstanceId}, ClusterId={cz.ClusterSleeveInstanceId}, IsClusterResolved={cz.IsClusterResolved}\n");
+                                }
+                            }
+                            catch { }
+                            
+                            // ✅ CRITICAL FIX: Exclude zones with ClusterSleeveInstanceId > 0 from clustering
+                            // These zones are part of a cluster and should NOT be processed again
+                            placedZones = placedZones.Where(z => z.ClusterSleeveInstanceId <= 0).ToList();
+                            
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ FLAG BUG: Excluded {inconsistentFlags.Count} zones with ClusterSleeveInstanceId>0 but IsClusterResolved=false (should be true!)\n");
+                        }
                         
                         // 🔥 CRITICAL: Direct IO logging (bypass SafeFileLogger)
                         try
@@ -154,7 +188,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data
                             var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                             if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                             var logPath = Path.Combine(logDir, "cluster_debug.log");
-                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔍 FILTERING: {dbZones.Count} total zones -> {placedZones.Count} with SleeveInstanceId>0 and !IsClusterResolved\n");
+                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔍 FILTERING: {dbZones.Count} total zones -> {placedZones.Count} with SleeveInstanceId>0 and !IsClusterResolved (after excluding inconsistent flags)\n");
                         }
                         catch { }
                         

@@ -50,10 +50,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
 
                 foreach (var sleeveData in cluster)
                 {
-                    var clashZone = getClashZoneBySleeveInstanceId(sleeveData.SleeveInstanceId, xmlFilePath);
-                    if (clashZone == null) continue;
+                    // ✅ FIX: Explicitly extract SleeveInstanceId from dynamic to avoid dynamic dispatch errors
+                    // Access the property once and store in a local variable
+                    int sleeveInstanceId;
+                    try
+                    {
+                        // Try to get SleeveInstanceId from dynamic object
+                        dynamic dynSleeve = sleeveData;
+                        object sleeveIdObj = dynSleeve.SleeveInstanceId;
+                        if (sleeveIdObj == null) continue;
+                        
+                        // Convert to int
+                        if (sleeveIdObj is int id)
+                            sleeveInstanceId = id;
+                        else if (sleeveIdObj is long longId)
+                            sleeveInstanceId = (int)longId;
+                        else
+                            sleeveInstanceId = Convert.ToInt32(sleeveIdObj);
+                    }
+                    catch
+                    {
+                        continue; // Skip if we can't get the ID
+                    }
+                    
+                    // ✅ FIX: Explicitly type to avoid dynamic dispatch errors
+                    // Get the clash zone and immediately cast to ClashZone to avoid dynamic dispatch
+                    object clashZoneObj = getClashZoneBySleeveInstanceId(sleeveInstanceId, xmlFilePath);
+                    if (clashZoneObj == null) continue;
 
-                    var cz = clashZone as ClashZone;
+                    // ✅ CRITICAL: Cast to ClashZone explicitly to avoid any dynamic dispatch
+                    ClashZone cz = clashZoneObj as ClashZone;
                     if (cz == null) continue;
 
                     // ✅ Get sleeve center from Active document coordinates (where sleeve is actually placed)
@@ -75,20 +101,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
                     double? sinSleeve = cz.MepRotationSin;
 
                     // ✅ PRE-CALCULATED CORNERS: Load from database (dump once use many times)
-                    XYZ[] preCalculatedCorners = null;
-                    if (cz.SleeveCorner1X.HasValue && cz.SleeveCorner1Y.HasValue && cz.SleeveCorner1Z.HasValue &&
-                        cz.SleeveCorner2X.HasValue && cz.SleeveCorner2Y.HasValue && cz.SleeveCorner2Z.HasValue &&
-                        cz.SleeveCorner3X.HasValue && cz.SleeveCorner3Y.HasValue && cz.SleeveCorner3Z.HasValue &&
-                        cz.SleeveCorner4X.HasValue && cz.SleeveCorner4Y.HasValue && cz.SleeveCorner4Z.HasValue)
-                    {
-                        preCalculatedCorners = new XYZ[]
-                        {
-                            new XYZ(cz.SleeveCorner1X.Value, cz.SleeveCorner1Y.Value, cz.SleeveCorner1Z.Value),  // Corner 1: Bottom-left
-                            new XYZ(cz.SleeveCorner2X.Value, cz.SleeveCorner2Y.Value, cz.SleeveCorner2Z.Value),  // Corner 2: Bottom-right
-                            new XYZ(cz.SleeveCorner3X.Value, cz.SleeveCorner3Y.Value, cz.SleeveCorner3Z.Value),  // Corner 3: Top-left
-                            new XYZ(cz.SleeveCorner4X.Value, cz.SleeveCorner4Y.Value, cz.SleeveCorner4Z.Value)   // Corner 4: Top-right
-                        };
-                    }
+                    // ✅ FIX: Use helper method to extract corners to avoid any dynamic dispatch issues
+                    XYZ[] preCalculatedCorners = ExtractPreCalculatedCorners(cz);
 
                     sleeveDataList.Add((cz, center, sleeveWidth, sleeveHeight, sleeveRotation, cosSleeve, sinSleeve, preCalculatedCorners));
                 }
@@ -112,15 +126,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
 
                 // Step 3: Pre-calculate cluster rotation matrix components
                 // ⚠️ CRITICAL: rotationAngle is the cluster's INTENDED ROTATED AXIS, not average of sleeve angles
-                var rotationMatrix = RotationMatrixCalculator.CreateRotationMatrix(rotationAngle);
+                // ✅ FIX: Explicitly type the nullable tuple to avoid dynamic dispatch errors
+                (double cos, double sin)? rotationMatrix = RotationMatrixCalculator.CreateRotationMatrix(rotationAngle);
                 if (rotationMatrix == null)
                 {
                     SafeFileLogger.SafeAppendText("geometry_errors.log",
                         $"[CornerBasedBoundingBoxCalculator] Failed to create rotation matrix for angle {rotationAngle * 180.0 / Math.PI:F2}° - returning null");
                     return null;
                 }
-                double cosCluster = rotationMatrix.Value.cos;
-                double sinCluster = rotationMatrix.Value.sin;
+                // ✅ FIX: Extract tuple values to local variables to avoid dynamic dispatch
+                var matrixValue = rotationMatrix.Value;
+                double cosCluster = matrixValue.cos;
+                double sinCluster = matrixValue.sin;
 
                 // Step 4: For each sleeve, use pre-calculated corners OR recalculate if missing
                 var allTransformedCorners = new List<XYZ>();
@@ -219,8 +236,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
             {
                 SafeFileLogger.SafeAppendText("geometry_errors.log",
                     $"[CornerBasedBoundingBoxCalculator] Exception in CalculateFromCorners: {ex.Message}, StackTrace: {ex.StackTrace}");
+                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                    $"[{DateTime.Now:HH:mm:ss}] ❌ CornerBasedBoundingBoxCalculator EXCEPTION: {ex.Message}\nStackTrace: {ex.StackTrace}\n");
                 return null;
             }
+        }
+        
+        /// <summary>
+        /// ✅ FIX: Helper method to extract pre-calculated corners from ClashZone
+        /// This avoids dynamic dispatch issues when accessing nullable properties
+        /// </summary>
+        private static XYZ[] ExtractPreCalculatedCorners(ClashZone cz)
+        {
+            if (cz == null) return null;
+            
+            // ✅ CRITICAL FIX: Explicitly type as double? to avoid dynamic dispatch errors
+            // When ClashZone comes from dynamic context, var inference can fail
+            // Explicit typing ensures the compiler treats these as nullable doubles
+            double? corner1X = cz.SleeveCorner1X;
+            double? corner1Y = cz.SleeveCorner1Y;
+            double? corner1Z = cz.SleeveCorner1Z;
+            double? corner2X = cz.SleeveCorner2X;
+            double? corner2Y = cz.SleeveCorner2Y;
+            double? corner2Z = cz.SleeveCorner2Z;
+            double? corner3X = cz.SleeveCorner3X;
+            double? corner3Y = cz.SleeveCorner3Y;
+            double? corner3Z = cz.SleeveCorner3Z;
+            double? corner4X = cz.SleeveCorner4X;
+            double? corner4Y = cz.SleeveCorner4Y;
+            double? corner4Z = cz.SleeveCorner4Z;
+            
+            // ✅ Use HasValue check (now safe because we explicitly typed as double?)
+            if (corner1X.HasValue && corner1Y.HasValue && corner1Z.HasValue &&
+                corner2X.HasValue && corner2Y.HasValue && corner2Z.HasValue &&
+                corner3X.HasValue && corner3Y.HasValue && corner3Z.HasValue &&
+                corner4X.HasValue && corner4Y.HasValue && corner4Z.HasValue)
+            {
+                return new XYZ[]
+                {
+                    new XYZ(corner1X.Value, corner1Y.Value, corner1Z.Value),  // Corner 1: Bottom-left
+                    new XYZ(corner2X.Value, corner2Y.Value, corner2Z.Value),  // Corner 2: Bottom-right
+                    new XYZ(corner3X.Value, corner3Y.Value, corner3Z.Value),  // Corner 3: Top-left
+                    new XYZ(corner4X.Value, corner4Y.Value, corner4Z.Value)   // Corner 4: Top-right
+                };
+            }
+            
+            return null;
         }
     }
 }

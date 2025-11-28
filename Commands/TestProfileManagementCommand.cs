@@ -20,9 +20,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
-            // IMMEDIATE LOGGING - Create timestamped file as soon as command starts
+            // ✅ DEPLOYMENT FIX: Use AppData path instead of hardcoded project path
+            string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            string logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs");
+            Directory.CreateDirectory(logDir); // Ensure directory exists
+            
             string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-            string logPath = $@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\command_started_{timestamp}.log";
+            string logPath = Path.Combine(logDir, $"command_started_{timestamp}.log");
+            
             // ✅ DEPLOYMENT MODE: Skip hardcoded log writes if deployment mode is enabled
             if (!DeploymentConfiguration.DeploymentMode)
             {
@@ -36,13 +41,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 }
                 catch (Exception ex)
                 {
-                    // If even this fails, try a different location with timestamp
+                    // If even this fails, try temp location
                     try
                     {
-                        File.AppendAllText($@"C:\temp\revit_command_{timestamp}.log", $"[{DateTime.Now}] Command started but main log failed: {ex.Message}\n");
+                        string tempLogPath = Path.Combine(Path.GetTempPath(), $"revit_command_{timestamp}.log");
+                        File.AppendAllText(tempLogPath, $"[{DateTime.Now}] Command started but main log failed: {ex.Message}\n");
                     }
                     catch { }
-                    return Result.Failed;
+                    // Don't fail the command just because logging failed
                 }
             }
 

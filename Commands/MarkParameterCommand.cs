@@ -5,6 +5,8 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 {
@@ -129,55 +131,103 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         }
         
         /// <summary>
-        /// Get all available categories from XML files
+        /// ✅ DATABASE-BASED: Get all available categories from the database
+        /// Queries ClashZones table to find unique MEP categories
+        /// Falls back to XML if database check fails
         /// </summary>
         private List<string> GetAllAvailableCategories(Document doc)
         {
-            var categories = new List<string>();
+            var categories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             
             try
             {
-                var filtersDirectory = ProjectPathService.GetFiltersDirectory(doc);
+                // ✅ DATABASE MIGRATION: Query database first (primary source)
+                var dbContext = new Data.SleeveDbContext(doc);
+                var clashZoneRepo = new Data.Repositories.ClashZoneRepository(dbContext, null);
                 
-                if (!Directory.Exists(filtersDirectory))
+                // Query database for unique MEP categories
+                using (var cmd = dbContext.Connection.CreateCommand())
                 {
-                    return categories;
-                }
-
-                var xmlFiles = Directory.GetFiles(filtersDirectory, "*.xml");
-
-                foreach (var xmlFile in xmlFiles)
-                {
-                    try
+                    cmd.CommandText = @"
+                        SELECT DISTINCT MepCategory 
+                        FROM ClashZones 
+                        WHERE MepCategory IS NOT NULL AND MepCategory != ''
+                        ORDER BY MepCategory";
+                    
+                    using (var reader = cmd.ExecuteReader())
                     {
-                        var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
-                        using (var reader = new StreamReader(xmlFile))
+                        while (reader.Read())
                         {
-                            var filter = (OpeningFilter)serializer.Deserialize(reader);
-                            if (filter?.ClashZoneStorage?.AllZones != null)
+                            var category = reader.GetString(0);
+                            if (!string.IsNullOrEmpty(category))
                             {
-                                foreach (var clashZone in filter.ClashZoneStorage.AllZones)
-                                {
-                                    if (!categories.Contains(clashZone.MepElementCategory))
-                                    {
-                                        categories.Add(clashZone.MepElementCategory);
-                                    }
-                                }
+                                categories.Add(category);
                             }
                         }
                     }
-                    catch
-                    {
-                        continue;
-                    }
+                }
+                
+                // ✅ LOG: Log categories found in database
+                if (categories.Count > 0)
+                {
+                    DebugLogger.Info($"[MarkParameterCommand] ✅ Found {categories.Count} categories in database: {string.Join(", ", categories)}");
                 }
             }
-            catch (Exception ex)
+            catch (Exception dbEx)
             {
-                DebugLogger.Error($"[MarkParameterCommand] Error getting available categories: {ex.Message}");
+                DebugLogger.Warning($"[MarkParameterCommand] Database query failed, falling back to XML: {dbEx.Message}");
             }
             
-            return categories;
+            // ✅ FALLBACK: If database returned no categories, try XML files (for backward compatibility)
+            if (categories.Count == 0)
+            {
+                try
+                {
+                    var filtersDirectory = ProjectPathService.GetFiltersDirectory(doc);
+                    
+                    if (Directory.Exists(filtersDirectory))
+                    {
+                        var xmlFiles = Directory.GetFiles(filtersDirectory, "*.xml");
+
+                        foreach (var xmlFile in xmlFiles)
+                        {
+                            try
+                            {
+                                var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
+                                using (var reader = new StreamReader(xmlFile))
+                                {
+                                    var filter = (OpeningFilter)serializer.Deserialize(reader);
+                                    if (filter?.ClashZoneStorage?.AllZones != null)
+                                    {
+                                        foreach (var clashZone in filter.ClashZoneStorage.AllZones)
+                                        {
+                                            if (!string.IsNullOrEmpty(clashZone.MepElementCategory))
+                                            {
+                                                categories.Add(clashZone.MepElementCategory);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                                continue;
+                            }
+                        }
+                        
+                        if (categories.Count > 0)
+                        {
+                            DebugLogger.Info($"[MarkParameterCommand] Fallback: Found {categories.Count} categories from XML files: {string.Join(", ", categories)}");
+                        }
+                    }
+                }
+                catch (Exception xmlEx)
+                {
+                    DebugLogger.Error($"[MarkParameterCommand] Error getting available categories from XML fallback: {xmlEx.Message}");
+                }
+            }
+            
+            return categories.ToList();
         }
         
         /// <summary>

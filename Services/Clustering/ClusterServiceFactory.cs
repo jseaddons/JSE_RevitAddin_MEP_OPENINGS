@@ -62,14 +62,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     var cached = dataService.GetClashZoneBySleeveInstanceId(sleeveId);
                     if (cached != null)
                     {
-                        if (!DeploymentConfiguration.DeploymentMode)
+                        // ✅ CRITICAL FIX: Check if cached clash zone has bounding boxes
+                        // If not, it's stale (loaded before bounding boxes were saved) - fall through to database reload
+                        bool hasBoundingBox = cached.SleeveBoundingBoxMinX != 0 || cached.SleeveBoundingBoxMaxX != 0 ||
+                                              cached.SleeveBoundingBoxMinY != 0 || cached.SleeveBoundingBoxMaxY != 0 ||
+                                              cached.SleeveBoundingBoxMinZ != 0 || cached.SleeveBoundingBoxMaxZ != 0;
+                        
+                        if (hasBoundingBox)
                         {
-                            bool hasCorners = cached.SleeveCorner1X.HasValue && cached.SleeveCorner1Y.HasValue;
-                            bool hasRotatedBbox = cached.RotatedBoundingBoxMinX.HasValue && cached.RotatedBoundingBoxMaxX.HasValue;
-                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                $"[{DateTime.Now:HH:mm:ss}] ✅ CACHE HIT: Sleeve {sleeveId}: HasCorners={hasCorners}, HasRotatedBbox={hasRotatedBbox}, Rotation={cached.MepElementRotationAngle * 180 / Math.PI:F1}°\n");
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                bool hasCorners = cached.SleeveCorner1X.HasValue && cached.SleeveCorner1Y.HasValue;
+                                bool hasRotatedBbox = cached.RotatedBoundingBoxMinX.HasValue && cached.RotatedBoundingBoxMaxX.HasValue;
+                                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] ✅ CACHE HIT: Sleeve {sleeveId}: HasCorners={hasCorners}, HasRotatedBbox={hasRotatedBbox}, HasBoundingBox={hasBoundingBox}, Rotation={cached.MepElementRotationAngle * 180 / Math.PI:F1}°\n");
+                            }
+                            return cached;
                         }
-                        return cached;
+                        else
+                        {
+                            // ⚠️ Cache has stale data (no bounding boxes) - fall through to database reload
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ CACHE STALE: Sleeve {sleeveId} found in cache but has no bounding boxes, reloading from database...\n");
+                            }
+                        }
                     }
                 }
                 catch (Exception cacheEx)

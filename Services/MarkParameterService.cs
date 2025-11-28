@@ -5,6 +5,8 @@ using System.IO;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -212,10 +214,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         var sleeve = allSleeves[i];
                         
-                        // ✅ ENHANCED: Get clash zone early to resolve element-specific prefix
+                        // ✅ CRITICAL FIX: Get clash zone - try ClusterInstanceId first (for cluster sleeves), then MEP_ElementId (for individual sleeves)
+                        ClashZone clashZone = null;
+                        
+                        // ✅ Declare variables once at the start of the loop iteration
                         var mepElementIdParam = sleeve.LookupParameter("MEP_ElementId");
                         long mepElementId = mepElementIdParam?.AsInteger() ?? -1;
-                        var clashZone = GetClashZoneByMepElementId(mepElementId, doc);
+                        
+                        // First, try to get by ClusterInstanceId (for cluster sleeves)
+                        int sleeveId = sleeve.Id.IntegerValue;
+                        clashZone = GetClashZoneByClusterInstanceId(sleeveId, category, doc);
+                        
+                        // If not found, try MEP_ElementId (for individual sleeves)
+                        if (clashZone == null && mepElementId > 0)
+                        {
+                            clashZone = GetClashZoneByMepElementId(mepElementId, doc);
+                        }
                         
                         // ✅ ENHANCED: Resolve element-specific prefix (e.g., System Type override)
                         var elementPrefix = ResolveDisciplinePrefixForElement(category, disciplinePrefix, markPrefixes, clashZone);
@@ -298,6 +312,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                       famName.IndexOf("OpeningOnSlab", StringComparison.OrdinalIgnoreCase) >= 0 ? "Floor" : "Unknown";
                         
                         // ✅ ENHANCED LOGGING: Log ALL sleeves (not just first 10) to diagnose floor sleeve issue
+                        // Note: mepElementIdParam and mepElementId are already declared above
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             File.AppendAllText(mepmarkLogPath, 
@@ -586,90 +601,56 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             File.AppendAllText(mepmarkLogPath, $"Found {allClusterSleeves.Count} total opening sleeves (after family name filter)\n");
 
-            // ✅ NEW APPROACH: Find cluster sleeves using IsClusterResolved flag
+            // ✅ CRITICAL FIX: Find cluster sleeves by ClusterInstanceId instead of MEP_ElementId
+            // Cluster sleeves don't have a single MEP_ElementId, so we query clash zones by ClusterInstanceId
             var categorySleeves = new List<FamilyInstance>();
 
             foreach (var sleeve in allClusterSleeves)
             {
-                var mepElementIdParam = sleeve.LookupParameter("MEP_ElementId");
-                if (mepElementIdParam != null)
+                int sleeveId = sleeve.Id.IntegerValue;
+                
+                // ✅ NEW APPROACH: Query clash zones by ClusterInstanceId (cluster sleeve's own ID)
+                var clashZone = GetClashZoneByClusterInstanceId(sleeveId, category, doc);
+                
+                string mepmarkLogPathDebug = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                
+                if (clashZone != null && clashZone.IsClusterResolved && clashZone.ClusterSleeveInstanceId == sleeveId)
                 {
-                    long mepElementId = mepElementIdParam.AsInteger();
+                    // Verify category matches
+                    bool categoryMatch = clashZone.MepElementCategory == category;
                     
-                    // Find matching clash zone in XML files (pass doc context for project-specific paths)
-                    var clashZone = GetClashZoneByMepElementId(mepElementId, doc);
-                    
-                    string mepmarkLogPathDebug = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
-                    // ⚠️ DIAGNOSTIC: Log exactly why sleeves are rejected
-                    if (clashZone == null)
-                                                // ✅ DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            File.AppendAllText(mepmarkLogPathDebug,
-                            $"REJECT {sleeve.Id}: no clash-zone for MEPid {mepElementId}\n");
-                        }
-                    else if (!clashZone.IsClusterResolved)
-                                                // ✅ DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            File.AppendAllText(mepmarkLogPathDebug,
-                            $"REJECT {sleeve.Id}: IsClusterResolved=false\n");
-                        }
-                    else if (clashZone.ClusterSleeveInstanceId != sleeve.Id.IntegerValue)
-                                                // ✅ DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            File.AppendAllText(mepmarkLogPathDebug,
-                            $"REJECT {sleeve.Id}: ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId} != {sleeve.Id.IntegerValue}\n");
-                        }
-                    else if (clashZone.MepElementCategory != category)
-                                                // ✅ DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            File.AppendAllText(mepmarkLogPathDebug,
-                            $"REJECT {sleeve.Id}: category='{clashZone.MepElementCategory}' != '{category}'\n");
-                        }
-                    
-                    if (clashZone != null && clashZone.IsClusterResolved && clashZone.ClusterSleeveInstanceId > 0)
+                    if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        // Check if this sleeve is the actual cluster sleeve
-                        if (sleeve.Id.IntegerValue == clashZone.ClusterSleeveInstanceId)
+                        File.AppendAllText(mepmarkLogPathDebug, 
+                            $"[CLUSTER-DEBUG] Category check: XML='{clashZone.MepElementCategory}' vs Requested='{category}' → Match={categoryMatch}\n");
+                    }
+                    
+                    if (categoryMatch)
+                    {
+                        categorySleeves.Add(sleeve);
+                        if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            // Verify category matches
-                            bool categoryMatch = clashZone.MepElementCategory == category;
-                                                        // ✅ DEPLOYMENT MODE: Skip file writes
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                File.AppendAllText(mepmarkLogPathDebug, 
-                                $"[CLUSTER-DEBUG] Category check: XML='{clashZone.MepElementCategory}' vs Requested='{category}' → Match={categoryMatch}\n");
-                            }
-                            
-                            if (categoryMatch)
-                            {
-                                categorySleeves.Add(sleeve);
-                                File.AppendAllText(mepmarkLogPathDebug, 
-                                    $"[CLUSTER-DEBUG] ✅ ACCEPTED: Cluster sleeve {sleeve.Id} for category '{category}' " +
-                                    $"(ClusterSleeveId={clashZone.ClusterSleeveInstanceId}, MEP_ID={mepElementId})\n");
-                            }
-                            else
-                            {
-                                                                // ✅ DEPLOYMENT MODE: Skip file writes
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    File.AppendAllText(mepmarkLogPathDebug, 
-                                    $"[CLUSTER-DEBUG] ❌ REJECTED: Category mismatch - XML='{clashZone.MepElementCategory}' vs Requested='{category}'\n");
-                                }
-                            }
+                            File.AppendAllText(mepmarkLogPathDebug, 
+                                $"[CLUSTER-DEBUG] ✅ ACCEPTED: Cluster sleeve {sleeve.Id} for category '{category}' " +
+                                $"(ClusterSleeveId={clashZone.ClusterSleeveInstanceId})\n");
+                        }
+                    }
+                    else
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            File.AppendAllText(mepmarkLogPathDebug, 
+                                $"[CLUSTER-DEBUG] ❌ REJECTED: Category mismatch - XML='{clashZone.MepElementCategory}' vs Requested='{category}'\n");
                         }
                     }
                 }
                 else
                 {
-                    string mepmarkLogPathMissing = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
-                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                    // Not a cluster sleeve for this category
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        File.AppendAllText(mepmarkLogPathMissing, $"Sleeve {sleeve.Id} missing MEP_ElementId parameter\n");
+                        File.AppendAllText(mepmarkLogPathDebug,
+                            $"REJECT {sleeve.Id}: no cluster clash-zone found for ClusterInstanceId {sleeveId} in category '{category}'\n");
                     }
                 }
             }
@@ -681,6 +662,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 File.AppendAllText(mepmarkLogPathFinal, $"Found {categorySleeves.Count} cluster sleeves for category '{category}'\n");
             }
             return categorySleeves;
+        }
+
+        /// <summary>
+        /// ✅ NEW: Get clash zones by ClusterInstanceId (for cluster sleeves)
+        /// Cluster sleeves don't have a single MEP_ElementId, so we query by ClusterInstanceId
+        /// </summary>
+        private ClashZone GetClashZoneByClusterInstanceId(int clusterInstanceId, string category, Document? doc = null)
+        {
+            if (doc == null || clusterInstanceId <= 0)
+                return null;
+
+            try
+            {
+                using (var context = new SleeveDbContext(doc))
+                {
+                    var repository = new ClashZoneRepository(context);
+                    
+                    // Query database for clash zones by ClusterInstanceId
+                    var zones = repository.GetClashZonesByCategory(category);
+                    var foundZone = zones?.FirstOrDefault(z => z.ClusterSleeveInstanceId == clusterInstanceId && z.IsClusterResolved);
+                    
+                    if (foundZone != null)
+                    {
+                        string mepmarkLogPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            File.AppendAllText(mepmarkLogPath, 
+                                $"[CACHE-LOOKUP] ✓ Found cluster clash zone by ClusterInstanceId={clusterInstanceId}, Category={foundZone.MepElementCategory}\n");
+                        }
+                        return foundZone;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                string mepmarkLogPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    File.AppendAllText(mepmarkLogPath, 
+                        $"[CACHE-LOOKUP] ❌ DB query failed for ClusterInstanceId={clusterInstanceId}: {ex.Message}\n");
+                }
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -711,13 +736,59 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 return clashZone;
             }
 
+            // ✅ FALLBACK: If not in cache, query database directly
+            if (doc != null && mepElementId > 0)
+            {
+                try
+                {
+                    using (var context = new SleeveDbContext(doc))
+                    {
+                        var repository = new ClashZoneRepository(context);
+                        
+                        // Query database for clash zone by MEP element ID
+                        var allCategories = new[] { "Ducts", "Pipes", "Cable Trays", "Duct Accessories" };
+                        foreach (var category in allCategories)
+                        {
+                            var zones = repository.GetClashZonesByCategory(category);
+                            var foundZone = zones?.FirstOrDefault(z => z.MepElementIdValue == mepElementId);
+                            
+                            if (foundZone != null)
+                            {
+                                // Add to cache for future lookups
+                                if (_clashZoneCache == null)
+                                    _clashZoneCache = new Dictionary<long, ClashZone>();
+                                
+                                _clashZoneCache[mepElementId] = foundZone;
+                                
+                                string mepmarkLogPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    File.AppendAllText(mepmarkLogPath, 
+                                    $"[CACHE-LOOKUP] ✓ Found in DB (not cached): MEP_ID={mepElementId}, Category={foundZone.MepElementCategory}\n");
+                                }
+                                return foundZone;
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    string mepmarkLogPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        File.AppendAllText(mepmarkLogPath, 
+                        $"[CACHE-LOOKUP] ❌ DB query failed for MEP_ID={mepElementId}: {ex.Message}\n");
+                    }
+                }
+            }
+
             string mepmarkLogPathNotFound = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
             File.AppendAllText(mepmarkLogPathNotFound, $"[CACHE-LOOKUP] ❌ NOT FOUND: MEP_ID={mepElementId} (cache size: {_clashZoneCache?.Count ?? 0})\n");
             return null;
         }
 
         /// <summary>
-        /// Initialize clash zone cache from all XML files (called once)
+        /// Initialize clash zone cache from database first, then fall back to XML files (called once)
         /// </summary>
         private void InitializeClashZoneCache(Document? doc = null)
         {
@@ -725,6 +796,81 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             try
             {
+                string mepmarkLogPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                                // ✅ DEPLOYMENT MODE: Skip file writes
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    File.AppendAllText(mepmarkLogPath, $"\n[CACHE-INIT] ===== CACHE INITIALIZATION STARTED =====\n");
+                }
+                File.AppendAllText(mepmarkLogPath, $"[CACHE-INIT] Document: {(doc != null ? doc.Title : "NULL (using Default path)")}\n");
+                
+                int totalClashZones = 0;
+                
+                // ✅ STEP 1: Try loading from database first
+                if (doc != null)
+                {
+                    try
+                    {
+                        using (var context = new SleeveDbContext(doc))
+                        {
+                            var repository = new ClashZoneRepository(context);
+                            
+                            // Load clash zones for all MEP categories
+                            var allCategories = new[] { "Ducts", "Pipes", "Cable Trays", "Duct Accessories" };
+                            
+                            foreach (var category in allCategories)
+                            {
+                                var dbZones = repository.GetClashZonesByCategory(category);
+                                
+                                if (dbZones != null && dbZones.Count > 0)
+                                {
+                                    int categoryCount = 0;
+                                    foreach (var clashZone in dbZones)
+                                    {
+                                        if (clashZone != null && clashZone.MepElementIdValue > 0)
+                                        {
+                                            long key = clashZone.MepElementIdValue;
+                                            if (!_clashZoneCache.ContainsKey(key))
+                                            {
+                                                clashZone.EnsureSleevePlacementPointReconstructed();
+                                                _clashZoneCache[key] = clashZone;
+                                                totalClashZones++;
+                                                categoryCount++;
+                                            }
+                                        }
+                                    }
+                                    
+                                    if (categoryCount > 0)
+                                    {
+                                        File.AppendAllText(mepmarkLogPath, 
+                                            $"[CACHE-INIT] ✓ Loaded {categoryCount} clash zones from database for category '{category}'\n");
+                                    }
+                                }
+                            }
+                            
+                            if (totalClashZones > 0)
+                            {
+                                File.AppendAllText(mepmarkLogPath, 
+                                    $"[CACHE-INIT] ✓ Total {totalClashZones} clash zones loaded from database\n");
+                                
+                                // ✅ DEPLOYMENT MODE: Skip file writes
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    File.AppendAllText(mepmarkLogPath, 
+                                        $"[CACHE-INIT] Cache size: {_clashZoneCache.Count} entries\n\n");
+                                }
+                                return; // Successfully loaded from database, skip XML fallback
+                            }
+                        }
+                    }
+                    catch (Exception dbEx)
+                    {
+                        File.AppendAllText(mepmarkLogPath, 
+                            $"[CACHE-INIT] ⚠️ Database load failed: {dbEx.Message}, falling back to XML\n");
+                    }
+                }
+                
+                // ✅ STEP 2: Fallback to XML files if database is empty or failed
                 // ✅ FIX: Use ProjectPathService to get project-specific filters directory
                 string filtersDirectory;
                 if (doc != null)
@@ -737,13 +883,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
                 }
                 
-                string mepmarkLogPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
-                                // ✅ DEPLOYMENT MODE: Skip file writes
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    File.AppendAllText(mepmarkLogPath, $"\n[CACHE-INIT] ===== CACHE INITIALIZATION STARTED =====\n");
-                }
-                File.AppendAllText(mepmarkLogPath, $"[CACHE-INIT] Document: {(doc != null ? doc.Title : "NULL (using Default path)")}\n");
                                 // ✅ DEPLOYMENT MODE: Skip file writes
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
@@ -795,7 +934,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     File.AppendAllText(mepmarkLogPath, $"[CACHE-INIT] === PROCESSING {xmlFiles.Count} FILTER FILES ===\n");
                 }
 
-                int totalClashZones = 0;
+                // ✅ Reset counter for XML fallback (database counter already used above)
+                totalClashZones = 0;
                 int filesProcessed = 0;
                 foreach (var xmlFile in xmlFiles)
                 {
@@ -1070,10 +1210,45 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (markPrefixes == null)
                 return fallbackPrefix;
 
+            // ✅ CRITICAL: Extract System Type and Service Type from clash zone
             string systemType = GetClashParameterValue(clashZone, "System Type", "MEP System Type", "System Classification");
             string serviceType = GetClashParameterValue(clashZone, "Service Type", "System Abbreviation", "MEP System Type");
 
+            // ✅ DEBUG: Log extracted system/service types and available overrides
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                string mepmarkLogPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                File.AppendAllText(mepmarkLogPath, 
+                    $"[PREFIX-RESOLVE] Category={category}, SystemType='{systemType ?? "null"}', ServiceType='{serviceType ?? "null"}'\n");
+                
+                if (category == "Ducts" && markPrefixes.DuctSystemTypeOverrides.Count > 0)
+                {
+                    var overrideKeys = string.Join(", ", markPrefixes.DuctSystemTypeOverrides.Keys);
+                    File.AppendAllText(mepmarkLogPath, 
+                        $"[PREFIX-RESOLVE] Available Duct System Type Overrides: {overrideKeys}\n");
+                }
+                
+                if (category == "Cable Trays" && markPrefixes.CableTrayServiceTypeOverrides.Count > 0)
+                {
+                    var overrideKeys = string.Join(", ", markPrefixes.CableTrayServiceTypeOverrides.Keys);
+                    File.AppendAllText(mepmarkLogPath, 
+                        $"[PREFIX-RESOLVE] Available Cable Tray Service Type Overrides: {overrideKeys}\n");
+                }
+            }
+
+            // ✅ CRITICAL: Get prefix using two-tier resolution (System Type override takes precedence)
             var resolved = markPrefixes.GetPrefixForElement(category, systemType, serviceType);
+            
+            // ✅ DEBUG: Log the resolved prefix
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                string mepmarkLogPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                string disciplinePrefix = markPrefixes.GetDisciplinePrefix(category);
+                bool isOverride = resolved != disciplinePrefix;
+                File.AppendAllText(mepmarkLogPath, 
+                    $"[PREFIX-RESOLVE] ✅ Resolved prefix='{resolved}', Discipline prefix='{disciplinePrefix}', IsOverride={isOverride}\n");
+            }
+            
             if (!string.IsNullOrWhiteSpace(resolved))
                 return resolved.Trim();
 

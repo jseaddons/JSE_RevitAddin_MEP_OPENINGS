@@ -1264,8 +1264,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     // ✅ FILTER IN MEMORY: Only return zones that need placement (not resolved, not cluster resolved)
                     // This ensures placement uses DB zones correctly, filtering by actual flag state
+                    // ✅ CRITICAL FIX: Also check ClusterSleeveInstanceId to prevent processing cluster-resolved zones
+                    // Even if IsClusterResolvedFlag is stale (false) in DB, if ClusterSleeveInstanceId > 0, zone is part of a cluster
                     var eligibleZones = zones
-                        .Where(cz => cz != null && !cz.IsResolved && !cz.IsClusterResolved)
+                        .Where(cz => cz != null && !cz.IsResolved && !cz.IsClusterResolved && cz.ClusterSleeveInstanceId <= 0)
                         .ToList();
                     
                     if (!DeploymentConfiguration.DeploymentMode)
@@ -1547,17 +1549,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 return (placedCount, skippedCount, errorCount); // Return counts even on failure
             }
             
-            // ✅ PERFORMANCE: Return counts
+            // ✅ PERFORMANCE: Log success
             SafeFileLogger.SafeAppendText("placement_debug.log",
                 $"[{DateTime.Now:HH:mm:ss}] ExecuteUniversalSleevePlacement SUCCESS: Placed={placedCount}, Skipped={skippedCount}, Errors={errorCount}\n");
-            
-            return (placedCount, skippedCount, errorCount);
             
             // ✅ CRITICAL: Following reference document - Regenerate FIRST, then read from Revit and save to XML
             // Reference: SLEEVE_PLACEMENT_SEQUENCING_REFERENCE.md lines 22-35
             // The timing fix: Regenerate ensures bounding boxes are available, then UpdateSleeveCoordinatesInXml reads from Revit
             // ✅ CRITICAL: Save individual sleeve bounding boxes BEFORE clustering
-            // Clustering proximity calculation REQUIRES individual sleeve bounding boxes from XML
+            // Clustering proximity calculation REQUIRES individual sleeve bounding boxes from database
             try
             {
                 // ✅ DEPLOYMENT: Wrapped in deployment mode check
@@ -1773,6 +1773,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 } catch { }
             }
+            
+            // ✅ PERFORMANCE: Return counts AFTER saving bounding boxes to database
+            // This ensures clustering can read individual sleeve bounding boxes
+            return (placedCount, skippedCount, errorCount);
         }
 
         /// <summary>

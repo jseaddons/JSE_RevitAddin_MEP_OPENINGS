@@ -291,6 +291,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         cz.SleeveBoundingBoxMaxX, cz.SleeveBoundingBoxMaxY, cz.SleeveBoundingBoxMaxZ);
                                     dbUpdatedCount++;
                                 }
+                                
+                                // ✅ CRITICAL FIX: Save RCS bounding boxes for walls/framing if they're not zero
+                                // RCS bounding boxes are required for accurate cluster sizing for walls/framing
+                                // These are calculated in UniversalSleevePlacerService and must be saved here
+                                bool isWallHost = string.Equals(cz.StructuralElementType, "Wall", StringComparison.OrdinalIgnoreCase) ||
+                                                  string.Equals(cz.StructuralElementType, "Walls", StringComparison.OrdinalIgnoreCase);
+                                bool isFramingHost = string.Equals(cz.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
+                                
+                                if ((isWallHost || isFramingHost) &&
+                                    !(cz.SleeveBoundingBoxRCS_MinX == 0.0 && cz.SleeveBoundingBoxRCS_MinY == 0.0 && cz.SleeveBoundingBoxRCS_MinZ == 0.0 &&
+                                      cz.SleeveBoundingBoxRCS_MaxX == 0.0 && cz.SleeveBoundingBoxRCS_MaxY == 0.0 && cz.SleeveBoundingBoxRCS_MaxZ == 0.0))
+                                {
+                                    repository.UpdateSleeveBoundingBoxesRcs(
+                                        cz.Id,
+                                        cz.SleeveBoundingBoxRCS_MinX, cz.SleeveBoundingBoxRCS_MinY, cz.SleeveBoundingBoxRCS_MinZ,
+                                        cz.SleeveBoundingBoxRCS_MaxX, cz.SleeveBoundingBoxRCS_MaxY, cz.SleeveBoundingBoxRCS_MaxZ);
+                                }
                             }
                             
                             // ✅ CLUSTER SLEEVE: Save cluster sleeve data (after clustering)

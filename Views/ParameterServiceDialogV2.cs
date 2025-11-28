@@ -11,6 +11,8 @@ using Color = System.Drawing.Color;
 using Font = System.Drawing.Font;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Commands;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Views
 {
@@ -37,6 +39,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.Panel _systemTypeOverridesPanel = null!;
         private List<WinForms.Panel> _systemTypeRows = new List<WinForms.Panel>();
         private List<string> _systemTypeOptions = new List<string>();
+        
+        // ✅ NEW: Track last focused category for system type dropdown population
+        private string _lastFocusedCategory = null;
         
         // Number format and remark checkboxes
         private WinForms.ComboBox _numberFormatCombo = null!;
@@ -299,6 +304,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             var ductLabel = new WinForms.Label { Text = "Duct:", Location = new Point(10, yPos), Size = new Size(80, 20) };
             _leftPrefixPanel.Controls.Add(ductLabel);
             _ductPrefixTextBox = new WinForms.TextBox { Location = new Point(90, yPos - 2), Size = new Size(50, 22), Text = "M" };
+            _ductPrefixTextBox.GotFocus += (s, e) => { _lastFocusedCategory = "Ducts"; };
             _leftPrefixPanel.Controls.Add(_ductPrefixTextBox);
             _remarkDuctCheckBox = new WinForms.CheckBox { Text = "Remark", Location = new Point(150, yPos - 2), Size = new Size(70, 22), Checked = false };
             _leftPrefixPanel.Controls.Add(_remarkDuctCheckBox);
@@ -353,8 +359,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             _leftPrefixPanel.Controls.Add(_systemTypeOverridesPanel);
 
-            // Load available System/Service types from persisted data
-            LoadSystemTypeOverrideOptions();
+            // ✅ CRITICAL FIX: Load system types from ALL placed sleeves initially (no category filter)
+            // This ensures we get system types from all categories that have placed sleeves
+            LoadSystemTypeOverrideOptions(null); // Explicitly pass null to load all
 
             // Add header row with "+" button
             CreateSystemTypeHeader();
@@ -998,28 +1005,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 AutoCompleteSource = AutoCompleteSource.ListItems
             };
 
-            systemTypeCombo.Items.Add("<Select>");
-
-            var options = (_systemTypeOptions?.Count ?? 0) > 0
-                ? _systemTypeOptions
-                : new List<string> { "Exhaust Air", "Supply Air", "Return Air", "Sanitary", "Hydronic", "Fire Protection" };
-
-            foreach (var option in options)
-            {
-                if (!string.IsNullOrWhiteSpace(option))
-                {
-                    systemTypeCombo.Items.Add(option);
-                }
-            }
-
-            if (!string.IsNullOrWhiteSpace(systemType) && systemTypeCombo.Items.Contains(systemType))
-            {
-                systemTypeCombo.SelectedItem = systemType;
-            }
-            else
-            {
-                systemTypeCombo.Text = string.IsNullOrWhiteSpace(systemType) ? "<Select>" : systemType;
-            }
+            // ✅ CRITICAL FIX: Populate dropdown ONCE when row is created - don't reload on DropDown event
+            // This prevents memory access violations from database/Revit API calls during dropdown opening
+            // The dropdown will use the cached _systemTypeOptions that were loaded when dialog opened
+            PopulateSystemTypeDropdown(systemTypeCombo, systemType);
+            
+            // ✅ REMOVED: DropDown event handler that was causing memory access violations
+            // Instead, system types are loaded once when dialog opens and cached in _systemTypeOptions
+            // If user needs fresh data, they can close and reopen the dialog
             row.Controls.Add(systemTypeCombo);
 
             // Arrow
@@ -1071,8 +1064,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         /// <summary>
         /// Load available System Type / Service Type values from persisted XML (and future data sources).
         /// Populates <see cref="_systemTypeOptions"/> for use by override rows.
+        /// ✅ TESTING MODE: Always loads ALL system types and service types from ALL categories (ignores category filter)
         /// </summary>
-        private void LoadSystemTypeOverrideOptions()
+        private void LoadSystemTypeOverrideOptions(string category = null)
         {
             try
             {
@@ -1089,14 +1083,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         SafeFileLogger.SafeAppendText("parameter_service_debug.log", $"[{DateTime.Now}] {msg}\n");
                     });
 
-                    var catalog = catalogService.Load(_document);
+                    // ✅ TESTING MODE: Always load ALL types from ALL categories (ignore category parameter)
+                    var catalog = catalogService.Load(_document, category: null);
 
+                    // ✅ LOAD ALL: Include both SystemTypes and ServiceTypes from all categories
                     foreach (var value in catalog.SystemTypes ?? Enumerable.Empty<string>())
                     {
                         if (!string.IsNullOrWhiteSpace(value))
                             collected.Add(value.Trim());
                     }
-
                     foreach (var value in catalog.ServiceTypes ?? Enumerable.Empty<string>())
                     {
                         if (!string.IsNullOrWhiteSpace(value))
@@ -1109,6 +1104,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     .Select(v => v.Trim())
                     .OrderBy(v => v, StringComparer.OrdinalIgnoreCase)
                     .ToList();
+
+                // ✅ ENHANCED LOGGING: Log what will be populated in the dropdown
+                var categoryInfo = string.IsNullOrWhiteSpace(category) ? "all categories" : $"category '{category}'";
+                if (_systemTypeOptions.Count > 0)
+                {
+                    SafeFileLogger.SafeAppendText("parameter_service_debug.log",
+                        $"[{DateTime.Now}] [ParameterServiceDialogV2] ✅ System Type dropdown will be populated with {_systemTypeOptions.Count} options for {categoryInfo}: {string.Join(", ", _systemTypeOptions)}\n");
+                }
+                else
+                {
+                    SafeFileLogger.SafeAppendText("parameter_service_debug.log",
+                        $"[{DateTime.Now}] [ParameterServiceDialogV2] ⚠️ System Type dropdown will be EMPTY for {categoryInfo} - no system/service types found in placed sleeves\n");
+                }
 
                 if (_systemTypeOptions.Count == 0)
                 {
@@ -1137,6 +1145,67 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 _systemTypeRows[i].Location = new Point(2, 30 + (i * rowHeight));
             }
+        }
+        
+        /// <summary>
+        /// ✅ NEW: Populate system type dropdown with available options
+        /// </summary>
+        private void PopulateSystemTypeDropdown(WinForms.ComboBox comboBox, string selectedValue = null)
+        {
+            comboBox.Items.Clear();
+            comboBox.Items.Add("<Select>");
+
+            // ✅ CRITICAL FIX: Only show system types from placed sleeves - NO hardcoded fallback
+            // If no system types found, dropdown will only show "<Select>"
+            var options = _systemTypeOptions ?? new List<string>();
+
+            foreach (var option in options)
+            {
+                if (!string.IsNullOrWhiteSpace(option))
+                {
+                    comboBox.Items.Add(option);
+                }
+            }
+            
+            if (!string.IsNullOrWhiteSpace(selectedValue) && comboBox.Items.Contains(selectedValue))
+            {
+                comboBox.SelectedItem = selectedValue;
+            }
+            else
+            {
+                comboBox.Text = string.IsNullOrWhiteSpace(selectedValue) ? "<Select>" : selectedValue;
+            }
+        }
+        
+        /// <summary>
+        /// ✅ NEW: Detect current category based on which discipline prefix textbox was last focused/edited
+        /// Returns "Ducts", "Pipes", "Cable Trays", or null if cannot determine
+        /// </summary>
+        private string DetectCurrentCategory()
+        {
+            // ✅ CRITICAL FIX: First check which textbox currently has focus
+            if (_ductPrefixTextBox != null && _ductPrefixTextBox.Focused)
+                return "Ducts";
+            if (_pipePrefixTextBox != null && _pipePrefixTextBox.Focused)
+                return "Pipes";
+            if (_cableTrayPrefixTextBox != null && _cableTrayPrefixTextBox.Focused)
+                return "Cable Trays";
+            if (_damperPrefixTextBox != null && _damperPrefixTextBox.Focused)
+                return "Duct Accessories";
+            
+            // ✅ ENHANCEMENT: If no textbox has focus, use the last focused category
+            // This handles the case when user clicks dropdown after focusing a textbox
+            if (!string.IsNullOrWhiteSpace(_lastFocusedCategory))
+            {
+                SafeFileLogger.SafeAppendText("parameter_service_debug.log",
+                    $"[{DateTime.Now}] [ParameterServiceDialogV2] Using last focused category: '{_lastFocusedCategory}'\n");
+                return _lastFocusedCategory;
+            }
+            
+            // If we can't determine, return null to load all types
+            SafeFileLogger.SafeAppendText("parameter_service_debug.log",
+                $"[{DateTime.Now}] [ParameterServiceDialogV2] ⚠️ Cannot determine category - loading all system/service types\n");
+            return null;
         }
 
         private void ToggleLock(WinForms.Button lockBtn, WinForms.TextBox textBox)
@@ -1415,19 +1484,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     return;
                 }
                 
-                // ✅ NEW: Check if filter XML files exist for all categories before processing
-                // Apply Marks needs XML to determine which category each sleeve belongs to
-                var missingCategories = CheckFilterFilesForCategories();
+                // ✅ DATABASE-BASED: Check if categories have clash zone data in the database
+                // Apply Marks needs clash zone data to determine which category each sleeve belongs to
+                var missingCategories = GetCategoriesWithoutData();
                 if (missingCategories.Count > 0)
                 {
                     var categoryList = string.Join("\n• ", missingCategories);
                     var result = WinForms.MessageBox.Show(
-                        $"⚠️ FILTER DATA NOT FOUND\n\n" +
-                        $"The following categories cannot be processed because no filter data is found:\n\n" +
+                        $"⚠️ CLASH DATA NOT FOUND\n\n" +
+                        $"The following categories cannot be processed because no clash zone data is found in the database:\n\n" +
                         $"• {categoryList}\n\n" +
-                        $"Apply Marks requires XML filter files to determine sleeve categories (e.g., '*_ducts.xml', '*_pipes.xml') in the Filters directory.\n\n" +
+                        $"Apply Marks requires clash zone data in the database to determine sleeve categories.\n\n" +
+                        $"Please run Refresh to detect clash zones before applying marks.\n\n" +
                         $"Would you like to continue with available categories only?",
-                        "Missing Filter Data",
+                        "Missing Clash Data",
                         WinForms.MessageBoxButtons.YesNo,
                         WinForms.MessageBoxIcon.Warning);
                     
@@ -1588,9 +1658,63 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     _ => "000"
                 };
                 
-                // Collect checked System Type Overrides with remark checkboxes
-                var systemTypeOverrides = new List<(string systemType, string prefix)>();
-                bool hasSystemOverrideRemark = false;
+                // ✅ CRITICAL FIX: Collect System/Service Type Overrides and detect which category they belong to
+                var ductSystemTypeOverrides = new List<(string systemType, string prefix)>();
+                var pipeSystemTypeOverrides = new List<(string systemType, string prefix)>();
+                var ductAccessoriesSystemTypeOverrides = new List<(string systemType, string prefix)>();
+                var cableTrayServiceTypeOverrides = new List<(string serviceType, string prefix)>();
+                bool hasDuctSystemOverrideRemark = false;
+                bool hasPipeSystemOverrideRemark = false;
+                bool hasDuctAccessoriesSystemOverrideRemark = false;
+                bool hasCableTrayServiceOverrideRemark = false;
+                
+                // ✅ STEP 1: Get available system/service types for each category to detect which category they belong to
+                var cableTrayServiceTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var ductSystemTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var pipeSystemTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var ductAccessoriesSystemTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                
+                try
+                {
+                    if (_document != null)
+                    {
+                        var catalogService = new SystemTypeCatalogService(msg => { });
+                        
+                        // Get Cable Tray Service Types
+                        var cableTrayCatalog = catalogService.Load(_document, "Cable Trays");
+                        foreach (var st in cableTrayCatalog.ServiceTypes ?? Enumerable.Empty<string>())
+                        {
+                            if (!string.IsNullOrWhiteSpace(st))
+                                cableTrayServiceTypes.Add(st.Trim());
+                        }
+                        
+                        // Get Duct System Types
+                        var ductCatalog = catalogService.Load(_document, "Ducts");
+                        foreach (var st in ductCatalog.SystemTypes ?? Enumerable.Empty<string>())
+                        {
+                            if (!string.IsNullOrWhiteSpace(st))
+                                ductSystemTypes.Add(st.Trim());
+                        }
+                        
+                        // Get Pipe System Types
+                        var pipeCatalog = catalogService.Load(_document, "Pipes");
+                        foreach (var st in pipeCatalog.SystemTypes ?? Enumerable.Empty<string>())
+                        {
+                            if (!string.IsNullOrWhiteSpace(st))
+                                pipeSystemTypes.Add(st.Trim());
+                        }
+                        
+                        // Get Duct Accessories System Types
+                        var ductAccessoriesCatalog = catalogService.Load(_document, "Duct Accessories");
+                        foreach (var st in ductAccessoriesCatalog.SystemTypes ?? Enumerable.Empty<string>())
+                        {
+                            if (!string.IsNullOrWhiteSpace(st))
+                                ductAccessoriesSystemTypes.Add(st.Trim());
+                        }
+                    }
+                }
+                catch { /* Ignore errors */ }
+                
                 foreach (var row in _systemTypeRows)
                 {
                     // Find checkbox in row
@@ -1602,22 +1726,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         
                         if (comboBox != null && textBox != null)
                         {
-                            systemTypeOverrides.Add((comboBox.Text, textBox.Text));
-                            hasSystemOverrideRemark = true;
+                            var systemOrServiceType = comboBox.Text;
+                            var prefix = textBox.Text;
+                            
+                            // ✅ CRITICAL: Detect which category this system/service type belongs to
+                            // Priority: Cable Tray Service Types > Duct System Types > Pipe System Types > Duct Accessories System Types
+                            if (cableTrayServiceTypes.Contains(systemOrServiceType))
+                            {
+                                // This is a Cable Tray Service Type
+                                cableTrayServiceTypeOverrides.Add((systemOrServiceType, prefix));
+                                hasCableTrayServiceOverrideRemark = true;
+                            }
+                            else if (ductSystemTypes.Contains(systemOrServiceType))
+                            {
+                                // This is a Duct System Type
+                                ductSystemTypeOverrides.Add((systemOrServiceType, prefix));
+                                hasDuctSystemOverrideRemark = true;
+                            }
+                            else if (pipeSystemTypes.Contains(systemOrServiceType))
+                            {
+                                // This is a Pipe System Type
+                                pipeSystemTypeOverrides.Add((systemOrServiceType, prefix));
+                                hasPipeSystemOverrideRemark = true;
+                            }
+                            else if (ductAccessoriesSystemTypes.Contains(systemOrServiceType))
+                            {
+                                // This is a Duct Accessories System Type
+                                ductAccessoriesSystemTypeOverrides.Add((systemOrServiceType, prefix));
+                                hasDuctAccessoriesSystemOverrideRemark = true;
+                            }
+                            else
+                            {
+                                // Unknown - default to Duct System Type (backward compatibility)
+                                ductSystemTypeOverrides.Add((systemOrServiceType, prefix));
+                                hasDuctSystemOverrideRemark = true;
+                            }
                         }
                     }
                 }
 
                 // ✅ NEW: Check if filter XML files exist for any category we plan to remark
                 var categoriesNeedingFilters = new List<string>();
-                if (remarkProject || remarkDuct || hasSystemOverrideRemark) categoriesNeedingFilters.Add("Ducts");
-                if (remarkProject || remarkPipe) categoriesNeedingFilters.Add("Pipes");
-                if (remarkProject || remarkCableTray) categoriesNeedingFilters.Add("Cable Trays");
-                if (remarkProject || remarkDamper) categoriesNeedingFilters.Add("Duct Accessories");
+                if (remarkProject || remarkDuct || hasDuctSystemOverrideRemark) categoriesNeedingFilters.Add("Ducts");
+                if (remarkProject || remarkPipe || hasPipeSystemOverrideRemark) categoriesNeedingFilters.Add("Pipes");
+                if (remarkProject || remarkCableTray || hasCableTrayServiceOverrideRemark) categoriesNeedingFilters.Add("Cable Trays");
+                if (remarkProject || remarkDamper || hasDuctAccessoriesSystemOverrideRemark) categoriesNeedingFilters.Add("Duct Accessories");
 
                 if (categoriesNeedingFilters.Count > 0)
                 {
-                    var missingCategories = CheckFilterFilesForCategories()
+                    var missingCategories = GetCategoriesWithoutData()
                         .Where(cat => categoriesNeedingFilters.Contains(cat))
                         .ToList();
 
@@ -1625,12 +1782,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     {
                         var categoryList = string.Join("\n• ", missingCategories);
                         var result = WinForms.MessageBox.Show(
-                            $"⚠️ FILTER DATA NOT FOUND\n\n" +
-                            $"The following selected categories cannot be processed because no filter data is found:\n\n" +
+                            $"⚠️ CLASH DATA NOT FOUND\n\n" +
+                            $"The following selected categories cannot be processed because no clash zone data is found in the database:\n\n" +
                             $"• {categoryList}\n\n" +
-                            $"Remark Selected requires XML filter files to determine sleeve categories (e.g., '*_ducts.xml', '*_pipes.xml') in the Filters directory.\n\n" +
+                            $"Remark Selected requires clash zone data in the database to determine sleeve categories.\n\n" +
+                            $"Please run Refresh to detect clash zones before remarking.\n\n" +
                             $"Would you like to continue with available categories only?",
-                            "Missing Filter Data",
+                            "Missing Clash Data",
                             WinForms.MessageBoxButtons.YesNo,
                             WinForms.MessageBoxIcon.Warning);
 
@@ -1677,17 +1835,45 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     // Sync remark checkboxes so MarkParameterCommand honours the user's selection
                     markPrefixes.RemarkAll = remarkProject;
                     markPrefixes.RemarkProjectPrefix = remarkProject;
-                    markPrefixes.RemarkDuctPrefix = remarkDuct || hasSystemOverrideRemark;
-                    markPrefixes.RemarkPipePrefix = remarkPipe;
-                    markPrefixes.RemarkCableTrayPrefix = remarkCableTray;
-                    markPrefixes.RemarkDamperPrefix = remarkDamper;
+                    markPrefixes.RemarkDuctPrefix = remarkDuct || hasDuctSystemOverrideRemark;
+                    markPrefixes.RemarkPipePrefix = remarkPipe || hasPipeSystemOverrideRemark;
+                    markPrefixes.RemarkCableTrayPrefix = remarkCableTray || hasCableTrayServiceOverrideRemark;
+                    markPrefixes.RemarkDamperPrefix = remarkDamper || hasDuctAccessoriesSystemOverrideRemark;
                     
-                    // ✅ Add system type overrides from checked rows
-                    foreach (var (systemType, prefix) in systemTypeOverrides)
+                    // ✅ CRITICAL FIX: Add system/service type overrides to correct dictionaries based on category
+                    // Duct System Type Overrides
+                    foreach (var (systemType, prefix) in ductSystemTypeOverrides)
                     {
                         if (!string.IsNullOrWhiteSpace(systemType))
                         {
                             markPrefixes.DuctSystemTypeOverrides[systemType] = prefix ?? string.Empty;
+                        }
+                    }
+                    
+                    // Pipe System Type Overrides
+                    foreach (var (systemType, prefix) in pipeSystemTypeOverrides)
+                    {
+                        if (!string.IsNullOrWhiteSpace(systemType))
+                        {
+                            markPrefixes.PipeSystemTypeOverrides[systemType] = prefix ?? string.Empty;
+                        }
+                    }
+                    
+                    // Duct Accessories System Type Overrides
+                    foreach (var (systemType, prefix) in ductAccessoriesSystemTypeOverrides)
+                    {
+                        if (!string.IsNullOrWhiteSpace(systemType))
+                        {
+                            markPrefixes.DuctAccessoriesSystemTypeOverrides[systemType] = prefix ?? string.Empty;
+                        }
+                    }
+                    
+                    // Cable Tray Service Type Overrides
+                    foreach (var (serviceType, prefix) in cableTrayServiceTypeOverrides)
+                    {
+                        if (!string.IsNullOrWhiteSpace(serviceType))
+                        {
+                            markPrefixes.CableTrayServiceTypeOverrides[serviceType] = prefix ?? string.Empty;
                         }
                     }
                     
@@ -1722,28 +1908,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             var cmd = new MarkParameterCommand("Ducts", effectiveProjectPrefix, ductPrefix, false, markPrefixes);
                             cmd.Execute(_uiDocument.Application);
                             totalProcessed++;
-                            categoriesProcessed.Add(hasSystemOverrideRemark && !remarkDuct ? "Ducts (System Type Overrides)" : "Ducts");
+                            categoriesProcessed.Add(hasDuctSystemOverrideRemark && !remarkDuct ? "Ducts (System Type Overrides)" : "Ducts");
                         }
-                        if (remarkPipe)
+                        if (markPrefixes.RemarkPipePrefix)
                         {
                             var cmd = new MarkParameterCommand("Pipes", effectiveProjectPrefix, pipePrefix, false, markPrefixes);
                             cmd.Execute(_uiDocument.Application);
                             totalProcessed++;
-                            categoriesProcessed.Add("Pipes");
+                            categoriesProcessed.Add(hasPipeSystemOverrideRemark && !remarkPipe ? "Pipes (System Type Overrides)" : "Pipes");
                         }
-                        if (remarkCableTray)
+                        if (markPrefixes.RemarkCableTrayPrefix)
                         {
+                            // ✅ CRITICAL FIX: Process Cable Trays if remark checkbox is checked OR if there are Service Type overrides
                             var cmd = new MarkParameterCommand("Cable Trays", effectiveProjectPrefix, cableTrayPrefix, false, markPrefixes);
                             cmd.Execute(_uiDocument.Application);
                             totalProcessed++;
-                            categoriesProcessed.Add("Cable Trays");
+                            categoriesProcessed.Add(hasCableTrayServiceOverrideRemark && !remarkCableTray ? "Cable Trays (Service Type Overrides)" : "Cable Trays");
                         }
-                        if (remarkDamper)
+                        if (markPrefixes.RemarkDamperPrefix)
                         {
                             var cmd = new MarkParameterCommand("Duct Accessories", effectiveProjectPrefix, damperPrefix, false, markPrefixes);
                             cmd.Execute(_uiDocument.Application);
                             totalProcessed++;
-                            categoriesProcessed.Add("Duct Accessories");
+                            categoriesProcessed.Add(hasDuctAccessoriesSystemOverrideRemark && !remarkDamper ? "Duct Accessories (System Type Overrides)" : "Duct Accessories");
                         }
                     }
                     
@@ -1769,11 +1956,110 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         }
         
         /// <summary>
-        /// ✅ NEW: Check if filter XML files exist for all MEP categories
-        /// Returns list of categories that don't have filter data
+        /// ✅ DATABASE-BASED: Check if categories have clash zone data in the database
+        /// Returns list of categories that don't have clash data in the database
+        /// Replaces the old XML file-based check
         /// </summary>
+        private List<string> GetCategoriesWithoutData()
+        {
+            var missingCategories = new List<string>();
+            
+            try
+            {
+                if (_document == null) return missingCategories;
+                
+                // ✅ DATABASE MIGRATION: Check database instead of XML files
+                var dbContext = new Data.SleeveDbContext(_document);
+                var clashZoneRepo = new Data.Repositories.ClashZoneRepository(dbContext, null);
+                
+                // Check each MEP category in the database
+                var categoriesToCheck = new[] { "Ducts", "Pipes", "Cable Trays", "Duct Accessories" };
+                
+                foreach (var category in categoriesToCheck)
+                {
+                    // Query database to check if category has clash zones
+                    var clashZones = clashZoneRepo.GetClashZonesByCategory(category);
+                    
+                    if (clashZones == null || clashZones.Count == 0)
+                    {
+                        // Also check SleeveSnapshots table as fallback
+                        // (some categories might have data in snapshots but not in ClashZones table)
+                        try
+                        {
+                            using (var cmd = dbContext.Connection.CreateCommand())
+                            {
+                                // Check if there are any snapshots for this category
+                                // We can check by MEP parameters JSON or by checking if any zones reference this category
+                                cmd.CommandText = @"
+                                    SELECT COUNT(*) FROM SleeveSnapshots 
+                                    WHERE MepParametersJson LIKE @categoryPattern
+                                    LIMIT 1";
+                                cmd.Parameters.AddWithValue("@categoryPattern", $"%{category}%");
+                                
+                                var snapshotCount = Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
+                                
+                                // Also check ClashZones table one more time with direct SQL
+                                cmd.Parameters.Clear();
+                                cmd.CommandText = @"
+                                    SELECT COUNT(*) FROM ClashZones 
+                                    WHERE MepCategory = @category
+                                    LIMIT 1";
+                                cmd.Parameters.AddWithValue("@category", category);
+                                
+                                var clashZoneCount = Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
+                                
+                                if (snapshotCount == 0 && clashZoneCount == 0)
+                                {
+                                    missingCategories.Add(category);
+                                }
+                            }
+                        }
+                        catch (Exception dbEx)
+                        {
+                            // If database query fails, assume category is missing
+                            DebugLogger.Warning($"[ParameterServiceDialogV2] Error checking database for category {category}: {dbEx.Message}");
+                            missingCategories.Add(category);
+                        }
+                    }
+                }
+                
+                DebugLogger.Info($"[ParameterServiceDialogV2] Database check: {missingCategories.Count} categories missing clash data");
+                if (missingCategories.Count > 0)
+                {
+                    DebugLogger.Warning($"[ParameterServiceDialogV2] Missing clash data in database for: {string.Join(", ", missingCategories)}");
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[ParameterServiceDialogV2] Error checking database for categories: {ex.Message}");
+                // On error, don't block processing - return empty list (allow processing to continue)
+            }
+            
+            return missingCategories;
+        }
+        
+        /// <summary>
+        /// ✅ DEPRECATED: Old XML-based check (kept for fallback only)
+        /// Use GetCategoriesWithoutData() instead
+        /// </summary>
+        [Obsolete("Use GetCategoriesWithoutData() instead - checks database instead of XML files")]
         private List<string> CheckFilterFilesForCategories()
         {
+            // ✅ FALLBACK: Try database first, then XML if database check fails
+            try
+            {
+                var dbMissing = GetCategoriesWithoutData();
+                if (dbMissing.Count < 4) // If we found at least some categories in DB, use DB result
+                {
+                    return dbMissing;
+                }
+            }
+            catch
+            {
+                // If database check fails, fall back to XML check below
+            }
+            
+            // Fallback to XML file check (for backward compatibility)
             var missingCategories = new List<string>();
             
             try
@@ -1844,7 +2130,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     }
                 }
                 
-                DebugLogger.Info($"[ParameterServiceDialogV2] Filter file check: {missingCategories.Count} categories missing filter data");
+                DebugLogger.Info($"[ParameterServiceDialogV2] Filter file check (fallback): {missingCategories.Count} categories missing filter data");
                 if (missingCategories.Count > 0)
                 {
                     DebugLogger.Warning($"[ParameterServiceDialogV2] Missing filter files for: {string.Join(", ", missingCategories)}");

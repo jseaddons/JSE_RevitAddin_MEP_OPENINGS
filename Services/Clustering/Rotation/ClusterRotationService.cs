@@ -565,115 +565,200 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     // Corners are ALWAYS saved for all sleeves during individual placement
                     bool hasAnyCorners = false;
                     int sleevesWithCorners = 0;
-                    int sleevesWithoutCorners = 0;
+                    
+                    // ✅ CRITICAL FIX: Extract SleeveInstanceId safely BEFORE any checks
+                    var sleeveIdsInCluster = new List<int>();
                     foreach (var sleeveData in cluster)
                     {
-                        var clashZone = GetCachedClashZone(sleeveData.SleeveInstanceId, xmlFilePath);
+                        try
+                        {
+                            int sleeveId;
+                            dynamic dynSleeve = sleeveData;
+                            object sleeveIdObj = dynSleeve.SleeveInstanceId;
+                            if (sleeveIdObj == null) continue;
+                            
+                            if (sleeveIdObj is int id)
+                                sleeveId = id;
+                            else if (sleeveIdObj is long longId)
+                                sleeveId = (int)longId;
+                            else
+                                sleeveId = Convert.ToInt32(sleeveIdObj);
+                            
+                            sleeveIdsInCluster.Add(sleeveId);
+                        }
+                        catch
+                        {
+                            continue;
+                        }
+                    }
+                    
+                    // Now check corners using the extracted IDs
+                    foreach (int sleeveId in sleeveIdsInCluster)
+                    {
+                        var clashZone = GetCachedClashZone(sleeveId, xmlFilePath);
                         if (clashZone != null)
                         {
-                            if (clashZone != null)
+                            double sleeveRotationDeg = clashZone.MepElementRotationAngle * 180.0 / Math.PI;
+                            
+                            // ✅ CRITICAL FIX: Explicitly type nullable properties to avoid dynamic dispatch errors
+                            double? corner1X = clashZone.SleeveCorner1X;
+                            double? corner1Y = clashZone.SleeveCorner1Y;
+                            double? corner2X = clashZone.SleeveCorner2X;
+                            double? corner2Y = clashZone.SleeveCorner2Y;
+                            double? corner3X = clashZone.SleeveCorner3X;
+                            double? corner3Y = clashZone.SleeveCorner3Y;
+                            double? corner4X = clashZone.SleeveCorner4X;
+                            double? corner4Y = clashZone.SleeveCorner4Y;
+                            
+                            bool hasCorners = corner1X.HasValue && corner1Y.HasValue &&
+                                              corner2X.HasValue && corner2Y.HasValue &&
+                                              corner3X.HasValue && corner3Y.HasValue &&
+                                              corner4X.HasValue && corner4Y.HasValue;
+                            
+                            if (hasCorners)
                             {
-                                // ✅ DIAGNOSTIC: Check individual sleeve rotation angle
-                                double sleeveRotationDeg = clashZone.MepElementRotationAngle * 180.0 / Math.PI;
-                                
-                                bool hasCorners = clashZone.SleeveCorner1X.HasValue && clashZone.SleeveCorner1Y.HasValue &&
-                                                  clashZone.SleeveCorner2X.HasValue && clashZone.SleeveCorner2Y.HasValue &&
-                                                  clashZone.SleeveCorner3X.HasValue && clashZone.SleeveCorner3Y.HasValue &&
-                                                  clashZone.SleeveCorner4X.HasValue && clashZone.SleeveCorner4Y.HasValue;
-                                
-                                if (hasCorners)
-                                {
-                                    sleevesWithCorners++;
-                                    hasAnyCorners = true;
-                                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                        $"[{DateTime.Now:HH:mm:ss}]   ✅ Sleeve {sleeveData.SleeveInstanceId}: Has corners, Rotation={sleeveRotationDeg:F1}°, " +
-                                        $"ActiveCoords=({clashZone.SleevePlacementPointActiveDocumentX:F6}, {clashZone.SleevePlacementPointActiveDocumentY:F6}, {clashZone.SleevePlacementPointActiveDocumentZ:F6})\n");
-                                }
-                                else
-                                {
-                                    sleevesWithoutCorners++;
-                                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                        $"[{DateTime.Now:HH:mm:ss}]   ⚠️ Sleeve {sleeveData.SleeveInstanceId}: Missing corners, Rotation={sleeveRotationDeg:F1}°, " +
-                                        $"ActiveCoords=({clashZone.SleevePlacementPointActiveDocumentX:F6}, {clashZone.SleevePlacementPointActiveDocumentY:F6}, {clashZone.SleevePlacementPointActiveDocumentZ:F6}), " +
-                                        $"HasCorner1X={clashZone.SleeveCorner1X.HasValue}, HasCorner1Y={clashZone.SleeveCorner1Y.HasValue}\n");
-                                }
+                                sleevesWithCorners++;
+                                hasAnyCorners = true;
+                                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                    $"[{DateTime.Now:HH:mm:ss}]   ✅ Sleeve {sleeveId}: Has corners, Rotation={sleeveRotationDeg:F1}°\n");
+                            }
+                            else
+                            {
+                                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                    $"[{DateTime.Now:HH:mm:ss}]   ⚠️ Sleeve {sleeveId}: Missing corners, Rotation={sleeveRotationDeg:F1}°\n");
                             }
                         }
                     }
                     
                     SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                        $"[{DateTime.Now:HH:mm:ss}] 📊 Corner check: {sleevesWithCorners}/{cluster.Count} sleeves have corners, cluster rotation={rotationAngle * 180 / Math.PI:F1}°\n");
+                        $"[{DateTime.Now:HH:mm:ss}] 📊 Corner check: {sleevesWithCorners}/{cluster.Count} sleeves have corners\n");
                     
-                    if (!hasAnyCorners)
+                    if (hasAnyCorners)
                     {
-                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ Skipping corner-based: rotation={rotationAngle * 180 / Math.PI:F1}°, no corners found in database, rotatedBboxesCount={rotatedBboxes.Count}\n");
-                    }
-                    else
-                    {
-                        // ✅ WRAP: Convert to Func<int, string, dynamic> for corner calculator (with caching)
-                        Func<int, string, dynamic> getClashZoneDynamic = (sleeveId, path) => GetCachedClashZone(sleeveId, path);
+                        // ✅ MANUAL CORNER-BASED CALCULATION: Calculate directly here to avoid dynamic type issues
+                        var allCorners = new List<XYZ>();
                         
-                        var cornerResult = CornerBasedBoundingBoxCalculator.CalculateFromCorners(
-                            cluster,
-                            rotationAngle,
-                            out XYZ origin,
-                            getClashZoneDynamic,
-                            xmlFilePath);
-
-                        if (cornerResult.HasValue)
+                        foreach (int sleeveId in sleeveIdsInCluster)
                         {
-                            // Calculate depth from Z coordinates (use union of Z extents from actual sleeves, not rotatedBboxes which might be empty)
-                            var clashZonesForDepth = cluster.Select(s => GetCachedClashZone(s.SleeveInstanceId, xmlFilePath))
+                            var cz = GetCachedClashZone(sleeveId, xmlFilePath);
+                            if (cz != null)
+                            {
+                                // ✅ CRITICAL FIX: Explicitly type nullable properties to avoid dynamic dispatch errors
+                                double? corner1X = cz.SleeveCorner1X;
+                                double? corner1Y = cz.SleeveCorner1Y;
+                                double? corner1Z = cz.SleeveCorner1Z;
+                                double? corner2X = cz.SleeveCorner2X;
+                                double? corner2Y = cz.SleeveCorner2Y;
+                                double? corner2Z = cz.SleeveCorner2Z;
+                                double? corner3X = cz.SleeveCorner3X;
+                                double? corner3Y = cz.SleeveCorner3Y;
+                                double? corner3Z = cz.SleeveCorner3Z;
+                                double? corner4X = cz.SleeveCorner4X;
+                                double? corner4Y = cz.SleeveCorner4Y;
+                                double? corner4Z = cz.SleeveCorner4Z;
+                                
+                                if (corner1X.HasValue && corner1Y.HasValue &&
+                                    corner2X.HasValue && corner2Y.HasValue &&
+                                    corner3X.HasValue && corner3Y.HasValue &&
+                                    corner4X.HasValue && corner4Y.HasValue)
+                                {
+                                    // Add all 4 corners (use Z from bounding box for consistency)
+                                    double sleeveMinZ = cz.SleeveBoundingBoxMinZ;
+                                    allCorners.Add(new XYZ(corner1X.Value, corner1Y.Value, sleeveMinZ));
+                                    allCorners.Add(new XYZ(corner2X.Value, corner2Y.Value, sleeveMinZ));
+                                    allCorners.Add(new XYZ(corner3X.Value, corner3Y.Value, sleeveMinZ));
+                                    allCorners.Add(new XYZ(corner4X.Value, corner4Y.Value, sleeveMinZ));
+                                    
+                                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                        $"[{DateTime.Now:HH:mm:ss}]   ✅ Added 4 corners for sleeve {sleeveId}: C1=({corner1X.Value:F6},{corner1Y.Value:F6}), C2=({corner2X.Value:F6},{corner2Y.Value:F6}), C3=({corner3X.Value:F6},{corner3Y.Value:F6}), C4=({corner4X.Value:F6},{corner4Y.Value:F6})\n");
+                                }
+                            }
+                        }
+                        
+                        if (allCorners.Count >= 4)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                $"[{DateTime.Now:HH:mm:ss}] 🔧 Starting corner-based calculation with {allCorners.Count} corners, rotation={rotationAngle * 180 / Math.PI:F1}°\n");
+                            
+                            // ✅ Calculate cluster bounding box by rotating corners back to aligned axis
+                            double cosA = Math.Cos(-rotationAngle); // Negative for inverse rotation
+                            double sinA = Math.Sin(-rotationAngle);
+                            
+                            // Find centroid of all corners to use as rotation origin
+                            double originX = allCorners.Average(c => c.X);
+                            double originY = allCorners.Average(c => c.Y);
+                            
+                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                $"[{DateTime.Now:HH:mm:ss}]   Origin: ({originX:F6}, {originY:F6}), cosA={cosA:F6}, sinA={sinA:F6}\n");
+                            
+                            // Rotate each corner and find min/max in rotated space
+                            double minRotX = double.MaxValue, maxRotX = double.MinValue;
+                            double minRotY = double.MaxValue, maxRotY = double.MinValue;
+                            
+                            foreach (var corner in allCorners)
+                            {
+                                // Translate to origin
+                                double relX = corner.X - originX;
+                                double relY = corner.Y - originY;
+                                
+                                // Rotate
+                                double rotX = relX * cosA - relY * sinA;
+                                double rotY = relX * sinA + relY * cosA;
+                                
+                                // Update bounds
+                                minRotX = Math.Min(minRotX, rotX);
+                                maxRotX = Math.Max(maxRotX, rotX);
+                                minRotY = Math.Min(minRotY, rotY);
+                                maxRotY = Math.Max(maxRotY, rotY);
+                            }
+                            
+                            double cornerWidth = maxRotX - minRotX;
+                            double cornerHeight = maxRotY - minRotY;
+                            
+                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                $"[{DateTime.Now:HH:mm:ss}]   Rotated bounds: minX={minRotX:F6}, maxX={maxRotX:F6}, minY={minRotY:F6}, maxY={maxRotY:F6}\n");
+                            
+                            // Z dimension from sleeve bounding boxes
+                            var clashZonesForDepth = sleeveIdsInCluster
+                                .Select(id => GetCachedClashZone(id, xmlFilePath))
                                 .Where(cz => cz != null)
                                 .ToList();
+                            
                             double cornerMinZ = clashZonesForDepth.Count > 0 ? clashZonesForDepth.Min(cz => cz.SleeveBoundingBoxMinZ) : 0.0;
                             double cornerMaxZ = clashZonesForDepth.Count > 0 ? clashZonesForDepth.Max(cz => cz.SleeveBoundingBoxMaxZ) : 0.0;
                             double cornerDepth = cornerMaxZ - cornerMinZ;
-                        
-                        // ✅ MIDPOINT: Calculate in rotated coordinate space, then transform back to world coordinates
-                        // The midpoint is calculated as center of bounding box in rotated space: ((minX+maxX)/2, (minY+maxY)/2)
-                        // To transform back to world coordinates, we need the INVERSE rotation matrix (transpose)
-                        // Forward: clusterX = relX * cos(θ) - relY * sin(θ), clusterY = relX * sin(θ) + relY * cos(θ)
-                        // Inverse: worldX = clusterX * cos(θ) + clusterY * sin(θ), worldY = -clusterX * sin(θ) + clusterY * cos(θ)
-                        double midX = (cornerResult.Value.minX + cornerResult.Value.maxX) / 2.0;
-                        double midY = (cornerResult.Value.minY + cornerResult.Value.maxY) / 2.0;
-                        double midZ = (cornerMinZ + cornerMaxZ) / 2.0;
-                        
-                        // ✅ INVERSE TRANSFORMATION: Transpose of rotation matrix (inverse for rotation matrices)
-                        double cosA = Math.Cos(rotationAngle);  // Use same angle (inverse rotation matrix is transpose)
-                        double sinA = Math.Sin(rotationAngle);
-                        double midRotatedBackX = midX * cosA + midY * sinA;  // Note: + instead of -
-                        double midRotatedBackY = -midX * sinA + midY * cosA;  // Note: -sinA instead of sinA
-                        
-                        // Translate back (add origin)
-                        XYZ cornerMid = new XYZ(
-                            origin.X + midRotatedBackX,
-                            origin.Y + midRotatedBackY,
-                            midZ  // Z stays the same
-                        );
-                        
-                        // Convert to millimeters for logging
-                        double widthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(cornerResult.Value.width);
-                        double heightMm = RevitUnitConversionService.Instance.FromInternalMillimeters(cornerResult.Value.height);
-                        double depthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(cornerDepth);
-                        
-                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                $"[{DateTime.Now:HH:mm:ss}] ✅ CORNER-BASED: Cluster rotation={rotationAngle * 180 / Math.PI:F1}°, W={widthMm:F1}mm, H={heightMm:F1}mm, D={depthMm:F1}mm\n");
                             
-                            // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
-                            (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ) cornerResultValue = 
-                                (cornerResult.Value.width, cornerResult.Value.height, cornerDepth, placementPoint,
-                                cornerResult.Value.minX, cornerResult.Value.minY, cornerMinZ,
-                                cornerResult.Value.maxX, cornerResult.Value.maxY, cornerMaxZ);
-                            StoreInCache(cluster, rotationAngle, cornerResultValue, calcStopwatch);
-                            return cornerResultValue;
+                            double widthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(cornerWidth);
+                            double heightMm = RevitUnitConversionService.Instance.FromInternalMillimeters(cornerHeight);
+                            double depthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(cornerDepth);
+                            
+                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ CORNER-BASED SUCCESS: W={widthMm:F1}mm, H={heightMm:F1}mm, D={depthMm:F1}mm (from {allCorners.Count} corners)\n");
+                            
+                            // ✅ Calculate rotated bounding box extents in world coordinates
+                            double rotatedMinX = minRotX + originX;
+                            double rotatedMinY = minRotY + originY;
+                            double rotatedMaxX = maxRotX + originX;
+                            double rotatedMaxY = maxRotY + originY;
+                            
+                            (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ) cornerResult = 
+                                (cornerWidth, cornerHeight, cornerDepth, placementPoint,
+                                rotatedMinX, rotatedMinY, cornerMinZ,
+                                rotatedMaxX, rotatedMaxY, cornerMaxZ);
+                            
+                            StoreInCache(cluster, rotationAngle, cornerResult, calcStopwatch);
+                            return cornerResult;
                         }
                         else
                         {
                             SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                $"[{DateTime.Now:HH:mm:ss}] ⚠️ Corner-based calculation returned NULL, falling back to union for rotation={rotationAngle * 180 / Math.PI:F1}°\n");
+                                $"[{DateTime.Now:HH:mm:ss}] ⚠️ Not enough corners collected: {allCorners.Count}, falling back to union\n");
                         }
+                    }
+                    else
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ No corners found in any sleeve, falling back to union\n");
                     }
                 }
                 catch (Exception cornerEx)
@@ -689,7 +774,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     $"[{DateTime.Now:HH:mm:ss}] ⚠️ Skipping corner-based: rotation={rotationDeg:F1}° (straight axis-aligned to WCS), isNearZero={Math.Abs(rotationAngle) <= 1e-6}\n");
             }
 
-            if (rotatedBboxes.Count == 0)
+            // ✅ CRITICAL FIX: For rotated floor clusters, if corner-based calculation failed,
+            // reconstruct world bounding boxes from placement points + dimensions (same as straight-axis logic)
+            // This ensures correct sizing for rotated clusters when corner-based fails
+            bool shouldReconstructFromPlacementPoints = false;
+            if (rotatedBboxes.Count == 0 || (Math.Abs(rotationAngle) > 1e-6 && rotatedBboxes.Count < cluster.Count))
+            {
+                // Check if this is a floor cluster
+                var checkFirstSleeve = cluster.FirstOrDefault();
+                if (checkFirstSleeve != null)
+                {
+                    var checkCz = GetCachedClashZone(checkFirstSleeve.SleeveInstanceId, xmlFilePath);
+                    if (checkCz != null)
+                    {
+                        bool isFloorHost = string.Equals(checkCz.StructuralElementType, "Floor", StringComparison.OrdinalIgnoreCase) ||
+                                          string.Equals(checkCz.StructuralElementType, "Floors", StringComparison.OrdinalIgnoreCase);
+                        if (isFloorHost && Math.Abs(rotationAngle) > 1e-6)
+                        {
+                            // ✅ For rotated floor clusters, always reconstruct from placement points
+                            // The stored rotated bounding boxes are in individual sleeve local coordinates,
+                            // not cluster-aligned coordinates, so unioning them gives incorrect results
+                            shouldReconstructFromPlacementPoints = true;
+                        }
+                    }
+                }
+            }
+
+            if (rotatedBboxes.Count == 0 && !shouldReconstructFromPlacementPoints)
             {
                 // ✅ CRITICAL: For walls/framing, check if we should use RCS or transform WCS to RCS
                 var fallbackFirstSleeveData = cluster[0];
@@ -781,45 +892,289 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     }
                 }
                 
-                // ✅ OPTIMIZATION: Use bounding box data from database instead of querying Revit (for floors only)
-                // Database has SleeveBoundingBoxMinX/Y/Z and MaxX/Y/Z stored after individual sleeve placement
-                // This is faster and avoids Revit API calls
+                // ✅ CRITICAL FIX: For floor clusters, build envelope from placement points + dimensions
+                // This works for both straight-axis (0°) and rotated-axis (135°, 315°, etc.) clusters
+                // For rotated clusters, we reconstruct world bounding boxes from placement points + dimensions
+                // because the stored bounding boxes are in individual sleeve local coordinates, not cluster-aligned coordinates
+                bool isStraightAxis = Math.Abs(rotationAngle) < 1e-6;
+                if (isStraightAxis || (Math.Abs(rotationAngle) > 1e-6 && rotatedBboxes.Count == 0)) // Straight axis OR rotated axis with no rotated bboxes
+                {
+                    try
+                    {
+                        var floorFirstSleeveData = cluster[0];
+                        if (floorFirstSleeveData != null)
+                        {
+                            int firstSleeveInstanceId = floorFirstSleeveData.SleeveInstanceId;
+                            if (firstSleeveInstanceId > 0)
+                            {
+                                var firstCz = GetCachedClashZone(firstSleeveInstanceId, xmlFilePath);
+                                if (firstCz != null)
+                                {
+                                    bool isFloorHost = string.Equals(firstCz.StructuralElementType, "Floor", StringComparison.OrdinalIgnoreCase) ||
+                                                       string.Equals(firstCz.StructuralElementType, "Floors", StringComparison.OrdinalIgnoreCase);
+                                    
+                                    if (isFloorHost)
+                                    {
+                                        // Check if cluster has mixed X/Y orientations
+                                        var orientations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                                        foreach (var sleeveData in cluster)
+                                        {
+                                            var cz = GetCachedClashZone(sleeveData.SleeveInstanceId, xmlFilePath);
+                                            if (cz != null)
+                                            {
+                                                string orientation = cz.MepElementOrientationDirection;
+                                                
+                                                // ✅ Fallback: Infer orientation from rotation angle if missing
+                                                if (string.IsNullOrEmpty(orientation))
+                                                {
+                                                    double angle = Math.Abs(cz.MepElementRotationAngle); // Radians
+                                                    // Normalize to 0-PI
+                                                    while (angle > Math.PI) angle -= Math.PI;
+                                                    
+                                                    if (angle > Math.PI / 4.0 && angle < 3.0 * Math.PI / 4.0)
+                                                    {
+                                                        orientation = "Y"; // ~90 degrees
+                                                    }
+                                                    else
+                                                    {
+                                                        orientation = "X"; // ~0 or ~180 degrees
+                                                    }
+                                                }
+                                                
+                                                if (!string.IsNullOrEmpty(orientation))
+                                                {
+                                                    orientations.Add(orientation);
+                                                }
+                                            }
+                                        }
+                                        
+                                        // ✅ DIAGNOSTIC: Log orientation detection
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                                $"[{DateTime.Now:HH:mm:ss}] 🔍 FLOOR ORIENTATION CHECK: Found orientations=[{string.Join(", ", orientations)}], ClusterSize={cluster.Count}, HasX={orientations.Contains("X")}, HasY={orientations.Contains("Y")}\n");
+                                        }
+                                        
+                                        // If we have both X and Y orientations, build envelope from calculated world bboxes
+                                        if (orientations.Contains("X") && orientations.Contains("Y"))
+                                        {
+                                            var floorBboxes = new List<(XYZ min, XYZ max)>();
+                                            foreach (var sleeveData in cluster)
+                                            {
+                                                var cz = GetCachedClashZone(sleeveData.SleeveInstanceId, xmlFilePath);
+                                                if (cz != null)
+                                                {
+                                                    // ✅ Calculate World Bounding Box from Placement Point + Dimensions
+                                                    double placementX = cz.SleevePlacementPointActiveDocumentX;
+                                                    double placementY = cz.SleevePlacementPointActiveDocumentY;
+                                                    double placementZ = cz.SleevePlacementPointActiveDocumentZ;
+                                                    
+                                                    // ✅ CRITICAL FIX: Get dimensions in feet (stored in feet, no conversion needed)
+                                                    // SleeveWidth and SleeveHeight are stored in Revit internal units (feet), not millimeters
+                                                    double sleeveWidth = cz.SleeveWidth;
+                                                    double sleeveHeight = cz.SleeveHeight;
+                                                    // Use StructuralElementThickness for depth if available, otherwise default to 1.0ft
+                                                    // StructuralElementThickness is also in feet (Revit internal units)
+                                                    double sleeveDepth = cz.StructuralElementThickness > 0 ? cz.StructuralElementThickness : 1.0; 
+
+                                                    double halfWidth, halfHeight;
+
+                                                    // Determine orientation (use explicit or inferred)
+                                                    bool isY = string.Equals(cz.MepElementOrientationDirection, "Y", StringComparison.OrdinalIgnoreCase);
+                                                    if (!isY && string.IsNullOrEmpty(cz.MepElementOrientationDirection))
+                                                    {
+                                                        // Fallback inference
+                                                        double angle = Math.Abs(cz.MepElementRotationAngle);
+                                                        while (angle > Math.PI) angle -= Math.PI;
+                                                        if (angle > Math.PI / 4.0 && angle < 3.0 * Math.PI / 4.0)
+                                                        {
+                                                            isY = true;
+                                                        }
+                                                    }
+
+                                                    // Apply rotation based on orientation
+                                                    if (isY)
+                                                    {
+                                                        // Rotated 90 degrees: Width is along Y, Height is along X
+                                                        halfWidth = sleeveHeight / 2.0;  // X-dimension
+                                                        halfHeight = sleeveWidth / 2.0;  // Y-dimension
+                                                    }
+                                                    else
+                                                    {
+                                                        // Default X orientation: Width is along X, Height is along Y
+                                                        halfWidth = sleeveWidth / 2.0;   // X-dimension
+                                                        halfHeight = sleeveHeight / 2.0; // Y-dimension
+                                                    }
+                                                    double halfDepth = sleeveDepth / 2.0;
+
+                                                    floorBboxes.Add((
+                                                        new XYZ(placementX - halfWidth, placementY - halfHeight, placementZ - halfDepth),
+                                                        new XYZ(placementX + halfWidth, placementY + halfHeight, placementZ + halfDepth)
+                                                    ));
+                                                }
+                                            }
+                                            
+                                            if (floorBboxes.Count > 0)
+                                            {
+                                                // Union of calculated world sleeve bounding boxes
+                                                double floorMinX = floorBboxes.Min(b => b.min.X);
+                                                double floorMinY = floorBboxes.Min(b => b.min.Y);
+                                                double floorMinZ = floorBboxes.Min(b => b.min.Z);
+                                                double floorMaxX = floorBboxes.Max(b => b.max.X);
+                                                double floorMaxY = floorBboxes.Max(b => b.max.Y);
+                                                double floorMaxZ = floorBboxes.Max(b => b.max.Z);
+                                                
+                                                double floorWidth = floorMaxX - floorMinX;
+                                                double floorHeight = floorMaxY - floorMinY;
+                                                double floorDepth = floorMaxZ - floorMinZ;
+                                                
+                                                // ✅ Calculate new center point from the union envelope
+                                                XYZ newPlacementPoint = new XYZ(
+                                                    (floorMinX + floorMaxX) / 2.0,
+                                                    (floorMinY + floorMaxY) / 2.0,
+                                                    (floorMinZ + floorMaxZ) / 2.0
+                                                );
+
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                {
+                                                    double wMm = RevitUnitConversionService.Instance.FromInternalMillimeters(floorWidth);
+                                                    double hMm = RevitUnitConversionService.Instance.FromInternalMillimeters(floorHeight);
+                                                    double dMm = RevitUnitConversionService.Instance.FromInternalMillimeters(floorDepth);
+                                                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                                        $"[{DateTime.Now:HH:mm:ss}] ✅ FLOOR MIXED X/Y: Building envelope from CALCULATED WORLD bboxes: W={wMm:F1}mm, H={hMm:F1}mm, D={dMm:F1}mm, " +
+                                                        $"Orientations=[{string.Join(", ", orientations)}], Sleeves={floorBboxes.Count}, " +
+                                                        $"OldCenter=({placementPoint.X:F2},{placementPoint.Y:F2}), NewCenter=({newPlacementPoint.X:F2},{newPlacementPoint.Y:F2})\n");
+                                                }
+                                                
+                                                (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ) floorResult = 
+                                                    (floorWidth, floorHeight, floorDepth, newPlacementPoint, null, null, null, null, null, null);
+                                                StoreInCache(cluster, rotationAngle, floorResult, calcStopwatch);
+                                                return floorResult;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception floorEx)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ Error handling floor mixed X/Y cluster: {floorEx.Message}\n");
+                    }
+                }
+                
+                // ✅ CRITICAL FIX: For floor clusters, calculate envelope from placement points + sleeve dimensions
+                // The stored bounding boxes are in sleeve local coordinates, not world coordinates!
+                // We need to build the envelope from each sleeve's placement point + its actual dimensions
+                // This applies to both straight-axis (0°) and rotated-axis (135°, 315°, etc.) floor clusters
                 var dbBboxes = new List<(XYZ min, XYZ max)>();
+                bool isFloorClusterProcessing = false;
+
+                // Check if this is a floor cluster first to decide processing logic
+                var firstSleeve = cluster.FirstOrDefault();
+                if (firstSleeve != null)
+                {
+                    var firstCz = GetCachedClashZone(firstSleeve.SleeveInstanceId, xmlFilePath);
+                    if (firstCz != null)
+                    {
+                        isFloorClusterProcessing = string.Equals(firstCz.StructuralElementType, "Floor", StringComparison.OrdinalIgnoreCase) ||
+                                                 string.Equals(firstCz.StructuralElementType, "Floors", StringComparison.OrdinalIgnoreCase);
+                    }
+                }
+
+                // ✅ CRITICAL: If corner-based failed for rotated floor cluster, force reconstruction from placement points
+                if (shouldReconstructFromPlacementPoints)
+                {
+                    isFloorClusterProcessing = true;
+                }
+
                 foreach (var sleeveData in cluster)
                 {
                     var clashZone = GetCachedClashZone(sleeveData.SleeveInstanceId, xmlFilePath);
                     if (clashZone == null) continue;
-                    if (clashZone == null) continue;
                     
-                    // Check if database has valid bounding box data
-                    if (clashZone.SleeveBoundingBoxMinX != 0 || clashZone.SleeveBoundingBoxMaxX != 0 ||
-                        clashZone.SleeveBoundingBoxMinY != 0 || clashZone.SleeveBoundingBoxMaxY != 0 ||
-                        clashZone.SleeveBoundingBoxMinZ != 0 || clashZone.SleeveBoundingBoxMaxZ != 0)
+                    if (isFloorClusterProcessing)
                     {
+                        // ✅ For floor clusters: Use placement point + sleeve dimensions to build world-space bbox
+                        double placementX = clashZone.SleevePlacementPointActiveDocumentX;
+                        double placementY = clashZone.SleevePlacementPointActiveDocumentY;
+                        double placementZ = clashZone.SleevePlacementPointActiveDocumentZ;
+                        
+                        // Get dimensions in feet (stored in feet, no conversion needed)
+                        double sleeveWidth = clashZone.SleeveWidth;
+                        double sleeveHeight = clashZone.SleeveHeight;
+                        // Use StructuralElementThickness for depth if available, otherwise default to 1.0ft
+                        double sleeveDepth = clashZone.StructuralElementThickness > 0 ? clashZone.StructuralElementThickness : 1.0;
+
+                        double halfWidth, halfHeight;
+
+                        // Apply rotation based on orientation
+                        if (string.Equals(clashZone.MepElementOrientationDirection, "Y", StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Rotated 90 degrees: Width is along Y, Height is along X
+                            halfWidth = sleeveHeight / 2.0;  // X-dimension
+                            halfHeight = sleeveWidth / 2.0;  // Y-dimension
+                        }
+                        else
+                        {
+                            // Default X orientation: Width is along X, Height is along Y
+                            halfWidth = sleeveWidth / 2.0;   // X-dimension
+                            halfHeight = sleeveHeight / 2.0; // Y-dimension
+                        }
+                        double halfDepth = sleeveDepth / 2.0;
+                        
                         dbBboxes.Add((
-                            new XYZ(clashZone.SleeveBoundingBoxMinX, clashZone.SleeveBoundingBoxMinY, clashZone.SleeveBoundingBoxMinZ),
-                            new XYZ(clashZone.SleeveBoundingBoxMaxX, clashZone.SleeveBoundingBoxMaxY, clashZone.SleeveBoundingBoxMaxZ)
+                            new XYZ(placementX - halfWidth, placementY - halfHeight, placementZ - halfDepth),
+                            new XYZ(placementX + halfWidth, placementY + halfHeight, placementZ + halfDepth)
                         ));
+                    }
+                    else
+                    {
+                        // For walls/framing, use stored bounding boxes (already in world coordinates)
+                        if (clashZone.SleeveBoundingBoxMinX != 0 || clashZone.SleeveBoundingBoxMaxX != 0 ||
+                            clashZone.SleeveBoundingBoxMinY != 0 || clashZone.SleeveBoundingBoxMaxY != 0 ||
+                            clashZone.SleeveBoundingBoxMinZ != 0 || clashZone.SleeveBoundingBoxMaxZ != 0)
+                        {
+                            dbBboxes.Add((
+                                new XYZ(clashZone.SleeveBoundingBoxMinX, clashZone.SleeveBoundingBoxMinY, clashZone.SleeveBoundingBoxMinZ),
+                                new XYZ(clashZone.SleeveBoundingBoxMaxX, clashZone.SleeveBoundingBoxMaxY, clashZone.SleeveBoundingBoxMaxZ)
+                            ));
+                        }
                     }
                 }
                 
-                // If database has bounding boxes, use them (faster, no Revit API calls) - only for floors!
+                // If database has bounding boxes, use them (faster, no Revit API calls)
                 if (dbBboxes.Count > 0)
                 {
                     double minXf = dbBboxes.Min(b=>b.min.X); double minYf = dbBboxes.Min(b=>b.min.Y); double minZf = dbBboxes.Min(b=>b.min.Z);
                     double maxXf = dbBboxes.Max(b=>b.max.X); double maxYf = dbBboxes.Max(b=>b.max.Y); double maxZf = dbBboxes.Max(b=>b.max.Z);
-                    double wf = maxXf - minXf; double hf = maxYf - minYf; double df = maxZf - minZf; XYZ midF = new XYZ((minXf+maxXf)/2,(minYf+maxYf)/2,(minZf+maxZf)/2);
                     
+                    double wf = maxXf - minXf;
+                    double hf = maxYf - minYf;
+                    double df = maxZf - minZf;
+                    
+                    // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
+                    // UNLESS it's a floor cluster, then use the calculated center
+                    XYZ finalPlacementPoint = placementPoint;
+                    if (isFloorClusterProcessing)
+                    {
+                         finalPlacementPoint = new XYZ(
+                            (minXf + maxXf) / 2.0,
+                            (minYf + maxYf) / 2.0,
+                            (minZf + maxZf) / 2.0
+                        );
+                    }
+
                     // ✅ FIX: Convert to millimeters for logging
                     double wfMm = RevitUnitConversionService.Instance.FromInternalMillimeters(wf);
                     double hfMm = RevitUnitConversionService.Instance.FromInternalMillimeters(hf);
                     double dfMm = RevitUnitConversionService.Instance.FromInternalMillimeters(df);
                     
                     SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                        $"[{DateTime.Now:HH:mm:ss}] ✅ FALLBACK (axis-aligned from DB): W={wfMm:F1}mm, H={hfMm:F1}mm, D={dfMm:F1}mm ({dbBboxes.Count} sleeves from database)\n");
+                        $"[{DateTime.Now:HH:mm:ss}] ✅ FALLBACK (axis-aligned from DB): W={wfMm:F1}mm, H={hfMm:F1}mm, D={dfMm:F1}mm ({dbBboxes.Count} sleeves from database, isFloor={isFloorClusterProcessing})\n");
                     
-                    // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
-                    return (wf,hf,df,placementPoint,null,null,null,null,null,null);
+                    return (wf,hf,df,finalPlacementPoint,null,null,null,null,null,null);
                 }
                 
                 // Last resort: Fallback to Revit bounding boxes if database data is missing
@@ -836,8 +1191,105 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 return (wr,hr,dr,placementPoint,null,null,null,null,null,null);
             }
 
-            // ✅ FALLBACK: Simple union of rotated boxes (only if corner-based failed)
-            // This is less accurate but better than nothing
+            // ✅ CRITICAL FIX: For rotated axis clusters, rotated bounding boxes are in different coordinate systems
+            // (each sleeve has its own rotation), so we cannot simply union them.
+            // Instead, reconstruct world bounding boxes from placement points + dimensions (same as floor clusters)
+            bool isRotatedAxis = Math.Abs(rotationAngle) > 1e-6;
+            if (isRotatedAxis)
+            {
+                // ✅ For rotated axis clusters, ALWAYS reconstruct world bounding boxes from placement points + dimensions
+                // This ensures correct sizing when corner-based calculation fails
+                // The stored rotated bounding boxes are in world coordinates but each sleeve has its own rotation,
+                // so unioning them directly gives incorrect results (e.g., 741mm × 341mm instead of 707mm × 707mm)
+                var reconstructedBboxes = new List<(XYZ min, XYZ max)>();
+                foreach (var sleeveData in cluster)
+                {
+                    var cz = GetCachedClashZone(sleeveData.SleeveInstanceId, xmlFilePath);
+                    if (cz == null) continue;
+                    
+                    // Get placement point and dimensions
+                    double placementX = cz.SleevePlacementPointActiveDocumentX;
+                    double placementY = cz.SleevePlacementPointActiveDocumentY;
+                    double placementZ = cz.SleevePlacementPointActiveDocumentZ;
+                    
+                    // Get dimensions in feet (stored in feet, no conversion needed)
+                    double sleeveWidth = cz.SleeveWidth;
+                    double sleeveHeight = cz.SleeveHeight;
+                    double sleeveDepth = cz.StructuralElementThickness > 0 ? cz.StructuralElementThickness : 1.0;
+                    
+                    // Calculate half-dimensions
+                    double halfWidth = sleeveWidth / 2.0;
+                    double halfHeight = sleeveHeight / 2.0;
+                    double halfDepth = sleeveDepth / 2.0;
+                    
+                    // Reconstruct world bounding box (no rotation applied - use stored WCS bbox if available)
+                    bool hasStoredBbox = cz.SleeveBoundingBoxMinX != 0 || cz.SleeveBoundingBoxMaxX != 0 ||
+                                         cz.SleeveBoundingBoxMinY != 0 || cz.SleeveBoundingBoxMaxY != 0 ||
+                                         cz.SleeveBoundingBoxMinZ != 0 || cz.SleeveBoundingBoxMaxZ != 0;
+                    
+                    if (hasStoredBbox)
+                    {
+                        // ✅ Use stored WCS bounding box (already in world coordinates)
+                        reconstructedBboxes.Add((
+                            new XYZ(cz.SleeveBoundingBoxMinX, cz.SleeveBoundingBoxMinY, cz.SleeveBoundingBoxMinZ),
+                            new XYZ(cz.SleeveBoundingBoxMaxX, cz.SleeveBoundingBoxMaxY, cz.SleeveBoundingBoxMaxZ)
+                        ));
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ ROTATED-AXIS: Using stored WCS bbox for sleeve {sleeveData.SleeveInstanceId}: Min=({cz.SleeveBoundingBoxMinX:F6}, {cz.SleeveBoundingBoxMinY:F6}, {cz.SleeveBoundingBoxMinZ:F6}), Max=({cz.SleeveBoundingBoxMaxX:F6}, {cz.SleeveBoundingBoxMaxY:F6}, {cz.SleeveBoundingBoxMaxZ:F6})\n");
+                        }
+                    }
+                    else
+                    {
+                        // ⚠️ Fallback: Calculate from placement point + dimensions (stored bbox not available)
+                        reconstructedBboxes.Add((
+                            new XYZ(placementX - halfWidth, placementY - halfHeight, placementZ - halfDepth),
+                            new XYZ(placementX + halfWidth, placementY + halfHeight, placementZ + halfDepth)
+                        ));
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ⚠️ ROTATED-AXIS: Stored bbox MISSING for sleeve {sleeveData.SleeveInstanceId}, reconstructing from placement point ({placementX:F6}, {placementY:F6}, {placementZ:F6}) + dimensions (W={sleeveWidth * 304.8:F1}mm, H={sleeveHeight * 304.8:F1}mm)\n");
+                        }
+                    }
+                }
+                
+                if (reconstructedBboxes.Count > 0)
+                {
+                    // Union of reconstructed world bounding boxes
+                    double reconMinX = reconstructedBboxes.Min(b => b.min.X);
+                    double reconMinY = reconstructedBboxes.Min(b => b.min.Y);
+                    double reconMinZ = reconstructedBboxes.Min(b => b.min.Z);
+                    double reconMaxX = reconstructedBboxes.Max(b => b.max.X);
+                    double reconMaxY = reconstructedBboxes.Max(b => b.max.Y);
+                    double reconMaxZ = reconstructedBboxes.Max(b => b.max.Z);
+                    
+                    double reconWidth = reconMaxX - reconMinX;
+                    double reconHeight = reconMaxY - reconMinY;
+                    double reconDepth = reconMaxZ - reconMinZ;
+                    
+                    // Convert to millimeters for logging
+                    double reconWidthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(reconWidth);
+                    double reconHeightMm = RevitUnitConversionService.Instance.FromInternalMillimeters(reconHeight);
+                    double reconDepthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(reconDepth);
+                    
+                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                        $"[{DateTime.Now:HH:mm:ss}] ✅ ROTATED-AXIS (reconstructed from WCS): W={reconWidthMm:F1}mm, H={reconHeightMm:F1}mm, D={reconDepthMm:F1}mm, Rotation={rotationAngle * 180 / Math.PI:F1}°\n");
+                    
+                    // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
+                    var reconResult = (reconWidth, reconHeight, reconDepth, placementPoint, reconMinX, reconMinY, reconMinZ, reconMaxX, reconMaxY, reconMaxZ);
+                    
+                    // Store in cache and return
+                    StoreInCache(cluster, rotationAngle, reconResult, calcStopwatch);
+                    return reconResult;
+                }
+            }
+            
+            // ✅ FALLBACK: Simple union of rotated boxes (only for straight-axis clusters or if reconstruction failed)
+            // This is less accurate but better than nothing for straight-axis clusters
             double minX = rotatedBboxes.Min(b=>b.min.X);
             double minY = rotatedBboxes.Min(b=>b.min.Y);
             double minZ = rotatedBboxes.Min(b=>b.min.Z);
@@ -856,7 +1308,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 double unionDepthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(depth);
                 
                 SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ UNION (fallback): W={unionWidthMm:F1}mm, H={unionHeightMm:F1}mm, D={unionDepthMm:F1}mm, Rotation={rotationAngle * 180 / Math.PI:F1}°\n");
+                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ UNION (fallback - rotated bboxes): W={unionWidthMm:F1}mm, H={unionHeightMm:F1}mm, D={unionDepthMm:F1}mm, Rotation={rotationAngle * 180 / Math.PI:F1}°\n");
             
             // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
             var result = (width,height,depth,placementPoint,minX,minY,minZ,maxX,maxY,maxZ);

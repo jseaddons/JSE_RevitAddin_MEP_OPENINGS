@@ -441,16 +441,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                     }
                     else if (isFloorHost)
                     {
-                        // ✅ FLOOR: Apply rotation for both ducts and cable trays
-                        // Cable trays: MEP orientation angle + 90° offset (to fix disorientation) - skip90DegreeOffset = false
-                        // Ducts/Pipes: MEP orientation angle + 90° offset - skip90DegreeOffset = false
-                        // Both get 90° offset for floors
+                        // ✅ FLOOR: Match individual sleeve rotation logic exactly
+                        // Individual sleeves use MepElementRotationAngle directly for cable trays (no 90° offset)
+                        // Individual sleeves use MepElementRotationAngle directly for ducts (no 90° offset in individual code)
+                        // However, cluster logic historically adds 90° for ducts/pipes, so we maintain that for now
+                        // Cable trays: Always use rotation angle directly (matches individual sleeve behavior)
+                        // Ducts/Pipes: Add 90° offset (maintains existing cluster behavior)
+                        bool skipOffset = isCableTrayCategory; // Cable trays: no offset (matches individual sleeves)
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
+                            string categoryBehavior = isCableTrayCategory ? "CABLE TRAY (matches individual: no offset)" : "DUCT/PIPE (cluster: +90° offset)";
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] 🔄 APPLYING FLOOR ROTATION: {rotationAngle * 180 / Math.PI:F1}° for floor-hosted cluster (category: {targetCategory}, WITH 90° OFFSET)\n");
+                                $"[{DateTime.Now:HH:mm:ss}] 🔄 APPLYING FLOOR ROTATION: {rotationAngle * 180 / Math.PI:F1}° for floor-hosted cluster (category: {targetCategory}, {categoryBehavior})\n");
                         }
-                        ApplyRotation(doc, inst, placementPoint, rotationAngle, skip90DegreeOffset: false);
+                        ApplyRotation(doc, inst, placementPoint, rotationAngle, skip90DegreeOffset: skipOffset);
                     }
                 }
                 else if (isWallHost)
@@ -890,8 +894,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                     return true; // Family already loaded
                 }
 
-                // Load family from Resources directory
-                string resourcesPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Resources";
+                // ✅ DEPLOYMENT FIX: Use Assembly location to find Resources folder (deployed next to DLL)
+                var executingAssembly = System.Reflection.Assembly.GetExecutingAssembly();
+                var assemblyDir = Path.GetDirectoryName(executingAssembly.Location);
+                string resourcesPath = Path.Combine(assemblyDir, "Resources");
                 string familyPath = Path.Combine(resourcesPath, $"{familyName}.rfa");
 
                 if (!File.Exists(familyPath))
@@ -1171,40 +1177,51 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 // ✅ CRITICAL FIX: Add 90 degrees (π/2) to MEP orientation angle to fix alignment issue for ducts
                 // ✅ ROTATION FIX: ClusterRotationService already calculates the correct rotation angle
                 // (X-wall = 90°, Y-wall = 0°), so we use it directly without adding offset for walls.
-                // For floors: Both ducts and cable trays need +90° offset to align correctly
+                // For floors:
+                //   - Ducts/pipes: Always need +90° offset (skip90DegreeOffset=false)
+                //   - Cable trays: 
+                //     * Rotated axis (45°, 135°, etc.): Do NOT need +90° offset (skip90DegreeOffset=true)
+                //     * Straight axis (0°, 90°, 180°, 270°): Need +90° offset (skip90DegreeOffset=false, same as ducts)
                 // Walls: Use rotation angle directly (already correct from ClusterRotationService)
                 double adjustedRotationAngle = rotationAngle;
                 
                 if (skip90DegreeOffset)
                 {
-                    // ✅ WALLS: Use rotation angle directly (already correct from ClusterRotationService)
-                    // This path is only for walls now (cable trays on floors also get 90° offset)
+                    // ✅ CABLE TRAYS ON FLOORS: Use rotation angle directly (matches individual sleeve behavior)
+                    // Individual sleeves use MepElementRotationAngle directly for cable trays, no 90° offset
                     adjustedRotationAngle = rotationAngle;
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss}] ✅ WALL: Using rotation angle directly (no 90° offset): {rotationAngle * 180 / Math.PI:F1}°\n");
+                            $"[{DateTime.Now:HH:mm:ss}] ✅ CABLE TRAY FLOOR: Using rotation angle directly (matches individual sleeve): {rotationAngle * 180 / Math.PI:F1}°\n");
                     }
                 }
                 else
                 {
-                    // ✅ FLOOR (DUCTS AND CABLE TRAYS): Check if this is a floor rotation (not wall rotation)
+                    // ✅ FLOOR (DUCTS/PIPES) OR WALLS: Check if this is a floor rotation (not wall rotation)
                     // Wall rotations are 0° (Y-wall) or 90° (X-wall), floor rotations are arbitrary angles
+                    // For ducts/pipes on floors: Add 90° offset (maintains existing cluster behavior)
+                    // For walls: Use rotation angle directly (already correct from ClusterRotationService)
                     bool isWallRotation = Math.Abs(rotationAngle) < 1e-6 || Math.Abs(rotationAngle - Math.PI / 2.0) < 1e-6;
                     if (!isWallRotation && Math.Abs(rotationAngle) > 1e-6)
                     {
-                        // ✅ FLOOR (ALL CATEGORIES): Add 90° offset for both ducts and cable trays on floors
+                        // ✅ FLOOR DUCTS/PIPES: Add 90° offset (maintains existing cluster behavior)
                         adjustedRotationAngle = rotationAngle + Math.PI / 2.0;
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] 🔄 FLOOR: Adding 90° offset: {rotationAngle * 180 / Math.PI:F1}° → {adjustedRotationAngle * 180 / Math.PI:F1}°\n");
+                                $"[{DateTime.Now:HH:mm:ss}] 🔄 FLOOR DUCT/PIPE: Adding 90° offset: {rotationAngle * 180 / Math.PI:F1}° → {adjustedRotationAngle * 180 / Math.PI:F1}°\n");
                         }
                     }
                     else
                     {
                         // ✅ WALLS: Use rotation angle directly (already correct from ClusterRotationService)
                         adjustedRotationAngle = rotationAngle;
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ WALL: Using rotation angle directly: {rotationAngle * 180 / Math.PI:F1}°\n");
+                        }
                     }
                 }
                 

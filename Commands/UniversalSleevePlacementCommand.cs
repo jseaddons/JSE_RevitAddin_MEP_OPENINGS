@@ -156,14 +156,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         // 5. Within active 3D section box
                     var filteredClashZones = FilterClashZonesByAllCriteria(_clashZones);
 
+                    // ✅ CRITICAL FIX: Check if there are any eligible (unresolved) clash zones BEFORE starting transaction
+                    int total = filteredClashZones?.Count ?? 0;
+                    int isRes = filteredClashZones?.Count(cz => cz.IsResolved) ?? 0;
+                    int isCluster = filteredClashZones?.Count(cz => cz.IsClusterResolved) ?? 0;
+                    int eligible = filteredClashZones?.Count(cz => !cz.IsResolved && !cz.IsClusterResolved) ?? 0;
+                    
                     // Log eligibility vs flags before calling placement
                     try
                     {
                         var eligLog = new System.Text.StringBuilder();
-                        int total = filteredClashZones?.Count ?? 0;
-                        int isRes = filteredClashZones?.Count(cz => cz.IsResolved) ?? 0;
-                        int isCluster = filteredClashZones?.Count(cz => cz.IsClusterResolved) ?? 0;
-                        int eligible = filteredClashZones?.Count(cz => !cz.IsResolved && !cz.IsClusterResolved) ?? 0;
                         eligLog.AppendLine($"[{DateTime.Now}] [PLACEMENT-ELIGIBILITY] Total={total}, IsResolved={isRes}, IsClusterResolved={isCluster}, Eligible={eligible}");
                         foreach (var cz in filteredClashZones.Take(50))
                         {
@@ -173,6 +175,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         System.IO.File.AppendAllText(eligLogPath, eligLog.ToString());
                     }
                     catch { }
+                    
+                    // ✅ CRITICAL FIX: Show message and return early if no eligible zones
+                    if (eligible == 0)
+                    {
+                        string message;
+                        if (total == 0)
+                        {
+                            message = $"No clash zones found for {_category}.\nPlease run Refresh before placing sleeves.";
+                        }
+                        else if (isRes > 0 || isCluster > 0)
+                        {
+                            message = $"No new clash zones found for placing {_category} sleeves.\nAll {total} clash zone(s) are already resolved (sleeves already placed).";
+                        }
+                        else
+                        {
+                            message = $"No eligible clash zones found for {_category}.\nAll clash zones were filtered out (check section box, file selections, or host type filters).";
+                        }
+                        
+                        DebugLogger.Info($"{_logPrefix} ⚠️ {message}");
+                        TaskDialog.Show("No Sleeves to Place", message);
+                        t.RollBack();
+                        return;
+                    }
                         
                         // Log how many zones are about to be processed for placement
                         try 
