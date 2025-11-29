@@ -672,6 +672,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     // No migration needed - OpeningSettings was never reliably populated
 
                     AddColumnIfMissing("Conditions", "CombinedKey", "TEXT", transaction);
+                    AddColumnIfMissing("Conditions", "PipesNormal", "REAL", transaction);
+                    AddColumnIfMissing("Conditions", "PipesInsulated", "REAL", transaction);
                     AddColumnIfMissing("Conditions", "DuctAccessoryMepNormal", "REAL", transaction);
                     AddColumnIfMissing("Conditions", "DuctAccessoryOtherNormal", "REAL", transaction);
                     AddColumnIfMissing("Conditions", "OpeningPrefs", "TEXT", transaction);

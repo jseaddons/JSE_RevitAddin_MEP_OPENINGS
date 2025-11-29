@@ -862,6 +862,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// <summary>
         /// ✅ PUBLIC: Save sleeve snapshots for placed sleeves (called after placement)
         /// </summary>
+        /// <summary>
+        /// ✅ CRITICAL: Save sleeve snapshots for placed sleeves (individual and cluster).
+        /// This method handles normalization issues where SourceDocKey/HostDocKey might be missing:
+        /// - Zones passed here may be in-memory objects from placement without database keys
+        /// - Uses multiple fallback strategies to get ComboId even if keys are missing
+        /// - Reloads keys from database if missing, or gets ComboId directly from ClashZones table
+        /// </summary>
         public void SaveSleeveSnapshotsForPlacedSleeves(int filterId, List<ClashZone> placedZones)
         {
             if (placedZones == null || placedZones.Count == 0)
@@ -924,11 +931,61 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         if (zones.Count == 0)
                             continue;
 
+                        // ✅ CRITICAL FIX: Reload zones from database if SourceDocKey/HostDocKey are missing
+                        // This ensures we have the correct keys even if zones were passed as in-memory objects
+                        foreach (var zone in zones)
+                        {
+                            if (zone != null && (string.IsNullOrWhiteSpace(zone.SourceDocKey) || string.IsNullOrWhiteSpace(zone.HostDocKey)))
+                            {
+                                try
+                                {
+                                    using (var reloadCmd = _context.Connection.CreateCommand())
+                                    {
+                                        reloadCmd.Transaction = transaction;
+                                        reloadCmd.CommandText = @"
+                                            SELECT SourceDocKey, HostDocKey, ComboId 
+                                            FROM ClashZones 
+                                            WHERE ClashZoneGuid = @ClashZoneGuid
+                                            LIMIT 1";
+                                        reloadCmd.Parameters.AddWithValue("@ClashZoneGuid", zone.Id.ToString().ToUpperInvariant());
+                                        using (var reader = reloadCmd.ExecuteReader())
+                                        {
+                                            if (reader.Read())
+                                            {
+                                                var dbSourceDocKey = GetNullableString(reader, "SourceDocKey");
+                                                var dbHostDocKey = GetNullableString(reader, "HostDocKey");
+                                                
+                                                if (!string.IsNullOrWhiteSpace(dbSourceDocKey))
+                                                    zone.SourceDocKey = dbSourceDocKey;
+                                                if (!string.IsNullOrWhiteSpace(dbHostDocKey))
+                                                    zone.HostDocKey = dbHostDocKey;
+                                                
+                                                if (!DeploymentConfiguration.DeploymentMode && (!string.IsNullOrWhiteSpace(dbSourceDocKey) || !string.IsNullOrWhiteSpace(dbHostDocKey)))
+                                                {
+                                                    _logger($"[SQLite] ✅ Reloaded SourceDocKey/HostDocKey for zone {zone.Id} from database");
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                catch (Exception reloadEx)
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        _logger($"[SQLite] ⚠️ Failed to reload SourceDocKey/HostDocKey for zone {zone.Id}: {reloadEx.Message}");
+                                    }
+                                }
+                            }
+                        }
+
                         // Get ComboId from first zone (if available via database lookup)
                         int comboId = -1;
                         try
                         {
                             var firstZone = zones[0];
+                            
+                            // ✅ CRITICAL FIX: Try multiple strategies to get ComboId
+                            // Strategy 1: Use SourceDocKey and HostDocKey from zone (if available)
                             if (!string.IsNullOrWhiteSpace(firstZone.SourceDocKey) && !string.IsNullOrWhiteSpace(firstZone.HostDocKey))
                             {
                                 // Try to find existing combo
@@ -948,24 +1005,119 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     if (result != null)
                                     {
                                         comboId = Convert.ToInt32(result);
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            _logger($"[SQLite] ✅ SaveSleeveSnapshotsForPlacedSleeves: Found ComboId={comboId} using SourceDocKey/HostDocKey");
+                                        }
                                     }
                                 }
                             }
-                            else
+                            
+                            // ✅ Strategy 2: If keys are missing, load them from database using ClashZoneGuid
+                            if (comboId <= 0 && firstZone.Id != Guid.Empty)
                             {
-                                // ✅ DIAGNOSTIC: Log when ComboId lookup fails due to missing keys
-                                if (!DeploymentConfiguration.DeploymentMode)
+                                using (var cmd = _context.Connection.CreateCommand())
                                 {
-                                    _logger($"[SQLite] ⚠️ SaveSleeveSnapshotsForPlacedSleeves: Cannot lookup ComboId - SourceDocKey='{firstZone.SourceDocKey ?? "NULL"}', HostDocKey='{firstZone.HostDocKey ?? "NULL"}'");
+                                    cmd.Transaction = transaction;
+                                    cmd.CommandText = @"
+                                        SELECT SourceDocKey, HostDocKey, ComboId 
+                                        FROM ClashZones 
+                                        WHERE ClashZoneGuid = @ClashZoneGuid
+                                        LIMIT 1";
+                                    cmd.Parameters.AddWithValue("@ClashZoneGuid", firstZone.Id.ToString().ToUpperInvariant());
+                                    using (var reader = cmd.ExecuteReader())
+                                    {
+                                        if (reader.Read())
+                                        {
+                                            var dbSourceDocKey = GetNullableString(reader, "SourceDocKey");
+                                            var dbHostDocKey = GetNullableString(reader, "HostDocKey");
+                                            var dbComboId = GetInt(reader, "ComboId", -1);
+                                            
+                                            // Update zone with keys from database
+                                            if (!string.IsNullOrWhiteSpace(dbSourceDocKey))
+                                                firstZone.SourceDocKey = dbSourceDocKey;
+                                            if (!string.IsNullOrWhiteSpace(dbHostDocKey))
+                                                firstZone.HostDocKey = dbHostDocKey;
+                                            
+                                            // If ComboId is available directly, use it
+                                            if (dbComboId > 0)
+                                            {
+                                                comboId = dbComboId;
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                {
+                                                    _logger($"[SQLite] ✅ SaveSleeveSnapshotsForPlacedSleeves: Found ComboId={comboId} directly from ClashZones table");
+                                                }
+                                            }
+                                            // Otherwise, try to lookup ComboId using the loaded keys
+                                            else if (!string.IsNullOrWhiteSpace(dbSourceDocKey) && !string.IsNullOrWhiteSpace(dbHostDocKey))
+                                            {
+                                                reader.Close();
+                                                using (var comboCmd = _context.Connection.CreateCommand())
+                                                {
+                                                    comboCmd.Transaction = transaction;
+                                                    comboCmd.CommandText = @"
+                                                        SELECT ComboId FROM FileCombos 
+                                                        WHERE FilterId = @FilterId 
+                                                          AND LinkedFileKey = @LinkedFileKey 
+                                                          AND HostFileKey = @HostFileKey
+                                                        LIMIT 1";
+                                                    comboCmd.Parameters.AddWithValue("@FilterId", filterId);
+                                                    comboCmd.Parameters.AddWithValue("@LinkedFileKey", dbSourceDocKey);
+                                                    comboCmd.Parameters.AddWithValue("@HostFileKey", dbHostDocKey);
+                                                    var comboResult = comboCmd.ExecuteScalar();
+                                                    if (comboResult != null)
+                                                    {
+                                                        comboId = Convert.ToInt32(comboResult);
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                                        {
+                                                            _logger($"[SQLite] ✅ SaveSleeveSnapshotsForPlacedSleeves: Found ComboId={comboId} using keys loaded from database");
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
+                            }
+                            
+                            // ✅ Strategy 3: If still no ComboId, try to get it from any zone in the group that has SleeveInstanceId
+                            if (comboId <= 0)
+                            {
+                                var zoneWithSleeveId = zones.FirstOrDefault(z => z.SleeveInstanceId > 0);
+                                if (zoneWithSleeveId != null)
+                                {
+                                    using (var cmd = _context.Connection.CreateCommand())
+                                    {
+                                        cmd.Transaction = transaction;
+                                        cmd.CommandText = @"
+                                            SELECT ComboId FROM ClashZones 
+                                            WHERE SleeveInstanceId = @SleeveInstanceId
+                                            LIMIT 1";
+                                        cmd.Parameters.AddWithValue("@SleeveInstanceId", zoneWithSleeveId.SleeveInstanceId);
+                                        var result = cmd.ExecuteScalar();
+                                        if (result != null)
+                                        {
+                                            comboId = Convert.ToInt32(result);
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                            {
+                                                _logger($"[SQLite] ✅ SaveSleeveSnapshotsForPlacedSleeves: Found ComboId={comboId} using SleeveInstanceId={zoneWithSleeveId.SleeveInstanceId}");
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // ✅ DIAGNOSTIC: Log when all strategies fail
+                            if (comboId <= 0)
+                            {
+                                // ✅ CRITICAL: Always log this warning (even in deployment mode) to debug missing individual sleeves
+                                _logger($"[SQLite] ⚠️⚠️⚠️ SaveSleeveSnapshotsForPlacedSleeves: FAILED to find ComboId for {zones.Count} zones! SourceDocKey='{firstZone.SourceDocKey ?? "NULL"}', HostDocKey='{firstZone.HostDocKey ?? "NULL"}', ZoneId={firstZone.Id}, SleeveId={firstZone.SleeveInstanceId} - Zones will be saved with ComboId=-1");
                             }
                         }
                         catch (Exception comboEx)
                         {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                _logger($"[SQLite] ⚠️ SaveSleeveSnapshotsForPlacedSleeves: ComboId lookup exception: {comboEx.Message}");
-                            }
+                            // ✅ CRITICAL: Always log exceptions (even in deployment mode) to debug missing individual sleeves
+                            _logger($"[SQLite] ❌ SaveSleeveSnapshotsForPlacedSleeves: ComboId lookup exception: {comboEx.Message}\nStackTrace: {comboEx.StackTrace}");
                         }
 
                         // ✅ DIAGNOSTIC: Log ComboId and zone details before processing
@@ -3532,7 +3684,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 var rowsAffected = cmd.ExecuteNonQuery();
                 if (rowsAffected == 0 && !DeploymentConfiguration.DeploymentMode)
                 {
-                    _logger($"[SQLite] ⚠️ UpdateSleeveInstanceId: No rows updated for GUID {clashZoneGuid}");
+                    _logger($"[SQLite] ⚠️ UpdateSleeveInstanceId: No rows updated in ClashZones for GUID {clashZoneGuid}");
+                }
+            }
+            
+            // ✅ CRITICAL FIX: Also update SleeveSnapshots table to keep SleeveInstanceId in sync
+            // This ensures parameter transfer works after sleeve regeneration/recreation
+            using (var snapshotCmd = _context.Connection.CreateCommand())
+            {
+                snapshotCmd.CommandText = @"
+                    UPDATE SleeveSnapshots SET
+                        SleeveInstanceId = @SleeveInstanceId
+                    WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)
+                      AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL
+                      AND (ClusterInstanceId IS NULL OR ClusterInstanceId <= 0)";
+
+                snapshotCmd.Parameters.AddWithValue("@ClashZoneGuid", clashZoneGuid.ToString());
+                snapshotCmd.Parameters.AddWithValue("@SleeveInstanceId", sleeveInstanceId > 0 ? (object)sleeveInstanceId : DBNull.Value);
+                
+                var snapshotRowsAffected = snapshotCmd.ExecuteNonQuery();
+                if (snapshotRowsAffected > 0 && !DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ✅ UpdateSleeveInstanceId: Updated {snapshotRowsAffected} snapshot(s) for GUID {clashZoneGuid} with SleeveInstanceId={sleeveInstanceId}");
+                }
+                else if (snapshotRowsAffected == 0 && !DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ⚠️ UpdateSleeveInstanceId: No snapshots updated for GUID {clashZoneGuid} (may not exist yet or is a cluster)");
                 }
             }
         }

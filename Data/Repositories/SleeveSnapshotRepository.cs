@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data.SQLite;
 using System.Text.Json;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 {
@@ -40,7 +41,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         SourceDocKeysJson,
                         HostDocKeysJson,
                         ClashZoneGuid
-                    FROM SleeveSnapshots";
+                    FROM SleeveSnapshots
+                    ORDER BY SnapshotId";
+                
+                // ✅ DIAGNOSTIC: Log total snapshots in database before loading
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    using (var countCmd = _context.Connection.CreateCommand())
+                    {
+                        countCmd.CommandText = "SELECT COUNT(*) FROM SleeveSnapshots";
+                        var totalCount = countCmd.ExecuteScalar();
+                        _logger?.Invoke($"[SQLite] 🔍 Database contains {totalCount} total snapshot(s)");
+                    }
+                }
 
                 using (var reader = cmd.ExecuteReader())
                 {
@@ -77,10 +90,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             {
                                 index.BySleeve[view.SleeveInstanceId.Value] = view;
                             }
+                            else if (view.SleeveInstanceId.HasValue)
+                            {
+                                // ✅ DIAGNOSTIC: Log when SleeveInstanceId is 0 or negative
+                                _logger?.Invoke($"[SQLite] ⚠️ Snapshot {view.SnapshotId} has invalid SleeveInstanceId={view.SleeveInstanceId.Value} (must be > 0)");
+                            }
 
                             if (view.ClusterInstanceId.HasValue && view.ClusterInstanceId.Value > 0)
                             {
                                 index.ByCluster[view.ClusterInstanceId.Value] = view;
+                            }
+                            
+                            // ✅ DIAGNOSTIC: Log all snapshots loaded, especially for debugging missing sleeves
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                var sleeveId = view.SleeveInstanceId.HasValue ? view.SleeveInstanceId.Value.ToString() : "NULL";
+                                var clusterId = view.ClusterInstanceId.HasValue ? view.ClusterInstanceId.Value.ToString() : "NULL";
+                                _logger?.Invoke($"[SQLite] Loaded snapshot: SnapshotId={view.SnapshotId}, SleeveInstanceId={sleeveId}, ClusterInstanceId={clusterId}");
                             }
                         }
                         catch (Exception ex)

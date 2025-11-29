@@ -8,6 +8,8 @@ using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using WinForms = System.Windows.Forms;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Views
@@ -2530,9 +2532,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 _clearancePanel.Visible = true;
                 RestoreClearanceValues("Ducts");
             }
-            else if (category.Equals("Pipes", StringComparison.OrdinalIgnoreCase))
+            else if (category.Equals("Pipes", StringComparison.OrdinalIgnoreCase) || category.Equals("Pipe", StringComparison.OrdinalIgnoreCase))
             {
                 _pipePanel.Visible = true;
+                // Normalize to "Pipes" for consistency
                 RestoreClearanceValues("Pipes");
             }
             else
@@ -2859,7 +2862,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             var ctInsHeader = new WinForms.Label { Text = "Insulated (mm)", Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold), Location = new System.Drawing.Point(300, 18), Size = new System.Drawing.Size(120, 18) };
             _cableTrayPanel.Controls.Add(ctInsHeader);
 
-            var topSideTxt = new WinForms.TextBox { Location = new System.Drawing.Point(170, 38), Size = new System.Drawing.Size(50, 20), Text = "75", Tag = "cabletray_top_normal", Enabled = false, BackColor = System.Drawing.Color.LightGray };
+            var topSideTxt = new WinForms.TextBox { Location = new System.Drawing.Point(170, 38), Size = new System.Drawing.Size(50, 20), Text = "75", Tag = "cabletray_top_clearance", Enabled = false, BackColor = System.Drawing.Color.LightGray };
             _cableTrayPanel.Controls.Add(topSideTxt);
 
             var topLockBtn = new WinForms.Button
@@ -2892,7 +2895,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // Stack 'Other Sides' below
             var otherLbl = new WinForms.Label { Text = "Other Sides:", Location = new System.Drawing.Point(10, 70), Size = new System.Drawing.Size(120, 18) };
             _cableTrayPanel.Controls.Add(otherLbl);
-            var otherTxt = new WinForms.TextBox { Location = new System.Drawing.Point(170, 68), Size = new System.Drawing.Size(50, 20), Text = "25", Tag = "cabletray_other_normal", Enabled = false, BackColor = System.Drawing.Color.LightGray };
+            var otherTxt = new WinForms.TextBox { Location = new System.Drawing.Point(170, 68), Size = new System.Drawing.Size(50, 20), Text = "25", Tag = "cabletray_other_clearance", Enabled = false, BackColor = System.Drawing.Color.LightGray };
             _cableTrayPanel.Controls.Add(otherTxt);
 
             var otherLockBtn = new WinForms.Button
@@ -3342,11 +3345,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         }
         /// <summary>
         /// Restore clearance values for a category from storage, or set defaults if not saved
+        /// ✅ FIX: Also tries to load from database if in-memory values are not available
         /// </summary>
         private void RestoreClearanceValues(string category)
         {
             try
             {
+                // First, try to load from database if not already in memory
+                if (!_categoryClearanceValues.ContainsKey(category) || _categoryClearanceValues[category].Count == 0)
+                {
+                    LoadClearanceValuesFromDatabase(category);
+                }
+                
                 // Check if we have saved values for this category
                 if (_categoryClearanceValues.ContainsKey(category) && _categoryClearanceValues[category].Count > 0)
                 {
@@ -3392,6 +3402,90 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 DebugLogger.Error($"[RestoreClearanceValues] Error: {ex.Message}");
                 // Fallback to defaults on error
                 SetDefaultClearanceValues(category);
+            }
+        }
+        
+        /// <summary>
+        /// ✅ NEW: Load clearance values from database and populate _categoryClearanceValues
+        /// </summary>
+        private void LoadClearanceValuesFromDatabase(string category)
+        {
+            try
+            {
+                if (_document == null) return;
+                
+                // Get selected filters
+                var selectedFilters = GetSelectedFilters();
+                if (selectedFilters.Count == 0) return;
+                
+                var filter = selectedFilters.FirstOrDefault();
+                if (filter == null) return;
+                
+                // Build combined key using same logic as SaveConditionsToXml
+                string normalizedCategory = MepCategoryConstants.GetXmlSuffix(category);
+                string combinedKey = $"{filter.Name}_{normalizedCategory}";
+                
+                // Load conditions from database
+                using (var dbContext = new SleeveDbContext(_document))
+                {
+                    var conditionRepository = new ConditionRepository(dbContext);
+                    var conditions = conditionRepository.GetConditions(combinedKey);
+                    
+                    if (conditions?.ClearanceSettings != null)
+                    {
+                        var clearance = conditions.ClearanceSettings;
+                        
+                        // Initialize category dictionary if it doesn't exist
+                        if (!_categoryClearanceValues.ContainsKey(category))
+                        {
+                            _categoryClearanceValues[category] = new Dictionary<string, string>();
+                        }
+                        
+                        var categoryValues = _categoryClearanceValues[category];
+                        
+                        // Map database clearance values to UI tags based on category
+                        // Normalize category name to handle both "Pipe" and "Pipes"
+                        string normalizedCategoryForMapping = category.Equals("Pipe", StringComparison.OrdinalIgnoreCase) ? "Pipes" : category;
+                        
+                        if (normalizedCategoryForMapping.Equals("Pipes", StringComparison.OrdinalIgnoreCase))
+                        {
+                            categoryValues["pipes_normal_clearance"] = clearance.PipesNormal.ToString("F0");
+                            categoryValues["pipes_insulated_clearance"] = clearance.PipesInsulated.ToString("F0");
+                            DebugLogger.Info($"[LoadClearanceValuesFromDatabase] Loaded Pipes: Normal={clearance.PipesNormal}mm, Insulated={clearance.PipesInsulated}mm");
+                        }
+                        else if (category.Equals("Cable Trays", StringComparison.OrdinalIgnoreCase))
+                        {
+                            categoryValues["cabletray_top_normal"] = clearance.CableTrayTop.ToString("F0");
+                            categoryValues["cabletray_other_normal"] = clearance.CableTrayOther.ToString("F0");
+                            // Note: Cable tray doesn't have separate insulated values in current model
+                            DebugLogger.Info($"[LoadClearanceValuesFromDatabase] Loaded Cable Trays: Top={clearance.CableTrayTop}mm, Other={clearance.CableTrayOther}mm");
+                        }
+                        else if (category.Equals("Duct Accessories", StringComparison.OrdinalIgnoreCase))
+                        {
+                            categoryValues["ductaccessories_mep_normal"] = clearance.DuctAccessoryMepNormal.ToString("F0");
+                            categoryValues["ductaccessories_other_normal"] = clearance.DuctAccessoryOtherNormal.ToString("F0");
+                            DebugLogger.Info($"[LoadClearanceValuesFromDatabase] Loaded Duct Accessories: MEP={clearance.DuctAccessoryMepNormal}mm, Other={clearance.DuctAccessoryOtherNormal}mm");
+                        }
+                        else if (category.Equals("Ducts", StringComparison.OrdinalIgnoreCase))
+                        {
+                            categoryValues["normal_clearance"] = clearance.RectangularNormal.ToString("F0");
+                            categoryValues["insulated_clearance"] = clearance.RectangularInsulated.ToString("F0");
+                            categoryValues["round_duct_normal_clearance"] = clearance.RoundNormal.ToString("F0");
+                            categoryValues["round_duct_insulated_clearance"] = clearance.RoundInsulated.ToString("F0");
+                            DebugLogger.Info($"[LoadClearanceValuesFromDatabase] Loaded Ducts: Rect Normal={clearance.RectangularNormal}mm, Rect Ins={clearance.RectangularInsulated}mm, Round Normal={clearance.RoundNormal}mm, Round Ins={clearance.RoundInsulated}mm");
+                        }
+                        
+                        DebugLogger.Info($"[LoadClearanceValuesFromDatabase] ✅ Loaded clearance values from database for category '{category}' (combinedKey='{combinedKey}')");
+                    }
+                    else
+                    {
+                        DebugLogger.Info($"[LoadClearanceValuesFromDatabase] No conditions found in database for category '{category}' (combinedKey='{combinedKey}') - will use defaults");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[LoadClearanceValuesFromDatabase] Error loading clearance values from database for category '{category}': {ex.Message}");
             }
         }
 
@@ -4472,9 +4566,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     }
                 }
                 
-                // Read pipe clearances (if you have a pipe panel - for now use duct values as fallback)
-                settings.PipesNormal = settings.RectangularNormal; // Default to duct normal
-                settings.PipesInsulated = settings.RectangularInsulated; // Default to duct insulated
+                // Read pipe clearances from pipe panel
+                if (_pipePanel != null)
+                {
+                    var pipeTextBoxes = _pipePanel.Controls.OfType<WinForms.TextBox>();
+                    
+                    var pipeNormalTb = pipeTextBoxes.FirstOrDefault(tb => tb.Tag?.ToString() == "pipes_normal_clearance");
+                    if (pipeNormalTb != null && double.TryParse(pipeNormalTb.Text, out double pipeNormalVal))
+                    {
+                        settings.PipesNormal = pipeNormalVal;
+                        DebugLogger.Info($"[ReadClearanceSettingsFromUI] Pipe Normal: {pipeNormalVal}mm");
+                    }
+                    else
+                    {
+                        DebugLogger.Warning($"[ReadClearanceSettingsFromUI] Pipe Normal textbox not found or parse failed - using default");
+                        settings.PipesNormal = settings.RectangularNormal; // Default to duct normal
+                    }
+                    
+                    var pipeInsTb = pipeTextBoxes.FirstOrDefault(tb => tb.Tag?.ToString() == "pipes_insulated_clearance");
+                    if (pipeInsTb != null && double.TryParse(pipeInsTb.Text, out double pipeInsVal))
+                    {
+                        settings.PipesInsulated = pipeInsVal;
+                        DebugLogger.Info($"[ReadClearanceSettingsFromUI] Pipe Insulated: {pipeInsVal}mm");
+                    }
+                    else
+                    {
+                        DebugLogger.Warning($"[ReadClearanceSettingsFromUI] Pipe Insulated textbox not found or parse failed - using default");
+                        settings.PipesInsulated = settings.RectangularInsulated; // Default to duct insulated
+                    }
+                }
+                else
+                {
+                    DebugLogger.Warning($"[ReadClearanceSettingsFromUI] _pipePanel is null - using duct values as fallback");
+                    settings.PipesNormal = settings.RectangularNormal; // Default to duct normal
+                    settings.PipesInsulated = settings.RectangularInsulated; // Default to duct insulated
+                }
             }
             catch (Exception ex)
             {

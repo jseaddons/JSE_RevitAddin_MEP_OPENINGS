@@ -828,18 +828,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var sleeveInstanceId = GetIntegerParameter(opening, "Sleeve Instance ID");
                     var clusterInstanceId = GetIntegerParameter(opening, "Cluster Sleeve Instance ID");
 
+                    // ✅ DIAGNOSTIC: Log matching attempt
+                    var transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
+                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] Matching sleeve {openingId.IntegerValue}: SleeveInstanceId={sleeveInstanceId}, ClusterInstanceId={clusterInstanceId}, SnapshotIndex.BySleeve.Count={snapshotIndex.BySleeve.Count}, SnapshotIndex.ByCluster.Count={snapshotIndex.ByCluster.Count}\n");
+
                     SleeveSnapshotView snapshot = null;
                     if (clusterInstanceId > 0 && snapshotIndex.TryGetByCluster(clusterInstanceId, out var clusterView))
                     {
                         snapshot = clusterView;
+                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ Matched by ClusterInstanceId={clusterInstanceId}\n");
                     }
                     else if (sleeveInstanceId > 0 && snapshotIndex.TryGetBySleeve(sleeveInstanceId, out var sleeveView))
                     {
                         snapshot = sleeveView;
+                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ Matched by SleeveInstanceId={sleeveInstanceId}\n");
                     }
 
                     if (snapshot == null)
                     {
+                        // ✅ DIAGNOSTIC: Log available snapshot IDs for debugging
+                        var availableSleeveIds = string.Join(", ", snapshotIndex.BySleeve.Keys.Take(10));
+                        var availableClusterIds = string.Join(", ", snapshotIndex.ByCluster.Keys.Take(10));
+                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ❌ No snapshot found for sleeve {openingId.IntegerValue} (SleeveId={sleeveInstanceId}, ClusterId={clusterInstanceId}). Available SleeveIds: [{availableSleeveIds}], Available ClusterIds: [{availableClusterIds}]\n");
                         result.Warnings.Add($"No persisted snapshot found for sleeve {openingId.IntegerValue} (SleeveId={sleeveInstanceId}, ClusterId={clusterInstanceId}).");
                         continue;
                     }

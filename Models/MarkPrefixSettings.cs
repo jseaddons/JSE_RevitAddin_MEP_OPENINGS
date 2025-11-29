@@ -196,7 +196,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
                     string.Equals(kvp.Key, serviceType, StringComparison.OrdinalIgnoreCase));
                 
                 if (!string.IsNullOrEmpty(matchingOverride.Key))
-                {
+            {
                     // ✅ SERVICE TYPE OVERRIDE FOUND - Return it (takes precedence over discipline prefix)
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
